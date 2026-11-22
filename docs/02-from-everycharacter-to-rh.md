@@ -130,6 +130,22 @@ The five theorems in `Main.lean` take no hypotheses; their statements are read a
 - Everything below `UpperTheory.Lit.every_character_of_theta_integrals_local_matching`. The proof of `UpperTheory.LiteratureTheorems.every_character_of_literature_of_vWin` alone names about 25 further `…_of_literature` theorems, which I have not listed.
 - The audit log behind the verification page. I read the page's summary lines, not the log.
 
+### Correction, 2026-11-22 (later the same day): the six lemmas, checked with Lean
+
+The second item above is now settled. I asked Lean's own elaborator about each of the six names. I used Lean 4.33.1 and Mathlib at the commit the release pins, `0df444a3`, with Mathlib's prebuilt files only; none of the release's own files were loaded. The probe was `import Mathlib`, `open Complex`, one `#check` per name, and `#print axioms` for the last. All six exist in that Mathlib. Here is the output, verbatim:
+
+```
+@Gamma_ne_zero_of_re_pos : ∀ {s : ℂ}, 0 < s.re → Gamma s ≠ 0
+@cos_eq_zero_iff : ∀ {θ : ℂ}, cos θ = 0 ↔ ∃ k, θ = (2 * ↑k + 1) * ↑Real.pi / 2
+@cpow_ne_zero_iff : ∀ {x y : ℂ}, x ^ y ≠ 0 ↔ x ≠ 0 ∨ y = 0
+@Gammaℝ_ne_zero_of_re_pos : ∀ {s : ℂ}, 0 < s.re → s.Gammaℝ ≠ 0
+@Gammaℝ_eq_zero_iff : ∀ {s : ℂ}, s.Gammaℝ = 0 ↔ ∃ n, s = -(2 * ↑n)
+riemannZeta_ne_zero_of_one_le_re : ∀ ⦃s : ℂ⦄, 1 ≤ s.re → riemannZeta s ≠ 0
+'riemannZeta_ne_zero_of_one_le_re' depends on axioms: [propext, Classical.choice, Quot.sound]
+```
+
+The first five print without their `Complex.` prefix because the probe opens `Complex`. This confirms that the names are Mathlib's and what they state. It does not confirm that the release's files resolve to these declarations, because those files were not elaborated. That rests on the reading described above. The first item ("Nothing was compiled") still holds for everything else in this note.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me.
