@@ -12,6 +12,8 @@ The release proves five theorems. All five are obtained, in a few lines, from a 
 
 `src/Main.lean` is 12 lines. It states five theorems, each proved by a single term:
 
+*Not verbatim; see the correction dated 2026-11-22 below for the exact text.*
+
 ```lean
 theorem riemannHypothesis : RiemannHypothesis := rhOfAll
 theorem riemannZeta_eq_zero_re : RiemannZetaZerosOnLine := rhOfAll
@@ -31,6 +33,8 @@ theorem LFunction_eq_zero_re_of_isPrimitive : PrimitiveDirichletLZerosOnLine := 
 
 `src/Supplements/Kernels/MainTheorems.lean` defines the four terms used above:
 
+*Not verbatim; see the correction dated 2026-11-22 below for the exact text.*
+
 ```lean
 theorem allChi : UpperTheory.EveryCharacter := UpperTheory.FinalTheorems.everyCharacter
 theorem rhOfAll : RiemannHypothesis := Formalism.VW.rh_of_every allChi
@@ -48,6 +52,8 @@ Every one of them takes `allChi` as its only real input. So:
 ### The one statement
 
 `src/Development/AutomorphicArithmetic/CharacterBoxes/EveryCharacter.lean` defines it:
+
+*Not verbatim; see the correction dated 2026-11-22 below for the exact text.*
 
 ```lean
 def UpperTheory.EveryCharacter : Prop :=
@@ -67,6 +73,8 @@ theorem UpperTheory.FinalTheorems.everyCharacter : UpperTheory.EveryCharacter :=
 ```
 
 and `everyCharacter_of_row` is one application of `UpperTheory.LiteratureTheorems.every_character_of_literature_of_vWin`. Following that chain (the route is traced in [note 2](02-from-everycharacter-to-rh.md)) one reaches, in `src/Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/TopPlug.lean`:
+
+*Not verbatim; see the correction dated 2026-11-22 below for the exact text.*
 
 ```lean
 theorem UpperTheory.Top.every_character_of_green_v_win (hG : GlobalTheory.GLq.Green) (hV : UpperTheory.Top.VWin)
@@ -91,6 +99,56 @@ So `EveryCharacter` is obtained from a statement called `Formalism.HC.ZeroFreeAl
 - The middle of the chain between `every_character_of_literature_of_vWin` and `every_character_of_green_v_win`; we read its two ends.
 - Everything below `UpperTheory.FinalTheorems.everyCharacter`, which is where the mathematics is.
 
+### Correction, 2026-11-22 (later the same day): four code blocks were tidied, not quoted
+
+Four of the five code blocks in this note were not exact quotations. Two had blank lines removed or lines re-wrapped; two were abridged with "..." without saying so. The statements they convey are unchanged. A checker Halley wrote, which tests every Lean block in a note against the files the note lists, found them. Each of those four blocks now carries a one-line marker above it and is otherwise untouched; the exact text follows.
+
+`Main.lean`, lines 4-12:
+
+```lean
+theorem riemannHypothesis : RiemannHypothesis := rhOfAll
+
+theorem riemannZeta_eq_zero_re : RiemannZetaZerosOnLine := rhOfAll
+
+theorem LFunction_ne_zero_of_half_lt_re : DirichletLNonvanishingRightOfHalf := allChi
+
+theorem LFunction_eq_zero_re : DirichletLZerosOnLine := claimAll.2.1
+
+theorem LFunction_eq_zero_re_of_isPrimitive : PrimitiveDirichletLZerosOnLine := critAll
+```
+
+`Supplements/Kernels/MainTheorems.lean`, lines 7-16:
+
+```lean
+theorem allChi : UpperTheory.EveryCharacter := UpperTheory.FinalTheorems.everyCharacter
+
+theorem rhOfAll : RiemannHypothesis := Formalism.VW.rh_of_every allChi
+
+theorem critAll (N : ℕ) [NeZero N] (χ : DirichletCharacter ℂ N) (hχ : χ.IsPrimitive) (s : ℂ)
+    (h0 : 0 < s.re) (h1 : s.re < 1) (hz : LFunction χ s = 0) : s.re = 1 / 2 :=
+  Formalism.VW.critLine allChi N χ hχ s h0 h1 hz
+
+theorem claimAll : Claim.HalfPlane ∧ Claim.Strip ∧ Claim.Zeta :=
+  ⟨allChi, Claim.strip allChi, Claim.zeta allChi⟩
+```
+
+`Development/AutomorphicArithmetic/CharacterBoxes/EveryCharacter.lean`, lines 13-14:
+
+```lean
+def UpperTheory.EveryCharacter : Prop :=
+  ∀ (N : ℕ) [NeZero N] (χ : DirichletCharacter ℂ N) (s : ℂ), 1 / 2 < s.re → (χ ≠ 1 ∨ s ≠ 1) → DirichletCharacter.LFunction χ s ≠ 0
+```
+
+`Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/TopPlug.lean`, lines 16-18:
+
+```lean
+theorem UpperTheory.Top.every_character_of_green_v_win (hG : GlobalTheory.GLq.Green) (hV : UpperTheory.Top.VWin)
+    (h : Nonempty (_root_.GlobalTheory.Fc.HypsAlt (fun 𝒞 => Closed 𝒞 fun Fm _ => LinkN Fm) _root_.GlobalTheory.Fc.DefiniteSideCondition)) : UpperTheory.EveryCharacter :=
+  UpperTheory.Top.imprimitive (_root_.UpperTheory.Top.zero_free_all_of_green_v_win hG hV h)
+```
+
+One detail the note left out: `Main.lean` does not import `MainTheorems.lean` directly. It imports `Supplements.Kernels.MainTheoremsAll`, which imports `Supplements.Kernels.MainTheoremsCritical`, which imports `Supplements.Kernels.MainTheorems`. The four terms `allChi`, `rhOfAll`, `critAll` and `claimAll` are defined only in `MainTheorems.lean` (a search of `Supplements/` finds no other definition). The two intermediate modules also import four files under `AutomorphicVarieties/SmallClassNumbers/`, which we have not read.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released.
@@ -104,3 +162,5 @@ Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files
 | `Development/AutomorphicArithmetic/CharacterBoxes/MainConclusion.lean` | `a5f71e107087e37b2c598709795b0f56c0a6741cf1e8ab99ee1f97e2fce0fe34` |
 | `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/TopPlug.lean` | `7d1d7972a4abe1284c5e4da9dd65a6eb605b06efb5e993b298fe5aaed88e9adf` |
 | `Formalism/GammaFactorNonvanishing/RhOfRight.lean` (first 12 lines only; read whole in note 2) | `7e2c0b519ee420192cad8fb281c2d2bfebae2ba553342fd579c81c2aa0bd3dc5` |
+| `Supplements/Kernels/MainTheoremsAll.lean` (added with the correction) | `a209a6a2f6ea1cc4abe865996b909bfeef391adcb89d3a948858874cb5956fec` |
+| `Supplements/Kernels/MainTheoremsCritical.lean` (added with the correction) | `793147c70274844b23a7977b41390e404910653c963fcdd5c84918185d7ff2bd` |
