@@ -16,6 +16,8 @@ What `HostExW`, `GChi` and `TopG` mean is not yet read. This note names them and
 
 The chain, as `UpperTheory.Top.every_character_of_green_v_win` writes it (`Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/TopPlug.lean`, lines 12-18):
 
+*Not verbatim; see the correction dated 2026-11-22 below for the exact text.*
+
 ```lean
 UpperTheory.Top.imprimitive
   (UpperTheory.Top.zeroFreeAll_of_topG (la := 3 / 2) (by norm_num)
@@ -29,6 +31,8 @@ Here `hG : Green`, `hV : VWin`, and `h` is the 46-field structure. Each piece fo
 ### (a) The target: `Formalism.HC.ZeroFreeAll`
 
 `Formalism/SharpRestriction/RamificationFrobenius/TotientGaloisClasses/ExplicitFormulaErrorOfHostConditions.lean`, line 18:
+
+*Not verbatim; see the correction dated 2026-11-22 below for the exact text.*
 
 ```lean
 def PChar.ZeroFreeAbove (ψ : PChar) (θ : ℝ) : Prop := ∀ s : ℂ, θ < s.re → DirichletCharacter.LFunction ψ.χ s ≠ 0
@@ -86,6 +90,8 @@ theorem UpperTheory.Top.supplyChi :
 
 **`UpperTheory.Top.shape_closed_link_n_of_green`**, `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/TopShape.lean`, line 33:
 
+*Not verbatim; see the correction dated 2026-11-22 below for the exact text.*
+
 ```lean
 theorem UpperTheory.Top.shape_closed_link_n_of_green : GlobalTheory.GLq.Green →
     GlobalTheory.Fc.TopShapeAlt True True (fun 𝒞 => Closed 𝒞 fun Fm _ => LinkN Fm) UpperTheory.Top.TopG
@@ -94,6 +100,8 @@ theorem UpperTheory.Top.shape_closed_link_n_of_green : GlobalTheory.GLq.Green �
 **In words:** Green's theorem implies a "shape" statement whose goal is `TopG`.
 
 **`GlobalTheory.Fc.forall_goal_of_shape_of_hyps`**, `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/ShapeOf.lean`, line 31:
+
+*Not verbatim; see the correction dated 2026-11-22 below for the exact text.*
 
 ```lean
 theorem GlobalTheory.Fc.forall_goal_of_shape_of_hyps : ∀ (V NR : Prop) (N : FamClass → Prop) (G : Prop),
@@ -151,6 +159,40 @@ theorem UpperTheory.Top.every_character_of_green_v_win (hG : GlobalTheory.GLq.Gr
 ```
 
 So `h` is a proof that the 46-field structure is *non-empty*, unpacked by `h.elim`. The sentence under the block, "`h` is the 46-field structure", should be read that way.
+
+
+### Correction, 2026-11-22 (later the same day): three more code blocks were not verbatim
+
+A read-only checker, written after the correction above, tests every `lean` block in these notes against the files each note lists. In this note it found three more blocks that are not exact quotations, besides the composed block corrected above. I wrote all three:
+- the block under (a) joins three definitions and leaves out `ZeroFreeEven`, which sits between them in the file;
+- the blocks under (d) drop the `_root_.` prefixes the source writes, and re-wrap the lines.
+
+None changes what the statements say. Here they are verbatim. Each of the four original blocks (the composed one above and these three) now carries a one-line marker directly above it, pointing here, so a reader who lands on it sees that it is not exact; the blocks themselves are unchanged.
+
+(a), `ExplicitFormulaErrorOfHostConditions.lean`, lines 11-18:
+
+```lean
+def PChar.ZeroFreeAbove (ψ : PChar) (θ : ℝ) : Prop :=
+  ∀ s : ℂ, θ < s.re → DirichletCharacter.LFunction ψ.χ s ≠ 0
+
+def ZeroFreeOn (Q : PChar → Prop) : Prop := ∀ ψ : PChar, Q ψ → ψ.ZeroFreeAbove (1 / 2)
+
+def ZeroFreeEven : Prop := ZeroFreeOn fun ψ => ψ.χ.Even
+
+def ZeroFreeAll : Prop := ZeroFreeOn fun _ => True
+```
+
+(d), `TopShape.lean`, line 33:
+
+```lean
+theorem UpperTheory.Top.shape_closed_link_n_of_green : GlobalTheory.GLq.Green → _root_.GlobalTheory.Fc.TopShapeAlt True True (fun 𝒞 => Closed 𝒞 fun Fm _ => LinkN Fm) UpperTheory.Top.TopG := by
+```
+
+(d), `ShapeOf.lean`, line 31:
+
+```lean
+theorem GlobalTheory.Fc.forall_goal_of_shape_of_hyps : ∀ (V NR : Prop) (N : FamClass → Prop) (G : Prop), _root_.GlobalTheory.Fc.TopShapeAlt V NR N G → V → NR → _root_.GlobalTheory.Fc.HypsAlt N _root_.GlobalTheory.Fc.DefiniteSideCondition → G :=
+```
 
 
 ## Files this note was written from
