@@ -14,6 +14,7 @@ Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alp
 - [5. The pivot: how three inputs become "no zeros to the right of 1/2"](docs/05-the-pivot.md)
 - [6. Where the zeros enter: a prime-sum bound on windows](docs/06-where-the-zeros-enter.md)
 - [7. A map of the library: how much stands behind each step](docs/07-map-of-the-library.md)
+- [8. The Landau step, proved: a one-sided bound on windows forbids zeros](docs/08-the-landau-step.md)
 
 Each note keeps its dated corrections at the end; read them with the note.
 
