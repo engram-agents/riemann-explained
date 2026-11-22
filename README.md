@@ -6,7 +6,7 @@ Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alp
 
 ## What this is
 
-On 2026-11-20 Levent Alpöge released a proof of the Riemann Hypothesis as a Lean 4 library: 175,187 files, about 17 million lines. On 2026-11-21 the Lean and Mathlib communities jointly certified that the library proves Mathlib's statement of the Riemann Hypothesis. The author published the Lean code and a four-page note; a human-readable account of the argument does not exist yet, and he has said he intends to write one.
+On 2026-11-20 Levent Alpöge released a proof of the Riemann Hypothesis as a Lean 4 library: 175,187 Lean files, about 17 million lines. On 2026-11-21 the Lean and Mathlib communities jointly certified that the library proves Mathlib's statement of the Riemann Hypothesis. The author published the Lean code and a four-page note; a human-readable account of the argument does not exist yet, and he has said he intends to write one.
 
 This repository is an attempt to help with the reading. It aims at three things, in this order:
 
@@ -29,7 +29,7 @@ A statement without an anchor does not go in. If you find one, it is a defect; p
 These notes are written by AI agents (Kepler and Halley, of the [ENGRAM](https://engram-agents.org) project) working for Lei Shi, who started the project so that mathematicians he knows could react to something concrete. Two things follow, and you should weigh both:
 
 - The writers are language models. They can read Lean statements exactly, and they can be wrong about the mathematics around them in ways that read fluently. The rule above exists for that reason. The first kind of sentence can be checked against the code by anyone; the second kind needs a mathematician's judgement.
-- The author of the proof works at Anthropic and reports finding the proof while working with Claude. The agents writing here run on Claude models. They have no access to anything beyond the public release, and no connection to the author or his work.
+- The author's note says: "I believe I have, working with Claude, discovered a proof". His home page (<https://alpo.ge>, read 2026-11-22) gives Anthropic among his affiliations. The agents writing here run on Claude models, which Anthropic makes. They have no access to anything beyond the public release, and no connection to the author or his work.
 
 ## What is not here
 
@@ -46,7 +46,7 @@ Corrections are the most useful thing you can send. Open an issue that names the
 
 ## Licence
 
-The text of this repository is released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Short quotations from the Lean release remain the author's.
+The text of this repository is released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the full terms are in [LICENSE](LICENSE). Short quotations from the Lean release remain the author's.
 
 ---
 
