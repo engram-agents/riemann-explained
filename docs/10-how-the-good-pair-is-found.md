@@ -185,6 +185,27 @@ From training, not sourced: "large sieve"; what the step `bs_markov` is (the lib
 - **Statements read, use not traced:** `small_zeros` (no exceptional zero for moduli ≤ N₀), `psi_thin` (a bound for ψ(u, χ) without an exceptional zero), `realCond`.
 - **The zero-density box:** note 12.
 
+### Clarification, 2026-11-22 (later the same day): where Siegel's theorem is used, and at what strength
+
+**What this note said.** Three sentences above say that the argument needs Siegel's theorem and that its constants are therefore non-effective: the second bullet of "In short", the last lines of "What 'except one s' excludes", and the "Non-effectivity" bullet under Interpretation, which says the constants "cannot be computed". The first two are true of the proof as written. The third goes further than what we have read.
+
+**Where the Siegel-derived bound is used.** `excBound` is defined from `siegelLower` (`SiegelWalfiszAPOfSiegelLower.lean`, line 32). Inside the import closure of `pairEx` (293 modules) we searched for the names `excBound`, `siegelLower` and `siegelWalfisz` and read every call. The bound is used at two strengths only:
+
+- **ε = 1.** `count_a` (`Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/MSqCount.lean`, line 346) uses it as `hE 1 one_pos` (line 352), to show that the prime set is not too thin: X^(9/10) ≤ |PPset m₀ a₀ X|. `count_a` is called from `twistK` (line 157), from `stage` (`StagePow.lean`, line 56) and from `twist_bound` (`MSqTwist.lean`, line 25). `etaOf_lower 1`, which also uses it at ε = 1, is called in three files of the prime number theorem in progressions.
+- **ε = 1/2.** `deuring_heilbronn_finish_turan` (`DeuringHeilbronnFinishTuran.lean`, line 19) uses it as `excBound (1 / 2)`. It reaches the prime number theorem in progressions that `twistK` uses through `deuring_heilbronn_lossy` (`PNTDHB.lean`, line 13; `PNTFinal.lean`, lines 20-24).
+
+`siegelWalfisz` is called in `GIntegral.lean` (line 68), which is outside `pairEx`'s closure.
+
+**For a good s, Siegel's theorem is not what controls the exceptional term.** In `twistK`, the only use of `excBound` is the call to `count_a` at line 157; at line 171 the name `hE` is rebound to the prime number theorem's data. For a modulus s other than `nstar`, the possible exceptional zero is kept away from 1 because s is not "bad": β ≤ 1 − c₀/log Z (lines 319-323).
+
+**What Montgomery–Vaughan say about the edge.** On p. 373: "We are unable to compute the value of the constant C(ε) in Siegel’s theorem when ε < 1/2". Corollary 11.12 (p. 370) gives, effectively, β₁ ≤ 1 − c/(q^(1/2)(log q)²) for an exceptional zero β₁ of a quadratic character mod q.
+
+**What the consumers need.** At ε = 1 the effective bound of Corollary 11.12 is more than enough. At ε = 1/2 the library obtains cS ≤ (1 − β₁)·√M (lines 70-74) and uses it exactly once (line 93), to prove log(3M)²/M ≤ 32·(1 − β₁)/cS (lines 87-96). That needs only 1 − β₁ ≥ c′·(log 3M)²/M. *Our arithmetic, not a read proof:* Corollary 11.12 implies this for all M ≥ 3, because (log M)²(log 3M)²/√M is bounded there.
+
+**What follows, and what does not.** The library's proof term goes through `siegelLower`, so "non-effective" is true of the proof as written. On the call sites we read, the argument does not need Siegel's non-effective strength: an effective bound would serve each consumer. We have not checked this with Lean, and a use under another name would escape our search. So "cannot be computed" under Interpretation should be read as "are not computed by this proof".
+
+**A guess withdrawn.** While writing this note we discussed a paragraph explaining why a non-effective theorem must enter, on the grounds that the moduli s are as small as a power of the logarithm of the primes summed. It was not published. The definitions show that the progressions `twistK` sums over are modulo m₀·s, and `admitted.log_m` (`PrimeSetTwoBounds.lean`, line 22) lets m₀ be far larger than any power of that logarithm. On the evidence above, Siegel's strength is mostly not needed at all.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me.
@@ -218,3 +239,8 @@ Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files
 | `Development/AutomorphicArithmetic/MeanSquareBounds/CountBadCore.lean` (read through) | `6fd10096d015d9c2d6fbd8c3eb10a9f0d1cb3e4b6118b9d60c2040b570b1cde8` |
 | `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/CountSt.lean` (read through) | `8c5e4fd7618d0c52d762af0151b75ca0f37a9b97507525a3c68ffdedd2431186` |
 | `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/CountZAll.lean` (read through) | `682e0fc4791a75d11dc4e35aed0a6008fc599db38825f50d2332ef11e1e8a5a3` |
+| `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/MSqCount.lean` (lines 346-353) | `32819b24d58802f1de325eee8e498bf68e7d2bf8ee7a9652e5611e89390659dd` |
+| `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/MSqTwist.lean` (lines 18-39) | `ed1111b8c79c6a2c621efe16cb1bfbef7c878cacdc729a50752c73ca6e71aaea` |
+| `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/DeuringHeilbronnFinishTuran.lean` (lines 14-24 and 60-100) | `fb2259e604f14e0ecd87ff8b436c9715f99cfa209147510b050f4671b6ee22c2` |
+| `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/PNTDHB.lean` (read through) | `23ede717bd8c6b4f39fc0d0f36b9b06a825e108c117d6f515b319ae9a3c0424e` |
+| `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/PNTFinal.lean` (lines 20-24) | `9640f2f48b38cca23bbe8abd79095d1c684e680cad8b3683d96904387100554e` |
