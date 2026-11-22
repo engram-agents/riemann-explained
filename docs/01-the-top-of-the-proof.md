@@ -20,7 +20,7 @@ theorem LFunction_eq_zero_re : DirichletLZerosOnLine := claimAll.2.1
 theorem LFunction_eq_zero_re_of_isPrimitive : PrimitiveDirichletLZerosOnLine := critAll
 ```
 
-- `RiemannHypothesis` is not defined anywhere in the release's top files; it is Mathlib's own definition (so say the community's joint statement and the verification page, see [SOURCES.md](../SOURCES.md); we have not opened the Mathlib file ourselves).
+- `RiemannHypothesis` is not defined anywhere in the release's top files; it is Mathlib's own definition (so say the community's joint statement and the verification page, see [SOURCES.md](../SOURCES.md); [note 2](02-from-everycharacter-to-rh.md) reads it in Mathlib at the pinned commit).
 - The other four statements are defined in `src/Statements.lean`, which imports only Mathlib. In words:
   - `RiemannZetaZerosOnLine`: every zero of ζ that is not a trivial zero (−2, −4, …) and not at s = 1 has real part 1/2. (The verification page explains the condition s ≠ 1: Mathlib gives ζ a conventional value at its pole. That explanation is theirs, not checked by us.)
   - `DirichletLNonvanishingRightOfHalf`: for every modulus N ≥ 1, every Dirichlet character χ mod N and every s with Re s > 1/2, L(χ, s) ≠ 0, except in the case χ = 1 and s = 1.
@@ -57,7 +57,26 @@ def UpperTheory.EveryCharacter : Prop :=
 
 This is, word for word, the statement `DirichletLNonvanishingRightOfHalf` of `Statements.lean`: non-vanishing to the right of the critical line for all Dirichlet L-functions.
 
-The same file shows the next step down. `UpperTheory.EveryCharacter` is obtained (theorem `UpperTheory.Top.plugAll`) from a statement called `Formalism.HC.ZeroFreeAll` by a theorem named `UpperTheory.Top.imprimitive`, and `ZeroFreeAll` is obtained (theorem `UpperTheory.Top.plugWin`) from three hypotheses with the names `GlobalTheory.GLq.Green`, `UpperTheory.Top.VWin` and a non-emptiness statement about a structure `Hyps`. We have not yet read what these three say.
+### The next step down
+
+`src/Development/AutomorphicArithmetic/CharacterBoxes/MainConclusion.lean` proves the statement:
+
+```lean
+theorem UpperTheory.FinalTheorems.everyCharacter : UpperTheory.EveryCharacter :=
+  UpperTheory.FinalTheorems.everyCharacter_of_row UpperTheory.Gal.Int.galoisLocalGlobalStrong_recParameter
+```
+
+and `everyCharacter_of_row` is one application of `UpperTheory.LiteratureTheorems.every_character_of_literature_of_vWin`. Following that chain (the route is traced in [note 2](02-from-everycharacter-to-rh.md)) one reaches, in `src/Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/TopPlug.lean`:
+
+```lean
+theorem UpperTheory.Top.every_character_of_green_v_win (hG : GlobalTheory.GLq.Green) (hV : UpperTheory.Top.VWin)
+    (h : Nonempty (GlobalTheory.Fc.HypsAlt ... GlobalTheory.Fc.DefiniteSideCondition)) : UpperTheory.EveryCharacter :=
+  UpperTheory.Top.imprimitive (UpperTheory.Top.zero_free_all_of_green_v_win hG hV h)
+```
+
+So `EveryCharacter` is obtained from a statement called `Formalism.HC.ZeroFreeAll` by a theorem named `UpperTheory.Top.imprimitive`, and `ZeroFreeAll` from three inputs named `GlobalTheory.GLq.Green`, `UpperTheory.Top.VWin` and a non-emptiness statement about a structure `HypsAlt`. We have not yet read what these three say.
+
+> **Correction, 2026-11-22.** The first version of this note named two theorems in `EveryCharacter.lean` (`UpperTheory.Top.plugAll` and `plugWin`) as "the next step down". They have the same shape but are not on the path from `Main`: they are used in `ThetaCorrespondence/FockModels/EveryCharacterE.lean`. The writer inferred the path from where the theorems sit, not from what `Main` imports and uses. Halley found this by tracing the actual chain. The route above was then read in the two files named.
 
 ## Interpretation (ours; check it)
 
@@ -68,7 +87,8 @@ The same file shows the next step down. `UpperTheory.EveryCharacter` is obtained
 ## Not read, not understood
 
 - The proofs of `Formalism.VW.rh_of_every`, `Formalism.VW.critLine`, `Claim.strip` and `Claim.zeta`.
-- The meaning of `Formalism.HC.ZeroFreeAll`, `GlobalTheory.GLq.Green`, `UpperTheory.Top.VWin` and `Hyps`.
+- The meaning of `Formalism.HC.ZeroFreeAll`, `GlobalTheory.GLq.Green`, `UpperTheory.Top.VWin` and `HypsAlt`.
+- The middle of the chain between `every_character_of_literature_of_vWin` and `every_character_of_green_v_win`; we read its two ends.
 - Everything below `UpperTheory.FinalTheorems.everyCharacter`, which is where the mathematics is.
 
 ## Files this note was written from
@@ -81,4 +101,6 @@ Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files
 | `Statements.lean` | `79ef7ca776e42abe1f46caee13ea09bd19f1e2d0b1620d8d5d200258f33b47bf` |
 | `Supplements/Kernels/MainTheorems.lean` | `1e734200b9b6a6d2a968743bd0c433d614bd6606cf538ac6d4f0ff70044dde53` |
 | `Development/AutomorphicArithmetic/CharacterBoxes/EveryCharacter.lean` | `31f6e49936226cfc3d71b15685347bd2874db0aef384e5cf4fea7d09ba68dc71` |
-| `Formalism/GammaFactorNonvanishing/RhOfRight.lean` (first 12 lines only) | not recorded; recorded when the file is read whole |
+| `Development/AutomorphicArithmetic/CharacterBoxes/MainConclusion.lean` | `a5f71e107087e37b2c598709795b0f56c0a6741cf1e8ab99ee1f97e2fce0fe34` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/TopPlug.lean` | `7d1d7972a4abe1284c5e4da9dd65a6eb605b06efb5e993b298fe5aaed88e9adf` |
+| `Formalism/GammaFactorNonvanishing/RhOfRight.lean` (first 12 lines only; read whole in note 2) | `7e2c0b519ee420192cad8fb281c2d2bfebae2ba553342fd579c81c2aa0bd3dc5` |
