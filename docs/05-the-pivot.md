@@ -136,6 +136,23 @@ The proof's first lines (9-10) apply `ZeroFreeAll` to `PChar.of χ` to get L(χ*
 - The proofs of all five theorems beyond the lines cited, in particular `zeroFreeAll_of_topG`, where the zeros appear.
 - Why the scale is la = 3/2, and whether any la > 1 would do on the uniform half. `TopG` quantifies over all la > 1, while `supplyChi` fixes 3/2.
 
+### Correction, 2026-11-22 (later the same day): the code block under "The chain" is a composition, not a quotation
+
+The code block at the start of "What the library says" is labelled as how `UpperTheory.Top.every_character_of_green_v_win` writes the chain in `TopPlug.lean`, lines 12-18. It is not verbatim. Those lines hold TWO theorems, and the block showed them inlined into one term, without `h.elim` and without the `_root_` prefixes. The mathematics the block conveys is unchanged. Kepler found this while re-reading the file for the outline. The two theorems, verbatim:
+
+```lean
+theorem UpperTheory.Top.zero_free_all_of_green_v_win (hG : GlobalTheory.GLq.Green) (hV : UpperTheory.Top.VWin)
+    (h : Nonempty (_root_.GlobalTheory.Fc.HypsAlt (fun 𝒞 => Closed 𝒞 fun Fm _ => LinkN Fm) _root_.GlobalTheory.Fc.DefiniteSideCondition)) : Formalism.HC.ZeroFreeAll :=
+  h.elim fun h => UpperTheory.Top.zeroFreeAll_of_topG (la := 3 / 2) (by norm_num)
+    (_root_.GlobalTheory.Fc.forall_goal_of_shape_of_hyps _ _ _ _ (_root_.UpperTheory.Top.shape_closed_link_n_of_green hG) trivial trivial h) fun ψ => UpperTheory.Top.supplyChi ψ (hV ψ)
+theorem UpperTheory.Top.every_character_of_green_v_win (hG : GlobalTheory.GLq.Green) (hV : UpperTheory.Top.VWin)
+    (h : Nonempty (_root_.GlobalTheory.Fc.HypsAlt (fun 𝒞 => Closed 𝒞 fun Fm _ => LinkN Fm) _root_.GlobalTheory.Fc.DefiniteSideCondition)) : UpperTheory.EveryCharacter :=
+  UpperTheory.Top.imprimitive (_root_.UpperTheory.Top.zero_free_all_of_green_v_win hG hV h)
+```
+
+So `h` is a proof that the 46-field structure is *non-empty*, unpacked by `h.elim`. The sentence under the block, "`h` is the 46-field structure", should be read that way.
+
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me. Rows marked "location only" were opened only to find a definition's line, not read.
