@@ -2,7 +2,7 @@
 
 Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alpöge on 2026-11-20.
 
-**Status (2026-11-22):** an outline and twelve notes, all written on the first day. Notes 1 to 6 cover the *statements* from the final theorem down to the three deep inputs; note 7 measures how much of the library stands behind each step; notes 8 to 12 read the analytic layer as proofs (the Landau step, the window bound, how the auxiliary primes are found, hosts and families, the zero-density count). The outline carries a dated addition summarising them. The step that uses Green's theorem and the 46 conditions, and the proof of the Tate–Shafarevich bound, are not yet read. Nothing here has been read by a mathematician yet.
+**Status (2026-11-22):** an outline and thirteen notes, all written on the first day. Notes 1 to 6 cover the *statements* from the final theorem down to the three deep inputs; note 7 measures how much of the library stands behind each step; notes 8 to 12 read the analytic layer as proofs (the Landau step, the window bound, how the auxiliary primes are found, hosts and families, the zero-density count). The outline carries a dated addition summarising them. Note 13 reads, at the level of statements, how the Tate–Shafarevich bound is used and where Green's theorem enters. The proofs of the individual links behind that step, the 46 conditions, and the proof of the Tate–Shafarevich bound are not yet read. Nothing here has been read by a mathematician yet.
 
 ## Start here
 
@@ -19,6 +19,7 @@ Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alp
 - [10. How the good pair is found: a large sieve, Siegel's theorem, and one excluded modulus](docs/10-how-the-good-pair-is-found.md)
 - [11. Hosts, requirements, families: the proof in three movements](docs/11-hosts-requirements-families.md)
 - [12. The zero-density box: few characters have a zero near Re s = 1](docs/12-the-zero-density-box.md)
+- [13. How the Tate–Shafarevich bound is used: one error term in a chain of links](docs/13-how-the-sha-bound-is-used.md)
 
 Each note keeps its dated corrections at the end; read them with the note.
 
