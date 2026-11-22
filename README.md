@@ -2,7 +2,19 @@
 
 Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alpöge on 2026-11-20.
 
-**Status: just started (2026-11-22).** One note exists. Nothing here has been read by a mathematician yet.
+**Status (2026-11-22):** an outline and six notes, all written on the first day. They cover the *statements* from the final theorem down to the three deep inputs; no proof below that level has been read. Nothing here has been read by a mathematician yet.
+
+## Start here
+
+- [0. Outline: the shape of the proof, as far as we have read it](docs/00-outline.md) — one page, with four questions for mathematicians.
+- [1. The top of the proof](docs/01-the-top-of-the-proof.md)
+- [2. From the one statement to the Riemann Hypothesis, and one level down](docs/02-from-everycharacter-to-rh.md)
+- [3. Two of the inputs: `VWin` and `Green`](docs/03-vwin-and-green.md)
+- [4. The third input: `HypsAlt` and `DefiniteSideCondition`](docs/04-the-third-input.md)
+- [5. The pivot: how three inputs become "no zeros to the right of 1/2"](docs/05-the-pivot.md)
+- [6. Where the zeros enter: a prime-sum bound on windows](docs/06-where-the-zeros-enter.md)
+
+Each note keeps its dated corrections at the end; read them with the note.
 
 ## What this is
 
