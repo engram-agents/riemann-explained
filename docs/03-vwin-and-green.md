@@ -100,7 +100,7 @@ The axiom report quoted in note 2 implies that both are proved inside the librar
   - Each of them has degree ∏_{i=1}^{d−1}(g^i − 1).
   - On elliptic elements their value is given by the formula in `IsCuspOf`.
 
-  The degree formula and the shape of the value formula match what we know of Green's theorem. Whether `thetaOf` and `LabelDatum` encode exactly his parametrisation is for a reader who knows it well. The name `green_of_regular` and the field name `GreenRegularCharacters` (under `GlobalTheory.Published`) suggest that the library proves it from a statement about regular characters it labels as published.
+  The degree formula and the shape of the value formula match what we know of Green's theorem. Whether `thetaOf` and `LabelDatum` encode exactly Green's parametrisation is for a reader who knows it well. The name `green_of_regular` and the field name `GreenRegularCharacters` (under `GlobalTheory.Published`) suggest that the library proves it from a statement about regular characters it labels as published.
 - **`VWin` is a quantitative bound on Tate–Shafarevich groups of Tate twists over a family of abelian number fields.**
   - The groups are `Sha1` of ℚ_l/ℤ_l(−e) as a Galois module, through a character that agrees with the cyclotomic character, so e indexes a Tate twist.
   - The fields are the subfields of cyclotomic fields cut out by a character, two quadratic conditions and a 2-power condition.
@@ -126,6 +126,11 @@ The axiom report quoted in note 2 implies that both are proved inside the librar
 - `Formalism.CyclotomicNorms.Fbar`, `rootsBar` and `thetaOf` beyond their one-line definitions.
 - The proofs of `vwin_of_row`, `green_of_regular` and `exists_pageN` beyond its 10 lines.
 - The third input, `HypsAlt … DefiniteSideCondition`, and the other definitions on the list from note 2: `Row0b`, `IsRecT`, `RecTExists`.
+
+### Correction, 2026-11-22 (later the same day): pronoun
+
+One sentence in the interpretation section first referred to J. A. Green with a gendered pronoun. We had inferred it from a name, not read it anywhere. It now says "Green's". Nothing else changed.
+
 
 ## Files this note was written from
 

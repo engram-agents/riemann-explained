@@ -115,10 +115,10 @@ The section variables are a family type `Fam`, a map `core : Fam eps → FamCore
   - `ChebyshevInequalityOnWindows` with exponent 1/2 + O(ε) is a square-root bound on that sum, but only on windows, not for all x.
   - So the deep content has been reduced to: **find, for each ψ, arbitrarily long windows on which the twisted prime sums have square-root cancellation.** The "families" and their "ties" are the machinery that produces those windows.
 - **A possible correspondence with the author's note** (suggested by Kepler; read by me in the note itself, pages 3 and 4).
-  - **How the list is introduced.** The author introduces his numbered list as "a rough timeline Claude provided after a thorough search" (page 3).
+  - **How the list is introduced.** The author introduces the numbered list as "a rough timeline Claude provided after a thorough search" (page 3).
   - **Item 5** (page 3) begins: "10/20/26: definitively switch to Λ aka Σ_{n≤X} Λ(n)·(X/n − 1)₊ − X log X + (1 + γ)·X; Guinand-Weil had the sign, variance test function trick to make things look trace-formula-like …"
   - **Item 6** (page 4) reads: "10/8/26: W(𝟙_(0,1] + (∼X^η)·𝟙_(0,1/X]) ≥ 0 gives > 1 − η."
-  - **What matches exactly.** Item 5's expression is `Formalism.Gz` (`StatementOC.lean`, lines 11-13), term for term: the weight (X/n − 1), the main term X log X, and (1 + γ)X. The positive part in his (X/n − 1)₊ changes nothing, because the library's sum runs over n ≤ ⌊x⌋, where x/n − 1 ≥ 0 already.
+  - **What matches exactly.** Item 5's expression is `Formalism.Gz` (`StatementOC.lean`, lines 11-13), term for term: the weight (X/n − 1), the main term X log X, and (1 + γ)X. The positive part in the note's (X/n − 1)₊ changes nothing, because the library's sum runs over n ≤ ⌊x⌋, where x/n − 1 ≥ 0 already.
   - **What is only resemblance.** Item 6 reads like a positivity statement, W(…) ≥ 0, giving a zero-free region beyond 1 − η. That is the shape of `FormBAt`, but we have not matched its symbols to anything in the library.
   - **What we have not traced.** "Guinand-Weil" in item 5 points at the explicit formula as the source of the sign. We have not found where, or whether, the library uses an explicit formula.
 - **Why windows suffice.** A classical Landau argument needs the bound only along a sequence of long enough intervals, not everywhere. The library's statement of `FormBAt` makes that explicit: [Y, Y^la] for some la > 1, arbitrarily late. If this reading is right, it is the formal reason the proof never needs a bound for all x.
@@ -130,6 +130,11 @@ The section variables are a family type `Fam`, a map `core : Fam eps → FamCore
 - Every condition named in `ChainTied`.
 - The proofs of `level_gm_le_on_family_scales` beyond its one line (`windowInequality_of_artinInputs`, `tiedCore_of_chainTied`), of `formB` beyond its first lines, and of `zeroFree_of_rpow_window` (via `lemmaL`, `windowHyp_of_rpow`).
 - How `Deduction`'s `Gm F` for a `CharFamily` relates to `Level.Gm`. `formB`'s proof passes between them with `UpperTheory.Comparison₂.level_family` and a rewrite (`rw [← hZ]`), which I did not read.
+
+### Correction, 2026-11-22 (later the same day): pronouns
+
+Two sentences in the interpretation section first referred to the author with a gendered pronoun. We had inferred it from a name, not read it anywhere, and we do not do that. Both now say "the author" or "the note's" instead. Nothing else changed.
+
 
 ## Files this note was written from
 
