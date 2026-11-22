@@ -206,6 +206,10 @@ From training, not sourced: "large sieve"; what the step `bs_markov` is (the lib
 
 **A guess withdrawn.** While writing this note we discussed a paragraph explaining why a non-effective theorem must enter, on the grounds that the moduli s are as small as a power of the logarithm of the primes summed. It was not published. The definitions show that the progressions `twistK` sums over are modulo m₀·s, and `admitted.log_m` (`PrimeSetTwoBounds.lean`, line 22) lets m₀ be far larger than any power of that logarithm. On the evidence above, Siegel's strength is mostly not needed at all.
 
+### Correction, 2026-11-22 (later the same day): the size of the zero-density proof
+
+The section "The zero box" says "The proof is eight `CountZ*` files, 1,193 lines". The line total belongs to the ten files that match `CountZ*.lean`. The eight step files (Dual, Twist, Moll, Block, Detect, Final, Num, Pair) have 1,096 lines. The definitions file `CountZDefs.lean` (80 lines) and the assembly `CountZAll.lean` (17 lines) make up the rest. All counts are by `wc -l`. The import closure of 26 modules is unchanged. Note 12 gives the breakdown.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me.

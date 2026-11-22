@@ -18,6 +18,7 @@ Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alp
 - [9. The window bound: Gm(x) ≤ x^(1/2 + O(ε)) on windows, and why it is not circular](docs/09-the-window-bound.md)
 - [10. How the good pair is found: a large sieve, Siegel's theorem, and one excluded modulus](docs/10-how-the-good-pair-is-found.md)
 - [11. Hosts, requirements, families: the proof in three movements](docs/11-hosts-requirements-families.md)
+- [12. The zero-density box: few characters have a zero near Re s = 1](docs/12-the-zero-density-box.md)
 
 Each note keeps its dated corrections at the end; read them with the note.
 
