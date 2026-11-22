@@ -129,6 +129,17 @@ Putting the pieces together, a set T of characters, each with a block of size at
 - **Read only in step structure:** `zero_detection` and `blockCountOf_statement`. Their arithmetic was not checked line by line.
 - **Where the box height Q in note 10 comes from:** `PairGood.boxes` uses `height M ε Y j`. How `stage` passes from that height to this statement's Q is in `StagePow.lean`, which note 10 read only for its calls.
 
+### Clarification, 2026-11-22 (later the same day): from the box height to Q, and why Q^(1/4) is enough
+
+The last "Not read" bullet above asked how `stage` passes from the box height of note 10 to this note's Q. It is now read (`Development/AutomorphicArithmetic/MeanSquareBounds/StagePow.lean`):
+
+- **The height.** `stage` works with the primes q in `PPset m₀ a₀ U` (√U < q ≤ U) and characters ξ of conductor at most F, where F ≤ U^(1/2) (line 44). The zero box it asks about has height Q = F·U.
+- **The primes with a zero in the box.** `count_bad` bounds them (lines 142-150): their number is at most Cb·(F·U)^(1/4) ≤ Cb·U^(3/8). For large U, `hpow` (line 74) gives Cb·U^(3/8) ≤ (η/2)·U^(9/10). `hcount` (line 78) gives U^(9/10) ≤ |PPset m₀ a₀ U|. So these primes are at most a share η/2 of the prime set.
+- **Where the size of the prime set comes from.** `hcount` is `count_a` (line 56): the call that uses the Siegel-derived bound only at ε = 1, as note 10's Clarification found.
+- **The primes where a sum is large.** For each ξ, `bad_share` (line 55, applied at lines 155-158) bounds them by a share η/(2(R + 1)). A union bound over the at most R characters ξ (lines 159-169) gives at most η/2 more.
+
+*Interpretation, ours:* this is why a bound as weak as Q^(1/4) is enough here. The bad primes number at most about U^(3/8), and the prime set has at least U^(9/10) members, so 3/8 is below 9/10 with room.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me.
@@ -147,3 +158,4 @@ Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files
 | `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/CountZFinal.lean` (statement) | `d1b3e107efc6f023b5c32445364d9289934e0618c26a1656fc350f61530207fc` |
 | `Formalism/GL3MeanSquares/GenusMeanAsymptotics/JacobiCharacterSums/CountZNum.lean` (statement) | `ca4a4ad56d04bafb69a9f97bd21da6b706eee322c1d250c25ce262a8ff4cfaa9` |
 | `Development/AutomorphicArithmetic/MeanSquareBounds/CountBadCore.lean` (read through) | `6fd10096d015d9c2d6fbd8c3eb10a9f0d1cb3e4b6118b9d60c2040b570b1cde8` |
+| `Development/AutomorphicArithmetic/MeanSquareBounds/StagePow.lean` (lines named in the Clarification) | `0664861db51e1c2c2ada99121d6988d15f47c2ecab5a6b3bc62b127c32ae75d1` |
