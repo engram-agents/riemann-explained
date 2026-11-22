@@ -2,7 +2,7 @@
 
 Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alpöge on 2026-11-20.
 
-**Status (2026-11-22):** an outline and seven notes, all written on the first day. Notes 1 to 6 cover the *statements* from the final theorem down to the three deep inputs; note 7 measures how much of the library stands behind each step. Reading the proofs, layer by layer, has started. Nothing here has been read by a mathematician yet.
+**Status (2026-11-22):** an outline and ten notes, all written on the first day. Notes 1 to 6 cover the *statements* from the final theorem down to the three deep inputs; note 7 measures how much of the library stands behind each step; notes 8, 9 and 11 read the analytic layer (the Landau step, the window bound, hosts and families). Note 10, on how the auxiliary primes are found, is in progress. Nothing here has been read by a mathematician yet.
 
 ## Start here
 
@@ -16,6 +16,7 @@ Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alp
 - [7. A map of the library: how much stands behind each step](docs/07-map-of-the-library.md)
 - [8. The Landau step, proved: a one-sided bound on windows forbids zeros](docs/08-the-landau-step.md)
 - [9. The window bound: Gm(x) ≤ x^(1/2 + O(ε)) on windows, and why it is not circular](docs/09-the-window-bound.md)
+- [11. Hosts, requirements, families: the proof in three movements](docs/11-hosts-requirements-families.md)
 
 Each note keeps its dated corrections at the end; read them with the note.
 
