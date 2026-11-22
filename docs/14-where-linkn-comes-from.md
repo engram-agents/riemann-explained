@@ -208,6 +208,39 @@ So the chain proves the inequality **with the total left in it**. The premises a
 - **Definitions not read:** `LocalTateDualityAt`, `LocalEulerCharAt`, `LocalFinitenessAt`, `CutD` and what makes a cut good, `aux₃` beyond its use as `LinkN`'s shape, `FamilyThinScalesBound`, `admitted`.
 - **Sources not opened:** we cite no reference for local Tate duality or the local Euler characteristic formula. The names here are the library's.
 
+### Correction, 2026-11-22 (later the same day): four more inputs, and all three literature statements reach them
+
+*Found by Halley while checking Kepler's summary of this note for note 13; read whole by Kepler before it was published. The body above is unchanged.*
+
+The first and fourth bullets of "In short" said less than the chain holds. `NLink.Final.mainTheorem` (step 2) takes four further bundles besides `NLink.Hypotheses₂` and the three local statements, and the first version of this note traced none of them. On Main's path:
+
+- `DepthZeroSupport` is filled by a library theorem whose term does not use the literature bundle (`depth_zero_support_of_literature O := GlobalTheory.SmGL.depthZeroSupport`, literature file lines 351-352).
+- `GeometricGaloisRepCompatibility` is `published_results_analytic O` (lines 645-651), whose six fields come from theorems we have not opened.
+- `PublishedInputsThirdLayerAlt` and `SerN` (`prN` and `serN` in step 2) come from `GlobalTheory.MemberClose.exists_hyp_n_of_geometric_galois_compat`, which takes the bundle `litN`. It passes the parts `loc` and `aut` of `litN` to `localLanglandsGL_and_purity_at_member_alt` (the call is at line 28 of `ThetaLiftHypothesesOfNonvanishing.lean`), which passes `A.gk`, `A.gal` and `A.car` by name (line 25 of `LocalLanglandsGLAndPurityAtMember.lean`) to `GlobalTheory.NRows.HypothesesBridge.locComp_of_isRc_classMapD_cenLoc`. There the hypotheses in those positions (11th: `PairUAlt`; 12th: `One.M.Row`; and the 20th, `RecTExists`) are used to build two fields of the result:
+
+```lean
+      gal := hCSD.2 hGRP
+      car := _root_.UpperTheory.GalS.carU_of_finite_gl_recT hFin hLL (hCSD.1 hCLGD)
+```
+
+That result is the field `what₂` of `prN`, a record with thirteen other fields.
+
+**So all three literature statements reach the inputs of the theorem that produces `LinkN`:**
+
+- `RecTExists` (`localLanglandsExists`), as a hypothesis of that theorem (step 2); again through `prN.what₂.gal`, whose term `pair_u_of_literature O` takes `local_langlands_recT_exists_of_literature O` as its first argument (line 286); and again through `prN.what₂.car`: the `RecTExists` used there (`hLL`, the twentieth argument) is produced at lines 20-21 of `LocalLanglandsGLAndPurityAtMember.lean` by `recTExists_of_published_inputs` (`LocalLanglandsOfHyp.lean`, line 12; its proof not read) from fields of the local bundle `loc`, the first of which, `llc`, is again `local_langlands_recT_exists_of_literature O` (literature file line 603, in `literature_local`, which fills `litN.loc`, line 640);
+- `caraianiLocalGlobalDual`, through `prN.what₂.car` (`aut.car := O.caraianiLocalGlobalDual`, literature file line 618);
+- `galoisRepOfPolarizedPairLit`, through `prN.what₂.gal` (`aut.gal := pair_u_of_literature O`, line 617, whose term ends in `O.galoisRepOfPolarizedPairLit`, line 286).
+
+*Whether the proof of `LinkN` reads these fields of `prN` is not read.* `final_alt_alt` passes `prN` to `galois_preconditions_at_mem` and `prN.cheb` to `exists_good_cut_facts_tie4`, and we have read neither proof.
+
+**One use is visible, read by both of us.** The same theorem that returns `prN` also builds an `EllipticHypothesis` from it (`ThetaLiftHypothesesOfNonvanishing.lean`, lines 42-43): `e22 := hPr.what₂.gal` copies the field that carries `galoisRepOfPolarizedPairLit`, and `e24 := local_global_above_ell_of_cusp_alt hPr.what₂` passes `what₂` whole to a theorem we have not read. Where that goes on Main's path: in the theorem that builds the `LinkN` row this first output is discarded (`obtain ⟨_, prN, serN, _⟩`, line 44 of `HypothesesNonemptyOfUnramifiedExponents.lean`). But line 43 of the same theorem calls `large_unramified_exponent_bundles_exist_alt`, which is `member_bundles_large_unramified_exponents_alt` (`MemberBundlesLargeUnramifiedExponents.lean`, line 34). That theorem calls the same producer again, keeps the `EllipticHypothesis` (`obtain ⟨hE, -, -, hL', hN⟩`, line 59) and passes it to `member_exists_baseLattice_alt` (line 61), whose proof we have not read. So on Main's path the `EllipticHypothesis` that carries this field is handed to a theorem used in building the third input. By our own rule that is carrying, not use: whether `member_exists_baseLattice_alt` reads `e22`, and whether any of this reaches `nRest`, we have not read.
+
+**Why we think these are all the places the statements leave the bundle.** In the literature file the bundle's fields are taken out at exactly four lines: 284 (`localLanglandsExists`), 286 (`galoisRepOfPolarizedPairLit`), 460 (`caraianiLocalGlobalDual`, in `carU_local_global_of_literature`, line 459, whose only use in the tree, by whole-word search, is line 462 inside `carU_above_l_of_literature`, which fills the field `localGlobalAboveL` of `P`, line 688; whether that reaches this chain is not traced) and 618 (`caraianiLocalGlobalDual`, in `aut.car`). The structure's name `OpenLiteratureStatements`, as a whole word, occurs in that one file only. Kepler established both: the four lines by name search plus a search for numeric and pattern-matching projections (with a positive control), and the one-file count by a whole-word search. Halley traced the chain above. *Limit:* a term defined elsewhere that receives the bundle whole under another binder type would not show in these searches; with the type named in one file only, we do not see how that could happen, and we have not proved it cannot.
+
+**What the first and fourth bullets should read.** First: "... and from a proved bound, `stmtU_holds`, and from four further bundles: one filled by a library theorem, three not fully traced." Fourth: "All three literature statements reach the inputs of the theorem that produces `LinkN`, `RecTExists` also as its hypothesis; whether the proof of `LinkN` uses them beyond that is not read."
+
+*On the twin.* Three declarations in the release share the short name `locComp_of_isRc_classMapD_cenLoc`. The one this chain cites is the full name given above, in `PublishedInputsCombined.lean`; Halley first opened another (in `ConductorValuationDeltaComparison.lean`) and re-read. The file table at the end lists each file by full path and hash, the rows added with this correction marked as such.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me.
@@ -228,3 +261,8 @@ Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files
 | `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/EveryCharacterOfLiteratureOfVWin.lean` (lines 213-219, 243-244, 267-268, 271-272, 379-380, 571-588, 655-666, 722-726 read) | `246b74eeb03dae250c45b46c155b3590cb53c2bac86f5e35f4b74338db487068` |
 | `Development/AbelianVarietyTheory/Definitions/NonGaloisDescent/BoundAtTwoAndThreeForFamily.lean` (lines 18-25 read) | `6b83cc632a3b8fb2e0ae85b8fd8cf84de7ff1d04a7f66062cee41391177fd9d4` |
 | `ReciprocityTheory/Hypotheses/GalCoh.lean` (lines 195-218 read) | `8b5051953b0209402d9ef496c5877eec8b809d1b10fbd67877408876c36f30cd` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/ThetaLiftHypothesesOfNonvanishing.lean` (lines 24-46 read; added with the Correction of 2026-11-22) | `83c2d572d4b597a03858fee35e5258194f0fc0821ec2a5d3e8dcf3416bf1bdfe` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/LocalLanglandsGLAndPurityAtMember.lean` (lines 18-39 read; added with the Correction of 2026-11-22) | `c723060dede9507a3fbd828cd9e62268d85dca5ce50f3317e872f899a71a0f73` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/PublishedInputsCombined.lean` (lines 18-36 read; added with the Correction of 2026-11-22) | `f756b62df6738c6bac01310d3308f0857759143262a10de14504823088c609d5` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/EveryCharacterOfLiteratureOfVWin.lean` (lines 282-287, 351-352, 456-461, 609-621, 645-651 read; added with the Correction of 2026-11-22) | `246b74eeb03dae250c45b46c155b3590cb53c2bac86f5e35f4b74338db487068` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/MemberBundlesLargeUnramifiedExponents.lean` (line 34 and lines 55-72 read; added with the Correction of 2026-11-22) | `8115bc1c4fc9df8eac928acb5f04bc966f0448f4619585d633cd5d1f1614786a` |
