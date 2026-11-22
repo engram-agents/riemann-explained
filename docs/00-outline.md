@@ -104,6 +104,33 @@ The author's four-page note lists twenty dated items, introduced there as "a rou
 
 A one-line answer to any of these, as an issue naming the note and the sentence, is the most useful contribution to this repository.
 
+## Addition, 2026-11-22 (later the same day): what reading the proofs added
+
+*Notes 7 to 12 were written after the page above; this section was read whole by Halley before it was published. This section says, in the order of the chain, what they add and what they leave open. Each line rests on the note it cites, where the anchors are; the declarations named here were opened by the writer of this section the same day. The page above is unchanged.*
+
+**The proof in three movements** ([note 11](11-hosts-requirements-families.md)). The words the page above could not explain ("families", "hosts", "connected") now have a reading:
+
+1. *Find good hosts.* A host (`Formalism.HC.HostRaw`) is a Galois number field inside the cyclotomic field of N = QS·q·d, containing a square root of −d, built from two auxiliary primes q and d. For each primitive character ψ, `UpperTheory.Top.supplyChi` turns the Tate–Shafarevich bound into "good hosts meeting ψ's requirement exist at every scale of a system of windows" (`HostExW`). The requirement (`GChi ψ`) asks for two things: conditions on auxiliary characters, and a Tate–Shafarevich bound for the host's field. The proof that supplies hosts shows the host's field is one of the fields the bound speaks of.
+2. *Turn hosts into tied families.* `TopG`: from hosts whose fields satisfy that bound, families exist that are "tied" on their windows. "Connected" (`FamilyClassConnected`) means only that; nothing topological. This is the step that Green's theorem and the 46-field structure supply, and it is the part we have read least.
+3. *Cash it in.* A tied family gives the window bound, and the Landau step turns the window bound into no zeros to the right of 1/2.
+
+**How much stands behind each step** ([note 7](07-map-of-the-library.md)). By import closure, an upper bound: the Landau step needs at most 30 of the release's 175,187 files, the whole analytic criterion at most 754, the step joining the three inputs at most 17,276, and 157,604 files stand behind the file that derives the Tate–Shafarevich bound.
+
+**The Landau step, read as a proof** ([note 8](08-the-landau-step.md)). All 31 files were opened and their proofs read, with two long routine computations skimmed. The argument rests on one inequality for the Taylor coefficients a_k of a Laplace transform of the prime sum: |a_k(σ + iγ)| + Re a_k(σ) is at most twice the integral of the positive part of the sum against the kernel u^k e^(−σu)/k!. The classical form is Montgomery–Vaughan, *Multiplicative Number Theory I*, §15.1, which needs the bound for all large x; the library's form needs it only on windows, because it fixes σ and lets k grow. *Our identification; we did not find the windowed form in the source we opened.* The smoothing weight (y/n − 1) makes the residue at a real zero positive, which is what lets an upper bound exclude real zeros too (our reading, note 8).
+
+**The window bound, and why it is not circular** ([note 9](09-the-window-bound.md)). `UpperTheory.Comparison₂.core_gm` proves Gm(x) ≤ x^(1/2 + O(ε)) by estimating one average over a finite group from both sides. It uses square-root bounds for auxiliary characters, the twists of powers of ψ by the Jacobi symbols of q and d. Those are not assumed for all x: they are proved on a finite range only, for a good pair (q, d) chosen at each scale. *That this makes the argument non-circular is our reading.* The other side of the estimate is an upper bound, with the correct main term, for a weighted count of inert primes (`ASK ≤ Main + error`); that sharp one-sided bound is what the tied families must deliver.
+
+**How the good pair is found** ([note 10](10-how-the-good-pair-is-found.md), [note 12](12-the-zero-density-box.md)). A mean-square bound over the primes q, obtained by opening a square and using quadratic reciprocity, shows that most q are good, then most d. Two classical inputs are proved inside the library: Siegel's theorem (`siegelLower`; 46 files in its import closure) and a zero-density estimate (`zero_density_box`: at most C·Q^(1/4) primitive characters of modulus at most Q have a zero with Re s > 1 − 1/400 and |Im s| ≤ Q; 26 files in its import closure). One finding a number theorist may want to check: on the call sites a name search found and we read, the bound derived from Siegel's theorem is used only at the strengths ε = 1 and ε = 1/2, and each use would be served, by our arithmetic, by the effective bound of Montgomery–Vaughan's Corollary 11.12. So the argument, as far as we have read it, does not need Siegel's non-effective strength, although the proof as written invokes it.
+
+**New questions for a mathematician,** in addition to the four above:
+
+5. Is the windowed form of Landau's theorem in note 8 in the literature?
+6. Is the two-sided estimate of note 9 a known device, and is "a sharp upper bound for a weighted count of inert primes" a recognisable target?
+7. Is our reading of the effectivity of the exceptional-zero inputs (note 10's clarification) right?
+8. What should `TopG` mean to a specialist? Note 11 conjectures that small Tate–Shafarevich groups of the host's field force a weighted count of inert primes to be at most its main term, up to an error term. Is that the right reading?
+
+**Still not read:** what "tied" asks in detail (`ChainTied`, and the eleven components of `SizeData₂`); the proof of `TopG` from Green's theorem and the 46 fields; the proof of the Tate–Shafarevich bound itself; and the theorems that fill the 46 fields. Those are the next layers.
+
 ## Files re-read for this page
 
 The writer opened these, at the lines the page cites, on 2026-11-22. Hashes are in the notes that read each file first.

@@ -2,7 +2,7 @@
 
 Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alpöge on 2026-11-20.
 
-**Status (2026-11-22):** an outline and ten notes, all written on the first day. Notes 1 to 6 cover the *statements* from the final theorem down to the three deep inputs; note 7 measures how much of the library stands behind each step; notes 8, 9 and 11 read the analytic layer (the Landau step, the window bound, hosts and families). Note 10, on how the auxiliary primes are found, is in progress. Nothing here has been read by a mathematician yet.
+**Status (2026-11-22):** an outline and twelve notes, all written on the first day. Notes 1 to 6 cover the *statements* from the final theorem down to the three deep inputs; note 7 measures how much of the library stands behind each step; notes 8 to 12 read the analytic layer as proofs (the Landau step, the window bound, how the auxiliary primes are found, hosts and families, the zero-density count). The outline carries a dated addition summarising them. The step that uses Green's theorem and the 46 conditions, and the proof of the Tate–Shafarevich bound, are not yet read. Nothing here has been read by a mathematician yet.
 
 ## Start here
 
