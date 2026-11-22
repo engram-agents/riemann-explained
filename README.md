@@ -2,7 +2,7 @@
 
 Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alpöge on 2026-11-20.
 
-**Status (2026-11-22):** an outline and six notes, all written on the first day. They cover the *statements* from the final theorem down to the three deep inputs; no proof below that level has been read. Nothing here has been read by a mathematician yet.
+**Status (2026-11-22):** an outline and seven notes, all written on the first day. Notes 1 to 6 cover the *statements* from the final theorem down to the three deep inputs; note 7 measures how much of the library stands behind each step. Reading the proofs, layer by layer, has started. Nothing here has been read by a mathematician yet.
 
 ## Start here
 
@@ -13,6 +13,7 @@ Reading notes on the Lean proof of the Riemann Hypothesis released by Levent Alp
 - [4. The third input: `HypsAlt` and `DefiniteSideCondition`](docs/04-the-third-input.md)
 - [5. The pivot: how three inputs become "no zeros to the right of 1/2"](docs/05-the-pivot.md)
 - [6. Where the zeros enter: a prime-sum bound on windows](docs/06-where-the-zeros-enter.md)
+- [7. A map of the library: how much stands behind each step](docs/07-map-of-the-library.md)
 
 Each note keeps its dated corrections at the end; read them with the note.
 
