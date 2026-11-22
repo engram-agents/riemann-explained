@@ -244,6 +244,19 @@ All in `Formalism/SharpRestriction/GlobalTheoremInputs.lean`.
 - `ChosenE` beyond its shape (seven "chosen" properties with three positive constants, `Formalism/SharpRestriction/GlobalSchurBounds/Chosen.lean` lines 79-84), `TuSize`, `DGamSize`, `Fm.Large`.
 - The off-path twin `CharacterBoxes/ShapeWin.lean`, beyond what the first draft read of it (whole; same constants `2 3 2 0`, Green's theorem likewise used once). Nothing in this note now rests on it.
 
+## Added 2026-11-22: where `LinkN` comes from (note 14)
+
+*A dated addition by Kepler, read by Halley before it was published. Nothing above is changed.*
+
+This note says that `LinkN` "is not proved on this chain: it is an assumption carried in from the third input", and that "whatever establishes it may use bounds on Tate–Shafarevich groups of its own". That is true of the shape theorem, and it says nothing about the path from `Main.lean`. [Note 14](14-where-linkn-comes-from.md), by Halley, follows that path. On it `LinkN` is not assumed: note 14 traces it to a statement, `GlobalTheory.NLink.Final.mainTheorem` (a `Prop`, `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/MainTyzTer.lean`, line 22), which the library proves as `final_alt_alt` (`CFinal.lean` in the same folder, line 19; both lines opened by Kepler, the proof read by Halley in note 14). What that statement takes as inputs, which of them are filled by theorems of the library (we read only that their terms do not use the literature bundle), and how the three statements taken from the literature reach them, is in note 14 **as corrected on 2026-11-22**. Take the list from its "Correction" section, not from here: the first version of note 14 gave a shorter list, and an earlier draft of this paragraph repeated it.
+
+On the question this note left open, at the strength note 14 states it:
+
+- The two steps of that chain that carry the Tate–Shafarevich total, `export_bound_of_admissible` and `linkN_of_gd`, were read (both by Halley, the first also by Kepler). Neither bounds the total; both carry it through as a summand. The total enters in a lemma, `etaSum_le`, that neither of us has read.
+- A search by name from `linkN_of_twGood_galoisPreconditions` (note 14, step 3) reached 21,402 declarations and found no use of `HypV`, `VVle` or `VWin` among them. Halley, who wrote the script, calls it an instrument without a control; it skipped 1,003 names it could not resolve. It is a lower bound on what the chain uses, not a proof that nothing on it bounds the total.
+
+So the second limit stated under "The insight" can be narrowed to this: on the two steps that were read, nothing bounds the Tate–Shafarevich total a second time. The guess under "Interpretation", that `LinkN` is a local–global duality count, is still a guess; the lemma it is really about is `etaSum_le`.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released. The quoted blocks were cut from these files by line range with a script.
