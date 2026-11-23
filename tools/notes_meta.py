@@ -58,15 +58,46 @@ CONTRACT (each line is a self-test case, written before the code)
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
+LIMIT. The tool checks the SHAPE of the metadata and that every name resolves to a row; it does not read a claim or a
+block and cannot say that it is right. Not checked: whether a claim follows the translation rules (whether a definition
+was really opened, whether a convention was really checked: the peer reader's judgement); whether `date` is a date;
+whether a note's header id matches its file name or is used by another note (only block ids are compared across
+notes); the SHA-256 values of the file table, and whether a quoted lean block is verbatim (check_lean_blocks.py
+does that). Title rules: only the two a script can check are checked, that a list_title is not only code spans
+and does not end in a parenthetical `(...)`; every other rule on titles (plain words, saying what the note is
+about, length, no status in the words) needs a reader. Extra keys are UNKNOWN-KEY for the outline, a group and a
+claim only; a roots or defs_opened entry with extra keys is accepted, and a JSON key repeated in the outline keeps
+its last value. Notes are the files directly in NOTES_DIR that match the pattern, so docs/tools.md, which sits
+beside the notes, is not a note; a finding names a note by its name in NOTES_DIR and the outline and the table by
+their file names, so no finding carries a path of the host. An outline finding has no line. The header must come
+before the first `## ` heading outside a fence (HEADER-AFTER-H2 otherwise); only the first header is read when
+there are two. An unreadable input is exit 2 and prints nothing to stdout: a note or the strings file that is not
+UTF-8, an outline or strings file that is not JSON, a decls.tsv row that is not six columns with numeric lines, a
+--base that is not a commit. M5 runs only with --src, both halves of it (the file must be listed AND be a file
+under SRC_ROOT with the line count in range); the file table is read by check_lean_blocks.listed_files (rows of
+backticked `.lean` paths after the heading "Files this note was written from", to the end of the note). Lines are
+counted as an editor shows them, a final newline not starting a line. The extent check compares the block's lines
+with EVERY row its decls resolve to, whatever module the row is in and whatever the block's file is, and a block
+whose lines only partly overlap a row is outside it; a block with `lines` and no `file` is not checked for extent.
+The text extent is the text rule's (decl_table.py), not Lean's. FRAME-NOTE reads `frames` (kind -> list of opening
+phrases) from the strings file; that key is PROVISIONAL and its shape is not final. A phrase is cut at its first `{`
+or `<` (a placeholder), the match is case-blind, ignores leading `*`, `_` and `>`, ends at a word boundary, and only
+the first other kind that matches is named; only a block whose target is a paragraph is read. The byte check
+compares at the path the note has in the repository, so a note renamed since REV is NEW-NOTE, and BYTE-DIFF's line
+number is a line of the published text, not of the note with its anchors. The self-test builds its repositories
+with the user's own configuration switched off and needs the `git` program.
+
 usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--strings PATH] [--src SRC_ROOT]
                      [--glob PATTERN]
        notes_meta.py --selftest
 """
 import contextlib
+import fnmatch
 import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -94,10 +125,571 @@ rh = _load_sibling("rh_anchor")
 clb = _load_sibling("check_lean_blocks")
 
 
-# ---------------------------------------------------------------- the tool (stub: nothing is checked yet)
+# ---------------------------------------------------------------- the tool
+ERROR, LISTING = "error", "listing"
+NOCODE = "CHECKED NOTHING"
+TOP_KEYS = ("groups", "release")
+GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
+CLAIM_REQUIRED = ("text", "reader", "date", "defs_opened", "conventions_checked")
+CLAIM_OPTIONAL = ("conditions", "mathlib_read")
+DECL_COLS = ["module", "name", "kind", "first_line", "last_line", "basis"]
+FRAME_ONLY = ("argument", "interpretation")
+_CODESPAN = re.compile(r"(`+)(?!`).+?(?<!`)\1(?!`)")
+_LINE_SPLIT = re.compile(r"\r\n|\n|\r")
+
+
+class _Unreadable(Exception):
+    """An input that cannot be read: exit 2, the message goes to stderr, nothing to stdout."""
+
+
+def _int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _str(v):
+    return isinstance(v, str) and v != ""
+
+
+def _f(code, path, line, msg, cls=ERROR):
+    return (code, path, line, msg, cls)
+
+
+def _render(f):
+    code, path, line, msg, _ = f
+    return f"{code} {path}:{line} {msg}" if line else f"{code} {path} {msg}"
+
+
+def _read_decls(path):
+    """({(module, name): [(first, last), ...]}, number of rows); every row of a repeated pair is kept."""
+    try:
+        with open(path, "rb") as fh:
+            text = fh.read().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        raise _Unreadable(f"cannot read the decls table: {e}")
+    index, n = {}, 0
+    for k, raw in enumerate(text.split("\n"), 1):
+        raw = raw.rstrip("\r")
+        if raw == "" or raw.startswith("#"):
+            continue
+        cells = raw.split("\t")
+        if cells == DECL_COLS:
+            continue
+        good = len(cells) == 6 and cells[0] != "" and cells[1] != ""
+        if good:
+            try:
+                first, last = int(cells[3]), int(cells[4])
+            except ValueError:
+                good = False
+        if not good:
+            raise _Unreadable(f"cannot read the decls table: line {k} is not a row of six columns with numeric lines")
+        index.setdefault((cells[0], cells[1]), []).append((first, last))
+        n += 1
+    return index, n
+
+
+def _resolve(index, where, path, line, module, name):
+    """(finding, None) when the pair has no row or several, else (None, the one row)."""
+    rows = sorted(index.get((module, name), []))
+    if len(rows) == 1:
+        return None, rows[0]
+    if not rows:
+        return _f("UNRESOLVED", path, line, f"{where} {module} {name}: no row in decls.tsv"), None
+    cand = ", ".join(f"({a}, {b})" for a, b in rows)
+    return _f("AMBIGUOUS", path, line, f"{where} {module} {name}: {len(rows)} rows; "
+              f"candidates (first_line, last_line): {cand}"), None
+
+
+def _decl_entry_ok(e):
+    return isinstance(e, dict) and _str(e.get("module")) and _str(e.get("name"))
+
+
+# ---- the outline
+def _check_claim(claim, label, path, out):
+    pre = f"{label} claim"
+    for k in sorted(claim):
+        if k not in CLAIM_REQUIRED and k not in CLAIM_OPTIONAL:
+            out.append(_f("UNKNOWN-KEY", path, None, f"{pre}: unknown key {k!r}"))
+    for k in CLAIM_REQUIRED:
+        if k not in claim:
+            out.append(_f("MISSING-KEY", path, None, f"{pre}: missing key {k!r}"))
+    for k in ("text", "reader", "date"):
+        if k in claim and not _str(claim[k]):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: {k} must be a non-empty string"))
+    if "defs_opened" in claim:
+        d = claim["defs_opened"]
+        if not isinstance(d, list):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: defs_opened must be a list"))
+        else:
+            for k, e in enumerate(d):
+                ln = e.get("lines") if isinstance(e, dict) else None
+                if not (_decl_entry_ok(e) and isinstance(ln, list) and len(ln) == 2 and all(_int(x) for x in ln)):
+                    out.append(_f("BAD-VALUE", path, None, f"{pre}: defs_opened[{k}] must be an object with non-empty "
+                                  "string module and name and lines [first, last] of two integers"))
+    if "conventions_checked" in claim:
+        c = claim["conventions_checked"]
+        if not (isinstance(c, list) and all(isinstance(x, str) and x in ("a", "b", "c", "d", "e") for x in c)):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: conventions_checked must be a list of letters a to e"))
+    if "conditions" in claim:
+        c = claim["conditions"]
+        if not (isinstance(c, list) and all(_str(x) for x in c)):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: conditions must be a list of non-empty strings"))
+    if "mathlib_read" in claim:
+        c = claim["mathlib_read"]
+        if not (isinstance(c, list) and all(isinstance(x, str) for x in c)):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: mathlib_read must be a list of strings"))
+
+
+def _check_group_shape(g, label, path, out):
+    def bad(what):
+        out.append(_f("BAD-VALUE", path, None, f"{label}: {what}"))
+    for k in sorted(g):
+        if k not in GROUP_KEYS:
+            out.append(_f("UNKNOWN-KEY", path, None, f"{label}: unknown key {k!r}"))
+    for k in GROUP_KEYS:
+        if k not in g:
+            out.append(_f("MISSING-KEY", path, None, f"{label}: missing key {k!r}"))
+    if "id" in g and not _str(g["id"]):
+        bad("id must be a non-empty string")
+    if "level" in g and not (_int(g["level"]) and g["level"] >= 1):
+        bad("level must be an integer of 1 or more")
+    if "order" in g and not _int(g["order"]):
+        bad("order must be an integer")
+    if "parent" in g and not _str(g["parent"]):
+        bad("parent must be a non-empty string")
+    if "roots" in g:
+        if not isinstance(g["roots"], list):
+            bad("roots must be a list")
+        else:
+            for k, e in enumerate(g["roots"]):
+                if not _decl_entry_ok(e):
+                    bad(f"roots[{k}] must be an object with non-empty string module and name")
+    if "premises" in g:
+        if not isinstance(g["premises"], list):
+            bad("premises must be a list")
+        else:
+            for k, p in enumerate(g["premises"]):
+                if not _str(p):
+                    bad(f"premises[{k}] must be a string id")
+    if "claim" in g and g["claim"] is not None:
+        if isinstance(g["claim"], dict):
+            _check_claim(g["claim"], label, path, out)
+        else:
+            bad("claim must be an object or null")
+
+
+def _premise_cycles(graph, path, out):
+    """One PREMISE-CYCLE finding per cycle of the premises relation (iterative, so depth is no limit)."""
+    state, reported = {}, set()
+    for start in graph:
+        if state.get(start):
+            continue
+        stack, trail = [(start, iter(graph[start]))], [start]
+        state[start] = 1
+        while stack:
+            node, it = stack[-1]
+            nxt = next(it, None)
+            if nxt is None:
+                state[node] = 2
+                stack.pop()
+                trail.pop()
+            elif state.get(nxt) == 1:
+                cyc = trail[trail.index(nxt):]
+                if frozenset(cyc) not in reported:
+                    reported.add(frozenset(cyc))
+                    out.append(_f("PREMISE-CYCLE", path, None, "premises form a cycle: " + " -> ".join(cyc + [nxt])))
+            elif not state.get(nxt):
+                state[nxt] = 1
+                stack.append((nxt, iter(graph[nxt])))
+                trail.append(nxt)
+
+
+def _check_outline(data, path, index):
+    """(findings, the ids of the groups that have a usable id)."""
+    out = []
+    if not isinstance(data, dict):
+        return [_f("BAD-VALUE", path, None, "top level: must be a JSON object")], set()
+    for k in sorted(data):
+        if k not in TOP_KEYS:
+            out.append(_f("UNKNOWN-KEY", path, None, f"top level: unknown key {k!r}"))
+    for k in TOP_KEYS:
+        if k not in data:
+            out.append(_f("MISSING-KEY", path, None, f"top level: missing key {k!r}"))
+    if "release" in data and not _str(data["release"]):
+        out.append(_f("BAD-VALUE", path, None, "top level: release must be a non-empty string"))
+    groups = []
+    if "groups" in data:
+        if isinstance(data["groups"], list):
+            groups = data["groups"]
+        else:
+            out.append(_f("BAD-VALUE", path, None, "top level: groups must be a list"))
+    # pass 1: the shape of each group, and the ids
+    by_id, labels, dup_seen = {}, {}, set()
+    for i, g in enumerate(groups):
+        if not isinstance(g, dict):
+            out.append(_f("BAD-VALUE", path, None, f"groups[{i}]: must be a JSON object"))
+            continue
+        gid = g.get("id")
+        labels[i] = f"group {gid!r}" if _str(gid) else f"groups[{i}]"
+        _check_group_shape(g, labels[i], path, out)
+        if _str(gid):
+            if gid not in by_id:
+                by_id[gid] = g
+            elif gid not in dup_seen:
+                dup_seen.add(gid)
+                out.append(_f("DUPLICATE-ID", path, None, f"{labels[i]}: id is used by more than one group"))
+    # pass 2: the relations between groups, and the resolution of roots and opened definitions
+    siblings, graph = {}, {}
+    for i, g in enumerate(groups):
+        if i not in labels or not _str(g.get("id")) or by_id[g["id"]] is not g:
+            continue
+        gid, label, level, parent = g["id"], labels[i], g.get("level"), g.get("parent")
+        level_ok = _int(level) and level >= 1
+        if _str(parent):
+            if parent == "root":
+                if level_ok and level != 1:
+                    out.append(_f("BAD-LEVEL", path, None, f"{label}: level {level}, but its parent is 'root' "
+                                  "(a group under root has level 1)"))
+            elif parent in by_id:
+                pl = by_id[parent].get("level")
+                if level_ok and _int(pl) and pl >= 1 and level != pl + 1:
+                    out.append(_f("BAD-LEVEL", path, None, f"{label}: level {level}, but parent {parent!r} has level {pl} "
+                                  "(a child is one deeper than its parent)"))
+            else:
+                out.append(_f("BAD-PARENT", path, None, f"{label}: parent {parent!r} is neither 'root' nor a group id"))
+            if _int(g.get("order")):
+                seen = siblings.setdefault(parent, {})
+                if g["order"] in seen:
+                    out.append(_f("DUPLICATE-ORDER", path, None, f"{label}: order {g['order']} is also used by group "
+                                  f"{seen[g['order']]!r} under parent {parent!r}"))
+                else:
+                    seen[g["order"]] = gid
+        graph[gid] = []
+        for p in g.get("premises") if isinstance(g.get("premises"), list) else []:
+            if not _str(p):
+                continue
+            if p == gid:
+                out.append(_f("BAD-PREMISE", path, None, f"{label}: premise {p!r} is the group itself"))
+            elif p not in by_id:
+                out.append(_f("BAD-PREMISE", path, None, f"{label}: premise {p!r} is not a group id"))
+            else:
+                graph[gid].append(p)
+        claim, roots = g.get("claim"), g.get("roots")
+        if isinstance(claim, dict) and isinstance(roots, list) and len(roots) != 1:
+            out.append(_f("ROOT-COUNT", path, None, f"{label}: a group with a claim has exactly one root, not {len(roots)}"))
+        entries = [(f"{label} roots[{k}]", e) for k, e in enumerate(roots)] if isinstance(roots, list) else []
+        if isinstance(claim, dict) and isinstance(claim.get("defs_opened"), list):
+            entries += [(f"{label} claim defs_opened[{k}]", e) for k, e in enumerate(claim["defs_opened"])]
+        for where, e in entries:
+            if _decl_entry_ok(e):
+                fnd, _row = _resolve(index, where, path, None, e["module"], e["name"])
+                if fnd:
+                    out.append(fnd)
+    _premise_cycles(graph, path, out)   # premises only, never parent
+    return out, set(by_id)
+
+
+# ---- the notes
+def _only_code(title):
+    s = title.strip()
+    return "`" in s and not _CODESPAN.sub("", s).strip()
+
+
+def _trailing_parenthetical(title):
+    s = title.rstrip()
+    if not s.endswith(")"):
+        return False
+    depth = 0
+    for ch in reversed(s):
+        if ch == ")":
+            depth += 1
+        elif ch == "(":
+            depth -= 1
+            if depth == 0:
+                return True
+    return False
+
+
+def _norm(s):
+    return " ".join(s.lower().split())
+
+
+def _frame_hit(text, frames, kind):
+    """(kind of the frame, the phrase) of the first OTHER kind's opening phrase the text starts with, else None.
+    A phrase is cut at its first placeholder, `{` or `<`; the match is case-blind and ends at a word boundary."""
+    t = _norm(text.lstrip("*_> \t"))
+    for other, phrases in frames.items():
+        if other == kind:
+            continue
+        for ph in phrases:
+            cut = ph.split("{")[0].split("<")[0].strip()
+            p = _norm(cut)
+            if p and t.startswith(p) and not (len(t) > len(p) and t[len(p)].isalnum()):
+                return other, cut
+    return None
+
+
+def _count_lines(text):
+    return text.count("\n") + (0 if text == "" or text.endswith("\n") else 1)
+
+
+def _canon(tag, data):
+    try:
+        return rh.format_comment(tag, data)
+    except Exception:
+        return "(not printable)"
+
+
+class _Ctx:
+    """What the checks of one run share: the decls index, the groups, the ids seen, the options."""
+
+
+def _check_header(name, headers, ctx):
+    out = []
+    if not headers:
+        return [_f("NO-HEADER", name, None, "has no rh-note header")], None
+    h = headers[0]
+    if len(headers) > 1:
+        out.append(_f("SECOND-HEADER", name, headers[1].line, f"{len(headers)} rh-note headers, on lines "
+                      + ", ".join(str(x.line) for x in headers)))
+    elif not h.before_first_h2:
+        out.append(_f("HEADER-AFTER-H2", name, h.line, "the rh-note header comes after the first '## ' heading"))
+    d = h.data
+    out += [_f("HEADER-PROBLEM", name, h.line, p) for p in rh.header_problems(d)]
+    if not h.canonical:
+        out.append(_f("NONCANONICAL", name, h.line, "not the canonical form; canonical: " + _canon("rh-note", d)))
+    if _str(d.get("group")) and d["group"] not in ctx.groups:
+        out.append(_f("UNKNOWN-GROUP", name, h.line, f"group {d['group']!r} is not in the outline"))
+    t = d.get("list_title")
+    if _str(t):
+        if _only_code(t):
+            out.append(_f("TITLE-BACKTICK-ONLY", name, h.line, f"list_title is only code: {t!r}"))
+        if _trailing_parenthetical(t):
+            out.append(_f("TITLE-PARENTHETICAL", name, h.line, f"list_title ends with a parenthetical: {t!r}"))
+    return out, (d["id"] if _str(d.get("id")) else None)
+
+
+def _check_block(name, b, note_id, listed, lines, ctx, out):
+    d = b.data
+    bid = d.get("id")
+    label = f"block {bid!r}" if isinstance(bid, str) else "block"
+    if not b.canonical:
+        out.append(_f("NONCANONICAL", name, b.line, "not the canonical form; canonical: " + _canon("rh-block", d)))
+    out += [_f("BLOCK-PROBLEM", name, b.line, f"{label}: {p}") for p in rh.problems(d, note_id)]
+    if isinstance(bid, str):
+        if bid in ctx.ids:
+            out.append(_f("DUPLICATE-ID", name, b.line, f"block id {bid!r} is also used at {ctx.ids[bid][0]}:{ctx.ids[bid][1]}"))
+        else:
+            ctx.ids[bid] = (name, b.line)
+    rows = []   # M4: the resolved rows, as (module, name, (first, last))
+    for k, e in enumerate(d.get("decls") if isinstance(d.get("decls"), list) else []):
+        if _decl_entry_ok(e):
+            fnd, row = _resolve(ctx.index, f"{label} decls[{k}]", name, b.line, e["module"], e["name"])
+            if fnd:
+                out.append(fnd)
+            else:
+                rows.append((e["module"], e["name"], row))
+    f, ln = d.get("file"), d.get("lines")   # M5
+    if _str(f) and isinstance(ln, list) and len(ln) == 2 and all(_int(x) for x in ln):
+        if ctx.src is not None:
+            if f not in (listed or []):
+                out.append(_f("FILE-NOT-LISTED", name, b.line, f"{label} file {f} is not in the note's file table"))
+            else:
+                n = ctx.file_lines(f)
+                if n is None:
+                    out.append(_f("FILE-MISSING", name, b.line, f"{label} file {f} is listed but not found under --src"))
+                elif n == -1:
+                    out.append(_f("FILE-UNREADABLE", name, b.line, f"{label} file {f} under --src is not valid UTF-8"))
+                elif ln[1] > n:
+                    out.append(_f("LINES-OUTSIDE-FILE", name, b.line, f"{label} lines {ln} but {f} has {n} lines"))
+        if rows and not any(r[0] <= ln[0] and ln[1] <= r[1] for _m, _n, r in rows):
+            where = "; ".join(f"{m} {n} ({r[0]}, {r[1]})" for m, n, r in rows)
+            out.append(_f("EXTENT-WARNING", name, b.line,
+                          f"{label} lines {ln} are outside the text extent of every resolved row: {where}", LISTING))
+    if "row" in d or "col" in d:   # M7
+        t = b.target or {}
+        if t.get("type") != "table":
+            out.append(_f("NOT-A-TABLE", name, b.line,
+                          f"{label} carries row/col but its target is of type '{t.get('type')}', not a table"))
+        else:
+            if _int(d.get("row")) and d["row"] > t["nrows"]:
+                out.append(_f("ROW-OUT-OF-RANGE", name, b.line, f"{label} row {d['row']} but the table has {t['nrows']} body rows"))
+            if _int(d.get("col")) and d["col"] > t["ncols"]:
+                out.append(_f("COL-OUT-OF-RANGE", name, b.line, f"{label} col {d['col']} but the table has {t['ncols']} columns"))
+    kind = d.get("kind")   # F12
+    if ctx.strings is not None and kind in FRAME_ONLY and (b.target or {}).get("type") == "paragraph":
+        t = b.target
+        hit = _frame_hit(" ".join(lines[t["first_line"] - 1:t["last_line"]]), ctx.strings, kind)
+        if hit:
+            out.append(_f("FRAME-NOTE", name, b.line,
+                          f"{label} ({kind}): the text opens with a frame of kind {hit[0]!r} ({hit[1]!r})", LISTING))
+    return kind
+
+
+def _check_note(name, text, ctx):
+    """(findings, header ok, id or file stem for the note line, counts by kind, invalid kinds, number of blocks)."""
+    headers, blocks, malformed = rh.parse_note(text)
+    out = [_f(p.code, name, p.line, p.message) for p in malformed]
+    hdr, note_id = _check_header(name, headers, ctx)
+    out += hdr
+    lines = _LINE_SPLIT.split(text) if ctx.strings is not None else None
+    listed = clb.listed_files(text) if ctx.src is not None else None
+    counts, invalid = {k: 0 for k in rh.KINDS}, 0
+    for b in blocks:
+        kind = _check_block(name, b, note_id, listed, lines, ctx, out)
+        if kind in counts:
+            counts[kind] += 1
+        else:
+            invalid += 1
+    out.sort(key=lambda x: x[2] or 0)
+    return out, not hdr, note_id or os.path.splitext(name)[0], counts, invalid, len(blocks)
+
+
+def _note_line(label, hdr_ok, counts, invalid, nblocks):
+    parts = [f"{k}={counts[k]}" for k in rh.KINDS if counts[k]] + ([f"invalid={invalid}"] if invalid else [])
+    return f"note {label} header {'ok' if hdr_ok else 'FAILED'}, blocks {nblocks}" + (f" ({' '.join(parts)})" if nblocks else "")
+
+
+# ---- the byte check
+def _vcs(top, *args):
+    try:
+        return subprocess.run(["git", "-C", top, *args], capture_output=True)
+    except OSError:
+        raise _Unreadable("git is needed for --base but could not be run")
+
+
+def _bytes_check(name, text, rel, ctx):
+    show = _vcs(ctx.top, "cat-file", "blob", f"{ctx.rev}:{rel}")
+    if show.returncode != 0:
+        return _f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)
+    old, new = show.stdout, rh.strip_anchor_lines(text).encode("utf-8")
+    if old == new:
+        return None
+    a, b = old.splitlines(True), new.splitlines(True)
+    i = next((k for k in range(min(len(a), len(b))) if a[k] != b[k]), min(len(a), len(b)))
+
+    def fmt(ls):
+        return repr(ls[i].decode("utf-8", "replace")) if i < len(ls) else "<no line>"
+    return _f("BYTE-DIFF", name, i + 1, f"line {i + 1} of the published text differs: published {fmt(a)}, without anchors {fmt(b)}")
+
+
+# ---- the run
+def _read_json(path, what):
+    try:
+        with open(path, "rb") as fh:
+            return json.loads(fh.read().decode("utf-8"))
+    except (OSError, ValueError) as e:
+        raise _Unreadable(f"cannot read the {what}: {e}")
+
+
+def _read_frames(path):
+    data = _read_json(path, "strings file")
+    fr = data.get("frames") if isinstance(data, dict) else None
+    if not (isinstance(fr, dict) and all(isinstance(v, list) and all(isinstance(x, str) for x in v) for v in fr.values())):
+        raise _Unreadable("the strings file has no usable `frames` key (kind -> list of opening phrases)")
+    return fr
+
+
+def _source_lines(src):
+    cache = {}
+
+    def file_lines(rel):   # the line count, None when there is no such file, -1 when it is not UTF-8
+        if rel not in cache:
+            p = os.path.join(src, rel)
+            if not os.path.isfile(p):
+                cache[rel] = None
+            else:
+                try:
+                    with open(p, "rb") as fh:
+                        cache[rel] = _count_lines(fh.read().decode("utf-8").replace("\r\n", "\n").replace("\r", "\n"))
+                except (OSError, UnicodeDecodeError):
+                    cache[rel] = -1
+        return cache[rel]
+    return file_lines
+
+
+def _setup_git(ctx, notes_dir, names, base, repo):
+    rdir = repo if repo is not None else notes_dir
+    if not os.path.isdir(rdir):
+        raise _Unreadable(f"--repo is not a directory: {rdir}")
+    top = _vcs(rdir, "rev-parse", "--show-toplevel")
+    if top.returncode != 0:
+        raise _Unreadable(f"--repo {rdir} is not inside a git work tree")
+    ctx.top = os.path.realpath(top.stdout.decode("utf-8", "replace").strip())
+    rev = _vcs(ctx.top, "rev-parse", "--verify", "--quiet", base + "^{commit}")
+    if rev.returncode != 0:
+        raise _Unreadable(f"cannot resolve --base {base} to a commit")
+    ctx.rev, ctx.base, rels = rev.stdout.decode().strip(), base, {}
+    for n in names:
+        rel = os.path.relpath(os.path.realpath(os.path.join(notes_dir, n)), ctx.top)
+        if rel.startswith(".."):
+            raise _Unreadable(f"note {n} is outside the repository of --repo")
+        rels[n] = rel.replace(os.sep, "/")
+    return rels
+
+
+def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
+    ctx = _Ctx()
+    if not os.path.isdir(notes_dir):
+        raise _Unreadable(f"NOTES_DIR is not a directory: {notes_dir}")
+    odata = _read_json(outline, "outline")
+    ctx.index, nrows = _read_decls(decls)
+    ctx.strings = _read_frames(strings) if strings is not None else None
+    ctx.src = src
+    if src is not None:
+        if not os.path.isdir(src):
+            raise _Unreadable(f"--src is not a directory: {src}")
+        ctx.file_lines = _source_lines(src)
+    names = sorted(n for n in os.listdir(notes_dir) if fnmatch.fnmatchcase(n, glob) and os.path.isfile(os.path.join(notes_dir, n)))
+    texts = {}
+    for n in names:
+        try:
+            with open(os.path.join(notes_dir, n), "rb") as fh:
+                texts[n] = fh.read().decode("utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            raise _Unreadable(f"cannot read note {n}: {e}")
+    rels = _setup_git(ctx, notes_dir, names, base, repo) if base is not None else {}
+    stop = []
+    if not names:
+        stop.append(f"{NOCODE}: no note matches {glob} in NOTES_DIR")
+    if isinstance(odata, dict) and isinstance(odata.get("groups"), list) and not odata["groups"]:
+        stop.append(f"{NOCODE}: the outline has no groups")
+    if nrows == 0:
+        stop.append(f"{NOCODE}: decls.tsv has no rows")
+    if stop:
+        return 3, stop
+    found, ctx.groups = _check_outline(odata, os.path.basename(outline), ctx.index)
+    lines, errors, warnings = [_render(f) for f in found], len(found), 0
+    ctx.ids = {}
+    totals, invalid_total = {k: 0 for k in rh.KINDS}, 0
+    for n in names:
+        fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
+        bf = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else None
+        fs += [bf] if bf else []
+        lines += [_render(f) for f in fs]
+        errors += sum(1 for f in fs if f[4] == ERROR)
+        warnings += sum(1 for f in fs if f[4] == LISTING)
+        lines.append(_note_line(label, hdr_ok, counts, invalid, nblocks))
+        for k in rh.KINDS:
+            totals[k] += counts[k]
+        invalid_total += invalid
+    if ctx.strings is None:
+        lines.append("FRAME-NOTE skipped: no strings file")
+    lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
+    lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): skipped, no --src given")
+    lines.append(f"byte check: ran against {base}" if base is not None else "byte check: did not run, no --base given")
+    lines.append(f"{len(names)} notes, {errors} findings, {warnings} warnings")
+    return (1 if errors else 0), lines
+
 
 def run(notes_dir, outline, decls, base=None, repo=None, strings=None, src=None, glob=DEFAULT_GLOB):
-    return 99
+    """Check the notes and print the report; return the exit code 0, 1, 2 or 3. Exit 2 prints nothing to stdout."""
+    try:
+        rc, lines = _run(notes_dir, outline, decls, base, repo, strings, src, glob)
+    except _Unreadable as e:
+        print("notes_meta: " + str(e), file=sys.stderr)
+        return 2
+    print("\n".join(lines))
+    return rc
 
 
 # ---------------------------------------------------------------- self-test
@@ -132,7 +724,6 @@ DECLS = ("# decls fixture\n"
 CLAIM = {"text": "T", "reader": "R", "date": "2026-11-23", "defs_opened": [], "conventions_checked": ["a"]}
 FILES = "\n## Files this note was written from\n\n| File | SHA-256 |\n|---|---|\n| `A/B.lean` | `x` |\n"
 SRC40 = "".join(f"line {i}\n" for i in range(1, 41))
-NOCODE = "CHECKED NOTHING"
 
 
 def G(i, level=1, parent="root", order=1, roots=None, claim=None, premises=None):
@@ -174,8 +765,8 @@ class Res:
     def __init__(self, rc, out, err):
         self.rc, self.out, self.err = rc, out, err
         self.lines = out.splitlines()
-        self.f = [x for x in self.lines if x[:1].isupper() and x.split(" ")[0].replace("-", "").isalpha()
-                  and x.split(" ")[0].isupper() and not x.startswith((NOCODE, "FRAME-NOTE skipped", "REFUSED"))]
+        self.f = [x for x in self.lines if re.match(r"[A-Z][A-Z0-9-]+ ", x)
+                  and not x.startswith((NOCODE, "FRAME-NOTE skipped", "REFUSED"))]
 
 
 def _git(cwd, *args):
@@ -354,7 +945,7 @@ def _():
     r = go(notes=notes)
     eq(r.lines, ["note 01 header ok, blocks 2 (reading=1 not_read=1)",
                  "note 02 header ok, blocks 0",
-                 "NO-HEADER 03-c.md: no rh-note header",
+                 "NO-HEADER 03-c.md has no rh-note header",
                  "note 03-c header FAILED, blocks 0",
                  "FRAME-NOTE skipped: no strings file",
                  "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0",
@@ -561,7 +1152,7 @@ def _():
 @case("M1", "exactly one header, before the first ## heading: NO-HEADER, SECOND-HEADER naming both lines, HEADER-AFTER-H2; a fenced one does not count")
 def _():
     r = go(notes={"01-a.md": "# T\n\ntext\n"})
-    fe(r, ["NO-HEADER 01-a.md: no rh-note header"], 1)
+    fe(r, ["NO-HEADER 01-a.md has no rh-note header"], 1)
     ok("note 01-a header FAILED, blocks 0" in r.lines, "the note line uses the file name when there is no id")
     two = NOTE(body="Text.\n" + rh.format_comment("rh-note", {"id": "01"}) + "\n")
     fe(go(notes={"01-a.md": two}), ["SECOND-HEADER 01-a.md:7 2 rh-note headers, on lines 2, 7"], 1)
@@ -569,7 +1160,7 @@ def _():
                                                                   "list_title": "A title", "readers": ["K"], "release": "r"}) + "\n"
     fe(go(notes={"01-a.md": late}), ["HEADER-AFTER-H2 01-a.md:5 the rh-note header comes after the first '## ' heading"], 1)
     fenced = "# T\n\n```\n" + rh.format_comment("rh-note", {"id": "01"}) + "\n```\n"
-    fe(go(notes={"01-a.md": fenced}), ["NO-HEADER 01-a.md: no rh-note header"], 1)
+    fe(go(notes={"01-a.md": fenced}), ["NO-HEADER 01-a.md has no rh-note header"], 1)
 
 
 @case("M2a", "header_problems() findings, level 0 to 2, and a group that is not in the outline")
@@ -718,6 +1309,7 @@ def _():
     fe(go(notes=n("From A and B it follows that X.", ARG()), strings=FR),
        ["FRAME-NOTE 01-a.md:7 block '01.b01' (argument): the text opens with a frame of kind 'claim' ('From')"], 0)
     clean(go(notes=n("How this is proved, as K read it: A then B.", ARG()), strings=FR))
+    clean(go(notes=n("Fromage is not a frame.", ARG()), strings=FR))   # a phrase ends at a word boundary
     clean(go(notes=n("We think this works.", BL()), strings=FR))
     ib = BL(kind="interpretation", reader="R", date="2026-11-23")
     fe(go(notes=n("How this is proved, as K read it.", ib), strings=FR),
@@ -779,7 +1371,7 @@ def _():
 @case("B1d", "a note not present at REV is NEW-NOTE (a listing, exit unchanged); without --base the summary says the byte check did not run")
 def _():
     r = go(notes={"01-a.md": CUR, "02-b.md": NOTE(nid="02")}, committed={"01-a.md": T0}, base="HEAD")
-    eq((r.f, r.rc), (["NEW-NOTE 02-b.md: not present at HEAD"], 0), r.out)
+    eq((r.f, r.rc), (["NEW-NOTE 02-b.md is not present at HEAD"], 0), r.out)
     ok(r.lines[-1] == "2 notes, 0 findings, 1 warnings", r.lines[-1])
     r = go(notes={"01-a.md": CUR})
     ok("byte check: did not run, no --base given" in r.lines, r.out)
@@ -797,7 +1389,7 @@ def _real():
         G("c1", level=2, parent="g3", order=1, roots=[R("A.B", "foo")], claim=dict(CLAIM), premises=[]),
         G("c2", level=2, parent="g3", order=2, roots=[], claim=None, premises=["c1"]),
         G("d1", level=3, parent="c2", order=1, roots=[R("A.B", "bar")], claim=None, premises=[]),
-        G("d2", level=4, parent="d1", order=1, roots=[R("A.D", "dup"), R("A.C", "baz")], claim=None, premises=["g3"]),
+        G("d2", level=4, parent="d1", order=1, roots=[R("A.B", "foo"), R("A.C", "baz")], claim=None, premises=["g3"]),
     ]
 
 
@@ -817,12 +1409,15 @@ def _():
            "UNKNOWN-KEY outline.json group 'd1': unknown key 'draft_todo'"], 1)
 
 
-@case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line")
+@case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "
+               "in line order")
 def _():
     bad = NOTE(level=3)
     r = go(notes={"02-b.md": bad.replace('"id":"01"', '"id":"02"'), "01-a.md": bad})
     eq(r.lines[:4], ["HEADER-PROBLEM 01-a.md:2 level: must be 0, 1 or 2", "note 01 header FAILED, blocks 0",
                      "HEADER-PROBLEM 02-b.md:2 level: must be 0, 1 or 2", "note 02 header FAILED, blocks 0"], "order")
+    r = go(notes={"01-a.md": NOTE(level=3, body="Some text.\n<!-- rh-block {bad} -->\n")})
+    eq([x.split(" ")[0] + " " + x.split(" ")[1] for x in r.f], ["HEADER-PROBLEM 01-a.md:2", "MALFORMED 01-a.md:7"], "by line")
 
 
 def _run_cases(cases, write):
@@ -854,11 +1449,43 @@ def selftest_quiet():
         return selftest()
 
 
+_OPTIONS = {"--base": "base", "--repo": "repo", "--strings": "strings", "--src": "src", "--glob": "glob"}
+USAGE = ("usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--strings PATH] [--src SRC_ROOT]\n"
+         "                     [--glob PATTERN]\n"
+         "       notes_meta.py --selftest")
+
+
+def _parse(argv):
+    """(positionals, options) or None for a usage error: three positionals, each option at most once with a value."""
+    pos, opts, i = [], {}, 0
+    while i < len(argv):
+        a = argv[i]
+        if a in _OPTIONS:
+            if _OPTIONS[a] in opts or i + 1 >= len(argv):
+                return None
+            opts[_OPTIONS[a]] = argv[i + 1]
+            i += 2
+        elif a.startswith("--"):
+            return None
+        else:
+            pos.append(a)
+            i += 1
+    return (pos, opts) if len(pos) == 3 else None
+
+
 def main(argv=None, check=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv == ["--selftest"]:
         return selftest()
-    return 99   # stub: the command line is not written yet
+    parsed = _parse(argv)
+    if parsed is None:
+        print(USAGE, file=sys.stderr)
+        return 2
+    if (selftest_quiet if check is None else check)() != 0:
+        print("REFUSED: selftest failed; no result reported", file=sys.stderr)
+        return 4
+    pos, opts = parsed
+    return run(pos[0], pos[1], pos[2], **opts)
 
 
 if __name__ == "__main__":
