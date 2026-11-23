@@ -42,17 +42,21 @@ CONTRACT (each line is a self-test case, written before the code)
     Case C6a C6b C6c.
  C7 The id is rh_anchor.next_block_id(header id, every block id in the notes folder). Case C7.
  C8 Required fields: kinds reading, argument, interpretation and correction need --reader and --date (MISSING-FIELD);
-    the helper never fills a reader or a date by default. The finished block must have no rh_anchor.problems() (BAD-BLOCK
-    with them). Cases C8a C8b C8c.
+    the helper never fills a reader or a date by default, and an empty reader or date is MISSING-FIELD for any kind.
+    A flag that belongs to another kind is STRAY-FLAG: --needs on any kind but not_read, the machine_fact fields on any
+    kind but machine_fact. The finished block must have no rh_anchor.problems() (BAD-BLOCK with them).
+    Cases C8a C8b C8c C8d.
  C9 Post-conditions, checked on every write before it is returned: strip_anchor_lines(new) == strip_anchor_lines(old);
     the new note parses with one block more, that block's data is the built block, it is canonical, and its target has
     the same first_line as the element chosen; no new parse problem. A failure is exit 6 (a bug here), nothing written.
     The note's line endings are kept (CRLF stays CRLF). Cases C9a C9b.
  C10 Command line: a dry run prints the comment and the line it goes after and leaves the file unchanged; --write
-    writes it and says so; --src prints the cited lines, and a file missing under SRC_ROOT or too short is SRC-MISSING
-    or SRC-RANGE. Exit codes: 0 done, 2 usage or unreadable input, 4 the self-test failed (a normal run does it
+    writes it and says so, keeping the note's file mode and writing through a symlink to its target; --src prints the
+    cited lines (it needs --lines), and a file missing under SRC_ROOT or too short is SRC-MISSING or SRC-RANGE; a --src
+    file that is not UTF-8 or a note that cannot be written is exit 2. Exit codes: 0 done, 2 usage or unreadable input, 4 the self-test failed (a normal run does it
     quietly first, as the other tools here do, and writes nothing then), 5 refused (one line `REFUSED CODE message`),
-    6 a post-condition failed; --selftest 0 all pass, 1 any fails, 3 no case ran. Cases X1 X2 X3 X4.
+    6 a post-condition failed; --selftest 0 all pass, 1 any fails, 3 no case ran; -h prints the help, exit 0.
+    Cases X1 to X11.
 
 LIMIT. One declaration per block: a citation whose lines cross a declaration's end is refused, not split; a block
 naming several declarations is written by hand and checked by notes_meta. The extent is the text rule's
@@ -69,6 +73,8 @@ import argparse
 import glob
 import importlib.util
 import os
+import stat
+import subprocess
 import sys
 import tempfile
 
@@ -170,10 +176,14 @@ def cite(text, rows_by_name, used_ids, *, at, decl, kind, module=None, lines=Non
          needs=None, item=None, row=None, col=None, machine=None, second_readers=None):
     """(new_text, block, after_line). Raises Refused, or PostConditionFailed on a bug."""
     note_id, old_blocks, old_probs = _clean(text)
-    if kind in NEEDS_READER:
-        for f, v in (("reader", reader), ("date", date)):
-            if not (isinstance(v, str) and v):
-                raise Refused("MISSING-FIELD", f"kind {kind} needs --{f}; the helper fills none by default")
+    for f, v in (("reader", reader), ("date", date)):
+        if (kind in NEEDS_READER and v is None) or v == "":
+            raise Refused("MISSING-FIELD", f"kind {kind} needs a non-empty --{f}; the helper fills none by default")
+    if needs is not None and kind != "not_read":
+        raise Refused("STRAY-FLAG", f"--needs belongs to kind not_read, not {kind}")
+    if machine and kind != "machine_fact":
+        raise Refused("STRAY-FLAG", f"--{'/--'.join(sorted(k.replace('_', '-') for k in machine))} belong to kind "
+                      f"machine_fact, not {kind}")
     r = resolve(rows_by_name, decl, module)
     path = r["module"].replace(".", "/") + ".lean"
     if lines is not None:
@@ -322,6 +332,8 @@ def main(argv=None):
     try:
         a = p.parse_args(argv)
     except SystemExit as e:
+        if e.code == 0:   # -h printed the help
+            return 0
         print(e.code if isinstance(e.code, str) else "usage: see --help", file=sys.stderr)
         return 2
     try:
@@ -340,12 +352,12 @@ def main(argv=None):
     except (OSError, UnicodeDecodeError, ValueError) as e:
         print(f"unreadable input: {e}", file=sys.stderr)
         return 2
-    machine = None
-    if a.kind == "machine_fact":
-        machine = {"tool": a.tool, "tool_version": a.tool_version, "check": a.check, "options": a.options}
-        if a.complete is not None:
-            machine["complete"] = a.complete
-        machine = {k: v for k, v in machine.items() if v is not None}
+    machine = {"tool": a.tool, "tool_version": a.tool_version, "check": a.check, "options": a.options,
+               "complete": a.complete}
+    machine = {k: v for k, v in machine.items() if v is not None} or None
+    if a.src is not None and a.lines is None:
+        print("usage: --src needs --lines (it prints the cited lines)", file=sys.stderr)
+        return 2
     try:
         new, block, after = cite(text, rows, used, at=a.at, decl=a.decl, kind=a.kind, module=a.module,
                                  lines=a.lines, reader=a.reader, date=a.date, needs=a.needs, item=a.item,
@@ -355,8 +367,16 @@ def main(argv=None):
             sp = os.path.join(a.src, block["file"])
             if not os.path.isfile(sp):
                 raise Refused("SRC-MISSING", f"{block['file']} is not a file under the --src root")
-            with open(sp, encoding="utf-8") as f:
-                src_lines = f.read().splitlines()
+            try:
+                with open(sp, encoding="utf-8", newline="") as f:
+                    raw = f.read()
+            except (OSError, UnicodeDecodeError) as e:
+                print(f"unreadable input: {block['file']} under --src: {e}", file=sys.stderr)
+                return 2
+            src_lines = raw.split("\n")
+            if src_lines and src_lines[-1] == "":
+                src_lines.pop()
+            src_lines = [l[:-1] if l.endswith("\r") else l for l in src_lines]
             if a.lines[1] > len(src_lines):
                 raise Refused("SRC-RANGE", f"{block['file']} has {len(src_lines)} lines, the citation ends at "
                               f"{a.lines[1]}")
@@ -374,16 +394,22 @@ def main(argv=None):
     print(rh.render_block(block))
     print(f"after line {after} of {os.path.basename(a.note)}")
     if a.write:
-        d = os.path.dirname(os.path.abspath(a.note))
-        fd, tmp = tempfile.mkstemp(dir=d, prefix=".note_cite.")
+        target = os.path.realpath(a.note)   # a symlinked note: write its target, keep the link
+        tmp = None
         try:
+            mode = stat.S_IMODE(os.stat(target).st_mode)
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), prefix=".note_cite.")
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
                 f.write(new)
-            os.replace(tmp, a.note)
-        except BaseException:
-            if os.path.exists(tmp):
+            os.chmod(tmp, mode)
+            os.replace(tmp, target)
+            tmp = None
+        except OSError as e:
+            print(f"cannot write the note: {e}", file=sys.stderr)
+            return 2
+        finally:
+            if tmp is not None and os.path.exists(tmp):
                 os.remove(tmp)
-            raise
         print(f"wrote {os.path.basename(a.note)}")
     else:
         print("dry run: nothing written (add --write)")
@@ -418,7 +444,7 @@ def refused(code, fn):
 HDR = rh.render_header({"id": "15", "level": 2, "group": "g", "list_title": "T", "authors": ["H"], "readers": [],
                         "release": "r"})
 FILES = ("## Files this note was written from\n\n| File | SHA-256 |\n|---|---|\n"
-         "| `A/B.lean` (lines 2-9 read) | `00` |\n| `A/C.lean` | `00` |\n")
+         "| `A/B.lean` (lines 2-9 read) | `00` |\n| `A/C.lean` | `00` |\n| `ZC/D.lean` | `00` |\n")
 # line numbers:   1 heading, 2 header, 3 blank, 4-5 paragraph, 6 blank, 7-10 table (7 header, 8 sep, 9-10 body),
 # 11 blank, 12-14 list (13 item two, 14 nested), 15 blank, 16-18 lean fence, 19 blank, 20 heading, 21 blank,
 # 22-24 text fence, 25 blank, 26.. files section
@@ -493,9 +519,14 @@ def _():
     eq("lines" in b, False, "lines key")
 
 
-@case("C3a", "a file not in the note's file table is NOT-IN-FILE-TABLE")
+@case("C2d", "lines starting before the declaration's first line are OUTSIDE-EXTENT")
 def _():
-    refused("NOT-IN-FILE-TABLE", lambda: ok_cite(decl="C.m"))
+    refused("OUTSIDE-EXTENT", lambda: ok_cite(lines=(1, 3)))
+
+
+@case("C3a", "a file not in the note's file table is NOT-IN-FILE-TABLE, also when a listed path contains it")
+def _():
+    refused("NOT-IN-FILE-TABLE", lambda: ok_cite(decl="C.m"))   # C/D.lean; the table lists ZC/D.lean
 
 
 @case("C3b", "a note with no file table is NO-FILE-TABLE")
@@ -570,10 +601,19 @@ def _():
     refused("ITEM-RANGE", lambda: ok_cite(at=12, item=3))
 
 
-@case("C5f", "--item on a paragraph is ITEM-NOT-LIST; --row on a list is ROW-NOT-TABLE")
+@case("C5f", "--item on a paragraph is ITEM-NOT-LIST; --row or --col on a list or paragraph is ROW-NOT-TABLE")
 def _():
     refused("ITEM-NOT-LIST", lambda: ok_cite(at=4, item=1))
     refused("ROW-NOT-TABLE", lambda: ok_cite(at=12, row=1))
+    refused("ROW-NOT-TABLE", lambda: ok_cite(at=4, col=1))
+
+
+@case("C5g", "row, col and item of 0 are refused under C5's codes")
+def _():
+    refused("ROW-RANGE", lambda: ok_cite(at=9, row=0))
+    refused("COL-RANGE", lambda: ok_cite(at=9, col=0))
+    refused("ITEM-RANGE", lambda: ok_cite(at=12, item=0))
+    refused("ROW-NEEDED", lambda: ok_cite(at=8))   # the separator line is not a body row
 
 
 @case("C6a", "a note with no header is NO-HEADER")
@@ -597,10 +637,26 @@ def _():
     eq(b["id"], "15.b08", "id")
 
 
-@case("C8a", "reading without a reader or without a date is MISSING-FIELD; no default is filled")
+@case("C7b", "the note id comes from the header, not from a fixed value")
+def _():
+    hdr07 = HDR.replace('"id":"15"', '"id":"07"')
+    new, b, after = ok_cite(text=NOTE.replace(HDR, hdr07), used={"15.b04"})
+    eq(b["id"], "07.b01", "id")
+
+
+@case("C8a", "reading or correction without a reader or without a date is MISSING-FIELD; no default is filled")
 def _():
     refused("MISSING-FIELD", lambda: ok_cite(reader=None))
     refused("MISSING-FIELD", lambda: ok_cite(date=None))
+    refused("MISSING-FIELD", lambda: ok_cite(kind="correction", reader=None))
+    refused("MISSING-FIELD", lambda: ok_cite(kind="interpretation", date=None))
+
+
+@case("C8d", "a flag of another kind is STRAY-FLAG; an empty reader is MISSING-FIELD for any kind")
+def _():
+    refused("STRAY-FLAG", lambda: ok_cite(needs="hand_read"))
+    refused("STRAY-FLAG", lambda: ok_cite(machine={"tool": "t"}))
+    refused("MISSING-FIELD", lambda: ok_cite(kind="not_read", needs="uses", reader="", date=None))
 
 
 @case("C8b", "not_read takes needs; a needs outside NEEDS is BAD-BLOCK")
@@ -624,6 +680,7 @@ def _():
     eq(rh.strip_anchor_lines(new), rh.strip_anchor_lines(NOTE), "strip")
     _, blocks, probs = rh.parse_note(new)
     eq([x.data for x in blocks], [b], "blocks")
+    eq(blocks[0].data.get("second_readers"), [{"reader": "Kepler", "date": "2026-11-24"}], "second_readers written")
     eq(blocks[0].canonical, True, "canonical")
     eq(probs, [], "problems")
 
@@ -636,6 +693,26 @@ def _():
     eq(rh.strip_anchor_lines(new), rh.strip_anchor_lines(crlf), "strip")
 
 
+@case("C9c", "each post-condition fails on the bad text it guards against")
+def _():
+    good, b, _ = ok_cite(at=4)
+    tgt = rh.target_at(NOTE, 4)
+    _post(NOTE, good, b, tgt, 0, 0)   # the good case passes
+    def bad(new, block=b, t=tgt, nold=0, nprobs=0):
+        try:
+            _post(NOTE, new, block, t, nold, nprobs)
+        except PostConditionFailed:
+            return
+        raise AssertionError("post-condition did not fail")
+    bad(good.replace("line 3.", "line 4."))                     # the body changed
+    bad(NOTE.replace("line 3.\n", "line 3.\n<!-- x -->\n"))    # no block added (and body changed)
+    bad(good, block=dict(b, id="15.b99"))                     # the block is not the one built
+    bad(good.replace(rh.render_block(b), rh.render_block(b).replace(":", ": ", 1)))   # not canonical
+    bad(good, t=dict(tgt, first_line=7))                      # a different target
+    bad(good, nold=1)                                         # block count
+    bad(good, nprobs=-1)                                      # a new parse problem
+
+
 def _tmp_tree(d):
     os.makedirs(os.path.join(d, "docs"))
     os.makedirs(os.path.join(d, "src", "A"))
@@ -645,7 +722,7 @@ def _tmp_tree(d):
     with open(os.path.join(d, "decls.tsv"), "w", encoding="utf-8") as f:
         f.write("\n".join(TSV) + "\n")
     with open(os.path.join(d, "src", "A", "B.lean"), "w", encoding="utf-8") as f:
-        f.write("".join(f"line {i}\n" for i in range(1, 9)))
+        f.write("".join(f"line {i}\n" for i in range(1, 6)))
     return note, os.path.join(d, "decls.tsv")
 
 
@@ -680,6 +757,9 @@ def _():
         eq(code, 0, f"exit ({err})")
         new = open(note, encoding="utf-8", newline="").read()
         eq(rh.strip_anchor_lines(new), rh.strip_anchor_lines(NOTE), "strip of the written note")
+        _, blocks, _ = rh.parse_note(new)
+        eq(len(blocks), 1, "the written note has the new block")
+        eq(new.split("\n")[5], out.splitlines()[0], "the printed comment is line 6 of the written note")
         if "wrote" not in out:
             raise AssertionError(f"output: {out!r}")
 
@@ -697,9 +777,17 @@ def _():
         code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--lines", "3-4", "--src", src])
         eq((code, out.split(" ")[:2]), (5, ["REFUSED", "SRC-MISSING"]), "missing")
         with open(os.path.join(src, "A", "B.lean"), "w", encoding="utf-8") as f:
-            f.write("one\n")
-        code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--lines", "3-4", "--src", src])
-        eq((code, out.split(" ")[:2]), (5, ["REFUSED", "SRC-RANGE"]), "short")
+            f.write("".join(f"line {i}\n" for i in range(1, 6)))   # exactly 5 lines
+        code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--lines", "4-5", "--src", src])
+        eq(code, 0, f"the last line of the file is in range ({out}{err})")
+        with open(os.path.join(src, "A", "B.lean"), "w", encoding="utf-8") as f:
+            f.write("".join(f"line {i}\n" for i in range(1, 5)))   # 4 lines
+        code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--lines", "4-5", "--src", src])
+        eq((code, out.split(" ")[:2]), (5, ["REFUSED", "SRC-RANGE"]), "one line short")
+        with open(os.path.join(src, "A", "B.lean"), "wb") as f:
+            f.write(b"\xff\xfe not utf-8\n" * 6)
+        code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--lines", "4-5", "--src", src])
+        eq(code, 2, "a --src file that is not UTF-8")
 
 
 @case("X4", "usage errors exit 2: reversed --lines, an unreadable decls file")
@@ -710,6 +798,118 @@ def _():
         eq(code, 2, "reversed lines")
         code, out, err = _run_main([note, os.path.join(d, "nope.tsv")] + BASE_ARGS)
         eq(code, 2, "missing decls")
+
+
+@case("X5", "--second-reader READER:DATE is parsed into the block; a malformed one is exit 2")
+def _():
+    with tempfile.TemporaryDirectory() as d:
+        note, tsv = _tmp_tree(d)
+        code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--second-reader", "Kepler:2026-11-24"])
+        eq(code, 0, f"exit ({err})")
+        _, blocks, _ = rh.parse_note(out.splitlines()[0] + "\n")
+        eq(blocks[0].data["second_readers"], [{"reader": "Kepler", "date": "2026-11-24"}], "second_readers")
+        code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--second-reader", "Kepler"])
+        eq(code, 2, "malformed second reader")
+
+
+@case("X6", "ids used in other notes of the folder are taken into account")
+def _():
+    with tempfile.TemporaryDirectory() as d:
+        note, tsv = _tmp_tree(d)
+        other = NOTE.replace("line 3.\n", "line 3.\n" + rh.render_block(
+            {"id": "15.b05", "kind": "reading", "reader": "H", "date": "d"}) + "\n")
+        with open(os.path.join(d, "docs", "16-y.md"), "w", encoding="utf-8") as f:
+            f.write(other)
+        code, out, err = _run_main([note, tsv] + BASE_ARGS)
+        eq(code, 0, f"exit ({err})")
+        if '"id":"15.b06"' not in out:
+            raise AssertionError(f"id: {out.splitlines()[0]}")
+
+
+@case("X7", "a failed post-condition is exit 6 and writes nothing")
+def _():
+    global cite
+    real = cite
+    def broken(*a, **k):
+        raise PostConditionFailed("planted")
+    with tempfile.TemporaryDirectory() as d:
+        note, tsv = _tmp_tree(d)
+        cite = broken
+        try:
+            code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--write"])
+        finally:
+            cite = real
+        eq(code, 6, "exit")
+        eq(open(note, encoding="utf-8", newline="").read(), NOTE, "file unchanged")
+
+
+@case("X8", "a normal run with a failing self-test is exit 4 and writes nothing")
+def _():
+    if os.environ.get("NOTE_CITE_CHILD") == "1":   # inside the child below: do not recurse
+        return
+    with tempfile.TemporaryDirectory() as d:
+        note, tsv = _tmp_tree(d)
+        tools = os.path.join(d, "tools")
+        os.makedirs(tools)
+        for n in ("rh_anchor.py", "check_lean_blocks.py"):
+            with open(os.path.join(_HERE, n), encoding="utf-8") as f, open(os.path.join(tools, n), "w",
+                                                                           encoding="utf-8") as g:
+                g.write(f.read())
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            src = f.read()
+        planted = src.replace('eq(b["id"], "15.b08", "id")', 'eq(b["id"], "15.b09", "id")', 1)
+        if planted == src:
+            raise AssertionError("the planted failure did not apply")
+        with open(os.path.join(tools, "note_cite.py"), "w", encoding="utf-8") as f:
+            f.write(planted)
+        p = subprocess.run([sys.executable, os.path.join(tools, "note_cite.py"), note, tsv] + BASE_ARGS + ["--write"],
+                           capture_output=True, text=True, env=dict(os.environ, NOTE_CITE_CHILD="1"))
+        eq(p.returncode, 4, f"exit ({p.stderr[-300:]})")
+        eq(open(note, encoding="utf-8", newline="").read(), NOTE, "file unchanged")
+
+
+@case("X9", "--write keeps the note's file mode and writes through a symlink to its target")
+def _():
+    with tempfile.TemporaryDirectory() as d:
+        note, tsv = _tmp_tree(d)
+        os.chmod(note, 0o644)
+        code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--write"])
+        eq(code, 0, f"exit ({err})")
+        eq(stat.S_IMODE(os.stat(note).st_mode), 0o644, "mode")
+        link = os.path.join(d, "docs", "15-link.md")
+        os.symlink(note, link)
+        code, out, err = _run_main([link, tsv] + BASE_ARGS + ["--at", "6", "--write"])
+        eq(code, 0, f"exit ({err})")
+        eq(os.path.islink(link), True, "still a symlink")
+        _, blocks, _ = rh.parse_note(open(note, encoding="utf-8").read())
+        eq(len(blocks), 2, "the target got the second block")
+
+
+@case("X10", "a note that cannot be written is exit 2, nothing left behind")
+def _():
+    if hasattr(os, "geteuid") and os.geteuid() == 0:   # root writes anyway; the case cannot be set up
+        return
+    with tempfile.TemporaryDirectory() as d:
+        note, tsv = _tmp_tree(d)
+        docs = os.path.dirname(note)
+        os.chmod(docs, 0o555)
+        try:
+            code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--write"])
+        finally:
+            os.chmod(docs, 0o755)
+        eq(code, 2, f"exit ({err})")
+        eq(sorted(os.listdir(docs)), ["15-x.md"], "no temp file left")
+        eq(open(note, encoding="utf-8", newline="").read(), NOTE, "file unchanged")
+
+
+@case("X11", "--src without --lines is exit 2; -h is exit 0")
+def _():
+    with tempfile.TemporaryDirectory() as d:
+        note, tsv = _tmp_tree(d)
+        code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--src", d])
+        eq(code, 2, "src without lines")
+        code, out, err = _run_main(["-h"])
+        eq(code, 0, "help")
 
 
 def _run_cases(cases, write):
@@ -732,7 +932,7 @@ def _run_cases(cases, write):
 def selftest():
     print("# cases range over: resolution (C1), extents (C2), the file table (C3), placement (C4), tables and lists (C5),")
     print("# the note's own state (C6), ids (C7), required fields and the format check (C8), post-conditions and line")
-    print("# endings (C9), the command line (X1-X4). Fixtures are a 30-line note and a 4-row table written here.")
+    print("# endings (C9), the command line (X1-X11). Fixtures are a 32-line note and a 4-row declaration table written here.")
     return _run_cases(_CASES, print)
 
 
