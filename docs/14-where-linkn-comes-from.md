@@ -299,6 +299,54 @@ What `hOneTwo_holds` proves, read from its statement, its last lines and the def
 
 **Files added with this clarification** are marked in the table below.
 
+### Addition, 2026-11-23 (later the same day): two of the three statements are used, local finiteness is carried
+
+*Found by Halley reading the one proof the Clarification above left unread; read by Kepler before it was published. The text above is unchanged. Lean was not run.*
+
+**What the Clarification said too broadly.** It called line 212 of `hOneTwo_holds` "a real use" of the three statements. That is true of two of them. `localCohomology_vanishes_tame_inertia_no_fixed` is one tactic line that applies `tame_vanish` (`LocalCohomologyVanishesTameInertiaNoFixed.lean`, lines 20-60). `tame_vanish` takes the three statements in its first line, and binds local finiteness as an underscore:
+
+```lean
+  intro _ hTD hEC F Ω _ _ _ _ _ l _ M _ _ _ _ _ A v rho hA hl hrho hex
+```
+
+An underscore has no name, so the proof cannot refer to local finiteness by name; and no tactic in lines 22-60 searches the context for a hypothesis (there is no `assumption`, `simp_all`, `aesop`, `omega`, `tauto`, `decide`, `linarith`, `simpa` or anonymous-hypothesis bracket there), so it is not picked up that way either.
+
+**Local Tate duality is used at lines 48-49:**
+
+```lean
+  have hTD' := hTD F Ω l 1 M A rho v Nat.one_pos hA hrho
+  have hinj := hTD'.2.2.2.2.1
+```
+
+`hTD'.2.2.2.2.1` is the injective half of the last of the five parts of `LocalTateDualityAt` (`GalCoh.lean`, lines 22-34), which states that a cup product `cup20` is bijective:
+
+```lean
+    Function.Bijective
+      (cup20 ((cycMod F Ω l r).comp (Dec (F := F) A).subtype) rho (MonoidHom.id _))
+```
+
+With it the proof shows that `H2` has at most one element (lines 50-53), from the fact that the twisted dual has no nonzero invariants under the chosen element (lines 34-46).
+
+**The local Euler characteristic formula is used at line 58:**
+
+```lean
+  have he := (hEC F Ω l 1 M A rho v Nat.one_pos hA hrho).2 hl
+```
+
+`.2` is its second part, for a place `v` not above `l` (`GalCoh.lean`, line 59):
+
+```lean
+    (((l : ℕ) : 𝓞 F) ∉ v.asIdeal → Nat.card (H1 rho) = Nat.card (H0 rho) * Nat.card (H2 rho))
+```
+
+With `H0` and `H2` trivial, this makes `H1` trivial (line 59 of `tame_vanish`).
+
+**What this means for a reader.** On the path we read, the proof of `LinkN` needs local Tate duality and the local Euler characteristic formula, and carries local finiteness without using it there. Local finiteness may be used on a path we have not read, so we do not say it is unused in the proof.
+
+**How far the counts in this note can be trusted.** The counts above and in the Clarification look for each hypothesis by its name. A name count cannot see a hypothesis used through instance resolution, where Lean fills an argument from the context without the name being written; `tame_vanish` itself does this with `hdual`, which is never named after line 34 and, on our reading of the types (`Subsingleton.elim z 0` needs that instance), is used at line 53. That route is closed for the three local statements: they are plain propositions (`def ... : Prop`, `GalCoh.lean` lines 195, 201 and 213), not classes, so Lean does not fill arguments from them on its own.
+
+**Files added with this addition** are marked in the table below.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me.
@@ -330,3 +378,6 @@ Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files
 | `Development/AbelianVarietyTheory/Proofs/SatakeParameters/H1H2LocalDualityStatement.lean` (read whole; added with the Clarification of 2026-11-23) | `69a0a732d481c9b61bdf1bd82f0eb7e76d22f3fd21c4e25760db59cd63b8656e` |
 | `Development/AbelianVarietyTheory/Proofs/SatakeParameters/H1H2LocalDuality.lean` (lines 149-219 read; added with the Clarification of 2026-11-23) | `55724bcc2f6d52e86d93258fb802a4bd5e209cef91b7e03e485c763c063fc385` |
 | `Formalism/SharpRestriction/LevelLetterCocycles/ExistsInertiaCharpolyFactorOfTameType.lean` (lines 1471-1477 read; added with the Clarification of 2026-11-23) | `522b0eabca4bb285abc7e4bcf2976677c594b8ec11b313d2e0eb3da7eeab35d6` |
+| `Development/AbelianVarietyTheory/Proofs/SatakeParameters/LocalCohomologyVanishesTameInertiaNoFixedStatement.lean` (read whole; added with the Addition of 2026-11-23) | `e510d6ff8031e937fc15cd792886de4d100a1e3f11ebd1f57382021d9a8695da` |
+| `Development/AbelianVarietyTheory/Proofs/SatakeParameters/LocalCohomologyVanishesTameInertiaNoFixed.lean` (lines 20-60 read; added with the Addition of 2026-11-23) | `3973c4ff67d54f93b27cd18a20cfb0b8164c97523f8a7363519a8e9f5a228e41` |
+| `ReciprocityTheory/Hypotheses/GalCoh.lean` (lines 22-34, 54-59 and 195-217 read; added with the Addition of 2026-11-23) | `8b5051953b0209402d9ef496c5877eec8b809d1b10fbd67877408876c36f30cd` |
