@@ -102,10 +102,10 @@ the first other kind that matches is named; only a block whose target is a parag
 compares at the path the note has in the repository, so a note renamed since REV is NEW-NOTE, and BYTE-DIFF's line
 number after the note name is the 1-based line in the CURRENT file as it is on disk, anchor lines included (the i-th line that is
 not an anchor line of the note, the anchor lines being those rh_anchor.parse_note reports; a malformed rh- line is text and
-is not one), and the message gives the index in the text without anchors too. When the difference is at the END of one side
-(`<no line>`, on either side) the number is the line after the last non-anchor line of the current file, or 1 when there is
-none; trailing anchor lines do not shift it, and for a base with a line the current file lacks it points one past the last
-non-anchor line, not at the extra text. Both sides are
+is not one), and the message gives the index in the text without anchors too. When the current file has a line at the first
+differing index (extra text) the number is that line's own number; when it has NO line there (text missing, `<no line>` on the
+now side) there is nothing to point at, and the number is the line after the last non-anchor line of the current file, or 1
+when there is none; trailing anchor lines do not shift either number. Both sides are
 stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
 result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
 with no line, and the other notes are still compared. "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
@@ -691,7 +691,7 @@ def _bytes_check(name, text, rel, ctx):
     anchors = {x.line for x in headers + blocks}
     parts = _LINE_SPLIT.split(text)
     plain = [k for k in range(1, len(parts) - (parts[-1] == "") + 1) if k not in anchors]
-    line = plain[i] if i < len(a) and i < len(b) and i < len(plain) else (plain[-1] + 1 if plain else 1)
+    line = plain[i] if i < len(b) and i < len(plain) else (plain[-1] + 1 if plain else 1)
     return _f("BYTE-DIFF", name, line, f"line {line} differs (line {i + 1} of the text without anchors): "
               f"at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}")
 

@@ -54,7 +54,8 @@ in-file and byte checks did or did not do, and `N notes, M findings, K warnings`
 it does not judge whether a claim is right, and the LIMIT paragraph in the file lists the title rules and the
 translation rules that need a reader. Every group needs at least one root; a group with a null claim and no root passed
 in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A byte difference is reported at its line in the current file as it is on disk (and its index without anchors), so a reader
-opens the file at that line. The strip rule is `rh_anchor`'s: a last anchor line with
+opens the file at that line; where text is missing from the current file there is no line to point at, and it is the line after
+the last non-anchor line. The strip rule is `rh_anchor`'s: a last anchor line with
 no line ending of its own also removes the line ending before it, so adding or removing such a hand-typed last line can read as a
 one-line-ending difference; anchors written by the helper carry their own ending. An anchor-looking line counts as text only inside
 a fence, and a malformed `rh-` line is kept as text, so fixing it since REV is a byte difference. A block anchored to a list must name its top-level
