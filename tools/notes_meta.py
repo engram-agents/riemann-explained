@@ -12,7 +12,7 @@ CONTRACT (each line is a self-test case, written before the code)
      `CHECKED NOTHING: <reason>` line per reason on stdout, exit 3, nothing else checked. Cases X1a X1b X1c.
   X2 Exit 0: every note passed. Exit 1: any finding of class ERROR. Exit 2: usage, or an input that cannot be read
      (a message on stderr, nothing on stdout). Exit 3: see X1. Exit 4: the self-test failed (REFUSED, nothing else).
-     A listing (EXTENT-WARNING, FRAME-NOTE, NEW-NOTE) never changes the exit code. Cases X2a X2b X2c EXIT4.
+     A listing (EXTENT-WARNING, FRAME-NOTE, NEW-NOTE, CLAIM-LIBRARY-WORD) never changes the exit code. Cases X2a X2b X2c EXIT4.
   X3 One line per finding, `CODE path:line message` (`CODE path message` when it has no line); path is the file's
      name (a note: its name in NOTES_DIR). Per note, after its findings: `note <id> header ok|FAILED, blocks N
      (kind=count ...)` (the breakdown is left out when N is 0). Then the run's lines: the FRAME-NOTE skip notice
@@ -76,6 +76,13 @@ CONTRACT (each line is a self-test case, written before the code)
  the group and the type of the value; REQUIRE_CLAIM_BASIS (False) makes a claim without it CLAIM-BASIS-MISSING; the line
  `claim basis: R read, C census, M without` counts the non-null claims that are objects (a claim that is not an
  object is its own BAD-VALUE and is counted in none of the three).
+  Claim words (cases CLW1 to CLW8): a claim `text` or a `conditions` entry that holds, OUTSIDE single-backtick spans, a dotted token
+ (identifier parts joined by a dot, each starting with a letter or `_`: Foo.bar, A.b_c.d) or a CamelCase word (a lower-case letter
+ directly followed by a capital inside a word of letters, digits and `_`: getValue, HypSalt) is a `CLAIM-LIBRARY-WORD` listing
+ naming the group, `claim text` or `conditions[i]`, and the token, once per token per text, in the order of the text; it never
+ changes the exit code and counts in the warnings. Doubled backticks are literal text, so a token inside them is outside a span
+ and is listed; a span does not cross a line break of any kind (LF, CR or both). The span is `_BACKTICK_SPAN`, which build_site.py
+ uses too to render <code>, so the page and the checker cannot disagree on what is code.
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
@@ -136,6 +143,16 @@ is in. A citation inside a quote stays unanchored. The summary counts: premise l
 the outline (not the group itself); roots and defs_opened resolved are those with exactly one decls row; strings' kinds are
 those with at least one phrase; a group id that is repeated is counted in the groups but only its first is resolved. A header
 group of `root` is not looked up in the outline; a group literally named root is not supported.
+CLAIM-LIBRARY-WORD is a prompt to the signer, not a proof, and its rule is exactly this: a single-backtick span is a backtick, then
+one or more characters that are neither a backtick nor a line break (LF or CR), then a backtick, with no backtick directly outside
+either end (`_BACKTICK_SPAN`, the span the page renders as code; doubled backticks and a pair over a line break are not spans, so a
+token inside doubled backticks IS listed); outside spans, a dotted token has at least two
+parts, each a letter or `_` followed by letters, digits and `_`, with no letter, digit, `_` or `.` directly before it and no letter,
+digit or `_` directly after it (so a number like 3.5, a sentence-final period and `end. Next` are not listed, and `e.g.` is: it reads
+as a dotted token); a CamelCase word is a run of ASCII letters, digits and `_` (outside dotted tokens) holding a lower-case letter
+directly followed by a capital (so `RH`, `Riemann` and `LEAN` are not listed and `McDonald` is). ASCII letters only: a name with a
+non-ASCII letter may be listed as a fragment, because the word is cut at the letter (naïveThing is listed as 'veThing', GröbnerBasis as
+'bnerBasis'). The outline has no line numbers, so a finding names the file, the group and the place, no line.
 Title rules in the script are heuristics. A trailing parenthetical is allowed when it holds only code spans, commas and
 `and`, or only a one-letter or number argument (so a function argument like `(s)` or `(12)` passes and `(draft)` fails);
 a math argument longer than that is called a status. TITLE-NOTE listings (a math symbol or `Re s` outside code; `proved`
@@ -203,6 +220,12 @@ FRAME_ONLY = ("argument", "interpretation")
 REFUSED_LIST_SHAPES = ()
 _CODESPAN = re.compile(r"(`+)(?!`).+?(?<!`)\1(?!`)")
 _LINE_SPLIT = re.compile(r"\r\n|\n|\r")
+# The ONE definition of a code span, used by this checker and by build_site.py (which renders the span as <code>): a backtick, one or
+# more characters that are no backtick and no line break (LF or CR), a backtick, with no backtick directly outside either end.
+# Group 1 is the content.
+_BACKTICK_SPAN = re.compile(r"(?<!`)`([^`\r\n]+)`(?!`)")
+_DOTTED = re.compile(r"(?<![A-Za-z0-9_.])[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+(?![A-Za-z0-9_])")
+_WORD = re.compile(r"[A-Za-z0-9_]+")
 
 
 class _Unreadable(Exception):
@@ -314,6 +337,37 @@ def _check_claim(claim, label, path, out):
         c = claim["mathlib_read"]
         if not (isinstance(c, list) and all(isinstance(x, str) for x in c)):
             out.append(_f("BAD-VALUE", path, None, f"{pre}: mathlib_read must be a list of strings"))
+
+
+def _library_words(text):
+    """The library-looking tokens of a text outside single-backtick spans, in the order of the text, each once: a dotted token
+    (identifier parts joined by a dot, each part starting with a letter or `_`: Foo.bar) and a CamelCase word (a lower-case letter
+    directly followed by a capital inside a word of letters, digits and `_`: getValue). It is a prompt to the signer, not a proof."""
+    found = []
+    for line in _LINE_SPLIT.split(text):
+        line = _BACKTICK_SPAN.sub(lambda m: " " * len(m.group(0)), line)
+        hits = [(m.start(), m.group(0)) for m in _DOTTED.finditer(line)]
+        rest = _DOTTED.sub(lambda m: " " * len(m.group(0)), line)
+        hits += [(m.start(), m.group(0)) for m in _WORD.finditer(rest) if re.search(r"[a-z][A-Z]", m.group(0))]
+        found += [t for _pos, t in sorted(hits)]
+    return list(dict.fromkeys(found))
+
+
+def _claim_word_listings(data, path):
+    """CLAIM-LIBRARY-WORD listings for the claim text and each condition of every non-null claim, in the order of the outline."""
+    out = []
+    for g in data.get("groups", []) if isinstance(data, dict) and isinstance(data.get("groups"), list) else []:
+        claim = g.get("claim") if isinstance(g, dict) else None
+        if not isinstance(claim, dict):
+            continue
+        where = [("claim text", claim.get("text"))]
+        if isinstance(claim.get("conditions"), list):
+            where += [(f"conditions[{i}]", c) for i, c in enumerate(claim["conditions"])]
+        for label, text in where:
+            for tok in _library_words(text) if isinstance(text, str) else []:
+                out.append(_f("CLAIM-LIBRARY-WORD", path, None, f"group {g.get('id')!r} {label}: {tok!r} looks like a library name "
+                              "outside backticks (write it in backticks, or in plain words)", LISTING))
+    return out
 
 
 def _check_group_shape(g, label, path, out):
@@ -815,7 +869,8 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     if stop:
         return 3, stop
     found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index)
-    lines, errors, warnings = [_render(f) for f in found], len(found), 0
+    words = _claim_word_listings(odata, os.path.basename(outline))
+    lines, errors, warnings = [_render(f) for f in found + words], len(found), len(words)
     ctx.ids = {}
     hid, hline = {}, {}   # note ids: which notes carry each header id (a note with no header carries none)
     for n in names:
@@ -2135,6 +2190,90 @@ def _():
     fe(r, ["UNKNOWN-KEY outline.json top level: unknown key '_draft'",
            "UNKNOWN-KEY outline.json group 'g1': unknown key 'premises_basis'",
            "UNKNOWN-KEY outline.json group 'd1': unknown key 'draft_todo'"], 1)
+
+
+# ---- CLAIM-LIBRARY-WORD: a library-looking name outside backticks, in a claim text or a condition (a listing)
+def _clw(text=None, conditions=None, gid="g1"):
+    claim = dict(CLAIM, text="T" if text is None else text)
+    if conditions is not None:
+        claim["conditions"] = conditions
+    return go(outline=OL(G(gid, claim=claim)))
+
+
+def _clw_line(where, token, gid="g1"):
+    return (f"CLAIM-LIBRARY-WORD outline.json group {gid!r} {where}: {token!r} looks like a library name outside backticks "
+            "(write it in backticks, or in plain words)")
+
+
+@case("CLW1", "a dotted token (Foo.bar, A.b_c.d) or a CamelCase token (getValue, HypSalt) in a claim text outside backticks is a "
+              "CLAIM-LIBRARY-WORD listing naming the group and the token, in the order of the text, once per token; exit 0, and the "
+              "last line counts them as warnings")
+def _():
+    r = _clw("Uses Foo.bar and getValue, then HypSalt and Foo.bar again, and A.b_c.d.")
+    fe(r, [_clw_line("claim text", "Foo.bar"), _clw_line("claim text", "getValue"), _clw_line("claim text", "HypSalt"),
+           _clw_line("claim text", "A.b_c.d")], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 4 warnings", "count line")
+
+
+@case("CLW2", "a `conditions` entry is read the same way and named by its index; the same token in two groups lists once per group")
+def _():
+    fe(_clw("Plain words.", ["Fine here.", "Needs Real.analysis to hold."]), [_clw_line("conditions[1]", "Real.analysis")], 0)
+    r = go(outline=OL(G("g1", claim=dict(CLAIM, text="Uses Foo.bar")), G("g2", order=2, claim=dict(CLAIM, text="Uses Foo.bar"))))
+    fe(r, [_clw_line("claim text", "Foo.bar", "g1"), _clw_line("claim text", "Foo.bar", "g2")], 0)
+
+
+@case("CLW3", "a token inside a pair of single backticks on one line does not list; an unpaired backtick, a backtick pair that spans "
+              "a line, and a token outside the span still do")
+def _():
+    clean(_clw("Uses `Foo.bar` and `getValue` and `HypSalt`.", ["Needs `Real.analysis`."]))
+    fe(_clw("Uses `Foo.bar` and HypSalt."), [_clw_line("claim text", "HypSalt")], 0)
+    fe(_clw("An unpaired `Foo.bar here."), [_clw_line("claim text", "Foo.bar")], 0)
+    r = _clw("A pair over a line `getValue\nrest` ends.")
+    fe(r, [_clw_line("claim text", "getValue")], 0)
+
+
+@case("CLW4", "prose does not list: plain words and capitalised names, all-capital words, a number like 3.5, a sentence-final period "
+              "(`end.`), a period then a space, a version like v1.2; control: the same text with Foo.bar added lists only that")
+def _():
+    clean(_clw("Every Riemann zero lies on the line. The value is 3.5 or 0.25, and RH holds at the end."))
+    clean(_clw("A sentence ends. Another one ends.", ["It holds for v1.2 of the bound.", "A bound of 10.", "Value 2.5."]))
+    fe(_clw("The end. Foo.bar is 3.5."), [_clw_line("claim text", "Foo.bar")], 0)
+
+
+@case("CLW5", "the listing never changes the exit code: an error elsewhere still exits 1 beside it, and a listing alone exits 0; "
+              "a null claim has nothing to list")
+def _():
+    r = go(outline=OL(G("g1", claim=dict(CLAIM, text="Uses Foo.bar")), G("g2", order=2, roots=[R("A.B", "nope")])))
+    eq((r.rc, [x.split(" ")[0] for x in r.f]), (1, ["UNRESOLVED", "CLAIM-LIBRARY-WORD"]), "error and listing")
+    eq(r.lines[-1], "1 notes, 1 findings, 1 warnings", "count line")
+    clean(go(outline=OL(G("g1"))))
+
+
+@case("CLW6", "doubled backticks are literal text, so a token inside them is outside a span and IS listed; so is a token next to a "
+              "backtick pair that a neighbour backtick spoils (a backtick, then a span's opening backtick; a closing backtick followed by "
+              "another); control: a real span beside them does not list")
+def _():
+    fe(_clw("A ``Foo.bar`` here."), [_clw_line("claim text", "Foo.bar")], 0)
+    fe(_clw("A ``getValue`` here."), [_clw_line("claim text", "getValue")], 0)
+    fe(_clw("Opens ``Foo.bar` x."), [_clw_line("claim text", "Foo.bar")], 0)
+    fe(_clw("Closes x `Foo.bar`` y."), [_clw_line("claim text", "Foo.bar")], 0)
+    clean(_clw("A `Foo.bar` and `getValue` here."))
+
+
+@case("CLW7", "a span does not cross a line break of any kind: a token in a pair of backticks split by a line feed, a carriage return "
+              "or both is outside a span and is listed")
+def _():
+    for br in ("\n", "\r", "\r\n"):
+        fe(_clw("a `Foo.bar" + br + "baz` b"), [_clw_line("claim text", "Foo.bar")], 0)
+
+
+@case("CLW8", "what the rule lists beside a name: `e.g.` is listed as 'e.g', McDonald is listed, and a name with a non-ASCII letter is "
+              "listed as a fragment (naïveThing as 'veThing', GröbnerBasis as 'bnerBasis')")
+def _():
+    fe(_clw("Such as e.g. this."), [_clw_line("claim text", "e.g")], 0)
+    fe(_clw("The McDonald bound."), [_clw_line("claim text", "McDonald")], 0)
+    fe(_clw("The naïveThing bound."), [_clw_line("claim text", "veThing")], 0)
+    fe(_clw("The GröbnerBasis bound."), [_clw_line("claim text", "bnerBasis")], 0)
 
 
 @case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "

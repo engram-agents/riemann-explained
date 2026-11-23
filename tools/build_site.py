@@ -17,12 +17,12 @@ Outputs under OUT_DIR (JSON: sorted keys, 1-space indent, LF, UTF-8, one final n
   index.html    ONE static page: plain semantic HTML, readable without JavaScript, no request of any kind
 Every JSON file carries `commits`: {notes, release, tools} (B5). A group id is used verbatim as the anchor id of its card.
 The group objects inside level0.json and level1.json (the steps and, in level1.json, their `children`) have: `claim`, which
-is {text, reader, date, basis (read or census), conditions, premises (group ids)} or null; `lean_name`, the name of the first
-root; `claim_label`, the strings file's `no_claim_label` when the claim is null; `statement_read` and `proof_read`, true when
+is {text, reader, date, basis (read or census), conditions} or null; `premises`, the group ids the group rests on, in the order
+of the outline (a field of the GROUP, null-claim groups included; [] when none); `lean_name`, the name of the first root; `claim_label`, the strings file's `no_claim_label` when the claim is null; `statement_read` and `proof_read`, true when
 EVERY root of the group has the fact; `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
 roots_proof_read, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
-`claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `roots`, `blocks`, `open_items`, `notes`
-and `commits`, and each root of it has the booleans `statement_read` and `proof_read`. level0.json has `facts` ({steps,
+`claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `premises`, `roots`, `blocks`,
+`open_items`, `notes` and `commits`, and each root of it has the booleans `statement_read` and `proof_read`. level0.json has `facts` ({steps,
 statement_read, statement_not_read, proof_read, proof_not_read}, counted over the level-1 steps) and `totals`, which holds
 `open_items`, the number of distinct open not_read blocks of the whole outline.
 
@@ -40,6 +40,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      what a build writes (the five files and the folder `group`), never another file. Cases OUT1 OUT2.
   X5 A group id that is not safe as a file name (letters, digits, `.`, `_`, `-`, not starting with `.`, at most 100
      characters; no two ids that differ only in case) is GROUP-ID-UNSAFE. Cases ID1 ID2 W1.
+  X6 A normal run first runs the self-test quietly and refuses with exit 4 if it fails; `--selftest` runs it (0 pass, 4
+     fail); `--selftest --only ID,ID` runs exactly those cases and an unknown id exits 2. Cases EXIT4 SEL1.
   X7 The build is written into a temporary sibling directory of OUT_DIR and renamed into place at the end: a failure before
      the rename leaves OUT_DIR absent (fresh run) or the old build and every other file in it untouched (--force), and no
      temporary directory behind. A failure to write (OSError) is exit 2 with ONE line, no traceback; a JSON too deep to
@@ -93,21 +95,36 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      reader sees is typed in code: a missing key is STRINGS-KEY naming it, and a build with every value a distinct
      marker shows only markers and data. Cases P1a P1b.
   P2 A card, open, in order: the claim (a bare declarative) or the null-claim heading, the conditions directly under it, the
-     premises each a link to the premise's card, the statement line, the proof line, the open-items line, the idea (the first
-     sentence of the argument inside its frame, when an argument block exists); all outside the closed section. Text from
-     the data is escaped. Cases P2a P2b.
-  P3 Evidence (Lean name, file, lines, hash, blocks, open items) is a closed `<details>` per card. A null claim shows the Lean
+     premises each a link to the premise's card (for a null-claim step too; a card with no premises has no premises heading
+     and no paragraph), the statement line, the proof line, the open-items line (only when its count is above zero), the idea
+     (the first sentence of the argument inside its frame, when an argument block exists); all outside the closed section.
+     Text from the data is escaped. Cases P2a P2b PRM1 PRM2 PRM3 OPN1.
+  P3 Evidence (Lean module and name and kind, file, lines, hash, blocks, open items) is a closed `<details>` per card; its
+     labels for module, name and kind are the strings keys evidence_module_label, evidence_name_label and evidence_kind_label
+     (like the labels File and Lines; a missing one is STRINGS-KEY). Cases EVD1 EVD2. A null claim shows the Lean
      name and the strings file's `no_claim_label` in the heading, then its status lines (H1). Case P3.
   PH Every string value of the strings file, at any depth, may hold only the placeholders its key declares: a `{name}` the
      key does not declare is STRINGS-KEY naming the key and the token, and a key that declares none may hold no brace at
      all (the check is built from the declared sets, so a new key is covered by default). proof_read_line declares {reader}
-     and {date} (each optional) and the card fills them from the first argument block of the root, by note id then block
-     number. Cases PRF1 PRF2 PH1 PH2.
+     and {date} and the card fills them from the first argument block of the root, by note id then block number. Cases PRF1
+     PRF2 PH1 PH2.
+  PHR Nine keys must hold EVERY placeholder they declare (the check is a value that lacks one: STRINGS-KEY naming the key and
+     `is missing the placeholder {name}`): statement_read_line, statement_census_line and proof_read_line ({reader} {date}),
+     statement_count_line, proof_count_line, steps_statement_line and steps_proof_line ({n} {m}), open_items_line and
+     steps_open_items_line ({n}). The frames (argument_frame, second_reader_frame, interpretation_frame, frames.*), shared_note,
+     note_href and the reaction hrefs may omit theirs. Cases PHR1 PHR2 PHR3 PHR4 (the nine keys declare exactly the placeholders they must hold).
+  CODE In a claim text and in a condition a span between single backticks on one line is rendered as <code>...</code>, its
+     content escaped like all data; nothing else is markup (no bold, link, heading or raw HTML: a `<b>` in the data stays
+     escaped text). An unpaired backtick, an empty pair, doubled backticks and a pair over a line break (LF or CR) stay literal text.
+     In the JSON and in data.js the text stays as written, backticks included. The span is notes_meta's `_BACKTICK_SPAN`, the one
+     definition the checker uses for CLAIM-LIBRARY-WORD too, so the page and the checker agree on what is code. Cases CODE1 CODE2
+     CODE3 CODE4 AGR1.
   C1 The two status lines come from the strings keys: statement_read_line ({reader} {date} of the claim, or of the first
      reading block of the root when the claim is null, or when its basis is census), statement_census_line ({reader} {date}
      of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line. A group with several
-     roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is always shown.
-     Cases C1 C2 B7c.
+     roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is shown on a
+     card only when n is above zero (a zero is not said there); the first-screen line steps_open_items_line is ALWAYS shown, zero
+     included. The JSON counts are unchanged. Cases C1 C2 B7c OPN1 OPN2.
   Z1 A group with no root is never counted as read (the model, called directly, since the checker refuses it first; the guard is
      redundant by design). Case ZERO1. A step with arguments on some roots of several does not count for the proof. Case PRO1.
   S6 The statement reader of a root with several reading blocks is the first by note id, then block number, not by date.
@@ -136,7 +153,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   H1 A group whose claim is null shows its root's Lean name and the strings file's `no_claim_label` in the heading (not a
      status), and its status lines tell the facts: a null claim whose root has a reading block says the statement is read.
      Case H1.
-  E1 The premises of a card are linked in the order of the outline. Case ORD1.
+  E1 The premises of a card are linked in the order of the outline, for a null-claim step as for a claimed one. Cases ORD1 PRM2.
   D1 Whatever data or strings reach the page is escaped there (text and attributes), and data.js writes `<`, `>`, `&`,
      U+2028 and U+2029 as \\uXXXX. Cases ESC1 JS1.
   G1 --release-archive-sha is stored in lower case; PAGE-STATIC names where the token came from; the frame of a block
@@ -190,14 +207,19 @@ commit; an untracked file of the tools folder is not seen, and without --notes-c
 the notes are not judged. The sha256 of a root's file needs --source-check; a hash table in a note is not read. There is no
 coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the eleven
 of them: statement_read_line, statement_census_line, statement_not_read_line, proof_read_line, proof_not_read_line,
-statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line;
+statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
+(and the three labels of the evidence block, evidence_module_label, evidence_name_label, evidence_kind_label);
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
 missing is read as `read` until the checker requires it (the run line says how many). The page shows the claim's reader and
 date in the statement line; for a null claim with a reading block the first reading block in note and block order. The proof line names the reader and date of the first argument block of the root, by note id and then block number (the same
 rule as the statement reader, not by date). Placeholders are checked in every value of the strings file at any depth from the
 declared sets: a key that is not in the table declares none, so a new key is covered by default, and an `{name}` outside a value
 that declares it, or a brace in a value that declares none, refuses the build. A claimed
-group has one root, so the count lines appear only for null-claim groups. The sum assertions of F4 guard a MISSING flag, not a
+group has one root, so the count lines appear only for null-claim groups. A code span (CODE) is the one place the page turns
+claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
+(the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
+seen in the JSON and not on the page. The nine keys of PHR must hold their placeholders, so a value that says the fact without
+the reader or the count is refused rather than printed without it. The sum assertions of F4 guard a MISSING flag, not a
 WRONG one. A not_read block in a level-0 note is anchored to no group: it is not counted in totals.open_items and is shown on no card. NOTE-ID-DUPLICATE belongs to the checker of the
 notes; the builder has no rule of its own for it (the checker refuses first). WORD-NOTE reads the
 claim, the conditions, the note titles and the text of argument and interpretation blocks, not the strings file's
@@ -260,8 +282,8 @@ NAME_KEYS = frozenset(["id", "module", "name", "lean_name", "file", "note", "blo
 TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
              "statement_not_read_line", "proof_read_line", "proof_not_read_line", "statement_count_line", "proof_count_line",
              "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
-             "second_reader_frame", "interpretation_frame", "evidence_label", "roots_only_note", "dirty_note", "shared_note",
-             "note_href")
+             "second_reader_frame", "interpretation_frame", "evidence_label", "evidence_module_label", "evidence_name_label", "evidence_kind_label",
+             "roots_only_note", "dirty_note", "shared_note", "note_href")
 PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_line": {"reader", "date"},
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
@@ -271,6 +293,11 @@ PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_lin
                 # a value nested in a list or object is declared under its path without the list indexes
                 "frames.argument": {"reader", "date", "lines"}, "frames.interpretation": {"reader", "date"},
                 "reactions.href": {"card"}}
+# the keys whose value must hold EVERY placeholder it declares (the frames, the notes' hrefs and the reaction hrefs may omit theirs)
+REQUIRED_PLACEHOLDERS = {"statement_read_line": ("reader", "date"), "statement_census_line": ("reader", "date"),
+                         "proof_read_line": ("reader", "date"), "statement_count_line": ("n", "m"), "proof_count_line": ("n", "m"),
+                         "steps_statement_line": ("n", "m"), "steps_proof_line": ("n", "m"), "open_items_line": ("n",),
+                         "steps_open_items_line": ("n",)}
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
 RETIRED_WORDS = ("Read by us", "Partly read", "Not read yet")        # the coverage scale F19 removed
 LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
@@ -600,6 +627,9 @@ def _strings_problems(s):
             bad(path, "has an unknown placeholder {" + t + "}")
         if not unknown and not allowed and ("{" in v or "}" in v):
             bad(path, "holds a brace, and this key declares no placeholder")
+        for t in REQUIRED_PLACEHOLDERS.get(path, ()):
+            if "{" + t + "}" not in v:
+                bad(path, "is missing the placeholder {" + t + "}")
     for path, v in _walk_strings(s, ""):
         if path == "note_href" or re.fullmatch(r"reactions\[\d+\]\.href", path):
             continue   # an address, not a sentence of the page
@@ -802,8 +832,8 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         m.summary[gid] = {
             "id": gid, "level": g["level"], "order": g["order"], "parent": g["parent"],
             "claim": None if claim is None else {"text": claim["text"], "reader": claim["reader"], "date": claim["date"],
-                                                 "basis": claim.get("basis", "read"), "conditions": claim.get("conditions", []),
-                                                 "premises": list(g["premises"])},
+                                                 "basis": claim.get("basis", "read"), "conditions": claim.get("conditions", [])},
+            "premises": list(g["premises"]),
             "lean_name": g["roots"][0]["name"] if roots else None,
             "claim_label": strings["no_claim_label"] if claim is None else None,
             "statement_read": bool(roots) and all(r["statement_read"] for r in root_rows),
@@ -814,7 +844,8 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                        "roots_proof_read": sum(1 for r in root_rows if r["proof_read"]), "roots_open_items": roots_open,
                        "open_items": len(open_here)},
             "notes": notes, "roots_only": True}
-        m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "roots": root_rows, "blocks": brecs,
+        m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "premises": list(g["premises"]), "roots": root_rows,
+                        "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
                                        for b in brecs if b["kind"] == "not_read"], "notes": notes}
     m.steps = [i for i in children.get("root", [])]
@@ -877,6 +908,19 @@ def _e(x):
     return html.escape(str(x), quote=True)
 
 
+def _rich(text):
+    """Escaped text in which a span between single backticks on one line is a <code> element (its content escaped too). The span is
+    notes_meta's _BACKTICK_SPAN, the one definition the checker uses too. Nothing else is markup: an unpaired backtick, an empty
+    pair, doubled backticks and a pair over a line break (LF or CR) stay literal."""
+    out, pos = [], 0
+    for mt in nm._BACKTICK_SPAN.finditer(text):
+        out.append(_e(text[pos:mt.start()]))
+        out.append("<code>" + _e(mt.group(1)) + "</code>")
+        pos = mt.end()
+    out.append(_e(text[pos:]))
+    return "".join(out)
+
+
 def _render_page(m, s, facts, dirty):
     lab, kinds = s["labels"], s["labels"]["kinds"]
     files = m.files
@@ -904,22 +948,21 @@ def _render_page(m, s, facts, dirty):
 
     def title_of(gid):
         sm = m.summary[gid]
-        return _e(sm["claim"]["text"]) if sm["claim"] else f"<code>{_e(sm['lean_name'])}</code>"
+        return _rich(sm["claim"]["text"]) if sm["claim"] else f"<code>{_e(sm['lean_name'])}</code>"
 
     def card(gid):
         sm, fl = m.summary[gid], files[gid]
         o = [f'<article class="card{" unread" if sm["unread"] else ""}" id="{_e(gid)}">']
         if sm["claim"]:
-            o.append(f'<h3 class="claim">{_e(sm["claim"]["text"])}</h3>')
+            o.append(f'<h3 class="claim">{_rich(sm["claim"]["text"])}</h3>')
             if sm["claim"]["conditions"]:
-                o.append('<ul class="conditions">' + "".join(f"<li>{_e(c)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
-            if sm["claim"]["premises"]:
-                links = ", ".join(f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>'
-                                  for p in sm["claim"]["premises"])
-                o.append(f'<p class="premises">{_e(lab["premises"])} {links}</p>')
+                o.append('<ul class="conditions">' + "".join(f"<li>{_rich(c)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
         else:
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
+        if sm["premises"]:   # a step with a null claim rests on premises as well
+            links = ", ".join(f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>' for p in sm["premises"])
+            o.append(f'<p class="premises">{_e(lab["premises"])} {links}</p>')
         c, by = sm["counts"], sm["statement_by"]
         args = [b for b in fl["blocks"] if b["kind"] == "argument"]   # blocks are in note id, then block number, order
         if c["roots"] > 1:   # several roots (a null claim): counts with their denominators
@@ -936,7 +979,8 @@ def _render_page(m, s, facts, dirty):
                   else s["proof_not_read_line"])
         o.append(f'<p class="status statement">{_e(st)}</p>')
         o.append(f'<p class="status proof">{_e(pf)}</p>')
-        o.append(f'<p class="open-items">{_e(_fill(s["open_items_line"], n=c["open_items"]))}</p>')
+        if c["open_items"] > 0:   # a zero is not said on a card (the first screen always says it)
+            o.append(f'<p class="open-items">{_e(_fill(s["open_items_line"], n=c["open_items"]))}</p>')
         if sm["roots_only"]:
             o.append(f'<p class="roots-only">{_e(s["roots_only_note"])}</p>')
         if args:
@@ -962,9 +1006,11 @@ def _render_page(m, s, facts, dirty):
         o.append("</ul>")
         o += ['<details class="evidence">', f"<summary>{_e(s['evidence_label'])}</summary>"]
         for r in fl["roots"]:
-            o.append(f'<div class="root"><p><code>{_e(r["module"])}</code> <code>{_e(r["name"])}</code> '
-                     f'<span class="kind">{_e(r["kind"])}</span></p>')
-            o.append(f'<dl><dt>{_e(lab["file"])}</dt><dd><code>{_e(r["file"])}</code></dd>'
+            o.append('<div class="root">')
+            o.append(f'<dl><dt>{_e(s["evidence_module_label"])}</dt><dd><code>{_e(r["module"])}</code></dd>'
+                     f'<dt>{_e(s["evidence_name_label"])}</dt><dd><code>{_e(r["name"])}</code></dd>'
+                     f'<dt>{_e(s["evidence_kind_label"])}</dt><dd><span class="kind">{_e(r["kind"])}</span></dd>'
+                     f'<dt>{_e(lab["file"])}</dt><dd><code>{_e(r["file"])}</code></dd>'
                      f'<dt>{_e(lab["lines"])}</dt><dd>{r["lines"][0]}-{r["lines"][1]}</dd>'
                      + (f'<dt>{_e(lab["sha256"])}</dt><dd><code>{r["sha256"]}</code></dd>' if r["sha256"] else "") + "</dl>")
             if r["shared_with"]:
@@ -1381,6 +1427,7 @@ def _strings():
         "second_reader_frame": "Read again by {reader} on {date}.",
         "interpretation_frame": "Our interpretation, by {reader} on {date}:",
         "evidence_label": "Evidence: where this sits in the Lean code, and who read what",
+        "evidence_module_label": "Module", "evidence_name_label": "Name", "evidence_kind_label": "Kind",
         "reactions": [{"label": "This makes sense", "href": "https://example.invalid/react?card={card}&kind=sense"},
                       {"label": "This looks wrong to me", "href": "https://example.invalid/react?card={card}&kind=wrong"},
                       {"label": "I can't follow yet: I need more detail",
@@ -1400,8 +1447,9 @@ def _strings():
 
 def _marked(v, path=""):
     """The strings fixture with every string value replaced by a distinct marker naming its key."""
-    if isinstance(v, str):
-        return ("https://" if path.endswith(".href") and path.startswith("reactions") else "") + "MARK-" + path
+    if isinstance(v, str):   # a key that must hold its placeholders keeps them behind the marker (they are filled with data)
+        return (("https://" if path.endswith(".href") and path.startswith("reactions") else "") + "MARK-" + path
+                + "".join(" {" + t + "}" for t in REQUIRED_PLACEHOLDERS.get(path, ())))
     if isinstance(v, list):
         return [_marked(x, f"{path}.{i}") for i, x in enumerate(v)]
     if isinstance(v, dict):
@@ -1636,7 +1684,8 @@ def _child(args_file, out, seed):
 STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
                "statement_not_read_line", "proof_read_line", "proof_not_read_line", "statement_count_line", "proof_count_line",
                "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "frames",
-               "argument_frame", "second_reader_frame", "interpretation_frame", "evidence_label", "reactions",
+               "argument_frame", "second_reader_frame", "interpretation_frame", "evidence_label",
+               "evidence_module_label", "evidence_name_label", "evidence_kind_label", "reactions",
                "roots_only_note", "dirty_note", "shared_note", "note_href", "forbidden_words",
                "labels", "labels.chain", "labels.level0_notes", "labels.premises", "labels.notes", "labels.go_deeper",
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
@@ -1782,22 +1831,23 @@ def _selftest_cases():
     # ---- data
     @case("L0", "level0.json: the level-1 steps g1 g3 g2 in `order` (the outline lists g3 first, and `order` is not the id order), each with its "
                 "facts (statement_read and proof_read when EVERY root has them, unread) and counts; `facts` counts the steps per fact "
-                "(statements 1 read + 2 not, proofs 1 + 2); the level-0 note is in header_notes; the totals hold open_items")
+                "(statements 1 read + 2 not, proofs 1 + 2); the level-0 note is in header_notes; the totals hold open_items; premises is a field "
+                "of the group (g1 [g1a], g3 [g1, g2], g2 []), not of the claim")
     def _():
         l0 = _base().js("level0.json")
         steps = l0["steps"]
         got = ([s["id"] for s in steps], [s["statement_read"] for s in steps], [s["proof_read"] for s in steps],
                [s["unread"] for s in steps], [s["lean_name"] for s in steps], [s["claim_label"] for s in steps],
                steps[0]["claim"], [n["note"] for n in steps[0]["notes"]], steps[0]["notes"][0],
-               l0["facts"], l0["header_notes"], l0["totals"], l0["level"])
+               l0["facts"], l0["header_notes"], l0["totals"], l0["level"], [s["premises"] for s in steps])
         want = (["g1", "g3", "g2"], [True, False, False], [True, False, False], [False, True, False],
                 ["foo", "corge", "quux"], [None, None, "No plain statement yet"],
-                {"basis": "read", "conditions": ["Condition one holds."], "date": "2026-11-20", "premises": ["g1a"],
+                {"basis": "read", "conditions": ["Condition one holds."], "date": "2026-11-20",
                  "reader": "Reader One", "text": "Claim one"},
                 ["01", "02"], {"link": "notes/01-one.md", "list_title": "Note one", "note": "01"},
                 {"proof_not_read": 2, "proof_read": 1, "statement_not_read": 2, "statement_read": 1, "steps": 3},
                 [{"link": "notes/00-whole.md", "list_title": "Whole one", "note": "00"}],
-                {"blocks": 8, "groups": 6, "notes": 4, "open_items": 1, "roots": 6}, 0)
+                {"blocks": 8, "groups": 6, "notes": 4, "open_items": 1, "roots": 6}, 0, [["g1a"], ["g1", "g2"], []])
         return _eq(got, want)
 
     @case("L1", "level1.json nests child groups to depth 4: g1 > g1a > g1a1 > g1a1x, leaves have no children; steps in `order`, not in id order")
@@ -1810,14 +1860,14 @@ def _selftest_cases():
         return _eq((chain, leaf["children"], [s["id"] for s in l1["steps"]], l1["steps"][1]["children"], l1["level"]),
                    (["g1", "g1a", "g1a1", "g1a1x"], [], ["g1", "g3", "g2"], [], 1))
 
-    @case("G1", "group/g1.json holds exactly its keys, its root with kind, file and lines, and its five blocks in id order with "
+    @case("G1", "group/g1.json holds exactly its keys (premises among them, a field of the group), its root with kind, file and lines, and its five blocks in id order with "
                 "second_readers, text and first sentence; group/g2.json holds the open not_read item and the shared root")
     def _():
         g1, g2, g1a = _base().js("group/g1.json"), _base().js("group/g2.json"), _base().js("group/g1a.json")
         arg = g1["blocks"][1]
         got = (sorted(g1), g1["roots"], [b["block"] for b in g1["blocks"]], arg,
                g2["open_items"], g2["roots"][1], g1a["blocks"], sorted(_base().files))
-        want = (["blocks", "commits", "id", "level", "notes", "open_items", "parent", "roots"],
+        want = (["blocks", "commits", "id", "level", "notes", "open_items", "parent", "premises", "roots"],
                 [{"file": "A/B.lean", "kind": "theorem", "lines": [10, 20], "module": "A.B", "name": "foo", "sha256": None,
                   "shared_with": [], "statement_read": True, "proof_read": True}],
                 ["01.b01", "01.b02", "01.b03", "01.b06", "02.b02"],
@@ -1976,7 +2026,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 46 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 49 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -1989,7 +2039,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 46))
+        return _eq((bad, len(STRING_KEYS)), ([], 49))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -2006,15 +2056,16 @@ def _selftest_cases():
         return _eq((stray, first), ([], ["MARK-first_screen.0", "MARK-first_screen.1"]))
 
     @case("P2a", "a card, in order: the claim, the conditions directly under it, the premises, the statement line, the proof line, the "
-                 "open-items line, the idea; all direct children of the card, before the closed evidence section")
+                 "idea (the open-items line is absent here: g1 has no open item); all direct children of the card, before the closed evidence section")
     def _():
         c = _card(_base(), "g1")
         names = [(k.tag, k.cls[-1] if k.cls else "") for k in c.elems()]
-        want = [("h3", "claim"), ("ul", "conditions"), ("p", "premises"), ("p", "statement"), ("p", "proof"), ("p", "open-items"),
+        want = [("h3", "claim"), ("ul", "conditions"), ("p", "premises"), ("p", "statement"), ("p", "proof"),
                 ("p", "argument"), ("details", "evidence")]
         pos = {n: names.index(n) for n in want}
         return _eq(([n for n in sorted(pos, key=pos.get)], c.find("ul", "conditions")[0].text(), c.find("h3", "claim")[0].text(),
-                    c.find("ul", "conditions")[0].inside("details")), (want, "Condition one holds.", "Claim one", False))
+                    c.find("ul", "conditions")[0].inside("details"), _direct(c, "p", "open-items")),
+                   (want, "Condition one holds.", "Claim one", False, []))
 
     @case("P2b", "text from the data is escaped (`Claim three & <more>` shows as text, the raw page has &amp; and &lt;more&gt;), "
                  "and a premise is a link to the premise's card: g3 rests on `Claim one` (#g1) and `quux` (#g2, null claim)")
@@ -2475,6 +2526,236 @@ def _selftest_cases():
         b = _build(outline=o)
         return _eq((b.rc, [a.attrs["href"] for a in _card(b, "g3").find("p", "premises")[0].find("a")]), (0, ["#g2", "#g1"]))
 
+    # ---- F20: premises belong to the group; F21: open items, evidence labels, code spans; the required placeholders
+    def _outline_g2_premises():
+        o = _outline()
+        next(g for g in o["groups"] if g["id"] == "g2")["premises"] = ["g1a", "g1"]   # outline order; sorted would be g1, g1a
+        return o
+
+    @case("PRM1", "premises is a field of the GROUP in level0.json, level1.json and group/<id>.json (a list of group ids in outline order, "
+                  "[] when none), and the claim object no longer carries it: g2 (a null claim) has [g1a, g1], g1 [g1a], g3 [g1, g2], g1a [], "
+                  "and the keys of g1's claim are basis, conditions, date, reader, text")
+    def _():
+        b = _build(outline=_outline_g2_premises())
+        l0 = {x["id"]: x for x in b.js("level0.json")["steps"]}
+        l1 = {x["id"]: x for x in b.js("level1.json")["steps"]}
+        gf = {g: b.js(f"group/{g}.json")["premises"] for g in ("g1", "g1a", "g2", "g3")}
+        return _eq((b.rc, [l0[g]["premises"] for g in ("g1", "g3", "g2")], [l1[g]["premises"] for g in ("g1", "g3", "g2")],
+                    l1["g1"]["children"][0]["premises"], gf, sorted(l0["g1"]["claim"]), sorted(l1["g3"]["claim"]), l0["g2"]["claim"]),
+                   (0, [["g1a"], ["g1", "g2"], ["g1a", "g1"]], [["g1a"], ["g1", "g2"], ["g1a", "g1"]], [],
+                    {"g1": ["g1a"], "g1a": [], "g2": ["g1a", "g1"], "g3": ["g1", "g2"]},
+                    ["basis", "conditions", "date", "reader", "text"], ["basis", "conditions", "date", "reader", "text"], None))
+
+    @case("PRM2", "the premises heading and links show on a null-claim step too: g2 (premises [g1a, g1]) has the `Rests on` paragraph "
+                  "right after its heading, with links #g1a (`bar`, a null claim) and #g1 (`Claim one`) in outline order; a card with "
+                  "no premises has no premises paragraph, heading included (g2 in the base build, a claimed card g1a1)")
+    def _():
+        b = _build(outline=_outline_g2_premises())
+        c = _card(b, "g2")
+        prem = _direct(c, "p", "premises")[0]
+        base = _base()
+        return _eq(([k.cls[0] for k in c.elems()][:3], _raw(prem), [(a.attrs["href"], a.text()) for a in prem.find("a")],
+                    _direct(_card(base, "g2"), "p", "premises"), _direct(_card(base, "g1a1"), "p", "premises")),
+                   (["claim", "premises", "status"], "Rests on bar, Claim one", [("#g1a", "bar"), ("#g1", "Claim one")], [], []))
+
+    @case("PRM3", "every premise link of every card, null-claim steps included, resolves to a card of the page; a premise link to an id "
+                  "that has no card is a link problem")
+    def _():
+        b = _build(outline=_outline_g2_premises())
+        dom = _dom(b.page)
+        ids = {a.attrs["id"] for a in dom.find("article")}
+        hrefs = [a.attrs["href"][1:] for p in dom.find("p", "premises") for a in p.find("a")]
+        return _eq((b.rc, sorted(hrefs), all(h in ids for h in hrefs), link_problems(b.page),
+                    link_problems(b.page.replace('<a href="#g1a">', '<a href="#zzz">', 1))),
+                   (0, ["g1", "g1", "g1a", "g1a", "g2"], True, [], ["#zzz"]))
+
+    @case("OPN1", "the card's open-items line is shown only above zero: g2 (one open item) has `Questions written down: 1.`, g1 (none) has no "
+                  "such line, and the JSON counts are unchanged (g1 counts open_items 0 and roots_open_items 0, g2 1 and 1)")
+    def _():
+        b = _base()
+        steps = {x["id"]: x["counts"] for x in b.js("level0.json")["steps"]}
+        return _eq(([x.text() for x in _card(b, "g2").find("p", "open-items")], _card(b, "g1").find("p", "open-items") != [],
+                    len(_dom(b.page).find("p", "open-items")), steps["g1"]["open_items"], steps["g1"]["roots_open_items"],
+                    steps["g2"]["open_items"], steps["g2"]["roots_open_items"]),
+                   (["Questions written down: 1."], False, 1, 0, 0, 1, 1))
+
+    @case("OPN2", "the first-screen open-items line is ALWAYS shown, zero included: with the one not_read block turned into a reading "
+                  "block no card has an open-items line, and the first screen says `Questions written down in these notes: 0.`; "
+                  "the JSON totals say 0")
+    def _():
+        n = _notes()
+        n["01-one.md"] = _n01().replace(_b(id="01.b05", kind="not_read", decls=[QUUX], needs="hand_read", row=1),
+                                        _b(id="01.b05", kind="reading", decls=[QUUX], reader="Reader One", date="2026-11-23", row=1))
+        b = _build(notes=n)
+        dom = _dom(b.page)
+        return _eq((b.rc, [li.text() for li in dom.find("ul", "facts")[0].find("li")][2], len(dom.find("p", "open-items")),
+                    b.js("level0.json")["totals"]["open_items"]), (0, "Questions written down in these notes: 0.", 0, 0))
+
+    @case("EVD1", "the evidence block labels module, name and kind from the strings file like File and Lines: on g1 the labels Module, "
+                  "Name, Kind, File, Lines with A.B, foo, theorem, A/B.lean, 10-20; a build whose three keys say other words shows "
+                  "those words; with every value a marker the labels are the markers evidence_module_label, evidence_name_label, "
+                  "evidence_kind_label")
+    def _():
+        def pairs(b):
+            dl = _card(b, "g1").find("details", "evidence")[0].find("dl")[0]
+            return [(t.text(), d.text()) for t, d in zip(dl.find("dt"), dl.find("dd"))]
+        st = _strings()
+        st["evidence_module_label"], st["evidence_name_label"], st["evidence_kind_label"] = "Lean module", "Declaration", "Sort"
+        return _eq((pairs(_base()), pairs(_build(strings=st))[:3], [t for t, _d in pairs(_build(strings=_marked(_strings())))][:3]),
+                   ([("Module", "A.B"), ("Name", "foo"), ("Kind", "theorem"), ("File", "A/B.lean"), ("Lines", "10-20")],
+                    [("Lean module", "A.B"), ("Declaration", "foo"), ("Sort", "theorem")],
+                    ["MARK-evidence_module_label", "MARK-evidence_name_label", "MARK-evidence_kind_label"]))
+
+    @case("EVD2", "a strings file without evidence_module_label, evidence_name_label or evidence_kind_label (or with an empty one) is "
+                  "refused as STRINGS-KEY naming the key, exit 1, nothing written")
+    def _():
+        res = []
+        for key in ("evidence_module_label", "evidence_name_label", "evidence_kind_label"):
+            st = _strings()
+            del st[key]
+            b = _build(strings=st)
+            e = _strings()
+            e[key] = ""
+            be = _build(strings=e)
+            res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed,
+                        be.rc, [x for x in be.out.splitlines() if x.startswith("BUILD-ERROR")]))
+        return _eq(res, [(1, [f"BUILD-ERROR STRINGS-KEY {k} missing"], False, 1,
+                          [f"BUILD-ERROR STRINGS-KEY {k} must be a non-empty string"])
+                         for k in ("evidence_module_label", "evidence_name_label", "evidence_kind_label")])
+
+    def _code_outline(g1_text, g1_cond, g3_text, g1a1_text):
+        o = _outline()
+        gs = {g["id"]: g for g in o["groups"]}
+        gs["g1"]["claim"]["text"], gs["g1"]["claim"]["conditions"] = g1_text, g1_cond
+        gs["g3"]["claim"]["text"], gs["g1a1"]["claim"]["text"] = g3_text, g1a1_text
+        return o
+
+    @case("CODE1", "in a claim text and in a condition a span between single backticks is rendered as <code>, its content escaped; the "
+                   "same claim text as the title of a premise link; in level0.json and data.js the text stays as written, backticks "
+                   "included")
+    def _():
+        o = _code_outline("Use `Foo.bar` and `x < y & z` here.", ["Needs `HypSalt` to hold, and `a` or `b`."], "Claim four with é",
+                          "Claim three")
+        b = _build(outline=o)
+        c = _card(b, "g1")
+        got = (b.rc, '<h3 class="claim">Use <code>Foo.bar</code> and <code>x &lt; y &amp; z</code> here.</h3>' in b.page,
+               [_raw(x) for x in c.find("h3", "claim")[0].find("code")],
+               '<li>Needs <code>HypSalt</code> to hold, and <code>a</code> or <code>b</code>.</li>' in b.page,
+               '<a href="#g1">Use <code>Foo.bar</code> and <code>x &lt; y &amp; z</code> here.</a>' in b.page,
+               b.js("level0.json")["steps"][0]["claim"]["text"], b.js("level0.json")["steps"][0]["claim"]["conditions"],
+               "Use `Foo.bar` and `x \\u003c y \\u0026 z` here." in b.text("data.js"))
+        return _eq(got, (0, True, ["Foo.bar", "x < y & z"], True, True, "Use `Foo.bar` and `x < y & z` here.",
+                         ["Needs `HypSalt` to hold, and `a` or `b`."], True))
+
+    @case("CODE2", "backticks make code and nothing else: an unpaired backtick, an empty pair, a pair of doubled backticks and a pair "
+                   "over a line break stay literal text; `<b>`, `**bold**`, a markdown link and a heading mark in data stay escaped "
+                   "text; control: a real span in the same build is code; the built page has no element that the base page has not (so no b, "
+                   "strong, em, h1 or new link)")
+    def _():
+        o = _code_outline("An unpaired `backtick here", ["<b>bold</b> **bold** [l](x) # head", "A `` x `` pair and an empty `` pair"],
+                          "Over a line `x\ny` ends", "Bold <b>x</b> and **y** with `ok`")
+        b = _build(outline=o)
+        dom, base = _dom(b.page), _dom(_base().page)
+        t = lambda g: _card(b, g).find("h3", "claim")[0].text()
+        return _eq((b.rc, t("g1"), [x.text() for x in _card(b, "g1").find("ul", "conditions")[0].find("li")], t("g3"), t("g1a1"),
+                    sorted({n.tag for n in dom.nodes()} - {n.tag for n in base.nodes()}), "<b>" in b.page, "&lt;b&gt;bold&lt;/b&gt;" in b.page,
+                    [len(_card(b, g).find("h3", "claim")[0].find("code")) for g in ("g1", "g3", "g1a1")]),
+                   (0, "An unpaired `backtick here", ["<b>bold</b> **bold** [l](x) # head", "A `` x `` pair and an empty `` pair"],
+                    "Over a line `x y` ends", "Bold <b>x</b> and **y** with ok", [], False, True, [0, 0, 1]))
+
+    @case("CODE3", "the two ends of a span are each decided by a neighbour: a backtick that follows a backtick opens no span "
+                   "(`` + a + ` + space + b stays literal, and so does x + two backticks + a + a backtick), and a backtick that "
+                   "is followed by a backtick closes none (a backtick, a, two backticks, tail stays literal); control: a real "
+                   "span in the same build is code")
+    def _():
+        o = _code_outline("``a` b", ["A real `ok` span."], "x``a`", "`a`` tail")
+        b = _build(outline=o)
+        t = lambda g: _card(b, g).find("h3", "claim")[0].text()
+        return _eq((b.rc, t("g1"), t("g3"), t("g1a1"), [len(_card(b, g).find("h3", "claim")[0].find("code")) for g in ("g1", "g3", "g1a1")],
+                    [x.text() for x in _card(b, "g1").find("ul", "conditions")[0].find("code")],
+                    '<h3 class="claim">``a` b</h3>' in b.page, '<h3 class="claim">x``a`</h3>' in b.page,
+                    '<h3 class="claim">`a`` tail</h3>' in b.page),
+                   (0, "``a` b", "x``a`", "`a`` tail", [0, 0, 0], ["ok"], True, True, True))
+
+    @case("CODE4", "a span does not cross a carriage return either: the claim `a `Foo.bar` + CR + `baz` b` is literal text on the page "
+                   "(no <code>), as it is for the checker (it lists Foo.bar); the JSON keeps the text as written")
+    def _():
+        o = _code_outline("a `Foo.bar\rbaz` b", ["a `x\r\ny` b"], "Claim four with é", "Claim three")
+        b = _build(outline=o)
+        c = _card(b, "g1")
+        return _eq((b.rc, c.find("h3", "claim")[0].text(), len(c.find("h3", "claim")[0].find("code")),
+                    [x.text() for x in c.find("ul", "conditions")[0].find("li")], len(c.find("ul", "conditions")[0].find("code")),
+                    b.js("level0.json")["steps"][0]["claim"]["text"]),
+                   (0, "a `Foo.bar baz` b", 0, ["a `x y` b"], 0, "a `Foo.bar\rbaz` b"))
+
+    @case("AGR1", "the page and the checker agree on which backtick spans are code: for each of ten texts the page puts Foo.bar inside a <code> "
+                  "element exactly when notes_meta does not list Foo.bar")
+    def _():
+        texts = ("`Foo.bar`", "a `Foo.bar` b", "``Foo.bar``", "``Foo.bar` x", "x `Foo.bar`` y", "an unpaired `Foo.bar here",
+                 "a `Foo.bar\nbaz` b", "a `Foo.bar\rbaz` b", "`a` and Foo.bar", "`x Foo.bar y`")
+        got = [(t, re.search(r"<code>[^<]*Foo\.bar[^<]*</code>", _rich(t)) is not None, "Foo.bar" in nm._library_words(t))
+               for t in texts]
+        return _eq(got, [("`Foo.bar`", True, False), ("a `Foo.bar` b", True, False), ("``Foo.bar``", False, True),
+                         ("``Foo.bar` x", False, True), ("x `Foo.bar`` y", False, True), ("an unpaired `Foo.bar here", False, True),
+                         ("a `Foo.bar\nbaz` b", False, True), ("a `Foo.bar\rbaz` b", False, True), ("`a` and Foo.bar", False, True),
+                         ("`x Foo.bar y`", True, False)])
+
+    @case("PHR4", "the nine keys that must hold their placeholders declare exactly the placeholders they must hold: REQUIRED_PLACEHOLDERS "
+                  "and PLACEHOLDERS agree on the same nine keys")
+    def _():
+        keys = ["statement_read_line", "statement_census_line", "proof_read_line", "statement_count_line", "proof_count_line",
+                "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
+        return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys]),
+                   (sorted(keys), [True] * 9))
+
+    _REQ = (("statement_read_line", ("reader", "date")), ("statement_census_line", ("reader", "date")),
+            ("proof_read_line", ("reader", "date")), ("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
+            ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
+            ("steps_open_items_line", ("n",)))
+
+    @case("PHR1", "each of the nine keys statement_read_line, statement_census_line, proof_read_line, statement_count_line, "
+                  "proof_count_line, steps_statement_line, steps_proof_line, open_items_line, steps_open_items_line that lacks one of "
+                  "its placeholders ({reader} {date}, or {n} {m}, or {n}) is refused as STRINGS-KEY naming the key and the placeholder "
+                  "(16 cases), exit 1, nothing written; control: the fixture with every placeholder builds")
+    def _():
+        res = []
+        for key, names in _REQ:
+            for name in names:
+                st = _strings()
+                st[key] = st[key].replace("{" + name + "}", "")
+                b = _build(strings=st)
+                res.append((key, name, b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+        want = [(k, n, 1, [f"BUILD-ERROR STRINGS-KEY {k} is missing the placeholder {{{n}}}"], False) for k, ns in _REQ for n in ns]
+        return _eq((res, len(res), _base().rc), (want, 16, 0))
+
+    @case("PHR2", "the placeholders of the other keys stay optional: argument_frame, second_reader_frame, interpretation_frame, "
+                  "shared_note, note_href, frames.argument and reactions[0].href with no placeholder at all build")
+    def _():
+        res = []
+        for path, value in (("argument_frame", "How this is proved:"), ("second_reader_frame", "Read again."),
+                            ("interpretation_frame", "Our interpretation:"), ("shared_note", "Also a root elsewhere."),
+                            ("note_href", "notes/index.md"), ("frames.argument[0]", "How this is proved"),
+                            ("reactions[0].href", "https://example.invalid/react?kind=sense")):
+            st = _strings()
+            node = st
+            parts = re.findall(r"[^.\[\]]+", path)
+            for part in parts[:-1]:
+                node = node[int(part)] if part.isdigit() else node[part]
+            node[int(parts[-1]) if parts[-1].isdigit() else parts[-1]] = value
+            b = _build(strings=st)
+            res.append((path, b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")]))
+        return _eq(res, [(p_, 0, []) for p_ in ("argument_frame", "second_reader_frame", "interpretation_frame", "shared_note",
+                                                "note_href", "frames.argument[0]", "reactions[0].href")])
+
+    @case("PHR3", "the strings file of this checkout (site/strings.json) has none of the nine required placeholders missing")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        return _eq([x for x in _strings_problems(real) if "is missing the placeholder" in x[2]], [])
+
     @case("SHA1", "--release-archive-sha is stored in lower case: an upper-case input gives the same manifest as the lower-case one")
     def _():
         up, lo = _build(archive="AB" * 32), _build(archive="ab" * 32)
@@ -2594,20 +2875,19 @@ def _selftest_cases():
         every = _base().page + _base().text("data.js")
         return _eq((res, [w in every for w in ("Read by us", "Partly read", "Not read yet")]), ([(1, True, False)] * 3, [False] * 3))
 
-    @case("C1", "the status lines of the cards (statement, proof, open items): g1 `Statement read by Reader One on 2026-11-20.` (the "
-                "claim's reader and date, not the reading block's), `Proof read by Reader One on 2026-11-23.` (the first argument block), 0; g1a `Statement read by Reader One on "
+    @case("C1", "the status lines of the cards (statement, proof; the open-items line is absent at 0): g1 `Statement read by Reader One on 2026-11-20.` (the "
+                "claim's reader and date, not the reading block's), `Proof read by Reader One on 2026-11-23.` (the first argument block); g1a `Statement read by Reader One on "
                 "2026-11-23.` (the reading block), proof not read; g1a1x `Statement read by Reader Two on 2026-11-23.`; g3 the census "
-                "line, `Proof: not read yet.`, 0")
+                "line, `Proof: not read yet.`")
     def _():
         b = _base()
-        line = lambda g: [c.text() for c in (_card(b, g).find("p", "statement")[0], _card(b, g).find("p", "proof")[0],
-                                            _card(b, g).find("p", "open-items")[0])]
-        return _eq([line(g) for g in ("g1", "g1a", "g1a1x", "g3")],
-                   [["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23.", "Questions written down: 0."],
-                    ["Statement read by Reader One on 2026-11-23.", "Proof: not read yet.", "Questions written down: 0."],
-                    ["Statement read by Reader Two on 2026-11-23.", "Proof: not read yet.", "Questions written down: 0."],
-                    ["Statement counted by a script, not read (Reader One, 2026-11-20).", "Proof: not read yet.",
-                     "Questions written down: 0."]])
+        line = lambda g: [c.text() for c in (_card(b, g).find("p", "statement")[0], _card(b, g).find("p", "proof")[0])]
+        return _eq(([line(g) for g in ("g1", "g1a", "g1a1x", "g3")],
+                    [len(_card(b, g).find("p", "open-items")) for g in ("g1a", "g1a1x", "g3")]),
+                   ([["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23."],
+                     ["Statement read by Reader One on 2026-11-23.", "Proof: not read yet."],
+                     ["Statement read by Reader Two on 2026-11-23.", "Proof: not read yet."],
+                     ["Statement counted by a script, not read (Reader One, 2026-11-20).", "Proof: not read yet."]], [0, 0, 0]))
 
     @case("C2", "the line open_items_line comes from its key and shows the number and never `not read` (the fixture value holds none): "
                 "on g2 `Questions written down: 1.`; a build whose key says `Open: {n} questions` shows `Open: 1 questions` on g2")
@@ -2700,7 +2980,7 @@ def _selftest_cases():
     @case("PH1", "a `{bogus}` planted in statement_not_read_line, in a frames phrase, in a reactions label, in a first_screen paragraph "
                  "and in a reaction href is refused naming the key and the token (`has an unknown placeholder {bogus}`); a key that "
                  "declares none (mapped_line) refuses any brace; a brace-free value builds; a proof_read_line with only {reader} "
-                 "builds (`Proof read by Reader One.`) and so does one with none (`Proof read.`)")
+                 "is refused (it lacks {date}) and so is one with none (it lacks both), see PHR1")
     def _():
         res = []
         for path in ("statement_not_read_line", "frames.argument[0]", "reactions[0].label", "first_screen[0]", "reactions[0].href"):
@@ -2719,9 +2999,12 @@ def _selftest_cases():
         one, none = _strings(), _strings()
         one["proof_read_line"], none["proof_read_line"] = "Proof read by {reader}.", "Proof read."
         b1, b0 = _build(strings=one), _build(strings=none)
-        return _eq((res, bb.rc, "BUILD-ERROR STRINGS-KEY mapped_line holds a brace" in bb.out, _base().rc,
-                    _card(b1, "g1").find("p", "proof")[0].text(), _card(b0, "g1").find("p", "proof")[0].text()),
-                   ([(1, True, False)] * 5, 1, True, 0, "Proof read by Reader One.", "Proof read."))
+        err = lambda b: [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")]
+        return _eq((res, bb.rc, "BUILD-ERROR STRINGS-KEY mapped_line holds a brace" in bb.out, _base().rc, err(b1), err(b0)),
+                   ([(1, True, False)] * 5, 1, True, 0,
+                    ["BUILD-ERROR STRINGS-KEY proof_read_line is missing the placeholder {date}"],
+                    ["BUILD-ERROR STRINGS-KEY proof_read_line is missing the placeholder {reader}",
+                     "BUILD-ERROR STRINGS-KEY proof_read_line is missing the placeholder {date}"]))
 
     @case("PH2", "the built page text (tags stripped, script and style removed) holds no `{name}` token from the strings file, in the base "
                  "build and in a build whose notes give every status line a reader")
@@ -2751,14 +3034,14 @@ def _selftest_cases():
         return _eq((c["open_items"], c["roots_open_items"], b.js("level0.json")["totals"]["open_items"],
                     _card(b, "g3").find("p", "open-items")[0].text()), (2, 1, 3, "Questions written down: 2."))
 
-    @case("OI3", "the base build: totals.open_items 1 (01.b05 on quux), g2's card 1 and its roots_open_items 1, g1's card shows 0 "
-                 "(a zero is printed as zero); an argument block is not an open item")
+    @case("OI3", "the base build: totals.open_items 1 (01.b05 on quux), g2's card 1 and its roots_open_items 1, g1's card has no open-items "
+                 "line (a zero is not printed on a card); an argument block is not an open item")
     def _():
         b = _base()
         l0 = b.js("level0.json")
         return _eq((l0["totals"]["open_items"], [x for x in l0["steps"] if x["id"] == "g2"][0]["counts"]["roots_open_items"],
-                    _card(b, "g1").find("p", "open-items")[0].text(), _card(b, "g2").find("p", "open-items")[0].text()),
-                   (1, 1, "Questions written down: 0.", "Questions written down: 1."))
+                    len(_card(b, "g1").find("p", "open-items")), _card(b, "g2").find("p", "open-items")[0].text()),
+                   (1, 1, 0, "Questions written down: 1."))
 
     @case("BAS1", "the builder's line `claim basis: 1 read, 1 census, 1 without (treated as read)` and the checker's line `claim basis: 1 "
                   "read, 1 census, 1 without` agree on the counts; with every basis written the builder's line has no parenthesis "
