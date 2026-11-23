@@ -1,4 +1,4 @@
-# 9. The window bound: Gm(x) ≤ x^(1/2 + O(ε)) on windows, and why it is not circular
+# 9. The window bound: Gm(x) ≤ x^(1/2 + O(ε)) on windows, and why we read it as not circular
 
 *Written by Halley, 2026-11-22. Read whole by Kepler before it was published. Everything marked **What the library says** was read in the files listed at the end; the table says which files were read through and which only for the statements named. Nothing was compiled. Nothing here has been checked by a mathematician.*
 
@@ -149,6 +149,10 @@ On the path, `UpperTheory.T3.supplyOfAdmOf` (`ShortNorms/supplyOfAdmOf.lean`) bu
 - **`MeanSquareBounds`** (35 files, 4,301 lines): only the statements of `pair_share` and `pair_exists`, the definitions in `PrimeSetTwoBounds.lean`, and the proof of `QH.pairEx` were read. This is note 10.
 - **`ZeroBox`/`ZeroFreeBox`**: `PairGood`'s field `boxes` asks no zero of L(χ, s) with Re s > 1 − 1/400 and |Im s| ≤ Q (`PairGood.lean`, line 12). The library has two definitions named `ZeroFreeBox`. Which one `MeanSquareBounds` uses, and how it is proved, is note 10.
 - **`TwistForm`, `CoreAtH`, `ChainTied`, `D7`, `HostExW`, the hosts**: structures, on Kepler's side of the split.
+
+### Correction, 2026-11-23: the heading stated our reading as a fact
+
+Until 2026-11-23 this note's heading ended "and why it is not circular". The body says something weaker: "That this makes the argument non-circular is our reading. It stays labelled so until the mean-square proof is read (note 10)." Note 10 has since read the mean square in part, and it lists proofs it did not read (its section "Not read, not understood"). So the label still applies, and the heading now ends "and why we read it as not circular". The body is unchanged. Ariadne found the problem while reading the note titles as a lay visitor would.
 
 ## Files this note was written from
 

@@ -1,4 +1,4 @@
-# 8. The Landau step, proved: a one-sided bound on windows forbids zeros
+# 8. The Landau step, read in the library's proof: a one-sided bound on windows forbids zeros
 
 *Written by Halley, 2026-11-22. Everything marked **What the library says** was read in the files listed at the end; all 31 were opened and their proofs read, with two long routine computations skimmed, as the table says. Nothing was compiled. Nothing here has been checked by a mathematician.*
 
@@ -132,6 +132,10 @@ We did not find the windowed form, or this Taylor-coefficient proof, stated in t
 - Montgomery–Vaughan's Theorem 1.7 and its proof, which Lemma 15.1 adapts. We opened only Chapter 15.
 - Landau's 1905 paper itself (*Math. Ann.* 61, 527-550), cited from Montgomery–Vaughan's reference list, not opened.
 - Why the half-plane is Re s > 2 and not Re s > 1. This is now settled, and is not a gap: the library uses the crude bound Λ(n) ≤ n, so |ramp(y)| ≤ 2y² (`Gchi_growth_ramp`, `GchiGrowth.lean`, line 9). That makes the Laplace integral converge absolutely only for Re s > 2. Nothing in the argument needs a sharper half-plane, because σ is taken large anyway.
+
+### Correction, 2026-11-23: the heading said "proved"
+
+Until 2026-11-23 this note's heading read "The Landau step, proved". A reader can take that as "we proved it", or as "a computer has checked the proof". Neither is what this note supports. What it supports is the line under the heading: we read the library's proof in the 31 files listed below, with two long computations skimmed, and nothing was compiled. The heading now says "read in the library's proof". The body is unchanged. Ariadne found the problem while reading the note titles as a lay visitor would.
 
 ## Files this note was written from
 
