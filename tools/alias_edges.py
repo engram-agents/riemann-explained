@@ -28,7 +28,9 @@ CONTRACT
     2 or more every candidate is written to alias_candidates.tsv and target_file/target_line are `-`. The tool
     never picks one. The summary line prints `targets resolved N / ambiguous N / unresolved N`, counted per
     alias row. The full name is the enclosing `namespace` names plus the declared name; `_root_.` means no
-    namespace prefix. Structure is read from the comment-masked text, so a declaration inside a comment is
+    namespace prefix. The scope stack has one entry per namespace component (`namespace A.B.C` pushes three,
+    `section`, `noncomputable section` and `mutual` push one); `end N1.N2...Nk` pops k entries and a bare
+    `end` pops one section entry if the top is one, else nothing. Structure is read from the comment-masked text, so a declaration inside a comment is
     not a candidate.
  A4 refs.tsv: for every file and every distinct token `GlobalTheory.T.<name>` that is a known public name under
     `GlobalTheory.T.`, one row (the file that holds the name's own wrapper is skipped), with in_comment_only = 1
@@ -118,26 +120,23 @@ def parse_decls(raw, masked):
         if line[0] not in " \t":
             m = NS.match(line)
             if m:
-                stack.append(("namespace", m.group(1)))
+                stack.extend(("namespace", c) for c in m.group(1).split("."))
                 continue
             m = SEC.match(line)
             if m:
                 stack.append(("section", m.group(1)))
                 continue
             if MUT.match(line):
-                stack.append(("mutual", None))
+                stack.append(("section", None))
                 continue
             m = END.match(line)
             if m:
                 want = m.group(1)
                 if want is None:
-                    if stack:
+                    if stack and stack[-1][0] == "section":
                         stack.pop()
                 else:
-                    for j in range(len(stack) - 1, -1, -1):
-                        if stack[j][1] == want:
-                            del stack[j:]
-                            break
+                    del stack[max(0, len(stack) - len(want.split("."))):]
                 continue
         m = DECL.match(line)
         if not m:
