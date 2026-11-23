@@ -8,7 +8,8 @@ and lists where the alias names and the targets are written out in full.
 
 Outputs under OUT_DIR (each starts with a `#` provenance line, then the column row):
   aliases.tsv           public_name, target, file, line, target_file, target_line, target_matches
-  aliases_odd.tsv       public_name, x1, x2, x3, file, line     (wrapper shape, the three X not all equal)
+  aliases_odd.tsv       public_name, x1, x2, x3, file, line, reason, tail   (wrapper shape that is not an exact
+                        wrapper: reason unequal_x or trailing_text; tail = the trailing text, first 80 characters)
   alias_candidates.tsv  public_name, target, candidate_file, candidate_line   (only when target_matches >= 2)
   refs.tsv              file, public_name, occurrences, in_comment_only
   callers.tsv           name, kind (alias|target), file, line, in_comment (0|1)
@@ -21,7 +22,9 @@ CONTRACT
     before the next column-0 declaration keyword, `end`, `namespace`, `section`, `open`, `set_option`,
     `attribute`, `variable`, `universe`, `noncomputable`, `@[`, `/-` (also the modifiers private, protected,
     nonrec, unsafe, partial and `mutual`), or to the end of the file. Whitespace around the tokens may vary.
- A2 A theorem whose body has the shape but with unequal X is listed in aliases_odd.tsv, not dropped.
+ A2 A theorem whose body has the shape at its start but is not an exact equal-X wrapper is listed in
+    aliases_odd.tsv, not dropped: reason `unequal_x` (the X differ) or `trailing_text` (equal X, then more
+    non-blank text, e.g. a second chain). It is not in aliases.tsv.
  A3 Each target is resolved to its DECLARING file and line: a declaration whose full name equals X exactly
     (one leading `_root_.` of X is stripped first; the `target` column keeps X as written).
     target_matches = number of declarations found: 0 = UNRESOLVED, 1 = resolved, 2 or more = AMBIGUOUS; for
@@ -159,7 +162,9 @@ def norm_target(x):
 
 
 def find_wrappers(raw, masked):
-    """([(public, x, line, last_line)] with the three X equal, [(public, x1, x2, x3, line)] with them unequal)."""
+    """([(public, x, line, last_line)] exact wrappers, [(public, x1, x2, x3, line, reason, tail)] odd shapes).
+    reason is `unequal_x` (the three X differ) or `trailing_text` (equal X, more non-blank text follows; tail is
+    that text with whitespace runs collapsed, cut to 80 characters)."""
     good, odd = [], []
     if not WRAP_QUICK.search(masked):
         return good, odd
@@ -171,14 +176,18 @@ def find_wrappers(raw, masked):
         b = BY.search(extent)
         if not b:
             continue
-        m = WRAP.fullmatch(extent[b.end():].strip())
+        body = extent[b.end():].strip()
+        m = WRAP.match(body)
         if not m:
             continue
         x1, x2, x3 = m.groups()
-        if x1 == x2 == x3:
-            good.append((full, x1, line_no, end))
+        tail = " ".join(body[m.end():].split())[:80]
+        if x1 != x2 or x2 != x3:
+            odd.append((full, x1, x2, x3, line_no, "unequal_x", tail))
+        elif tail:
+            odd.append((full, x1, x2, x3, line_no, "trailing_text", tail))
         else:
-            odd.append((full, x1, x2, x3, line_no))
+            good.append((full, x1, line_no, end))
     return good, odd
 
 
@@ -212,7 +221,7 @@ def run(root, out):
         good, bad = find_wrappers(text, mask_comments(text))
         aliases += [(pub, x, rel[p], ln) for pub, x, ln, _last in good]
         wrap_lines[rel[p]].update(l for _pub, _x, ln, last in good for l in range(ln, last + 1))
-        odd += [(pub, x1, x2, x3, rel[p], ln) for pub, x1, x2, x3, ln in bad]
+        odd += [(pub, x1, x2, x3, rel[p], ln, why, tail) for pub, x1, x2, x3, ln, why, tail in bad]
     targets = {norm_target(a[1]) for a in aliases}   # resolution and callers use the stripped full name
     alias_names = {a[0] for a in aliases}
     names = targets | alias_names
@@ -280,7 +289,7 @@ def run(root, out):
     tool = "alias_edges.py"
     write_tsv(out, "aliases", provenance(tool, root, "a row says the theorem's whole proof is the wrapper around the target, "
                                          "not that the target proves the same statement"), ALIASES_COLS, alias_rows)
-    write_tsv(out, "aliases_odd", provenance(tool, root, "a row has the wrapper shape with unequal names; it is listed, not judged"),
+    write_tsv(out, "aliases_odd", provenance(tool, root, "a row has the wrapper shape but is not an exact equal-name wrapper (reason says how); it is listed, not judged"),
               ODD_COLS, sorted(odd))
     write_tsv(out, "alias_candidates", provenance(tool, root, "a row is one declaration of the target's full name; none is chosen "
                                                   "as the target"), CAND_COLS, cand_rows)
@@ -288,7 +297,9 @@ def run(root, out):
                                       "there uses it"), REFS_COLS, ref_rows)
     write_tsv(out, "callers", provenance(tool, root, caveat), CALLERS_COLS, caller_rows)
     write_tsv(out, "uncalled", provenance(tool, root, caveat), UNCALLED_COLS, uncalled_rows)
-    print(f"files {len(mods)}  aliases {len(aliases)}  odd shape {len(odd)}  undecodable {len(undecodable)}")
+    n_ux = sum(1 for o in odd if o[6] == "unequal_x")
+    print(f"files {len(mods)}  aliases {len(aliases)}  odd-shape {len(odd)} (unequal_x {n_ux}, trailing_text {len(odd) - n_ux})  "
+          f"undecodable {len(undecodable)}")
     print(f"targets resolved {counts['resolved']} / ambiguous {counts['ambiguous']} / unresolved {counts['unresolved']}")
     print(f"reference rows {len(ref_rows)}  callers rows {len(caller_rows)}  uncalled {len(uncalled_rows)}")
     for r in undecodable:
