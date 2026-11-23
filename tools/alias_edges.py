@@ -641,6 +641,40 @@ def _selftest_cases():
                                     "C.lean": _W("w3", "L.x") + CHAIN2})
         return _eq("odd-shape 3 (unequal_x 1, trailing_text 2)" in out, True)
 
+    SHAPE_X = "first | exact @L.x | exact L.x | (intros; apply L.x <;> assumption)"
+    SHAPE_Y = SHAPE_X.replace("L.x", "L.y")
+
+    @case("G4a", "a binder default proof `(h : P := by assumption)` in the signature does not hide the wrapper")
+    def _():
+        t = f"theorem w (h : P := by assumption) : Q := by\n  {SHAPE_X}\n"
+        _rc, _o, _e, tabs, _n = _go({"W.lean": t})
+        return _eq((_pairs(tabs, "aliases", "public_name", "target", "line"), tabs["aliases_odd"][2]), ([("w", "L.x", "1")], []))
+
+    @case("G4b", "two binder default proofs plus the wrapper: still an alias")
+    def _():
+        t = f"theorem w (h : P := by assumption) (k : R := by simp) : Q := by\n  {SHAPE_X}\n"
+        _rc, _o, _e, tabs, _n = _go({"W.lean": t})
+        return _eq((_pairs(tabs, "aliases", "public_name", "target"), tabs["aliases_odd"][2]), ([("w", "L.x")], []))
+
+    @case("G4c", "a shape inside a default proof, then a real wrapper to Y: the alias targets Y, not X")
+    def _():
+        t = f"theorem w (h : P := by {SHAPE_X}) : Q := by\n  {SHAPE_Y}\n"
+        _rc, _o, _e, tabs, _n = _go({"W.lean": t})
+        return _eq((_pairs(tabs, "aliases", "public_name", "target"), tabs["aliases_odd"][2]), ([("w", "L.y")], []))
+
+    @case("G4d", "the shape only inside the signature and a different real proof: neither alias nor odd")
+    def _():
+        t = f"theorem w (h : P := by {SHAPE_X}) : Q := by simp\n"
+        _rc, _o, _e, tabs, _n = _go({"W.lean": t})
+        return _eq((tabs["aliases"][2], tabs["aliases_odd"][2]), ([], []))
+
+    @case("G4e", "a default proof, the wrapper, then trailing text: odd trailing_text with x1 the wrapper's target")
+    def _():
+        t = f"theorem w (h : P := by assumption) : Q := by\n  {SHAPE_Y}\n  simp\n"
+        _rc, _o, _e, tabs, _n = _go({"W.lean": t})
+        return _eq((tabs["aliases"][2], _pairs(tabs, "aliases_odd", "public_name", "x1", "reason", "tail")),
+                   ([], [("w", "L.y", "trailing_text", "simp")]))
+
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
         _rc, _o, _e, _t, n = _go({**PUB_ALPHA, "Use/E.lean": "theorem z : P := Lib.alpha_core\n"}, count_reads=True)
