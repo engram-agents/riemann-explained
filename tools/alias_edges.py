@@ -29,9 +29,13 @@ CONTRACT
  A2 A theorem whose body has the shape at its start but is not an exact equal-X wrapper is listed in
     aliases_odd.tsv, not dropped: reason `unequal_x` (the X differ) or `trailing_text` (equal X, then more
     non-blank text, e.g. a second chain). It is not in aliases.tsv.
- A3 Each target is resolved to its DECLARING file and line: a declaration whose full name equals X exactly
-    (one leading `_root_.` of X is stripped first; the `target` column keeps X as written).
-    target_matches = number of declarations found: 0 = UNRESOLVED, 1 = resolved, 2 or more = AMBIGUOUS; for
+ A3 Each target is resolved to its DECLARING file and line. A target X written inside `namespace N1..Nk`
+    (the wrapper's enclosing namespace components, from the scope stack below) is looked up as a declaration
+    whose full name is N1..Nk.X, then N1..Nk-1.X, ..., then X; the FIRST level with any declaration decides,
+    and the count is taken at that level only (an outer level is never consulted once an inner one matches).
+    `_root_.X` is looked up as X only (one leading `_root_.` is stripped, nothing else). The `target` column
+    keeps X as written; callers.tsv and uncalled.tsv name the full name of the deciding level.
+    target_matches = number of declarations found at the deciding level: 0 = UNRESOLVED, 1 = resolved, 2 or more = AMBIGUOUS; for
     2 or more every candidate is written to alias_candidates.tsv and target_file/target_line are `-`. The tool
     never picks one. The summary line prints `targets resolved N / ambiguous N / unresolved N`, counted per
     alias row. The full name is the enclosing `namespace` names plus the declared name; `_root_.` means no
@@ -114,8 +118,10 @@ PUB = "GlobalTheory.T."
 
 
 def parse_decls(raw, masked):
-    """[(line_no, kind, full_name, end_idx)] for every declaration with a name. Structure comes from the
-    masked text; end_idx is the 0-based index of the first line after the declaration's extent."""
+    """[(line_no, kind, full_name, end_idx, namespaces)] for every declaration with a name. Structure comes from
+    the masked text; end_idx is the 0-based index of the first line after the declaration's extent; namespaces
+    is the tuple of enclosing namespace components at the declaration (a `_root_.` in its own name does not
+    change it)."""
     if not DECL_QUICK.search(masked):
         return []
     ml, rl = masked.split("\n"), raw.split("\n")
@@ -162,8 +168,16 @@ def parse_decls(raw, masked):
         else:
             prefix = ".".join(nm for kind, nm in stack if kind == "namespace")
             full = prefix + "." + name if prefix else name
-        found.append((k + 1, m.group(1), full, nxt[k + 1]))
+        found.append((k + 1, m.group(1), full, nxt[k + 1], tuple(nm for kind, nm in stack if kind == "namespace")))
     return found
+
+
+def target_levels(x, ns):
+    """The full names a target written X can mean, innermost first: N1..Nk.X, ..., N1.X, X. A target written
+    `_root_.X` means X only."""
+    if x.startswith("_root_."):
+        return [x[len("_root_."):]]
+    return [".".join(ns[:i]) + "." + x if i else x for i in range(len(ns), -1, -1)]
 
 
 def norm_target(x):
@@ -172,14 +186,14 @@ def norm_target(x):
 
 
 def find_wrappers(raw, masked):
-    """([(public, x, line, (first_line, last_line))] exact wrappers, the span being the wrapper's own lines, [(public, x1, x2, x3, line, reason, tail)] odd shapes).
+    """([(public, x, line, (first_line, last_line), namespaces)] exact wrappers, the span being the wrapper's own lines, [(public, x1, x2, x3, line, reason, tail)] odd shapes).
     reason is `unequal_x` (the three X differ) or `trailing_text` (equal X, more non-blank text follows; tail is
     that text with whitespace runs collapsed, cut to 80 characters)."""
     good, odd = [], []
     if not WRAP_QUICK.search(masked):
         return good, odd
     ml = masked.split("\n")
-    for line_no, kind, full, end in parse_decls(raw, masked):
+    for line_no, kind, full, end, ns in parse_decls(raw, masked):
         if kind not in ("theorem", "lemma"):
             continue
         extent = "\n".join(ml[line_no - 1:end])
@@ -203,7 +217,7 @@ def find_wrappers(raw, masked):
         else:
             first = line_no + extent.count("\n", 0, start)
             last = line_no + extent.count("\n", 0, start + m.end() - 1)
-            good.append((full, x1, line_no, (first, last)))
+            good.append((full, x1, line_no, (first, last), ns))
     return good, odd
 
 
@@ -227,24 +241,21 @@ def run(root, out):
     rel = {p: os.path.relpath(p, root).replace(os.sep, "/") for _, p in mods}
     undecodable = []
     # pass 1: wrappers and the target set
-    aliases, odd = [], []          # aliases: (public, target, file, line)
-    wrap_hits = set()   # (file, line, name): the wrapper's own text naming its own target, which is the alias link itself
+    aliases, odd = [], []          # aliases: (public, target as written, file, line, namespaces, (first, last) wrapper lines)
     for _, p in mods:
         text, ok = read_text(p)
         if not ok:
             undecodable.append((failure_word(p), rel[p]))
             continue
         good, bad = find_wrappers(text, mask_comments(text))
-        aliases += [(pub, x, rel[p], ln) for pub, x, ln, _last in good]
-        for pub, x, _ln, (first, last) in good:
-            wrap_hits.update((rel[p], l, n) for l in range(first, last + 1) for n in (norm_target(x), pub))
+        aliases += [(pub, x, rel[p], ln, ns, span) for pub, x, ln, span, ns in good]
         odd += [(pub, x1, x2, x3, rel[p], ln, why, tail) for pub, x1, x2, x3, ln, why, tail in bad]
-    targets = {norm_target(a[1]) for a in aliases}   # resolution and callers use the stripped full name
+    targets = {n for a in aliases for n in target_levels(a[1], a[4])}   # every full name a target may mean
     alias_names = {a[0] for a in aliases}
     names = targets | alias_names
     pub_t = {n for n in alias_names if n.startswith(PUB)}
     wrapper_files = collections.defaultdict(set)
-    for pub, _x, f, _ln in aliases:
+    for pub, _x, f, _ln, _ns, _span in aliases:
         wrapper_files[pub].add(f)
     # pass 2: declarations of the targets, and the tokens of A4 / A5
     cands = collections.defaultdict(list)
@@ -256,7 +267,7 @@ def run(root, out):
             if not ok:
                 continue
             masked = mask_comments(text)
-            for line_no, _kind, full, _end in parse_decls(text, masked):
+            for line_no, _kind, full, _end, _ns in parse_decls(text, masked):
                 if full in targets:
                     cands[full].append((rel[p], line_no))
             for m in RUN.finditer(text):
@@ -272,9 +283,12 @@ def run(root, out):
                             c[1] += int(masked[pos] == text[pos])
     # outputs
     alias_rows, cand_rows, counts = [], [], collections.Counter()
-    for pub, x, f, ln in sorted(aliases, key=lambda a: (a[0], a[2], a[3])):
-        c = sorted(cands.get(norm_target(x), []))
+    deciding = []   # (public, file, line, wrapper span, target as written, deciding full name) for each resolved alias
+    for pub, x, f, ln, ns, span in sorted(aliases, key=lambda a: (a[0], a[2], a[3])):
+        level = next((n for n in target_levels(x, ns) if cands.get(n)), None)   # the first level with any declaration decides
+        c = sorted(cands.get(level, [])) if level else []
         if len(c) == 1:
+            deciding.append((pub, f, ln, span, x, level))
             alias_rows.append((pub, x, f, ln, c[0][0], c[0][1], 1))
             counts["resolved"] += 1
         else:
@@ -283,13 +297,14 @@ def run(root, out):
             cand_rows += [(pub, x, cf, cl) for cf, cl in c]
     ref_rows = [(f, n, v[0], int(v[1] == 0)) for (f, n), v in sorted(refs.items()) if f not in wrapper_files[n]]
     decl_lines = collections.defaultdict(set)
-    for pub, _x, f, ln in aliases:
+    for pub, _x, f, ln, _ns, _span in aliases:
         decl_lines[(pub, "alias")].add((f, ln))
     universe = {(n, "alias") for n in alias_names}
-    for x in targets:
-        if len(cands.get(x, [])) == 1:
-            universe.add((x, "target"))
-            decl_lines[(x, "target")].add(cands[x][0])
+    wrap_hits = set()   # (file, line, name): a wrapper's own text naming its own target, which is the alias link itself
+    for pub, f, _ln, (first, last), x, level in deciding:
+        universe.add((level, "target"))
+        decl_lines[(level, "target")].add(cands[level][0])
+        wrap_hits.update((f, l, n) for l in range(first, last + 1) for n in (norm_target(x), pub, level))
     caller_rows, uncalled_rows = [], []
     for n, kind in sorted(universe):
         per_line = {}
