@@ -536,13 +536,13 @@ def B(i, extra=""):
     return '<!-- rh-block {"id":"15.b%02d"%s} -->' % (i, extra)
 
 
-def X(kind, first, last):
-    return {"type": kind, "first_line": first, "last_line": last, "insert_after": last}
+def X(kind, first, last, app):
+    return {"type": kind, "first_line": first, "last_line": last, "insert_after": last, "append_after": app}
 
 
-def T(first, last, ncols, nrows):
+def T(first, last, ncols, nrows, app):
     return {"type": "table", "ncols": ncols, "nrows": nrows, "start_line": first,
-            "first_line": first, "last_line": last, "insert_after": last}
+            "first_line": first, "last_line": last, "insert_after": last, "append_after": app}
 
 
 # ---- A1 recognised lines
@@ -708,44 +708,44 @@ def _():
 # ---- A5 placement and B3 spans
 @case("A5a", "paragraph, none, blank lines, header comment")
 def _():
-    eq(parse_note("Intro line\nsecond line\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 2), "paragraph")
-    eq(parse_note("Para\n\n\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 1), "blank lines between")
+    eq(parse_note("Intro line\nsecond line\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 2, 3), "paragraph")
+    eq(parse_note("Para\n\n\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 1, 1), "blank lines between")
     eq(parse_note(B(1) + "\n")[1][0].target, {"type": "none"}, "start of file")
     eq(parse_note("\n\n" + B(1) + "\n")[1][0].target, {"type": "none"}, "only blanks above")
     eq(parse_note(N + "\n" + B(1) + "\n")[1][0].target, {"type": "none"}, "only the header above")
     h, b, m = parse_note("P\n" + B(1) + "\n" + B(2) + "\n")
-    eq([x.target for x in b], [X("paragraph", 1, 1)] * 2, "anchors after anchors")
-    eq(parse_note("Intro\n" + B(1) + "\nmore\n" + B(2) + "\n")[1][1].target, X("paragraph", 3, 3), "an anchor ends a paragraph run")
+    eq([x.target for x in b], [X("paragraph", 1, 1, 3)] * 2, "anchors after anchors")
+    eq(parse_note("Intro\n" + B(1) + "\nmore\n" + B(2) + "\n")[1][1].target, X("paragraph", 3, 3, 4), "an anchor ends a paragraph run")
     eq(parse_note(N + "\n")[0][0].target, None, "headers carry no target")
 
 
 @case("A5b", "fenced blocks: lean, other, tilde")
 def _():
-    eq(parse_note("Text\n\n```lean\ndef x := 1\n```\n" + B(1) + "\n")[1][0].target, X("lean", 3, 5), "lean")
-    eq(parse_note("```lean4\nx\n```\n" + B(1) + "\n")[1][0].target, X("lean", 1, 3), "lean4")
-    eq(parse_note("~~~lean\nx\n~~~\n" + B(1) + "\n")[1][0].target, X("lean", 1, 3), "tilde lean")
-    eq(parse_note("```text\nx\n```\n" + B(1) + "\n")[1][0].target, X("other", 1, 3), "other fence")
-    eq(parse_note("```\nx\n```\n" + B(1) + "\n")[1][0].target, X("other", 1, 3), "no info")
-    eq(parse_note("```lean\nx\n\ny\n```\n" + B(1) + "\n")[1][0].target, X("lean", 1, 5), "blank inside")
+    eq(parse_note("Text\n\n```lean\ndef x := 1\n```\n" + B(1) + "\n")[1][0].target, X("lean", 3, 5, 6), "lean")
+    eq(parse_note("```lean4\nx\n```\n" + B(1) + "\n")[1][0].target, X("lean", 1, 3, 4), "lean4")
+    eq(parse_note("~~~lean\nx\n~~~\n" + B(1) + "\n")[1][0].target, X("lean", 1, 3, 4), "tilde lean")
+    eq(parse_note("```text\nx\n```\n" + B(1) + "\n")[1][0].target, X("other", 1, 3, 4), "other fence")
+    eq(parse_note("```\nx\n```\n" + B(1) + "\n")[1][0].target, X("other", 1, 3, 4), "no info")
+    eq(parse_note("```lean\nx\n\ny\n```\n" + B(1) + "\n")[1][0].target, X("lean", 1, 5, 6), "blank inside")
 
 
 @case("A5c", "other: headings and list items; a pipe run without a separator is a paragraph")
 def _():
-    eq(parse_note("## H\n" + B(1) + "\n")[1][0].target, X("other", 1, 1), "heading")
-    eq(parse_note("- item\n" + B(1) + "\n")[1][0].target, X("other", 1, 1), "list")
-    eq(parse_note("| a | b |\n| 1 | 2 |\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 2), "pipes, no separator")
+    eq(parse_note("## H\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "heading")
+    eq(parse_note("- item\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "list")
+    eq(parse_note("| a | b |\n| 1 | 2 |\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 2, 3), "pipes, no separator")
 
 
 @case("A5d", "tables: size, start line, span, both anchors, alignment row, header only, escaped pipe")
 def _():
     t = "# Title\n\n| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n" + B(1, ',"row":1') + "\n" + B(2, ',"row":2') + "\n"
     h, b, m = parse_note(t)
-    eq([x.target for x in b], [T(3, 6, 3, 2)] * 2, "table")
+    eq([x.target for x in b], [T(3, 6, 3, 2, 8)] * 2, "table")
     eq(len(m), 0, "no problem")
-    eq(parse_note("|a|b|\n|:--|--:|\n|1|2|\n" + B(1) + "\n")[1][0].target, T(1, 3, 2, 1), "alignment")
-    eq(parse_note("| a |\n|---|\n" + B(1) + "\n")[1][0].target, T(1, 2, 1, 0), "header only")
-    eq(parse_note("| a \\| b | c |\n|---|---|\n| 1 | 2 |\n" + B(1) + "\n")[1][0].target, T(1, 3, 2, 1), "escaped pipe")
-    eq(parse_note("| a | b |\n|---|---|\n| 1 | 2 |\n\ntext\n" + B(1) + "\n")[1][0].target, X("paragraph", 5, 5), "table then prose")
+    eq(parse_note("|a|b|\n|:--|--:|\n|1|2|\n" + B(1) + "\n")[1][0].target, T(1, 3, 2, 1, 4), "alignment")
+    eq(parse_note("| a |\n|---|\n" + B(1) + "\n")[1][0].target, T(1, 2, 1, 0, 3), "header only")
+    eq(parse_note("| a \\| b | c |\n|---|---|\n| 1 | 2 |\n" + B(1) + "\n")[1][0].target, T(1, 3, 2, 1, 4), "escaped pipe")
+    eq(parse_note("| a | b |\n|---|---|\n| 1 | 2 |\n\ntext\n" + B(1) + "\n")[1][0].target, X("paragraph", 5, 5, 6), "table then prose")
 
 
 # ---- A6 anchors inside tables
@@ -1028,18 +1028,18 @@ def _():
 @case("B3", "target_at: table body and separator rows, lean fence, paragraph, between elements, out of range")
 def _():
     t = "Intro\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```lean\ndef x := 1\n```\n\n"
-    eq(target_at(t, 1), X("paragraph", 1, 1), "paragraph")
-    eq(target_at(t, 5), T(3, 5, 2, 1), "table body row")
-    eq(target_at(t, 4), T(3, 5, 2, 1), "separator row")
-    eq(target_at(t, 3), T(3, 5, 2, 1), "header row")
-    eq(target_at(t, 8), X("lean", 7, 9), "inside the lean fence")
-    eq(target_at(t, 7), X("lean", 7, 9), "fence opener")
+    eq(target_at(t, 1), X("paragraph", 1, 1, 1), "paragraph")
+    eq(target_at(t, 5), T(3, 5, 2, 1, 5), "table body row")
+    eq(target_at(t, 4), T(3, 5, 2, 1, 5), "separator row")
+    eq(target_at(t, 3), T(3, 5, 2, 1, 5), "header row")
+    eq(target_at(t, 8), X("lean", 7, 9, 9), "inside the lean fence")
+    eq(target_at(t, 7), X("lean", 7, 9, 9), "fence opener")
     eq(target_at(t, 2), None, "blank between")
     eq(target_at(t, 6), None, "blank between table and fence")
     eq(target_at(t, 0), None, "line 0")
     eq(target_at(t, 99), None, "past the end")
-    eq(target_at("| a |\n|---|\n| 1 |\n" + B(1) + "\n| 2 |\n", 4), T(1, 5, 1, 2), "an anchor line inside a table is held by the table")
-    eq(target_at("P\n" + B(1) + "\n", 2), None, "an anchor line after a paragraph is between elements")
+    eq(target_at("| a |\n|---|\n| 1 |\n" + B(1) + "\n| 2 |\n", 4), T(1, 5, 1, 2, 5), "an anchor line inside a table is held by the table")
+    eq(target_at("P\n" + B(1) + "\n", 2), X("paragraph", 1, 1, 2), "an anchor line directly after a paragraph belongs to it (W2)")
 
 
 # ---- B4 ids
@@ -1150,10 +1150,10 @@ def _():
 
 @case("K4", "target type other: a thematic break and ordered list items")
 def _():
-    eq(parse_note("***\n" + B(1) + "\n")[1][0].target, X("other", 1, 1), "***")
-    eq(parse_note("1. x\n" + B(1) + "\n")[1][0].target, X("other", 1, 1), "1.")
-    eq(parse_note("2) x\n" + B(1) + "\n")[1][0].target, X("other", 1, 1), "2)")
-    eq(parse_note("***bold*** x\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 1), "emphasis is a paragraph")
+    eq(parse_note("***\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "***")
+    eq(parse_note("1. x\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "1.")
+    eq(parse_note("2) x\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "2)")
+    eq(parse_note("***bold*** x\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 1, 2), "emphasis is a paragraph")
 
 
 @case("V1", "interpretation needs a non-empty reader and date; other kinds are not extended")
@@ -1195,6 +1195,55 @@ def _():
     eq((len(h), len(m), h[0].data, h[0].canonical), (1, 0, d, True), "round trip")
     h, b, m = parse_note('<!-- rh-note {"t":"a b"} -->\n')
     eq((len(h), h[0].canonical), (1, False), "a raw U+2028 in a hand-written line is not canonical")
+
+
+@case("W1", "every target carries append_after: the end of the run of anchor lines directly after the element")
+def _():
+    eq(parse_note("P\n" + B(1) + "\n" + B(2) + "\n")[1][0].target["append_after"], 3, "two anchors after a paragraph")
+    eq(parse_note("P\n" + B(1) + "\n\n" + B(2) + "\n")[1][1].target["append_after"], 2, "a blank line ends the run: only the first anchor is in it")
+    eq(parse_note("P\n<!-- rh-foo {} -->\n" + B(1) + "\n")[1][0].target["append_after"], 3, "a malformed rh- line counts")
+    eq(parse_note("P\n" + N + "\n" + B(1) + "\n")[1][0].target["append_after"], 3, "a header comment counts")
+    eq(target_at("P\nQ\n", 1), X("paragraph", 1, 2, 2), "no anchor: equal to insert_after")
+    eq(target_at("```lean\nx\n```\n" + B(1) + "\n" + B(2) + "\n", 2), X("lean", 1, 3, 5), "fence")
+    t = "| a |\n|---|\n| 1 |\n" + B(1) + "\n| 2 |\n" + B(2) + "\n"
+    eq(target_at(t, 3), T(1, 5, 1, 2, 6), "a run inside a table does not end it; the run after the last row does")
+
+
+@case("W2", "target_at on an anchor line directly after an element returns that element; blanks and gaps stay None")
+def _():
+    t = "P\n" + B(1) + "\n" + B(2) + "\n\nQ\n"
+    eq(target_at(t, 2), X("paragraph", 1, 1, 3), "first anchor")
+    eq(target_at(t, 3), X("paragraph", 1, 1, 3), "second anchor")
+    eq(target_at(t, 4), None, "blank")
+    eq(target_at(t, 5), X("paragraph", 5, 5, 5), "next element")
+    eq(target_at("P\n<!-- rh-foo {} -->\n", 2), X("paragraph", 1, 1, 2), "malformed rh- line")
+    eq(target_at(B(1) + "\n", 1), None, "anchor with nothing above")
+    eq(target_at("P\n\n" + B(1) + "\n", 3), None, "anchor after a blank line")
+
+
+@case("W3", "inserting at append_after twice keeps the ids in order and strip gives the text back")
+def _():
+    def twice(t, probe, want1, want2, nl):
+        a1 = target_at(t, probe)["append_after"]
+        eq(a1, want1, "first append_after")
+        t1 = insert_after_line(t, a1, B(1))
+        a2 = target_at(t1, probe)["append_after"]
+        eq(a2, want2, "second append_after")
+        t2 = insert_after_line(t1, a2, B(2))
+        h, b, m = parse_note(t2)
+        eq(([x.data["id"] for x in b], [x.line for x in b], m), (["15.b01", "15.b02"], [want1 + 1, want1 + 2], []), "order")
+        eq(strip_anchor_lines(t2), t, "strip")
+        return t2
+    table = "| a | b |\n|---|---|\n| 1 | 2 |\n\ntext\n"
+    twice(table, 3, 3, 4, "\n")
+    twice("Intro\nmore\n\ntext\n", 1, 2, 3, "\n")
+    twice("x\n```lean\ny\n```\nz\n", 3, 4, 5, "\n")
+    t2 = twice(table.replace("\n", "\r\n"), 3, 3, 4, "\r\n")
+    eq(t2.count("\r\n"), t2.count("\n"), "CRLF everywhere")
+    # the hazard the rule exists for: both inserts at insert_after put the second id above the first
+    t1 = insert_after_line(table, 3, B(1))
+    t2 = insert_after_line(t1, 3, B(2))
+    eq([x.data["id"] for x in parse_note(t2)[1]], ["15.b02", "15.b01"], "insert_after twice reverses")
 
 
 @case("CONST", "the closed lists, in order")
