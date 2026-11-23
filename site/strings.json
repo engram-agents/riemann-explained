@@ -16,10 +16,10 @@
  "statement_count_line": "Statements read: {n} of {m} named Lean results.",
  "proof_count_line": "Proofs read: {n} of {m} named Lean results.",
  "open_items_line": "Open questions written down in our notes for this step: {n}.",
- "steps_statement_line": "Statements read: {n} of {m} steps.",
- "steps_proof_line": "Proofs read: {n} of {m} steps.",
+ "steps_statement_line": "Top-level steps where one of us has read the statement of every named Lean result: {n} of {m}.",
+ "steps_proof_line": "Top-level steps where one of us has read the proof of every named Lean result in the step itself, not its parts: {n} of {m}.",
  "steps_open_items_line": "Open questions written down in the notes this page is built from: {n}.",
- "no_claim_label": "No plain statement written yet",
+ "no_claim_label": "(no plain-language statement written yet)",
  "frames": {
   "argument": [
    "How this is proved, as"
