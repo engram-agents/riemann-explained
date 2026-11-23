@@ -1,0 +1,254 @@
+{
+ "_doc": "Expected outputs for Controls.lean (sha256 of Controls.lean recorded at write time below), written BEFORE the classifier (SPEC-fields-uses-v1.md v1.1; C2a revised in v1.3, still before the classifier). Each case names one binder of one declaration and the labels the tool must give. Labels: unused, direct, passed_whole, instance_only, returned, in_types_only. 'path' is a projection path; 'callee'/'pos' name a passed_whole occurrence (pos = 0-based explicit+implicit argument index); 'followed' lists auxiliary declarations the tool must have followed. 'must_not' lists labels that must be absent. Pairs differ in one way; a wrong classifier fails one side.",
+ "controls_sha256": "5ea4ad1fdc152ebeecc1fe684801275695e282b1b0842f87810e7cbb87b27fdd",
+ "cases": [
+  {
+   "id": "C1a",
+   "query": "uses",
+   "decl": "FUControls.c1_direct",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2"
+  },
+  {
+   "id": "C1b",
+   "query": "uses",
+   "decl": "FUControls.c1_unused",
+   "binder": "_h",
+   "labels": [
+    "unused"
+   ]
+  },
+  {
+   "id": "C2a",
+   "query": "uses",
+   "decl": "FUControls.c2_inst",
+   "binder": "hp",
+   "labels": [
+    "instance_only"
+   ],
+   "callee": "FUControls.twoLeOfFact",
+   "pos": 1,
+   "must_not": [
+    "direct",
+    "passed_whole"
+   ]
+  },
+  {
+   "id": "C2b",
+   "query": "uses",
+   "decl": "FUControls.c2_direct",
+   "binder": "hp",
+   "labels": [
+    "direct"
+   ],
+   "path": ".out"
+  },
+  {
+   "id": "C3a",
+   "query": "uses",
+   "decl": "FUControls.c3_destructure",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2.2"
+  },
+  {
+   "id": "C3b",
+   "query": "uses",
+   "decl": "FUControls.c3_proj",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2.2"
+  },
+  {
+   "id": "C4a",
+   "query": "flows_into",
+   "decl": "FUControls.c4_flows",
+   "binder": "h",
+   "fields": [
+    "second"
+   ]
+  },
+  {
+   "id": "C4b",
+   "query": "flows_into",
+   "decl": "FUControls.c4_noflow",
+   "binder": "h",
+   "fields": []
+  },
+  {
+   "id": "C5a",
+   "query": "uses",
+   "decl": "FUControls.c5_to_ignorer",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "FUControls.ignores",
+   "pos": 2,
+   "follow1": "unused"
+  },
+  {
+   "id": "C5b",
+   "query": "uses",
+   "decl": "FUControls.c5_to_user",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "FUControls.usesIt",
+   "pos": 1,
+   "follow1": "returned"
+  },
+  {
+   "id": "C6a",
+   "query": "uses",
+   "decl": "FUControls.c6_simp_h",
+   "binder": "h",
+   "must_not": [
+    "unused",
+    "in_types_only"
+   ]
+  },
+  {
+   "id": "C6b",
+   "query": "uses",
+   "decl": "FUControls.c6_simp",
+   "binder": "_h",
+   "labels": [
+    "unused"
+   ]
+  },
+  {
+   "id": "C7a",
+   "query": "uses",
+   "decl": "FUControls.c7_match",
+   "binder": "h",
+   "followed": [
+    "FUControls.c7_match.match_1"
+   ],
+   "must_not": [
+    "unused"
+   ],
+   "note": "h reaches the matcher as a discriminant; the report must name match_1 as followed, never report passed_whole to it"
+  },
+  {
+   "id": "C7b",
+   "query": "uses",
+   "decl": "FUControls.c7_wrapper",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "FUControls.c7_target",
+   "pos": 1
+  },
+  {
+   "id": "C8a",
+   "query": "uses",
+   "decl": "FUControls.c8_abstracted",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "Nat.lt_of_lt_of_le",
+   "followed": [
+    "FUControls.c8_abstracted._proof_1"
+   ],
+   "must_not_callee": "FUControls.c8_abstracted._proof_1"
+  },
+  {
+   "id": "C8b",
+   "query": "uses",
+   "decl": "FUControls.c8_inline",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "Nat.lt_of_lt_of_le"
+  },
+  {
+   "id": "C9a",
+   "query": "uses",
+   "decl": "FUControls.c9_renamed",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2",
+   "must_not": [
+    "passed_whole"
+   ]
+  },
+  {
+   "id": "C9b",
+   "query": "uses",
+   "decl": "FUControls.c9_direct",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2"
+  },
+  {
+   "id": "C10a",
+   "query": "uses",
+   "decl": "FUControls.c10_types_only",
+   "binder": "h",
+   "labels": [
+    "in_types_only"
+   ]
+  },
+  {
+   "id": "C10b",
+   "query": "uses",
+   "decl": "FUControls.c10_value",
+   "binder": "h",
+   "labels": [
+    "returned"
+   ],
+   "must_not": [
+    "in_types_only"
+   ]
+  }
+ ],
+ "mutation_check": [
+  {
+   "bug": "treat instance-implicit argument slots as explicit",
+   "must_fail_exactly": [
+    "C2a"
+   ]
+  },
+  {
+   "bug": "stop at Expr.proj / projection application without reading its index",
+   "must_fail_exactly": [
+    "C3a",
+    "C3b",
+    "C1a",
+    "C9a",
+    "C9b",
+    "C2b"
+   ],
+   "note": "every case with a path depends on it; the discriminating claim is that C3a and C3b fail TOGETHER (positional and projection paths read by the same rule)"
+  },
+  {
+   "bug": "do not reduce through a local renaming (have / letFun / beta)",
+   "must_fail_exactly": [
+    "C9a"
+   ]
+  }
+ ],
+ "_notes": [
+  "v1.3 (2026-11-23): C2a rewritten. The first C2a (`Nat.Prime.two_le (Fact.out)`) elaborated to the same body as C2b (`@Fact.out _ hp`, a class projection whose structure argument is instance-implicit); only the declaration's own binder info differed, so no term-based classifier could tell them apart. The old note here also called the C2a binder anonymous; it is named hp. C2a now reaches hp only through the instance slot of twoLeOfFact, which is not a projection.",
+  "C6a: the term passes h to congrArg; passed_whole or direct are both acceptable, unused and in_types_only are not.",
+  "C10b: the body is h itself, so 'returned' is the label (spec: the body is the variable itself).",
+  "Mutation bug 2 reddens every path case by design; the spec's 'exactly one' wording is corrected here: what must hold is that it reddens no case WITHOUT a path.",
+  "Paths: an expected 'path' matches the tool's positional path (e.g. '.2.2') or its named path (e.g. '.right.right'); the tool must report exactly one maximal read path for these cases."
+ ]
+}
