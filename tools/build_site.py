@@ -17,8 +17,9 @@ Outputs under OUT_DIR (JSON: sorted keys, 1-space indent, LF, UTF-8, one final n
   index.html    ONE static page: plain semantic HTML, readable without JavaScript, no request of any kind
 Every JSON file carries `commits`: {notes, release, tools} (B5). A group id is used verbatim as the anchor id of its card.
 Group JSON: `claim` is {text, reader, date, conditions, premises (group ids)} or null; `lean_name` is the name of the first
-root; `claim_label` is the strings file's `not_read_yet` when the claim is null; `coverage` is the word of `coverage_word`;
-`counts` is {roots, roots_read, roots_not_read}; `notes` lists {note, list_title, link}.
+root; `claim_label` is the strings file's `no_claim_label` when the claim is null; `coverage` is the word of `coverage_word`;
+`counts` is {roots, roots_read, roots_touched, roots_not_read}; `notes` lists {note, list_title, link}. A root of a group
+has a `state`: signed (a reading block anchors it), touched (no reading block, an argument block anchors it) or none.
 
 CONTRACT (each line is a self-test case, written before the code; an expected value in a case is a literal)
  Command, output, exit codes
@@ -32,8 +33,14 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      G groups, C claimed, Z null, R roots resolved, D defs_opened resolved, P premise links` on a build. Cases X3a X3b X3c.
   X4 A fresh run into a non-empty OUT_DIR says OUT-NOT-EMPTY and refuses (exit 1) unless --force; --force removes only
      what a build writes (the five files and the folder `group`), never another file. Cases OUT1 OUT2.
-  X5 A group id that is not safe as a file name (letters, digits, `.`, `_`, `-`, not starting with `.`; no two ids that differ
-     only in case) is GROUP-ID-UNSAFE. Cases ID1 ID2.
+  X5 A group id that is not safe as a file name (letters, digits, `.`, `_`, `-`, not starting with `.`, at most 100
+     characters; no two ids that differ only in case) is GROUP-ID-UNSAFE. Cases ID1 ID2 W1.
+  X7 The build is written into a temporary sibling directory of OUT_DIR and renamed into place at the end: a failure before
+     the rename leaves OUT_DIR absent (fresh run) or the old build and every other file in it untouched (--force), and no
+     temporary directory behind. A failure to write (OSError) is exit 2 with ONE line, no traceback; a JSON too deep to
+     write is exit 2 with the line `outline too deep to write`; the parent of OUT_DIR must exist. Cases W2 W3 W4 W5.
+  X8 Two notes with the same header id are NOTE-ID-DUPLICATE naming both files, exit 1, nothing written (the merged checker
+     has no such rule: today the builder refuses). Case DUP1.
   X6 A normal run first runs the self-test quietly and refuses with exit 4 if it fails; `--selftest` runs it (0 pass, 4
      fail); `--selftest --only ID,ID` runs exactly those cases and an unknown id exits 2. Cases EXIT4 SEL1.
  Data
@@ -56,11 +63,15 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   L2 A level-0 note (header level 0) is listed above the chain, under no step and in no group's list, and counted once in
      totals. Case U1.
   B5 Three commit ids in every JSON file: the notes commit (--notes-commit REV, else `unknown`), the release id (the
-     outline's), the tools commit. A tree whose notes, outline or strings differ from the commit, or whose tools differ from
-     their commit, stamps `dirty` in all three, and the page says so in the first screen. Cases B5a B5b B5c.
-  B6 coverage_word(counts, table): the first entry of the ordered table whose `when` holds; `read_all` = every root has a
-     reading block, `read_some` = some but not all, `read_none` = none. A group with zero roots has no coverage claim:
-     None, never "Read by us". Cases B6a B6b.
+     outline's), the tools commit. A tree whose notes, outline, declaration table or strings differ from the commit, or
+     whose tools differ from their commit, stamps `dirty` in all three, and the page says so in the first screen. Cases B5a
+     B5b B5c B5d.
+  B6 coverage_word(counts {roots, read, touched, not_read}, table): the first entry of the ordered table whose `when`
+     holds. Per root: signed = a reading block anchors it, touched = no reading block but an argument block anchors it,
+     none = neither. The three provisional predicate keys (their names are the builder's, the strings file's owner may
+     rename them): `read_all` = every root is signed; `read_none` = every root is none; `read_some_or_touched` = every
+     other case, so a group with only an argument block is Partly read and an argument block alone never makes a root
+     signed. A group with zero roots has no coverage claim: None, never "Read by us". Cases B6a B6b I1 I2.
   R1 read + partly + not read = steps is asserted at build time and printed with its three numbers; a table that drops a
      state is COVERAGE-SUM. Cases R1a R1b.
  Page
@@ -78,8 +89,21 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      except in a reaction anchor, url(; the builder refuses (PAGE-STATIC) when one does. static_problems. Cases P7a P7b.
   R2 Level 0 counts steps with the template `route_count`; lower levels count declarations with `roots_read` and
      `roots_not_read`; the page has no percent sign and no "of the proof". Case R2.
-  R3 A word of `forbidden_words` (and verified, explained, understood always) in the strings file refuses the build
-     naming the key (STRINGS-FORBIDDEN); the built page has none of them. Cases R3a R3b.
+  R3 The builder's own sentences never contain a word of `forbidden_words` (and verified, explained, understood always),
+     a percent sign or `of the proof` (the strings file is refused, STRINGS-FORBIDDEN naming the key; the href templates
+     may hold `%`). Text from the notes and the outline (claims, conditions, note titles, argument and interpretation
+     text) is only LISTED when it does: one line `WORD-NOTE <where> <word>` per text and word (`of the proof` stands for
+     that phrase or a percent sign) on stdout, exit unchanged, the count in the `built:` line; the text is never edited.
+     Cases R3a R3b WN1 WN2 WN3.
+  H1 A group whose claim is null shows its root's Lean name and the strings file's `no_claim_label` in the heading, not
+     `not_read_yet` (which stays the coverage word of a group with no signed or touched root); the coverage word is
+     computed for every group, claimed or not, so a heading `no_claim_label` can sit with `Read by us`. The strings file is
+     refused when `no_claim_label` equals `not_read_yet` or a coverage word (the key name is provisional). Cases H1 H2.
+  E1 The premises of a card are linked in the order of the outline. Case ORD1.
+  D1 Whatever data or strings reach the page is escaped there (text and attributes), and data.js writes `<`, `>`, `&`,
+     U+2028 and U+2029 as \\uXXXX. Cases ESC1 JS1.
+  G1 --release-archive-sha is stored in lower case; PAGE-STATIC names where the token came from; the frame of a block
+     shows its lines with its file name (`lines_missing` for a block with no file or no lines). Cases SHA1 B7a B7f.
   R4 No CSS animation or transition keyword in the page; an unread card is present, full size, outlined and labelled, never
      hidden or faded. Cases R4a R4b.
   R5 Every card says its coverage counts roots only (`roots_only_note`); a declaration that is a root of two groups is
@@ -114,8 +138,14 @@ of the JSON (its hash fields left out) or the strings file: it cannot say the nu
 the outline and the strings file against the notes commit, and for tracked files of this folder against the tools
 commit; an untracked file of the tools folder is not seen, and without --notes-commit the notes commit is `unknown` and
 the notes are not judged. The sha256 of a root's file needs --source-check; a hash table in a note is not read. The
-coverage table is read as: an entry matches by exactly one of read_all, read_some, read_none, so the order of the entries
-does not change the result. The notes are the files NOTES_DIR matches by notes_meta's default pattern. The page's
+coverage table is read as: an entry matches by exactly one of read_all, read_some_or_touched, read_none (provisional
+names, as is the whole table), so the order of the entries does not change the result. The sum check of R1 is a second
+guard only for a table that gives one word to two states; with a missing state COVERAGE-NONE fires first. A `touched` root
+(an argument block, no reading block) is counted in `roots_touched` in the JSON and the page shows no number for it.
+NOTE-ID-DUPLICATE is the builder's rule today because the merged checker of the notes has none. WORD-NOTE reads the
+claim, the conditions, the note titles and the text of argument and interpretation blocks, not the strings file's
+hrefs; it lists, it does not judge. The block of an argument is framed with its lines and file name together; a block with
+lines and no file shows `lines_missing`, because the lines name no file. The notes are the files NOTES_DIR matches by notes_meta's default pattern. The page's
 note links are the strings file's `note_href` with the note's file name filled in.
 
 usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX]
@@ -1010,24 +1040,31 @@ LEAK = "theorem leak_example_long_name : 1 + 1 = 2 := rfl"
 SRC40 = "".join(f"line {i}\n" for i in range(1, 41))
 SRC40_SHA = "abf1f49fd0950dcb863dd5555604f8fb05035e5c03393da0ead0616d32bd6578"
 TOOLS_OK = ("tools0", False)
+HOST = '</script><img src=x onerror=alert(1)>"\'&`<b>%41\u2028'
+HOST_S = HOST.replace("%41", "")   # the strings file may not hold a percent sign (outside its hrefs)
+ESC = '&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;&quot;&#x27;&amp;`&lt;b&gt;%41\u2028'
+ESC_S = ESC.replace("%41", "")
 
 
-def _n01(arg_text=ARG_TEXT, drop_reader=False):
-    rd = {} if drop_reader else {"reader": "Reader One"}
-    return ("# Note one\n" + _h(id="01", group="g1", list_title="Note one") + "\n\n## Body\n\n"
+def _n01(arg_text=ARG_TEXT, drop_reader=False, host=None):
+    """Note one; with `host` every title, reader and date the page shows is that string."""
+    rd = {} if drop_reader else {"reader": host or "Reader One"}
+    d1, d2, d3 = (host, host, host) if host else ("2026-11-23", "2026-11-24", "2026-11-22")
+    r1, r2 = host or "Reader One", host or "Reader Two"
+    return ("# Note one\n" + _h(id="01", group="g1", list_title="T " + host if host else "Note one") + "\n\n## Body\n\n"
             "Reading paragraph.\n"
-            + _b(id="01.b01", kind="reading", decls=[FOO], file="A/B.lean", lines=[12, 14], date="2026-11-23", **rd) + "\n\n"
+            + _b(id="01.b01", kind="reading", decls=[FOO], file="A/B.lean", lines=[12, 14], date=d1, **rd) + "\n\n"
             + arg_text + "\n"
-            + _b(id="01.b02", kind="argument", decls=[FOO], file="A/B.lean", lines=[15, 18], reader="Reader One",
-                 date="2026-11-23", second_readers=[{"reader": "Reader Two", "date": "2026-11-24"}]) + "\n\n"
+            + _b(id="01.b02", kind="argument", decls=[FOO], file="A/B.lean", lines=[15, 18], reader=r1,
+                 date=d1, second_readers=[{"reader": r2, "date": d2}]) + "\n\n"
             "We think this is the key step.\n"
-            + _b(id="01.b03", kind="interpretation", decls=[FOO], reader="Reader Two", date="2026-11-24") + "\n\n"
+            + _b(id="01.b03", kind="interpretation", decls=[FOO], reader=r2, date=d2) + "\n\n"
             "- ListItemTextXYZ one\n- ListItemTextXYZ two\n"
-            + _b(id="01.b04", kind="reading", decls=[BAR], item=2, reader="Reader One", date="2026-11-23") + "\n\n"
+            + _b(id="01.b04", kind="reading", decls=[BAR], item=2, reader=r1, date=d1) + "\n\n"
             "| a | b |\n|---|---|\n| TableCellTextXYZ | y |\n"
             + _b(id="01.b05", kind="not_read", decls=[QUUX], needs="hand_read", row=1) + "\n\n"
             "Correction paragraph.\n"
-            + _b(id="01.b06", kind="correction", decls=[FOO], reader="Reader Two", date="2026-11-22")
+            + _b(id="01.b06", kind="correction", decls=[FOO], reader=r2, date=d3)
             + "\n" + FILES)
 
 
@@ -1067,10 +1104,11 @@ def _strings():
         "first_screen": ["First screen paragraph one.", "First screen paragraph two."],
         "route_count": "{N} of the {M} steps on our route",
         "coverage": [{"when": {"read_all": True}, "word": "Read by us"},
-                     {"when": {"read_some": True}, "word": "Partly read"},
+                     {"when": {"read_some_or_touched": True}, "word": "Partly read"},
                      {"when": {"read_none": True}, "word": "Not read yet"}],
         "mapped_line": "Mapped by machine line.",
         "not_read_yet": "Not read yet",
+        "no_claim_label": "No plain statement yet",
         "no_argument": "We have not read how this is proved.",
         "frames": {"argument": ["How this is proved, as {reader} read it"], "interpretation": ["We think"], "claim": []},
         "argument_frame": "How this is proved, as {reader} read it on {date} (lines {lines}):",
@@ -1170,6 +1208,49 @@ def _build(state=TOOLS_OK, pre=None, force=False, archive=None, notes_commit=Non
             rc = run(p["notes"], p["outline"], p["decls"], p["strings"], p["out"], source_check=p["src"],
                      archive_sha=archive, notes_commit=notes_commit, repo=repo, force=force, tools_state=state)
         return _B(rc, buf.getvalue(), err.getvalue(), os.path.exists(p["out"]), _tree(p["out"]) if os.path.isdir(p["out"]) else {})
+
+
+@contextlib.contextmanager
+def _patched(name, value):
+    real = globals()[name]
+    globals()[name] = value
+    try:
+        yield
+    finally:
+        globals()[name] = real
+
+
+def _full_disk(dirpath, files):
+    """A writer that writes one file and then fails like a full disk."""
+    rel = sorted(files)[0]
+    _put(os.path.join(dirpath, *rel.split("/")), files[rel])
+    raise OSError(28, "No space left on device")
+
+
+def _go(p, **kw):
+    o, e = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+        rc = run(p["notes"], p["outline"], p["decls"], p["strings"], p["out"], tools_state=TOOLS_OK, **kw)
+    return rc, o.getvalue(), e.getvalue()
+
+
+def _left(d):
+    return sorted(set(os.listdir(d)) - {"notes", "outline.json", "decls.tsv", "strings.json", "src", "out", "args.json"})
+
+
+def _hostile(v, path=""):
+    """The strings fixture with the hostile text added to every string (the href templates get the one with `%`)."""
+    if isinstance(v, str):
+        return v + HOST if (path == "note_href" or path.endswith(".href")) else v + " " + HOST_S
+    if isinstance(v, list):
+        return [_hostile(x, f"{path}.{i}") for i, x in enumerate(v)]
+    if isinstance(v, dict):
+        return {k: (x if k in ("when", "forbidden_words") else _hostile(x, f"{path}.{k}" if path else k)) for k, x in v.items()}
+    return v
+
+
+def _raw(node):
+    return "".join(node.pieces())
 
 
 @functools.lru_cache(maxsize=None)
@@ -1288,7 +1369,7 @@ def _child(args_file, out, seed):
     return r.returncode, r.stdout + r.stderr
 
 
-STRING_KEYS = ["page_title", "first_screen", "route_count", "coverage", "mapped_line", "not_read_yet", "no_argument", "frames",
+STRING_KEYS = ["page_title", "first_screen", "route_count", "coverage", "mapped_line", "not_read_yet", "no_claim_label", "no_argument", "frames",
                "argument_frame", "second_reader_frame", "interpretation_frame", "evidence_label", "reactions",
                "roots_only_note", "dirty_note", "shared_note", "roots_read", "roots_not_read", "note_href", "forbidden_words",
                "labels", "labels.chain", "labels.level0_notes", "labels.premises", "labels.notes", "labels.go_deeper",
@@ -1443,14 +1524,15 @@ def _selftest_cases():
                steps[0]["claim"], [n["note"] for n in steps[0]["notes"]], steps[0]["notes"][0],
                l0["route"], l0["header_notes"], l0["totals"], l0["level"])
         want = (["g1", "g3", "g2"], ["Read by us", "Not read yet", "Partly read"],
-                [{"roots": 1, "roots_read": 1, "roots_not_read": 0}, {"roots": 1, "roots_read": 0, "roots_not_read": 0},
-                 {"roots": 2, "roots_read": 1, "roots_not_read": 1}],
-                ["foo", "corge", "quux"], [None, None, "Not read yet"],
+                [{"roots": 1, "roots_read": 1, "roots_touched": 0, "roots_not_read": 0},
+                 {"roots": 1, "roots_read": 0, "roots_touched": 0, "roots_not_read": 0},
+                 {"roots": 2, "roots_read": 1, "roots_touched": 0, "roots_not_read": 1}],
+                ["foo", "corge", "quux"], [None, None, "No plain statement yet"],
                 {"conditions": ["Condition one holds."], "date": "2026-11-20", "premises": ["g1a"], "reader": "Reader One",
                  "text": "Claim one"},
                 ["01", "02"], {"link": "notes/01-one.md", "list_title": "Note one", "note": "01"},
                 {"counts": [{"steps": 1, "when": "read_all", "word": "Read by us"},
-                            {"steps": 1, "when": "read_some", "word": "Partly read"},
+                            {"steps": 1, "when": "read_some_or_touched", "word": "Partly read"},
                             {"steps": 1, "when": "read_none", "word": "Not read yet"}], "steps": 3},
                 [{"link": "notes/00-whole.md", "list_title": "Whole one", "note": "00"}],
                 {"blocks": 8, "groups": 6, "notes": 4, "roots": 6}, 0)
@@ -1475,7 +1557,7 @@ def _selftest_cases():
                g2["open_items"], g2["roots"][1], g1a["blocks"], sorted(_base().files))
         want = (["blocks", "commits", "id", "level", "notes", "open_items", "parent", "roots"],
                 [{"file": "A/B.lean", "kind": "theorem", "lines": [10, 20], "module": "A.B", "name": "foo", "sha256": None,
-                  "shared_with": []}],
+                  "shared_with": [], "state": "signed"}],
                 ["01.b01", "01.b02", "01.b03", "01.b06", "02.b02"],
                 {"block": "01.b02", "date": "2026-11-23", "file": "A/B.lean", "first_sentence": "First argument sentence.",
                  "kind": "argument", "lines": [15, 18], "note": "01", "reader": "Reader One",
@@ -1484,7 +1566,7 @@ def _selftest_cases():
                  "text": "First argument sentence. Second argument sentence."},
                 [{"block": "01.b05", "needs": "hand_read", "note": "01", "roots": [{"module": "A.F", "name": "quux"}]}],
                 {"file": "A/E.lean", "kind": "theorem", "lines": [1, 4], "module": "A.E", "name": "qux", "sha256": None,
-                 "shared_with": ["g1a1x"]},
+                 "shared_with": ["g1a1x"], "state": "signed"},
                 [{"block": "01.b04", "date": "2026-11-23", "item": 2, "kind": "reading", "note": "01", "reader": "Reader One",
                   "roots": [{"module": "A.B", "name": "bar"}]}],
                 ["data.js", "group/g1.json", "group/g1a.json", "group/g1a1.json", "group/g1a1x.json", "group/g2.json",
@@ -1609,7 +1691,7 @@ def _selftest_cases():
                  "read_none word; two roots with one read is partly; the table's order does not matter")
     def _():
         t = _strings()["coverage"]
-        w = lambda r, k, table=t: coverage_word({"roots": r, "read": k, "not_read": 0}, table)
+        w = lambda r, k, table=t: coverage_word({"roots": r, "read": k, "touched": 0, "not_read": 0}, table)
         return _eq([w(3, 3), w(1, 1), w(3, 1), w(2, 1), w(3, 0), w(1, 0), w(3, 3, t[::-1]), w(3, 1, t[::-1]), w(3, 0, t[::-1])],
                    ["Read by us", "Read by us", "Partly read", "Partly read", "Not read yet", "Not read yet", "Read by us",
                     "Partly read", "Not read yet"])
@@ -1618,8 +1700,8 @@ def _selftest_cases():
                  "table with no entry for the state gives None")
     def _():
         t = _strings()["coverage"]
-        return _eq((coverage_word({"roots": 0, "read": 0, "not_read": 0}, t),
-                    coverage_word({"roots": 2, "read": 0, "not_read": 0}, t[:2])), (None, None))
+        return _eq((coverage_word({"roots": 0, "read": 0, "touched": 0, "not_read": 0}, t),
+                    coverage_word({"roots": 2, "read": 0, "touched": 0, "not_read": 0}, t[:2])), (None, None))
 
     @case("R1a", "a coverage table that drops the read_none state: COVERAGE-SUM with the three numbers `read 1 + partly 1 + not "
                  "read 0 = 2, but there are 3 steps`, COVERAGE-NONE naming each group the table does not fit (g3 and, at depth 3, "
@@ -1637,7 +1719,7 @@ def _selftest_cases():
         return _eq("coverage check: read 1 + partly 1 + not read 1 = 3 steps" in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 40 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 41 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -1650,7 +1732,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 40))
+        return _eq((bad, len(STRING_KEYS)), ([], 41))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -1688,7 +1770,7 @@ def _selftest_cases():
         return _eq((_card(b, "g1a1").find("h3", "claim")[0].text(), "Claim three &amp; &lt;more&gt;" in b.page, links),
                    ("Claim three & <more>", True, [("#g1", "Claim one"), ("#g2", "quux")]))
 
-    @case("P3", "a null claim shows the Lean name of its first root and the not_read_yet label in the heading; evidence is a closed "
+    @case("P3", "a null claim shows the Lean name of its first root and the no_claim_label in the heading; evidence is a closed "
                 "<details> (no `open`) whose summary is the evidence label and which holds the root's file, lines and open item")
     def _():
         c = _card(_base(), "g2")
@@ -1696,7 +1778,7 @@ def _selftest_cases():
         return _eq((c.find("h3", "claim")[0].text(), "open" in ev.attrs, ev.find("summary")[0].text(),
                     "A/F.lean" in ev.text(), "1-3" in ev.text(), "hand_read" in ev.text(),
                     all("open" not in d.attrs for d in _dom(_base().page).find("details"))),
-                   ("quux Not read yet", False, "Evidence: where this sits in the Lean code, and who read what",
+                   ("quux No plain statement yet", False, "Evidence: where this sits in the Lean code, and who read what",
                     True, True, True, True))
 
     @case("P4", "the child groups of a step are nested in its closed `go deeper` <details>, to depth 4; the three steps stay "
@@ -1773,7 +1855,7 @@ def _selftest_cases():
         s = _strings()
         s["first_screen"] = ["Call fetch( now."]
         b = _build(strings=s)
-        return _eq((static_problems(_base().page, _base().text("data.js")), b.rc, "BUILD-ERROR PAGE-STATIC fetch(" in b.out, b.existed),
+        return _eq((static_problems(_base().page, _base().text("data.js")), b.rc, "BUILD-ERROR PAGE-STATIC fetch( found in strings key first_screen[0]" in b.out, b.existed),
                     ([], 1, True, False))
 
     @case("P7c", "data.js is scanned as well as the page: a token that only the JSON holds (a block's `file`, which the page does "
@@ -1781,7 +1863,7 @@ def _selftest_cases():
     def _():
         n = _n01().replace("A/B.lean", "A/fetch(1).lean")
         b = _build(notes=_notes() | {"01-one.md": n})
-        return _eq((b.rc, "BUILD-ERROR PAGE-STATIC fetch( " in b.out, b.existed), (1, True, False))
+        return _eq((b.rc, "BUILD-ERROR PAGE-STATIC fetch( found in group g1 field blocks[0].file" in b.out, b.existed), (1, True, False))
 
     @case("P7d", "a `#` link with no target on the page is refused (PAGE-LINK naming it), exit 1, nothing written: here a reaction "
                  "href `#nowhere` from the strings file")
@@ -1872,9 +1954,9 @@ def _selftest_cases():
         interp = c.find("aside")[0]
         return _eq((idea.text(), idea.elems()[0].cls, full.text(), interp.find("p", "interpretation")[0].text(),
                     full.inside("aside"), interp.inside("details", "evidence")),
-                   ("How this is proved, as Reader One read it on 2026-11-23 (lines 15-18): Read again by Reader Two on "
+                   ("How this is proved, as Reader One read it on 2026-11-23 (lines A/B.lean 15-18): Read again by Reader Two on "
                     "2026-11-24. First argument sentence. Read the note", ["frame"],
-                    "How this is proved, as Reader One read it on 2026-11-23 (lines 15-18): Read again by Reader Two on "
+                    "How this is proved, as Reader One read it on 2026-11-23 (lines A/B.lean 15-18): Read again by Reader Two on "
                     "2026-11-24. First argument sentence. Second argument sentence.",
                     "Our interpretation, by Reader Two on 2026-11-24: We think this is the key step.", False, True))
 
@@ -1921,7 +2003,7 @@ def _selftest_cases():
         idea = _direct(c, "p", "argument")[0].text()
         every = " ".join(v.decode() for v in b.files.values()) + " ".join(v.decode() for v in _base().files.values())
         return _eq((b.rc, idea, "ListItemTextXYZ" in every, "TableCellTextXYZ" in every),
-                   (0, "How this is proved, as Reader Two read it on 2026-11-23 (lines 1-2): Read the note", False, False))
+                   (0, "How this is proved, as Reader Two read it on 2026-11-23 (lines not given): Read the note", False, False))
 
     @case("U2", "a block anchored to a list carries its `item` and a table block its `row` in the group JSON, as data only")
     def _():
@@ -1929,10 +2011,11 @@ def _selftest_cases():
         return _eq((b.js("group/g1a.json")["blocks"][0]["item"], b.js("group/g2.json")["blocks"][0]["row"],
                     "item" in b.js("group/g1.json")["blocks"][0]), (2, 1, False))
 
-    @case("S1", "a root is read only when a `reading` block anchors it: a root (corge, g3) anchored only by an argument, an "
-                "interpretation, a correction, a not_read or a machine_fact block stays unread, the step's word stays `Not read "
-                "yet`, roots_read is 0 of 1 (roots_not_read 1 for the not_read block), the coverage sum still holds and the card "
-                "says `0 of the 1 declarations we looked at have a reading`")
+    @case("S1", "a root is SIGNED only when a `reading` block anchors it: a root (corge, g3) anchored only by an interpretation, a "
+                "correction, a not_read or a machine_fact block stays none (the step stays `Not read yet`, roots_read 0 of 1, "
+                "roots_touched 0; roots_not_read 1 for the not_read block); one anchored only by an argument block is touched, "
+                "never signed (roots_read 0, roots_touched 1, the step `Partly read`, the check line `read 1 + partly 2 + not "
+                "read 0 = 3 steps`); in every case the card says `0 of the 1 declarations we looked at have a reading`")
     def _():
         extra = {"argument": dict(reader="Reader Two", date="2026-11-23"), "interpretation": dict(reader="Reader Two", date="2026-11-23"),
                  "correction": dict(reader="Reader Two", date="2026-11-23"), "not_read": dict(needs="hand_read"),
@@ -1942,11 +2025,12 @@ def _selftest_cases():
             n03 = N03 + _b(id="03.b01", kind=kind, decls=[CORGE], **kw) + "\n"
             b = _build(notes=_notes() | {"03-three.md": n03})
             g3 = b.js("level0.json")["steps"][1]
-            got[kind] = (b.rc, g3["id"], g3["coverage"], g3["counts"],
-                         "coverage check: read 1 + partly 1 + not read 1 = 3 steps" in b.out.splitlines(),
+            line = "read 1 + partly 2 + not read 0 = 3 steps" if kind == "argument" else "read 1 + partly 1 + not read 1 = 3 steps"
+            got[kind] = (b.rc, g3["id"], g3["coverage"], g3["counts"], "coverage check: " + line in b.out.splitlines(),
                          "0 of the 1 declarations we looked at have a reading" in _card(b, "g3").find("p", "coverage")[0].text())
-        want = {k: (0, "g3", "Not read yet", {"roots": 1, "roots_read": 0, "roots_not_read": 1 if k == "not_read" else 0}, True, True)
-                for k in extra}
+        want = {k: (0, "g3", "Partly read" if k == "argument" else "Not read yet",
+                    {"roots": 1, "roots_read": 0, "roots_touched": 1 if k == "argument" else 0,
+                     "roots_not_read": 1 if k == "not_read" else 0}, True, True) for k in extra}
         return _eq(got, want)
 
     @case("S2", "the first sentence is cut at the first `.`, `!` or `?` that is followed by white space or the end: a decimal or an "
@@ -1959,6 +2043,249 @@ def _selftest_cases():
         return _eq((fs(t), fs("See e.g.x and 3.2 now"), fs("Is it so? Yes."), fs("Done."), fs("Stop!\nNext."),
                     b.js("group/g1.json")["blocks"][1]["first_sentence"]),
                    ("The constant 1.5 is used.", "See e.g.x and 3.2 now", "Is it so?", "Done.", "Stop!", "The constant 1.5 is used."))
+
+    @case("I1", "coverage_word with touched roots (signed = reading block, touched = argument block only, none): one root touched "
+                "-> Partly read; two roots with one touched -> Partly; two roots none -> Not read yet; all signed -> Read by "
+                "us; one signed one none -> Partly; one signed one touched -> Partly; all touched -> Partly; zero roots -> None; "
+                "the table's order does not matter")
+    def _():
+        t = _strings()["coverage"]
+        w = lambda r, k, d, table=t: coverage_word({"roots": r, "read": k, "touched": d, "not_read": 0}, table)
+        return _eq([w(1, 0, 1), w(2, 0, 1), w(2, 0, 0), w(2, 2, 0), w(1, 1, 0), w(2, 1, 0), w(2, 1, 1), w(3, 0, 3), w(0, 0, 0),
+                    w(2, 0, 1, t[::-1]), w(2, 0, 0, t[::-1]), w(2, 2, 0, t[::-1])],
+                   ["Partly read", "Partly read", "Not read yet", "Read by us", "Read by us", "Partly read", "Partly read",
+                    "Partly read", None, "Partly read", "Not read yet", "Read by us"])
+
+    @case("I2", "in a build: g2 (roots quux, qux) with a reading block on neither, an argument block on qux and a not_read block on "
+                "quux has states [none, touched] and the word Partly read; g1a1x (root qux) is touched, Partly read; g1 (root foo) "
+                "has a reading AND an argument block: signed, Read by us; the base build has g2 states [none, signed]")
+    def _():
+        n02 = N02.replace(_b(id="02.b01", kind="reading", decls=[QUX], reader="Reader Two", date="2026-11-23"),
+                          _b(id="02.b01", kind="argument", decls=[QUX], reader="Reader Two", date="2026-11-23"))
+        b = _build(notes=_notes() | {"02-two.md": n02})
+        st = lambda bb, g: [r["state"] for r in bb.js(f"group/{g}.json")["roots"]]
+        word = lambda g: [x for x in b.js("level0.json")["steps"] if x["id"] == g][0]["coverage"] if g != "g1a1x" else \
+            b.js("level1.json")["steps"][0]["children"][0]["children"][0]["children"][0]["coverage"]
+        return _eq((b.rc, st(b, "g2"), word("g2"), st(b, "g1a1x"), word("g1a1x"), st(b, "g1"), word("g1"), st(_base(), "g2"),
+                    b.js("group/g2.json")["roots"][1]["state"]),
+                   (0, ["none", "touched"], "Partly read", ["touched"], "Partly read", ["signed"], "Read by us", ["none", "signed"],
+                    "touched"))
+
+    @case("W1", "a group id that is safe but longer than 100 characters is GROUP-ID-UNSAFE; 100 characters build")
+    def _():
+        res = []
+        for n in (100, 101):
+            o = _outline()
+            o["groups"][1]["id"] = "a" * n   # g1a1x: no child, no premise, no note names it
+            b = _build(outline=o)
+            res.append((b.rc, f"BUILD-ERROR GROUP-ID-UNSAFE {'a' * n} " in b.out, b.existed))
+        return _eq(res, [(0, False, True), (1, True, False)])
+
+    @case("W2", "a failure while writing (a full disk, injected) in a fresh run: exit 2, ONE line on stderr and no traceback, nothing "
+                "on stdout, OUT_DIR absent and no temporary directory left beside it")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            with _patched("_write_files", _full_disk):
+                rc, out, err = _go(p)
+            return _eq((rc, out, err, os.path.exists(p["out"]), _left(d)),
+                       (2, "", "build_site: cannot write the site: No space left on device\n", False, []))
+
+    @case("W3", "the same failure under --force keeps the old build and the foreign file byte-identical and leaves no temporary "
+                "directory; control: the --force run without the failure replaces the old build")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            rc0 = _go(p)[0]
+            _put(os.path.join(p["out"], "keep.txt"), "k")
+            old = _tree(p["out"])
+            with _patched("_write_files", _full_disk):
+                rc, out, err = _go(p, force=True)
+            same = _tree(p["out"]) == old
+            rc2 = _go(p, force=True)[0]
+            return _eq((rc0, rc, out, err.count("\n"), same, _left(d), rc2, sorted(_tree(p["out"]))[:2]),
+                       (0, 2, "", 1, True, [], 0, ["data.js", "group/g1.json"]))
+
+    @case("W4", "an unwritable parent of OUT_DIR: exit 2, one line, no traceback, nothing left behind (SKIPPED when running as root, "
+                "which a directory mode does not stop)")
+    def _():
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            raise _SkipCase("running as root: a directory mode does not stop root, so the unwritable parent cannot fail here")
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            ro = os.path.join(d, "ro")
+            os.makedirs(ro)
+            os.chmod(ro, 0o555)
+            try:
+                rc, out, err = _go(dict(p, out=os.path.join(ro, "out")))
+                left = os.listdir(ro)
+            finally:
+                os.chmod(ro, 0o755)
+            return _eq((rc, out, err.count("\n"), "Traceback" in err, left), (2, "", 1, False, []))
+
+    @case("W5", "an outline 1500 groups deep cannot be written as nested JSON: exit 2 with the one line `outline too deep to write`, "
+                "nothing on stdout, nothing written")
+    def _():
+        groups = [_g(f"d{k}", k, "root" if k == 1 else f"d{k - 1}", 1, [FOO]) for k in range(1, 1501)]
+        b = _build(notes={"00-whole.md": N00}, outline={"release": "rel-1", "groups": groups})
+        return _eq((b.rc, b.out, b.err, b.existed), (2, "", "build_site: outline too deep to write\n", False))
+
+    @case("DUP1", "two notes with the same header id (02, no blocks) are NOTE-ID-DUPLICATE naming both files, exit 1, nothing written")
+    def _():
+        dup = N03.replace('"id":"03"', '"id":"02"')
+        b = _build(notes=_notes() | {"04-dup.md": dup})
+        return _eq((b.rc, "BUILD-ERROR NOTE-ID-DUPLICATE 02 is the header id of 02-two.md and 04-dup.md" in b.out.splitlines(),
+                    b.existed), (1, True, False))
+
+    @case("WN1", "a claim holding `verified` and `50% of the proof` builds (exit 0) and is LISTED: two WORD-NOTE lines naming the "
+                 "claim's group, the count in the built line; control: the base build lists none")
+    def _():
+        o = _outline()
+        o["groups"][0]["claim"]["text"] = "A verified claim covering 50% of the proof"
+        b = _build(outline=o)
+        notes = [ln for ln in b.out.splitlines() if ln.startswith("WORD-NOTE")]
+        return _eq((b.rc, notes, "built: 6 groups, 4 notes, 8 blocks, 11 files, 2 word notes" in b.out.splitlines(),
+                    "A verified claim covering 50% of the proof" in b.page,
+                    [ln for ln in _base().out.splitlines() if ln.startswith("WORD-NOTE")],
+                    "built: 6 groups, 4 notes, 8 blocks, 11 files, 0 word notes" in _base().out.splitlines()),
+                   (0, ["WORD-NOTE g3.claim verified", "WORD-NOTE g3.claim of the proof"], True, True, [], True))
+
+    @case("WN2", "the other texts of the notes and the outline are listed too, never edited: a condition (g1), the text of an "
+                 "argument block (01.b02) and a note title (02), in that order")
+    def _():
+        o = _outline()
+        o["groups"][2]["claim"]["conditions"] = ["Condition understood here."]
+        n01 = _n01(arg_text="First argument was verified. Second argument sentence.")
+        n02 = N02.replace('"list_title":"Note two"', '"list_title":"Explained at once"')
+        b = _build(outline=o, notes=_notes() | {"01-one.md": n01, "02-two.md": n02})
+        notes = [ln for ln in b.out.splitlines() if ln.startswith("WORD-NOTE")]
+        return _eq((b.rc, notes, "Explained at once" in b.page),
+                   (0, ["WORD-NOTE g1.conditions[0] understood", "WORD-NOTE block:01.b02.text verified",
+                        "WORD-NOTE note:02.list_title explained"], True))
+
+    @case("WN3", "the strings file is refused for a percent sign and for `of the proof` in the builder's own sentences (route_count, "
+                 "mapped_line, first_screen), naming the key, exit 1, nothing written; the href templates may hold `%` (control)")
+    def _():
+        res = []
+        for key, val in (("mapped_line", "A hundred % sure."), ("route_count", "{N} of the {M} steps, part of the proof"),
+                         ("first_screen", ["It is 50% done."])):
+            st = _strings()
+            st[key] = val
+            b = _build(strings=st)
+            res.append((b.rc, f"BUILD-ERROR STRINGS-FORBIDDEN {key}" in b.out, b.existed))
+        st = _strings()
+        st["reactions"][0]["href"] = "https://example.invalid/react?card={card}&t=%20x"
+        st["note_href"] = "notes/{file}?x=%20"
+        return _eq((res, _build(strings=st).rc), ([(1, True, False)] * 3, 0))
+
+    @case("H1", "a null claim with a reading block (g1a, root bar): the heading shows the Lean name and the no_claim_label "
+                "(`bar No plain statement yet`), the coverage line the word `Read by us`; the JSON carries the label; the heading "
+                "does not hold `Not read yet`")
+    def _():
+        b = _base()
+        c = _card(b, "g1a")
+        step = b.js("level1.json")["steps"][0]["children"][0]
+        return _eq((c.find("h3", "claim")[0].text(), c.find("p", "coverage")[0].find("strong")[0].text(), step["claim_label"],
+                    step["coverage"], "Not read yet" in c.find("h3", "claim")[0].text()),
+                   ("bar No plain statement yet", "Read by us", "No plain statement yet", "Read by us", False))
+
+    @case("H2", "a strings file whose no_claim_label equals not_read_yet or a coverage word (Read by us, Partly read) is refused "
+                "naming no_claim_label, exit 1, nothing written")
+    def _():
+        res = []
+        for val in ("Not read yet", "Read by us", "Partly read"):
+            st = _strings()
+            st["no_claim_label"] = val
+            b = _build(strings=st)
+            res.append((b.rc, "BUILD-ERROR STRINGS-KEY no_claim_label " in b.out, b.existed))
+        st = _strings()
+        st["not_read_yet"] = "Nothing yet"
+        st["no_claim_label"] = "Nothing yet"
+        return _eq((res, _build(strings=st).rc), ([(1, True, False)] * 3, 1))
+
+    @case("ORD1", "the premises of a card are linked in the order of the outline (g2 then g1), not sorted")
+    def _():
+        o = _outline()
+        o["groups"][0]["premises"] = ["g2", "g1"]
+        b = _build(outline=o)
+        return _eq((b.rc, [a.attrs["href"] for a in _card(b, "g3").find("p", "premises")[0].find("a")]), (0, ["#g2", "#g1"]))
+
+    @case("SHA1", "--release-archive-sha is stored in lower case: an upper-case input gives the same manifest as the lower-case one")
+    def _():
+        up, lo = _build(archive="AB" * 32), _build(archive="ab" * 32)
+        return _eq((up.rc, up.files["manifest.json"] == lo.files["manifest.json"], up.js("manifest.json")["release_archive_sha"]),
+                   (0, True, "ab" * 32))
+
+    @case("JS1", "data.js writes < > & U+2028 U+2029 as \\uXXXX like the canonical comment: a claim holding `</script>` appears "
+                 "escaped in data.js, none of the five characters is raw in it, and it parses back equal")
+    def _():
+        o = _outline()
+        o["groups"][2]["claim"]["text"] = "Claim </script> & more\u2028 x\u2029"
+        b = _build(outline=o)
+        js = b.text("data.js")
+        data = json.loads(js[len("window.RH_DATA = "):-2])
+        return _eq((b.rc, "Claim \\u003c/script\\u003e \\u0026 more\\u2028 x\\u2029" in js, [c in js for c in "<>&\u2028\u2029"],
+                    data["level0"]["steps"][0]["claim"]["text"], data["level0"] == b.js("level0.json")),
+                   (0, True, [False] * 5, "Claim </script> & more\u2028 x\u2029", True))
+
+    @case("DIRTY2", "an uncommitted edit of decls.tsv alone stamps `dirty` in all three ids (the table is judged as the notes, "
+                    "the outline and the strings are); the unedited tree has the commit")
+    def _():
+        if shutil.which("git") is None:
+            raise _SkipCase("no git program")
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            _git(d, "init", "-q")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-q", "-m", "base")
+            head = _git(d, "rev-parse", "HEAD")
+            res = []
+            for edit in (False, True):
+                if edit:
+                    with open(p["decls"], "a", encoding="utf-8") as f:
+                        f.write("# an edit\n")
+                shutil.rmtree(p["out"], ignore_errors=True)
+                rc, _o, _e = _go(p, notes_commit="HEAD", repo=d)
+                res.append((rc, json.load(open(os.path.join(p["out"], "level0.json")))["commits"]["notes"]))
+            return _eq(res, [(0, head), (0, "dirty")])
+
+    @case("ESC1", "the hostile text `</script><img src=x onerror=alert(1)>\"'&`<b>%41` + U+2028 in every place data or strings reach "
+                  "the page (claim, condition, premise title, note title, reader, date, second reader and date, a declaration name, "
+                  "argument text, every strings key and label, the href templates): the built page has no script, img or b element, "
+                  "no attribute named on..., no raw `</script`, `<img`, `<b>`; the escaped form is there and each place reads back as "
+                  "the hostile text; data.js has none of < > & U+2028 U+2029 raw and parses back equal")
+    def _():
+        quux = _d("A.F", "quux" + HOST)
+        with _patched("QUUX", quux):
+            o = _outline()
+            n = _notes()
+            n["01-one.md"] = _n01(arg_text="Hostile text " + HOST + " ends here. More.", host=HOST)
+        o["groups"][2]["claim"]["text"] = "Claim " + HOST
+        o["groups"][2]["claim"]["conditions"] = [HOST]
+        decls = DECLS.replace("A.F\tquux\t", "A.F\tquux" + HOST + "\t")
+        b = _build(outline=o, notes=n, decls=decls, strings=_hostile(_strings()))
+        if b.rc != 0:
+            return False, b.out + b.err
+        dom = _dom(b.page)
+        g1, g3 = _card(b, "g1"), _card(b, "g3")
+        prem = [(a.attrs["href"], _raw(a)) for a in g3.find("p", "premises")[0].find("a")]
+        full = g1.find("details", "evidence")[0].find("p", "argument")[0]
+        corr = _direct(g1, "ul", "corrections")[0].find("li")[0]
+        react = g1.find("a", "reaction")[0].attrs["href"]
+        js = b.text("data.js")
+        got = (sorted({n_.tag for n_ in dom.nodes()} & {"script", "img", "b"}),
+               [k for n_ in dom.nodes() for k in n_.attrs if k.startswith("on")],
+               [t in b.page for t in ("</script", "<img", "<b>")], ESC in b.page, ESC_S in b.page,
+               _raw(g1.find("h3", "claim")[0]), [_raw(li) for li in g1.find("ul", "conditions")[0].find("li")], prem,
+               [_raw(a) for a in _direct(g1, "ul", "notes")[0].find("a")], _raw(full).count(HOST), _raw(corr).count(HOST),
+               react, _raw(dom.find("header")[0].find("p")[0]), _raw(_card(b, "g2").find("h3", "claim")[0]).count("quux" + HOST),
+               [c in js for c in "<>&\u2028\u2029"],
+               json.loads(js[len("window.RH_DATA = "):-2])["groups"]["g1"] == b.js("group/g1.json"))
+        want = ([], [], [False, False, False], True, True, "Claim " + HOST, [HOST],
+                [("#g1", "Claim " + HOST), ("#g2", "quux" + HOST)], ["T " + HOST, "Note two"], 5, 3,
+                "https://example.invalid/react?card=g1&kind=sense" + HOST, "First screen paragraph one. " + HOST_S, 1,
+                [False] * 5, True)
+        return _eq(got, want)
 
     # ---- B1: no release text
     @case("B1a", "leak_check: a planted shard whose `text` value is a line of the release (>= 20 non-space characters) is named "
