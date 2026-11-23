@@ -1,0 +1,515 @@
+{
+ "_doc": "Expected outputs for Controls.lean (sha256 of Controls.lean recorded at write time below), written BEFORE the classifier (C2a revised before the classifier; later cases added as the notes below say). Each case names one binder of one declaration and the labels the tool must give. Labels: unused, direct, passed_whole, instance_only, returned, in_types_only. 'path' is a projection path (positional or by field name), 'named' the field-name path; 'callee'/'pos' name a passed_whole occurrence (pos = 0-based explicit+implicit argument index); 'followed' lists auxiliary declarations the tool must have followed. 'must_not' lists labels that must be absent. Pairs differ in one way; a wrong classifier fails one side.",
+ "controls_sha256": "6fb5a0b151793055feb359f91f59e40b07de11f1275e9dec74ef192187bd2331",
+ "cases": [
+  {
+   "id": "C1a",
+   "query": "uses",
+   "decl": "FUControls.c1_direct",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2",
+   "named": ".right"
+  },
+  {
+   "id": "C1b",
+   "query": "uses",
+   "decl": "FUControls.c1_unused",
+   "binder": "_h",
+   "labels": [
+    "unused"
+   ]
+  },
+  {
+   "id": "C2a",
+   "query": "uses",
+   "decl": "FUControls.c2_inst",
+   "binder": "hp",
+   "labels": [
+    "instance_only"
+   ],
+   "callee": "FUControls.twoLeOfFact",
+   "pos": 1,
+   "must_not": [
+    "direct",
+    "passed_whole"
+   ]
+  },
+  {
+   "id": "C2b",
+   "query": "uses",
+   "decl": "FUControls.c2_direct",
+   "binder": "hp",
+   "labels": [
+    "direct"
+   ],
+   "path": ".out"
+  },
+  {
+   "id": "C3a",
+   "query": "uses",
+   "decl": "FUControls.c3_destructure",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2.2",
+   "named": ".right.right"
+  },
+  {
+   "id": "C3b",
+   "query": "uses",
+   "decl": "FUControls.c3_proj",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2.2",
+   "named": ".right.right"
+  },
+  {
+   "id": "C4a",
+   "query": "flows_into",
+   "decl": "FUControls.c4_flows",
+   "binder": "h",
+   "fields": [
+    "second"
+   ]
+  },
+  {
+   "id": "C4b",
+   "query": "flows_into",
+   "decl": "FUControls.c4_noflow",
+   "binder": "h",
+   "fields": []
+  },
+  {
+   "id": "C5a",
+   "query": "uses",
+   "decl": "FUControls.c5_to_ignorer",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "FUControls.ignores",
+   "pos": 2,
+   "follow1": "unused"
+  },
+  {
+   "id": "C5b",
+   "query": "uses",
+   "decl": "FUControls.c5_to_user",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "FUControls.usesIt",
+   "pos": 1,
+   "follow1": "returned"
+  },
+  {
+   "id": "C6a",
+   "query": "uses",
+   "decl": "FUControls.c6_simp_h",
+   "binder": "h",
+   "must_not": [
+    "unused",
+    "in_types_only"
+   ]
+  },
+  {
+   "id": "C6b",
+   "query": "uses",
+   "decl": "FUControls.c6_simp",
+   "binder": "_h",
+   "labels": [
+    "unused"
+   ]
+  },
+  {
+   "id": "C7a",
+   "query": "uses",
+   "decl": "FUControls.c7_match",
+   "binder": "h",
+   "followed": [
+    "FUControls.c7_match.match_1"
+   ],
+   "must_not": [
+    "unused"
+   ],
+   "note": "h reaches the matcher as a discriminant; the report must name match_1 as followed, never report passed_whole to it"
+  },
+  {
+   "id": "C7b",
+   "query": "uses",
+   "decl": "FUControls.c7_wrapper",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "FUControls.c7_target",
+   "pos": 1
+  },
+  {
+   "id": "C8a",
+   "query": "uses",
+   "decl": "FUControls.c8_abstracted",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "Nat.lt_of_lt_of_le",
+   "followed": [
+    "FUControls.c8_abstracted._proof_1"
+   ],
+   "must_not_callee": "FUControls.c8_abstracted._proof_1"
+  },
+  {
+   "id": "C8b",
+   "query": "uses",
+   "decl": "FUControls.c8_inline",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "Nat.lt_of_lt_of_le"
+  },
+  {
+   "id": "C9a",
+   "query": "uses",
+   "decl": "FUControls.c9_renamed",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2",
+   "must_not": [
+    "passed_whole"
+   ],
+   "named": ".right"
+  },
+  {
+   "id": "C9b",
+   "query": "uses",
+   "decl": "FUControls.c9_direct",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2",
+   "named": ".right"
+  },
+  {
+   "id": "C10a",
+   "query": "uses",
+   "decl": "FUControls.c10_types_only",
+   "binder": "h",
+   "labels": [
+    "in_types_only"
+   ]
+  },
+  {
+   "id": "C10b",
+   "query": "uses",
+   "decl": "FUControls.c10_value",
+   "binder": "h",
+   "labels": [
+    "returned"
+   ],
+   "must_not": [
+    "in_types_only"
+   ]
+  },
+  {
+   "id": "C1c",
+   "query": "uses",
+   "decl": "FUControls.c1_direct",
+   "binder": "p",
+   "labels": [
+    "in_types_only"
+   ],
+   "note": "p occurs in h's type and in the implicit slot of And.right; not unused"
+  },
+  {
+   "id": "C11a",
+   "query": "uses",
+   "decl": "FUControls.c11_applied",
+   "binder": "f",
+   "labels": [
+    "direct"
+   ],
+   "must_not": [
+    "unused"
+   ]
+  },
+  {
+   "id": "C11b",
+   "query": "uses",
+   "decl": "FUControls.c11_unapplied",
+   "binder": "f",
+   "labels": [
+    "unused"
+   ]
+  },
+  {
+   "id": "C12a",
+   "query": "uses",
+   "decl": "FUControls.c12_let",
+   "binder": "f",
+   "labels": [
+    "direct"
+   ],
+   "must_not": [
+    "unused"
+   ],
+   "note": "the use is inside a let (have) value"
+  },
+  {
+   "id": "C12c",
+   "query": "uses",
+   "decl": "FUControls.c12_let",
+   "binder": "n",
+   "must_not": [
+    "unused",
+    "in_types_only"
+   ]
+  },
+  {
+   "id": "C12b",
+   "query": "uses",
+   "decl": "FUControls.c12_inline",
+   "binder": "f",
+   "labels": [
+    "direct"
+   ]
+  },
+  {
+   "id": "C13a",
+   "query": "uses",
+   "decl": "FUControls.c13_beta",
+   "binder": "h",
+   "labels": [
+    "returned"
+   ],
+   "must_not": [
+    "unused"
+   ]
+  },
+  {
+   "id": "C13f",
+   "query": "flows_into",
+   "decl": "FUControls.c13_beta",
+   "binder": "h",
+   "fields": [
+    "left",
+    "right"
+   ]
+  },
+  {
+   "id": "C13b",
+   "query": "uses",
+   "decl": "FUControls.c13_direct",
+   "binder": "h",
+   "labels": [
+    "returned"
+   ]
+  },
+  {
+   "id": "C14a",
+   "query": "uses",
+   "decl": "FUControls.c14_overapplied",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2",
+   "named": ".right",
+   "must_not": [
+    "passed_whole"
+   ]
+  },
+  {
+   "id": "C14b",
+   "query": "uses",
+   "decl": "FUControls.c14_plain",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".2",
+   "named": ".right"
+  },
+  {
+   "id": "C15a",
+   "query": "who_reads",
+   "field": "FUControls.Pair2.x",
+   "readers_include": [
+    "FUControls.reads_x",
+    "FUControls.reads_x_match",
+    "*.FUControls.privReader"
+   ],
+   "readers_exclude": [
+    "FUControls.reads_y",
+    "FUControls.Pair2.noConfusionType",
+    "FUControls.Pair2.noConfusion"
+   ],
+   "note": "reads_x_match reads x only through a match_1 matcher"
+  },
+  {
+   "id": "C15b",
+   "query": "who_reads",
+   "field": "FUControls.Pair2.y",
+   "readers_include": [
+    "FUControls.reads_y"
+   ],
+   "readers_exclude": [
+    "FUControls.reads_x",
+    "FUControls.reads_x_match",
+    "FUControls.Pair2.noConfusionType",
+    "FUControls.Pair2.noConfusion"
+   ]
+  },
+  {
+   "id": "C16",
+   "query": "budget",
+   "decl": "FUControls.c1_direct",
+   "budget": 3,
+   "expect_complete": false,
+   "note_contains": "budget",
+   "note": "a run that exceeds its term budget must stop and say so, never crash or answer as if complete; on a stopped walk no binder may be labelled unused (an unread binder is not_reached), found when R1 stopped at its budget and called hTD and hEC unused",
+   "no_binder_label": "unused"
+  },
+  {
+   "id": "C17a",
+   "query": "uses",
+   "decl": "FUControls.c17_projOf",
+   "binder": "n",
+   "must_not": [
+    "unused",
+    "in_types_only"
+   ],
+   "note": "n occurs inside (f n).x, a projection of a compound expression"
+  },
+  {
+   "id": "C17b",
+   "query": "uses",
+   "decl": "FUControls.c17_noArg",
+   "binder": "n",
+   "labels": [
+    "unused"
+   ]
+  },
+  {
+   "id": "C18a",
+   "query": "uses",
+   "decl": "FUControls.c18_innerType",
+   "binder": "h",
+   "labels": [
+    "in_types_only"
+   ],
+   "note": "h occurs only in the binder type of a lambda nested inside an And.intro argument (hf : f n h), not a leading binder"
+  },
+  {
+   "id": "C18b",
+   "query": "uses",
+   "decl": "FUControls.c18_value",
+   "binder": "h",
+   "labels": [
+    "returned"
+   ]
+  },
+  {
+   "id": "C19a",
+   "query": "uses",
+   "decl": "FUControls.c19_strict",
+   "binder": "p",
+   "labels": [
+    "in_types_only"
+   ],
+   "note": "p fills a strict-implicit slot of siUse (and h's type)"
+  },
+  {
+   "id": "C20",
+   "query": "uses",
+   "decl": "FUControls.c20_deep",
+   "binder": "h",
+   "must_not": [
+    "unused",
+    "in_types_only"
+   ],
+   "note": "the use is 260 applications deep, past the walk's depth limit: the report must be incomplete (h not_reached) or find the use, never say unused"
+  },
+  {
+   "id": "C21",
+   "query": "budget",
+   "decl": "FUControls.c21_typeThenValue",
+   "budget": 23,
+   "expect_complete": false,
+   "note_contains": "budget",
+   "binder_labels": {
+    "h": [
+     "not_reached"
+    ]
+   },
+   "note": "budget 23 (found by probing the v1.4c code) cuts after h's in-type occurrence and before its value use; on an incomplete walk a binder with no value use seen is not_reached, never in_types_only. The budget value depends on the traversal order: a change to the walk can move the cut, so re-probe and re-state it whenever the traversal changes."
+  }
+ ],
+ "mutation_check": [
+  {
+   "bug": "treat instance-implicit argument slots as explicit",
+   "must_fail_exactly": [
+    "C2a"
+   ],
+   "id": "i"
+  },
+  {
+   "bug": "stop at Expr.proj / projection application without reading its index",
+   "must_fail_exactly": [
+    "C1a",
+    "C2b",
+    "C3a",
+    "C3b",
+    "C9a",
+    "C9b",
+    "C14a",
+    "C14b"
+   ],
+   "note": "every case with a path depends on it; the discriminating claim is that C3a and C3b fail TOGETHER (positional and projection paths read by the same rule)",
+   "id": "ii"
+  },
+  {
+   "bug": "do not reduce through a local renaming (have / letFun / beta)",
+   "must_fail_exactly": [
+    "C9a",
+    "C13a",
+    "C13f"
+   ],
+   "id": "iii"
+  },
+  {
+   "bug": "do not read positional destructuring (casesOn / match patterns): the binder is passed to the eliminator like any argument and its field variables are not tracked",
+   "must_fail_exactly": [
+    "C3a"
+   ],
+   "note": "v1.3: bug (ii) fails C3a and C3b together, so no planted bug singled out C3's point that a positional pattern is read like a projection. Prediction written 2026-11-23 before this bug's code existed and before its first run.",
+   "id": "iv"
+  }
+ ],
+ "_notes": [
+  "v1.3 (2026-11-23): C2a rewritten. The first C2a (`Nat.Prime.two_le (Fact.out)`) elaborated to the same body as C2b (`@Fact.out _ hp`, a class projection whose structure argument is instance-implicit); only the declaration's own binder info differed, so no term-based classifier could tell them apart. The old note here also called the C2a binder anonymous; it is named hp. C2a now reaches hp only through the instance slot of twoLeOfFact, which is not a projection.",
+  "C6a: the term passes h to congrArg; passed_whole or direct are both acceptable, unused and in_types_only are not.",
+  "C10b: the body is h itself, so 'returned' is the label (README: the body is the variable itself).",
+  "Mutation bug 2 reddens every path case by design; the design document's earlier 'exactly one' wording is corrected here: what must hold is that it reddens no case WITHOUT a path.",
+  "Paths: an expected 'path' matches the tool's positional path (e.g. '.2.2') or its named path (e.g. '.right.right'); the tool must report exactly one maximal read path for these cases.",
+  "Provenance of the mutation lists: bugs (i)-(iii) and their must_fail_exactly lists were written in expected.json 2eb58db0, before any classifier code existed; the lists were not set from output. Bug (iv) was added later (v1.3), also before its code and its first run.",
+  "v1.4 (2026-11-23): C1c, C11-C16 and the 'named' keys added from the reviewer fairy's first round (11 of 14 extra mutants survived the first 20 cases). Each new pair was printed as elaborated terms before its expectation was written; all written before the code changes they test. Prediction: C15a fails on the v1.3 code (who_reads does not follow matchers) and C16 fails (no budget yet).",
+  "v1.4 mutation lists, said plainly: the additions C14a/C14b (bug ii) and C13a/C13f (bug iii) were written AFTER the first v1.4 mutation run showed them failing. They follow from the bugs' own definitions (ii breaks every case that reads a path; iii turns off beta reduction, which C13 tests), but I did not update the lists before that run, so for these four entries the list is a record of the output, not a prediction. The lists for (i) and (iv) were not changed.",
+  "v1.4b: C17-C19 added after the reviewer fairy's 14 mutants were rerun on v1.4 (9 killed). Printed as terms first; expectations written before this run. Measured: source-written projections elaborate to projection-function applications, never to Expr.proj nodes (c17_projOf and reads_x printed raw), so no control here reaches the Expr.proj branch or structFieldName; the README lists both as untested.",
+  "v1.4c: C18a's first form put the lambda among the declaration's own leading binders, which are scanned separately, so the reviewer's lam_type_noop mutant survived it. Rewritten so the lambda is nested inside a constructor argument; expectation unchanged, written before the rerun.",
+  "Not separated by any control here (reviewer's mutants that still pass): (1) the Expr.proj branch and its field-name lookup, which source-written projections never produce; (2) scanning a projection chain's parameter arguments, equivalent because those parameters also occur in the structure binder's own type, which is scanned; (3) the binder type of a nested lambda, which also appears as an implicit type argument near it (C18a tried and did not separate it).",
+  "v1.4d, from reviewer round 2: C20 (depth limit), C21 (in_types_only on a stopped walk), C15c (a private reader) and noConfusion/noConfusionType excluded from readers. Written before the fixes they test. C21's budget value was found by probing the code under test; the expectation does not depend on it.",
+  "A readers_include entry starting with '*' matches by suffix: a private declaration's full name embeds the module path it was compiled under (_private.<module>.0.<name>), which depends on the compile directory."
+ ]
+}
