@@ -44,8 +44,8 @@ tables, one comment per line), not CommonMark; the LIMIT paragraph in the file l
 name in it resolve to one row of `decls.tsv`? It reads the outline (every group, its parent, level, order,
 premises, roots and claim), each note's header and anchors, and, with options, more: `--src SRC_ROOT` checks that
 a block's `file` is in the note's file table and its `lines` are inside the file, `--strings PATH` lists blocks
-whose text opens with another kind's frame, `--base REV` checks that the note at REV equals the current note with
-its anchor lines removed, byte for byte (this needs the `git` program; `--repo DIR` names the repository when it is not the one around
+whose text opens with another kind's frame, `--base REV` checks that the note at REV and the current note, both with
+their anchor lines removed, are equal byte for byte (this needs the `git` program; `--repo DIR` names the repository when it is not the one around
 NOTES_DIR), `--glob PATTERN` changes which files are notes (default `[0-9][0-9]-*.md`, so this folder's
 `tools.md` is not one). The format of the comments is read only through `rh_anchor.py`. A finding is one line,
 `CODE path:line message`; `EXTENT-WARNING`, `FRAME-NOTE` and `NEW-NOTE` are listings and never fail the run. Each

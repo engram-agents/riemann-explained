@@ -54,9 +54,10 @@ CONTRACT (each line is a self-test case, written before the code)
   M7 A block with `row` or `col` must follow a table (NOT-A-TABLE), `row` <= body rows, `col` <= columns. Case M7.
   F12 With --strings, an argument or interpretation block whose text opens with the frame of another kind is a
      FRAME-NOTE listing; without it one line says the check was skipped. Cases F12a F12b.
-  BYTES With --base REV: the note at REV equals the current note without its anchor lines, byte for byte (BYTE-DIFF
-     names the first differing line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
-     Cases B1a B1b B1c B1d.
+  BYTES With --base REV: the note at REV and the current note, each without its anchor lines (header and blocks), are equal
+     byte for byte (BYTE-DIFF names the first differing line of those stripped texts; a base that is not UTF-8 is a
+     BYTE-DIFF with no line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
+     Cases B1a to B1e, Y1 to Y6.
  Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
   R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
@@ -99,7 +100,10 @@ phrases) from the strings file; that key is PROVISIONAL and its shape is not fin
 or `<` (a placeholder), the match is case-blind, ignores leading `*`, `_` and `>`, ends at a word boundary, and only
 the first other kind that matches is named; only a block whose target is a paragraph is read. The byte check
 compares at the path the note has in the repository, so a note renamed since REV is NEW-NOTE, and BYTE-DIFF's line
-number is a line of the published text, not of the note with its anchors. The self-test builds its repositories
+number is a line of the text with its anchor lines removed (on both sides), not of the note with its anchors. Both sides are
+stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
+result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
+with no line, and the other notes are still compared. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
 List items: a nested item is not numbered; a citation in a nested item anchors to its parent item, and the precision lives in
 the block's decls and lines (a future optional `subitem` could number nested items). A list whose last line is nested, a
@@ -660,7 +664,11 @@ def _bytes_check(name, text, rel, ctx):
     show = _vcs(ctx.top, "cat-file", "blob", f"{ctx.rev}:{rel}")
     if show.returncode != 0:
         return _f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)
-    old, new = show.stdout, rh.strip_anchor_lines(text).encode("utf-8")
+    try:   # both sides without their anchor lines (header and blocks), decoded the same way
+        old = rh.strip_anchor_lines(show.stdout.decode("utf-8")).encode("utf-8")
+    except UnicodeDecodeError:
+        return _f("BYTE-DIFF", name, None, f"the note at {ctx.base} is not valid UTF-8 and cannot be compared")
+    new = rh.strip_anchor_lines(text).encode("utf-8")
     if old == new:
         return None
     a, b = old.splitlines(True), new.splitlines(True)
@@ -668,7 +676,7 @@ def _bytes_check(name, text, rel, ctx):
 
     def fmt(ls):
         return repr(ls[i].decode("utf-8", "replace")) if i < len(ls) else "<no line>"
-    return _f("BYTE-DIFF", name, i + 1, f"line {i + 1} of the published text differs: published {fmt(a)}, without anchors {fmt(b)}")
+    return _f("BYTE-DIFF", name, i + 1, f"line {i + 1} differs: at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}")
 
 
 # ---- the run
