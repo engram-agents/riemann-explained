@@ -784,6 +784,64 @@ def _selftest_cases():
                     [r for r in _pairs(tabs, "uncalled", "name", "kind") if r[1] == "target"]),
                    ([("L.y", "target", "W.lean", "2", "1")], [("L.x", "target")]))
 
+    def inside(ns, wrappers):
+        return f"namespace {ns}\n" + wrappers + f"end {ns}\n"
+
+    def by_pub(tabs):
+        return {r["public_name"]: (r["target_file"], r["target_line"], r["target_matches"]) for r in tabs["aliases"][2]}
+
+    ROOT_AX = "theorem A.x : P := sorry\n"
+
+    @case("NS1", "a wrapper inside `namespace N` writing `A.x` resolves to `N.A.x`, not to a root `A.x` decoy; a root wrapper still gets the root one")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"D/F.lean": decl("N", "A.x"), "Decoy/R.lean": ROOT_AX,
+                                     "Pub/W.lean": inside("N", _W("w", "A.x")), "Pub/W2.lean": _W("w2", "A.x")})
+        return _eq(by_pub(tabs), {"N.w": ("D/F.lean", "2", "1"), "w2": ("Decoy/R.lean", "1", "1")})
+
+    @case("NS2", "only a root `A.x` exists: a wrapper inside `namespace N` falls back to it; another wrapper resolves at level N")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"R/R.lean": ROOT_AX, "D/B.lean": decl("N", "B.y"),
+                                     "Pub/W.lean": inside("N", _W("w", "A.x") + _W("v", "B.y"))})
+        return _eq(by_pub(tabs), {"N.w": ("R/R.lean", "1", "1"), "N.v": ("D/B.lean", "2", "1")})
+
+    @case("NS3", "a wrapper inside `namespace N.M` with N.A.x and root A.x present (no N.M.A.x) picks the middle level N.A.x")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"D/F.lean": decl("N", "A.x"), "Decoy/R.lean": ROOT_AX, "D/Z.lean": decl("N.M", "A.z"),
+                                     "Pub/W.lean": inside("N.M", _W("w", "A.x") + _W("v", "A.z"))})
+        return _eq(by_pub(tabs), {"N.M.w": ("D/F.lean", "2", "1"), "N.M.v": ("D/Z.lean", "2", "1")})
+
+    @case("NS4", "with N.M.A.x and N.A.x both present the innermost level wins inside `namespace N.M`; inside `namespace N` the outer one")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"D/Inner.lean": decl("N.M", "A.x"), "D/Outer.lean": decl("N", "A.x"),
+                                     "Pub/W.lean": inside("N.M", _W("w", "A.x")), "Pub/W2.lean": inside("N", _W("v", "A.x"))})
+        return _eq(by_pub(tabs), {"N.M.w": ("D/Inner.lean", "2", "1"), "N.v": ("D/Outer.lean", "2", "1")})
+
+    @case("NS5", "two declarations of N.A.x plus a root A.x: AMBIGUOUS at the deciding level (matches 2, both candidates), never 1 from the root")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"D/F1.lean": decl("N", "A.x"), "D/F2.lean": decl("N", "A.x"), "Decoy/R.lean": ROOT_AX,
+                                     "Pub/W.lean": inside("N", _W("w", "A.x")), "Pub/W2.lean": _W("w2", "A.x")})
+        return _eq((by_pub(tabs), _pairs(tabs, "alias_candidates", "public_name", "candidate_file")),
+                   ({"N.w": ("-", "-", "2"), "w2": ("Decoy/R.lean", "1", "1")}, [("N.w", "D/F1.lean"), ("N.w", "D/F2.lean")]))
+
+    @case("NS6", "a wrapper inside `namespace N` writing `_root_.A.x` skips the prefixes and resolves root A.x; written `A.x` it resolves N.A.x")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"D/F.lean": decl("N", "A.x"), "Decoy/R.lean": ROOT_AX,
+                                     "Pub/W.lean": inside("N", _W("w", "_root_.A.x") + _W("v", "A.x"))})
+        return _eq(by_pub(tabs), {"N.w": ("Decoy/R.lean", "1", "1"), "N.v": ("D/F.lean", "2", "1")})
+
+    @case("NS7", "a wrapper after `end N` has no prefix: it resolves root A.x, while one inside N resolves N.A.x in the same file")
+    def _():
+        t = inside("N", _W("win", "A.x")) + _W("wout", "A.x")
+        _rc, _o, _e, tabs, _n = _go({"D/F.lean": decl("N", "A.x"), "Decoy/R.lean": ROOT_AX, "Pub/W.lean": t})
+        return _eq(by_pub(tabs), {"N.win": ("D/F.lean", "2", "1"), "wout": ("Decoy/R.lean", "1", "1")})
+
+    @case("NS8", "callers.tsv and uncalled.tsv name the deciding-level full name N.A.x; a use `exact N.A.x` is its caller, the text `A.x` is not")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"D/F.lean": decl("N", "A.x"), "Pub/W.lean": inside("N", _W("w", "A.x")),
+                                     "Use/U.lean": "exact N.A.x\n", "Use/V.lean": "exact A.x\n"})
+        return _eq((_pairs(tabs, "callers", "name", "kind", "file", "line", "in_comment"), _pairs(tabs, "uncalled", "name", "kind")),
+                   ([("N.A.x", "target", "Use/U.lean", "1", "0")], [("N.w", "alias")]))
+
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
         _rc, _o, _e, _t, n = _go({**PUB_ALPHA, "Use/E.lean": "theorem z : P := Lib.alpha_core\n"}, count_reads=True)
