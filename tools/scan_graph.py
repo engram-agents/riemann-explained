@@ -62,36 +62,179 @@ FILES_COLS = ["module", "lines", "thm", "defs", "dec", "ndec", "nnum", "omega", 
 EDGES_COLS = ["importer", "imported"]
 
 
-# ---------------------------------------------------------------- shared API (STUBS)
+# ---------------------------------------------------------------- shared API
 
 def read_text(path):
-    return "", False
+    """(text, True), or ("", False) when the file is not valid UTF-8. Never replaces bad bytes."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read(), True
+    except UnicodeDecodeError:
+        return "", False
+
+
+_COMMENT_EDGE = re.compile(r"[-/\n]")
 
 
 def mask_comments(text):
-    return text
+    """Same-length text with every `--` line comment and every nested `/- ... -/` block comment (including
+    `/-!` and `/--`) replaced by spaces; newlines stay. Strings are not special-cased."""
+    out, pos, depth, in_line, cstart, skip = [], 0, 0, False, 0, 0
+
+    def blank(seg):
+        return re.sub(r"[^\n]", " ", seg)
+
+    for m in _COMMENT_EDGE.finditer(text):
+        i = m.start()
+        if i < skip:
+            continue
+        if in_line:
+            if text[i] == "\n":
+                out.append(text[pos:cstart])
+                out.append(blank(text[cstart:i]))
+                pos, in_line = i, False
+            continue
+        if depth:
+            if text.startswith("/-", i):
+                depth += 1
+                skip = i + 2
+            elif text.startswith("-/", i):
+                depth -= 1
+                skip = i + 2
+                if depth == 0:
+                    out.append(text[pos:cstart])
+                    out.append(blank(text[cstart:i + 2]))
+                    pos = i + 2
+            continue
+        if text.startswith("/-", i):
+            depth, cstart, skip = 1, i, i + 2
+        elif text.startswith("--", i):
+            in_line, cstart, skip = True, i, i + 2
+    if in_line or depth:
+        out.append(text[pos:cstart])
+        out.append(blank(text[cstart:]))
+    else:
+        out.append(text[pos:])
+    return "".join(out)
 
 
 def header_imports(text):
-    return []
+    """Module names imported by the file header, read from the comment-masked text. The header ends at the
+    first line that is not blank, `module`, `prelude` or an `import` line."""
+    names = []
+    for line in mask_comments(text).split("\n"):
+        s = line.strip()
+        if not s or s in ("module", "prelude"):
+            continue
+        m = re.match(r"import\s+(.*)$", s)
+        if m:
+            names += m.group(1).split()
+            continue
+        break
+    return names
 
 
 def walk_lean(root):
-    return []
+    """Sorted [(module, path)] for every *.lean under root; symlinked directories are not followed."""
+    found = []
+    for d, dirs, fs in os.walk(root, followlinks=False):
+        for f in fs:
+            if f.endswith(".lean"):
+                p = os.path.join(d, f)
+                found.append((os.path.relpath(p, root)[:-5].replace(os.sep, "."), p))
+    found.sort()
+    return found
 
 
 def provenance(tool, root, not_a):
-    return "# stub"
+    """The `#` first line of every TSV. `source:` is the git HEAD of root, `unversioned` outside a git work
+    tree, `git-unreadable` when git is there but fails. Never raises."""
+    def git(*args):
+        return subprocess.run(["git", "-c", "safe.directory=*", "-C", root] + list(args),
+                              capture_output=True, text=True, timeout=60,
+                              env=dict(os.environ, LC_ALL="C", LANG="C"))
+    try:
+        r = git("rev-parse", "--is-inside-work-tree")
+        if r.returncode != 0 and "not a git repository" in r.stderr:
+            sha = "unversioned"
+        elif r.returncode != 0 or r.stdout.strip() != "true":
+            sha = "git-unreadable"
+        else:
+            h = git("rev-parse", "HEAD")
+            sha = h.stdout.strip() if h.returncode == 0 and re.fullmatch(r"[0-9a-f]{40,64}", h.stdout.strip()) else "git-unreadable"
+    except Exception:
+        sha = "git-unreadable"
+    return f"# {tool} | source: {sha}| {not_a}"
 
 
-# ---------------------------------------------------------------- the tool (STUB)
+# ---------------------------------------------------------------- the tool
+
+DECL = re.compile(r"^[ \t]*(?:@\[[^\]\n]*\][ \t]*)*(?:(?:private|protected|noncomputable|nonrec|unsafe|partial)[ \t]+)*"
+                  r"(theorem|lemma|def|abbrev|structure|class|inductive|instance)\b", re.M)
+WORDS = {k: re.compile(r"(?<![\w.])" + k + r"(?![\w])") for k in ("native_decide", "decide", "norm_num", "omega", "simp")}
+
 
 def scan_text(text):
-    return 0, collections.Counter(), []
+    """(physical lines, Counter of counts on the raw text, header imports)."""
+    lines = text.count("\n") + (0 if text == "" or text.endswith("\n") else 1)
+    c = collections.Counter()
+    for m in DECL.finditer(text):
+        c["thm" if m.group(1) in ("theorem", "lemma") else "defs"] += 1
+    for k, rx in WORDS.items():
+        c[k] = len(rx.findall(text))
+    return lines, c, header_imports(text)
 
 
 def run(root, out):
-    return 0
+    root = root.rstrip(os.sep) or root
+    if not os.path.isdir(root):
+        print(f"SRC_ROOT is not a directory: {root}", file=sys.stderr)
+        return 2
+    mods = walk_lean(root)
+    if not mods:
+        print("CHECKED NOTHING: no .lean file under SRC_ROOT")
+        return 1
+    names = {m for m, _ in mods}
+    own_tops = {m.split(".")[0] for m in names}
+    os.makedirs(out, exist_ok=True)
+    n_edges, unresolved, undecodable = 0, collections.Counter(), []
+    with open(os.path.join(out, "files.tsv"), "w", encoding="utf-8", newline="\n") as ff, \
+            open(os.path.join(out, "edges.tsv"), "w", encoding="utf-8", newline="\n") as fe:
+        ff.write(provenance("scan_graph.py", root, "a row is a text count of one file, not a measurement of what any "
+                            "proof uses; word counts include comments and strings") + "\n")
+        ff.write("\t".join(FILES_COLS) + "\n")
+        fe.write(provenance("scan_graph.py", root, "a row says the importer is compiled after the imported file, "
+                            "not that any proof in the importer uses anything in it") + "\n")
+        fe.write("\t".join(EDGES_COLS) + "\n")
+        for m, p in mods:
+            text, ok = read_text(p)
+            if not ok:
+                undecodable.append(os.path.relpath(p, root).replace(os.sep, "/"))
+                ff.write("\t".join([m] + ["-"] * (len(FILES_COLS) - 2) + ["ERROR"]) + "\n")
+                continue
+            lines, c, imps = scan_text(text)
+            ext, n_in = collections.Counter(), 0
+            for i in imps:
+                if i in names:
+                    n_in += 1
+                    n_edges += 1
+                    fe.write(f"{m}\t{i}\n")
+                else:
+                    top = i.split(".")[0]
+                    ext[top] += 1
+                    if top in own_tops:
+                        unresolved[i] += 1
+            ff.write("\t".join(map(str, [m, lines, c["thm"], c["defs"], c["decide"], c["native_decide"], c["norm_num"],
+                                         c["omega"], c["simp"], n_in,
+                                         ",".join(f"{k}:{v}" for k, v in sorted(ext.items())) or "-",
+                                         int("Mathlib" in imps), "ok"])) + "\n")
+    print(f"files {len(mods)}  internal edges {n_edges}  unresolved imports under release folders "
+          f"{sum(unresolved.values())}  undecodable {len(undecodable)}")
+    for k, v in sorted(unresolved.items(), key=lambda kv: (-kv[1], kv[0])):
+        print("UNRESOLVED", k, v)
+    for rel in undecodable:
+        print("UNDECODABLE", rel)
+    return 1 if (unresolved or undecodable) else 0
 
 
 # ---------------------------------------------------------------- self-test

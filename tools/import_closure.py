@@ -18,15 +18,13 @@ def path(root, m):
 
 
 def imports(p):
-    out = []
     with open(p, encoding="utf-8") as f:
-        for line in f:
-            s = line.strip()
-            if s.startswith("import "):
-                out += s[7:].split()
-            elif s and not s.startswith("--"):
-                break
-    return out
+        text = f.read()
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import scan_graph
+    return scan_graph.header_imports(text)
 
 
 def closure(root, start):
