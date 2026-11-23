@@ -1929,6 +1929,37 @@ def _selftest_cases():
         return _eq((b.js("group/g1a.json")["blocks"][0]["item"], b.js("group/g2.json")["blocks"][0]["row"],
                     "item" in b.js("group/g1.json")["blocks"][0]), (2, 1, False))
 
+    @case("S1", "a root is read only when a `reading` block anchors it: a root (corge, g3) anchored only by an argument, an "
+                "interpretation, a correction, a not_read or a machine_fact block stays unread, the step's word stays `Not read "
+                "yet`, roots_read is 0 of 1 (roots_not_read 1 for the not_read block), the coverage sum still holds and the card "
+                "says `0 of the 1 declarations we looked at have a reading`")
+    def _():
+        extra = {"argument": dict(reader="Reader Two", date="2026-11-23"), "interpretation": dict(reader="Reader Two", date="2026-11-23"),
+                 "correction": dict(reader="Reader Two", date="2026-11-23"), "not_read": dict(needs="hand_read"),
+                 "machine_fact": dict(tool="t", tool_version="v", check="text", options="")}
+        got = {}
+        for kind, kw in extra.items():
+            n03 = N03 + _b(id="03.b01", kind=kind, decls=[CORGE], **kw) + "\n"
+            b = _build(notes=_notes() | {"03-three.md": n03})
+            g3 = b.js("level0.json")["steps"][1]
+            got[kind] = (b.rc, g3["id"], g3["coverage"], g3["counts"],
+                         "coverage check: read 1 + partly 1 + not read 1 = 3 steps" in b.out.splitlines(),
+                         "0 of the 1 declarations we looked at have a reading" in _card(b, "g3").find("p", "coverage")[0].text())
+        want = {k: (0, "g3", "Not read yet", {"roots": 1, "roots_read": 0, "roots_not_read": 1 if k == "not_read" else 0}, True, True)
+                for k in extra}
+        return _eq(got, want)
+
+    @case("S2", "the first sentence is cut at the first `.`, `!` or `?` that is followed by white space or the end: a decimal or an "
+                "abbreviation dot inside a word does not end it (`The constant 1.5 is used. Then more.` gives `The constant 1.5 is "
+                "used.`); the group JSON carries it")
+    def _():
+        t = "The constant 1.5 is used. Then more."
+        b = _build(notes=_notes(arg_text=t))
+        fs = _first_sentence
+        return _eq((fs(t), fs("See e.g.x and 3.2 now"), fs("Is it so? Yes."), fs("Done."), fs("Stop!\nNext."),
+                    b.js("group/g1.json")["blocks"][1]["first_sentence"]),
+                   ("The constant 1.5 is used.", "See e.g.x and 3.2 now", "Is it so?", "Done.", "Stop!", "The constant 1.5 is used."))
+
     # ---- B1: no release text
     @case("B1a", "leak_check: a planted shard whose `text` value is a line of the release (>= 20 non-space characters) is named "
                  "(SOURCE-LEAK data); a short release line and a line of other text are not")
