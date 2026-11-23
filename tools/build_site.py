@@ -112,11 +112,13 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      `is missing the placeholder {name}`): statement_read_line, statement_census_line and proof_read_line ({reader} {date}),
      statement_count_line, proof_count_line, steps_statement_line and steps_proof_line ({n} {m}), open_items_line and
      steps_open_items_line ({n}). The frames (argument_frame, second_reader_frame, interpretation_frame, frames.*), shared_note,
-     note_href and the reaction hrefs may omit theirs. Cases PHR1 PHR2 PHR3.
+     note_href and the reaction hrefs may omit theirs. Cases PHR1 PHR2 PHR3 PHR4 (the nine keys declare exactly the placeholders they must hold).
   CODE In a claim text and in a condition a span between single backticks on one line is rendered as <code>...</code>, its
      content escaped like all data; nothing else is markup (no bold, link, heading or raw HTML: a `<b>` in the data stays
-     escaped text). An unpaired backtick, an empty pair, doubled backticks and a pair over a line break stay literal text.
-     In the JSON and in data.js the text stays as written, backticks included. Cases CODE1 CODE2.
+     escaped text). An unpaired backtick, an empty pair, doubled backticks and a pair over a line break (LF or CR) stay literal text.
+     In the JSON and in data.js the text stays as written, backticks included. The span is notes_meta's `_BACKTICK_SPAN`, the one
+     definition the checker uses for CLAIM-LIBRARY-WORD too, so the page and the checker agree on what is code. Cases CODE1 CODE2
+     CODE3 CODE4 AGR1.
   C1 The two status lines come from the strings keys: statement_read_line ({reader} {date} of the claim, or of the first
      reading block of the root when the claim is null, or when its basis is census), statement_census_line ({reader} {date}
      of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line. A group with several

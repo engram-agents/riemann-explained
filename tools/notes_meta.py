@@ -12,7 +12,7 @@ CONTRACT (each line is a self-test case, written before the code)
      `CHECKED NOTHING: <reason>` line per reason on stdout, exit 3, nothing else checked. Cases X1a X1b X1c.
   X2 Exit 0: every note passed. Exit 1: any finding of class ERROR. Exit 2: usage, or an input that cannot be read
      (a message on stderr, nothing on stdout). Exit 3: see X1. Exit 4: the self-test failed (REFUSED, nothing else).
-     A listing (EXTENT-WARNING, FRAME-NOTE, NEW-NOTE) never changes the exit code. Cases X2a X2b X2c EXIT4.
+     A listing (EXTENT-WARNING, FRAME-NOTE, NEW-NOTE, CLAIM-LIBRARY-WORD) never changes the exit code. Cases X2a X2b X2c EXIT4.
   X3 One line per finding, `CODE path:line message` (`CODE path message` when it has no line); path is the file's
      name (a note: its name in NOTES_DIR). Per note, after its findings: `note <id> header ok|FAILED, blocks N
      (kind=count ...)` (the breakdown is left out when N is 0). Then the run's lines: the FRAME-NOTE skip notice
@@ -76,11 +76,13 @@ CONTRACT (each line is a self-test case, written before the code)
  the group and the type of the value; REQUIRE_CLAIM_BASIS (False) makes a claim without it CLAIM-BASIS-MISSING; the line
  `claim basis: R read, C census, M without` counts the non-null claims that are objects (a claim that is not an
  object is its own BAD-VALUE and is counted in none of the three).
-  Claim words (cases CLW1 to CLW5): a claim `text` or a `conditions` entry that holds, OUTSIDE single-backtick spans, a dotted token
+  Claim words (cases CLW1 to CLW8): a claim `text` or a `conditions` entry that holds, OUTSIDE single-backtick spans, a dotted token
  (identifier parts joined by a dot, each starting with a letter or `_`: Foo.bar, A.b_c.d) or a CamelCase word (a lower-case letter
  directly followed by a capital inside a word of letters, digits and `_`: getValue, HypSalt) is a `CLAIM-LIBRARY-WORD` listing
  naming the group, `claim text` or `conditions[i]`, and the token, once per token per text, in the order of the text; it never
- changes the exit code and counts in the warnings.
+ changes the exit code and counts in the warnings. Doubled backticks are literal text, so a token inside them is outside a span
+ and is listed; a span does not cross a line break of any kind (LF, CR or both). The span is `_BACKTICK_SPAN`, which build_site.py
+ uses too to render <code>, so the page and the checker cannot disagree on what is code.
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
@@ -142,13 +144,15 @@ the outline (not the group itself); roots and defs_opened resolved are those wit
 those with at least one phrase; a group id that is repeated is counted in the groups but only its first is resolved. A header
 group of `root` is not looked up in the outline; a group literally named root is not supported.
 CLAIM-LIBRARY-WORD is a prompt to the signer, not a proof, and its rule is exactly this: a single-backtick span is a backtick, then
-one or more characters that are neither a backtick nor a line break, then a backtick, with no backtick directly outside it (the span the
-page renders as code; doubled backticks and a pair over a line break are not spans); outside spans, a dotted token has at least two
+one or more characters that are neither a backtick nor a line break (LF or CR), then a backtick, with no backtick directly outside
+either end (`_BACKTICK_SPAN`, the span the page renders as code; doubled backticks and a pair over a line break are not spans, so a
+token inside doubled backticks IS listed); outside spans, a dotted token has at least two
 parts, each a letter or `_` followed by letters, digits and `_`, with no letter, digit, `_` or `.` directly before it and no letter,
 digit or `_` directly after it (so a number like 3.5, a sentence-final period and `end. Next` are not listed, and `e.g.` is: it reads
 as a dotted token); a CamelCase word is a run of ASCII letters, digits and `_` (outside dotted tokens) holding a lower-case letter
 directly followed by a capital (so `RH`, `Riemann` and `LEAN` are not listed and `McDonald` is). ASCII letters only: a name with a
-non-ASCII letter is not seen. The outline has no line numbers, so a finding names the file, the group and the place, no line.
+non-ASCII letter may be listed as a fragment, because the word is cut at the letter (naïveThing is listed as 'veThing', GröbnerBasis as
+'bnerBasis'). The outline has no line numbers, so a finding names the file, the group and the place, no line.
 Title rules in the script are heuristics. A trailing parenthetical is allowed when it holds only code spans, commas and
 `and`, or only a one-letter or number argument (so a function argument like `(s)` or `(12)` passes and `(draft)` fails);
 a math argument longer than that is called a status. TITLE-NOTE listings (a math symbol or `Re s` outside code; `proved`

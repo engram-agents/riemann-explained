@@ -91,7 +91,7 @@ nested under it to any depth), one `group/<id>.json` per group (its `premises`, 
 (the hash of every other file, the three commit ids, the release id and archive hash, the counts), `data.js` (the
 same data as one assignment) and `index.html`. The page is one static file of plain HTML: each step is a card (claim,
 conditions, premises as links (for a step with a null claim too), two status lines, a line counting the open questions (on a card only above zero; the first screen always says it), the first sentence of the argument inside
-its frame, three reaction links; a span between single backticks in a claim or a condition is shown as code, nothing else in them is markup), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
+its frame, three reaction links; a span between single backticks on one line in a claim or a condition is shown as code, by the same span rule `notes_meta.py` uses, and nothing else in them is markup), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
 makes a request. Every FIXED sentence on the page comes from the strings file, whose shape is provisional (the fixtures of the self-test carry their own wording, not the real one; the keys for the status
 lines are provisional names, the owner of the wording may rename them: `statement_read_line`, `statement_census_line`,
 `statement_not_read_line`, `proof_read_line`, `proof_not_read_line`, `statement_count_line`, `proof_count_line`,
