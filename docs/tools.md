@@ -59,6 +59,22 @@ that is empty until the renderer control is in. The run prints a count line for 
 byte check when they ran); a header's group may be `root` only at level 0.
 `python3 tools/notes_meta.py NOTES_DIR outline.json decls.tsv [--src SRC_ROOT] [--strings strings.json] [--base REV]`
 
+**`tools/note_cite.py NOTE DECLS_TSV --at LINE --decl FULL.NAME --kind KIND`** writes one block anchor, so nobody
+types the JSON. It finds the declaration's module in `decls.tsv` (`--module` picks one when the name is in several),
+takes the element of the note that holds line `--at` (a paragraph, table, list or lean block, or the anchor lines just
+after one), and puts the comment after that element and after any anchors already there, so a second anchor on one
+element lands below the first. For a table it fills `row` (and `col` if given), for a list `item`, from the line or
+from `--row`/`--item`. It refuses, with one line `REFUSED CODE message` and nothing written, when the name does not
+resolve to one row, when `--lines` cross the declaration's text extent, when the file is not in the note's file table,
+when the line is in a heading, quote or non-lean fence, when the note has no header or a comment the parser cannot
+read, and when a kind that needs `--reader` and `--date` lacks one (it never fills either by default). The block is
+checked with `rh_anchor.problems` before it is placed, and the result with the same parser the checker uses: the note
+without its anchor lines must not change. By default it only prints the comment and the line it would go after;
+`--write` writes the note. `--src SRC_ROOT` also prints the cited lines from your local copy of the release, so you see
+the statement while you cite it. It does not judge whether the cited lines support the sentence, or whether the kind
+is right: that is the reader's and the peer's job, and `notes_meta.py` is the check of what it writes.
+`python3 tools/note_cite.py docs/13-how-the-sha-bound-is-used.md decls.tsv --at 214 --decl UpperTheory.Top.topDesWin --lines 25-25 --kind reading --reader NAME --date YYYY-MM-DD --src SRC_ROOT`
+
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
 file compiled before the start module (INSIDE, with one shortest import path) or not (OUTSIDE)? Give at
 least one control, a module you know is inside; if a control is not, the run stops and says BROKEN.
@@ -78,5 +94,6 @@ row. Exit codes, tool by tool (4 always means the self-test failed and nothing w
 - `decl_table.py`: 0 even when duplicate (module, name) pairs are written; 1 only for an undecodable or unreadable file or no `.lean` file; 2 usage error or SRC_ROOT not a directory.
 - `rh_anchor.py --selftest`: 0 all cases pass; 1 any case fails; 2 usage error (it has no other command line); 3 no case ran. (It has no exit 4: it has no normal run to refuse.)
 - `notes_meta.py`: 0 every note passed (listings do not count); 1 any finding of class ERROR; 2 usage error or an input that cannot be read (a note or strings file that is not UTF-8, an outline or strings file that is not JSON, a decls row that is not six columns, a `--base` that is not a commit), nothing on stdout; 3 CHECKED NOTHING (no note matches, the outline has no groups, or decls.tsv has no rows); 4 the self-test failed. `--selftest`: 0 all pass, 1 any fails, 2 usage, 3 no case ran.
+- `note_cite.py`: 0 done (or a dry run printed); 2 usage error or an input that cannot be read; 4 the self-test failed, nothing done; 5 REFUSED (the one-line reason on stdout), nothing written; 6 a post-condition failed (a bug in the helper), nothing written. `--selftest`: 0 all pass, 1 any fails, 3 no case ran.
 - `in_closure.py`: 0 only if every site is INSIDE or OUTSIDE; 1 for an AMBIGUOUS or NOT A MODULE site, or no site; 2 usage or input error, or a control equal to the start; 3 a broken control.
 - `import_closure.py`: 0 printed; 1 unresolved imports under the root's own folders (closure would be under-counted); 2 usage error or no file for the start module.

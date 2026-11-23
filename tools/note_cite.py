@@ -46,12 +46,13 @@ CONTRACT (each line is a self-test case, written before the code)
     with them). Cases C8a C8b C8c.
  C9 Post-conditions, checked on every write before it is returned: strip_anchor_lines(new) == strip_anchor_lines(old);
     the new note parses with one block more, that block's data is the built block, it is canonical, and its target has
-    the same first_line as the element chosen; no new parse problem. A failure is exit 4 (a bug here), nothing written.
+    the same first_line as the element chosen; no new parse problem. A failure is exit 6 (a bug here), nothing written.
     The note's line endings are kept (CRLF stays CRLF). Cases C9a C9b.
  C10 Command line: a dry run prints the comment and the line it goes after and leaves the file unchanged; --write
     writes it and says so; --src prints the cited lines, and a file missing under SRC_ROOT or too short is SRC-MISSING
-    or SRC-RANGE. Exit codes: 0 done, 2 usage or unreadable input, 4 a post-condition failed, 5 refused (one line
-    `REFUSED CODE message`), and --selftest 0 all pass, 1 any fails, 3 no case ran. Cases X1 X2 X3 X4.
+    or SRC-RANGE. Exit codes: 0 done, 2 usage or unreadable input, 4 the self-test failed (a normal run does it
+    quietly first, as the other tools here do, and writes nothing then), 5 refused (one line `REFUSED CODE message`),
+    6 a post-condition failed; --selftest 0 all pass, 1 any fails, 3 no case ran. Cases X1 X2 X3 X4.
 
 LIMIT. One declaration per block: a citation whose lines cross a declaration's end is refused, not split; a block
 naming several declarations is written by hand and checked by notes_meta. The extent is the text rule's
@@ -365,7 +366,7 @@ def main(argv=None):
         return 5
     except PostConditionFailed as e:
         print(f"POST-CONDITION FAILED (a bug in note_cite; nothing written): {e}", file=sys.stderr)
-        return 4
+        return 6
     if shown is not None:
         print(f"{block['file']} lines {a.lines[0]}-{a.lines[1]}, from the --src copy:")
         for k, l in enumerate(shown, a.lines[0]):
@@ -738,4 +739,8 @@ def selftest():
 if __name__ == "__main__":
     if sys.argv[1:] == ["--selftest"]:
         sys.exit(selftest())
+    _quiet = []
+    if _run_cases(_CASES, _quiet.append) != 0:
+        print("self-test failed; nothing done (run --selftest to see which case)", file=sys.stderr)
+        sys.exit(4)
     sys.exit(main())
