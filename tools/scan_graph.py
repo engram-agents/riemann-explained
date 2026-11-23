@@ -621,6 +621,25 @@ def _selftest_cases():
             (1, [nothing, 'OUT_DIR holds files from an earlier run: edges.tsv; this run wrote nothing'], ["old\n"], True),
             (1, [nothing], [], True)])
 
+    @case("STALE2", "a DIRECTORY named like an output file is not a file an earlier run left: not listed; a file beside it is")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            root, out = os.path.join(d, "src"), os.path.join(d, "out")
+            os.makedirs(root)
+            os.makedirs(os.path.join(out, "files.tsv"))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = run(root, out)
+            first = buf.getvalue().splitlines()
+            with open(os.path.join(out, "edges.tsv"), "w", encoding="utf-8") as f:
+                f.write("old\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc2 = run(root, out)
+        return _eq((rc, first, rc2, buf.getvalue().splitlines()), (1, ["CHECKED NOTHING: no .lean file under SRC_ROOT"], 1, [
+            "CHECKED NOTHING: no .lean file under SRC_ROOT",
+            "OUT_DIR holds files from an earlier run: edges.tsv; this run wrote nothing"]))
+
     @case("AGREE1", "scan_graph's edges and import_closure.closure give the same closure for a header block comment hiding `import Hidden`")
     def _():
         files = {"Entry.lean": "/-\nimport Hidden\n-/\nimport A\nimport B\ntheorem x : True := trivial\n",

@@ -29,7 +29,8 @@ CONTRACT (each line is a self-test case, written before the code)
      level 1; `order` is unique among siblings. No maximum depth (a case with depth 6). Cases O2a O2b O2c O2d.
   O3 Every premise exists; a group is not its own premise; the premises relation has no cycle. A premise may be the
      group's own child or a group of any depth. The check is over premises only, never over parent. Cases O3a O3b O3c O3d.
-  O4 A group with a non-null claim has exactly one root; a null claim may have any number. Case O4.
+  O4 Every group has at least one root; a group with a non-null claim has exactly one; a null claim may have any
+     number from one up. Case O4.
   O5 A claim has exactly the keys text, reader, date, defs_opened, conventions_checked (all required; text, reader,
      date non-empty strings; defs_opened a list of {module, name, lines:[a,b]}, may be empty; conventions_checked a
      list of letters a to e) and the optional `conditions` (non-empty strings) and `mathlib_read` (strings). Any
@@ -727,7 +728,7 @@ SRC40 = "".join(f"line {i}\n" for i in range(1, 41))
 
 
 def G(i, level=1, parent="root", order=1, roots=None, claim=None, premises=None):
-    return {"id": i, "level": level, "parent": parent, "order": order, "roots": [] if roots is None else roots,
+    return {"id": i, "level": level, "parent": parent, "order": order, "roots": [R("A.B", "foo")] if roots is None else roots,
             "claim": claim, "premises": [] if premises is None else premises}
 
 
@@ -949,7 +950,7 @@ def _():
                  "note 03-c header FAILED, blocks 0",
                  "FRAME-NOTE skipped: no strings file",
                  "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0",
-                 "in-file check (M5): skipped, no --src given",
+                 "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
                  "3 notes, 1 findings, 0 warnings"], "output")
     eq(r.rc, 1, "exit")
@@ -1092,15 +1093,17 @@ def _():
        ["PREMISE-CYCLE outline.json premises form a cycle: g1 -> c1 -> g1"], 1)
 
 
-@case("O4", "a non-null claim needs exactly one root (0 and 2 are ROOT-COUNT); a null claim may have 0, 1 or 3")
+@case("O4", "every group needs at least one root (0 is ROOT-COUNT, claim or not: a flipped case); a non-null claim needs exactly one "
+             "(2 is ROOT-COUNT); a null claim may have 1 or 3")
 def _():
     one = [R("A.B", "foo")]
     clean(go(outline=OL(G("g1", roots=one, claim=CLAIM))))
     fe(go(outline=OL(G("g1", roots=one + [R("A.C", "baz")], claim=CLAIM))),
        ["ROOT-COUNT outline.json group 'g1': a group with a claim has exactly one root, not 2"], 1)
-    fe(go(outline=OL(G("g1", roots=[], claim=CLAIM))),
-       ["ROOT-COUNT outline.json group 'g1': a group with a claim has exactly one root, not 0"], 1)
-    for roots in ([], one, one + [R("A.C", "baz"), R("A.B", "bar")]):
+    none = ["ROOT-COUNT outline.json group 'g1': a group needs at least one root"]
+    fe(go(outline=OL(G("g1", roots=[], claim=CLAIM))), none, 1)
+    fe(go(outline=OL(G("g1", roots=[], claim=None))), none, 1)
+    for roots in (one, one + [R("A.C", "baz"), R("A.B", "bar")]):
         clean(go(outline=OL(G("g1", roots=roots, claim=None))))
 
 
@@ -1183,14 +1186,48 @@ def _():
         clean(go(notes={"01-a.md": NOTE(level=lv)}))
 
 
-@case("M2b", "list_title: not only code spans, no trailing parenthetical; titles with code inside or a parenthetical inside are fine")
+def _title(t, **kw):
+    return go(notes={"01-a.md": NOTE(title=t)}, **kw)
+
+
+@case("TITLE1", "a trailing parenthetical is allowed only when it holds code spans, commas and `and`, or a one-letter or number argument; "
+                "any other (a status, a note) is TITLE-PARENTHETICAL")
 def _():
-    for t in ("`foo`", "`a` `b`", "``a`b``"):
-        fe(go(notes={"01-a.md": NOTE(title=t)}), ["TITLE-BACKTICK-ONLY 01-a.md:2 list_title is only code: " + repr(t)], 1)
-    for t in ("Title (draft)", "Title (a (b))", "Title (x)  "):
-        fe(go(notes={"01-a.md": NOTE(title=t)}), ["TITLE-PARENTHETICAL 01-a.md:2 list_title ends with a parenthetical: " + repr(t)], 1)
-    for t in ("Plain title", "A `code` title", "A (mid) title", "Ends with a bracket)", "(Opens) and goes on", "`a` and b", "A `lone"):
-        clean(go(notes={"01-a.md": NOTE(title=t)}))
+    for t in ("Statement (draft)", "(statements only)", "(a census, not an explanation)", "Title (a (b))", "Title (`x` draft)",
+              "Title (and)", "Title (x y)"):
+        fe(_title(t), ["TITLE-PARENTHETICAL 01-a.md:2 list_title ends with a parenthetical: " + repr(t)], 1)
+    for t in ("Statements (`VWin`, `Green`)", "The zeta function \u03b6(s)", "Pair (`a` and `b`)", "Value at f(12)", "Pair p(x, y)",
+              "A (mid) title", "Ends with a bracket)", "(Opens) and goes on"):
+        clean(_title(t))
+
+
+@case("TITLE2", "a title that starts with a code span, or has no word outside code spans, is TITLE-CODE-FIRST")
+def _():
+    for t in ("`foo`", "`a` `b`", "``a`b``", "`VWin` and Green", "`x` is a bound", "`lone"):
+        fe(_title(t), ["TITLE-CODE-FIRST 01-a.md:2 list_title starts with code or has no word outside code: " + repr(t)], 1)
+    for t in ("The `VWin` bound", "A `lone", "Plain title", "Bounds on `x`"):
+        clean(_title(t))
+
+
+@case("TITLE3", "a math symbol or `Re s` outside code spans in a title is a TITLE-NOTE listing (exit unchanged); inside code it is fine")
+def _():
+    for t, sym in (("Bound x \u2264 3", "\u2264"), ("Bound x \u2265 3", "\u2265"), ("Bound x < 3", "<"), ("Bound x > 3", ">"),
+                   ("Bound x = 3", "="), ("Bound x ^ 3", "^"), ("The \u221a bound", "\u221a"), ("The \u2211 bound", "\u2211"),
+                   ("Zeros with Re s large", "Re s")):
+        r = _title(t)
+        fe(r, ["TITLE-NOTE 01-a.md:2 list_title has math outside code (" + repr(sym) + "): " + repr(t)], 0)
+        ok("note 01 header ok, blocks 0" in r.lines and r.lines[-1] == "1 notes, 0 findings, 1 warnings", r.out)
+    for t in ("Bound on `x \u2264 3`", "The zeta function \u03b6(s)", "Zeros with `Re s` large", "Plain title"):
+        clean(_title(t))
+
+
+@case("TITLE4", "proved or proves not directly after `Lean` in a title is a TITLE-NOTE listing; `Lean proved` is fine")
+def _():
+    for t, w in (("The bound is proved here", "proved"), ("It proves the bound", "proves"), ("Proved bounds", "Proved"),
+                 ("Lean has it and proved it", "proved")):
+        fe(_title(t), ["TITLE-NOTE 01-a.md:2 list_title says " + repr(w) + " without 'Lean' directly before it: " + repr(t)], 0)
+    for t in ("Lean proved the bound", "Lean proves the bound", "Statements about primes"):
+        clean(_title(t))
 
 
 @case("M3a", "every block goes through rh_anchor.problems with the header id: a wrong note prefix, no kind, a missing field")
@@ -1262,7 +1299,7 @@ def _():
 @case("M5c", "without --src the in-file check is skipped and the summary says so; the extent listing still runs; with --src the summary says it ran")
 def _():
     r = go(notes=_m5(lines=[30, 45]))
-    ok("in-file check (M5): skipped, no --src given" in r.lines, r.out)
+    ok("in-file check (M5): table membership ran; existence and line count skipped, no --src given" in r.lines, r.out)
     eq(r.f, [], "no in-file finding without --src")
     r = go(notes=_m5(lines=[12, 15]), src={"A/B.lean": SRC40})
     ok("in-file check (M5): ran" in r.lines, r.out)
@@ -1371,6 +1408,14 @@ def _():
        ["BYTE-DIFF 01-a.md:6 line 6 of the published text differs: published <no line>, without anchors 'More text.\\n'"], 1)
 
 
+@case("B1e", "a blank line at the end of one side is a BYTE-DIFF: the comparison is exact, not trimmed")
+def _():
+    fe(go(notes={"01-a.md": CUR}, committed={"01-a.md": T0 + "\n"}, base="HEAD"),
+       ["BYTE-DIFF 01-a.md:7 line 7 of the published text differs: published '\\n', without anchors <no line>"], 1)
+    fe(go(notes={"01-a.md": CUR + "\n"}, committed={"01-a.md": T0}, base="HEAD"),
+       ["BYTE-DIFF 01-a.md:7 line 7 of the published text differs: published <no line>, without anchors '\\n'"], 1)
+
+
 @case("B1c", "CRLF notes compare by bytes: anchors added with CRLF endings leave the note equal to the commit")
 def _():
     crlf = T0.replace("\n", "\r\n")
@@ -1398,10 +1443,98 @@ def _real():
         G("g2", level=1, order=2, roots=[R("A.B", "bar")], claim=dict(CLAIM), premises=["g3"]),
         G("g3", level=1, order=3, roots=[R("A.C", "baz")], claim=None, premises=[]),
         G("c1", level=2, parent="g3", order=1, roots=[R("A.B", "foo")], claim=dict(CLAIM), premises=[]),
-        G("c2", level=2, parent="g3", order=2, roots=[], claim=None, premises=["c1"]),
+        G("c2", level=2, parent="g3", order=2, roots=[R("A.C", "baz")], claim=None, premises=["c1"]),
         G("d1", level=3, parent="c2", order=1, roots=[R("A.B", "bar")], claim=None, premises=[]),
         G("d2", level=4, parent="d1", order=1, roots=[R("A.B", "foo"), R("A.C", "baz")], claim=None, premises=["g3"]),
     ]
+
+
+@case("REC1", "an outline or a strings file nested 100000 deep is unreadable input: exit 2, nothing on stdout, a notes_meta message, no traceback")
+def _():
+    deep = "[" * 100000 + "]" * 100000
+    r = go(raw_outline=deep)
+    eq((r.rc, r.out), (2, ""), "outline")
+    ok(r.err.startswith("notes_meta: cannot read the outline: "), r.err)
+    r = go(strings=deep)
+    eq((r.rc, r.out), (2, ""), "strings")
+    ok(r.err.startswith("notes_meta: cannot read the strings file: "), r.err)
+
+
+@case("M5d", "the table half of M5 runs without --src: a file the note's table does not list is FILE-NOT-LISTED (with or without lines)")
+def _():
+    n = lambda **kw: {"01-a.md": NOTE(body="Some text.\n" + BL(file="A/Z.lean", **kw) + "\n" + FILES)}  # noqa: E731
+    fe(go(notes=n(lines=[1, 2])), ["FILE-NOT-LISTED 01-a.md:7 block '01.b01' file A/Z.lean is not in the note's file table"], 1)
+    fe(go(notes=n()), ["FILE-NOT-LISTED 01-a.md:7 block '01.b01' file A/Z.lean is not in the note's file table"], 1)
+    clean(go(notes=_m5(lines=[12, 15])))
+    clean(go(notes=_m5()))
+
+
+@case("M5e", "a source file that is not UTF-8 is FILE-UNREADABLE; lines without a file are not checked for extent")
+def _():
+    fe(go(notes=_m5(lines=[1, 2]), src={"A/B.lean": b"\xff\xfe\n"}),
+       ["FILE-UNREADABLE 01-a.md:7 block '01.b01' file A/B.lean under --src is not valid UTF-8"], 1)
+    nofile = {"01-a.md": NOTE(body="Some text.\n" + BL(lines=[1, 2], decls=[R("A.B", "foo")]) + "\n" + FILES)}
+    clean(go(notes=nofile))
+    clean(go(notes=nofile, src={"A/B.lean": SRC40}))
+
+
+@case("M5f", "a source file's lines are counted as an editor does: CRLF, lone CR, no final newline")
+def _():
+    for what, text in (("crlf", "x\r\n" * 40), ("lone cr", "x\r" * 40), ("no final newline", "x\n" * 39 + "x")):
+        clean(go(notes=_m5(lines=[40, 40]), src={"A/B.lean": text}))
+        fe(go(notes=_m5(lines=[41, 41]), src={"A/B.lean": text}),
+           ["LINES-OUTSIDE-FILE 01-a.md:7 block '01.b01' lines [41, 41] but A/B.lean has 40 lines"], 1)
+
+
+@case("DEFS1", "a block's defs_opened entries resolve like its decls: UNRESOLVED, AMBIGUOUS with the candidates; their lines are not order-checked")
+def _():
+    n = lambda d: {"01-a.md": NOTE(body="Some text.\n" + BL(defs_opened=d) + "\n")}  # noqa: E731
+    bad = [{"module": "A.B", "name": "nope", "lines": [1, 2]}, {"module": "A.D", "name": "dup", "lines": [1, 2]}]
+    fe(go(notes=n(bad)),
+       ["UNRESOLVED 01-a.md:7 block '01.b01' defs_opened[0] A.B nope: no row in decls.tsv",
+        "AMBIGUOUS 01-a.md:7 block '01.b01' defs_opened[1] A.D dup: 2 rows; candidates (first_line, last_line): (1, 3), (7, 9)"], 1)
+    clean(go(notes=n([{"module": "A.C", "name": "baz", "lines": [9, 5]}])))
+    clean(go(notes=n([])))
+
+
+@case("ORPH1", "a block whose target is none or other (file start, after a heading, list item, quote, non-lean fence) is ORPHAN-BLOCK; "
+               "after a paragraph, a table or a lean block it is fine")
+def _():
+    msg = "ORPHAN-BLOCK 01-a.md:%d block '01.b01' anchors nothing: its target is of type '%s', not a paragraph, table or lean block"
+    fe(go(notes={"01-a.md": BL() + "\n" + NOTE()}), [msg % (1, "none")], 1)
+    fe(go(notes={"01-a.md": NOTE(body=BL() + "\n")}), [msg % (6, "other")], 1)
+    fe(go(notes={"01-a.md": NOTE(body="- item\n" + BL() + "\n")}), [msg % (7, "other")], 1)
+    fe(go(notes={"01-a.md": NOTE(body="> quote\n" + BL() + "\n")}), [msg % (7, "other")], 1)
+    fe(go(notes={"01-a.md": NOTE(body="```text\nx\n```\n" + BL() + "\n")}), [msg % (9, "other")], 1)
+    clean(go(notes={"01-a.md": NOTE(body="Some text.\n" + BL() + "\n")}))
+    clean(go(notes={"01-a.md": NOTE(body="| a |\n|---|\n| 1 |\n" + BL() + "\n")}))
+    clean(go(notes={"01-a.md": NOTE(body="```lean\nx\n```\n" + BL() + "\n")}))
+
+
+@case("F12c", "--strings with no phrase at all (empty lists for every kind, or an empty frames) says so in one line; exit unchanged; "
+              "control: a table with phrases says nothing")
+def _():
+    line = "FRAME-NOTE skipped: no frame phrases were loaded from the strings file"
+    for fr in ({"frames": {"argument": [], "interpretation": []}}, {"frames": {}}):
+        r = go(notes={"01-a.md": NOTE(body="We think this works.\n" + ARG() + "\n")}, strings=fr)
+        ok(line in r.lines, r.out)
+        eq((r.f, r.rc), ([], 0), "no finding")
+    ok(line not in go(strings=FR).lines, "phrases loaded: no notice")
+
+
+@case("GIT1", "with the git program missing, a normal run is refused with exit 4 and a message that names this tool and git")
+def _():
+    saved = os.environ.get("PATH")
+    out, err = io.StringIO(), io.StringIO()
+    with tempfile.TemporaryDirectory() as d:
+        os.environ["PATH"] = d
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = main([d, d, d])
+        finally:
+            os.environ["PATH"] = saved
+    eq((rc, out.getvalue()), (4, ""), "exit and stdout")
+    ok(err.getvalue().startswith("REFUSED: the self-test of notes_meta.py needs the git program, which was not found on PATH"), err.getvalue())
 
 
 @case("REAL1", "an outline in the pilot's shape (depth 4, a step whose premises name a deeper group, null and non-null claims) passes")

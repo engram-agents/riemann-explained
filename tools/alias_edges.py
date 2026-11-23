@@ -863,7 +863,7 @@ def _selftest_cases():
     def _():
         nothing = "CHECKED NOTHING: no .lean file under SRC_ROOT"
         got = []
-        for planted in (('aliases.tsv', 'refs.tsv'), ('uncalled.tsv',), ()):
+        for planted in (('aliases.tsv', 'aliases_odd.tsv', 'alias_candidates.tsv', 'refs.tsv', 'callers.tsv', 'uncalled.tsv'), ('uncalled.tsv',), ()):
             with tempfile.TemporaryDirectory() as d:
                 root, out = os.path.join(d, "src"), os.path.join(d, "out")
                 os.makedirs(root)
@@ -877,7 +877,7 @@ def _selftest_cases():
                 kept = [open(os.path.join(out, n), encoding="utf-8").read() for n in planted]
                 got.append((rc, buf.getvalue().splitlines(), kept, sorted(os.listdir(out)) == sorted(planted)))
         return _eq(got, [
-            (1, [nothing, 'OUT_DIR holds files from an earlier run: aliases.tsv, refs.tsv; this run wrote nothing'], ["old\n"] * 2, True),
+            (1, [nothing, 'OUT_DIR holds files from an earlier run: alias_candidates.tsv, aliases.tsv, aliases_odd.tsv, callers.tsv, refs.tsv, uncalled.tsv; this run wrote nothing'], ["old\n"] * 6, True),
             (1, [nothing, 'OUT_DIR holds files from an earlier run: uncalled.tsv; this run wrote nothing'], ["old\n"], True),
             (1, [nothing], [], True)])
 
