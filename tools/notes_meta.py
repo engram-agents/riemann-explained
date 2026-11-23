@@ -1662,6 +1662,13 @@ def _():
     fe(go(notes=n("- a\n  - b\n", item=2)), ["ITEM-OUT-OF-RANGE 01-a.md:8 block '01.b01' item 2 but the list has 1 top-level items"], 1)
 
 
+@case("ITEM3", "a loose list is numbered across its blank lines: item 2 of a two-item loose list is fine, item 3 is out of range")
+def _():
+    n = lambda **kw: {"01-a.md": NOTE(body="- a\n\n- b\n" + BL(**kw) + "\n")}  # noqa: E731
+    clean(go(notes=n(item=2)))
+    fe(go(notes=n(item=3)), ["ITEM-OUT-OF-RANGE 01-a.md:9 block '01.b01' item 3 but the list has 2 top-level items"], 1)
+
+
 @case("ITEM2", "item on a target that is not a list is NOT-A-LIST naming the type; a bad item value is ITEM-BAD-VALUE and nothing else on a list; "
                "item with row is a block problem")
 def _():
