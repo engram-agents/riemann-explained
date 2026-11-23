@@ -1918,11 +1918,12 @@ def _selftest_cases():
 
     @case("R1a", "F4 planted: a flag that is neither true nor false is fed to the fact function for the steps: SUM-STATEMENT (or "
                  "SUM-PROOF) `steps: read 0 + not read 2 = 2, but there are 3 steps`, exit 1, nothing written; planted on the roots "
-                 "of g2: `group g2 roots: read 1 + not read 0 = 1, but there are 2 roots`; fact_pairs counts only true and false")
+                 "of g2: `group g2 roots: read 1 + not read 0 = 1, but there are 2 roots` (statement) and `read 0 + not read 1 = 1, ...` "
+                 "(proof); the sums guard a MISSING flag, not a wrong one; fact_pairs counts only true and false")
     def _():
         real = globals()["_fact_flags"]
         res = []
-        for key, n_items in (("statement_read", 3), ("proof_read", 3), ("statement_read", 2)):
+        for key, n_items in (("statement_read", 3), ("proof_read", 3), ("statement_read", 2), ("proof_read", 2)):
             def plant(items, k, key=key, n_items=n_items, real=real):
                 flags = real(items, k)
                 return [None] + flags[1:] if k == key and len(items) == n_items else flags
@@ -1932,7 +1933,8 @@ def _selftest_cases():
         err = "read 0 + not read 2 = 2, but there are 3 steps"
         return _eq((res, fact_pairs([True, False, None, True]), fact_pairs([])),
                    ([(1, ["BUILD-ERROR SUM-STATEMENT steps: " + err], False), (1, ["BUILD-ERROR SUM-PROOF steps: " + err], False),
-                     (1, ["BUILD-ERROR SUM-STATEMENT group g2 roots: read 1 + not read 0 = 1, but there are 2 roots"], False)],
+                     (1, ["BUILD-ERROR SUM-STATEMENT group g2 roots: read 1 + not read 0 = 1, but there are 2 roots"], False),
+                     (1, ["BUILD-ERROR SUM-PROOF group g2 roots: read 0 + not read 1 = 1, but there are 2 roots"], False)],
                     (2, 1), (0, 0)))
 
     @case("R1b", "a good build prints `facts check: statements read 1 + not read 2 = 3 steps; proofs read 1 + not read 2 = 3 steps`")
@@ -2582,6 +2584,64 @@ def _selftest_cases():
         b = _build(strings=st)
         return _eq(("not read" in _strings()["open_items_line"].lower(), _card(_base(), "g2").find("p", "open-items")[0].text(),
                     _card(b, "g2").find("p", "open-items")[0].text()), (False, "Questions written down: 1.", "Open: 1 questions"))
+
+    @case("PRO1", "a null-claim step with three roots (quux, qux, corge) and argument blocks on two of them: the step does NOT count for "
+                  "the proof (a step counts when EVERY root has the fact), the card counts `Proofs read: 2 of 3 declarations.`, "
+                  "roots_proof_read is 2 and facts.proof_read stays 1 (g1)")
+    def _():
+        o = _outline()
+        o["groups"][3]["roots"] = [QUUX, QUX, CORGE]
+        n03 = (N03 + "\nArgues quux.\n" + _b(id="03.b01", kind="argument", decls=[QUUX], reader="Reader Two", date="2026-11-23")
+               + "\n\nArgues qux.\n" + _b(id="03.b02", kind="argument", decls=[QUX], reader="Reader Two", date="2026-11-23") + "\n")
+        b = _build(outline=o, notes=_notes() | {"03-three.md": n03})
+        g2 = [x for x in b.js("level0.json")["steps"] if x["id"] == "g2"][0]
+        return _eq((b.rc, g2["proof_read"], g2["counts"]["roots_proof_read"], b.js("level0.json")["facts"]["proof_read"],
+                    _card(b, "g2").find("p", "proof")[0].text()), (0, False, 2, 1, "Proofs read: 2 of 3 declarations."))
+
+    @case("ZERO1", "the model with a group that has NO root (called directly: the checker refuses it first in a run): it is never "
+                   "counted as read (statement_read and proof_read False, unread True, counts roots 0) and FACTS-NO-ROOT names it; "
+                   "the guard is redundant by design")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            odata = json.load(open(p["outline"]))
+            odata["groups"].append(_g("gz", 1, "root", 9, []))
+            errors = []
+            m = _model(p["notes"], odata, _decl_rows(p["decls"]), _strings(), None, errors)
+            z = m.summary["gz"]
+            return _eq((z["statement_read"], z["proof_read"], z["unread"], z["counts"]["roots"], z["lean_name"], errors),
+                       (False, False, True, 0, None, [("FACTS-NO-ROOT", "gz", "group has no root, so no fact claim")]))
+
+    @case("RET1", "the retired-word check is an exact-case, single-space match: `not read yet.` ships, `Not read yet.` is refused "
+                  "and the refusal says `exact-case match; the lowercase phrase `not read yet` is allowed inside status wording`")
+    def _():
+        ok_ = _strings()
+        ok_["statement_not_read_line"] = "not read yet."
+        bad_ = _strings()
+        bad_["statement_not_read_line"] = "Not read yet."
+        a, b = _build(strings=ok_), _build(strings=bad_)
+        msg = ("BUILD-ERROR STRINGS-FORBIDDEN statement_not_read_line holds 'Not read yet', a word of the retired coverage scale "
+               "(exact-case match; the lowercase phrase `not read yet` is allowed inside status wording)")
+        return _eq((a.rc, b.rc, msg in b.out.splitlines(), b.existed), (0, 1, True, False))
+
+    @case("RDR1", "a root with two reading blocks in different notes: the statement reader is the first by NOTE ID then block number, "
+                  "not by date: g1a (root bar) has 01.b04 (Reader One, 2026-11-23) and 03.b01 (Reader Three, 2026-11-01); the "
+                  "line names Reader One on 2026-11-23 although the other date is earlier")
+    def _():
+        n03 = N03 + "\nAlso read.\n" + _b(id="03.b01", kind="reading", decls=[BAR], reader="Reader Three", date="2026-11-01") + "\n"
+        b = _build(notes=_notes() | {"03-three.md": n03})
+        return _eq((b.rc, _card(b, "g1a").find("p", "statement")[0].text(), b.js("level1.json")["steps"][0]["children"][0]["statement_by"]),
+                   (0, "Statement read by Reader One on 2026-11-23.",
+                    {"date": "2026-11-23", "reader": "Reader One", "source": "block"}))
+
+    @case("ORG1", "a PAGE-STATIC finding is attributed to the strings key that holds the offending token: note_href `http://...` "
+                  "(a plain link to a URL) is named, not the first https value (reactions[0].href)")
+    def _():
+        st = _strings()
+        st["note_href"] = "http://example.invalid/{file}"
+        b = _build(strings=st)
+        return _eq((b.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in b.out.splitlines(), b.existed),
+                   (1, True, False))
 
     @case("OI1", "one not_read block that anchors two groups (03.b01 on foo in g1 and bar in g1a): each card counts 1, totals.open_items "
                  "counts it once (2 with 01.b05); roots_open_items 1 on each")
