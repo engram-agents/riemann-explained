@@ -53,7 +53,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   B2 DETERMINISM: two builds in child processes under PYTHONHASHSEED=1 and =2 give byte-identical OUT_DIR. Case B2.
   B3 A note is listed under every group whose root one of its blocks anchors, and under its header's group; in totals
      it is counted once. Case B3.
-  B14 A level-0 note (header level 0) is listed above the chain, under no step and in no group's list, and counted once in
+  L2 A level-0 note (header level 0) is listed above the chain, under no step and in no group's list, and counted once in
      totals. Case U1.
   B5 Three commit ids in every JSON file: the notes commit (--notes-commit REV, else `unknown`), the release id (the
      outline's), the tools commit. A tree whose notes, outline or strings differ from the commit, or whose tools differ from
@@ -90,11 +90,12 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      date, lines and second readers; a step with an argument block shows its first sentence under the claim, a step
      without one the fixed sentence `no_argument`; an interpretation is shown apart in its own frame; every `#` link
      resolves to an id of the page (link_problems); a reading, argument, interpretation or correction block with no
-     reader or no date refuses the build (BLOCK-NO-READER). Cases B7a B7b B7c B7d B7e B7f.
+     reader (BLOCK-NO-READER) or no date
+     (BLOCK-NO-DATE) refuses the build. Cases B7a B7b B7c B7d B7e B7f.
   B1 --source-check SRC_ROOT: no output file holds a line of the release: stripped lines of at least 20 non-space
      characters of the release against the text lines of every output file (string values of the JSON except the
      name and id fields, text of the page except `<code>`). The run says what it ranged over. A planted shard that
-     leaks a line is SOURCE-LEAK; an ids-only control stays green. Cases B1a B1b B1c B1d.
+     leaks a line is SOURCE-LEAK; an ids-only control stays green, on the page too. Cases B1a B1b B1c B1d B1e.
 
 LIMIT. The page is a first draft of a real page: plain HTML, no script, no style beyond borders; the wording is the
 strings file's, and the strings file's shape is PROVISIONAL (the table under `coverage` and every key named in this file
@@ -108,8 +109,8 @@ blocks feed no group. Coverage is for the roots only: members of a group that a 
 compiled data in this slice, and off-route marks (with their basis) are not built. B1 compares a release line with a
 whole text line of an output file: a release line inside a longer line, or split across two, is not seen; the names and
 ids that are excluded are the keys id, module, name, lean_name, file, note, block, parent, premises, sha256, link,
-commits, files, release_id, release_archive_sha. B4's check is that each run of digits on the page appears among the digits
-of the JSON or the strings file: it cannot say the number is the right one. `dirty` is judged for the files of NOTES_DIR,
+commits, files, release_id, release_archive_sha. B4's check is that each run of digits in the page text outside <code> appears among the digits
+of the JSON (its hash fields left out) or the strings file: it cannot say the number is the right one. `dirty` is judged for the files of NOTES_DIR,
 the outline and the strings file against the notes commit, and for tracked files of this folder against the tools
 commit; an untracked file of the tools folder is not seen, and without --notes-commit the notes commit is `unknown` and
 the notes are not judged. The sha256 of a root's file needs --source-check; a hash table in a note is not read. The
@@ -122,6 +123,7 @@ usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check
        build_site.py --selftest [--only ID,ID]
 """
 import contextlib
+import fnmatch
 import functools
 import hashlib
 import html
@@ -167,35 +169,814 @@ NAME_KEYS = frozenset(["id", "module", "name", "lean_name", "file", "note", "blo
                        "commits", "files", "release_id", "release_archive_sha"])
 
 
-# ---------------------------------------------------------------- the tool (stub: the cases below are written first)
+# ---------------------------------------------------------------- the tool
 
-def _todo(what):
-    raise NotImplementedError(what)
+TEXT_KEYS = ("page_title", "route_count", "mapped_line", "not_read_yet", "no_argument", "argument_frame", "second_reader_frame",
+             "interpretation_frame", "evidence_label", "roots_only_note", "dirty_note", "shared_note", "roots_read",
+             "roots_not_read", "note_href")
+PLACEHOLDERS = {"route_count": {"N", "M"}, "roots_read": {"N", "M"}, "roots_not_read": {"N", "M"},
+                "argument_frame": {"reader", "date", "lines"}, "second_reader_frame": {"reader", "date"},
+                "interpretation_frame": {"reader", "date"}, "shared_note": {"groups"}, "note_href": {"file"}}
+LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
+              "read_more", "lines_missing")
+FROZEN_WORDS = ("verified", "explained", "understood")
+READER_KINDS = ("reading", "argument", "interpretation", "correction")
+SAFE_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]*")
+_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_LINE_SPLIT = re.compile(r"\r\n|\n|\r")
+_API = ("fetch(", "XMLHttpRequest", "WebSocket", "sendBeacon", "import(", "@import")
+_OUT_NAMES = ("level0.json", "level1.json", "manifest.json", "data.js", "index.html")
 
+
+class _Unreadable(Exception):
+    """An input that cannot be read: exit 2, the message goes to stderr, nothing to stdout."""
+
+
+def _sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def _dump(obj):
+    return json.dumps(obj, sort_keys=True, indent=1, ensure_ascii=False)
+
+
+def _fill(template, **kw):
+    """The template with each known {name} replaced in one pass; a name that is not given stays as written."""
+    return _PLACEHOLDER.sub(lambda m: str(kw[m.group(1)]) if m.group(1) in kw else m.group(0), template)
+
+
+def _first_sentence(text):
+    m = re.match(r"(.+?[.!?])(?=\s|$)", text, re.S)
+    return m.group(1) if m else text
+
+
+def _nonspace(s):
+    return len("".join(s.split()))
+
+
+# ---- the coverage word
 
 def coverage_word(counts, table):
-    _todo("coverage_word")
+    """The word of the first entry of `table` whose `when` holds for counts {roots, read, not_read}, else None. A group with
+    no root has no coverage claim: None."""
+    roots, read = counts["roots"], counts["read"]
+    if roots <= 0:
+        return None
+    holds = {"read_all": read == roots, "read_some": 0 < read < roots, "read_none": read == 0}
+    for entry in table:
+        if holds.get(next(iter(entry["when"])), False):
+            return entry["word"]
+    return None
 
+
+# ---- the checks of the page
 
 def static_problems(page, js):
-    _todo("static_problems")
+    """What the page or data.js holds that could make a request: a sorted list of ids from fetch(, XMLHttpRequest, WebSocket,
+    sendBeacon, import(, @import, src=http, href=http (a reaction anchor excepted), url( to a URL."""
+    found = set()
+    for text in (page, js):
+        found.update(tok for tok in _API if tok in text)
+        if re.search(r"url\(\s*['\"]?\s*(?:https?:)?//", text, re.I):
+            found.add("url(")
+
+    class P(html.parser.HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            for k, v in attrs:
+                if not isinstance(v, str) or not re.match(r"\s*(?:https?:)?//", v, re.I):
+                    continue
+                if k in ("src", "srcset", "poster"):
+                    found.add("src=http")
+                elif k in ("href", "action", "formaction", "xlink:href") and not (
+                        tag == "a" and "reaction" in (a.get("class") or "").split()):
+                    found.add("href=http")
+
+    P(convert_charrefs=True).feed(page)
+    return sorted(found)
 
 
 def link_problems(page):
-    _todo("link_problems")
+    """Every `#` link that has no element of that id on the page (as `#id`), then every id used twice (`duplicate id X`)."""
+    ids, links = [], []
+
+    class P(html.parser.HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if a.get("id") is not None:
+                ids.append(a["id"])
+            h = a.get("href")
+            if tag in ("a", "area") and isinstance(h, str) and h.startswith("#") and len(h) > 1:
+                links.append(urllib.parse.unquote(h[1:]))
+
+    P(convert_charrefs=True).feed(page)
+    known = set(ids)
+    out = ["#" + h for h in dict.fromkeys(links) if h not in known]
+    out += ["duplicate id " + i for i in sorted({i for i in ids if ids.count(i) > 1})]
+    return out
+
+
+def _page_text(page, skip=("style", "script")):
+    """The text nodes of the page outside the tags in `skip`, as one list of strings."""
+    out, depth = [], {t: 0 for t in skip}
+
+    class P(html.parser.HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag in depth:
+                depth[tag] += 1
+
+        def handle_endtag(self, tag):
+            if tag in depth and depth[tag]:
+                depth[tag] -= 1
+
+        def handle_data(self, data):
+            if not any(depth.values()):
+                out.append(data)
+
+    P(convert_charrefs=True).feed(page)
+    return out
+
+
+HASH_KEYS = frozenset(["sha256", "files", "release_archive_sha", "commits"])
+
+
+def number_pool(objs):
+    """The text whose runs of digits the numbers of the page may come from: the JSON of the build with the fields that hold
+    hashes (hex digits) left out, so that a hash cannot vouch for a small number."""
+    def strip(v):
+        if isinstance(v, dict):
+            return {k: strip(x) for k, x in v.items() if k not in HASH_KEYS}
+        if isinstance(v, list):
+            return [strip(x) for x in v]
+        return v
+    return "\n".join(json.dumps(strip(o), sort_keys=True, ensure_ascii=False) for o in objs)
 
 
 def number_problems(page, json_text, strings_text):
-    _todo("number_problems")
+    """The runs of digits in the text of the page (outside <code>, which holds names, ids and hashes) that are in neither the
+    JSON nor the strings file."""
+    allowed = set(re.findall(r"\d+", json_text)) | set(re.findall(r"\d+", strings_text))
+    seen = set(re.findall(r"\d+", " ".join(_page_text(page, skip=("style", "script", "code")))))
+    return sorted(seen - allowed, key=lambda d: (len(d), d))
+
+
+# ---- B1: no release text
+
+def _value_lines(obj):
+    """Every line of every string value of a parsed JSON, except the values under a key of NAME_KEYS (names and ids)."""
+    if isinstance(obj, str):
+        yield from obj.split("\n")
+    elif isinstance(obj, list):
+        for x in obj:
+            yield from _value_lines(x)
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if k not in NAME_KEYS:
+                yield from _value_lines(v)
+
+
+def _output_lines(rel, data):
+    text = data.decode("utf-8")
+    if rel.endswith(".json"):
+        return list(_value_lines(json.loads(text)))
+    if rel == "data.js":
+        return list(_value_lines(json.loads(text[len("window.RH_DATA = "):-len(";\n")])))
+    if rel.endswith(".html"):
+        return [ln for chunk in _page_text(text, skip=("style", "script", "code")) for ln in chunk.split("\n")]
+    return text.split("\n")
 
 
 def leak_check(files, src_root):
-    _todo("leak_check")
+    """(the files that hold a line of the release, what was ranged over). `files` maps a relative path to bytes. A line counts
+    when it has at least 20 non-space characters, compared stripped, as a whole line of a text of an output file (a string
+    value of the JSON outside the name and id fields, a text node of the page outside <code>)."""
+    candidates, n_out = {}, 0
+    for rel in sorted(files):
+        for ln in _output_lines(rel, files[rel]):
+            s = ln.strip()
+            if s:
+                n_out += 1
+                if _nonspace(s) >= 20:
+                    candidates.setdefault(s, set()).add(rel)
+    mods = sg.walk_lean(src_root)
+    leaked, n_lines, bad = set(), 0, []
+    for _module, path in mods:
+        text, ok = sg.read_text(path)
+        if not ok:
+            bad.append(os.path.relpath(path, src_root).replace(os.sep, "/"))
+            continue
+        n_lines += text.count("\n") + (0 if text == "" or text.endswith("\n") else 1)
+        for ln in text.split("\n"):
+            s = ln.strip()
+            if s in candidates:
+                leaked.update(candidates[s])
+    if bad:
+        raise ValueError("cannot read: " + ", ".join(bad))
+    return sorted(leaked), {"release_files": len(mods), "release_lines": n_lines, "output_files": len(files),
+                            "output_lines": n_out}
+
+
+# ---- the strings file
+
+def _walk_strings(v, path):
+    if isinstance(v, str):
+        yield path, v
+    elif isinstance(v, list):
+        for i, x in enumerate(v):
+            yield from _walk_strings(x, f"{path}[{i}]")
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            if not (path == "" and k == "forbidden_words"):
+                yield from _walk_strings(x, f"{path}.{k}" if path else k)
+
+
+def _strings_problems(s):
+    """[(code, path, message)] for the strings file: every key the builder reads must be there with its shape; a word of the
+    forbidden list (and verified, explained, understood) must not occur in any value."""
+    out = []
+
+    def bad(path, msg, code="STRINGS-KEY"):
+        out.append((code, path, msg))
+
+    def need_str(path, v):
+        if not (isinstance(v, str) and v != ""):
+            bad(path, "must be a non-empty string")
+            return False
+        return True
+
+    def holders(path, v, allowed):
+        for name in _PLACEHOLDER.findall(v):
+            if name not in allowed:
+                bad(path, "has an unknown placeholder {" + name + "}")
+
+    if not isinstance(s, dict):
+        return [("STRINGS-KEY", "(top level)", "must be a JSON object")]
+    for k in TEXT_KEYS:
+        if k not in s:
+            bad(k, "missing")
+        elif need_str(k, s[k]) and k in PLACEHOLDERS:
+            holders(k, s[k], PLACEHOLDERS[k])
+    fs = s.get("first_screen", None)
+    if "first_screen" not in s:
+        bad("first_screen", "missing")
+    elif not (isinstance(fs, list) and fs and all(isinstance(x, str) and x for x in fs)):
+        bad("first_screen", "must be a non-empty list of non-empty strings")
+    if "coverage" not in s:
+        bad("coverage", "missing")
+    else:
+        t = s["coverage"]
+        if not (isinstance(t, list) and t):
+            bad("coverage", "must be a non-empty ordered list of {when, word}")
+        else:
+            words = []
+            for i, e in enumerate(t):
+                p = f"coverage[{i}]"
+                if not (isinstance(e, dict) and set(e) == {"when", "word"}):
+                    bad(p, "must be an object with exactly the keys when and word")
+                    continue
+                w = e["when"]
+                if not (isinstance(w, dict) and len(w) == 1 and next(iter(w)) in COVERAGE_KEYS and w[next(iter(w))] is True):
+                    bad(p + ".when", "must be exactly one of " + ", ".join(f"{{{k}: true}}" for k in COVERAGE_KEYS))
+                if need_str(p + ".word", e["word"]):
+                    words.append(e["word"])
+            if len(set(words)) != len(words):
+                bad("coverage", "two entries have the same word")
+    if "frames" not in s:
+        bad("frames", "missing")
+    elif not isinstance(s["frames"], dict):
+        bad("frames", "must be an object")
+    else:
+        for k in ("argument", "interpretation", "claim"):
+            if k not in s["frames"]:
+                bad(f"frames.{k}", "missing")
+            elif not (isinstance(s["frames"][k], list) and all(isinstance(x, str) for x in s["frames"][k])):
+                bad(f"frames.{k}", "must be a list of strings")
+    if "reactions" not in s:
+        bad("reactions", "missing")
+    elif not (isinstance(s["reactions"], list) and len(s["reactions"]) == 3):
+        bad("reactions", "must be a list of three {label, href}")
+    else:
+        for i, r in enumerate(s["reactions"]):
+            if not (isinstance(r, dict) and set(r) == {"label", "href"}):
+                bad(f"reactions[{i}]", "must be an object with exactly the keys label and href")
+                continue
+            need_str(f"reactions[{i}].label", r["label"])
+            if need_str(f"reactions[{i}].href", r["href"]):
+                holders(f"reactions[{i}].href", r["href"], {"card"})
+    fw = s.get("forbidden_words")
+    if "forbidden_words" not in s:
+        bad("forbidden_words", "missing")
+    elif not (isinstance(fw, list) and all(isinstance(x, str) and x for x in fw)):
+        bad("forbidden_words", "must be a list of non-empty strings")
+    if "labels" not in s:
+        bad("labels", "missing")
+    elif not isinstance(s["labels"], dict):
+        bad("labels", "must be an object")
+    else:
+        lab = s["labels"]
+        for k in LABEL_KEYS:
+            if k not in lab:
+                bad(f"labels.{k}", "missing")
+            else:
+                need_str(f"labels.{k}", lab[k])
+        if "kinds" not in lab:
+            bad("labels.kinds", "missing")
+        elif not isinstance(lab["kinds"], dict):
+            bad("labels.kinds", "must be an object")
+        else:
+            for k in rh.KINDS:
+                if k not in lab["kinds"]:
+                    bad(f"labels.kinds.{k}", "missing")
+                else:
+                    need_str(f"labels.kinds.{k}", lab["kinds"][k])
+    words = list(FROZEN_WORDS) + [w for w in (fw if isinstance(fw, list) else []) if isinstance(w, str) and w]
+    for path, v in _walk_strings(s, ""):
+        for w in words:
+            if re.search(r"(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])", v, re.I):
+                bad(path, f"holds the word {w!r}, which the page never says", "STRINGS-FORBIDDEN")
+                break
+    return out
+
+
+# ---- commit ids
+
+def _vcs(top, *args):
+    try:
+        return subprocess.run(["git", "-c", "safe.directory=*", "-C", top, *args], capture_output=True, text=True, timeout=60,
+                              env=dict(os.environ, LC_ALL="C", LANG="C"))
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _tools_state():
+    """(commit of the folder of this file or `unknown`, whether a tracked file of it differs from that commit)."""
+    head = _vcs(_HERE, "rev-parse", "HEAD")
+    if head is None or head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40,64}", head.stdout.strip()):
+        return "unknown", False
+    st = _vcs(_HERE, "status", "--porcelain", "--untracked-files=no", "--", ".")
+    return head.stdout.strip(), bool(st is None or st.returncode != 0 or st.stdout.strip())
+
+
+def _notes_state(repo, rev, paths):
+    """(the commit REV names, whether any of `paths` that lie in the repository differs from it or has untracked files)."""
+    repo = repo if repo is not None else os.path.dirname(os.path.abspath(paths[0]))
+    if not os.path.isdir(repo):
+        raise _Unreadable(f"--repo is not a directory: {repo}")
+    top = _vcs(repo, "rev-parse", "--show-toplevel")
+    if top is None or top.returncode != 0:
+        raise _Unreadable("--repo is not inside a git work tree (or git cannot be run)")
+    top = os.path.realpath(top.stdout.strip())
+    commit = _vcs(top, "rev-parse", "--verify", "--quiet", rev + "^{commit}")
+    if commit.returncode != 0:
+        raise _Unreadable(f"cannot resolve --notes-commit {rev} to a commit")
+    rel = []
+    for p in paths:
+        r = os.path.relpath(os.path.realpath(p), top)
+        if not r.startswith(".."):
+            rel.append(r)
+    if not rel:
+        return commit.stdout.strip(), False
+    st, df = _vcs(top, "status", "--porcelain", "--", *rel), _vcs(top, "diff", "--name-only", commit.stdout.strip(), "--", *rel)
+    dirty = any(x is None or x.returncode != 0 or x.stdout.strip() for x in (st, df))
+    return commit.stdout.strip(), dirty
+
+
+# ---- the model: the outline, the notes and the table, joined
+
+def _read_json(path, what):
+    try:
+        with open(path, "rb") as fh:
+            return json.loads(fh.read().decode("utf-8"))
+    except (OSError, ValueError, RecursionError) as e:
+        raise _Unreadable(f"cannot read the {what}: {e}")
+
+
+def _decl_rows(path):
+    rows = {}
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh.read().split("\n"):
+            c = raw.rstrip("\r").split("\t")
+            if len(c) == 6 and c != nm.DECL_COLS and not raw.startswith("#"):
+                rows.setdefault((c[0], c[1]), (c[2], int(c[3]), int(c[4])))
+    return rows
+
+
+def _paragraph(lines, target):
+    return " ".join(x.strip() for x in lines[target["first_line"] - 1:target["last_line"]])
+
+
+def _load_notes(notes_dir, strings):
+    """The notes in name order: id, title, level, group, link, and each block's record (its decls kept apart)."""
+    notes = []
+    for name in sorted(n for n in os.listdir(notes_dir) if fnmatch.fnmatchcase(n, nm.DEFAULT_GLOB)
+                       and os.path.isfile(os.path.join(notes_dir, n))):
+        with open(os.path.join(notes_dir, name), "rb") as fh:
+            text = fh.read().decode("utf-8")
+        headers, blocks, _bad = rh.parse_note(text)
+        h = headers[0].data
+        lines = _LINE_SPLIT.split(text)
+        note = {"name": name, "id": h["id"], "title": h["list_title"], "level": h["level"], "group": h["group"],
+                "link": _fill(strings["note_href"], file=urllib.parse.quote(name, safe="")), "blocks": []}
+        for b in blocks:
+            d, t = b.data, b.target or {}
+            rec = {"block": d["id"], "kind": d["kind"], "note": h["id"], "reader": d.get("reader"), "date": d.get("date")}
+            for k in ("item", "row", "col", "file", "lines", "needs", "second_readers"):
+                if k in d:
+                    rec[k] = d[k]
+            if d["kind"] in ("argument", "interpretation"):
+                para = _paragraph(lines, t) if t.get("type") == "paragraph" else None
+                rec["text"] = para
+                rec["first_sentence"] = _first_sentence(para) if para else None
+            rec["_decls"] = [(e["module"], e["name"]) for e in d.get("decls", [])]
+            note["blocks"].append(rec)
+        notes.append(note)
+    notes.sort(key=lambda n: (n["id"], n["name"]))
+    return notes
+
+
+def _block_key(rec):
+    return rec["note"], int(rec["block"].rsplit(".b", 1)[1])
+
+
+def _note_ref(n):
+    return {"link": n["link"], "list_title": n["title"], "note": n["id"]}
+
+
+class _Model:
+    pass
+
+
+def _model(notes_dir, odata, rows, strings, src_root, errors):
+    m = _Model()
+    m.release = odata["release"]
+    table = strings["coverage"]
+    m.notes = _load_notes(notes_dir, strings)
+    groups = {}
+    for g in odata["groups"]:
+        groups.setdefault(g["id"], g)
+    m.order = sorted(groups, key=lambda i: (groups[i]["level"], groups[i]["order"], i))
+    children = {}
+    for gid, g in groups.items():
+        children.setdefault(g["parent"], []).append(gid)
+    for k in children:
+        children[k].sort(key=lambda i: groups[i]["order"])
+    m.children, m.groups = children, groups
+    anchored = {}
+    for n in m.notes:
+        if n["level"] != 0:
+            for rec in n["blocks"]:
+                for dm in rec["_decls"]:
+                    anchored.setdefault(dm, []).append(rec)
+    owners = {}
+    for gid, g in groups.items():
+        for r in g["roots"]:
+            owners.setdefault((r["module"], r["name"]), []).append(gid)
+    by_note = {n["id"]: n for n in m.notes}
+    m.files, m.summary = {}, {}
+    for gid, g in groups.items():
+        roots = [(r["module"], r["name"]) for r in g["roots"]]
+        blocks = {}
+        for r in roots:
+            for rec in anchored.get(r, []):
+                blocks.setdefault(rec["block"], rec)
+        brecs = []
+        for rec in sorted(blocks.values(), key=_block_key):
+            out = {k: v for k, v in rec.items() if k != "_decls"}
+            out["roots"] = [{"module": a, "name": b} for a, b in roots if (a, b) in rec["_decls"]]
+            brecs.append(out)
+        root_rows = []
+        for mod, name in roots:
+            kind, first, last = rows[(mod, name)]
+            rel = mod.replace(".", "/") + ".lean"
+            sha = None
+            if src_root is not None and os.path.isfile(os.path.join(src_root, *rel.split("/"))):
+                with open(os.path.join(src_root, *rel.split("/")), "rb") as fh:
+                    sha = _sha(fh.read())
+            root_rows.append({"module": mod, "name": name, "kind": kind, "file": rel, "lines": [first, last], "sha256": sha,
+                              "shared_with": sorted(o for o in owners[(mod, name)] if o != gid)})
+        read = sum(1 for r in roots if any(x["kind"] == "reading" for x in anchored.get(r, [])))
+        unread = sum(1 for r in roots if any(x["kind"] == "not_read" for x in anchored.get(r, [])))
+        ids = {n["id"] for n in m.notes if n["level"] != 0 and n["group"] == gid} | {b["note"] for b in brecs}
+        notes = [_note_ref(by_note[i]) for i in sorted(ids)]
+        claim = g["claim"]
+        if not roots:
+            errors.append(("COVERAGE-NONE", gid, "group has no root, so no coverage claim"))
+        word = coverage_word({"roots": len(roots), "read": read, "not_read": unread}, table)
+        if word is None and roots:
+            errors.append(("COVERAGE-NONE", gid, "no entry of the coverage table fits this group"))
+        m.summary[gid] = {
+            "id": gid, "level": g["level"], "order": g["order"], "parent": g["parent"],
+            "claim": None if claim is None else {"text": claim["text"], "reader": claim["reader"], "date": claim["date"],
+                                                 "conditions": claim.get("conditions", []),
+                                                 "premises": list(g["premises"])},
+            "lean_name": g["roots"][0]["name"] if roots else None,
+            "claim_label": strings["not_read_yet"] if claim is None else None,
+            "coverage": word, "counts": {"roots": len(roots), "roots_read": read, "roots_not_read": unread},
+            "notes": notes, "roots_only": True, "unread": read == 0}
+        m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "roots": root_rows, "blocks": brecs,
+                        "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
+                                       for b in brecs if b["kind"] == "not_read"], "notes": notes}
+    m.steps = [i for i in children.get("root", [])]
+    m.header_notes = [_note_ref(n) for n in m.notes if n["level"] == 0]
+    m.totals = {"blocks": sum(len(n["blocks"]) for n in m.notes), "groups": len(groups), "notes": len(m.notes),
+                "roots": len(owners)}
+    return m
+
+
+def _nest(m, gid):
+    out = dict(m.summary[gid])
+    out["children"] = [_nest(m, c) for c in m.children.get(gid, [])]
+    return out
+
+
+# ---- the page
+
+CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family: serif; line-height: 1.45; }\n"
+       ".card { border: 2px solid; padding: 0.5rem 0.75rem; margin: 0.75rem 0; }\n"
+       ".unread { border-style: dashed; }\n"
+       ".frame { font-style: italic; }\n"
+       "ul.chain, ul.children { list-style: none; padding-left: 0; }\n"
+       "aside { border-left: 4px double; padding-left: 0.5rem; }")
+
+
+def _e(x):
+    return html.escape(str(x), quote=True)
+
+
+def _render_page(m, s, route, dirty):
+    lab, kinds = s["labels"], s["labels"]["kinds"]
+    files = m.files
+    out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', f"<title>{_e(s['page_title'])}</title>",
+           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>"]
+    out += [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
+    if dirty:
+        out.append(f'<p class="dirty">{_e(s["dirty_note"])}</p>')
+    out.append('<dl class="route">')
+    for c in route["counts"]:
+        out.append(f"<dt>{_e(c['word'])}</dt><dd>{_e(_fill(s['route_count'], N=c['steps'], M=route['steps']))}</dd>")
+    out += ["</dl>", f'<p class="mapped">{_e(s["mapped_line"])}</p>']
+    if m.header_notes:
+        out += ['<section class="whole">', f"<h2>{_e(lab['level0_notes'])}</h2>", "<ul>"]
+        out += [f'<li><a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>' for n in m.header_notes]
+        out += ["</ul>", "</section>"]
+    out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
+
+    def frames(b):
+        lines = f"{b['lines'][0]}-{b['lines'][1]}" if b.get("lines") else lab["lines_missing"]
+        first = _fill(s["argument_frame"], reader=b["reader"], date=b["date"], lines=lines)
+        more = [_fill(s["second_reader_frame"], reader=r["reader"], date=r["date"]) for r in b.get("second_readers", [])]
+        return f'<span class="frame">{_e(first)}</span>' + "".join(f' <span class="frame second">{_e(x)}</span>' for x in more)
+
+    def title_of(gid):
+        sm = m.summary[gid]
+        return _e(sm["claim"]["text"]) if sm["claim"] else f"<code>{_e(sm['lean_name'])}</code>"
+
+    def card(gid):
+        sm, fl = m.summary[gid], files[gid]
+        o = [f'<article class="card{" unread" if sm["unread"] else ""}" id="{_e(gid)}">']
+        if sm["claim"]:
+            o.append(f'<h3 class="claim">{_e(sm["claim"]["text"])}</h3>')
+            if sm["claim"]["conditions"]:
+                o.append('<ul class="conditions">' + "".join(f"<li>{_e(c)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
+            if sm["claim"]["premises"]:
+                links = ", ".join(f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>'
+                                  for p in sm["claim"]["premises"])
+                o.append(f'<p class="premises">{_e(lab["premises"])} {links}</p>')
+        else:
+            o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
+                     f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
+        c = sm["counts"]
+        o.append(f'<p class="coverage"><strong>{_e(sm["coverage"])}</strong> '
+                 f'{_e(_fill(s["roots_read"], N=c["roots_read"], M=c["roots"]))} '
+                 f'{_e(_fill(s["roots_not_read"], N=c["roots_not_read"], M=c["roots"]))}'
+                 + (f' {_e(s["roots_only_note"])}' if sm["roots_only"] else "") + "</p>")
+        args = [b for b in fl["blocks"] if b["kind"] == "argument"]
+        if args:
+            b = args[0]
+            link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
+            sent = f" {_e(b['first_sentence'])}" if b.get("first_sentence") else ""
+            o.append(f'<p class="argument">{frames(b)}{sent} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
+        else:
+            o.append(f'<p class="no-argument">{_e(s["no_argument"])}</p>')
+        corr = [b for b in fl["blocks"] if b["kind"] == "correction"]
+        if corr:
+            o.append('<ul class="corrections">')
+            for b in corr:
+                n = next(n for n in sm["notes"] if n["note"] == b["note"])
+                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <span class="reader">{_e(b["reader"])}</span> '
+                         f'<time>{_e(b["date"])}</time> <a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>')
+            o.append("</ul>")
+        if sm["notes"]:
+            o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
+                     + "".join(f'<li><a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>' for n in sm["notes"]) + "</ul>")
+        o.append('<ul class="reactions">')
+        for r in s["reactions"]:
+            href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
+            o.append(f'<li><a class="reaction" href="{_e(href)}">{_e(r["label"])}</a></li>')
+        o.append("</ul>")
+        o += ['<details class="evidence">', f"<summary>{_e(s['evidence_label'])}</summary>"]
+        for r in fl["roots"]:
+            o.append(f'<div class="root"><p><code>{_e(r["module"])}</code> <code>{_e(r["name"])}</code> '
+                     f'<span class="kind">{_e(r["kind"])}</span></p>')
+            o.append(f'<dl><dt>{_e(lab["file"])}</dt><dd><code>{_e(r["file"])}</code></dd>'
+                     f'<dt>{_e(lab["lines"])}</dt><dd>{r["lines"][0]}-{r["lines"][1]}</dd>'
+                     + (f'<dt>{_e(lab["sha256"])}</dt><dd><code>{r["sha256"]}</code></dd>' if r["sha256"] else "") + "</dl>")
+            if r["shared_with"]:
+                o.append(f'<p class="shared">{_e(_fill(s["shared_note"], groups=", ".join(r["shared_with"])))}</p>')
+            o.append("</div>")
+        if fl["blocks"]:
+            o += [f'<p class="label">{_e(lab["blocks"])}</p>', '<ul class="blocks">']
+            for b in fl["blocks"]:
+                n = next(n for n in sm["notes"] if n["note"] == b["note"])
+                who = " ".join(_e(x) for x in (b.get("reader"), b.get("date")) if x)
+                o.append(f'<li><a href="{_e(n["link"])}"><code>{_e(b["note"])}</code></a> <code>{_e(b["block"])}</code> '
+                         f'<span class="kind">{_e(kinds[b["kind"]])}</span> {who}')
+                if b["kind"] == "argument" and b.get("text"):
+                    o.append(f'<p class="argument">{frames(b)} {_e(b["text"])}</p>')
+                if b["kind"] == "interpretation" and b.get("text"):
+                    fr = _fill(s["interpretation_frame"], reader=b["reader"], date=b["date"])
+                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_e(b["text"])}</p></aside>')
+                o.append("</li>")
+            o.append("</ul>")
+        if fl["open_items"]:
+            o += [f'<p class="label">{_e(lab["open_items"])}</p>', '<ul class="open">']
+            for it in fl["open_items"]:
+                o.append(f'<li><code>{_e(it["note"])}</code> <code>{_e(it["block"])}</code> <code>{_e(it["needs"])}</code></li>')
+            o.append("</ul>")
+        o.append("</details>")
+        kids = m.children.get(gid, [])
+        if kids:
+            o += ['<details class="children">', f"<summary>{_e(lab['go_deeper'])}</summary>", '<ul class="children">']
+            for k in kids:
+                o += ["<li>"] + card(k) + ["</li>"]
+            o += ["</ul>", "</details>"]
+        o.append("</article>")
+        return o
+
+    for gid in m.steps:
+        out += ["<li>"] + card(gid) + ["</li>"]
+    out += ["</ul>", "</main>", "</body>", "</html>"]
+    return "\n".join(out) + "\n"
+
+
+# ---- the build
+
+def _refuse(lines, code=1):
+    for code_, where, msg in lines:
+        print(f"BUILD-ERROR {code_} {where} {msg}")
+    print("REFUSED: nothing written", file=sys.stderr)
+    return code
+
+
+def _assemble(m, s, commits):
+    """(errors, the coverage check line, level0, level1, the group files, the route counts)."""
+    errors = []
+    table = s["coverage"]
+    steps = [m.summary[i] for i in m.steps]
+    nums = {k: 0 for k in COVERAGE_KEYS}
+    route_counts = []
+    for e in table:
+        key = next(iter(e["when"]))
+        n = sum(1 for x in steps if x["coverage"] == e["word"])
+        nums[key] += n
+        route_counts.append({"steps": n, "when": key, "word": e["word"]})
+    total = nums["read_all"] + nums["read_some"] + nums["read_none"]
+    line = f"read {nums['read_all']} + partly {nums['read_some']} + not read {nums['read_none']} = {total}"
+    if total != len(steps):
+        errors.append(("COVERAGE-SUM", line + ", but there are", f"{len(steps)} steps"))
+    route = {"counts": route_counts, "steps": len(steps)}
+    level0 = {"commits": commits, "header_notes": m.header_notes, "level": 0, "route": route, "steps": steps,
+              "totals": m.totals}
+    level1 = {"commits": commits, "level": 1, "steps": [_nest(m, i) for i in m.steps]}
+    groups = {gid: dict(m.files[gid], commits=commits) for gid in m.groups}
+    return errors, line + " steps", level0, level1, groups, route
+
+
+def _output_files(level0, level1, groups, page, commits, m, release_id, archive):
+    """Every file of the build as bytes, the manifest last (it holds the hash of all the others)."""
+    files = {"level0.json": level0, "level1.json": level1}
+    files.update({f"group/{gid}.json": g for gid, g in groups.items()})
+    data = "window.RH_DATA = " + _dump({"groups": groups, "level0": level0, "level1": level1}) + ";\n"
+    out = {k: (_dump(v) + "\n").encode("utf-8") for k, v in files.items()}
+    out["data.js"] = data.encode("utf-8")
+    out["index.html"] = page.encode("utf-8")
+    manifest = {"commits": commits, "counts": {"blocks": m.totals["blocks"], "groups": m.totals["groups"],
+                                               "notes": m.totals["notes"]},
+                "files": {k: _sha(v) for k, v in sorted(out.items())}, "release_archive_sha": archive,
+                "release_id": release_id}
+    out["manifest.json"] = (_dump(manifest) + "\n").encode("utf-8")
+    return out
+
+
+def _clear_previous(out):
+    for name in _OUT_NAMES:
+        p = os.path.join(out, name)
+        if os.path.isfile(p):
+            os.remove(p)
+    shutil.rmtree(os.path.join(out, "group"), ignore_errors=True)
+
+
+def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state):
+    if source_check is not None and not os.path.isdir(source_check):
+        raise _Unreadable(f"SRC_ROOT is not a directory: {source_check}")
+    if os.path.exists(out) and not os.path.isdir(out):
+        raise _Unreadable(f"OUT_DIR is not a directory: {out}")
+    sj = _read_json(strings, "strings file")
+    if os.path.isdir(out) and os.listdir(out) and not force:
+        return _refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files; a fresh build would mix two builds; "
+                         "use --force to remove the files of an earlier build first")])
+    probs = _strings_problems(sj)
+    if probs:
+        return _refuse(probs)
+    if tools_state is None:
+        tools_state = _tools_state()
+    n_commit, n_dirty = ("unknown", False)
+    if notes_commit is not None:   # asked of git before anything is printed: an unreadable --repo is exit 2 with no stdout
+        n_commit, n_dirty = _notes_state(repo, notes_commit, [notes_dir, outline, strings])
+    o, e = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+        rc = nm.run(notes_dir, outline, decls, strings=strings)
+    if rc == 2:
+        print(e.getvalue().strip(), file=sys.stderr)
+        return 2
+    if rc != 0:
+        print(o.getvalue().rstrip("\n"))
+        if rc == 3:
+            return 3
+        print("REFUSED: notes_meta found errors; nothing written", file=sys.stderr)
+        return rc
+    print(next(ln for ln in o.getvalue().splitlines() if ln.startswith("outline: ")))
+    odata = _read_json(outline, "outline")
+    errors = []
+    ids = [g["id"] for g in odata["groups"]]
+    low = {}
+    for i in ids:
+        low.setdefault(i.lower(), set()).add(i)
+        if not SAFE_ID.fullmatch(i):
+            errors.append(("GROUP-ID-UNSAFE", i, "is not usable as a file name (letters, digits, `.`, `_`, `-`; not first `.`)"))
+    for k, v in sorted(low.items()):
+        if len(v) > 1:
+            errors.append(("GROUP-ID-UNSAFE", ", ".join(sorted(v)), "differ only in case, so they could share a file"))
+    if errors:
+        return _refuse(errors)
+    dirty = n_dirty or tools_state[1]
+    commits = {"notes": n_commit, "release": odata["release"], "tools": tools_state[0]}
+    if dirty:
+        commits = {k: "dirty" for k in commits}
+    m = _model(notes_dir, odata, _decl_rows(decls), sj, source_check, errors)
+    for n in m.notes:
+        for b in n["blocks"]:
+            for what in ("reader", "date"):
+                if b["kind"] in READER_KINDS and not (isinstance(b.get(what), str) and b[what]):
+                    errors.append(("BLOCK-NO-READER" if what == "reader" else "BLOCK-NO-DATE", b["block"],
+                                   f"{b['kind']} block has no {what}"))
+    e2, check_line, level0, level1, groups, route = _assemble(m, sj, commits)
+    errors += e2
+    if errors:
+        return _refuse(errors)
+    page = _render_page(m, sj, route, dirty)
+    files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
+    for pb in static_problems(page, files["data.js"].decode("utf-8")):
+        errors.append(("PAGE-STATIC", pb, "found in index.html or data.js"))
+    for pb in link_problems(page):
+        errors.append(("PAGE-LINK", pb, "does not resolve on the page"))
+    for pb in number_problems(page, number_pool([level0, level1] + list(groups.values())), json.dumps(sj, ensure_ascii=False)):
+        errors.append(("PAGE-NUMBER", pb, "is on the page and in no JSON file or strings file"))
+    if errors:
+        return _refuse(errors)
+    print("coverage check: " + check_line)
+    if source_check is not None:
+        if not sg.walk_lean(source_check):
+            print("CHECKED NOTHING: no .lean file under SRC_ROOT")
+            return 3
+        try:
+            leaks, st = leak_check(files, source_check)
+        except ValueError as ex:
+            return _refuse([("SOURCE-UNREADABLE", "SRC_ROOT", str(ex))])
+        print(f"source check: {st['release_files']} release files, {st['release_lines']} release lines, "
+              f"{st['output_files']} output files, {st['output_lines']} output lines, {len(leaks)} leaked")
+        if leaks:
+            return _refuse([("SOURCE-LEAK", f, "holds a line of the release") for f in leaks])
+    if os.path.isdir(out):
+        _clear_previous(out)
+    for rel, data in files.items():
+        p = os.path.join(out, *rel.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "wb") as fh:
+            fh.write(data)
+    print(f"built: {m.totals['groups']} groups, {m.totals['notes']} notes, {m.totals['blocks']} blocks, {len(files)} files")
+    return 0
 
 
 def run(notes_dir, outline, decls, strings, out, source_check=None, archive_sha=None, notes_commit=None, repo=None,
         force=False, tools_state=None):
-    _todo("run")
+    """Build the site into `out` and return the exit code 0, 1, 2 or 3 (see the contract). `tools_state` is (commit, dirty)
+    for the folder of this file; None asks git."""
+    try:
+        return _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state)
+    except _Unreadable as ex:
+        print("build_site: " + str(ex), file=sys.stderr)
+        return 2
 
 
 # ---------------------------------------------------------------- self-test: fixtures, built from literals
@@ -253,11 +1034,12 @@ def _n01(arg_text=ARG_TEXT, drop_reader=False):
 N02 = ("# Note two\n" + _h(id="02", group="g2", list_title="Note two") + "\n\n## Body\n\n"
        "Note two reading qux.\n" + _b(id="02.b01", kind="reading", decls=[QUX], reader="Reader Two", date="2026-11-23") + "\n\n"
        "Note two reading foo.\n" + _b(id="02.b02", kind="reading", decls=[FOO], reader="Reader Two", date="2026-11-23") + "\n")
+N03 = "# Note three\n" + _h(id="03", group="g3", list_title="Note three") + "\n\n## Body\n\nNote three text.\n"
 N00 = ("# Whole\n" + _h(id="00", group="root", list_title="Whole one", level=0) + "\n\n## Body\n\nWhole text.\n")
 
 
 def _notes(**kw):
-    return {"00-whole.md": N00, "01-one.md": _n01(**kw), "02-two.md": N02}
+    return {"00-whole.md": N00, "01-one.md": _n01(**kw), "02-two.md": N02, "03-three.md": N03}
 
 
 def _claim(text, date="2026-11-20", **kw):
@@ -271,10 +1053,10 @@ def _g(gid, level, parent, order, roots, claim=None, premises=()):
 
 def _outline():
     return {"release": "rel-1", "groups": [
-        _g("g3", 1, "root", 3, [CORGE], _claim("Claim four with é"), ["g1", "g2"]),
+        _g("g3", 1, "root", 2, [CORGE], _claim("Claim four with é"), ["g1", "g2"]),
         _g("g1a1x", 4, "g1a1", 1, [QUX]),
         _g("g1", 1, "root", 1, [FOO], _claim("Claim one", conditions=["Condition one holds."]), ["g1a"]),
-        _g("g2", 1, "root", 2, [QUUX, QUX]),
+        _g("g2", 1, "root", 3, [QUUX, QUX]),
         _g("g1a", 2, "g1", 1, [BAR]),
         _g("g1a1", 3, "g1a", 1, [BAZ], _claim("Claim three & <more>"))]}
 
@@ -525,15 +1307,15 @@ def _selftest_cases():
         return deco
 
     # ---- X: command, output, exit codes
-    @case("X1a", "usage: no argument, four positionals, an unknown option, --notes-commit without --repo: exit 2, stdout empty, "
+    @case("X1a", "usage: no argument, four positionals, an unknown option, --notes-commit without --repo, a bad archive hash, a REV that is no commit: exit 2, stdout empty, "
                  "nothing written; control: the same call with five positionals builds")
     def _():
-        out, err = io.StringIO(), io.StringIO()
         got = []
         with tempfile.TemporaryDirectory() as d:
             p = _plant(d)
             five = [p["notes"], p["outline"], p["decls"], p["strings"], p["out"]]
-            for argv in ([], five[:4], five + ["--bogus"], five + ["--notes-commit", "HEAD"], five + ["--release-archive-sha", "zz"]):
+            for argv in ([], five[:4], five + ["--bogus"], five + ["--notes-commit", "HEAD"], five + ["--release-archive-sha", "zz"],
+                         five + ["--notes-commit", "no-such-rev", "--repo", d]):
                 o, e = io.StringIO(), io.StringIO()
                 with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
                     rc = main(["build_site.py"] + argv, check=lambda: 0)
@@ -541,7 +1323,7 @@ def _selftest_cases():
             o, e = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
                 rc = main(["build_site.py"] + five, check=lambda: 0)
-        return _eq(got + [rc], [(2, "", False)] * 5 + [0])
+        return _eq(got + [rc], [(2, "", False)] * 6 + [0])
 
     @case("X1b", "an input that cannot be read: strings.json that is not JSON, a missing outline, SRC_ROOT that is not a "
                  "directory, OUT_DIR that is a file: exit 2, stdout empty, nothing written; control: a good call is exit 0")
@@ -619,7 +1401,7 @@ def _selftest_cases():
         res = []
         for bad in ("a/b", "..x"):
             o = _outline()
-            o["groups"][0]["id"] = bad   # g3: no child and no group names it as a premise
+            o["groups"][1]["id"] = bad   # g1a1x: no child, no premise, no note names it
             b = _build(outline=o)
             res.append((b.rc, f"BUILD-ERROR GROUP-ID-UNSAFE {bad} " in b.out, b.existed))
         return _eq(res, [(1, True, False)] * 2)
@@ -651,7 +1433,7 @@ def _selftest_cases():
         return _eq((ran, rc, "NOPE" in bad_err.getvalue(), bad_out.getvalue()), (["X2a", "B6b"], 2, True, ""))
 
     # ---- data
-    @case("L0", "level0.json: the level-1 steps g1 g2 g3 in `order` (the outline lists g3 first), each with its coverage word and "
+    @case("L0", "level0.json: the level-1 steps g1 g3 g2 in `order` (the outline lists g3 first, and `order` is not the id order), each with its coverage word and "
                 "counts; the route counts one step per word; the level-0 note is in header_notes; the totals")
     def _():
         l0 = _base().js("level0.json")
@@ -660,10 +1442,10 @@ def _selftest_cases():
                [s["lean_name"] for s in steps], [s["claim_label"] for s in steps],
                steps[0]["claim"], [n["note"] for n in steps[0]["notes"]], steps[0]["notes"][0],
                l0["route"], l0["header_notes"], l0["totals"], l0["level"])
-        want = (["g1", "g2", "g3"], ["Read by us", "Partly read", "Not read yet"],
-                [{"roots": 1, "roots_read": 1, "roots_not_read": 0}, {"roots": 2, "roots_read": 1, "roots_not_read": 1},
-                 {"roots": 1, "roots_read": 0, "roots_not_read": 0}],
-                ["foo", "quux", "corge"], [None, "Not read yet", None],
+        want = (["g1", "g3", "g2"], ["Read by us", "Not read yet", "Partly read"],
+                [{"roots": 1, "roots_read": 1, "roots_not_read": 0}, {"roots": 1, "roots_read": 0, "roots_not_read": 0},
+                 {"roots": 2, "roots_read": 1, "roots_not_read": 1}],
+                ["foo", "corge", "quux"], [None, None, "Not read yet"],
                 {"conditions": ["Condition one holds."], "date": "2026-11-20", "premises": ["g1a"], "reader": "Reader One",
                  "text": "Claim one"},
                 ["01", "02"], {"link": "notes/01-one.md", "list_title": "Note one", "note": "01"},
@@ -671,10 +1453,10 @@ def _selftest_cases():
                             {"steps": 1, "when": "read_some", "word": "Partly read"},
                             {"steps": 1, "when": "read_none", "word": "Not read yet"}], "steps": 3},
                 [{"link": "notes/00-whole.md", "list_title": "Whole one", "note": "00"}],
-                {"blocks": 8, "groups": 6, "notes": 3, "roots": 6}, 0)
+                {"blocks": 8, "groups": 6, "notes": 4, "roots": 6}, 0)
         return _eq(got, want)
 
-    @case("L1", "level1.json nests child groups to depth 4: g1 > g1a > g1a1 > g1a1x, leaves have no children; steps in order")
+    @case("L1", "level1.json nests child groups to depth 4: g1 > g1a > g1a1 > g1a1x, leaves have no children; steps in `order`, not in id order")
     def _():
         l1 = _base().js("level1.json")
         g1 = l1["steps"][0]
@@ -682,7 +1464,7 @@ def _selftest_cases():
                  g1["children"][0]["children"][0]["children"][0]["id"]]
         leaf = g1["children"][0]["children"][0]["children"][0]
         return _eq((chain, leaf["children"], [s["id"] for s in l1["steps"]], l1["steps"][1]["children"], l1["level"]),
-                   (["g1", "g1a", "g1a1", "g1a1x"], [], ["g1", "g2", "g3"], [], 1))
+                   (["g1", "g1a", "g1a1", "g1a1x"], [], ["g1", "g3", "g2"], [], 1))
 
     @case("G1", "group/g1.json holds exactly its keys, its root with kind, file and lines, and its five blocks in id order with "
                 "second_readers, text and first sentence; group/g2.json holds the open not_read item and the shared root")
@@ -723,7 +1505,7 @@ def _selftest_cases():
         want_files = {k: hashlib.sha256(v).hexdigest() for k, v in b.files.items() if k != "manifest.json"}
         return _eq((m["files"] == want_files, m["counts"], m["release_id"], m["release_archive_sha"],
                     _base().js("manifest.json")["release_archive_sha"]),
-                   (True, {"blocks": 8, "groups": 6, "notes": 3}, "rel-1", "ab" * 32, None))
+                   (True, {"blocks": 8, "groups": 6, "notes": 4}, "rel-1", "ab" * 32, None))
 
     @case("FMT1", "every .json file is sorted keys, 1-space indent, LF only, UTF-8 with the non-ASCII character kept, one final newline")
     def _():
@@ -755,12 +1537,13 @@ def _selftest_cases():
             return _eq((r1[0], r2[0], len(t1), t1 == t2), (0, 0, 11, True))
 
     @case("B3", "note 02 (header group g2, a block anchoring foo and one anchoring qux) is listed under g1, g1a1x and g2 and counted "
-                "once in the totals; note 01 under g1, g1a (its list block) and g2 (its not_read block)")
+                "once in the totals; note 01 under g1, g1a (its list block) and g2 (its not_read block); note 03 has a header "
+                "group g3 and no block: it is listed under g3 alone (no coverage claim is made for a note)")
     def _():
         b = _base()
         under = {g: [n["note"] for n in b.js(f"group/{g}.json")["notes"]] for g in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")}
         return _eq((under, b.js("level0.json")["totals"]["notes"]),
-                   ({"g1": ["01", "02"], "g1a": ["01"], "g1a1": [], "g1a1x": ["02"], "g2": ["01", "02"], "g3": []}, 3))
+                   ({"g1": ["01", "02"], "g1a": ["01"], "g1a1": [], "g1a1x": ["02"], "g2": ["01", "02"], "g3": ["03"]}, 4))
 
     @case("U1", "a level-0 note (header group `root`) is in header_notes and on the page above the chain, in no group's list; "
                 "control: a level-0 note that names a real group (g1) is also under no group")
@@ -839,13 +1622,15 @@ def _selftest_cases():
                     coverage_word({"roots": 2, "read": 0, "not_read": 0}, t[:2])), (None, None))
 
     @case("R1a", "a coverage table that drops the read_none state: COVERAGE-SUM with the three numbers `read 1 + partly 1 + not "
-                 "read 0 = 2, but there are 3 steps`, exit 1, nothing written")
+                 "read 0 = 2, but there are 3 steps`, COVERAGE-NONE naming each group the table does not fit (g3 and, at depth 3, "
+                 "g1a1), exit 1, nothing written")
     def _():
         s = _strings()
         s["coverage"] = s["coverage"][:2]
         b = _build(strings=s)
+        none = sorted(ln.split(" ")[2] for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR COVERAGE-NONE "))
         return _eq((b.rc, "BUILD-ERROR COVERAGE-SUM read 1 + partly 1 + not read 0 = 2, but there are 3 steps" in b.out.splitlines(),
-                    b.existed), (1, True, False))
+                    none, b.existed), (1, True, ["g1a1", "g3"], False))
 
     @case("R1b", "a good build prints `coverage check: read 1 + partly 1 + not read 1 = 3 steps`")
     def _():
@@ -915,7 +1700,7 @@ def _selftest_cases():
                     True, True, True, True))
 
     @case("P4", "the child groups of a step are nested in its closed `go deeper` <details>, to depth 4; the three steps stay "
-                "in the chain list in order")
+                "in the chain list in `order`")
     def _():
         dom = _dom(_base().page)
         chain = [li.elems()[0].attrs["id"] for li in dom.find("ul", "chain")[0].elems()]
@@ -927,7 +1712,7 @@ def _selftest_cases():
             n = n.parent
         det = dom.find("article", id="g1")[0].find("details", "children")[0]
         return _eq((chain, anc, "open" in det.attrs, det.find("summary")[0].text()),
-                   (["g1", "g2", "g3"], ["g1a1", "g1a", "g1"], False, "Go deeper: the parts of this step"))
+                   (["g1", "g3", "g2"], ["g1a1", "g1a", "g1"], False, "Go deeper: the parts of this step"))
 
     @case("P5", "three reaction anchors on every card (6 cards, 18 anchors), plain links whose href is the template with the card "
                 "id filled (the `&` decoded), in the strings file's order")
@@ -948,6 +1733,20 @@ def _selftest_cases():
                     number_problems("<p>2026-11-23 g1a1</p>", '{"a": "2026-11-23", "b": "g1a1"}', ""),
                     number_problems(b.page, alljson, json.dumps(_strings()))),
                    (["12"], [], [], []))
+
+    @case("P6b", "number_pool leaves the hash fields out (sha256, files, commits, release_archive_sha), so a hash cannot vouch for a "
+                 "small number; and the builder applies number_problems: a page with an invented number (injected here) is "
+                 "refused as PAGE-NUMBER, exit 1, nothing written")
+    def _():
+        pool = number_pool([{"sha256": "ab7cd", "files": {"x": "9"}, "commits": {"t": "77"}, "release_archive_sha": "55", "n": 3}])
+        real = globals()["_render_page"]
+        globals()["_render_page"] = lambda *a: real(*a).replace("<h1>", "<h1>99999 ", 1)
+        try:
+            b = _build()
+        finally:
+            globals()["_render_page"] = real
+        return _eq((number_problems("<p>3 7 9 77 55</p>", pool, ""), b.rc, "BUILD-ERROR PAGE-NUMBER 99999 " in b.out, b.existed),
+                   (["7", "9", "55", "77"], 1, True, False))
 
     @case("P7a", "static_problems: each forbidden thing is named, one planted at a time (fetch(, XMLHttpRequest, WebSocket, "
                  "sendBeacon, import(, @import, src= to http, href= to http, url( to a URL); controls: a reaction anchor to http, "
@@ -976,6 +1775,21 @@ def _selftest_cases():
         b = _build(strings=s)
         return _eq((static_problems(_base().page, _base().text("data.js")), b.rc, "BUILD-ERROR PAGE-STATIC fetch(" in b.out, b.existed),
                     ([], 1, True, False))
+
+    @case("P7c", "data.js is scanned as well as the page: a token that only the JSON holds (a block's `file`, which the page does "
+                 "not show: `A/fetch(1).lean`) is refused as PAGE-STATIC fetch(, exit 1, nothing written")
+    def _():
+        n = _n01().replace("A/B.lean", "A/fetch(1).lean")
+        b = _build(notes=_notes() | {"01-one.md": n})
+        return _eq((b.rc, "BUILD-ERROR PAGE-STATIC fetch( " in b.out, b.existed), (1, True, False))
+
+    @case("P7d", "a `#` link with no target on the page is refused (PAGE-LINK naming it), exit 1, nothing written: here a reaction "
+                 "href `#nowhere` from the strings file")
+    def _():
+        st = _strings()
+        st["reactions"][0]["href"] = "#nowhere"
+        b = _build(strings=st)
+        return _eq((b.rc, "BUILD-ERROR PAGE-LINK #nowhere " in b.out, b.existed), (1, True, False))
 
     @case("R2", "level 0 counts steps with the route_count template (`1 of the 3 steps on our route`, once per word) and each card "
                 "counts declarations with roots_read and roots_not_read; no percent sign and no `of the proof` anywhere on the page")
@@ -1120,7 +1934,7 @@ def _selftest_cases():
                  "(SOURCE-LEAK data); a short release line and a line of other text are not")
     def _():
         with tempfile.TemporaryDirectory() as d:
-            _put(os.path.join(d, "A", "B.lean"), "import A.C\n\n" + LEAK + "\nshort\n")
+            _put(os.path.join(d, "A", "B.lean"), "import A.C\n\n    " + LEAK + "  \nshort\n")
             files = {"group/x.json": json.dumps({"id": "x", "text": LEAK}).encode(),
                      "group/y.json": json.dumps({"id": "y", "text": "short"}).encode(),
                      "group/z.json": json.dumps({"id": "z", "text": "A sentence of ours that is long enough to count."}).encode()}
@@ -1152,6 +1966,24 @@ def _selftest_cases():
         m = re.findall(r"^source check: 1 release files, 40 release lines, 11 output files, (\d+) output lines, 0 leaked$",
                        _base_src().out, re.M)
         return _eq((len(m), bool(m) and int(m[0]) > 20), (1, True))
+
+    @case("B1e", "names are not compared (by construction): a release with a line equal to a declaration's full name (>= 20 "
+                 "characters) and a build whose root has that name builds clean, 0 leaked, although the name is in the JSON "
+                 "and in <code> on the page; control: the same text as a claim is a leak (level0.json, level1.json, "
+                 "data.js, index.html)")
+    def _():
+        name = "Development.Long.Module.theorem_name_long"
+        decls = DECLS.replace("A.G\tcorge", "A.G\t" + name)
+        src = {"A/B.lean": "x\n" + name + "\n"}
+        o = _outline()
+        o["groups"][0]["roots"] = [_d("A.G", name)]
+        named = _build(outline=o, decls=decls, src=src)
+        o2 = _outline()
+        o2["groups"][0]["claim"]["text"] = name
+        claimed = _build(outline=o2, src=src)
+        got = sorted(ln.split(" ")[2] for ln in claimed.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK "))
+        return _eq((named.rc, name in named.page, ", 0 leaked" in named.out, claimed.rc, got),
+                   (0, True, True, 1, ["data.js", "index.html", "level0.json", "level1.json"]))
 
     return cases
 
