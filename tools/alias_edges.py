@@ -530,6 +530,37 @@ def _selftest_cases():
         return _eq((tabs["callers"][2], _pairs(tabs, "uncalled", "name", "kind")),
                    ([], [("GlobalTheory.T.alpha", "alias"), ("Lib.alpha_core", "target")]))
 
+    DECL_AB = {"D/F.lean": decl("A.B", "foo")}
+
+    @case("G1a", "a target written `_root_.A.B.foo` resolves to `foo` declared in `namespace A.B`; `target` keeps the text as written")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({**DECL_AB, "Pub/W.lean": _W("viaR", "_root_.A.B.foo")})
+        r = tabs["aliases"][2][0]
+        return _eq((r["target"], r["target_file"], r["target_line"], r["target_matches"]), ("_root_.A.B.foo", "D/F.lean", "2", "1"))
+
+    @case("G1b", "a `_root_.` target declared nowhere: matches 0, with a resolving control beside it")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({**DECL_AB, "Pub/W.lean": _W("w1", "_root_.A.B.foo") + _W("w2", "_root_.A.B.nothing")})
+        return _eq({r["public_name"]: r["target_matches"] for r in tabs["aliases"][2]}, {"w1": "1", "w2": "0"})
+
+    @case("G1c", "a decoy file that opens `namespace A.B` but declares `bar` is not a candidate: matches stays 1")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({**DECL_AB, "Decoy/D.lean": decl("A.B", "bar"), "Pub/W.lean": _W("viaR", "_root_.A.B.foo")})
+        r = tabs["aliases"][2][0]
+        return _eq((r["target_matches"], r["target_file"], tabs["alias_candidates"][2]), ("1", "D/F.lean", []))
+
+    @case("G1d", "`_root_.` is stripped once and only at the start of the target")
+    def _():
+        ws = _W("w1", "_root_.A.B.foo") + _W("w2", "_root_._root_.A.B.foo") + _W("w3", "A._root_.B.foo")
+        _rc, _o, _e, tabs, _n = _go({**DECL_AB, "Pub/W.lean": ws})
+        return _eq({r["public_name"]: r["target_matches"] for r in tabs["aliases"][2]}, {"w1": "1", "w2": "0", "w3": "0"})
+
+    @case("G1e", "callers.tsv names a resolved `_root_.` target by its stripped full name")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({**DECL_AB, "Pub/W.lean": _W("viaR", "_root_.A.B.foo"), "Use/C.lean": "exact A.B.foo\n"})
+        return _eq(_pairs(tabs, "callers", "name", "kind", "file", "line", "in_comment"),
+                   [("A.B.foo", "target", "Use/C.lean", "1", "0")])
+
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
         _rc, _o, _e, _t, n = _go({**PUB_ALPHA, "Use/E.lean": "theorem z : P := Lib.alpha_core\n"}, count_reads=True)
