@@ -18,7 +18,9 @@ Outputs under OUT_DIR (each starts with a `#` provenance line, then the column r
 CONTRACT
  A1 Every theorem (or lemma) in ANY .lean file whose body is exactly the wrapper shape with the three X equal
     yields one row in aliases.tsv (public name, target X, file, line). Several per file are allowed. The body
-    is the text after the first `:= by` of the declaration's extent; the extent runs from its line to the line
+    is the text after the LAST `:= by` that is directly followed by `first | exact @` and sits outside any
+    bracket (a binder default proof such as `(h : P := by assumption)` is part of the signature and ignored),
+    within the declaration's extent; the extent runs from its line to the line
     before the next column-0 declaration keyword, `end`, `namespace`, `section`, `open`, `set_option`,
     `attribute`, `variable`, `universe`, `noncomputable`, `@[`, `/-` (also the modifiers private, protected,
     nonrec, unsafe, partial and `mutual`), or to the end of the file. Whitespace around the tokens may vary.
@@ -87,7 +89,8 @@ UNCALLED_COLS = ["name", "kind"]
 WRAP_QUICK = re.compile(r"first\s*\|\s*exact\s+@")
 WRAP = re.compile(r"first\s*\|\s*exact\s+@([^\s|]+)\s*\|\s*exact\s+([^\s|]+)\s*\|\s*"
                   r"\(\s*intros\s*;\s*apply\s+([^\s<]+)\s*<;>\s*assumption\s*\)")
-BY = re.compile(r":=\s*by(?![\w'])")
+BY_SHAPE = re.compile(r":=\s*by\s+(?=first\s*\|\s*exact\s+@)")
+OPEN, CLOSE = "([{\u27e8", ")]}\u27e9"
 DECL_QUICK = re.compile(r"\b(?:theorem|lemma|def|abbrev|structure|class|inductive|instance)\b")
 DECL = re.compile(r"[ \t]*(?:@\[[^\]]*\][ \t]*)*(?:(?:private|protected|noncomputable|nonrec|unsafe|partial)[ \t]+)*"
                   r"(theorem|lemma|def|abbrev|structure|class|inductive|instance)[ \t]+([^\s:({\[]*)")
@@ -173,10 +176,14 @@ def find_wrappers(raw, masked):
         if kind not in ("theorem", "lemma"):
             continue
         extent = "\n".join(ml[line_no - 1:end])
-        b = BY.search(extent)
-        if not b:
+        start = None
+        for b in BY_SHAPE.finditer(extent):
+            head = extent[:b.start()]
+            if sum(head.count(c) for c in OPEN) == sum(head.count(c) for c in CLOSE):   # not inside a binder
+                start = b.end()
+        if start is None:
             continue
-        body = extent[b.end():].strip()
+        body = extent[start:].strip()
         m = WRAP.match(body)
         if not m:
             continue
