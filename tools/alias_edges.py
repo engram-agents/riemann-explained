@@ -567,6 +567,36 @@ def _selftest_cases():
         return _eq(_pairs(tabs, "callers", "name", "kind", "file", "line", "in_comment"),
                    [("A.B.foo", "target", "Use/C.lean", "1", "0")])
 
+    def scope_map(text, targets):
+        files = {"S/Scope.lean": text, "Pub/W.lean": "".join(_W(f"w{i}", t) for i, t in enumerate(targets))}
+        _rc, _o, _e, tabs, _n = _go(files)
+        return {r["target"]: r["target_matches"] for r in tabs["aliases"][2]}
+
+    @case("G2a", "`namespace A.B.C` ... `end C` pops one component: the next theorem is `A.B.foo`, not `A.B.C.foo`")
+    def _():
+        t = "namespace A.B.C\ntheorem inner : P := sorry\nend C\ntheorem foo : P := sorry\nend B\nend A\n"
+        return _eq(scope_map(t, ["A.B.foo", "A.B.C.foo", "A.B.C.inner"]), {"A.B.foo": "1", "A.B.C.foo": "0", "A.B.C.inner": "1"})
+
+    @case("G2b", "`end B.C` pops two components")
+    def _():
+        t = "namespace A.B.C\nend B.C\ntheorem foo : P := sorry\nend A\n"
+        return _eq(scope_map(t, ["A.foo", "A.B.foo", "A.B.C.foo"]), {"A.foo": "1", "A.B.foo": "0", "A.B.C.foo": "0"})
+
+    @case("G2c", "a full `end A.B.C` pops three, and a later partial end still works")
+    def _():
+        t = ("namespace A.B.C\nend A.B.C\ntheorem foo : P := sorry\nnamespace D.E\nend E\ntheorem bar : P := sorry\nend D\n")
+        return _eq(scope_map(t, ["foo", "A.B.C.foo", "D.bar", "D.E.bar"]), {"foo": "1", "A.B.C.foo": "0", "D.bar": "1", "D.E.bar": "0"})
+
+    @case("G2d", "an inner `section` between does not disturb the pops")
+    def _():
+        t = "namespace A.B.C\nsection S\ntheorem i : P := sorry\nend S\nend C\ntheorem foo : P := sorry\nend B\nend A\n"
+        return _eq(scope_map(t, ["A.B.C.i", "A.B.foo", "A.B.C.foo"]), {"A.B.C.i": "1", "A.B.foo": "1", "A.B.C.foo": "0"})
+
+    @case("G2e", "a bare `end` after a bare `section` leaves the namespaces; a bare `end` on a namespace pops nothing")
+    def _():
+        t = "namespace A.B\nsection\nend\nend\ntheorem foo : P := sorry\nend A.B\ntheorem bar : P := sorry\n"
+        return _eq(scope_map(t, ["A.B.foo", "foo", "bar", "A.B.bar"]), {"A.B.foo": "1", "foo": "0", "bar": "1", "A.B.bar": "0"})
+
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
         _rc, _o, _e, _t, n = _go({**PUB_ALPHA, "Use/E.lean": "theorem z : P := Lib.alpha_core\n"}, count_reads=True)
