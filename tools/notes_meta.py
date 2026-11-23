@@ -1070,6 +1070,7 @@ def _():
                  "note 03-c header FAILED, blocks 0",
                  "FRAME-NOTE skipped: no strings file",
                  "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 1 premise links",
+                 "claim basis: 0 read, 0 census, 0 without",
                  "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0",
                  "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
@@ -1871,6 +1872,66 @@ def _():
 @case("HROOT3", "group root with level 2 is the same error")
 def _():
     fe(go(notes={"01-a.md": NOTE(group="root", level=2)}), ["GROUP-ROOT-LEVEL 01-a.md:2 group 'root' is for level 0 only (this note has level 2)"], 1)
+
+
+@case("BAS1", "a claim may carry basis, exactly read or census; absent is clean")
+def _():
+    one = [R("A.B", "foo")]
+    clean(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis="read")))))
+    clean(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis="census")))))
+    clean(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM)))))
+
+
+@case("BAS2", "any other basis value is BAD-VALUE naming the group and the type of the value, not the value")
+def _():
+    one = [R("A.B", "foo")]
+    pre = "BAD-VALUE outline.json group 'g1' claim: basis must be 'read' or 'census' (the value is of type "
+    for v, t in (("", "string"), ("Read", "string"), ("CENSUS", "string"), ("reading", "string"), (None, "null"), (["read"], "list"),
+                 (1, "number"), (1.5, "number"), (True, "boolean"), ({"a": 1}, "object")):
+        fe(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis=v)))), [pre + t + ")"], 1)
+
+
+@case("BAS3", "REQUIRE_CLAIM_BASIS is False by default; when True a claim without basis is CLAIM-BASIS-MISSING naming the group and a null claim is not flagged")
+def _():
+    eq(REQUIRE_CLAIM_BASIS, False, "the default")
+    one = [R("A.B", "foo")]
+    nob = OL(G("g1", roots=one, claim=dict(CLAIM)), G("g2", order=2, roots=one, claim=None))
+    withb = OL(G("g1", roots=one, claim=dict(CLAIM, basis="census")), G("g2", order=2, roots=one, claim=None))
+    saved = globals()["REQUIRE_CLAIM_BASIS"]
+    try:
+        clean(go(outline=nob))
+        globals()["REQUIRE_CLAIM_BASIS"] = True
+        fe(go(outline=nob), ["CLAIM-BASIS-MISSING outline.json group 'g1' claim: no basis (read or census)"], 1)
+        clean(go(outline=withb))
+        fe(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis="x")))),
+           ["BAD-VALUE outline.json group 'g1' claim: basis must be 'read' or 'census' (the value is of type string)"], 1)
+    finally:
+        globals()["REQUIRE_CLAIM_BASIS"] = saved
+    clean(go(outline=nob))
+    eq(REQUIRE_CLAIM_BASIS, False, "restored")
+
+
+@case("BAS4", "basis is a claim key only: at group level it is still UNKNOWN-KEY, and another unknown claim key still fires beside it")
+def _():
+    one = [R("A.B", "foo")]
+    fe(go(outline=OL(dict(G("g1", roots=one), basis="read"))), ["UNKNOWN-KEY outline.json group 'g1': unknown key 'basis'"], 1)
+    fe(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis="read", notes="x")))),
+       ["UNKNOWN-KEY outline.json group 'g1' claim: unknown key 'notes'"], 1)
+
+
+@case("BAS5", "the summary line claim basis: R read, C census, M without, counted over non-null claims; a bad value counts as without")
+def _():
+    ok("claim basis: 0 read, 0 census, 3 without" in go(outline=OL(*_real())).lines, "the pilot-shape fixture, no basis")
+    gs = _real()
+    gs[0] = dict(gs[0], claim=dict(gs[0]["claim"], basis="read"))
+    gs[1] = dict(gs[1], claim=dict(gs[1]["claim"], basis="census"))
+    r = go(outline=OL(*gs))
+    eq((r.f, r.rc), ([], 0), r.out)
+    ok("claim basis: 1 read, 1 census, 1 without" in r.lines, r.out)
+    gs[3] = dict(gs[3], claim=dict(gs[3]["claim"], basis="Read"))
+    r = go(outline=OL(*gs))
+    ok("claim basis: 1 read, 1 census, 1 without" in r.lines and len(r.f) == 1, r.out)
+    ok("claim basis: 0 read, 0 census, 0 without" in go(outline=OL(G("g1"), G("g2", order=2))).lines, "null claims are not counted")
 
 
 @case("REAL1", "an outline in the pilot's shape (depth 4, a step whose premises name a deeper group, null and non-null claims) passes")
