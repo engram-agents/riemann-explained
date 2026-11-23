@@ -762,6 +762,20 @@ def _selftest_cases():
         return _eq(_pairs(tabs, "refs", "file", "public_name", "occurrences", "in_comment_only"),
                    [("Use/C.lean", "GlobalTheory.T.alpha", "1", "0")])
 
+    @case("A5i", "a comment line right after a wrapper that names its target is a callers row (in_comment 1); the target is not uncalled")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"W.lean": _W("w", "L.x") + "-- see L.x\n", "L/X.lean": decl("L", "x")})
+        return _eq((_pairs(tabs, "callers", "name", "kind", "file", "line", "in_comment"), _pairs(tabs, "uncalled", "name", "kind")),
+                   ([("L.x", "target", "W.lean", "3", "1")], [("w", "alias")]))
+
+    @case("A5j", "a second name on the wrapper's own lines is not suppressed; only the wrapper's own target is")
+    def _():
+        w = "theorem w : P := by\n  " + SHAPE_X + " -- see L.y\n"
+        _rc, _o, _e, tabs, _n = _go({"W.lean": w, "W2.lean": _W("w2", "L.y"), "L/X.lean": decl("L", "x"), "L/Y.lean": decl("L", "y")})
+        return _eq((_pairs(tabs, "callers", "name", "kind", "file", "line", "in_comment"),
+                    [r for r in _pairs(tabs, "uncalled", "name", "kind") if r[1] == "target"]),
+                   ([("L.y", "target", "W.lean", "2", "1")], [("L.x", "target")]))
+
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
         _rc, _o, _e, _t, n = _go({**PUB_ALPHA, "Use/E.lean": "theorem z : P := Lib.alpha_core\n"}, count_reads=True)
