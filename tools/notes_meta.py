@@ -43,7 +43,8 @@ CONTRACT (each line is a self-test case, written before the code)
   M2 header_problems() findings; the group exists in the outline; the title rules (TITLE-CODE-FIRST, TITLE-PARENTHETICAL
      as errors, TITLE-NOTE as a listing). Cases M2a TITLE1 TITLE2 TITLE3 TITLE4.
   M3 Every block: rh_anchor.problems(block, header id); block ids unique across all notes, DUPLICATE-ID naming both
-     places. Cases M3a M3b.
+     places; two notes whose headers carry the same id are NOTE-ID-DUPLICATE (one finding, on the first, naming every
+     file that uses it). Cases M3a M3b ID1 to ID4.
   M4 Every `decls` entry resolves to exactly one row (UNRESOLVED, AMBIGUOUS). Case M4.
   M5 `file` is listed in the note's file table (always); with --src it is also a file under SRC_ROOT and `lines` are
      inside it.
@@ -71,6 +72,9 @@ CONTRACT (each line is a self-test case, written before the code)
  Summary lines (cases N5a N5b N5c): `outline: G groups, C claimed, Z null, R roots resolved, D defs_opened resolved, P
  premise links` always, counted over the whole outline; `strings: F frame phrases loaded for K kinds` and `byte check:
  N notes equal to REV, M new` when those ran. Header group (cases HROOT1 to HROOT3): `root` only at level 0.
+ Claim basis (cases BAS1 to BAS5): a claim may carry `basis`, exactly "read" or "census"; any other value is BAD-VALUE naming
+ the group and the type of the value; REQUIRE_CLAIM_BASIS (False) makes a claim without it CLAIM-BASIS-MISSING; the line
+ `claim basis: R read, C census, M without` counts the non-null claims.
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
@@ -109,6 +113,11 @@ hand-typed last line can read as a one-line-ending difference (anchors written b
 Z1). An anchor-looking line is kept as text only inside a fence: an indented code block or a list item is not tracked, as in
 rh_anchor's LIMIT. A malformed rh- line is kept as text, so fixing it since REV is a BYTE-DIFF. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
+NOTE-ID-DUPLICATE compares ids exactly (letter case counts) and only for notes that have a header with a non-empty id; it is one
+finding on the first file in name order, which names every file, so a reader of a later file's own findings does not see it.
+Claim basis: optional while REQUIRE_CLAIM_BASIS is False. The next step of the sequence (the outline carries basis on every
+claim) comes first, then that constant is set to True and a claim without basis becomes an error. The summary counts a claim
+whose basis value is not read or census as without (it is also a BAD-VALUE), and does not count null claims.
 List items: a nested item is not numbered; a citation in a nested item anchors to its parent item, and the precision lives in
 the block's decls and lines (a future optional `subitem` could number nested items). A list whose last line is nested, a
 loose list (one list, numbered across its blank lines), an ordered list and a list directly followed by a paragraph may render
@@ -171,7 +180,11 @@ NOCODE = "CHECKED NOTHING"
 TOP_KEYS = ("groups", "release")
 GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
 CLAIM_REQUIRED = ("text", "reader", "date", "defs_opened", "conventions_checked")
-CLAIM_OPTIONAL = ("conditions", "mathlib_read")
+CLAIM_OPTIONAL = ("conditions", "mathlib_read", "basis")
+CLAIM_BASIS = ("read", "census")
+# While False a claim need not carry basis. The step that makes the outline carry it on every claim comes first; then this
+# constant is set to True and a claim without basis is CLAIM-BASIS-MISSING.
+REQUIRE_CLAIM_BASIS = False
 DECL_COLS = ["module", "name", "kind", "first_line", "last_line", "basis"]
 FRAME_ONLY = ("argument", "interpretation")
 # Shapes of a list that a renderer shows differently from the source: a tuple of frozensets of shape keys (loose,
@@ -248,8 +261,18 @@ def _decl_entry_ok(e):
 
 
 # ---- the outline
+def _jtype(v):
+    return ("null" if v is None else "boolean" if isinstance(v, bool) else "number" if isinstance(v, (int, float))
+            else "string" if isinstance(v, str) else "list" if isinstance(v, list) else "object")
+
+
 def _check_claim(claim, label, path, out):
     pre = f"{label} claim"
+    if "basis" in claim:
+        if not (isinstance(claim["basis"], str) and claim["basis"] in CLAIM_BASIS):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: basis must be 'read' or 'census' (the value is of type {_jtype(claim['basis'])})"))
+    elif REQUIRE_CLAIM_BASIS:
+        out.append(_f("CLAIM-BASIS-MISSING", path, None, f"{pre}: no basis (read or census)"))
     for k in sorted(claim):
         if k not in CLAIM_REQUIRED and k not in CLAIM_OPTIONAL:
             out.append(_f("UNKNOWN-KEY", path, None, f"{pre}: unknown key {k!r}"))
@@ -350,7 +373,7 @@ def _premise_cycles(graph, path, out):
 def _check_outline(data, path, index):
     """(findings, the ids of the groups that have a usable id)."""
     out = []
-    stats = {"groups": 0, "claimed": 0, "null": 0, "roots": 0, "defs": 0, "premises": 0}
+    stats = {"groups": 0, "claimed": 0, "null": 0, "roots": 0, "defs": 0, "premises": 0, "read": 0, "census": 0, "without": 0}
     if not isinstance(data, dict):
         return [_f("BAD-VALUE", path, None, "top level: must be a JSON object")], set(), stats
     for k in sorted(data):
@@ -377,6 +400,11 @@ def _check_outline(data, path, index):
         stats["groups"] += 1
         stats["claimed"] += isinstance(g.get("claim"), dict)
         stats["null"] += "claim" in g and g["claim"] is None
+        if isinstance(g.get("claim"), dict):   # claim basis, counted over the non-null claims; a bad value is "without"
+            b = g["claim"].get("basis")
+            stats["read"] += b == "read"
+            stats["census"] += b == "census"
+            stats["without"] += not (isinstance(b, str) and b in CLAIM_BASIS)
         labels[i] = f"group {gid!r}" if _str(gid) else f"groups[{i}]"
         _check_group_shape(g, labels[i], path, out)
         if _str(gid):
@@ -771,9 +799,23 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index)
     lines, errors, warnings = [_render(f) for f in found], len(found), 0
     ctx.ids = {}
+    hid, hline = {}, {}   # note ids: which notes carry each header id (a note with no header carries none)
+    for n in names:
+        hs = rh.parse_note(texts[n])[0]
+        hid_id = hs[0].data.get("id") if hs else None
+        if _str(hid_id):
+            hid.setdefault(hid_id, []).append(n)
+            hline[n] = hs[0].line
+    dup_at = {}
+    for hid_id, files in hid.items():
+        if len(files) > 1:
+            dup_at[files[0]] = f"note id {hid_id!r} is used by {len(files)} notes: " + ", ".join(files)
     totals, invalid_total, n_equal, n_new = {k: 0 for k in rh.KINDS}, 0, 0, 0
     for n in names:
         fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
+        if n in dup_at:
+            fs.append(_f("NOTE-ID-DUPLICATE", n, hline[n], dup_at[n]))
+            fs.sort(key=lambda x: x[2] or 0)
         bf = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else None
         fs += [bf] if bf else []
         if base is not None:
@@ -795,6 +837,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
                      f"{sum(1 for v in ctx.strings.values() if v)} kinds")
     lines.append(f"outline: {st['groups']} groups, {st['claimed']} claimed, {st['null']} null, {st['roots']} roots resolved, "
                  f"{st['defs']} defs_opened resolved, {st['premises']} premise links")
+    lines.append(f"claim basis: {st['read']} read, {st['census']} census, {st['without']} without")
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
     lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new" if base is not None else "byte check: did not run, no --base given")
@@ -1070,6 +1113,7 @@ def _():
                  "note 03-c header FAILED, blocks 0",
                  "FRAME-NOTE skipped: no strings file",
                  "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 1 premise links",
+                 "claim basis: 0 read, 0 census, 0 without",
                  "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0",
                  "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
@@ -1366,12 +1410,39 @@ def _():
     clean(go(notes=n(BL(second_readers=[{"reader": "K", "date": "2026-11-23"}]))))
 
 
+@case("ID1", "two notes whose headers carry the same id: NOTE-ID-DUPLICATE on the first, naming both files")
+def _():
+    fe(go(notes={"01-a.md": NOTE(), "02-b.md": NOTE()}), ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 2 notes: 01-a.md, 02-b.md"], 1)
+    fe(go(notes={"01-a.md": NOTE(nid="07"), "02-b.md": NOTE(nid="08"), "03-c.md": NOTE(nid="07")}),
+       ["NOTE-ID-DUPLICATE 01-a.md:2 note id '07' is used by 2 notes: 01-a.md, 03-c.md"], 1)
+
+
+@case("ID2", "distinct ids are clean, and ids that differ only in letter case are distinct")
+def _():
+    clean(go(notes={"01-a.md": NOTE(nid="01"), "02-b.md": NOTE(nid="02")}))
+    clean(go(notes={"01-a.md": NOTE(nid="ab"), "02-b.md": NOTE(nid="AB")}))
+
+
+@case("ID3", "a note with no header is not a duplicate of anything, not even of a note whose id is its own file stem")
+def _():
+    fe(go(notes={"01-a.md": NOTE(), "02-b.md": "# T\n"}), ["NO-HEADER 02-b.md has no rh-note header"], 1)
+    fe(go(notes={"01-a.md": NOTE(nid="02-b"), "02-b.md": "# T\n"}), ["NO-HEADER 02-b.md has no rh-note header"], 1)
+
+
+@case("ID4", "three notes with one id: one finding on the first, naming all three")
+def _():
+    fe(go(notes={"01-a.md": NOTE(), "02-b.md": NOTE(), "03-c.md": NOTE()}),
+       ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 3 notes: 01-a.md, 02-b.md, 03-c.md"], 1)
+
+
 @case("M3b", "a block id used twice, in one note or in two, is DUPLICATE-ID naming both places")
 def _():
     two = NOTE(body="Some text.\n" + BL() + "\n" + BL() + "\n")
     fe(go(notes={"01-a.md": two}), ["DUPLICATE-ID 01-a.md:8 block id '01.b01' is also used at 01-a.md:7"], 1)
     one = NOTE(body="Some text.\n" + BL() + "\n")
-    fe(go(notes={"01-a.md": one, "02-b.md": one}), ["DUPLICATE-ID 02-b.md:7 block id '01.b01' is also used at 01-a.md:7"], 1)
+    fe(go(notes={"01-a.md": one, "02-b.md": one}),
+       ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 2 notes: 01-a.md, 02-b.md",
+        "DUPLICATE-ID 02-b.md:7 block id '01.b01' is also used at 01-a.md:7"], 1)
     clean(go(notes={"01-a.md": one, "02-b.md": NOTE(nid="02", body="Some text.\n" + BL("02.b01") + "\n")}))
 
 
@@ -1871,6 +1942,66 @@ def _():
 @case("HROOT3", "group root with level 2 is the same error")
 def _():
     fe(go(notes={"01-a.md": NOTE(group="root", level=2)}), ["GROUP-ROOT-LEVEL 01-a.md:2 group 'root' is for level 0 only (this note has level 2)"], 1)
+
+
+@case("BAS1", "a claim may carry basis, exactly read or census; absent is clean")
+def _():
+    one = [R("A.B", "foo")]
+    clean(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis="read")))))
+    clean(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis="census")))))
+    clean(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM)))))
+
+
+@case("BAS2", "any other basis value is BAD-VALUE naming the group and the type of the value, not the value")
+def _():
+    one = [R("A.B", "foo")]
+    pre = "BAD-VALUE outline.json group 'g1' claim: basis must be 'read' or 'census' (the value is of type "
+    for v, t in (("", "string"), ("Read", "string"), ("CENSUS", "string"), ("reading", "string"), (None, "null"), (["read"], "list"),
+                 (1, "number"), (1.5, "number"), (True, "boolean"), ({"a": 1}, "object")):
+        fe(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis=v)))), [pre + t + ")"], 1)
+
+
+@case("BAS3", "REQUIRE_CLAIM_BASIS is False by default; when True a claim without basis is CLAIM-BASIS-MISSING naming the group and a null claim is not flagged")
+def _():
+    eq(REQUIRE_CLAIM_BASIS, False, "the default")
+    one = [R("A.B", "foo")]
+    nob = OL(G("g1", roots=one, claim=dict(CLAIM)), G("g2", order=2, roots=one, claim=None))
+    withb = OL(G("g1", roots=one, claim=dict(CLAIM, basis="census")), G("g2", order=2, roots=one, claim=None))
+    saved = globals()["REQUIRE_CLAIM_BASIS"]
+    try:
+        clean(go(outline=nob))
+        globals()["REQUIRE_CLAIM_BASIS"] = True
+        fe(go(outline=nob), ["CLAIM-BASIS-MISSING outline.json group 'g1' claim: no basis (read or census)"], 1)
+        clean(go(outline=withb))
+        fe(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis="x")))),
+           ["BAD-VALUE outline.json group 'g1' claim: basis must be 'read' or 'census' (the value is of type string)"], 1)
+    finally:
+        globals()["REQUIRE_CLAIM_BASIS"] = saved
+    clean(go(outline=nob))
+    eq(REQUIRE_CLAIM_BASIS, False, "restored")
+
+
+@case("BAS4", "basis is a claim key only: at group level it is still UNKNOWN-KEY, and another unknown claim key still fires beside it")
+def _():
+    one = [R("A.B", "foo")]
+    fe(go(outline=OL(dict(G("g1", roots=one), basis="read"))), ["UNKNOWN-KEY outline.json group 'g1': unknown key 'basis'"], 1)
+    fe(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis="read", notes="x")))),
+       ["UNKNOWN-KEY outline.json group 'g1' claim: unknown key 'notes'"], 1)
+
+
+@case("BAS5", "the summary line claim basis: R read, C census, M without, counted over non-null claims; a bad value counts as without")
+def _():
+    ok("claim basis: 0 read, 0 census, 3 without" in go(outline=OL(*_real())).lines, "the pilot-shape fixture, no basis")
+    gs = _real()
+    gs[0] = dict(gs[0], claim=dict(gs[0]["claim"], basis="read"))
+    gs[1] = dict(gs[1], claim=dict(gs[1]["claim"], basis="census"))
+    r = go(outline=OL(*gs))
+    eq((r.f, r.rc), ([], 0), r.out)
+    ok("claim basis: 1 read, 1 census, 1 without" in r.lines, r.out)
+    gs[3] = dict(gs[3], claim=dict(gs[3]["claim"], basis="Read"))
+    r = go(outline=OL(*gs))
+    ok("claim basis: 1 read, 1 census, 1 without" in r.lines and len(r.f) == 1, r.out)
+    ok("claim basis: 0 read, 0 census, 0 without" in go(outline=OL(G("g1"), G("g2", order=2))).lines, "null claims are not counted")
 
 
 @case("REAL1", "an outline in the pilot's shape (depth 4, a step whose premises name a deeper group, null and non-null claims) passes")
