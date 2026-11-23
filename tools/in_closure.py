@@ -199,7 +199,7 @@ def _go(edge_rows, start, sites, controls, edges_text=None, argv_extra=None):
         e, s = os.path.join(d, "edges.tsv"), os.path.join(d, "sites.txt")
         with open(e, "w", encoding="utf-8") as f:
             f.write(edges_text if edges_text is not None
-                    else "# edges | source: unversioned| x\nimporter\timported\n" + "".join(r + "\n" for r in edge_rows))
+                    else "# edges | source: unversioned | x\nimporter\timported\n" + "".join(r + "\n" for r in edge_rows))
         with open(s, "w", encoding="utf-8") as f:
             f.write("".join(x + "\n" for x in sites))
         argv = ["in_closure.py", e, start, s]

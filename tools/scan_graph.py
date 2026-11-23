@@ -181,7 +181,7 @@ def provenance(tool, root, not_a):
             sha = h.stdout.strip() if h.returncode == 0 and re.fullmatch(r"[0-9a-f]{40,64}", h.stdout.strip()) else "git-unreadable"
     except Exception:
         sha = "git-unreadable"
-    return f"# {tool} | source: {sha}| {not_a}"
+    return f"# {tool} | source: {sha} | {not_a}"
 
 
 # ---------------------------------------------------------------- the tool
@@ -400,7 +400,7 @@ def _selftest_cases():
                     del os.environ["GIT_CEILING_DIRECTORIES"]
                 else:
                     os.environ["GIT_CEILING_DIRECTORIES"] = old
-        return _eq(got, "# t | source: unversioned| not x")
+        return _eq(got, "# t | source: unversioned | not x")
 
     @case("PROV2", "provenance: a root in a git work tree carries `git rev-parse HEAD`")
     def _():
@@ -412,7 +412,7 @@ def _selftest_cases():
             subprocess.run(g + ["commit", "-q", "--allow-empty", "-m", "x"], check=True, capture_output=True)
             sha = subprocess.run(g + ["rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
             got = provenance("t", d, "not x")
-        return _eq(got, f"# t | source: {sha}| not x")
+        return _eq(got, f"# t | source: {sha} | not x")
 
     @case("PROV3", "provenance: a git work tree whose HEAD cannot be read says `git-unreadable`")
     def _():
@@ -420,7 +420,7 @@ def _selftest_cases():
             if shutil.which("git"):   # without git the word is the same: git is missing, which is `git-unreadable`
                 subprocess.run(["git", "-C", d, "init", "-q"], check=True, capture_output=True)
             got = provenance("t", d, "not x")
-        return _eq(got, "# t | source: git-unreadable| not x")
+        return _eq(got, "# t | source: git-unreadable | not x")
 
     def run_selftest(args, env=None):
         """This file's self-test in a fresh interpreter: (exit status, stdout, stderr, ids of the CASE lines)."""
