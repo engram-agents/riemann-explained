@@ -62,6 +62,14 @@ CONTRACT (each line is a self-test case, written before the code)
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
   R4 Every group has at least one root; a null claim with no root, once accepted, is now a ROOT-COUNT error.
   R5 A strings file with no phrase at all is announced. R6 Without the git program a normal run is refused (exit 4).
+ List items (cases ITEM1 ITEM2 CONST2 LSH1; rh_anchor L1a to L5):
+  I1 A block whose target is a list must carry `item` (ITEM-REQUIRED); `item` above the number of top-level items is
+  ITEM-OUT-OF-RANGE; `item` that is not an integer of 1 or more is ITEM-BAD-VALUE; `item` on a target that is not a list is
+  NOT-A-LIST. Nested items are not numbered. A heading, quote, HTML line or non-lean fence is still ORPHAN-BLOCK.
+  I2 A list target whose shape has every key of an entry of REFUSED_LIST_SHAPES (empty by default) is LIST-SHAPE-REFUSED.
+ Summary lines (cases N5a N5b N5c): `outline: G groups, C claimed, Z null, R roots resolved, D defs_opened resolved, P
+ premise links` always, counted over the whole outline; `strings: F frame phrases loaded for K kinds` and `byte check:
+ N notes equal to REV, M new` when those ran. Header group (cases HROOT1 to HROOT3): `root` only at level 0.
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
@@ -93,6 +101,14 @@ the first other kind that matches is named; only a block whose target is a parag
 compares at the path the note has in the repository, so a note renamed since REV is NEW-NOTE, and BYTE-DIFF's line
 number is a line of the published text, not of the note with its anchors. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
+List items: a nested item is not numbered; a citation in a nested item anchors to its parent item, and the precision lives in
+the block's decls and lines (a future optional `subitem` could number nested items). A list whose last line is nested, a
+loose list (which rh_anchor reads as two lists), an ordered list and a list directly followed by a paragraph may render
+differently from the source; REFUSED_LIST_SHAPES says which are refused, and it is EMPTY until the renderer control's result
+is in. A citation inside a quote stays unanchored. The summary counts: premise links are the premises that name a group of
+the outline (not the group itself); roots and defs_opened resolved are those with exactly one decls row; strings' kinds are
+those with at least one phrase; a group id that is repeated is counted in the groups but only its first is resolved. A header
+group of `root` is not looked up in the outline; a group literally named root is not supported.
 Title rules in the script are heuristics. A trailing parenthetical is allowed when it holds only code spans, commas and
 `and`, or only a one-letter or number argument (so a function argument like `(s)` or `(12)` passes and `(draft)` fails);
 a math argument longer than that is called a status. TITLE-NOTE listings (a math symbol or `Re s` outside code; `proved`
@@ -150,6 +166,10 @@ CLAIM_REQUIRED = ("text", "reader", "date", "defs_opened", "conventions_checked"
 CLAIM_OPTIONAL = ("conditions", "mathlib_read")
 DECL_COLS = ["module", "name", "kind", "first_line", "last_line", "basis"]
 FRAME_ONLY = ("argument", "interpretation")
+# Shapes of a list that a renderer shows differently from the source: a tuple of frozensets of shape keys (loose,
+# last_nested, ordered, followed_by_paragraph). A block whose list target has every key of an entry true is
+# LIST-SHAPE-REFUSED. Empty until the renderer control's result is in.
+REFUSED_LIST_SHAPES = ()
 _CODESPAN = re.compile(r"(`+)(?!`).+?(?<!`)\1(?!`)")
 _LINE_SPLIT = re.compile(r"\r\n|\n|\r")
 
@@ -322,8 +342,9 @@ def _premise_cycles(graph, path, out):
 def _check_outline(data, path, index):
     """(findings, the ids of the groups that have a usable id)."""
     out = []
+    stats = {"groups": 0, "claimed": 0, "null": 0, "roots": 0, "defs": 0, "premises": 0}
     if not isinstance(data, dict):
-        return [_f("BAD-VALUE", path, None, "top level: must be a JSON object")], set()
+        return [_f("BAD-VALUE", path, None, "top level: must be a JSON object")], set(), stats
     for k in sorted(data):
         if k not in TOP_KEYS:
             out.append(_f("UNKNOWN-KEY", path, None, f"top level: unknown key {k!r}"))
@@ -345,6 +366,9 @@ def _check_outline(data, path, index):
             out.append(_f("BAD-VALUE", path, None, f"groups[{i}]: must be a JSON object"))
             continue
         gid = g.get("id")
+        stats["groups"] += 1
+        stats["claimed"] += isinstance(g.get("claim"), dict)
+        stats["null"] += "claim" in g and g["claim"] is None
         labels[i] = f"group {gid!r}" if _str(gid) else f"groups[{i}]"
         _check_group_shape(g, labels[i], path, out)
         if _str(gid):
@@ -394,16 +418,19 @@ def _check_outline(data, path, index):
             out.append(_f("ROOT-COUNT", path, None, f"{label}: a group needs at least one root"))
         elif isinstance(claim, dict) and isinstance(roots, list) and len(roots) != 1:
             out.append(_f("ROOT-COUNT", path, None, f"{label}: a group with a claim has exactly one root, not {len(roots)}"))
-        entries = [(f"{label} roots[{k}]", e) for k, e in enumerate(roots)] if isinstance(roots, list) else []
+        entries = [("roots", f"{label} roots[{k}]", e) for k, e in enumerate(roots)] if isinstance(roots, list) else []
         if isinstance(claim, dict) and isinstance(claim.get("defs_opened"), list):
-            entries += [(f"{label} claim defs_opened[{k}]", e) for k, e in enumerate(claim["defs_opened"])]
-        for where, e in entries:
+            entries += [("defs", f"{label} claim defs_opened[{k}]", e) for k, e in enumerate(claim["defs_opened"])]
+        for which, where, e in entries:
             if _decl_entry_ok(e):
                 fnd, _row = _resolve(index, where, path, None, e["module"], e["name"])
                 if fnd:
                     out.append(fnd)
+                else:
+                    stats[which] += 1
+    stats["premises"] = sum(len(v) for v in graph.values())
     _premise_cycles(graph, path, out)   # premises only, never parent
-    return out, set(by_id)
+    return out, set(by_id), stats
 
 
 # ---- the notes
@@ -504,8 +531,12 @@ def _check_header(name, headers, ctx):
     out += [_f("HEADER-PROBLEM", name, h.line, p) for p in rh.header_problems(d)]
     if not h.canonical:
         out.append(_f("NONCANONICAL", name, h.line, "not the canonical form; canonical: " + _canon("rh-note", d)))
-    if _str(d.get("group")) and d["group"] not in ctx.groups:
-        out.append(_f("UNKNOWN-GROUP", name, h.line, f"group {d['group']!r} is not in the outline"))
+    g, lv = d.get("group"), d.get("level")
+    if g == "root":   # not a group id: only a level-0 note may name it
+        if not (_int(lv) and lv == 0):
+            out.append(_f("GROUP-ROOT-LEVEL", name, h.line, f"group 'root' is for level 0 only (this note has level {lv!r})"))
+    elif _str(g) and g not in ctx.groups:
+        out.append(_f("UNKNOWN-GROUP", name, h.line, f"group {g!r} is not in the outline"))
     if _str(d.get("list_title")):
         out += _title_findings(name, h.line, d["list_title"])
     return out, (d["id"] if _str(d.get("id")) else None)
@@ -517,7 +548,8 @@ def _check_block(name, b, note_id, listed, lines, ctx, out):
     label = f"block {bid!r}" if isinstance(bid, str) else "block"
     if not b.canonical:
         out.append(_f("NONCANONICAL", name, b.line, "not the canonical form; canonical: " + _canon("rh-block", d)))
-    out += [_f("BLOCK-PROBLEM", name, b.line, f"{label}: {p}") for p in rh.problems(d, note_id)]
+    out += [_f("ITEM-BAD-VALUE" if p.startswith("item: must be an integer") else "BLOCK-PROBLEM", name, b.line, f"{label}: {p}")
+            for p in rh.problems(d, note_id)]
     if isinstance(bid, str):
         if bid in ctx.ids:
             out.append(_f("DUPLICATE-ID", name, b.line, f"block id {bid!r} is also used at {ctx.ids[bid][0]}:{ctx.ids[bid][1]}"))
@@ -567,6 +599,21 @@ def _check_block(name, b, note_id, listed, lines, ctx, out):
                 out.append(_f("ROW-OUT-OF-RANGE", name, b.line, f"{label} row {d['row']} but the table has {t['nrows']} body rows"))
             if _int(d.get("col")) and d["col"] > t["ncols"]:
                 out.append(_f("COL-OUT-OF-RANGE", name, b.line, f"{label} col {d['col']} but the table has {t['ncols']} columns"))
+    ttype = (b.target or {}).get("type")   # list items: a list needs item, item needs a list
+    if "item" in d:
+        if ttype != "list":
+            out.append(_f("NOT-A-LIST", name, b.line, f"{label} carries item but its target is of type '{ttype}', not a list"))
+        elif _int(d["item"]) and d["item"] >= 1 and d["item"] > b.target["nitems"]:
+            out.append(_f("ITEM-OUT-OF-RANGE", name, b.line,
+                          f"{label} item {d['item']} but the list has {b.target['nitems']} top-level items"))
+    elif ttype == "list":
+        out.append(_f("ITEM-REQUIRED", name, b.line, f"{label}: a list needs 'item' (1-based, like 'row')"))
+    if ttype == "list":
+        on = {k for k, v in b.target["shape"].items() if v}
+        for entry in REFUSED_LIST_SHAPES:
+            if entry and entry <= on:
+                out.append(_f("LIST-SHAPE-REFUSED", name, b.line,
+                              f"{label} anchors a list whose shape the renderer shows differently: {', '.join(sorted(entry))}"))
     kind = d.get("kind")   # F12
     if ctx.strings is not None and kind in FRAME_ONLY and (b.target or {}).get("type") == "paragraph":
         t = b.target
@@ -709,14 +756,17 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
         stop.append(f"{NOCODE}: decls.tsv has no rows")
     if stop:
         return 3, stop
-    found, ctx.groups = _check_outline(odata, os.path.basename(outline), ctx.index)
+    found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index)
     lines, errors, warnings = [_render(f) for f in found], len(found), 0
     ctx.ids = {}
-    totals, invalid_total = {k: 0 for k in rh.KINDS}, 0
+    totals, invalid_total, n_equal, n_new = {k: 0 for k in rh.KINDS}, 0, 0, 0
     for n in names:
         fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
         bf = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else None
         fs += [bf] if bf else []
+        if base is not None:
+            n_new += bool(bf and bf[0] == "NEW-NOTE")
+            n_equal += bf is None
         lines += [_render(f) for f in fs]
         errors += sum(1 for f in fs if f[4] == ERROR)
         warnings += sum(1 for f in fs if f[4] == LISTING)
@@ -728,9 +778,14 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
         lines.append("FRAME-NOTE skipped: no strings file")
     elif not any(ctx.strings.values()):
         lines.append("FRAME-NOTE skipped: no frame phrases were loaded from the strings file")
+    else:
+        lines.append(f"strings: {sum(len(v) for v in ctx.strings.values())} frame phrases loaded for "
+                     f"{sum(1 for v in ctx.strings.values() if v)} kinds")
+    lines.append(f"outline: {st['groups']} groups, {st['claimed']} claimed, {st['null']} null, {st['roots']} roots resolved, "
+                 f"{st['defs']} defs_opened resolved, {st['premises']} premise links")
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
-    lines.append(f"byte check: ran against {base}" if base is not None else "byte check: did not run, no --base given")
+    lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new" if base is not None else "byte check: did not run, no --base given")
     lines.append(f"{len(names)} notes, {errors} findings, {warnings} warnings")
     return (1 if errors else 0), lines
 

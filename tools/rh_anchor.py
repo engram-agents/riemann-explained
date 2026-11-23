@@ -16,7 +16,8 @@ API (the names are the contract)
   block_id_ok(note_id, block_id)    True iff block_id is `<note_id>.b<nn>`, nn two or more ASCII digits
   problems(block, note_id=None)     format-level check of one block dict; a list of strings, empty = fine
   header_problems(d)                the same for a header dict
-  target_at(text, line)             the element (paragraph, table, fence) that holds a 1-based line, or whose run of
+  item_at(text, line)               the 1-based top-level list item that holds a line (nested lines: the parent item)
+  target_at(text, line)             the element (paragraph, table, list, fence) that holds a 1-based line, or whose run of
                                     anchor lines holds it, else None
   next_block_id(note_id, used)      the next unused id of a note, never reusing a hole
   insert_after_line(text, line, c)  insert a comment as its own line after a 1-based line, in that file's line ending
@@ -39,7 +40,7 @@ CONTRACT (each line is a self-test case, written before the code)
  A4 Round trip: parse_note(format_comment(tag, d) + "\\n") is exactly one Item with data == d and canonical True, no
     Problem, for objects of str, int, bool, None, list, dict. Case A4.
  A5 Placement. A block's `target` is the nearest preceding non-blank element: paragraph, table, lean (a fence whose
-    info string starts `lean`), other (any other fence, heading, list item, quote, HTML line) or none. Each carries
+    info string starts `lean`), list, other (any other fence, heading, quote, HTML line) or none. Each carries
     first_line, last_line and insert_after (= last_line) and append_after (the last line of the run of anchor lines
     directly after the element, = insert_after when none follow); a table also ncols, nrows (body rows) and
     start_line. Anchor lines are not elements, so every anchor after a table has that table as its target. Callers
@@ -79,13 +80,22 @@ row, column, declaration or file exists (a table's size is only reported), no da
 `conventions_checked` (open; they are validated when present and never required). Markdown is approximated by the
 rules in A2, A5 and A6, not CommonMark: a fence may be indented by any spaces or tabs, indented code blocks and HTML
 blocks are not recognised as fences, setext headings are not recognised, a table is a run of lines starting with `|`
-whose second line is a separator row (a paragraph line above it is not part of it), and a heading, list item, quote
+whose second line is a separator row (a paragraph line above it is not part of it), and a heading, quote
 or HTML line is `other`. A line is a line ending in `\\n`, `\\r\\n` or a lone `\\r`. Text in an rh- comment on a line with
 other text before it (for example in an inline code span in prose) is reported MALFORMED. Item offsets are character
 offsets into the str as given, not bytes. insert_after_line takes the line it is given: choosing the table's last
 line for a line inside a table is the caller's job (`target.insert_after`). A final anchor line without a line
 ending that was typed by hand after a note that ends in a newline takes that newline with it when stripped.
-A fence inside a list item (indented under the item) is not recognised as such: an anchor inside it is parsed, and
+A list is a run of lines that start, after any indent, with `-`, `*`, `+`, `N.` or `N)` and a space and text (a lone marker is
+not one), with the lines that continue them: indented ones, nested items, and un-indented lazy ones, up to a blank line,
+an anchor line, a fence or table, a heading, quote, HTML or rule line, or a marker at a lesser indent. Its target has
+`nitems` and `items` (the top-level items, those at the indent of the first marker; a nested list belongs to its parent
+item) and a `shape` dict: loose (only blank lines separate it from another list of the same indent, which a renderer
+reads as one loose list; here they are two lists), last_nested (the last line is in a nested item), ordered, and
+followed_by_paragraph (the next line after the list and its anchor lines is a paragraph line with no blank between;
+anchor lines are hidden, so a renderer may read that paragraph as part of the last item). A table row or a line in a
+fence is never a list. `- - -` is read as a list, not as a rule, and four spaces of indent are not code. Cases L1a-L5,
+L2, L3. A fence inside a list item (indented under the item) is not recognised as such: an anchor inside it is parsed, and
 a fence there can look unclosed. INSIDE-TABLE fires between any two lines that start with `|`, also when the run has
 no separator row and so is not a table. header_problems does not check the type of the entries of `authors` and
 `readers`, and the title rules of the notes (no backtick-only title, no trailing parenthetical) belong to the
@@ -111,7 +121,7 @@ _RH = "<!-- rh-"
 _SPLIT = re.compile(r"(\r\n|\n|\r)")
 _FENCE = re.compile(r"[ \t]*(`{3,}|~{3,})(.*)")
 _HEADING = re.compile(r"#{1,6}(\s|$)")
-_LISTISH = re.compile(r"([-*+]|\d{1,9}[.)])\s")
+_MARK = re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+\S")   # a list marker, a space, then text
 _RULE = re.compile(r"([-*_])(\s*\1){2,}\s*")
 _CELL_SEP = re.compile(r"(?<!\\)\|")
 _SEP_CELL = re.compile(r":?-+:?")
@@ -202,9 +212,22 @@ def _ncols(s):
 
 
 def _classify(s):
-    if _HEADING.match(s) or _LISTISH.match(s) or s.startswith((">", "<")) or _RULE.fullmatch(s):
+    if _HEADING.match(s) or s.startswith((">", "<")) or _RULE.fullmatch(s):
         return "other"
     return "paragraph"
+
+
+def _indent(line):
+    return len(line[:len(line) - len(line.lstrip(" \t"))].expandtabs(4))
+
+
+def _copy_el(el):
+    d = dict(el)
+    if "items" in d:
+        d["items"] = [list(x) for x in d["items"]]
+    if "shape" in d:
+        d["shape"] = dict(d["shape"])
+    return d
 
 
 def _element(kind, first, last, **extra):
@@ -310,14 +333,42 @@ class _Analysis:
                 for x in run:
                     el_at[x] = len(els) - 1
             p = q
-        cur, prev = None, -2
-        for i in range(n):
+        cur, prev, i = None, -2, 0
+        list_base = {}
+        while i < n:
             if cand[i] or el_at[i] != -1:
                 cur = None
+                i += 1
                 continue
             s = lines[i].strip()
             if not s:
                 cur = None
+                i += 1
+                continue
+            if _MARK.match(lines[i]):   # a list: its marker lines, and what continues them, to a blank line or a break
+                base = _indent(lines[i])
+                j = i
+                while j + 1 < n:
+                    k = j + 1
+                    if cand[k] or el_at[k] != -1 or not lines[k].strip():
+                        break
+                    if _MARK.match(lines[k]):
+                        if _indent(lines[k]) < base:
+                            break
+                    elif _indent(lines[k]) <= base and _classify(lines[k].strip()) == "other":
+                        break
+                    j = k
+                starts = [k for k in range(i, j + 1) if _MARK.match(lines[k]) and _indent(lines[k]) == base]
+                items = [[st + 1, starts[x + 1] if x + 1 < len(starts) else j + 1] for x, st in enumerate(starts)]
+                last_nested = _indent(lines[j]) > base and any(
+                    _MARK.match(lines[k]) and _indent(lines[k]) > base for k in range(starts[-1], j + 1))
+                shape = {"loose": False, "last_nested": last_nested, "ordered": lines[i].lstrip(" \t")[0].isdigit(),
+                         "followed_by_paragraph": False}
+                els.append(_element("list", i, j, nitems=len(items), items=items, shape=shape))
+                list_base[len(els) - 1] = base
+                for x in range(i, j + 1):
+                    el_at[x] = len(els) - 1
+                cur, prev, i = None, j, j + 1
                 continue
             kind = _classify(s)
             if cur is not None and prev == i - 1 and els[cur]["type"] == kind:
@@ -327,6 +378,19 @@ class _Analysis:
                 cur = len(els) - 1
             el_at[i] = cur
             prev = i
+            i += 1
+        ls = sorted((k for k, el in enumerate(els) if el["type"] == "list"), key=lambda k: els[k]["first_line"])
+        for ka, kb in zip(ls, ls[1:]):   # only blank lines between two lists of one indent: a renderer reads one loose list
+            ea, eb = els[ka], els[kb]
+            if list_base[ka] == list_base[kb] and eb["first_line"] > ea["last_line"] + 1 and all(
+                    not lines[x].strip() for x in range(ea["last_line"], eb["first_line"] - 1)):
+                ea["shape"]["loose"] = eb["shape"]["loose"] = True
+        for k in ls:   # a paragraph line right after the list (anchor lines do not count as a blank)
+            x = els[k]["last_line"]
+            while x < n and cand[x]:
+                x += 1
+            els[k]["shape"]["followed_by_paragraph"] = (
+                x < n and el_at[x] != -1 and els[el_at[x]]["type"] == "paragraph")
         for el in els:   # the run of rh- lines directly after the element: where the next anchor goes
             x = el["last_line"]
             while x < n and cand[x]:
@@ -355,7 +419,7 @@ def parse_note(text):
             headers.append(Item(i + 1, data, canon, None, a.h2 is None or i < a.h2, off, end))
         else:
             t = a.target_of[i]
-            blocks.append(Item(i + 1, data, canon, dict(a.elements[t]) if t != -1 else {"type": "none"}, None, off, end))
+            blocks.append(Item(i + 1, data, canon, _copy_el(a.elements[t]) if t != -1 else {"type": "none"}, None, off, end))
     return headers, blocks, list(a.problems)
 
 
@@ -378,7 +442,20 @@ def target_at(text, line):
         return None
     for el in a.elements:
         if el["first_line"] <= line <= el["append_after"]:
-            return dict(el)
+            return _copy_el(el)
+    return None
+
+
+def item_at(text, line):
+    """The 1-based top-level item of a list that holds a 1-based line (a nested line belongs to its parent item), else None."""
+    a = _Analysis(text)
+    if not isinstance(line, int):
+        return None
+    for el in a.elements:
+        if el["type"] == "list" and el["first_line"] <= line <= el["last_line"]:
+            for k, (first, last) in enumerate(el["items"], 1):
+                if first <= line <= last:
+                    return k
     return None
 
 
@@ -502,6 +579,12 @@ def problems(block, note_id=None):
                 for f in ("reader", "date"):
                     if not _str(e.get(f)):
                         out.append(f"second_readers[{k}].{f}: must be a non-empty string")
+    if "item" in block:
+        it = block["item"]
+        if not (_int(it) and it >= 1):
+            out.append("item: must be an integer of 1 or more")
+        if "row" in block or "col" in block:
+            out.append("item: cannot be combined with row or col (a block anchors a list item or a table row)")
     if "file" in block and not _str(block["file"]):
         out.append("file: must be a non-empty string")
     if "lines" in block:
