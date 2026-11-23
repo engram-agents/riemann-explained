@@ -1,0 +1,2 @@
+# Python bytecode caches written when the tools run
+__pycache__/
