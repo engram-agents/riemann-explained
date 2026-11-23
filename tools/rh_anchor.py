@@ -1507,7 +1507,10 @@ def _():
     eq([item_at(t, ln) for ln in (0, 1, 2, 3, 4, 5, 6, 7, 99)], [None, 1, 1, 2, None, None, None, None, None], "item_at")
     eq(item_at("text\n", 1), None, "not a list")
     eq(item_at("- a\n\n- b\n", 3), 1, "the second list has its own item 1")
-    ok(target_at(t, 1)["items"] is not target_at(t, 1)["items"], "each call returns its own items list")
+    h, b, m = parse_note("- a\n" + B(1) + "\n" + B(2) + "\n")
+    b[0].target["items"][0][0] = 99
+    b[0].target["shape"]["loose"] = True
+    eq(b[1].target, LST(1, 1, 3, [[1, 1]]), "two blocks of one list do not share their items or shape")
 
 
 @case("L3", "item (int >= 1) is shape-checked in problems(); item with row or col is a problem; col without row stays one")
