@@ -16,10 +16,13 @@ Outputs under OUT_DIR (JSON: sorted keys, 1-space indent, LF, UTF-8, one final n
   data.js       `window.RH_DATA = {...};` with level0, level1 and every group file (nothing reads it yet)
   index.html    ONE static page: plain semantic HTML, readable without JavaScript, no request of any kind
 Every JSON file carries `commits`: {notes, release, tools} (B5). A group id is used verbatim as the anchor id of its card.
-Group JSON: `claim` is {text, reader, date, conditions, premises (group ids)} or null; `lean_name` is the name of the first
-root; `claim_label` is the strings file's `no_claim_label` when the claim is null; `coverage` is the word of `coverage_word`;
-`counts` is {roots, roots_read, roots_touched, roots_not_read}; `notes` lists {note, list_title, link}. A root of a group
-has a `state`: signed (a reading block anchors it), touched (no reading block, an argument block anchors it) or none.
+The group objects inside level0.json and level1.json (the steps and, in level1.json, their `children`) have: `claim`, which
+is {text, reader, date, conditions, premises (group ids)} or null; `lean_name`, the name of the first root; `claim_label`,
+the strings file's `no_claim_label` when the claim is null; `coverage`, the word of `coverage_word`; `counts`, {roots,
+roots_read, roots_touched, roots_not_read}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
+`claim`, `coverage` and `counts`: it has `id`, `level`, `parent`, `roots`, `blocks`, `open_items`, `notes` and `commits`,
+and each root of it has a `state`: signed (a reading block anchors it), touched (no reading block, an argument block
+anchors it) or none.
 
 CONTRACT (each line is a self-test case, written before the code; an expected value in a case is a literal)
  Command, output, exit codes
@@ -89,6 +92,10 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      except in a reaction anchor, url(; the builder refuses (PAGE-STATIC) when one does. static_problems. Cases P7a P7b.
   R2 Level 0 counts steps with the template `route_count`; lower levels count declarations with `roots_read` and
      `roots_not_read`; the page has no percent sign and no "of the proof". Case R2.
+  N2 The listing for `of the proof` in the notes' own text is narrowed to a number, a percent sign or a quantity word
+     immediately before it (half, third, quarter, most, part, fraction, portion, share, majority, all; the list is
+     PROVISIONAL, its owner rules it): `the top of the proof` in a title is not listed, `most of the proof` and `50 of the
+     proof` are; the strings file is still refused for any `of the proof`. Case WN4.
   R3 The builder's own sentences never contain a word of `forbidden_words` (and verified, explained, understood always),
      a percent sign or `of the proof` (the strings file is refused, STRINGS-FORBIDDEN naming the key; the href templates
      may hold `%`). Text from the notes and the outline (claims, conditions, note titles, argument and interpretation
@@ -120,6 +127,18 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      characters of the release against the text lines of every output file (string values of the JSON except the
      name and id fields, text of the page except `<code>`). The run says what it ranged over. A planted shard that
      leaks a line is SOURCE-LEAK; an ids-only control stays green, on the page too. Cases B1a B1b B1c B1d B1e.
+  K1 B1 is also run on the SOURCE lines of every copied note text BEFORE they are joined: each stripped line of at least 20
+     non-space characters of a copied paragraph (the text of an argument or interpretation block that reaches an output)
+     and of every note title is looked up in the release. A hit is SOURCE-LEAK naming the note and the block (or the
+     field), never the line, exit 1, OUT_DIR absent. Without it a release line that stood on its own line of a paragraph
+     is joined into a longer output line and is not seen. Cases PJ1 PJ2 PJ3 (a control builds in each).
+  K2 The text values of the outline (claims, conditions) are checked line by line as well, split at newlines: a multi-line
+     claim whose second line is a release line is a leak. Case PJ4.
+  K3 The run says what the second check ranged over: a line `source check (copied note text): K copied source lines, L
+     leaked; ...` with K counted by the tool (the non-empty source lines examined). Case PJ5.
+  K4 The claim is narrow, and the run line, the LIMIT and the docs say so: no output line equals a release line and no
+     line of copied note text equals one; a release line quoted INSIDE a longer sentence is not detected. A source line
+     of fewer than 20 non-space characters is not compared. Case PJ6.
 
 LIMIT. The page is a first draft of a real page: plain HTML, no script, no style beyond borders; the wording is the
 strings file's, and the strings file's shape is PROVISIONAL (the table under `coverage` and every key named in this file
@@ -131,7 +150,8 @@ A first sentence is the text up to the first `.`, `!` or `?` followed by a space
 block that makes a root "read": an argument or interpretation alone does not. A level-0 note is under no group, and its
 blocks feed no group. Coverage is for the roots only: members of a group that a root uses are not mapped, there is no
 compiled data in this slice, and off-route marks (with their basis) are not built. B1 compares a release line with a
-whole text line of an output file: a release line inside a longer line, or split across two, is not seen; the names and
+whole text line of an output file, and the source lines of the copied note text before they are joined (K1): a release
+line quoted inside a longer sentence of the notes, or split across two lines, is not seen; the names and
 ids that are excluded are the keys id, module, name, lean_name, file, note, block, parent, premises, sha256, link,
 commits, files, release_id, release_archive_sha. B4's check is that each run of digits in the page text outside <code> appears among the digits
 of the JSON (its hash fields left out) or the strings file: it cannot say the number is the right one. `dirty` is judged for the files of NOTES_DIR,
@@ -1189,7 +1209,7 @@ ESC = '&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;&quot;&#x27;&amp;`&lt;b&
 ESC_S = ESC.replace("%41", "")
 
 
-def _n01(arg_text=ARG_TEXT, drop_reader=False, host=None):
+def _n01(arg_text=ARG_TEXT, drop_reader=False, host=None, interp_text="We think this is the key step."):
     """Note one; with `host` every title, reader and date the page shows is that string."""
     rd = {} if drop_reader else {"reader": host or "Reader One"}
     d1, d2, d3 = (host, host, host) if host else ("2026-11-23", "2026-11-24", "2026-11-22")
@@ -1200,7 +1220,7 @@ def _n01(arg_text=ARG_TEXT, drop_reader=False, host=None):
             + arg_text + "\n"
             + _b(id="01.b02", kind="argument", decls=[FOO], file="A/B.lean", lines=[15, 18], reader=r1,
                  date=d1, second_readers=[{"reader": r2, "date": d2}]) + "\n\n"
-            "We think this is the key step.\n"
+            + interp_text + "\n"
             + _b(id="01.b03", kind="interpretation", decls=[FOO], reader=r2, date=d2) + "\n\n"
             "- ListItemTextXYZ one\n- ListItemTextXYZ two\n"
             + _b(id="01.b04", kind="reading", decls=[BAR], item=2, reader=r1, date=d1) + "\n\n"
@@ -2454,6 +2474,89 @@ def _selftest_cases():
                 [False] * 5, True)
         return _eq(got, want)
 
+    # ---- K: the source lines of copied text, before they are joined
+    other = "theorem not_in_the_release_at_all : 2 + 2 = 4 := rfl"
+    srcs = {"A/B.lean": "x = 1\n" + LEAK + "\n"}
+    narrow = "no output line equals a release line and no line of copied note text equals one; a release line quoted inside a longer sentence is not detected"
+    leak_line = lambda where: f"BUILD-ERROR SOURCE-LEAK {where} holds a line of the release"
+
+    @case("PJ1", "the defect: an argument block's paragraph of two lines whose SECOND line is a line of the release is joined into "
+                 "one longer output line that B1 does not see; the source lines are checked before the join: SOURCE-LEAK naming "
+                 "note 01 and block 01.b02 (not the line), exit 1, OUT_DIR absent; control: the same paragraph with another "
+                 "second line builds")
+    def _():
+        planted = _build(notes=_notes(arg_text="First argument sentence.\n" + LEAK), src=srcs)
+        control = _build(notes=_notes(arg_text="First argument sentence.\n" + other), src=srcs)
+        found = [ln for ln in planted.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK")]
+        return _eq((planted.rc, found, LEAK in planted.out, planted.existed, control.rc, control.existed),
+                   (1, [leak_line("note 01 block 01.b02")], False, False, 0, True))
+
+    @case("PJ2", "the same for an INTERPRETATION block (01.b03): SOURCE-LEAK naming note 01 and block 01.b03; control builds")
+    def _():
+        planted = _build(notes=_notes() | {"01-one.md": _n01(interp_text="We think this holds.\n" + LEAK)}, src=srcs)
+        control = _build(notes=_notes() | {"01-one.md": _n01(interp_text="We think this holds.\n" + other)}, src=srcs)
+        found = [ln for ln in planted.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK")]
+        return _eq((planted.rc, found, planted.existed, control.rc, control.existed),
+                   (1, [leak_line("note 01 block 01.b03")], False, 0, True))
+
+    @case("PJ3", "a note title (a header field) whose second line is a release line: SOURCE-LEAK naming note 02 and the field "
+                 "list_title, exit 1; control builds")
+    def _():
+        t = N02.replace('"list_title":"Note two"', '"list_title":"Note two\\n' + LEAK + '"')
+        c = N02.replace('"list_title":"Note two"', '"list_title":"Note two\\n' + other + '"')
+        planted = _build(notes=_notes() | {"02-two.md": t}, src=srcs)
+        control = _build(notes=_notes() | {"02-two.md": c}, src=srcs)
+        found = [ln for ln in planted.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK note ")]
+        return _eq((planted.rc, found, planted.existed, control.rc), (1, [leak_line("note 02 field list_title")], False, 0))
+
+    @case("PJ4", "a claim with a newline whose second line is a release line is a leak, found line by line in level0.json, "
+                 "level1.json, data.js and index.html (the split at newlines is what finds it); the same claim without a release "
+                 "line builds")
+    def _():
+        res = []
+        for second in (LEAK, other):
+            o = _outline()
+            o["groups"][0]["claim"]["text"] = "Claim four\n" + second
+            b = _build(outline=o, src=srcs)
+            res.append((b.rc, sorted(ln.split(" ")[2] for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK "))))
+        return _eq(res, [(1, ["data.js", "index.html", "level0.json", "level1.json"]), (0, [])])
+
+    @case("PJ5", "the run says what the second check ranged over: `source check (copied note text): K copied source lines, L "
+                 "leaked; <the narrow claim>`, K counted by the tool (the base build: 4 titles + 1 argument line + 1 "
+                 "interpretation line = 6; the two-line argument paragraph, planted or control: 7); the first source-check line "
+                 "is unchanged")
+    def _():
+        line = lambda k, n: f"source check (copied note text): {k} copied source lines, {n} leaked; {narrow}"
+        planted = _build(notes=_notes(arg_text="First argument sentence.\n" + LEAK), src=srcs)
+        control = _build(notes=_notes(arg_text="First argument sentence.\n" + other), src=srcs)
+        return _eq((line(6, 0) in _base_src().out.splitlines(), line(7, 1) in planted.out.splitlines(),
+                    line(7, 0) in control.out.splitlines(),
+                    any(ln.startswith("source check: 1 release files, ") for ln in planted.out.splitlines())),
+                   (True, True, True, True))
+
+    @case("PJ6", "a source line of fewer than 20 non-space characters that is also a release line (`x = 1`) is not a leak: the "
+                 "paragraph builds")
+    def _():
+        b = _build(notes=_notes(arg_text="First argument sentence.\nx = 1"), src=srcs)
+        return _eq((b.rc, b.existed), (0, True))
+
+    @case("WN4", "`of the proof` in the notes' own text is listed only after a number, a percent sign or a quantity word: titles "
+                 "`The shape of the proof` and `The top of the proof` are not listed; a claim `Most of the proof is routine` and a "
+                 "condition `Only 50 of the proof steps` are; the strings file is still refused for `The shape of the proof`")
+    def _():
+        o = _outline()
+        o["groups"][0]["claim"]["text"] = "Most of the proof is routine"
+        o["groups"][2]["claim"]["conditions"] = ["Only 50 of the proof steps"]
+        n02 = N02.replace('"list_title":"Note two"', '"list_title":"The shape of the proof"')
+        n03 = N03.replace('"list_title":"Note three"', '"list_title":"The top of the proof"')
+        b = _build(outline=o, notes=_notes() | {"02-two.md": n02, "03-three.md": n03})
+        st = _strings()
+        st["mapped_line"] = "The shape of the proof"
+        refused = _build(strings=st)
+        return _eq((b.rc, [ln for ln in b.out.splitlines() if ln.startswith("WORD-NOTE")], refused.rc,
+                    "BUILD-ERROR STRINGS-FORBIDDEN mapped_line" in refused.out),
+                   (0, ["WORD-NOTE g1.conditions[0] of the proof", "WORD-NOTE g3.claim of the proof"], 1, True))
+
     # ---- B1: no release text
     @case("B1a", "leak_check: a planted shard whose `text` value is a line of the release (>= 20 non-space characters) is named "
                  "(SOURCE-LEAK data); a short release line and a line of other text are not")
@@ -2482,7 +2585,8 @@ def _selftest_cases():
                  "exit 1, nothing written; the page text in <code> (names) is not compared; control: the default note builds")
     def _():
         b = _build(notes=_notes(arg_text=LEAK), src={"A/B.lean": "x\n" + LEAK + "\n"})
-        got = sorted(ln.split(" ")[2] for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK "))
+        got = sorted(ln.split(" ")[2] for ln in b.out.splitlines()
+                     if ln.startswith("BUILD-ERROR SOURCE-LEAK ") and not ln.startswith("BUILD-ERROR SOURCE-LEAK note "))
         return _eq((b.rc, got, b.existed, _base_src().rc), (1, ["data.js", "group/g1.json", "index.html"], False, 0))
 
     @case("B1d", "the run says what it ranged over: `source check: 1 release files, 40 release lines, 11 output files, N output "
