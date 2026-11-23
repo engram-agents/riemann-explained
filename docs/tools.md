@@ -59,6 +59,30 @@ that is empty until the renderer control is in. The run prints a count line for 
 byte check when they ran); a header's group may be `root` only at level 0.
 `python3 tools/notes_meta.py NOTES_DIR outline.json decls.tsv [--src SRC_ROOT] [--strings strings.json] [--base REV]`
 
+**`tools/build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR`** answers: what do the first two zoom levels
+of the proof map look like, built from the notes, the outline and the declaration table alone? It first runs the
+check of `notes_meta.py` on the same inputs (its library function, not a subprocess) and refuses to build, writing
+nothing, not even OUT_DIR, if that finds an error. Then it writes, under OUT_DIR: `level0.json` (the steps of the
+chain in `order`, the route counts, the notes about the whole), `level1.json` (each step with its child groups
+nested under it to any depth), one `group/<id>.json` per group (its roots with file, lines and, with
+`--source-check`, the hash of the file; the blocks that anchor them; the open `not_read` items), `manifest.json`
+(the hash of every other file, the three commit ids, the release id and archive hash, the counts), `data.js` (the
+same data as one assignment) and `index.html`. The page is one static file of plain HTML: each step is a card (claim,
+conditions, premises as links, one coverage word, the first sentence of the argument inside its frame, three
+reaction links), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
+makes a request. Every sentence on the page comes from the strings file, whose shape is provisional (the table under
+`coverage` that turns the counts into one word is data in it, and the fixtures of the self-test carry their own
+wording, not the real one); a missing key stops the build and names itself. The build also stops for: the words
+verified, explained, understood (or any word of `forbidden_words`) in the strings file; a reading, argument,
+interpretation or correction block with no reader or no date; read + partly + not read not adding up to the steps; a link on the page with no target; a number
+on the page that is in no JSON file; a group id that is not safe as a file name. `--source-check SRC_ROOT` compares
+the text lines of every output with the lines of the release (at least 20 non-space characters) and says what it
+ranged over; names and ids are left out by construction. `--notes-commit REV --repo DIR` stamps the notes commit; a
+tree whose notes, outline or strings differ from it, or whose tools differ from their commit, stamps `dirty` in every
+commit id and on the page. A fresh run into a non-empty OUT_DIR refuses unless `--force`, which removes only what a
+build writes. The LIMIT paragraph in the file lists what is not checked.
+`python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--force]`
+
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
 file compiled before the start module (INSIDE, with one shortest import path) or not (OUTSIDE)? Give at
 least one control, a module you know is inside; if a control is not, the run stops and says BROKEN.
@@ -78,5 +102,6 @@ row. Exit codes, tool by tool (4 always means the self-test failed and nothing w
 - `decl_table.py`: 0 even when duplicate (module, name) pairs are written; 1 only for an undecodable or unreadable file or no `.lean` file; 2 usage error or SRC_ROOT not a directory.
 - `rh_anchor.py --selftest`: 0 all cases pass; 1 any case fails; 2 usage error (it has no other command line); 3 no case ran. (It has no exit 4: it has no normal run to refuse.)
 - `notes_meta.py`: 0 every note passed (listings do not count); 1 any finding of class ERROR; 2 usage error or an input that cannot be read (a note or strings file that is not UTF-8, an outline or strings file that is not JSON, a decls row that is not six columns, a `--base` that is not a commit), nothing on stdout; 3 CHECKED NOTHING (no note matches, the outline has no groups, or decls.tsv has no rows); 4 the self-test failed. `--selftest`: 0 all pass, 1 any fails, 2 usage, 3 no case ran.
+- `build_site.py`: 0 built; 1 refused, nothing written (an error of `notes_meta.py`, a strings key missing or a forbidden word, a build rule that failed, a non-empty OUT_DIR without `--force`, a release line found in an output); 2 usage error or an input that cannot be read, nothing on stdout; 3 checked nothing (no note matches, or no `.lean` file under SRC_ROOT); 4 the self-test failed. `--selftest`: 0 all pass, 4 any fails, 2 an unknown id after `--only`.
 - `in_closure.py`: 0 only if every site is INSIDE or OUTSIDE; 1 for an AMBIGUOUS or NOT A MODULE site, or no site; 2 usage or input error, or a control equal to the start; 3 a broken control.
 - `import_closure.py`: 0 printed; 1 unresolved imports under the root's own folders (closure would be under-counted); 2 usage error or no file for the start module.
