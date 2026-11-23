@@ -2663,6 +2663,20 @@ def _selftest_cases():
                    (0, "An unpaired `backtick here", ["<b>bold</b> **bold** [l](x) # head", "A `` x `` pair and an empty `` pair"],
                     "Over a line `x y` ends", "Bold <b>x</b> and **y** with ok", [], False, True, [0, 0, 1]))
 
+    @case("CODE3", "the two ends of a span are each decided by a neighbour: a backtick that follows a backtick opens no span "
+                   "(`` + a + ` + space + b stays literal, and so does x + two backticks + a + a backtick), and a backtick that "
+                   "is followed by a backtick closes none (a backtick, a, two backticks, tail stays literal); control: a real "
+                   "span in the same build is code")
+    def _():
+        o = _code_outline("``a` b", ["A real `ok` span."], "x``a`", "`a`` tail")
+        b = _build(outline=o)
+        t = lambda g: _card(b, g).find("h3", "claim")[0].text()
+        return _eq((b.rc, t("g1"), t("g3"), t("g1a1"), [len(_card(b, g).find("h3", "claim")[0].find("code")) for g in ("g1", "g3", "g1a1")],
+                    [x.text() for x in _card(b, "g1").find("ul", "conditions")[0].find("code")],
+                    '<h3 class="claim">``a` b</h3>' in b.page, '<h3 class="claim">x``a`</h3>' in b.page,
+                    '<h3 class="claim">`a`` tail</h3>' in b.page),
+                   (0, "``a` b", "x``a`", "`a`` tail", [0, 0, 0], ["ok"], True, True, True))
+
     _REQ = (("statement_read_line", ("reader", "date")), ("statement_census_line", ("reader", "date")),
             ("proof_read_line", ("reader", "date")), ("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
