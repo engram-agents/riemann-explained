@@ -74,7 +74,8 @@ CONTRACT (each line is a self-test case, written before the code)
  N notes equal to REV, M new` when those ran. Header group (cases HROOT1 to HROOT3): `root` only at level 0.
  Claim basis (cases BAS1 to BAS5): a claim may carry `basis`, exactly "read" or "census"; any other value is BAD-VALUE naming
  the group and the type of the value; REQUIRE_CLAIM_BASIS (False) makes a claim without it CLAIM-BASIS-MISSING; the line
- `claim basis: R read, C census, M without` counts the non-null claims.
+ `claim basis: R read, C census, M without` counts the non-null claims that are objects (a claim that is not an
+ object is its own BAD-VALUE and is counted in none of the three).
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
@@ -113,11 +114,13 @@ hand-typed last line can read as a one-line-ending difference (anchors written b
 Z1). An anchor-looking line is kept as text only inside a fence: an indented code block or a list item is not tracked, as in
 rh_anchor's LIMIT. A malformed rh- line is kept as text, so fixing it since REV is a BYTE-DIFF. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
-NOTE-ID-DUPLICATE compares ids exactly (letter case counts) and only for notes that have a header with a non-empty id; it is one
-finding on the first file in name order, which names every file, so a reader of a later file's own findings does not see it.
+NOTE-ID-DUPLICATE compares ids as exact strings (letter case counts; no trimming, no Unicode normalisation) and only for notes
+that have a header with a non-empty id; it reads each note's FIRST header only (a second header is reported as SECOND-HEADER and
+its id is not compared); it is one finding on the first file in name order, which names every file, so a reader of a later file's
+own findings does not see it.
 Claim basis: optional while REQUIRE_CLAIM_BASIS is False. The next step of the sequence (the outline carries basis on every
 claim) comes first, then that constant is set to True and a claim without basis becomes an error. The summary counts a claim
-whose basis value is not read or census as without (it is also a BAD-VALUE), and does not count null claims.
+whose basis value is not read or census as without (it is also a BAD-VALUE), and counts neither null claims nor a claim that is not an object (that is its own BAD-VALUE).
 List items: a nested item is not numbered; a citation in a nested item anchors to its parent item, and the precision lives in
 the block's decls and lines (a future optional `subitem` could number nested items). A list whose last line is nested, a
 loose list (one list, numbered across its blank lines), an ordered list and a list directly followed by a paragraph may render
@@ -802,14 +805,14 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     hid, hline = {}, {}   # note ids: which notes carry each header id (a note with no header carries none)
     for n in names:
         hs = rh.parse_note(texts[n])[0]
-        hid_id = hs[0].data.get("id") if hs else None
-        if _str(hid_id):
-            hid.setdefault(hid_id, []).append(n)
+        nid = hs[0].data.get("id") if hs else None
+        if _str(nid):
+            hid.setdefault(nid, []).append(n)
             hline[n] = hs[0].line
     dup_at = {}
-    for hid_id, files in hid.items():
+    for nid, files in hid.items():
         if len(files) > 1:
-            dup_at[files[0]] = f"note id {hid_id!r} is used by {len(files)} notes: " + ", ".join(files)
+            dup_at[files[0]] = f"note id {nid!r} is used by {len(files)} notes: " + ", ".join(files)
     totals, invalid_total, n_equal, n_new = {k: 0 for k in rh.KINDS}, 0, 0, 0
     for n in names:
         fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
