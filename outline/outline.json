@@ -452,7 +452,7 @@
   {
    "claim": {
     "conditions": [
-     "EAtH and CoreAtH are the library's names for two conditions on a host at x; they are not opened here. eD, eL, K, cHH, eK and C are real constants with no condition on them; eD, eL, K, cHH and eK are arguments of CoreAtH, C of EAtH, and eD and eL also set the exponent."
+     "EAtH and CoreAtH are the library's names for two conditions at x, each on the host, a finite set TT, ε and some of the constants (EAtH also on the level); they are not opened here. eD, eL, K, cHH, eK and C are real constants with no condition on them; eD, eL, K, cHH and eK are arguments of CoreAtH, C of EAtH, and eD and eL also set the exponent."
     ],
     "conventions_checked": [
      "d"
