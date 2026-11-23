@@ -1381,6 +1381,7 @@ def _strings():
         "second_reader_frame": "Read again by {reader} on {date}.",
         "interpretation_frame": "Our interpretation, by {reader} on {date}:",
         "evidence_label": "Evidence: where this sits in the Lean code, and who read what",
+        "evidence_module_label": "Module", "evidence_name_label": "Name", "evidence_kind_label": "Kind",
         "reactions": [{"label": "This makes sense", "href": "https://example.invalid/react?card={card}&kind=sense"},
                       {"label": "This looks wrong to me", "href": "https://example.invalid/react?card={card}&kind=wrong"},
                       {"label": "I can't follow yet: I need more detail",
@@ -1636,7 +1637,8 @@ def _child(args_file, out, seed):
 STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
                "statement_not_read_line", "proof_read_line", "proof_not_read_line", "statement_count_line", "proof_count_line",
                "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "frames",
-               "argument_frame", "second_reader_frame", "interpretation_frame", "evidence_label", "reactions",
+               "argument_frame", "second_reader_frame", "interpretation_frame", "evidence_label",
+               "evidence_module_label", "evidence_name_label", "evidence_kind_label", "reactions",
                "roots_only_note", "dirty_note", "shared_note", "note_href", "forbidden_words",
                "labels", "labels.chain", "labels.level0_notes", "labels.premises", "labels.notes", "labels.go_deeper",
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
@@ -1782,22 +1784,23 @@ def _selftest_cases():
     # ---- data
     @case("L0", "level0.json: the level-1 steps g1 g3 g2 in `order` (the outline lists g3 first, and `order` is not the id order), each with its "
                 "facts (statement_read and proof_read when EVERY root has them, unread) and counts; `facts` counts the steps per fact "
-                "(statements 1 read + 2 not, proofs 1 + 2); the level-0 note is in header_notes; the totals hold open_items")
+                "(statements 1 read + 2 not, proofs 1 + 2); the level-0 note is in header_notes; the totals hold open_items; premises is a field "
+                "of the group (g1 [g1a], g3 [g1, g2], g2 []), not of the claim")
     def _():
         l0 = _base().js("level0.json")
         steps = l0["steps"]
         got = ([s["id"] for s in steps], [s["statement_read"] for s in steps], [s["proof_read"] for s in steps],
                [s["unread"] for s in steps], [s["lean_name"] for s in steps], [s["claim_label"] for s in steps],
                steps[0]["claim"], [n["note"] for n in steps[0]["notes"]], steps[0]["notes"][0],
-               l0["facts"], l0["header_notes"], l0["totals"], l0["level"])
+               l0["facts"], l0["header_notes"], l0["totals"], l0["level"], [s["premises"] for s in steps])
         want = (["g1", "g3", "g2"], [True, False, False], [True, False, False], [False, True, False],
                 ["foo", "corge", "quux"], [None, None, "No plain statement yet"],
-                {"basis": "read", "conditions": ["Condition one holds."], "date": "2026-11-20", "premises": ["g1a"],
+                {"basis": "read", "conditions": ["Condition one holds."], "date": "2026-11-20",
                  "reader": "Reader One", "text": "Claim one"},
                 ["01", "02"], {"link": "notes/01-one.md", "list_title": "Note one", "note": "01"},
                 {"proof_not_read": 2, "proof_read": 1, "statement_not_read": 2, "statement_read": 1, "steps": 3},
                 [{"link": "notes/00-whole.md", "list_title": "Whole one", "note": "00"}],
-                {"blocks": 8, "groups": 6, "notes": 4, "open_items": 1, "roots": 6}, 0)
+                {"blocks": 8, "groups": 6, "notes": 4, "open_items": 1, "roots": 6}, 0, [["g1a"], ["g1", "g2"], []])
         return _eq(got, want)
 
     @case("L1", "level1.json nests child groups to depth 4: g1 > g1a > g1a1 > g1a1x, leaves have no children; steps in `order`, not in id order")
@@ -1976,7 +1979,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 46 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 49 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -1989,7 +1992,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 46))
+        return _eq((bad, len(STRING_KEYS)), ([], 49))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -2006,15 +2009,16 @@ def _selftest_cases():
         return _eq((stray, first), ([], ["MARK-first_screen.0", "MARK-first_screen.1"]))
 
     @case("P2a", "a card, in order: the claim, the conditions directly under it, the premises, the statement line, the proof line, the "
-                 "open-items line, the idea; all direct children of the card, before the closed evidence section")
+                 "idea (the open-items line is absent here: g1 has no open item); all direct children of the card, before the closed evidence section")
     def _():
         c = _card(_base(), "g1")
         names = [(k.tag, k.cls[-1] if k.cls else "") for k in c.elems()]
-        want = [("h3", "claim"), ("ul", "conditions"), ("p", "premises"), ("p", "statement"), ("p", "proof"), ("p", "open-items"),
+        want = [("h3", "claim"), ("ul", "conditions"), ("p", "premises"), ("p", "statement"), ("p", "proof"),
                 ("p", "argument"), ("details", "evidence")]
         pos = {n: names.index(n) for n in want}
         return _eq(([n for n in sorted(pos, key=pos.get)], c.find("ul", "conditions")[0].text(), c.find("h3", "claim")[0].text(),
-                    c.find("ul", "conditions")[0].inside("details")), (want, "Condition one holds.", "Claim one", False))
+                    c.find("ul", "conditions")[0].inside("details"), _direct(c, "p", "open-items")),
+                   (want, "Condition one holds.", "Claim one", False, []))
 
     @case("P2b", "text from the data is escaped (`Claim three & <more>` shows as text, the raw page has &amp; and &lt;more&gt;), "
                  "and a premise is a link to the premise's card: g3 rests on `Claim one` (#g1) and `quux` (#g2, null claim)")
@@ -2475,6 +2479,191 @@ def _selftest_cases():
         b = _build(outline=o)
         return _eq((b.rc, [a.attrs["href"] for a in _card(b, "g3").find("p", "premises")[0].find("a")]), (0, ["#g2", "#g1"]))
 
+    # ---- F20: premises belong to the group; F21: open items, evidence labels, code spans; the required placeholders
+    def _outline_g2_premises():
+        o = _outline()
+        next(g for g in o["groups"] if g["id"] == "g2")["premises"] = ["g1a", "g1"]   # outline order; sorted would be g1, g1a
+        return o
+
+    @case("PRM1", "premises is a field of the GROUP in level0.json, level1.json and group/<id>.json (a list of group ids in outline order, "
+                  "[] when none), and the claim object no longer carries it: g2 (a null claim) has [g1a, g1], g1 [g1a], g3 [g1, g2], g1a [], "
+                  "and the keys of g1's claim are basis, conditions, date, reader, text")
+    def _():
+        b = _build(outline=_outline_g2_premises())
+        l0 = {x["id"]: x for x in b.js("level0.json")["steps"]}
+        l1 = {x["id"]: x for x in b.js("level1.json")["steps"]}
+        gf = {g: b.js(f"group/{g}.json")["premises"] for g in ("g1", "g1a", "g2", "g3")}
+        return _eq((b.rc, [l0[g]["premises"] for g in ("g1", "g3", "g2")], [l1[g]["premises"] for g in ("g1", "g3", "g2")],
+                    l1["g1"]["children"][0]["premises"], gf, sorted(l0["g1"]["claim"]), sorted(l1["g3"]["claim"]), l0["g2"]["claim"]),
+                   (0, [["g1a"], ["g1", "g2"], ["g1a", "g1"]], [["g1a"], ["g1", "g2"], ["g1a", "g1"]], [],
+                    {"g1": ["g1a"], "g1a": [], "g2": ["g1a", "g1"], "g3": ["g1", "g2"]},
+                    ["basis", "conditions", "date", "reader", "text"], ["basis", "conditions", "date", "reader", "text"], None))
+
+    @case("PRM2", "the premises heading and links show on a null-claim step too: g2 (premises [g1a, g1]) has the `Rests on` paragraph "
+                  "right after its heading, with links #g1a (`bar`, a null claim) and #g1 (`Claim one`) in outline order; a card with "
+                  "no premises has no premises paragraph, heading included (g2 in the base build, a claimed card g1a1)")
+    def _():
+        b = _build(outline=_outline_g2_premises())
+        c = _card(b, "g2")
+        prem = _direct(c, "p", "premises")[0]
+        base = _base()
+        return _eq(([k.cls[0] for k in c.elems()][:3], prem.text(), [(a.attrs["href"], a.text()) for a in prem.find("a")],
+                    _direct(_card(base, "g2"), "p", "premises"), _direct(_card(base, "g1a1"), "p", "premises")),
+                   (["claim", "premises", "status"], "Rests on bar, Claim one", [("#g1a", "bar"), ("#g1", "Claim one")], [], []))
+
+    @case("PRM3", "every premise link of every card, null-claim steps included, resolves to a card of the page; a premise link to an id "
+                  "that has no card is a link problem")
+    def _():
+        b = _build(outline=_outline_g2_premises())
+        dom = _dom(b.page)
+        ids = {a.attrs["id"] for a in dom.find("article")}
+        hrefs = [a.attrs["href"][1:] for p in dom.find("p", "premises") for a in p.find("a")]
+        return _eq((b.rc, sorted(hrefs), all(h in ids for h in hrefs), link_problems(b.page),
+                    link_problems(b.page.replace('<a href="#g1a">', '<a href="#zzz">', 1))),
+                   (0, ["g1", "g1", "g1a", "g1a", "g2"], True, [], ["#zzz"]))
+
+    @case("OPN1", "the card's open-items line is shown only above zero: g2 (one open item) has `Questions written down: 1.`, g1 (none) has no "
+                  "such line, and the JSON counts are unchanged (g1 counts open_items 0 and roots_open_items 0, g2 1 and 1)")
+    def _():
+        b = _base()
+        steps = {x["id"]: x["counts"] for x in b.js("level0.json")["steps"]}
+        return _eq(([x.text() for x in _card(b, "g2").find("p", "open-items")], _card(b, "g1").find("p", "open-items") != [],
+                    len(_dom(b.page).find("p", "open-items")), steps["g1"]["open_items"], steps["g1"]["roots_open_items"],
+                    steps["g2"]["open_items"], steps["g2"]["roots_open_items"]),
+                   (["Questions written down: 1."], False, 1, 0, 0, 1, 1))
+
+    @case("OPN2", "the first-screen open-items line is ALWAYS shown, zero included: with the one not_read block turned into a reading "
+                  "block no card has an open-items line, and the first screen says `Questions written down in these notes: 0.`; "
+                  "the JSON totals say 0")
+    def _():
+        n = _notes()
+        n["01-one.md"] = _n01().replace(_b(id="01.b05", kind="not_read", decls=[QUUX], needs="hand_read", row=1),
+                                        _b(id="01.b05", kind="reading", decls=[QUUX], reader="Reader One", date="2026-11-23", row=1))
+        b = _build(notes=n)
+        dom = _dom(b.page)
+        return _eq((b.rc, [li.text() for li in dom.find("ul", "facts")[0].find("li")][2], len(dom.find("p", "open-items")),
+                    b.js("level0.json")["totals"]["open_items"]), (0, "Questions written down in these notes: 0.", 0, 0))
+
+    @case("EVD1", "the evidence block labels module, name and kind from the strings file like File and Lines: on g1 the labels Module, "
+                  "Name, Kind, File, Lines with A.B, foo, theorem, A/B.lean, 10-20; a build whose three keys say other words shows "
+                  "those words; with every value a marker the labels are the markers evidence_module_label, evidence_name_label, "
+                  "evidence_kind_label")
+    def _():
+        def pairs(b):
+            dl = _card(b, "g1").find("details", "evidence")[0].find("dl")[0]
+            return [(t.text(), d.text()) for t, d in zip(dl.find("dt"), dl.find("dd"))]
+        st = _strings()
+        st["evidence_module_label"], st["evidence_name_label"], st["evidence_kind_label"] = "Lean module", "Declaration", "Sort"
+        return _eq((pairs(_base()), pairs(_build(strings=st))[:3], [t for t, _d in pairs(_build(strings=_marked(_strings())))][:3]),
+                   ([("Module", "A.B"), ("Name", "foo"), ("Kind", "theorem"), ("File", "A/B.lean"), ("Lines", "10-20")],
+                    [("Lean module", "A.B"), ("Declaration", "foo"), ("Sort", "theorem")],
+                    ["MARK-evidence_module_label", "MARK-evidence_name_label", "MARK-evidence_kind_label"]))
+
+    @case("EVD2", "a strings file without evidence_module_label, evidence_name_label or evidence_kind_label (or with an empty one) is "
+                  "refused as STRINGS-KEY naming the key, exit 1, nothing written")
+    def _():
+        res = []
+        for key in ("evidence_module_label", "evidence_name_label", "evidence_kind_label"):
+            st = _strings()
+            del st[key]
+            b = _build(strings=st)
+            e = _strings()
+            e[key] = ""
+            be = _build(strings=e)
+            res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed,
+                        be.rc, [x for x in be.out.splitlines() if x.startswith("BUILD-ERROR")]))
+        return _eq(res, [(1, [f"BUILD-ERROR STRINGS-KEY {k} missing"], False, 1,
+                          [f"BUILD-ERROR STRINGS-KEY {k} must be a non-empty string"])
+                         for k in ("evidence_module_label", "evidence_name_label", "evidence_kind_label")])
+
+    def _code_outline(g1_text, g1_cond, g3_text, g1a1_text):
+        o = _outline()
+        gs = {g["id"]: g for g in o["groups"]}
+        gs["g1"]["claim"]["text"], gs["g1"]["claim"]["conditions"] = g1_text, g1_cond
+        gs["g3"]["claim"]["text"], gs["g1a1"]["claim"]["text"] = g3_text, g1a1_text
+        return o
+
+    @case("CODE1", "in a claim text and in a condition a span between single backticks is rendered as <code>, its content escaped; the "
+                   "same claim text as the title of a premise link; in level0.json and data.js the text stays as written, backticks "
+                   "included")
+    def _():
+        o = _code_outline("Use `Foo.bar` and `x < y & z` here.", ["Needs `HypSalt` to hold, and `a` or `b`."], "Claim four with é",
+                          "Claim three")
+        b = _build(outline=o)
+        c = _card(b, "g1")
+        got = (b.rc, '<h3 class="claim">Use <code>Foo.bar</code> and <code>x &lt; y &amp; z</code> here.</h3>' in b.page,
+               [_raw(x) for x in c.find("h3", "claim")[0].find("code")],
+               '<li>Needs <code>HypSalt</code> to hold, and <code>a</code> or <code>b</code>.</li>' in b.page,
+               '<a href="#g1">Use <code>Foo.bar</code> and <code>x &lt; y &amp; z</code> here.</a>' in b.page,
+               b.js("level0.json")["steps"][0]["claim"]["text"], b.js("level0.json")["steps"][0]["claim"]["conditions"],
+               "Use `Foo.bar` and `x \\u003c y \\u0026 z` here." in b.text("data.js"))
+        return _eq(got, (0, True, ["Foo.bar", "x < y & z"], True, True, "Use `Foo.bar` and `x < y & z` here.",
+                         ["Needs `HypSalt` to hold, and `a` or `b`."], True))
+
+    @case("CODE2", "backticks make code and nothing else: an unpaired backtick, an empty pair, a pair of doubled backticks and a pair "
+                   "over a line break stay literal text; `<b>`, `**bold**`, a markdown link and a heading mark in data stay escaped "
+                   "text; control: a real span in the same build is code; the built page has no element that the base page has not (so no b, "
+                   "strong, em, h1 or new link)")
+    def _():
+        o = _code_outline("An unpaired `backtick here", ["<b>bold</b> **bold** [l](x) # head", "A `` x `` pair and an empty `` pair"],
+                          "Over a line `x\ny` ends", "Bold <b>x</b> and **y** with `ok`")
+        b = _build(outline=o)
+        dom, base = _dom(b.page), _dom(_base().page)
+        t = lambda g: _card(b, g).find("h3", "claim")[0].text()
+        return _eq((b.rc, t("g1"), [x.text() for x in _card(b, "g1").find("ul", "conditions")[0].find("li")], t("g3"), t("g1a1"),
+                    sorted({n.tag for n in dom.nodes()} - {n.tag for n in base.nodes()}), "<b>" in b.page, "&lt;b&gt;bold&lt;/b&gt;" in b.page,
+                    [len(_card(b, g).find("h3", "claim")[0].find("code")) for g in ("g1", "g3", "g1a1")]),
+                   (0, "An unpaired `backtick here", ["<b>bold</b> **bold** [l](x) # head", "A `` x `` pair and an empty `` pair"],
+                    "Over a line `x y` ends", "Bold <b>x</b> and **y** with ok", [], False, True, [0, 0, 1]))
+
+    _REQ = (("statement_read_line", ("reader", "date")), ("statement_census_line", ("reader", "date")),
+            ("proof_read_line", ("reader", "date")), ("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
+            ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
+            ("steps_open_items_line", ("n",)))
+
+    @case("PHR1", "each of the nine keys statement_read_line, statement_census_line, proof_read_line, statement_count_line, "
+                  "proof_count_line, steps_statement_line, steps_proof_line, open_items_line, steps_open_items_line that lacks one of "
+                  "its placeholders ({reader} {date}, or {n} {m}, or {n}) is refused as STRINGS-KEY naming the key and the placeholder "
+                  "(16 cases), exit 1, nothing written; control: the fixture with every placeholder builds")
+    def _():
+        res = []
+        for key, names in _REQ:
+            for name in names:
+                st = _strings()
+                st[key] = st[key].replace("{" + name + "}", "")
+                b = _build(strings=st)
+                res.append((key, name, b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+        want = [(k, n, 1, [f"BUILD-ERROR STRINGS-KEY {k} is missing the placeholder {{{n}}}"], False) for k, ns in _REQ for n in ns]
+        return _eq((res, len(res), _base().rc), (want, 16, 0))
+
+    @case("PHR2", "the placeholders of the other keys stay optional: argument_frame, second_reader_frame, interpretation_frame, "
+                  "shared_note, note_href, frames.argument and reactions[0].href with no placeholder at all build")
+    def _():
+        res = []
+        for path, value in (("argument_frame", "How this is proved:"), ("second_reader_frame", "Read again."),
+                            ("interpretation_frame", "Our interpretation:"), ("shared_note", "Also a root elsewhere."),
+                            ("note_href", "notes/index.md"), ("frames.argument[0]", "How this is proved"),
+                            ("reactions[0].href", "https://example.invalid/react?kind=sense")):
+            st = _strings()
+            node = st
+            parts = re.findall(r"[^.\[\]]+", path)
+            for part in parts[:-1]:
+                node = node[int(part)] if part.isdigit() else node[part]
+            node[int(parts[-1]) if parts[-1].isdigit() else parts[-1]] = value
+            b = _build(strings=st)
+            res.append((path, b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")]))
+        return _eq(res, [(p_, 0, []) for p_ in ("argument_frame", "second_reader_frame", "interpretation_frame", "shared_note",
+                                                "note_href", "frames.argument[0]", "reactions[0].href")])
+
+    @case("PHR3", "the strings file of this checkout (site/strings.json) has none of the nine required placeholders missing")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        return _eq([x for x in _strings_problems(real) if "is missing the placeholder" in x[2]], [])
+
     @case("SHA1", "--release-archive-sha is stored in lower case: an upper-case input gives the same manifest as the lower-case one")
     def _():
         up, lo = _build(archive="AB" * 32), _build(archive="ab" * 32)
@@ -2594,20 +2783,19 @@ def _selftest_cases():
         every = _base().page + _base().text("data.js")
         return _eq((res, [w in every for w in ("Read by us", "Partly read", "Not read yet")]), ([(1, True, False)] * 3, [False] * 3))
 
-    @case("C1", "the status lines of the cards (statement, proof, open items): g1 `Statement read by Reader One on 2026-11-20.` (the "
-                "claim's reader and date, not the reading block's), `Proof read by Reader One on 2026-11-23.` (the first argument block), 0; g1a `Statement read by Reader One on "
+    @case("C1", "the status lines of the cards (statement, proof; the open-items line is absent at 0): g1 `Statement read by Reader One on 2026-11-20.` (the "
+                "claim's reader and date, not the reading block's), `Proof read by Reader One on 2026-11-23.` (the first argument block); g1a `Statement read by Reader One on "
                 "2026-11-23.` (the reading block), proof not read; g1a1x `Statement read by Reader Two on 2026-11-23.`; g3 the census "
-                "line, `Proof: not read yet.`, 0")
+                "line, `Proof: not read yet.`")
     def _():
         b = _base()
-        line = lambda g: [c.text() for c in (_card(b, g).find("p", "statement")[0], _card(b, g).find("p", "proof")[0],
-                                            _card(b, g).find("p", "open-items")[0])]
-        return _eq([line(g) for g in ("g1", "g1a", "g1a1x", "g3")],
-                   [["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23.", "Questions written down: 0."],
-                    ["Statement read by Reader One on 2026-11-23.", "Proof: not read yet.", "Questions written down: 0."],
-                    ["Statement read by Reader Two on 2026-11-23.", "Proof: not read yet.", "Questions written down: 0."],
-                    ["Statement counted by a script, not read (Reader One, 2026-11-20).", "Proof: not read yet.",
-                     "Questions written down: 0."]])
+        line = lambda g: [c.text() for c in (_card(b, g).find("p", "statement")[0], _card(b, g).find("p", "proof")[0])]
+        return _eq(([line(g) for g in ("g1", "g1a", "g1a1x", "g3")],
+                    [len(_card(b, g).find("p", "open-items")) for g in ("g1a", "g1a1x", "g3")]),
+                   ([["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23."],
+                     ["Statement read by Reader One on 2026-11-23.", "Proof: not read yet."],
+                     ["Statement read by Reader Two on 2026-11-23.", "Proof: not read yet."],
+                     ["Statement counted by a script, not read (Reader One, 2026-11-20).", "Proof: not read yet."]], [0, 0, 0]))
 
     @case("C2", "the line open_items_line comes from its key and shows the number and never `not read` (the fixture value holds none): "
                 "on g2 `Questions written down: 1.`; a build whose key says `Open: {n} questions` shows `Open: 1 questions` on g2")
@@ -2751,14 +2939,14 @@ def _selftest_cases():
         return _eq((c["open_items"], c["roots_open_items"], b.js("level0.json")["totals"]["open_items"],
                     _card(b, "g3").find("p", "open-items")[0].text()), (2, 1, 3, "Questions written down: 2."))
 
-    @case("OI3", "the base build: totals.open_items 1 (01.b05 on quux), g2's card 1 and its roots_open_items 1, g1's card shows 0 "
-                 "(a zero is printed as zero); an argument block is not an open item")
+    @case("OI3", "the base build: totals.open_items 1 (01.b05 on quux), g2's card 1 and its roots_open_items 1, g1's card has no open-items "
+                 "line (a zero is not printed on a card); an argument block is not an open item")
     def _():
         b = _base()
         l0 = b.js("level0.json")
         return _eq((l0["totals"]["open_items"], [x for x in l0["steps"] if x["id"] == "g2"][0]["counts"]["roots_open_items"],
-                    _card(b, "g1").find("p", "open-items")[0].text(), _card(b, "g2").find("p", "open-items")[0].text()),
-                   (1, 1, "Questions written down: 0.", "Questions written down: 1."))
+                    len(_card(b, "g1").find("p", "open-items")), _card(b, "g2").find("p", "open-items")[0].text()),
+                   (1, 1, 0, "Questions written down: 1."))
 
     @case("BAS1", "the builder's line `claim basis: 1 read, 1 census, 1 without (treated as read)` and the checker's line `claim basis: 1 "
                   "read, 1 census, 1 without` agree on the counts; with every basis written the builder's line has no parenthesis "

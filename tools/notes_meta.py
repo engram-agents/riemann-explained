@@ -2137,6 +2137,63 @@ def _():
            "UNKNOWN-KEY outline.json group 'd1': unknown key 'draft_todo'"], 1)
 
 
+# ---- CLAIM-LIBRARY-WORD: a library-looking name outside backticks, in a claim text or a condition (a listing)
+def _clw(text=None, conditions=None, gid="g1"):
+    claim = dict(CLAIM, text="T" if text is None else text)
+    if conditions is not None:
+        claim["conditions"] = conditions
+    return go(outline=OL(G(gid, claim=claim)))
+
+
+def _clw_line(where, token, gid="g1"):
+    return (f"CLAIM-LIBRARY-WORD outline.json group {gid!r} {where}: {token!r} looks like a library name outside backticks "
+            "(write it in backticks, or in plain words)")
+
+
+@case("CLW1", "a dotted token (Foo.bar, A.b_c.d) or a CamelCase token (getValue, HypSalt) in a claim text outside backticks is a "
+              "CLAIM-LIBRARY-WORD listing naming the group and the token, in the order of the text, once per token; exit 0, and the "
+              "last line counts them as warnings")
+def _():
+    r = _clw("Uses Foo.bar and getValue, then HypSalt and Foo.bar again, and A.b_c.d.")
+    fe(r, [_clw_line("claim text", "Foo.bar"), _clw_line("claim text", "getValue"), _clw_line("claim text", "HypSalt"),
+           _clw_line("claim text", "A.b_c.d")], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 4 warnings", "count line")
+
+
+@case("CLW2", "a `conditions` entry is read the same way and named by its index; the same token in two groups lists once per group")
+def _():
+    fe(_clw("Plain words.", ["Fine here.", "Needs Real.analysis to hold."]), [_clw_line("conditions[1]", "Real.analysis")], 0)
+    r = go(outline=OL(G("g1", claim=dict(CLAIM, text="Uses Foo.bar")), G("g2", order=2, claim=dict(CLAIM, text="Uses Foo.bar"))))
+    fe(r, [_clw_line("claim text", "Foo.bar", "g1"), _clw_line("claim text", "Foo.bar", "g2")], 0)
+
+
+@case("CLW3", "a token inside a pair of single backticks on one line does not list; an unpaired backtick, a backtick pair that spans "
+              "a line, and a token outside the span still do")
+def _():
+    clean(_clw("Uses `Foo.bar` and `getValue` and `HypSalt`.", ["Needs `Real.analysis`."]))
+    fe(_clw("Uses `Foo.bar` and HypSalt."), [_clw_line("claim text", "HypSalt")], 0)
+    fe(_clw("An unpaired `Foo.bar here."), [_clw_line("claim text", "Foo.bar")], 0)
+    r = _clw("A pair over a line `getValue\nrest` ends.")
+    fe(r, [_clw_line("claim text", "getValue")], 0)
+
+
+@case("CLW4", "prose does not list: plain words and capitalised names, all-capital words, a number like 3.5, a sentence-final period "
+              "(`end.`), a period then a space, a version like v1.2; control: the same text with Foo.bar added lists only that")
+def _():
+    clean(_clw("Every Riemann zero lies on the line. The value is 3.5 or 0.25, and RH holds at the end."))
+    clean(_clw("A sentence ends. Another one ends.", ["It holds for v1.2 of the bound.", "A bound of 10.", "Value 2.5."]))
+    fe(_clw("The end. Foo.bar is 3.5."), [_clw_line("claim text", "Foo.bar")], 0)
+
+
+@case("CLW5", "the listing never changes the exit code: an error elsewhere still exits 1 beside it, and a listing alone exits 0; "
+              "a null claim has nothing to list")
+def _():
+    r = go(outline=OL(G("g1", claim=dict(CLAIM, text="Uses Foo.bar")), G("g2", order=2, roots=[R("A.B", "nope")])))
+    eq((r.rc, [x.split(" ")[0] for x in r.f]), (1, ["UNRESOLVED", "CLAIM-LIBRARY-WORD"]), "error and listing")
+    eq(r.lines[-1], "1 notes, 1 findings, 1 warnings", "count line")
+    clean(go(outline=OL(G("g1"))))
+
+
 @case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "
                "in line order")
 def _():
