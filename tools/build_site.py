@@ -406,11 +406,23 @@ def _output_lines(rel, data):
     return text.split("\n")
 
 
-def leak_check(files, src_root):
+def leak_check(files, src_root, copied=None):
     """(the files that hold a line of the release, what was ranged over). `files` maps a relative path to bytes. A line counts
     when it has at least 20 non-space characters, compared stripped, as a whole line of a text of an output file (a string
-    value of the JSON outside the name and id fields, a text node of the page outside <code>)."""
+    value of the JSON outside the name and id fields, a text node of the page outside <code>). `copied`, when given, is a list
+    of (note id, what, source lines) for the note text that is copied into the outputs: its lines are compared as they stand in
+    the note, before they are joined; the stats then also hold `copied_lines` (the non-empty source lines examined) and
+    `copied_leaks` (the sorted (note id, what) that hold a line of the release). A release line quoted inside a longer line is
+    not seen."""
     candidates, n_out = {}, 0
+    copied_cand, n_copied = {}, 0
+    for note, what, lines in copied or []:
+        for ln in lines:
+            t = ln.strip()
+            if t:
+                n_copied += 1
+                if _nonspace(t) >= 20:
+                    copied_cand.setdefault(t, set()).add((note, what))
     for rel in sorted(files):
         for ln in _output_lines(rel, files[rel]):
             s = ln.strip()
@@ -419,7 +431,7 @@ def leak_check(files, src_root):
                 if _nonspace(s) >= 20:
                     candidates.setdefault(s, set()).add(rel)
     mods = sg.walk_lean(src_root)
-    leaked, n_lines, bad = set(), 0, []
+    leaked, copied_leaked, n_lines, bad = set(), set(), 0, []
     for _module, path in mods:
         text, ok = sg.read_text(path)
         if not ok:
@@ -430,10 +442,15 @@ def leak_check(files, src_root):
             s = ln.strip()
             if s in candidates:
                 leaked.update(candidates[s])
+            if s in copied_cand:
+                copied_leaked.update(copied_cand[s])
     if bad:
         raise ValueError("cannot read: " + ", ".join(bad))
-    return sorted(leaked), {"release_files": len(mods), "release_lines": n_lines, "output_files": len(files),
-                            "output_lines": n_out}
+    stats = {"release_files": len(mods), "release_lines": n_lines, "output_files": len(files), "output_lines": n_out}
+    if copied is not None:
+        stats["copied_lines"] = n_copied
+        stats["copied_leaks"] = sorted(copied_leaked)
+    return sorted(leaked), stats
 
 
 # ---- the strings file
@@ -659,6 +676,7 @@ def _load_notes(notes_dir, strings):
                 para = _paragraph(lines, t) if t.get("type") == "paragraph" else None
                 rec["text"] = para
                 rec["first_sentence"] = _first_sentence(para) if para else None
+                rec["_src"] = lines[t["first_line"] - 1:t["last_line"]] if para else None
             rec["_decls"] = [(e["module"], e["name"]) for e in d.get("decls", [])]
             note["blocks"].append(rec)
         notes.append(note)
@@ -710,7 +728,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         for r in g["roots"]:
             owners.setdefault((r["module"], r["name"]), []).append(gid)
     by_note = {n["id"]: n for n in m.notes}
-    m.files, m.summary = {}, {}
+    m.files, m.summary, m.copied, seen_blocks = {}, {}, [], set()
     for gid, g in groups.items():
         roots = [(r["module"], r["name"]) for r in g["roots"]]
         blocks = {}
@@ -719,7 +737,10 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                 blocks.setdefault(rec["block"], rec)
         brecs = []
         for rec in sorted(blocks.values(), key=_block_key):
-            out = {k: v for k, v in rec.items() if k != "_decls"}
+            out = {k: v for k, v in rec.items() if k not in ("_decls", "_src")}
+            if rec.get("_src") and rec["block"] not in seen_blocks:
+                seen_blocks.add(rec["block"])
+                m.copied.append((rec["note"], "block " + rec["block"], rec["_src"]))
             out["roots"] = [{"module": a, "name": b} for a, b in roots if (a, b) in rec["_decls"]]
             brecs.append(out)
         root_rows = []
@@ -768,6 +789,11 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
     return m
 
 
+# `of the proof` after a number, a percent sign or a quantity word (the word list is PROVISIONAL; its owner rules it)
+_FRACTION = re.compile(r"(?:\d+(?:\.\d+)?\s*%\s*|\d+(?:\.\d+)?\s+|%\s*|\b(?:half|third|quarter|most|part|fraction|portion|share|"
+                       r"majority|all)\s+)of\s+the\s+proof", re.I)
+
+
 def _word_notes(m, s):
     """[(where, word)]: the forbidden words, and `of the proof` (a phrase or a percent sign), in the text of the claims, the
     conditions, the note titles and the argument and interpretation blocks. Only a listing."""
@@ -775,7 +801,7 @@ def _word_notes(m, s):
 
     def hits(text):
         out = [w for w in words if re.search(r"(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])", text, re.I)]
-        if re.search(r"of\s+the\s+proof", text, re.I):
+        if _FRACTION.search(text):
             out.append("of the proof")
         elif "%" in text:
             out.append("%")
@@ -1133,14 +1159,20 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         if not sg.walk_lean(source_check):
             print("CHECKED NOTHING: no .lean file under SRC_ROOT")
             return 3
+        copied = m.copied + [(n["id"], "field list_title", n["title"].split("\n")) for n in m.notes]
         try:
-            leaks, st = leak_check(files, source_check)
+            leaks, st = leak_check(files, source_check, copied)
         except ValueError as ex:
             return _refuse([("SOURCE-UNREADABLE", "SRC_ROOT", str(ex))])
         print(f"source check: {st['release_files']} release files, {st['release_lines']} release lines, "
               f"{st['output_files']} output files, {st['output_lines']} output lines, {len(leaks)} leaked")
-        if leaks:
-            return _refuse([("SOURCE-LEAK", f, "holds a line of the release") for f in leaks])
+        print(f"source check (copied note text): {st['copied_lines']} copied source lines, {len(st['copied_leaks'])} leaked; "
+              "no output line equals a release line and no line of copied note text equals one; "
+              "a release line quoted inside a longer sentence is not detected")
+        found = [("SOURCE-LEAK", f"note {n} {w}", "holds a line of the release") for n, w in st["copied_leaks"]]
+        found += [("SOURCE-LEAK", f, "holds a line of the release") for f in leaks]
+        if found:
+            return _refuse(found)
     try:
         _publish(out, files)
     except OSError as ex:
