@@ -264,6 +264,18 @@ def _selftest_cases():
         rc, out, err = _go(CHAIN, "Chain.M1", ["Chain.M4"], [])
         return _eq((rc, "control" in (err + "\n".join(out)).lower(), _verdicts(out)), (2, True, []))
 
+    @case("C1b", "a control equal to START proves nothing: `CONTROL EQUALS START: <name> proves nothing`, exit 2, no verdict")
+    def _():
+        rc, out, err = _go(CHAIN, "Chain.M1", ["Chain.M4"], ["Chain.M1"])
+        text = err + "\n".join(out)
+        return _eq((rc, "CONTROL EQUALS START: Chain.M1 proves nothing" in text, _verdicts(out)), (2, True, []))
+
+    @case("C1c", "two controls, one equal to START and one real: still exit 2, the equal one is named")
+    def _():
+        rc, out, err = _go(CHAIN, "Chain.M1", ["Chain.M4"], ["Chain.M3", "Chain.M1"])
+        text = err + "\n".join(out)
+        return _eq((rc, "CONTROL EQUALS START: Chain.M1 proves nothing" in text, _verdicts(out)), (2, True, []))
+
     @case("C2a", "a control off the chain: exit 3, BROKEN named, and no INSIDE/OUTSIDE anywhere in the output")
     def _():
         rc, out, _e = _go(CHAIN, "Chain.M1", ["Chain.M4"], ["Chain.M3", "Side.Z"])
