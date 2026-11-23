@@ -133,4 +133,15 @@ theorem c27_destructUse (p q : Prop) (h : p ∧ q) : p := by
 -- C28 (Kepler, PR 7 merge read): a declaration with no value whose type reads Pair2.x; who_reads must count it as skipped.
 axiom c28_noValueReader : ∀ s : Pair2, s.x = s.x
 
+-- C29 (reviewer round 1 on v2): the memo key's `inType`. One subterm (`c29_bar (g n)`) is met twice in the same place
+-- inside it: once in an implicit slot (a type context) and once as an explicit argument (a value). A key without
+-- `inType` would merge them and lose the value occurrence of g.
+def c29_foo {n : ℕ} (m : ℕ) : ℕ := m
+def c29_bar (x : ℕ) : ℕ := x
+def c29_typeAndValue (g : ℕ → ℕ) (n : ℕ) : ℕ := @c29_foo (c29_bar (g n)) (c29_bar (g n))
+-- C30 (reviewer round 1 on v2): the memo key's `encPos`. One subterm (`fun _ => h`) is passed at two argument
+-- positions of one callee. A key without `encPos` would merge them and lose one position.
+def c30_foo2 (a b : ℕ → ℕ) : ℕ := 0
+def c30_twoPos (h : ℕ) : ℕ := c30_foo2 (fun _ => h) (fun _ => h)
+
 end FUControls

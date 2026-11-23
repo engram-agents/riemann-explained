@@ -1,6 +1,6 @@
 {
  "_doc": "Expected outputs for Controls.lean (sha256 of Controls.lean recorded at write time below), written BEFORE the classifier (C2a revised before the classifier; later cases added as the notes below say). Each case names one binder of one declaration and the labels the tool must give. Labels: unused, direct, passed_whole, instance_only, returned, in_types_only. 'path' is a projection path (positional or by field name), 'named' the field-name path; 'callee'/'pos' name a passed_whole occurrence (pos = 0-based explicit+implicit argument index); 'followed' lists auxiliary declarations the tool must have followed. 'must_not' lists labels that must be absent. Pairs differ in one way; a wrong classifier fails one side.",
- "controls_sha256": "ede424562f411f95b50e0436f255eba24b330fa3ce318ffcc45b0b02c6e59351",
+ "controls_sha256": "161ea873c9ffeabd8e15dbd23707f283da400477d87a523e99be87e5c77aec95",
  "cases": [
   {
    "id": "C1a",
@@ -503,7 +503,7 @@
    "labels": [
     "passed_whole"
    ],
-   "note": "one structural subterm (fun x => f x) under two binders; h's use must not be shared with g's"
+   "note": "one structural subterm (fun x => f x) under two binders; h's use must not be shared with g's | KNOWN NOT TO DISCRIMINATE (reviewer round 1 on v2): (fun x => f x) h is beta-reduced before the walk, and binders become fresh free variables, so no subterm is shared across the two binders; the memo key's fields are pinned by C29 and C30 instead."
   },
   {
    "id": "C26b",
@@ -550,8 +550,45 @@
    "id": "C28",
    "query": "who_reads",
    "field": "FUControls.Pair2.x",
-   "no_value_counted_min": 1,
-   "note": "written before any run; c28_noValueReader is an axiom whose type reads Pair2.x: who_reads must count it as skipped (no value), not drop it silently (Kepler, PR 7 merge read). Needs a code change in v2."
+   "note": "written before any run; c28_noValueReader is an axiom whose type reads Pair2.x: who_reads must count it as skipped (no value), not drop it silently (Kepler, PR 7 merge read). Needs a code change in v2. | CHANGED AFTER REVIEW (2026-11-23): the minimum of 1 passed without the axiom (the module already has 6 other constants with no value: inductive types, constructors, recursors), so the case now pins the exact count, 7, as the reviewer measured it before my run; removing the axiom gives 6.",
+   "no_value_counted": 7
+  },
+  {
+   "id": "C29a",
+   "query": "uses",
+   "decl": "FUControls.c29_typeAndValue",
+   "binder": "g",
+   "labels": [
+    "direct"
+   ],
+   "must_not": [
+    "in_types_only"
+   ],
+   "note": "written 2026-11-23 before any run, after printing the term (@c29_foo (c29_bar (g n)) (c29_bar (g n))): the same subterm in the implicit slot and as the explicit argument; a memo key without inType keeps only the first (type) visit and g would read in_types_only."
+  },
+  {
+   "id": "C30a",
+   "query": "uses",
+   "decl": "FUControls.c30_twoPos",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "FUControls.c30_foo2",
+   "pos": 0,
+   "note": "written 2026-11-23 before any run, after printing the term (c30_foo2 (fun x => h) fun x => h): one lambda at two argument positions."
+  },
+  {
+   "id": "C30b",
+   "query": "uses",
+   "decl": "FUControls.c30_twoPos",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "callee": "FUControls.c30_foo2",
+   "pos": 1,
+   "note": "pair of C30a: a memo key without encPos keeps only the first position and this case fails."
   }
  ],
  "mutation_check": [
@@ -612,10 +649,14 @@
     "C8a",
     "C8b",
     "C9a",
-    "C9b"
+    "C9b",
+    "C29a",
+    "C30a",
+    "C30b"
    ],
    "notes": [
-    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b"
+    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b",
+    "C29a, C30a, C30b predicted to PASS under this bug before the run (2026-11-23): no instance slot, projection, renaming/beta or destructuring in them."
    ]
   },
   {
@@ -684,10 +725,14 @@
     "C8a",
     "C8b",
     "C9a",
-    "C9b"
+    "C9b",
+    "C29a",
+    "C30a",
+    "C30b"
    ],
    "notes": [
-    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b"
+    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b",
+    "C29a, C30a, C30b predicted to PASS under this bug before the run (2026-11-23): no instance slot, projection, renaming/beta or destructuring in them."
    ]
   },
   {
@@ -752,10 +797,14 @@
     "C8a",
     "C8b",
     "C9a",
-    "C9b"
+    "C9b",
+    "C29a",
+    "C30a",
+    "C30b"
    ],
    "notes": [
-    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b"
+    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b",
+    "C29a, C30a, C30b predicted to PASS under this bug before the run (2026-11-23): no instance slot, projection, renaming/beta or destructuring in them."
    ]
   },
   {
@@ -818,10 +867,14 @@
     "C8a",
     "C8b",
     "C9a",
-    "C9b"
+    "C9b",
+    "C29a",
+    "C30a",
+    "C30b"
    ],
    "notes": [
-    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b"
+    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b",
+    "C29a, C30a, C30b predicted to PASS under this bug before the run (2026-11-23): no instance slot, projection, renaming/beta or destructuring in them."
    ]
   }
  ],

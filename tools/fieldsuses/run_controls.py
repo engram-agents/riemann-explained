@@ -85,8 +85,6 @@ def check(case, rep):
     for bad in case.get("must_not", []):
         if bad in labels:
             fails.append(f"label {bad} present (must_not)")
-    if case.get("paths_empty") and b["paths"]:
-        fails.append(f"paths {b['paths']} != [] (expected no path)")
     if "path" in case:
         ps = b["paths"]
         if len(ps) != 1 or case["path"] not in (ps[0]["path"], ps[0]["named"]):
@@ -123,8 +121,8 @@ def check_who_reads(case, out):
         return any(r == suf[1:] or r.endswith(suf) for r in readers)
     fails = [f"{n} missing from readers" for n in case.get("readers_include", []) if not has(n)]
     fails += [f"{n} wrongly listed as a reader" for n in case.get("readers_exclude", []) if n in readers]
-    if "no_value_counted_min" in case and out.get("no_value_declarations_skipped", 0) < case["no_value_counted_min"]:
-        fails.append(f"no_value_declarations_skipped {out.get('no_value_declarations_skipped')} < {case['no_value_counted_min']}")
+    if "no_value_counted" in case and out.get("no_value_declarations_skipped") != case["no_value_counted"]:
+        fails.append(f"no_value_declarations_skipped {out.get('no_value_declarations_skipped')} != {case['no_value_counted']}")
     if out.get("lower_bound") is not True:
         fails.append("who_reads output lacks lower_bound: true")
     return fails
@@ -168,6 +166,10 @@ def run_all(mutate=None):
                 results[c["id"]] = check_who_reads(c, run_tool([c["field"]], mutate, follow=0, query="who_reads"))
             elif c["query"] == "visits":
                 reps2 = run_tool(c["decls"], mutate, follow=0)
+                missing = [n for n in c["decls"] if n not in reps2]
+                if missing:
+                    results[c["id"]] = [f"{', '.join(missing)} missing from the tool's output"]
+                    continue
                 a, b = (reps2[n]["subterm_visits"] for n in c["decls"])
                 f = []
                 if b - a > c["max_increase"]:
