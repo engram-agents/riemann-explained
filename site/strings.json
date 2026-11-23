@@ -83,5 +83,8 @@
    "not_read": "Open question",
    "argument": "How it is proved"
   }
- }
+ },
+ "evidence_module_label": "Lean module",
+ "evidence_name_label": "Lean name",
+ "evidence_kind_label": "Declared as"
 }
