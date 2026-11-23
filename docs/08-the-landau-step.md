@@ -1,4 +1,5 @@
 # 8. The Landau step, read in the library's proof: a one-sided bound on windows forbids zeros
+<!-- rh-note {"authors":["Halley"],"group":"landau-step","id":"08","level":2,"list_title":"The Landau step, read in the library's proof: a one-sided bound on windows forbids zeros","readers":[],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Everything marked **What the library says** was read in the files listed at the end; all 31 were opened and their proofs read, with two long routine computations skimmed, as the table says. Nothing was compiled. Nothing here has been checked by a mathematician.*
 
