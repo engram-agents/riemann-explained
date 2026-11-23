@@ -85,25 +85,30 @@ is right: that is the reader's and the peer's job, and `notes_meta.py` is the ch
 of the proof map look like, built from the notes, the outline and the declaration table alone? It first runs the
 check of `notes_meta.py` on the same inputs (its library function, not a subprocess) and refuses to build, writing
 nothing, not even OUT_DIR, if that finds an error. Then it writes, under OUT_DIR: `level0.json` (the steps of the
-chain in `order`, the route counts, the notes about the whole), `level1.json` (each step with its child groups
+chain in `order`, the counts of the two facts, the notes about the whole, the number of open questions), `level1.json` (each step with its child groups
 nested under it to any depth), one `group/<id>.json` per group (its roots with file, lines and, with
-`--source-check`, the hash of the file; the blocks that anchor them; the open `not_read` items), `manifest.json`
+`--source-check`, the hash of the file, and per root the two facts `statement_read` and `proof_read`; the blocks that anchor them; the open `not_read` items), `manifest.json`
 (the hash of every other file, the three commit ids, the release id and archive hash, the counts), `data.js` (the
 same data as one assignment) and `index.html`. The page is one static file of plain HTML: each step is a card (claim,
-conditions, premises as links, one coverage word, the first sentence of the argument inside its frame, three
-reaction links), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
-makes a request. Every FIXED sentence on the page comes from the strings file, whose shape is provisional (the table under
-`coverage` that turns the counts into one word is data in it, and the fixtures of the self-test carry their own
-wording, not the real one; the predicate keys `read_all`, `read_some_or_touched`, `read_none` and the key
-`no_claim_label` are provisional names, the owner of the wording may rename them); a missing key stops the build and
-names itself. Coverage is per root: a root is signed when a reading block anchors it, touched when only an argument
-block does, none otherwise; a step is Read by us when every root is signed, Not read yet when every root is none, Partly
-read in every other case. A group whose claim is null shows its root's Lean name and the `no_claim_label` in the
-heading, which is not a coverage word and may sit beside Read by us. The build also stops for: the words
+conditions, premises as links, two status lines, a line counting the open questions, the first sentence of the argument inside
+its frame, three reaction links), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
+makes a request. Every FIXED sentence on the page comes from the strings file, whose shape is provisional (the fixtures of the self-test carry their own wording, not the real one; the keys for the status
+lines are provisional names, the owner of the wording may rename them: `statement_read_line`, `statement_census_line`,
+`statement_not_read_line`, `proof_read_line`, `proof_not_read_line`, `statement_count_line`, `proof_count_line`,
+`open_items_line`, `steps_statement_line`, `steps_proof_line`, `steps_open_items_line`, besides `no_claim_label`); a
+missing key stops the build and names itself, and a stale key (`coverage`, `not_read_yet`, `roots_not_read`, any other
+key whose name holds `not_read`) is refused. There is no coverage word. Per root there are two facts: the statement is
+read when the group's claim has basis `read` (a claim without a basis counts as `read` until the checker requires one) or
+a reading block anchors the root; the proof is read when an argument block anchors it. A claim of basis `census` does not
+count. A step counts for a fact when every root of it has it, and the build asserts read + not read = total for each fact.
+A group whose claim is null shows its root's Lean name and the `no_claim_label` in the heading, then the status lines.
+Open questions are the distinct open `not_read` blocks, each counted once. The build also stops for: the words
 verified, explained, understood (or any word of `forbidden_words`), a percent sign or `of the proof` in the strings file
-(the builder's own sentences never contain them; its href templates may hold `%`); two notes with one header id (the
-builder refuses today, the merged checker does not yet); a reading, argument,
-interpretation or correction block with no reader or no date; read + partly + not read not adding up to the steps; a link on the page with no target; a number
+(the builder's own sentences never contain them; its href templates may hold `%`; the words `Read by us`, `Partly read`
+and `Not read yet` are refused too, the scale is gone); a reading, argument,
+interpretation or correction block with no reader or no date; a fact whose read and not-read counts do not add up to
+the total (SUM-STATEMENT, SUM-PROOF); a reaction target that is not an https URL (the hrefs may hold any word, a label
+may not); a link on the page with no target; a number
 on the page that is in no JSON file; a group id that is not safe as a file name. `--source-check SRC_ROOT` compares
 the text lines of every output, and the source lines of every copied note text (an argument or interpretation
 paragraph, a note title) before they are joined, with the lines of the release (at least 20 non-space characters), and
