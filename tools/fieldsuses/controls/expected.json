@@ -1,6 +1,6 @@
 {
  "_doc": "Expected outputs for Controls.lean (sha256 of Controls.lean recorded at write time below), written BEFORE the classifier (C2a revised before the classifier; later cases added as the notes below say). Each case names one binder of one declaration and the labels the tool must give. Labels: unused, direct, passed_whole, instance_only, returned, in_types_only. 'path' is a projection path (positional or by field name), 'named' the field-name path; 'callee'/'pos' name a passed_whole occurrence (pos = 0-based explicit+implicit argument index); 'followed' lists auxiliary declarations the tool must have followed. 'must_not' lists labels that must be absent. Pairs differ in one way; a wrong classifier fails one side.",
- "controls_sha256": "92165869c092cf8566062b04a0d2733804690104f7ecf6e061a22d47db951ab2",
+ "controls_sha256": "6fb5a0b151793055feb359f91f59e40b07de11f1275e9dec74ef192187bd2331",
  "cases": [
   {
    "id": "C1a",
@@ -453,7 +453,7 @@
      "not_reached"
     ]
    },
-   "note": "budget 23 (found by probing the v1.4c code) cuts after h's in-type occurrence and before its value use; on an incomplete walk a binder with no value use seen is not_reached, never in_types_only"
+   "note": "budget 23 (found by probing the v1.4c code) cuts after h's in-type occurrence and before its value use; on an incomplete walk a binder with no value use seen is not_reached, never in_types_only. The budget value depends on the traversal order: a change to the walk can move the cut, so re-probe and re-state it whenever the traversal changes."
   }
  ],
  "mutation_check": [
@@ -504,7 +504,7 @@
   "Mutation bug 2 reddens every path case by design; the design document's earlier 'exactly one' wording is corrected here: what must hold is that it reddens no case WITHOUT a path.",
   "Paths: an expected 'path' matches the tool's positional path (e.g. '.2.2') or its named path (e.g. '.right.right'); the tool must report exactly one maximal read path for these cases.",
   "Provenance of the mutation lists: bugs (i)-(iii) and their must_fail_exactly lists were written in expected.json 2eb58db0, before any classifier code existed; the lists were not set from output. Bug (iv) was added later (v1.3), also before its code and its first run.",
-  "v1.4 (2026-11-23): C1c, C11-C16 and the 'named' keys added from the reviewer fairy's round 1 on PR 7 (11 of 14 extra mutants survived the first 20 cases). Each new pair was printed as elaborated terms before its expectation was written; all written before the code changes they test. Prediction: C15a fails on the v1.3 code (who_reads does not follow matchers) and C16 fails (no budget yet).",
+  "v1.4 (2026-11-23): C1c, C11-C16 and the 'named' keys added from the reviewer fairy's first round (11 of 14 extra mutants survived the first 20 cases). Each new pair was printed as elaborated terms before its expectation was written; all written before the code changes they test. Prediction: C15a fails on the v1.3 code (who_reads does not follow matchers) and C16 fails (no budget yet).",
   "v1.4 mutation lists, said plainly: the additions C14a/C14b (bug ii) and C13a/C13f (bug iii) were written AFTER the first v1.4 mutation run showed them failing. They follow from the bugs' own definitions (ii breaks every case that reads a path; iii turns off beta reduction, which C13 tests), but I did not update the lists before that run, so for these four entries the list is a record of the output, not a prediction. The lists for (i) and (iv) were not changed.",
   "v1.4b: C17-C19 added after the reviewer fairy's 14 mutants were rerun on v1.4 (9 killed). Printed as terms first; expectations written before this run. Measured: source-written projections elaborate to projection-function applications, never to Expr.proj nodes (c17_projOf and reads_x printed raw), so no control here reaches the Expr.proj branch or structFieldName; the README lists both as untested.",
   "v1.4c: C18a's first form put the lambda among the declaration's own leading binders, which are scanned separately, so the reviewer's lam_type_noop mutant survived it. Rewritten so the lambda is nested inside a constructor argument; expectation unchanged, written before the rerun.",

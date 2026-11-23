@@ -55,7 +55,7 @@ The mutation check plants four bugs, one at a time, with `--mutate`, and require
 4. no reading of positional destructuring (`casesOn`, `match`): fails only C3a.
 `expected.json` records which of these lists were written before a run and which were set from one.
 
-**What passing does not mean.** The classifier was written against these controls, so 41/41 shows agreement with them, not correctness on release terms. The planted bugs show the controls can fail; they do not show that every plausible wrong implementation fails (a reviewer's 14 one-line mutants of the first version left 11 survivors; see the PR). Declarations of the release, run when their modules are compiled, are the first test the code was not written against.
+**What passing does not mean.** The classifier was written against these controls, so 41/41 shows agreement with them, not correctness on release terms. The planted bugs show the controls can fail; they do not show that every plausible wrong implementation fails (a reviewer's 14 one-line mutants of the first version left 11 survivors; on the current controls 10 of the 13 that still apply are killed, and the three survivors are listed below; a second reviewer's 13 mutants of the who_reads and callee code left 9 survivors, also listed below). Declarations of the release, run when their modules are compiled, are the first test the code was not written against.
 
 ## Known limits of v1
 
@@ -67,5 +67,10 @@ The mutation check plants four bugs, one at a time, with `--mutate`, and require
 - Paths through a type with several constructors (`Or`) do not name the constructor, so `inl` field 1 and `inr` field 1 print alike.
 - `flows_into` sees a constructor only in result position; one inside an `if` branch or another non-constructor call is not seen, which under-reports.
 - The walk inlines auxiliary declarations and reduces redexes with no sharing, so a large proof can exhaust the budget; this is why the budget exists.
+- No control yet (deferred to the next version, which rewrites the traversal): the `who_reads` module scope and `--scan-prefix`, its list of skipped generated declarations, its single visit of head and arguments, and the filter that keeps pseudo-callees out of `passed`.
+- `who_reads` misses a reader declared `partial def`: a reviewer's probe found it neither listed nor counted. The cause is not traced yet (likely the opaque constant plus an internal helper that is skipped), so treat `partial def` readers as unseen.
+- `--follow` reads a callee by its printed name, so a private callee (`_private.…`) is reported "not loaded".
+- A declaration whose value is eta-reduced (`theorem f : p → q := g`) has fewer leading binders than its type; the report lists only the value's binders and does not say so.
+- Under `--follow`, the top-level `complete` covers the declaration's own walk only; each followed callee has its own `complete`, which can be false under a true top-level flag.
 - Untested branches: an `Expr.proj` node and its field-name lookup. Source-written projections elaborate to projection-function applications, so no control here produces an `Expr.proj`; it appears in elaborated helpers.
 - Callees named `<local function>`, `<lambda>` and `let y` stay in the occurrence list but are not reported under `passed` and are never followed.

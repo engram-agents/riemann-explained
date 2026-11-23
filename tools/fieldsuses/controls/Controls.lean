@@ -65,7 +65,7 @@ theorem c9_direct (p q : Prop) (h : p ∧ q) : q := h.2
 theorem c10_types_only (n : ℕ) (h : 0 < n) (f : (m : ℕ) → 0 < m → Prop) (hf : f n h) : f n h := hf
 theorem c10_value (n : ℕ) (h : 0 < n) : 0 < n := h
 
--- v1.4 (2026-11-23), from the reviewer fairy's surviving mutants on PR 7. Each pair was printed as terms first.
+-- v1.4 (2026-11-23), from a reviewer's surviving mutants. Each pair was printed as terms first.
 -- C11: a hypothesis applied as a function vs one never used
 theorem c11_applied (p q : Prop) (f : p → q) (hp : p) : q := f hp
 theorem c11_unapplied (p q : Prop) (f : p → q) (hq : q) : q := hq
