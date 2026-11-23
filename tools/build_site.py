@@ -98,6 +98,11 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      the data is escaped. Cases P2a P2b.
   P3 Evidence (Lean name, file, lines, hash, blocks, open items) is a closed `<details>` per card. A null claim shows the Lean
      name and the strings file's `no_claim_label` in the heading, then its status lines (H1). Case P3.
+  PH Every string value of the strings file, at any depth, may hold only the placeholders its key declares: a `{name}` the
+     key does not declare is STRINGS-KEY naming the key and the token, and a key that declares none may hold no brace at
+     all (the check is built from the declared sets, so a new key is covered by default). proof_read_line declares {reader}
+     and {date} (each optional) and the card fills them from the first argument block of the root, by note id then block
+     number. Cases PRF1 PRF2 PH1 PH2.
   C1 The two status lines come from the strings keys: statement_read_line ({reader} {date} of the claim, or of the first
      reading block of the root when the claim is null, or when its basis is census), statement_census_line ({reader} {date}
      of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line. A group with several
@@ -1354,7 +1359,7 @@ def _strings():
         "statement_read_line": "Statement read by {reader} on {date}.",
         "statement_census_line": "Statement counted by a script, not read ({reader}, {date}).",
         "statement_not_read_line": "Statement: not read yet.",
-        "proof_read_line": "Proof read.",
+        "proof_read_line": "Proof read by {reader} on {date}.",
         "proof_not_read_line": "Proof: not read yet.",
         "statement_count_line": "Statements read: {n} of {m} declarations.",
         "proof_count_line": "Proofs read: {n} of {m} declarations.",
@@ -2210,7 +2215,7 @@ def _selftest_cases():
 
     @case("B7c", "a step with no argument block shows only the proof status line (`Proof: not read yet.`), no frame and no second "
                  "sentence about the proof; a stale `no_argument` key in the strings file is ignored and never printed; control: "
-                 "the step with an argument block shows `Proof read.` and its idea")
+                 "the step with an argument block shows `Proof read by Reader One on 2026-11-23.` and its idea")
     def _():
         c = _card(_base(), "g3")
         st = _strings()
@@ -2219,7 +2224,7 @@ def _selftest_cases():
         return _eq(([p.text() for p in c.find("p", "proof")], len(_direct(c, "p", "argument")), len(_direct(c, "p", "no-argument")),
                     b.rc, "We have not read how this is proved." in b.page,
                     [p.text() for p in _card(_base(), "g1").find("p", "proof")][:1]),
-                   (["Proof: not read yet."], 0, 0, 0, False, ["Proof read."]))
+                   (["Proof: not read yet."], 0, 0, 0, False, ["Proof read by Reader One on 2026-11-23."]))
 
     @case("B7d", "link_problems: a # link with no id of that name is named, a repeated id is named; controls: resolving links "
                  "(also one with percent-encoding): none; the built page has none")
@@ -2581,7 +2586,7 @@ def _selftest_cases():
         return _eq((res, [w in every for w in ("Read by us", "Partly read", "Not read yet")]), ([(1, True, False)] * 3, [False] * 3))
 
     @case("C1", "the status lines of the cards (statement, proof, open items): g1 `Statement read by Reader One on 2026-11-20.` (the "
-                "claim's reader and date, not the reading block's), `Proof read.`, 0; g1a `Statement read by Reader One on "
+                "claim's reader and date, not the reading block's), `Proof read by Reader One on 2026-11-23.` (the first argument block), 0; g1a `Statement read by Reader One on "
                 "2026-11-23.` (the reading block), proof not read; g1a1x `Statement read by Reader Two on 2026-11-23.`; g3 the census "
                 "line, `Proof: not read yet.`, 0")
     def _():
@@ -2589,7 +2594,7 @@ def _selftest_cases():
         line = lambda g: [c.text() for c in (_card(b, g).find("p", "statement")[0], _card(b, g).find("p", "proof")[0],
                                             _card(b, g).find("p", "open-items")[0])]
         return _eq([line(g) for g in ("g1", "g1a", "g1a1x", "g3")],
-                   [["Statement read by Reader One on 2026-11-20.", "Proof read.", "Questions written down: 0."],
+                   [["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23.", "Questions written down: 0."],
                     ["Statement read by Reader One on 2026-11-23.", "Proof: not read yet.", "Questions written down: 0."],
                     ["Statement read by Reader Two on 2026-11-23.", "Proof: not read yet.", "Questions written down: 0."],
                     ["Statement counted by a script, not read (Reader One, 2026-11-20).", "Proof: not read yet.",
@@ -2661,6 +2666,61 @@ def _selftest_cases():
         b = _build(strings=st)
         return _eq((b.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in b.out.splitlines(), b.existed),
                    (1, True, False))
+
+    @case("PRF1", "the proof line is filled from the argument block of the root: g1 `Proof read by Reader One on 2026-11-23.` (01.b02) and, "
+                  "with an argument block by Reader Two on 2026-11-23 on qux, g1a1x `Proof read by Reader Two on 2026-11-23.`; no brace "
+                  "character from the strings file is anywhere in the page text")
+    def _():
+        n03 = N03 + "\nArgues qux.\n" + _b(id="03.b01", kind="argument", decls=[QUX], reader="Reader Two", date="2026-11-23") + "\n"
+        b = _build(notes=_notes() | {"03-three.md": n03})
+        text = " ".join(_page_text(b.page))
+        return _eq((b.rc, _card(b, "g1a1x").find("p", "proof")[0].text(), _card(b, "g1").find("p", "proof")[0].text(),
+                    "{" in text, "}" in text),
+                   (0, "Proof read by Reader Two on 2026-11-23.", "Proof read by Reader One on 2026-11-23.", False, False))
+
+    @case("PRF2", "two argument blocks on one root in different notes where the note order disagrees with the date order: g1 (root foo) has "
+                  "01.b02 (Reader One, 2026-11-23) and 03.b01 (Reader Three, 2026-11-01); the proof line and the idea name the "
+                  "first by note id then block number, Reader One on 2026-11-23, not the earlier date")
+    def _():
+        n03 = N03 + "\nArgues foo.\n" + _b(id="03.b01", kind="argument", decls=[FOO], reader="Reader Three", date="2026-11-01") + "\n"
+        b = _build(notes=_notes() | {"03-three.md": n03})
+        c = _card(b, "g1")
+        return _eq((b.rc, c.find("p", "proof")[0].text(), _direct(c, "p", "argument")[0].text().startswith(
+            "How this is proved, as Reader One read it on 2026-11-23")), (0, "Proof read by Reader One on 2026-11-23.", True))
+
+    @case("PH1", "a `{bogus}` planted in statement_not_read_line, in a frames phrase, in a reactions label, in a first_screen paragraph "
+                 "and in a reaction href is refused naming the key and the token (`has an unknown placeholder {bogus}`); a key that "
+                 "declares none (mapped_line) refuses any brace; a brace-free value builds; a proof_read_line with only {reader} "
+                 "builds (`Proof read by Reader One.`) and so does one with none (`Proof read.`)")
+    def _():
+        res = []
+        for path in ("statement_not_read_line", "frames.argument[0]", "reactions[0].label", "first_screen[0]", "reactions[0].href"):
+            st = _strings()
+            node = st
+            parts = re.findall(r"[^.\[\]]+", path)
+            for part in parts[:-1]:
+                node = node[int(part)] if part.isdigit() else node[part]
+            last = int(parts[-1]) if parts[-1].isdigit() else parts[-1]
+            node[last] = node[last] + " {bogus}"
+            b = _build(strings=st)
+            res.append((b.rc, f"BUILD-ERROR STRINGS-KEY {path} has an unknown placeholder {{bogus}}" in b.out.splitlines(), b.existed))
+        brace = _strings()
+        brace["mapped_line"] = "A set { x } line."
+        bb = _build(strings=brace)
+        one, none = _strings(), _strings()
+        one["proof_read_line"], none["proof_read_line"] = "Proof read by {reader}.", "Proof read."
+        b1, b0 = _build(strings=one), _build(strings=none)
+        return _eq((res, bb.rc, "BUILD-ERROR STRINGS-KEY mapped_line holds a brace" in bb.out, _base().rc,
+                    _card(b1, "g1").find("p", "proof")[0].text(), _card(b0, "g1").find("p", "proof")[0].text()),
+                   ([(1, True, False)] * 5, 1, True, 0, "Proof read by Reader One.", "Proof read."))
+
+    @case("PH2", "the built page text (tags stripped, script and style removed) holds no `{name}` token from the strings file, in the base "
+                 "build and in a build whose notes give every status line a reader")
+    def _():
+        n03 = N03 + "\nArgues qux.\n" + _b(id="03.b01", kind="argument", decls=[QUX], reader="Reader Two", date="2026-11-23") + "\n"
+        pat = re.compile(r"\{[A-Za-z_]\w*\}")
+        texts = [" ".join(_page_text(_base().page)), " ".join(_page_text(_build(notes=_notes() | {"03-three.md": n03}).page))]
+        return _eq([pat.search(t) for t in texts], [None, None])
 
     @case("OI1", "one not_read block that anchors two groups (03.b01 on foo in g1 and bar in g1a): each card counts 1, totals.open_items "
                  "counts it once (2 with 01.b05); roots_open_items 1 on each")
