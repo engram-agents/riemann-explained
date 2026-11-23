@@ -90,8 +90,56 @@ EXAMPLE = re.compile(r"^(?:@\[[^\]\n]*\][ \t]*)*(?:(?:private|protected|noncompu
 
 # ---------------------------------------------------------------- the tool
 
+def _nameless_instance(line):
+    """True for a line parse_decls skips because its `instance` carries no name."""
+    m = DECL.match(line)
+    return bool(m) and m.group(1) == "instance" and not m.group(2).rstrip(".")
+
+
+def _write(path, prov, rows):
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(prov + "\n" + "\t".join(COLS) + "\n")
+        for r in rows:
+            f.write("\t".join(map(str, r)) + "\n")
+
+
 def run(root, out, reader=None):
-    return 0
+    read = read_text if reader is None else reader
+    root = root.rstrip(os.sep) or root
+    if not os.path.isdir(root):
+        print(f"SRC_ROOT is not a directory: {root}", file=sys.stderr)
+        return 2
+    mods = walk_lean(root)
+    if not mods:
+        print("CHECKED NOTHING: no .lean file under SRC_ROOT")
+        return 1
+    rows, bad, n_example, n_instance = [], 0, 0, 0
+    for module, path in mods:
+        text, ok = read(path)
+        if not ok:
+            bad += 1
+            print(failure_word(path), os.path.relpath(path, root).replace(os.sep, "/"), file=sys.stderr)
+            continue
+        masked = mask_comments(text)
+        for line_no, kind, full, end_idx, _ns in parse_decls(text, masked):
+            rows.append((module, full, kind, line_no, end_idx, BASIS))
+        n_example += len(EXAMPLE.findall(masked))
+        n_instance += sum(1 for ln in masked.split("\n") if _nameless_instance(ln))
+    rows.sort(key=lambda r: (r[0], r[3], r[1], r[2]))
+    seen = {}
+    for r in rows:
+        seen[(r[0], r[1])] = seen.get((r[0], r[1]), 0) + 1
+    dup = [r for r in rows if seen[(r[0], r[1])] > 1]
+    n_dup_pairs = sum(1 for c in seen.values() if c > 1)
+    prov = provenance("decl_table.py", root, "a row is the TEXT RULE's extent of a named declaration (a text extent, NOT "
+                      "Lean's extent); it does not say the declaration is used or compiled")
+    os.makedirs(out, exist_ok=True)
+    _write(os.path.join(out, "decls.tsv"), prov, rows)
+    _write(os.path.join(out, "decls_dup.tsv"), prov, dup)
+    print(f"files {len(mods)}  declarations {len(rows)}  pairs unique {len(seen) - n_dup_pairs}  "
+          f"pairs not unique {n_dup_pairs} (rows {len(dup)})  undecodable {bad}")
+    print(f"not rows (counted lines): example {n_example}  instance without a name {n_instance}")
+    return 1 if bad else 0
 
 
 # ---------------------------------------------------------------- self-test
