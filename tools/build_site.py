@@ -237,19 +237,24 @@ nm = _load_sibling("notes_meta")
 rh = _load_sibling("rh_anchor")
 sg = _load_sibling("scan_graph")
 
-COVERAGE_KEYS = ("read_all", "read_some_or_touched", "read_none")   # provisional names
 NAME_KEYS = frozenset(["id", "module", "name", "lean_name", "file", "note", "block", "parent", "premises", "sha256", "link",
                        "commits", "files", "release_id", "release_archive_sha"])
 
 
 # ---------------------------------------------------------------- the tool
 
-TEXT_KEYS = ("page_title", "route_count", "mapped_line", "not_read_yet", "no_claim_label", "no_argument", "argument_frame", "second_reader_frame",
-             "interpretation_frame", "evidence_label", "roots_only_note", "dirty_note", "shared_note", "roots_read",
-             "roots_not_read", "note_href")
-PLACEHOLDERS = {"route_count": {"N", "M"}, "roots_read": {"N", "M"}, "roots_not_read": {"N", "M"},
+TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
+             "statement_not_read_line", "proof_read_line", "proof_not_read_line", "statement_count_line", "proof_count_line",
+             "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
+             "second_reader_frame", "interpretation_frame", "evidence_label", "roots_only_note", "dirty_note", "shared_note",
+             "note_href")
+PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_line": {"reader", "date"},
+                "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
+                "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
                 "argument_frame": {"reader", "date", "lines"}, "second_reader_frame": {"reader", "date"},
                 "interpretation_frame": {"reader", "date"}, "shared_note": {"groups"}, "note_href": {"file"}}
+NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
+RETIRED_WORDS = ("Read by us", "Partly read", "Not read yet")        # the coverage scale F19 removed
 LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
               "read_more", "lines_missing")
 FROZEN_WORDS = ("verified", "explained", "understood")
@@ -296,20 +301,15 @@ def _nonspace(s):
 
 # ---- the coverage word
 
-def coverage_word(counts, table):
-    """The word of the first entry of `table` whose `when` holds for counts {roots, read, touched, not_read}: `read` roots are
-    signed (a reading block), `touched` roots have no reading block but an argument block, the rest are none. read_all: every
-    root is signed; read_none: every root is none; read_some_or_touched: every other case. A group with no root has no
-    coverage claim: None."""
-    roots, read, touched = counts["roots"], counts["read"], counts["touched"]
-    if roots <= 0:
-        return None
-    holds = {"read_all": read == roots, "read_none": read == 0 and touched == 0}
-    holds["read_some_or_touched"] = not holds["read_all"] and not holds["read_none"]
-    for entry in table:
-        if holds.get(next(iter(entry["when"])), False):
-            return entry["word"]
-    return None
+def fact_pairs(flags):
+    """(how many flags are True, how many are False): anything else (None) is counted in neither, so a sum that does not add up
+    to the total is visible."""
+    return sum(1 for f in flags if f is True), sum(1 for f in flags if f is False)
+
+
+def _fact_flags(items, key):
+    """The flags of one fact over steps or over the root rows of a group."""
+    return [x[key] for x in items]
 
 
 # ---- the checks of the page
@@ -516,38 +516,20 @@ def _strings_problems(s):
             bad(k, "missing")
         elif need_str(k, s[k]) and k in PLACEHOLDERS:
             holders(k, s[k], PLACEHOLDERS[k])
-    if isinstance(s.get("no_claim_label"), str) and s["no_claim_label"]:
-        cov = s.get("coverage")
-        taken = [s.get("not_read_yet")] + [e.get("word") for e in cov if isinstance(e, dict)] if isinstance(cov, list) else [
-            s.get("not_read_yet")]
-        if s["no_claim_label"] in taken:
-            bad("no_claim_label", "must differ from not_read_yet and from every coverage word (it names a missing statement, "
-                                  "not a coverage state)")
+    for k in s:
+        if k == "coverage":
+            bad(k, "is retired: the strings file no longer carries a word scale")
+        elif "not_read" in k and k not in NOT_READ_KEYS:
+            bad(k, "is refused: only statement_not_read_line and proof_not_read_line may carry not_read in their name")
+    if isinstance(s.get("labels"), dict):
+        for k in s["labels"]:
+            if "not_read" in k:
+                bad(f"labels.{k}", "is refused: a label's name may not carry not_read")
     fs = s.get("first_screen", None)
     if "first_screen" not in s:
         bad("first_screen", "missing")
     elif not (isinstance(fs, list) and fs and all(isinstance(x, str) and x for x in fs)):
         bad("first_screen", "must be a non-empty list of non-empty strings")
-    if "coverage" not in s:
-        bad("coverage", "missing")
-    else:
-        t = s["coverage"]
-        if not (isinstance(t, list) and t):
-            bad("coverage", "must be a non-empty ordered list of {when, word}")
-        else:
-            words = []
-            for i, e in enumerate(t):
-                p = f"coverage[{i}]"
-                if not (isinstance(e, dict) and set(e) == {"when", "word"}):
-                    bad(p, "must be an object with exactly the keys when and word")
-                    continue
-                w = e["when"]
-                if not (isinstance(w, dict) and len(w) == 1 and next(iter(w)) in COVERAGE_KEYS and w[next(iter(w))] is True):
-                    bad(p + ".when", "must be exactly one of " + ", ".join(f"{{{k}: true}}" for k in COVERAGE_KEYS))
-                if need_str(p + ".word", e["word"]):
-                    words.append(e["word"])
-            if len(set(words)) != len(words):
-                bad("coverage", "two entries have the same word")
     if "frames" not in s:
         bad("frames", "missing")
     elif not isinstance(s["frames"], dict):
@@ -570,6 +552,8 @@ def _strings_problems(s):
             need_str(f"reactions[{i}].label", r["label"])
             if need_str(f"reactions[{i}].href", r["href"]):
                 holders(f"reactions[{i}].href", r["href"], {"card"})
+                if not r["href"].startswith("https://"):
+                    bad(f"reactions[{i}].href", "must be an https URL")
     fw = s.get("forbidden_words")
     if "forbidden_words" not in s:
         bad("forbidden_words", "missing")
@@ -598,13 +582,17 @@ def _strings_problems(s):
                     need_str(f"labels.kinds.{k}", lab["kinds"][k])
     words = list(FROZEN_WORDS) + [w for w in (fw if isinstance(fw, list) else []) if isinstance(w, str) and w]
     for path, v in _walk_strings(s, ""):
+        if path == "note_href" or re.fullmatch(r"reactions\[\d+\]\.href", path):
+            continue   # an address, not a sentence of the page
         for w in words:
             if re.search(r"(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])", v, re.I):
                 bad(path, f"holds the word {w!r}, which the page never says", "STRINGS-FORBIDDEN")
                 break
         else:
-            href = path == "note_href" or re.fullmatch(r"reactions\[\d+\]\.href", path)
-            if not href and ("%" in v or re.search(r"of\s+the\s+proof", v, re.I)):
+            old = next((x for x in RETIRED_WORDS if re.search(r"(?<![A-Za-z])" + re.escape(x) + r"(?![A-Za-z])", v)), None)
+            if old:
+                bad(path, f"holds {old!r}, a word of the coverage scale that the page no longer has", "STRINGS-FORBIDDEN")
+            elif "%" in v or re.search(r"of\s+the\s+proof", v, re.I):
                 bad(path, "holds a percent sign or `of the proof`, which the page never says in its own sentences",
                     "STRINGS-FORBIDDEN")
     return out
@@ -722,14 +710,7 @@ class _Model:
 def _model(notes_dir, odata, rows, strings, src_root, errors):
     m = _Model()
     m.release = odata["release"]
-    table = strings["coverage"]
     m.notes = _load_notes(notes_dir, strings)
-    ids_seen = {}
-    for n in m.notes:
-        ids_seen.setdefault(n["id"], []).append(n["name"])
-    for nid, names in sorted(ids_seen.items()):
-        if len(names) > 1:
-            errors.append(("NOTE-ID-DUPLICATE", nid, "is the header id of " + " and ".join(names)))
     groups = {}
     for g in odata["groups"]:
         groups.setdefault(g["id"], g)
@@ -751,7 +732,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         for r in g["roots"]:
             owners.setdefault((r["module"], r["name"]), []).append(gid)
     by_note = {n["id"]: n for n in m.notes}
-    m.files, m.summary, m.copied, seen_blocks = {}, {}, [], set()
+    m.files, m.summary, m.copied, seen_blocks, open_blocks = {}, {}, [], set(), set()
     for gid, g in groups.items():
         roots = [(r["module"], r["name"]) for r in g["roots"]]
         blocks = {}
@@ -776,39 +757,50 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                     sha = _sha(fh.read())
             root_rows.append({"module": mod, "name": name, "kind": kind, "file": rel, "lines": [first, last], "sha256": sha,
                               "shared_with": sorted(o for o in owners[(mod, name)] if o != gid)})
-        states = []
-        for r in roots:
+        claim = g["claim"]
+        claim_read = claim is not None and claim.get("basis", "read") == "read"
+        for row, r in zip(root_rows, roots):
             kinds = {x["kind"] for x in anchored.get(r, [])}
-            states.append("signed" if "reading" in kinds else "touched" if "argument" in kinds else "none")
-        for row, st in zip(root_rows, states):
-            row["state"] = st
-        read, touched = states.count("signed"), states.count("touched")
-        unread = sum(1 for r in roots if any(x["kind"] == "not_read" for x in anchored.get(r, [])))
+            row["statement_read"] = claim_read or "reading" in kinds
+            row["proof_read"] = "argument" in kinds
+        by = None
+        if len(roots) == 1:   # one root: who read the statement (the claim, else the first reading block of the root)
+            first = sorted((x for x in anchored.get(roots[0], []) if x["kind"] == "reading"), key=_block_key)
+            if claim_read:
+                by = {"source": "claim", "reader": claim["reader"], "date": claim["date"]}
+            elif first:
+                by = {"source": "block", "reader": first[0]["reader"], "date": first[0]["date"]}
+            elif claim is not None:
+                by = {"source": "census", "reader": claim["reader"], "date": claim["date"]}
+        open_here = [b["block"] for b in brecs if b["kind"] == "not_read"]
+        open_blocks.update(open_here)
+        roots_open = sum(1 for r in roots if any(x["kind"] == "not_read" for x in anchored.get(r, [])))
         ids = {n["id"] for n in m.notes if n["level"] != 0 and n["group"] == gid} | {b["note"] for b in brecs}
         notes = [_note_ref(by_note[i]) for i in sorted(ids)]
-        claim = g["claim"]
         if not roots:
-            errors.append(("COVERAGE-NONE", gid, "group has no root, so no coverage claim"))
-        word = coverage_word({"roots": len(roots), "read": read, "touched": touched, "not_read": unread}, table)
-        if word is None and roots:
-            errors.append(("COVERAGE-NONE", gid, "no entry of the coverage table fits this group"))
+            errors.append(("FACTS-NO-ROOT", gid, "group has no root, so no fact claim"))
         m.summary[gid] = {
             "id": gid, "level": g["level"], "order": g["order"], "parent": g["parent"],
             "claim": None if claim is None else {"text": claim["text"], "reader": claim["reader"], "date": claim["date"],
-                                                 "conditions": claim.get("conditions", []),
+                                                 "basis": claim.get("basis", "read"), "conditions": claim.get("conditions", []),
                                                  "premises": list(g["premises"])},
             "lean_name": g["roots"][0]["name"] if roots else None,
             "claim_label": strings["no_claim_label"] if claim is None else None,
-            "coverage": word, "counts": {"roots": len(roots), "roots_read": read, "roots_touched": touched,
-                                       "roots_not_read": unread},
-            "notes": notes, "roots_only": True, "unread": read == 0 and touched == 0}
+            "statement_read": bool(roots) and all(r["statement_read"] for r in root_rows),
+            "proof_read": bool(roots) and all(r["proof_read"] for r in root_rows),
+            "statement_by": by,
+            "unread": not any(r["statement_read"] or r["proof_read"] for r in root_rows),
+            "counts": {"roots": len(roots), "roots_statement_read": sum(1 for r in root_rows if r["statement_read"]),
+                       "roots_proof_read": sum(1 for r in root_rows if r["proof_read"]), "roots_open_items": roots_open,
+                       "open_items": len(open_here)},
+            "notes": notes, "roots_only": True}
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "roots": root_rows, "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
                                        for b in brecs if b["kind"] == "not_read"], "notes": notes}
     m.steps = [i for i in children.get("root", [])]
     m.header_notes = [_note_ref(n) for n in m.notes if n["level"] == 0]
     m.totals = {"blocks": sum(len(n["blocks"]) for n in m.notes), "groups": len(groups), "notes": len(m.notes),
-                "roots": len(owners)}
+                "open_items": len(open_blocks), "roots": len(owners)}
     return m
 
 
@@ -865,7 +857,7 @@ def _e(x):
     return html.escape(str(x), quote=True)
 
 
-def _render_page(m, s, route, dirty):
+def _render_page(m, s, facts, dirty):
     lab, kinds = s["labels"], s["labels"]["kinds"]
     files = m.files
     out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', f"<title>{_e(s['page_title'])}</title>",
@@ -873,10 +865,11 @@ def _render_page(m, s, route, dirty):
     out += [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
     if dirty:
         out.append(f'<p class="dirty">{_e(s["dirty_note"])}</p>')
-    out.append('<dl class="route">')
-    for c in route["counts"]:
-        out.append(f"<dt>{_e(c['word'])}</dt><dd>{_e(_fill(s['route_count'], N=c['steps'], M=route['steps']))}</dd>")
-    out += ["</dl>", f'<p class="mapped">{_e(s["mapped_line"])}</p>']
+    out += ['<ul class="facts">',
+            f"<li>{_e(_fill(s['steps_statement_line'], n=facts['statement_read'], m=facts['steps']))}</li>",
+            f"<li>{_e(_fill(s['steps_proof_line'], n=facts['proof_read'], m=facts['steps']))}</li>",
+            f"<li>{_e(_fill(s['steps_open_items_line'], n=m.totals['open_items']))}</li>", "</ul>",
+            f'<p class="mapped">{_e(s["mapped_line"])}</p>']
     if m.header_notes:
         out += ['<section class="whole">', f"<h2>{_e(lab['level0_notes'])}</h2>", "<ul>"]
         out += [f'<li><a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>' for n in m.header_notes]
@@ -907,19 +900,29 @@ def _render_page(m, s, route, dirty):
         else:
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
-        c = sm["counts"]
-        o.append(f'<p class="coverage"><strong>{_e(sm["coverage"])}</strong> '
-                 f'{_e(_fill(s["roots_read"], N=c["roots_read"], M=c["roots"]))} '
-                 f'{_e(_fill(s["roots_not_read"], N=c["roots_not_read"], M=c["roots"]))}'
-                 + (f' {_e(s["roots_only_note"])}' if sm["roots_only"] else "") + "</p>")
+        c, by = sm["counts"], sm["statement_by"]
+        if c["roots"] > 1:   # several roots (a null claim): counts with their denominators
+            st = _fill(s["statement_count_line"], n=c["roots_statement_read"], m=c["roots"])
+            pf = _fill(s["proof_count_line"], n=c["roots_proof_read"], m=c["roots"])
+        else:
+            if sm["statement_read"]:
+                st = _fill(s["statement_read_line"], reader=by["reader"], date=by["date"])
+            elif by and by["source"] == "census":
+                st = _fill(s["statement_census_line"], reader=by["reader"], date=by["date"])
+            else:
+                st = s["statement_not_read_line"]
+            pf = s["proof_read_line"] if sm["proof_read"] else s["proof_not_read_line"]
+        o.append(f'<p class="status statement">{_e(st)}</p>')
+        o.append(f'<p class="status proof">{_e(pf)}</p>')
+        o.append(f'<p class="open-items">{_e(_fill(s["open_items_line"], n=c["open_items"]))}</p>')
+        if sm["roots_only"]:
+            o.append(f'<p class="roots-only">{_e(s["roots_only_note"])}</p>')
         args = [b for b in fl["blocks"] if b["kind"] == "argument"]
         if args:
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
             sent = f" {_e(b['first_sentence'])}" if b.get("first_sentence") else ""
             o.append(f'<p class="argument">{frames(b)}{sent} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
-        else:
-            o.append(f'<p class="no-argument">{_e(s["no_argument"])}</p>')
         corr = [b for b in fl["blocks"] if b["kind"] == "correction"]
         if corr:
             o.append('<ul class="corrections">')
@@ -1020,27 +1023,29 @@ def _refuse(lines, code=1):
 
 
 def _assemble(m, s, commits):
-    """(errors, the coverage check line, level0, level1, the group files, the route counts)."""
+    """(errors, the facts check line, level0, level1, the group files, the facts over the steps)."""
     errors = []
-    table = s["coverage"]
     steps = [m.summary[i] for i in m.steps]
-    nums = {k: 0 for k in COVERAGE_KEYS}
-    route_counts = []
-    for e in table:
-        key = next(iter(e["when"]))
-        n = sum(1 for x in steps if x["coverage"] == e["word"])
-        nums[key] += n
-        route_counts.append({"steps": n, "when": key, "word": e["word"]})
-    total = nums["read_all"] + nums["read_some_or_touched"] + nums["read_none"]
-    line = f"read {nums['read_all']} + partly {nums['read_some_or_touched']} + not read {nums['read_none']} = {total}"
-    if total != len(steps):
-        errors.append(("COVERAGE-SUM", line + ", but there are", f"{len(steps)} steps"))
-    route = {"counts": route_counts, "steps": len(steps)}
-    level0 = {"commits": commits, "header_notes": m.header_notes, "level": 0, "route": route, "steps": steps,
+    pairs = {}
+    for fact, code in (("statement_read", "SUM-STATEMENT"), ("proof_read", "SUM-PROOF")):
+        a, b = fact_pairs(_fact_flags(steps, fact))
+        pairs[fact] = (a, b)
+        if a + b != len(steps):
+            errors.append((code, "steps:", f"read {a} + not read {b} = {a + b}, but there are {len(steps)} steps"))
+    for gid in sorted(m.groups):
+        rows = m.files[gid]["roots"]
+        for fact, code in (("statement_read", "SUM-STATEMENT"), ("proof_read", "SUM-PROOF")):
+            a, b = fact_pairs(_fact_flags(rows, fact))
+            if a + b != len(rows):
+                errors.append((code, f"group {gid} roots:", f"read {a} + not read {b} = {a + b}, but there are {len(rows)} roots"))
+    (sa, sb), (pa, pb) = pairs["statement_read"], pairs["proof_read"]
+    line = f"statements read {sa} + not read {sb} = {sa + sb} steps; proofs read {pa} + not read {pb} = {pa + pb} steps"
+    facts = {"steps": len(steps), "statement_read": sa, "statement_not_read": sb, "proof_read": pa, "proof_not_read": pb}
+    level0 = {"commits": commits, "header_notes": m.header_notes, "level": 0, "facts": facts, "steps": steps,
               "totals": m.totals}
     level1 = {"commits": commits, "level": 1, "steps": [_nest(m, i) for i in m.steps]}
     groups = {gid: dict(m.files[gid], commits=commits) for gid in m.groups}
-    return errors, line + " steps", level0, level1, groups, route
+    return errors, line, level0, level1, groups, facts
 
 
 def _output_files(level0, level1, groups, page, commits, m, release_id, archive):
@@ -1135,7 +1140,12 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         print("REFUSED: notes_meta found errors; nothing written", file=sys.stderr)
         return rc
     print(next(ln for ln in o.getvalue().splitlines() if ln.startswith("outline: ")))
+    print(next(ln for ln in o.getvalue().splitlines() if ln.startswith("claim basis: ")))
     odata = _read_json(outline, "outline")
+    bases = [g["claim"].get("basis") for g in odata["groups"] if isinstance(g.get("claim"), dict)]
+    n_read, n_census = bases.count("read"), bases.count("census")
+    n_without = len(bases) - n_read - n_census
+    print(f"claim basis: {n_read} read, {n_census} census, {n_without} without" + (" (treated as read)" if n_without else ""))
     errors = []
     ids = [g["id"] for g in odata["groups"]]
     low = {}
@@ -1163,11 +1173,11 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
                 if b["kind"] in READER_KINDS and not (isinstance(b.get(what), str) and b[what]):
                     errors.append(("BLOCK-NO-READER" if what == "reader" else "BLOCK-NO-DATE", b["block"],
                                    f"{b['kind']} block has no {what}"))
-    e2, check_line, level0, level1, groups, route = _assemble(m, sj, commits)
+    e2, check_line, level0, level1, groups, facts = _assemble(m, sj, commits)
     errors += e2
     if errors:
         return _refuse(errors)
-    page = _render_page(m, sj, route, dirty)
+    page = _render_page(m, sj, facts, dirty)
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
@@ -1177,7 +1187,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         errors.append(("PAGE-NUMBER", pb, "is on the page and in no JSON file or strings file"))
     if errors:
         return _refuse(errors)
-    print("coverage check: " + check_line)
+    print("facts check: " + check_line)
     if source_check is not None:
         if not sg.walk_lean(source_check):
             print("CHECKED NOTHING: no .lean file under SRC_ROOT")
@@ -1358,7 +1368,7 @@ def _strings():
 def _marked(v, path=""):
     """The strings fixture with every string value replaced by a distinct marker naming its key."""
     if isinstance(v, str):
-        return "MARK-" + path
+        return ("https://" if path.endswith(".href") and path.startswith("reactions") else "") + "MARK-" + path
     if isinstance(v, list):
         return [_marked(x, f"{path}.{i}") for i, x in enumerate(v)]
     if isinstance(v, dict):
@@ -2076,10 +2086,10 @@ def _selftest_cases():
         return _eq((b.rc, "BUILD-ERROR PAGE-STATIC fetch( found in group g1 field blocks[0].file" in b.out, b.existed), (1, True, False))
 
     @case("P7d", "a `#` link with no target on the page is refused (PAGE-LINK naming it), exit 1, nothing written: here a reaction "
-                 "href `#nowhere` from the strings file")
+                 "note_href `#nowhere` from the strings file (a reaction href must be https)")
     def _():
         st = _strings()
-        st["reactions"][0]["href"] = "#nowhere"
+        st["note_href"] = "#nowhere"
         b = _build(strings=st)
         return _eq((b.rc, "BUILD-ERROR PAGE-LINK #nowhere " in b.out, b.existed), (1, True, False))
 
