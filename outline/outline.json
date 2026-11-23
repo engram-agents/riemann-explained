@@ -338,7 +338,7 @@
   {
    "claim": {
     "conditions": [
-     "The theorem is generic in the family type and in the two family conditions (core, Tied); on Main's route they are FamP and ChainTied (ZeroFreeAllOfTopG.lean 28). Level.ofSub, EFamC and the family fields are not opened, so the level and the two conditions keep the library's names."
+     "The theorem is generic in a family type (Fam), in a map from a family to its core data (core) and in one family condition (Tied); on Main's route they are FamP, the map Fm.toFamCore and ChainTied (ZeroFreeAllOfTopG.lean 28). Both named conditions are defined through ChebyshevInequalityOnFamilyWindows (TopWin 23-33). Level.ofSub, EFamC and the family fields are not opened, so the level and the two conditions keep the library's names."
     ],
     "conventions_checked": [
      "d",
@@ -451,6 +451,9 @@
   },
   {
    "claim": {
+    "conditions": [
+     "EAtH and CoreAtH are the library's names for two conditions on a host at x; they are not opened here. eD, eL, K, cHH, eK and C are real constants with no condition on them; eD, eL, K, cHH and eK are arguments of CoreAtH, C of EAtH, and eD and eL also set the exponent."
+    ],
     "conventions_checked": [
      "d"
     ],
@@ -530,7 +533,9 @@
    "level": 4,
    "order": 2,
    "parent": "zeros-enter",
-   "premises": [],
+   "premises": [
+    "window-bound"
+   ],
    "roots": [
     {
      "module": "Development.AutomorphicArithmetic.PrimitiveCosets.WindowInequalityOfArtinInputs",
@@ -807,7 +812,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "Input 3: a structure with 46 fields, 16 of them closure conditions on family classes"
+    "text": "Input 3: the structure the library names HypsAlt; a regex count over its field lines finds 46, of which 16 contain the name Closed"
    },
    "id": "input-hypsalt",
    "level": 2,
@@ -870,7 +875,8 @@
   {
    "claim": {
     "conditions": [
-     "The bound is only as strong as the families that exist; their existence is ChebyshevInequalityAtWindowScale, supplied on Main's route by TopG and the hosts. FamP, EFamC and ChainTied are not opened."
+     "The bound is only as strong as the families that exist; their existence is ChebyshevInequalityAtWindowScale, supplied on Main's route by TopG and the hosts. FamP, EFamC and ChainTied are not opened.",
+     "'ChainTied on its windows, with constants eD and eL' is the library's ChebyshevInequalityOnFamilyWindows (TopWin 23-24): for some further constants K, cHH, eK and CL, ChainTied holds at every large x in the family's windows. ChebyshevInequalityOnWindows, which this theorem concludes, is defined through it (TopWin 26-28)."
     ],
     "conventions_checked": [
      "d",
@@ -941,6 +947,14 @@
       ],
       "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
       "name": "Formalism.HC.An.gChi"
+     },
+     {
+      "lines": [
+       30,
+       32
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.TopWin",
+      "name": "Formalism.HC.ChebyshevInequalityAtWindowScale"
      }
     ],
     "mathlib_read": [
