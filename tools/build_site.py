@@ -193,7 +193,10 @@ of them: statement_read_line, statement_census_line, statement_not_read_line, pr
 statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line;
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
 missing is read as `read` until the checker requires it (the run line says how many). The page shows the claim's reader and
-date in the statement line; for a null claim with a reading block the first reading block in note and block order. A claimed
+date in the statement line; for a null claim with a reading block the first reading block in note and block order. The proof line names the reader and date of the first argument block of the root, by note id and then block number (the same
+rule as the statement reader, not by date). Placeholders are checked in every value of the strings file at any depth from the
+declared sets: a key that is not in the table declares none, so a new key is covered by default, and an `{name}` outside a value
+that declares it, or a brace in a value that declares none, refuses the build. A claimed
 group has one root, so the count lines appear only for null-claim groups. The sum assertions of F4 guard a MISSING flag, not a
 WRONG one. A not_read block in a level-0 note is anchored to no group: it is not counted in totals.open_items and is shown on no card. NOTE-ID-DUPLICATE belongs to the checker of the
 notes; the builder has no rule of its own for it (the checker refuses first). WORD-NOTE reads the

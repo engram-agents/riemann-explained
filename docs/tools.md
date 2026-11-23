@@ -105,7 +105,11 @@ design, the checker refuses such a group first). The build asserts read + not re
 MISSING flag, not a WRONG one. For a null claim or a census claim the statement reader is the first reading block of the root by
 note id and then block number, not by date.
 A group whose claim is null shows its root's Lean name and the `no_claim_label` in the heading, then the status lines.
-Open questions are the distinct open `not_read` blocks, each counted once. The build also stops for: the words
+Open questions are the distinct open `not_read` blocks, each counted once. The proof line names the reader and date of the first
+argument block of the root, by note id and then block number (the rule of the statement reader, not by date). Every value of the
+strings file, at any depth, may hold only the `{placeholders}` its key declares (`proof_read_line` declares `{reader}` and `{date}`,
+each optional); an undeclared one is refused naming the key and the token, a key that declares none may hold no brace, and a new key
+is covered by default. The build also stops for: the words
 verified, explained, understood (or any word of `forbidden_words`), a percent sign or `of the proof` in the strings file
 (the builder's own sentences never contain them; its href templates may hold `%`; the words `Read by us`, `Partly read`
 and `Not read yet` are refused too, the scale is gone; that match is exact-case and single-space, so the lowercase phrase
