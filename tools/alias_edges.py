@@ -72,7 +72,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scan_graph import mask_comments, provenance, read_text, walk_lean  # noqa: E402
 
 ALIASES_COLS = ["public_name", "target", "file", "line", "target_file", "target_line", "target_matches"]
-ODD_COLS = ["public_name", "x1", "x2", "x3", "file", "line"]
+ODD_COLS = ["public_name", "x1", "x2", "x3", "file", "line", "reason", "tail"]
 CAND_COLS = ["public_name", "target", "candidate_file", "candidate_line"]
 REFS_COLS = ["file", "public_name", "occurrences", "in_comment_only"]
 CALLERS_COLS = ["name", "kind", "file", "line", "in_comment"]
@@ -389,18 +389,19 @@ def _selftest_cases():
         _rc, _o, _e, tabs, _n = _go({"W.lean": t})
         return _eq(_pairs(tabs, "aliases", "public_name", "target", "line"), [("v", "L.y", "2"), ("w", "L.x", "1")])
 
-    @case("A1d", "a body with anything after the wrapper, or another tactic, is neither an alias nor odd")
+    @case("A1d", "a body that is not the wrapper shape at all (a plain `exact`) is neither an alias nor odd; a shape then `simp` is odd, not an alias")
     def _():
         t = ("theorem t : P := by\n  first | exact @L.x | exact L.x | (intros; apply L.x <;> assumption)\n  simp\n"
              "theorem u : P := by\n  exact L.x\n" + _W("good", "L.z"))
         _rc, _o, _e, tabs, _n = _go({"T.lean": t})
-        return _eq((_pairs(tabs, "aliases", "public_name"), tabs["aliases_odd"][2]), ([("good",)], []))
+        return _eq((_pairs(tabs, "aliases", "public_name"), _pairs(tabs, "aliases_odd", "public_name", "reason", "tail")),
+                   ([("good",)], [("t", "trailing_text", "simp")]))
 
     @case("A2a", "the shape with unequal X goes to aliases_odd.tsv with its three X, and not to aliases.tsv")
     def _():
         _rc, _o, _e, tabs, _n = _go({"Odd.lean": _W("odd", "L.a", "L.b", "L.a")})
         return _eq((tabs["aliases"][2], tabs["aliases_odd"][2]),
-                   ([], [dict(public_name="odd", x1="L.a", x2="L.b", x3="L.a", file="Odd.lean", line="1")]))
+                   ([], [dict(public_name="odd", x1="L.a", x2="L.b", x3="L.a", file="Odd.lean", line="1", reason="unequal_x", tail="")]))
 
     def decl(ns, name="main"):
         return f"namespace {ns}\ntheorem {name} : P := sorry\nend {ns}\n"
@@ -595,6 +596,39 @@ def _selftest_cases():
     def _():
         t = "namespace A.B\nsection\nend\nend\ntheorem foo : P := sorry\nend A.B\ntheorem bar : P := sorry\n"
         return _eq(scope_map(t, ["A.B.foo", "foo", "bar", "A.B.bar"]), {"A.B.foo": "1", "foo": "0", "bar": "1", "A.B.bar": "0"})
+
+    CHAIN2 = "  | exact @L.y | exact L.y | (intros; apply L.y <;> assumption)\n"
+
+    @case("G3a", "the shape followed by a second chain: an odd row (reason trailing_text, first target as x1, tail), not in aliases.tsv")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"Two.lean": _W("two", "L.x") + CHAIN2})
+        return _eq((tabs["aliases"][2], tabs["aliases_odd"][2]),
+                   ([], [dict(public_name="two", x1="L.x", x2="L.x", x3="L.x", file="Two.lean", line="1",
+                              reason="trailing_text", tail="| exact @L.y | exact L.y | (intros; apply L.y <;> assumption)")]))
+
+    @case("G3b", "unequal X is reason unequal_x (the tail stays empty when nothing follows)")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"Odd.lean": _W("odd", "L.a", "L.b", "L.a")})
+        return _eq(_pairs(tabs, "aliases_odd", "public_name", "reason", "tail"), [("odd", "unequal_x", "")])
+
+    @case("G3c", "a clean wrapper followed only by blank lines and the next declaration is still an alias, not odd")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"C.lean": _W("clean", "L.x") + "\n\n" + "theorem next : P := sorry\n"})
+        return _eq((_pairs(tabs, "aliases", "public_name"), tabs["aliases_odd"][2]), ([("clean",)], []))
+
+    @case("G3d", "the tail is the trailing text cut to 80 characters; a trailing comment alone is not trailing text")
+    def _():
+        long_tail = "  simp [" + ", ".join(f"h{i}" for i in range(60)) + "]\n"
+        _rc, _o, _e, tabs, _n = _go({"L.lean": _W("lng", "L.x") + long_tail, "K.lean": _W("cmt", "L.x") + "  -- note\n"})
+        want = ("simp [" + ", ".join(f"h{i}" for i in range(60)) + "]")[:80]
+        return _eq((_pairs(tabs, "aliases_odd", "public_name", "reason", "tail"), _pairs(tabs, "aliases", "public_name")),
+                   ([("lng", "trailing_text", want)], [("cmt",)]))
+
+    @case("G3e", "the summary line prints `odd-shape N (unequal_x A, trailing_text B)`")
+    def _():
+        _rc, out, _e, _t, _n = _go({"A.lean": _W("w1", "L.a", "L.b", "L.a"), "B.lean": _W("w2", "L.x") + CHAIN2,
+                                    "C.lean": _W("w3", "L.x") + CHAIN2})
+        return _eq("odd-shape 3 (unequal_x 1, trailing_text 2)" in out, True)
 
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
