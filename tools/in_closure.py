@@ -13,6 +13,9 @@ token that is not a known module is not a module.
 
 CONTRACT
  C1 At least one --control is REQUIRED; without one the tool says why and exits 2.
+ C1b A control equal to START is trivially inside the closure and proves nothing: the tool prints
+    `CONTROL EQUALS START: <name> proves nothing` and exits 2 before any verdict, even when another control
+    is a real one (the instrument needs controls that are not START).
  C2 If any control is not in the closure (or is not a known module) it prints `BROKEN: <control name>` for
     each, prints NO site verdicts, and exits 3.
  C3 START_MODULE and every control are matched as FULL module names (START not a known module: exit 2). A site
@@ -79,6 +82,11 @@ def parse_args(a):
     if not controls:
         print("no --control given: at least one module known by hand to be inside the closure is required, "
               "or a broken instrument cannot be told from a true OUTSIDE", file=sys.stderr)
+        return 2
+    same = [c for c in controls if c == pos[1]]
+    if same:
+        for c in dict.fromkeys(same):
+            print(f"CONTROL EQUALS START: {c} proves nothing", file=sys.stderr)
         return 2
     return pos[0], pos[1], pos[2], controls
 
