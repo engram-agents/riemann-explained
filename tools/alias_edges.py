@@ -717,6 +717,49 @@ def _selftest_cases():
         return _eq((tabs["aliases"][2], _pairs(tabs, "aliases_odd", "public_name", "x1", "reason", "tail")),
                    ([], [("w", "L.y", "trailing_text", "simp")]))
 
+    BOUNDARY_LINES = [
+        ("open", "open Foo"), ("attribute", "attribute [simp] foo"), ("variable", "variable (x : Nat)"), ("universe", "universe u"),
+        ("noncomputable", "noncomputable def q : P := sorry"), ("namespace", "namespace Foo"), ("section", "section"), ("end", "end"),
+        ("def", "def q : P := sorry"), ("theorem", "theorem q : P := sorry"), ("lemma", "lemma q : P := sorry"),
+        ("abbrev", "abbrev q := 1"), ("structure", "structure Q where"), ("class", "class Q where"),
+        ("inductive", "inductive Q where"), ("instance", "instance : Foo := sorry"), ("private", "private def q : P := sorry"),
+        ("protected", "protected def q : P := sorry"), ("nonrec", "nonrec def q := 1"), ("unsafe", "unsafe def q := 1"),
+        ("partial", "partial def q := 1"), ("mutual", "mutual"), ("set_option", "set_option maxHeartbeats 0"),
+        ("@[", "@[simp] theorem q : P := sorry"), ("/-", "/- note -/"), ("example", "example : P := sorry"),
+        ("axiom", "axiom q : P"), ("opaque", "opaque q : Nat"), ("macro", 'macro "x" : term => `(1)'),
+        ("syntax", 'syntax "x" : term'), ("notation", 'notation "x" => 1'), ("local", 'local notation "x" => 1'),
+        ("scoped", 'scoped notation "x" => 1'), ("export", "export Foo (bar)"), ("deriving", "deriving instance Foo for Bar"),
+        ("initialize", "initialize q : Nat"), ("#check", "#check foo"), ("#print", "#print foo"), ("#eval", "#eval foo"),
+    ]
+
+    @case("A1e", "a wrapper directly followed by a column-0 line that starts with any extent-boundary keyword stays an alias, not odd")
+    def _():
+        for kw, line in BOUNDARY_LINES:
+            _rc, _o, _e, tabs, _n = _go({"W.lean": _W("w", "L.x") + line + "\n"})
+            got = (_pairs(tabs, "aliases", "public_name"), tabs["aliases_odd"][2])
+            if got != ([("w",)], []):
+                return False, f"first keyword that breaks: {kw!r} (line {line!r}); got aliases/odd {got!r}"
+        return True, ""
+
+    @case("A1f", "a wrapper written with `lemma` is an alias")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"W.lean": _W("lw", "L.x").replace("theorem", "lemma", 1)})
+        return _eq((_pairs(tabs, "aliases", "public_name", "target"), tabs["aliases_odd"][2]), ([("lw", "L.x")], []))
+
+    @case("A3j", "a target declared with a universe list, `theorem foo.{u} : P` in `namespace A`, resolves for `A.foo`")
+    def _():
+        t = "namespace A\ntheorem foo.{u} : P := sorry\nend A\n"
+        _rc, _o, _e, tabs, _n = _go({"U.lean": t, "Pub/W.lean": _W("viaU", "A.foo")})
+        r = tabs["aliases"][2][0]
+        return _eq((r["target_file"], r["target_line"], r["target_matches"]), ("U.lean", "2", "1"))
+
+    @case("A4d", "the wrapper's own file writing the FULL token in code is skipped for refs.tsv; another file with the token gets its row")
+    def _():
+        own = "theorem GlobalTheory.T.alpha : P := by\n  first | exact @Lib.a | exact Lib.a | (intros; apply Lib.a <;> assumption)\n"
+        _rc, _o, _e, tabs, _n = _go({"Pub/Alpha.lean": own, "Use/C.lean": "def x := GlobalTheory.T.alpha\n"})
+        return _eq(_pairs(tabs, "refs", "file", "public_name", "occurrences", "in_comment_only"),
+                   [("Use/C.lean", "GlobalTheory.T.alpha", "1", "0")])
+
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
         _rc, _o, _e, _t, n = _go({**PUB_ALPHA, "Use/E.lean": "theorem z : P := Lib.alpha_core\n"}, count_reads=True)
