@@ -2677,6 +2677,36 @@ def _selftest_cases():
                     '<h3 class="claim">`a`` tail</h3>' in b.page),
                    (0, "``a` b", "x``a`", "`a`` tail", [0, 0, 0], ["ok"], True, True, True))
 
+    @case("CODE4", "a span does not cross a carriage return either: the claim `a `Foo.bar` + CR + `baz` b` is literal text on the page "
+                   "(no <code>), as it is for the checker (it lists Foo.bar); the JSON keeps the text as written")
+    def _():
+        o = _code_outline("a `Foo.bar\rbaz` b", ["a `x\r\ny` b"], "Claim four with é", "Claim three")
+        b = _build(outline=o)
+        c = _card(b, "g1")
+        return _eq((b.rc, c.find("h3", "claim")[0].text(), len(c.find("h3", "claim")[0].find("code")),
+                    [x.text() for x in c.find("ul", "conditions")[0].find("li")], len(c.find("ul", "conditions")[0].find("code")),
+                    b.js("level0.json")["steps"][0]["claim"]["text"]),
+                   (0, "a `Foo.bar baz` b", 0, ["a `x y` b"], 0, "a `Foo.bar\rbaz` b"))
+
+    @case("AGR1", "the page and the checker agree on which backtick spans are code: for each of ten texts the page renders <code>Foo.bar</code> "
+                  "exactly when notes_meta does not list Foo.bar")
+    def _():
+        texts = ("`Foo.bar`", "a `Foo.bar` b", "``Foo.bar``", "``Foo.bar` x", "x `Foo.bar`` y", "an unpaired `Foo.bar here",
+                 "a `Foo.bar\nbaz` b", "a `Foo.bar\rbaz` b", "`a` and Foo.bar", "`x Foo.bar y`")
+        got = [(t, "<code>Foo.bar</code>" in _rich(t), "Foo.bar" in nm._library_words(t)) for t in texts]
+        return _eq(got, [("`Foo.bar`", True, False), ("a `Foo.bar` b", True, False), ("``Foo.bar``", False, True),
+                         ("``Foo.bar` x", False, True), ("x `Foo.bar`` y", False, True), ("an unpaired `Foo.bar here", False, True),
+                         ("a `Foo.bar\nbaz` b", False, True), ("a `Foo.bar\rbaz` b", False, True), ("`a` and Foo.bar", False, True),
+                         ("`x Foo.bar y`", True, False)])
+
+    @case("PHR4", "the nine keys that must hold their placeholders declare exactly the placeholders they must hold: REQUIRED_PLACEHOLDERS "
+                  "and PLACEHOLDERS agree on the same nine keys")
+    def _():
+        keys = ["statement_read_line", "statement_census_line", "proof_read_line", "statement_count_line", "proof_count_line",
+                "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
+        return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys]),
+                   (sorted(keys), [True] * 9))
+
     _REQ = (("statement_read_line", ("reader", "date")), ("statement_census_line", ("reader", "date")),
             ("proof_read_line", ("reader", "date")), ("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),

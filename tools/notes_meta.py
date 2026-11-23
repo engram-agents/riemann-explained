@@ -2242,6 +2242,33 @@ def _():
     clean(go(outline=OL(G("g1"))))
 
 
+@case("CLW6", "doubled backticks are literal text, so a token inside them is outside a span and IS listed; so is a token next to a "
+              "backtick pair that a neighbour backtick spoils (a backtick, then a span's opening backtick; a closing backtick followed by "
+              "another); control: a real span beside them does not list")
+def _():
+    fe(_clw("A ``Foo.bar`` here."), [_clw_line("claim text", "Foo.bar")], 0)
+    fe(_clw("A ``getValue`` here."), [_clw_line("claim text", "getValue")], 0)
+    fe(_clw("Opens ``Foo.bar` x."), [_clw_line("claim text", "Foo.bar")], 0)
+    fe(_clw("Closes x `Foo.bar`` y."), [_clw_line("claim text", "Foo.bar")], 0)
+    clean(_clw("A `Foo.bar` and `getValue` here."))
+
+
+@case("CLW7", "a span does not cross a line break of any kind: a token in a pair of backticks split by a line feed, a carriage return "
+              "or both is outside a span and is listed")
+def _():
+    for br in ("\n", "\r", "\r\n"):
+        fe(_clw("a `Foo.bar" + br + "baz` b"), [_clw_line("claim text", "Foo.bar")], 0)
+
+
+@case("CLW8", "what the rule lists beside a name: `e.g.` is listed as 'e.g', McDonald is listed, and a name with a non-ASCII letter is "
+              "listed as a fragment (naïveThing as 'veThing', GröbnerBasis as 'bnerBasis')")
+def _():
+    fe(_clw("Such as e.g. this."), [_clw_line("claim text", "e.g")], 0)
+    fe(_clw("The McDonald bound."), [_clw_line("claim text", "McDonald")], 0)
+    fe(_clw("The naïveThing bound."), [_clw_line("claim text", "veThing")], 0)
+    fe(_clw("The GröbnerBasis bound."), [_clw_line("claim text", "bnerBasis")], 0)
+
+
 @case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "
                "in line order")
 def _():
