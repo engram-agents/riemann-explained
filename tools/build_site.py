@@ -103,6 +103,11 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line. A group with several
      roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is always shown.
      Cases C1 C2 B7c.
+  Z1 A group with no root is never counted as read (the model, called directly, since the checker refuses it first; the guard is
+     redundant by design). Case ZERO1. A step with arguments on some roots of several does not count for the proof. Case PRO1.
+  S6 The statement reader of a root with several reading blocks is the first by note id, then block number, not by date.
+     Case RDR1. A PAGE-STATIC finding names the strings key that holds the token (case ORG1); the retired words are an
+     exact-case match and the refusal says so (case RET1).
   OI Open items are DISTINCT open not_read blocks, each once: the card's n counts the blocks anchored to its roots (a shared
      block counts on both cards), totals.open_items counts each once; counts.roots_open_items is the number of roots with at
      least one. Cases OI1 OI2 OI3.
@@ -184,7 +189,8 @@ statement_count_line, proof_count_line, open_items_line, steps_statement_line, s
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
 missing is read as `read` until the checker requires it (the run line says how many). The page shows the claim's reader and
 date in the statement line; for a null claim with a reading block the first reading block in note and block order. A claimed
-group has one root, so the count lines appear only for null-claim groups. NOTE-ID-DUPLICATE belongs to the checker of the
+group has one root, so the count lines appear only for null-claim groups. The sum assertions of F4 guard a MISSING flag, not a
+WRONG one. A not_read block in a level-0 note is anchored to no group: it is not counted in totals.open_items and is shown on no card. NOTE-ID-DUPLICATE belongs to the checker of the
 notes; the builder has no rule of its own for it (the checker refuses first). WORD-NOTE reads the
 claim, the conditions, the note titles and the text of argument and interpretation blocks, not the strings file's
 hrefs; it lists, it does not judge. The block of an argument is framed with its lines and file name together; a block with
@@ -591,7 +597,8 @@ def _strings_problems(s):
         else:
             old = next((x for x in RETIRED_WORDS if re.search(r"(?<![A-Za-z])" + re.escape(x) + r"(?![A-Za-z])", v)), None)
             if old:
-                bad(path, f"holds {old!r}, a word of the coverage scale that the page no longer has", "STRINGS-FORBIDDEN")
+                bad(path, f"holds {old!r}, a word of the retired coverage scale (exact-case match; the lowercase phrase "
+                          "`not read yet` is allowed inside status wording)", "STRINGS-FORBIDDEN")
             elif "%" in v or re.search(r"of\s+the\s+proof", v, re.I):
                 bad(path, "holds a percent sign or `of the proof`, which the page never says in its own sentences",
                     "STRINGS-FORBIDDEN")
@@ -997,20 +1004,32 @@ def _json_strings(v, path=""):
             yield from _json_strings(x, f"{path}.{k}" if path else k)
 
 
+_URL_START = re.compile(r"\s*(?:https?:)?//", re.I)
+
+
 def _origin(token, sj, level0, level1, groups):
-    """Where a token that PAGE-STATIC found came from: a strings key, a group and field, a level file; else the two files."""
-    needles = {"src=http": ("http://", "https://", "//"), "href=http": ("http://", "https://", "//"), "url(": ("url(",)}
-    needles = needles.get(token, (token,))
-    for path, v in _walk_strings(sj, ""):
-        if any(n in v for n in needles):
+    """Where a token that PAGE-STATIC found came from: the strings key (or group and field, or level file) that holds the
+    offending token. For a link or source finding (`href=http`, `src=http`) that is a value that starts with an address, a
+    reaction template only when no other value does (a reaction anchor may hold one); else the two files."""
+    link = token in ("src=http", "href=http")
+    needles = {"url(": ("url(",)}.get(token, (token,))
+
+    def hit(v):
+        return bool(_URL_START.match(v)) if link else any(n in v for n in needles)
+
+    strings = list(_walk_strings(sj, ""))
+    if link:   # the reaction templates are the legal holders of an address: look at the other values first
+        strings.sort(key=lambda pv: bool(re.fullmatch(r"reactions\[\d+\]\.href", pv[0])))
+    for path, v in strings:
+        if hit(v):
             return f"strings key {path}"
     for gid in sorted(groups):
         for path, v in _json_strings({k: x for k, x in groups[gid].items() if k != "commits"}):
-            if any(n in v for n in needles):
+            if hit(v):
                 return f"group {gid} field {path}"
     for name, obj in (("level0", level0), ("level1", level1)):
         for path, v in _json_strings({k: x for k, x in obj.items() if k != "commits"}):
-            if any(n in v for n in needles):
+            if hit(v):
                 return f"{name} field {path}"
     return "index.html or data.js"
 
