@@ -51,18 +51,134 @@ HEADER = [
 ]
 
 
-# ---------------------------------------------------------------- the tool (STUB)
+# ---------------------------------------------------------------- the tool
 
 def parse_args(a):
-    return None
+    """(edges, start, sites, controls) or an int exit code (2) after a message on stderr."""
+    pos, controls, i = [], [], 1
+    while i < len(a):
+        x = a[i]
+        if x == "--control":
+            if i + 1 >= len(a):
+                print("--control needs a module name", file=sys.stderr)
+                return 2
+            controls.append(a[i + 1])
+            i += 2
+            continue
+        if x.startswith("--control="):
+            controls.append(x[len("--control="):])
+        elif x.startswith("--"):
+            print(f"unknown option {x}", file=sys.stderr)
+            return 2
+        else:
+            pos.append(x)
+        i += 1
+    if len(pos) != 3:
+        print(__doc__.split("usage:")[1].strip(), file=sys.stderr)
+        return 2
+    if not controls:
+        print("no --control given: at least one module known by hand to be inside the closure is required, "
+              "or a broken instrument cannot be told from a true OUTSIDE", file=sys.stderr)
+        return 2
+    return pos[0], pos[1], pos[2], controls
 
 
 def load_edges(path):
-    return {}, set()
+    """(importer -> [imported], set of known modules). Raises ValueError with a message on a malformed file."""
+    imp, known, header = collections.defaultdict(list), set(), False
+    with open(path, encoding="utf-8") as f:
+        for n, line in enumerate(f, 1):
+            line = line.rstrip("\n")
+            if line.startswith("#"):
+                continue
+            if not header:
+                if line != "importer\timported":
+                    raise ValueError(f"{path}:{n}: expected the column row `importer<TAB>imported`")
+                header = True
+                continue
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) != 2 or not parts[0] or not parts[1]:
+                raise ValueError(f"{path}:{n}: an edge row must be two tab-separated module names")
+            imp[parts[0]].append(parts[1])
+            known.update(parts)
+    return imp, known
+
+
+def _normalise(token):
+    t = token[:-5] if token.endswith(".lean") else token
+    return t.replace("/", ".")
 
 
 def main_run(edges_path, start, sites_path, controls):
-    return 0
+    try:
+        imp, known = load_edges(edges_path)
+        with open(sites_path, encoding="utf-8") as f:
+            site_lines = f.read().split("\n")
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        print(f"cannot read input: {e}", file=sys.stderr)
+        return 2
+    if start not in known:
+        print(f"START_MODULE {start} is not a known module (full module name expected)", file=sys.stderr)
+        return 2
+    par, queue = {start: None}, collections.deque([start])
+    while queue:
+        x = queue.popleft()
+        for y in imp.get(x, ()):
+            if y not in par:
+                par[y] = x
+                queue.append(y)
+    bad = [c for c in controls if c not in par]
+    if bad:
+        for c in bad:
+            print(f"BROKEN: {c}")
+        return 3
+    by_last = collections.defaultdict(list)
+    for m in known:
+        by_last[m.split(".")[-1]].append(m)
+    for h in HEADER:
+        print(h)
+    print(f"closure of {start}: {len(par)} modules")
+    print(f"controls inside: {len(controls)} of {len(controls)}")
+    seen, n_in, n_out, n_amb, n_nom = set(), 0, 0, 0, 0
+    for line in site_lines:
+        if not line.strip():
+            continue
+        token = line.split(":", 1)[0].strip()
+        t = _normalise(token)
+        if t in seen:
+            continue
+        seen.add(t)
+        if t in known:
+            cand = [t]
+        elif "." not in t:
+            cand = sorted(by_last.get(t, []))
+        else:
+            cand = []
+        if not cand:
+            print(f"NOT A MODULE {token}")
+            n_nom += 1
+        elif len(cand) > 1:
+            print(f"AMBIGUOUS {token}")
+            for c in cand:
+                print(f"  {c}")
+            n_amb += 1
+        elif cand[0] in par:
+            path, x = [], cand[0]
+            while x is not None:
+                path.append(x)
+                x = par[x]
+            print(f"INSIDE {cand[0]}   path: {' <- '.join(path)}")
+            n_in += 1
+        else:
+            print(f"OUTSIDE {cand[0]}")
+            n_out += 1
+    if not seen:
+        print("CHECKED NOTHING: no site in SITES_FILE")
+        return 1
+    print(f"sites {len(seen)}: inside {n_in} / outside {n_out} / ambiguous {n_amb} / not a module {n_nom}")
+    return 1 if (n_amb or n_nom) else 0
 
 
 # ---------------------------------------------------------------- self-test
@@ -261,8 +377,8 @@ def main(a, selftest_first=True):
     if a[1:] == ["--selftest"]:
         return selftest()
     parsed = parse_args(a)
-    if parsed is None:
-        return 0
+    if isinstance(parsed, int):
+        return parsed
     if selftest_first and selftest_quiet() != 0:
         print("REFUSED: selftest failed; no result reported", file=sys.stderr)
         return 4
