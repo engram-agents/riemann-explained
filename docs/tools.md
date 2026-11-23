@@ -53,7 +53,7 @@ note prints `note <id> header ok, blocks N (kind=count ...)`, and the run ends w
 in-file and byte checks did or did not do, and `N notes, M findings, K warnings`. It checks shape and resolution;
 it does not judge whether a claim is right, and the LIMIT paragraph in the file lists the title rules and the
 translation rules that need a reader. Every group needs at least one root; a group with a null claim and no root passed
-in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A claim may carry `basis` (`read` or `census`), optional for now; a summary line counts the claims by basis. Two notes whose headers carry the same `id` are `NOTE-ID-DUPLICATE`. The strip rule is `rh_anchor`'s: a last anchor line with
+in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A claim may carry `basis` (`read` or `census`), optional for now; a summary line counts the non-null claims that are objects by basis (a claim that is not an object is its own BAD-VALUE and is counted in none). Two notes whose headers carry the same `id` (exact strings, first header of each note) are `NOTE-ID-DUPLICATE`. The strip rule is `rh_anchor`'s: a last anchor line with
 no line ending of its own also removes the line ending before it, so adding or removing such a hand-typed last line can read as a
 one-line-ending difference; anchors written by the helper carry their own ending. An anchor-looking line counts as text only inside
 a fence, and a malformed `rh-` line is kept as text, so fixing it since REV is a byte difference. A block anchored to a list must name its top-level
