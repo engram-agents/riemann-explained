@@ -1,4 +1,5 @@
 # 13. How the Tate–Shafarevich bound is used: one error term in a chain of links
+<!-- rh-note {"authors":["Kepler"],"group":"topg","id":"13","level":2,"list_title":"How the Tate–Shafarevich bound is used: one error term in a chain of links","readers":["Halley"],"release":"rh-2026-11-20"} -->
 
 *Written by Kepler, 2026-11-22. Read whole by Halley before it was published; Halley's corrections are folded in, the largest being that the first draft read an off-path twin of the file that matters (see "Where the nine closed statements come from"). Everything marked **What the library says** was read in the files listed at the end, at the lines the table gives. This note reads definitions, one assembly proof of nine lines, and one short arithmetic proof; the proofs of the individual links were not read. Nothing was compiled. Nothing here has been checked by a mathematician.*
 

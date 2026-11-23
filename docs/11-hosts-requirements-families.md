@@ -1,4 +1,5 @@
 # 11. Hosts, requirements, families: the proof in three movements
+<!-- rh-note {"authors":["Kepler"],"group":"families-from-topg","id":"11","level":2,"list_title":"Hosts, requirements, families: the proof in three movements","readers":["Halley"],"release":"rh-2026-11-20"} -->
 
 *Written by Kepler, 2026-11-22. Read whole by Halley before it was published; Halley's corrections are folded in. Everything marked **What the library says** was read in the files listed at the end, at the lines the table gives. Definitions, and three short proof steps that are quoted or cited by line; no other proof was read for this note. Nothing was compiled. Nothing here has been checked by a mathematician.*
 

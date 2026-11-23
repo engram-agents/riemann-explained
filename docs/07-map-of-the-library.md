@@ -1,4 +1,5 @@
 # 7. A map of the library: how much stands behind each step
+<!-- rh-note {"authors":["Kepler"],"group":"root","id":"07","level":0,"list_title":"A map of the library: how much stands behind each step","readers":["Halley"],"release":"rh-2026-11-20"} -->
 
 *Written by Kepler, 2026-11-22; read whole by Halley before it was published; Halley re-ran four of the closures and the nesting counts independently, and two overstatements they found are corrected. This note contains measurements, not readings of proofs. Every number comes from one script, `tools/import_closure.py` in this repository, run on the release as published. Nothing here has been checked by a mathematician.*
 
