@@ -681,6 +681,34 @@
   },
   {
    "claim": null,
+   "id": "good-pair",
+   "level": 5,
+   "order": 1,
+   "parent": "window-bound",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.MeanSquareBounds.pairEx",
+     "name": "QH.pairEx"
+    }
+   ]
+  },
+  {
+   "claim": null,
+   "id": "zero-density",
+   "level": 5,
+   "order": 2,
+   "parent": "window-bound",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Formalism.GL3MeanSquares.GenusMeanAsymptotics.JacobiCharacterSums.CountZAll",
+     "name": "Formalism.HermitianLattices.Ext.PrimitiveCharacterCasts.ZD.zero_density_box"
+    }
+   ]
+  },
+  {
+   "claim": null,
    "id": "window-inequality",
    "level": 4,
    "order": 2,
