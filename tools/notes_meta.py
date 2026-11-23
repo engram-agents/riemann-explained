@@ -1023,6 +1023,17 @@ def _():
     fe(go(outline=OL(G("g1"), drop(G("g2", order=2), "roots"))), ["MISSING-KEY outline.json group 'g2': missing key 'roots'"], 1)
 
 
+@case("U1", "an unknown key that starts with an underscore is refused in a group, in a claim and at the top level; "
+            "a roots entry may carry extra keys (LIMIT)")
+def _():
+    one = [R("A.B", "foo")]
+    fe(go(outline=OL(dict(G("g1"), _x=1))), ["UNKNOWN-KEY outline.json group 'g1': unknown key '_x'"], 1)
+    fe(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, _x=1)))),
+       ["UNKNOWN-KEY outline.json group 'g1' claim: unknown key '_x'"], 1)
+    fe(go(outline=OL(G("g1"), _draft="v")), ["UNKNOWN-KEY outline.json top level: unknown key '_draft'"], 1)
+    clean(go(outline=OL(G("g1", roots=[dict(R("A.B", "foo"), _x=1)]))))
+
+
 @case("O2a", "a child's level is its parent's plus one; a deeper or equal level is BAD-LEVEL; control: plus one")
 def _():
     msg = "BAD-LEVEL outline.json group 'c': level %d, but parent 'g1' has level 1 (a child is one deeper than its parent)"
