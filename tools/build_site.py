@@ -263,7 +263,11 @@ PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_lin
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
                 "argument_frame": {"reader", "date", "lines"}, "second_reader_frame": {"reader", "date"},
-                "interpretation_frame": {"reader", "date"}, "shared_note": {"groups"}, "note_href": {"file"}}
+                "interpretation_frame": {"reader", "date"}, "shared_note": {"groups"}, "note_href": {"file"},
+                "proof_read_line": {"reader", "date"},
+                # a value nested in a list or object is declared under its path without the list indexes
+                "frames.argument": {"reader", "date", "lines"}, "frames.interpretation": {"reader", "date"},
+                "reactions.href": {"card"}}
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
 RETIRED_WORDS = ("Read by us", "Partly read", "Not read yet")        # the coverage scale F19 removed
 LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
@@ -515,18 +519,13 @@ def _strings_problems(s):
             return False
         return True
 
-    def holders(path, v, allowed):
-        for name in _PLACEHOLDER.findall(v):
-            if name not in allowed:
-                bad(path, "has an unknown placeholder {" + name + "}")
-
     if not isinstance(s, dict):
         return [("STRINGS-KEY", "(top level)", "must be a JSON object")]
     for k in TEXT_KEYS:
         if k not in s:
             bad(k, "missing")
-        elif need_str(k, s[k]) and k in PLACEHOLDERS:
-            holders(k, s[k], PLACEHOLDERS[k])
+        else:
+            need_str(k, s[k])
     for k in s:
         if k == "coverage":
             bad(k, "is retired: the strings file no longer carries a word scale")
@@ -562,7 +561,6 @@ def _strings_problems(s):
                 continue
             need_str(f"reactions[{i}].label", r["label"])
             if need_str(f"reactions[{i}].href", r["href"]):
-                holders(f"reactions[{i}].href", r["href"], {"card"})
                 if not r["href"].startswith("https://"):
                     bad(f"reactions[{i}].href", "must be an https URL")
     fw = s.get("forbidden_words")
@@ -592,6 +590,13 @@ def _strings_problems(s):
                 else:
                     need_str(f"labels.kinds.{k}", lab["kinds"][k])
     words = list(FROZEN_WORDS) + [w for w in (fw if isinstance(fw, list) else []) if isinstance(w, str) and w]
+    for path, v in _walk_strings(s, ""):   # placeholders: every value, at any depth, holds only what its key declares
+        allowed = PLACEHOLDERS.get(re.sub(r"\[\d+\]", "", path), set())   # a key that is not in the table declares none
+        unknown = [t for t in dict.fromkeys(_PLACEHOLDER.findall(v)) if t not in allowed]
+        for t in unknown:
+            bad(path, "has an unknown placeholder {" + t + "}")
+        if not unknown and not allowed and ("{" in v or "}" in v):
+            bad(path, "holds a brace, and this key declares no placeholder")
     for path, v in _walk_strings(s, ""):
         if path == "note_href" or re.fullmatch(r"reactions\[\d+\]\.href", path):
             continue   # an address, not a sentence of the page
@@ -913,6 +918,7 @@ def _render_page(m, s, facts, dirty):
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
         c, by = sm["counts"], sm["statement_by"]
+        args = [b for b in fl["blocks"] if b["kind"] == "argument"]   # blocks are in note id, then block number, order
         if c["roots"] > 1:   # several roots (a null claim): counts with their denominators
             st = _fill(s["statement_count_line"], n=c["roots_statement_read"], m=c["roots"])
             pf = _fill(s["proof_count_line"], n=c["roots_proof_read"], m=c["roots"])
@@ -923,13 +929,13 @@ def _render_page(m, s, facts, dirty):
                 st = _fill(s["statement_census_line"], reader=by["reader"], date=by["date"])
             else:
                 st = s["statement_not_read_line"]
-            pf = s["proof_read_line"] if sm["proof_read"] else s["proof_not_read_line"]
+            pf = (_fill(s["proof_read_line"], reader=args[0]["reader"], date=args[0]["date"]) if sm["proof_read"]
+                  else s["proof_not_read_line"])
         o.append(f'<p class="status statement">{_e(st)}</p>')
         o.append(f'<p class="status proof">{_e(pf)}</p>')
         o.append(f'<p class="open-items">{_e(_fill(s["open_items_line"], n=c["open_items"]))}</p>')
         if sm["roots_only"]:
             o.append(f'<p class="roots-only">{_e(s["roots_only_note"])}</p>')
-        args = [b for b in fl["blocks"] if b["kind"] == "argument"]
         if args:
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
