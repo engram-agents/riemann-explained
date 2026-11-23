@@ -194,14 +194,14 @@ nm = _load_sibling("notes_meta")
 rh = _load_sibling("rh_anchor")
 sg = _load_sibling("scan_graph")
 
-COVERAGE_KEYS = ("read_all", "read_some", "read_none")
+COVERAGE_KEYS = ("read_all", "read_some_or_touched", "read_none")   # provisional names
 NAME_KEYS = frozenset(["id", "module", "name", "lean_name", "file", "note", "block", "parent", "premises", "sha256", "link",
                        "commits", "files", "release_id", "release_archive_sha"])
 
 
 # ---------------------------------------------------------------- the tool
 
-TEXT_KEYS = ("page_title", "route_count", "mapped_line", "not_read_yet", "no_argument", "argument_frame", "second_reader_frame",
+TEXT_KEYS = ("page_title", "route_count", "mapped_line", "not_read_yet", "no_claim_label", "no_argument", "argument_frame", "second_reader_frame",
              "interpretation_frame", "evidence_label", "roots_only_note", "dirty_note", "shared_note", "roots_read",
              "roots_not_read", "note_href")
 PLACEHOLDERS = {"route_count": {"N", "M"}, "roots_read": {"N", "M"}, "roots_not_read": {"N", "M"},
@@ -230,6 +230,13 @@ def _dump(obj):
     return json.dumps(obj, sort_keys=True, indent=1, ensure_ascii=False)
 
 
+def _js_safe(text):
+    """JSON text with `<`, `>`, `&`, U+2028 and U+2029 written as \\uXXXX (they occur only inside strings), like the comments."""
+    for ch, esc in (("<", "\\u003c"), (">", "\\u003e"), ("&", "\\u0026"), ("\u2028", "\\u2028"), ("\u2029", "\\u2029")):
+        text = text.replace(ch, esc)
+    return text
+
+
 def _fill(template, **kw):
     """The template with each known {name} replaced in one pass; a name that is not given stays as written."""
     return _PLACEHOLDER.sub(lambda m: str(kw[m.group(1)]) if m.group(1) in kw else m.group(0), template)
@@ -247,12 +254,15 @@ def _nonspace(s):
 # ---- the coverage word
 
 def coverage_word(counts, table):
-    """The word of the first entry of `table` whose `when` holds for counts {roots, read, not_read}, else None. A group with
-    no root has no coverage claim: None."""
-    roots, read = counts["roots"], counts["read"]
+    """The word of the first entry of `table` whose `when` holds for counts {roots, read, touched, not_read}: `read` roots are
+    signed (a reading block), `touched` roots have no reading block but an argument block, the rest are none. read_all: every
+    root is signed; read_none: every root is none; read_some_or_touched: every other case. A group with no root has no
+    coverage claim: None."""
+    roots, read, touched = counts["roots"], counts["read"], counts["touched"]
     if roots <= 0:
         return None
-    holds = {"read_all": read == roots, "read_some": 0 < read < roots, "read_none": read == 0}
+    holds = {"read_all": read == roots, "read_none": read == 0 and touched == 0}
+    holds["read_some_or_touched"] = not holds["read_all"] and not holds["read_none"]
     for entry in table:
         if holds.get(next(iter(entry["when"])), False):
             return entry["word"]
@@ -446,6 +456,13 @@ def _strings_problems(s):
             bad(k, "missing")
         elif need_str(k, s[k]) and k in PLACEHOLDERS:
             holders(k, s[k], PLACEHOLDERS[k])
+    if isinstance(s.get("no_claim_label"), str) and s["no_claim_label"]:
+        cov = s.get("coverage")
+        taken = [s.get("not_read_yet")] + [e.get("word") for e in cov if isinstance(e, dict)] if isinstance(cov, list) else [
+            s.get("not_read_yet")]
+        if s["no_claim_label"] in taken:
+            bad("no_claim_label", "must differ from not_read_yet and from every coverage word (it names a missing statement, "
+                                  "not a coverage state)")
     fs = s.get("first_screen", None)
     if "first_screen" not in s:
         bad("first_screen", "missing")
@@ -525,6 +542,11 @@ def _strings_problems(s):
             if re.search(r"(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])", v, re.I):
                 bad(path, f"holds the word {w!r}, which the page never says", "STRINGS-FORBIDDEN")
                 break
+        else:
+            href = path == "note_href" or re.fullmatch(r"reactions\[\d+\]\.href", path)
+            if not href and ("%" in v or re.search(r"of\s+the\s+proof", v, re.I)):
+                bad(path, "holds a percent sign or `of the proof`, which the page never says in its own sentences",
+                    "STRINGS-FORBIDDEN")
     return out
 
 
@@ -641,6 +663,12 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
     m.release = odata["release"]
     table = strings["coverage"]
     m.notes = _load_notes(notes_dir, strings)
+    ids_seen = {}
+    for n in m.notes:
+        ids_seen.setdefault(n["id"], []).append(n["name"])
+    for nid, names in sorted(ids_seen.items()):
+        if len(names) > 1:
+            errors.append(("NOTE-ID-DUPLICATE", nid, "is the header id of " + " and ".join(names)))
     groups = {}
     for g in odata["groups"]:
         groups.setdefault(g["id"], g)
@@ -684,14 +712,20 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                     sha = _sha(fh.read())
             root_rows.append({"module": mod, "name": name, "kind": kind, "file": rel, "lines": [first, last], "sha256": sha,
                               "shared_with": sorted(o for o in owners[(mod, name)] if o != gid)})
-        read = sum(1 for r in roots if any(x["kind"] == "reading" for x in anchored.get(r, [])))
+        states = []
+        for r in roots:
+            kinds = {x["kind"] for x in anchored.get(r, [])}
+            states.append("signed" if "reading" in kinds else "touched" if "argument" in kinds else "none")
+        for row, st in zip(root_rows, states):
+            row["state"] = st
+        read, touched = states.count("signed"), states.count("touched")
         unread = sum(1 for r in roots if any(x["kind"] == "not_read" for x in anchored.get(r, [])))
         ids = {n["id"] for n in m.notes if n["level"] != 0 and n["group"] == gid} | {b["note"] for b in brecs}
         notes = [_note_ref(by_note[i]) for i in sorted(ids)]
         claim = g["claim"]
         if not roots:
             errors.append(("COVERAGE-NONE", gid, "group has no root, so no coverage claim"))
-        word = coverage_word({"roots": len(roots), "read": read, "not_read": unread}, table)
+        word = coverage_word({"roots": len(roots), "read": read, "touched": touched, "not_read": unread}, table)
         if word is None and roots:
             errors.append(("COVERAGE-NONE", gid, "no entry of the coverage table fits this group"))
         m.summary[gid] = {
@@ -700,9 +734,10 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                                                  "conditions": claim.get("conditions", []),
                                                  "premises": list(g["premises"])},
             "lean_name": g["roots"][0]["name"] if roots else None,
-            "claim_label": strings["not_read_yet"] if claim is None else None,
-            "coverage": word, "counts": {"roots": len(roots), "roots_read": read, "roots_not_read": unread},
-            "notes": notes, "roots_only": True, "unread": read == 0}
+            "claim_label": strings["no_claim_label"] if claim is None else None,
+            "coverage": word, "counts": {"roots": len(roots), "roots_read": read, "roots_touched": touched,
+                                       "roots_not_read": unread},
+            "notes": notes, "roots_only": True, "unread": read == 0 and touched == 0}
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "roots": root_rows, "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
                                        for b in brecs if b["kind"] == "not_read"], "notes": notes}
@@ -711,6 +746,34 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
     m.totals = {"blocks": sum(len(n["blocks"]) for n in m.notes), "groups": len(groups), "notes": len(m.notes),
                 "roots": len(owners)}
     return m
+
+
+def _word_notes(m, s):
+    """[(where, word)]: the forbidden words, and `of the proof` (a phrase or a percent sign), in the text of the claims, the
+    conditions, the note titles and the argument and interpretation blocks. Only a listing."""
+    words = list(dict.fromkeys(list(FROZEN_WORDS) + [w for w in s["forbidden_words"] if w]))
+
+    def hits(text):
+        out = [w for w in words if re.search(r"(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])", text, re.I)]
+        if re.search(r"of\s+the\s+proof", text, re.I):
+            out.append("of the proof")
+        elif "%" in text:
+            out.append("%")
+        return out
+
+    found = []
+    for gid in sorted(m.groups):
+        claim = m.groups[gid]["claim"]
+        if claim:
+            found += [(f"{gid}.claim", w) for w in hits(claim["text"])]
+            for i, c in enumerate(claim.get("conditions", [])):
+                found += [(f"{gid}.conditions[{i}]", w) for w in hits(c)]
+    for n in m.notes:
+        found += [(f"note:{n['id']}.list_title", w) for w in hits(n["title"])]
+        for b in n["blocks"]:
+            if b.get("text"):
+                found += [(f"block:{b['block']}.text", w) for w in hits(b["text"])]
+    return found
 
 
 def _nest(m, gid):
@@ -752,7 +815,7 @@ def _render_page(m, s, route, dirty):
     out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
 
     def frames(b):
-        lines = f"{b['lines'][0]}-{b['lines'][1]}" if b.get("lines") else lab["lines_missing"]
+        lines = f"{b['file']} {b['lines'][0]}-{b['lines'][1]}" if b.get("lines") and b.get("file") else lab["lines_missing"]
         first = _fill(s["argument_frame"], reader=b["reader"], date=b["date"], lines=lines)
         more = [_fill(s["second_reader_frame"], reader=r["reader"], date=r["date"]) for r in b.get("second_readers", [])]
         return f'<span class="frame">{_e(first)}</span>' + "".join(f' <span class="frame second">{_e(x)}</span>' for x in more)
@@ -851,6 +914,35 @@ def _render_page(m, s, route, dirty):
 
 # ---- the build
 
+def _json_strings(v, path=""):
+    if isinstance(v, str):
+        yield path, v
+    elif isinstance(v, list):
+        for i, x in enumerate(v):
+            yield from _json_strings(x, f"{path}[{i}]")
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            yield from _json_strings(x, f"{path}.{k}" if path else k)
+
+
+def _origin(token, sj, level0, level1, groups):
+    """Where a token that PAGE-STATIC found came from: a strings key, a group and field, a level file; else the two files."""
+    needles = {"src=http": ("http://", "https://", "//"), "href=http": ("http://", "https://", "//"), "url(": ("url(",)}
+    needles = needles.get(token, (token,))
+    for path, v in _walk_strings(sj, ""):
+        if any(n in v for n in needles):
+            return f"strings key {path}"
+    for gid in sorted(groups):
+        for path, v in _json_strings({k: x for k, x in groups[gid].items() if k != "commits"}):
+            if any(n in v for n in needles):
+                return f"group {gid} field {path}"
+    for name, obj in (("level0", level0), ("level1", level1)):
+        for path, v in _json_strings({k: x for k, x in obj.items() if k != "commits"}):
+            if any(n in v for n in needles):
+                return f"{name} field {path}"
+    return "index.html or data.js"
+
+
 def _refuse(lines, code=1):
     for code_, where, msg in lines:
         print(f"BUILD-ERROR {code_} {where} {msg}")
@@ -870,8 +962,8 @@ def _assemble(m, s, commits):
         n = sum(1 for x in steps if x["coverage"] == e["word"])
         nums[key] += n
         route_counts.append({"steps": n, "when": key, "word": e["word"]})
-    total = nums["read_all"] + nums["read_some"] + nums["read_none"]
-    line = f"read {nums['read_all']} + partly {nums['read_some']} + not read {nums['read_none']} = {total}"
+    total = nums["read_all"] + nums["read_some_or_touched"] + nums["read_none"]
+    line = f"read {nums['read_all']} + partly {nums['read_some_or_touched']} + not read {nums['read_none']} = {total}"
     if total != len(steps):
         errors.append(("COVERAGE-SUM", line + ", but there are", f"{len(steps)} steps"))
     route = {"counts": route_counts, "steps": len(steps)}
@@ -886,7 +978,7 @@ def _output_files(level0, level1, groups, page, commits, m, release_id, archive)
     """Every file of the build as bytes, the manifest last (it holds the hash of all the others)."""
     files = {"level0.json": level0, "level1.json": level1}
     files.update({f"group/{gid}.json": g for gid, g in groups.items()})
-    data = "window.RH_DATA = " + _dump({"groups": groups, "level0": level0, "level1": level1}) + ";\n"
+    data = "window.RH_DATA = " + _js_safe(_dump({"groups": groups, "level0": level0, "level1": level1})) + ";\n"
     out = {k: (_dump(v) + "\n").encode("utf-8") for k, v in files.items()}
     out["data.js"] = data.encode("utf-8")
     out["index.html"] = page.encode("utf-8")
@@ -898,12 +990,50 @@ def _output_files(level0, level1, groups, page, commits, m, release_id, archive)
     return out
 
 
-def _clear_previous(out):
-    for name in _OUT_NAMES:
-        p = os.path.join(out, name)
-        if os.path.isfile(p):
-            os.remove(p)
-    shutil.rmtree(os.path.join(out, "group"), ignore_errors=True)
+def _write_files(dirpath, files):
+    for rel, data in files.items():
+        p = os.path.join(dirpath, *rel.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "wb") as fh:
+            fh.write(data)
+
+
+def _publish(out, files):
+    """Write the build into a temporary sibling of `out` and rename it into place. With an existing `out` (empty, or --force)
+    the files that are not a build file are copied into the new tree first and the old tree is set aside, so a failure at any
+    step leaves `out` as it was (absent, or the old build) and no temporary directory behind."""
+    out = os.path.abspath(out)
+    parent, base = os.path.split(out)
+    tmp = tempfile.mkdtemp(prefix=base + ".tmp-", dir=parent)
+    um = os.umask(0)
+    os.umask(um)
+    os.chmod(tmp, 0o777 & ~um)
+    backup = None
+    try:
+        _write_files(tmp, files)
+        if os.path.isdir(out):
+            for name in os.listdir(out):
+                if name in _OUT_NAMES or name == "group":
+                    continue
+                src, dst = os.path.join(out, name), os.path.join(tmp, name)
+                if os.path.isdir(src) and not os.path.islink(src):
+                    shutil.copytree(src, dst, symlinks=True)
+                else:
+                    shutil.copy2(src, dst, follow_symlinks=False)
+            backup = tmp + ".old"
+            os.rename(out, backup)
+        os.rename(tmp, out)
+        tmp = None
+    except BaseException:
+        if backup is not None and not os.path.exists(out):
+            os.rename(backup, out)
+            backup = None
+        raise
+    finally:
+        if tmp is not None:
+            shutil.rmtree(tmp, ignore_errors=True)
+        if backup is not None:
+            shutil.rmtree(backup, ignore_errors=True)
 
 
 def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state):
@@ -922,7 +1052,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         tools_state = _tools_state()
     n_commit, n_dirty = ("unknown", False)
     if notes_commit is not None:   # asked of git before anything is printed: an unreadable --repo is exit 2 with no stdout
-        n_commit, n_dirty = _notes_state(repo, notes_commit, [notes_dir, outline, strings])
+        n_commit, n_dirty = _notes_state(repo, notes_commit, [notes_dir, outline, strings, decls])
     o, e = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
         rc = nm.run(notes_dir, outline, decls, strings=strings)
@@ -942,8 +1072,9 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     low = {}
     for i in ids:
         low.setdefault(i.lower(), set()).add(i)
-        if not SAFE_ID.fullmatch(i):
-            errors.append(("GROUP-ID-UNSAFE", i, "is not usable as a file name (letters, digits, `.`, `_`, `-`; not first `.`)"))
+        if not SAFE_ID.fullmatch(i) or len(i) > 100:
+            errors.append(("GROUP-ID-UNSAFE", i, "is not usable as a file name (letters, digits, `.`, `_`, `-`; not first `.`; "
+                                                 "at most 100 characters)"))
     for k, v in sorted(low.items()):
         if len(v) > 1:
             errors.append(("GROUP-ID-UNSAFE", ", ".join(sorted(v)), "differ only in case, so they could share a file"))
@@ -954,6 +1085,9 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     if dirty:
         commits = {k: "dirty" for k in commits}
     m = _model(notes_dir, odata, _decl_rows(decls), sj, source_check, errors)
+    word_notes = _word_notes(m, sj)
+    for where, word in word_notes:
+        print(f"WORD-NOTE {where} {word}")
     for n in m.notes:
         for b in n["blocks"]:
             for what in ("reader", "date"):
@@ -967,7 +1101,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     page = _render_page(m, sj, route, dirty)
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
-        errors.append(("PAGE-STATIC", pb, "found in index.html or data.js"))
+        errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
     for pb in link_problems(page):
         errors.append(("PAGE-LINK", pb, "does not resolve on the page"))
     for pb in number_problems(page, number_pool([level0, level1] + list(groups.values())), json.dumps(sj, ensure_ascii=False)):
@@ -987,14 +1121,12 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
               f"{st['output_files']} output files, {st['output_lines']} output lines, {len(leaks)} leaked")
         if leaks:
             return _refuse([("SOURCE-LEAK", f, "holds a line of the release") for f in leaks])
-    if os.path.isdir(out):
-        _clear_previous(out)
-    for rel, data in files.items():
-        p = os.path.join(out, *rel.split("/"))
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        with open(p, "wb") as fh:
-            fh.write(data)
-    print(f"built: {m.totals['groups']} groups, {m.totals['notes']} notes, {m.totals['blocks']} blocks, {len(files)} files")
+    try:
+        _publish(out, files)
+    except OSError as ex:
+        raise _Unreadable(f"cannot write the site: {ex.strerror or ex}")
+    print(f"built: {m.totals['groups']} groups, {m.totals['notes']} notes, {m.totals['blocks']} blocks, {len(files)} files, "
+          f"{len(word_notes)} word notes")
     return 0
 
 
@@ -1002,11 +1134,22 @@ def run(notes_dir, outline, decls, strings, out, source_check=None, archive_sha=
         force=False, tools_state=None):
     """Build the site into `out` and return the exit code 0, 1, 2 or 3 (see the contract). `tools_state` is (commit, dirty)
     for the folder of this file; None asks git."""
+    archive_sha = archive_sha.lower() if archive_sha else archive_sha
+    buf = io.StringIO()   # nothing reaches stdout on exit 2
     try:
-        return _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state)
+        with contextlib.redirect_stdout(buf):
+            rc = _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state)
     except _Unreadable as ex:
         print("build_site: " + str(ex), file=sys.stderr)
         return 2
+    except RecursionError:
+        print("build_site: outline too deep to write", file=sys.stderr)
+        return 2
+    except OSError as ex:
+        print(f"build_site: cannot read an input: {ex.strerror or ex}", file=sys.stderr)
+        return 2
+    sys.stdout.write(buf.getvalue())
+    return rc
 
 
 # ---------------------------------------------------------------- self-test: fixtures, built from literals
