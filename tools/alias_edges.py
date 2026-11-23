@@ -46,8 +46,8 @@ CONTRACT
     wrapper naming its target is the alias link itself, already in aliases.tsv); one row per file and line, in_comment = 1 when
     every occurrence on that line is inside a comment. A name with no row is listed in uncalled.tsv.
  D1 SRC_ROOT not a directory: exit 2. No `.lean` file: `CHECKED NOTHING: no .lean file under SRC_ROOT`, exit 1.
- D2 A file that does not decode is printed as `UNDECODABLE <relpath>`, counted in the summary, and the exit
-    code is 1.
+ D2 A file that does not decode is printed as `UNDECODABLE <relpath>`, one that cannot be read at all as
+    `UNREADABLE <relpath>`; both are counted in the summary (`undecodable`) and the exit code is 1.
  Two passes over the files: pass 1 finds the wrappers and the target set; pass 2 collects the declarations for
  the full names in the target set and tokenizes for A4 and A5 with one regex scan per file.
  With --selftest it plants temporary trees, checks each contract line as its own CASE, prints one
@@ -74,7 +74,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scan_graph import mask_comments, provenance, read_text, walk_lean  # noqa: E402
+from scan_graph import failure_word, mask_comments, provenance, read_text, walk_lean  # noqa: E402
 
 ALIASES_COLS = ["public_name", "target", "file", "line", "target_file", "target_line", "target_matches"]
 ODD_COLS = ["public_name", "x1", "x2", "x3", "file", "line", "reason", "tail"]
@@ -223,7 +223,7 @@ def run(root, out):
     for _, p in mods:
         text, ok = read_text(p)
         if not ok:
-            undecodable.append(rel[p])
+            undecodable.append((failure_word(p), rel[p]))
             continue
         good, bad = find_wrappers(text, mask_comments(text))
         aliases += [(pub, x, rel[p], ln) for pub, x, ln, _last in good]
@@ -309,8 +309,8 @@ def run(root, out):
           f"undecodable {len(undecodable)}")
     print(f"targets resolved {counts['resolved']} / ambiguous {counts['ambiguous']} / unresolved {counts['unresolved']}")
     print(f"reference rows {len(ref_rows)}  callers rows {len(caller_rows)}  uncalled {len(uncalled_rows)}")
-    for r in undecodable:
-        print("UNDECODABLE", r)
+    for word, r in undecodable:
+        print(word, r)
     return 1 if undecodable else 0
 
 

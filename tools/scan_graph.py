@@ -28,8 +28,10 @@ CONTRACT
  S5 Nothing adjusts the `decide` count after the fact: it is the whole-word count and nothing else.
  D1 SRC_ROOT not a directory: exit 2 with a message. No `.lean` file under it: print
     `CHECKED NOTHING: no .lean file under SRC_ROOT` and exit 1.
- D2 A file that does not decode is printed as `UNDECODABLE <relpath>`, counted in the summary line, never
-    skipped silently; the exit code is 1. It keeps its row in files.tsv and contributes no edge.
+ D2 A file that does not decode is printed as `UNDECODABLE <relpath>`, and one that cannot be read at all
+    (a dangling symlink, no permission) as `UNREADABLE <relpath>`; both are counted in the `undecodable` field
+    of the summary line, never skipped silently, and the exit code is 1. Such a file keeps its row in
+    files.tsv (decode ERROR) and contributes no edge.
  Every TSV begins with one `#` provenance line, then one column-name row, then data rows.
  With --selftest the tool plants temporary trees, checks each contract line as its own CASE, prints one
  `CASE <id> PASS|FAIL` line each and a final `SELFTEST PASS|FAIL`; exit 0 or 4. A normal run does the same
@@ -66,12 +68,23 @@ EDGES_COLS = ["importer", "imported"]
 # ---------------------------------------------------------------- shared API
 
 def read_text(path):
-    """(text, True), or ("", False) when the file is not valid UTF-8. Never replaces bad bytes."""
+    """(text, True), or ("", False) when the file is not valid UTF-8 or cannot be read at all (a dangling
+    symlink, no permission). Never replaces bad bytes."""
     try:
         with open(path, encoding="utf-8") as f:
             return f.read(), True
-    except UnicodeDecodeError:
+    except (UnicodeDecodeError, OSError):
         return "", False
+
+
+def failure_word(path):
+    """Why read_text failed: `UNREADABLE` when the bytes cannot even be opened, else `UNDECODABLE`."""
+    try:
+        with open(path, "rb") as f:
+            f.read(1)
+    except OSError:
+        return "UNREADABLE"
+    return "UNDECODABLE"
 
 
 _COMMENT_EDGE = re.compile(r"[-/\n]")
@@ -210,7 +223,7 @@ def run(root, out):
         for m, p in mods:
             text, ok = read_text(p)
             if not ok:
-                undecodable.append(os.path.relpath(p, root).replace(os.sep, "/"))
+                undecodable.append((failure_word(p), os.path.relpath(p, root).replace(os.sep, "/")))
                 ff.write("\t".join([m] + ["-"] * (len(FILES_COLS) - 2) + ["ERROR"]) + "\n")
                 continue
             lines, c, imps = scan_text(text)
@@ -233,8 +246,8 @@ def run(root, out):
           f"{sum(unresolved.values())}  undecodable {len(undecodable)}")
     for k, v in sorted(unresolved.items(), key=lambda kv: (-kv[1], kv[0])):
         print("UNRESOLVED", k, v)
-    for rel in undecodable:
-        print("UNDECODABLE", rel)
+    for word, rel in undecodable:
+        print(word, rel)
     return 1 if (unresolved or undecodable) else 0
 
 
