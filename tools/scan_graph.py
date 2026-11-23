@@ -53,6 +53,7 @@ import contextlib
 import io
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -363,6 +364,33 @@ def _selftest_cases():
             got = provenance("t", d, "not x")
         return _eq(got, "# t | source: git-unreadable| not x")
 
+    def child_selftest(env):
+        """The self-test (minus the two environment cases) in a fresh interpreter with the given environment."""
+        code = ("import sys; sys.path.insert(0, sys.argv[1]); import scan_graph; "
+                "sys.exit(scan_graph.selftest(exclude=('PROV4', 'PROV5')))")
+        here = os.path.dirname(os.path.abspath(__file__))
+        r = subprocess.run([sys.executable, "-I", "-c", code, here], capture_output=True, text=True, env=env, timeout=300)
+        return r.returncode, r.stdout
+
+    @case("PROV4", "the self-test passes when TMPDIR sits inside a git work tree")
+    def _():
+        if not shutil.which("git"):
+            return None, "git not on PATH"
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "repo")
+            os.makedirs(repo)
+            subprocess.run(["git", "-C", repo, "init", "-q"], check=True, capture_output=True)
+            inner = os.path.join(repo, "tmp")
+            os.makedirs(inner)
+            rc, out = child_selftest(dict(os.environ, TMPDIR=inner))
+        return _eq((rc, "CASE PROV1 PASS" in out, "FAIL" in out), (0, True, False))
+
+    @case("PROV5", "with no git on PATH the self-test exits 0, PROV1 is SKIPped and nothing fails")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = child_selftest(dict(os.environ, PATH=d))
+        return _eq((rc, "CASE PROV1 SKIP git not on PATH" in out.splitlines(), "FAIL" in out), (0, True, False))
+
     # ---- the tool
     @case("S1a", "three files -> printed file count 3 and 3 rows in files.tsv")
     def _():
@@ -506,20 +534,29 @@ def _selftest_cases():
     return cases
 
 
-def selftest(verbose=True):
-    ok = True
+def selftest(verbose=True, exclude=()):
+    """A case returns (True|False, detail), or (None, text) to be SKIPPED (a skip never fails the self-test).
+    `exclude` drops cases by id; the provenance-environment cases use it so their child run does not recurse."""
+    ok, skipped = True, 0
     for cid, desc, fn in _selftest_cases():
+        if cid in exclude:
+            continue
         try:
             good, detail = fn()
         except Exception as e:  # a crash is a failed case, not a skipped one
             good, detail = False, f"{type(e).__name__}: {e}"
+        if good is None:
+            skipped += 1
+            if verbose:
+                print(f"CASE {cid} SKIP {detail}")
+            continue
         ok = ok and bool(good)
         if verbose:
             print(f"CASE {cid} {'PASS' if good else 'FAIL'} {desc}")
             if not good:
                 print(f"  detail: {detail}")
     if verbose:
-        print("SELFTEST " + ("PASS" if ok else "FAIL"))
+        print("SELFTEST " + ("PASS" if ok else "FAIL") + (f" ({skipped} skipped)" if ok and skipped else ""))
     return 0 if ok else 4
 
 
