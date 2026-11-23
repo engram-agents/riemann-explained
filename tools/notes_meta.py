@@ -1393,12 +1393,39 @@ def _():
     clean(go(notes=n(BL(second_readers=[{"reader": "K", "date": "2026-11-23"}]))))
 
 
+@case("ID1", "two notes whose headers carry the same id: NOTE-ID-DUPLICATE on the first, naming both files")
+def _():
+    fe(go(notes={"01-a.md": NOTE(), "02-b.md": NOTE()}), ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 2 notes: 01-a.md, 02-b.md"], 1)
+    fe(go(notes={"01-a.md": NOTE(nid="07"), "02-b.md": NOTE(nid="08"), "03-c.md": NOTE(nid="07")}),
+       ["NOTE-ID-DUPLICATE 01-a.md:2 note id '07' is used by 2 notes: 01-a.md, 03-c.md"], 1)
+
+
+@case("ID2", "distinct ids are clean, and ids that differ only in letter case are distinct")
+def _():
+    clean(go(notes={"01-a.md": NOTE(nid="01"), "02-b.md": NOTE(nid="02")}))
+    clean(go(notes={"01-a.md": NOTE(nid="ab"), "02-b.md": NOTE(nid="AB")}))
+
+
+@case("ID3", "a note with no header is not a duplicate of anything, not even of a note whose id is its own file stem")
+def _():
+    fe(go(notes={"01-a.md": NOTE(), "02-b.md": "# T\n"}), ["NO-HEADER 02-b.md has no rh-note header"], 1)
+    fe(go(notes={"01-a.md": NOTE(nid="02-b"), "02-b.md": "# T\n"}), ["NO-HEADER 02-b.md has no rh-note header"], 1)
+
+
+@case("ID4", "three notes with one id: one finding on the first, naming all three")
+def _():
+    fe(go(notes={"01-a.md": NOTE(), "02-b.md": NOTE(), "03-c.md": NOTE()}),
+       ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 3 notes: 01-a.md, 02-b.md, 03-c.md"], 1)
+
+
 @case("M3b", "a block id used twice, in one note or in two, is DUPLICATE-ID naming both places")
 def _():
     two = NOTE(body="Some text.\n" + BL() + "\n" + BL() + "\n")
     fe(go(notes={"01-a.md": two}), ["DUPLICATE-ID 01-a.md:8 block id '01.b01' is also used at 01-a.md:7"], 1)
     one = NOTE(body="Some text.\n" + BL() + "\n")
-    fe(go(notes={"01-a.md": one, "02-b.md": one}), ["DUPLICATE-ID 02-b.md:7 block id '01.b01' is also used at 01-a.md:7"], 1)
+    fe(go(notes={"01-a.md": one, "02-b.md": one}),
+       ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 2 notes: 01-a.md, 02-b.md",
+        "DUPLICATE-ID 02-b.md:7 block id '01.b01' is also used at 01-a.md:7"], 1)
     clean(go(notes={"01-a.md": one, "02-b.md": NOTE(nid="02", body="Some text.\n" + BL("02.b01") + "\n")}))
 
 
