@@ -103,7 +103,7 @@ number is a line of the published text, not of the note with its anchors. The se
 with the user's own configuration switched off and needs the `git` program.
 List items: a nested item is not numbered; a citation in a nested item anchors to its parent item, and the precision lives in
 the block's decls and lines (a future optional `subitem` could number nested items). A list whose last line is nested, a
-loose list (which rh_anchor reads as two lists), an ordered list and a list directly followed by a paragraph may render
+loose list (one list, numbered across its blank lines), an ordered list and a list directly followed by a paragraph may render
 differently from the source; REFUSED_LIST_SHAPES says which are refused, and it is EMPTY until the renderer control's result
 is in. A citation inside a quote stays unanchored. The summary counts: premise links are the premises that name a group of
 the outline (not the group itself); roots and defs_opened resolved are those with exactly one decls row; strings' kinds are

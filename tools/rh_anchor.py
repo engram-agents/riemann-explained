@@ -87,11 +87,16 @@ offsets into the str as given, not bytes. insert_after_line takes the line it is
 line for a line inside a table is the caller's job (`target.insert_after`). A final anchor line without a line
 ending that was typed by hand after a note that ends in a newline takes that newline with it when stripped.
 A list is a run of lines that start, after any indent, with `-`, `*`, `+`, `N.` or `N)` and a space and text (a lone marker is
-not one), with the lines that continue them: indented ones, nested items, and un-indented lazy ones, up to a blank line,
-an anchor line, a fence or table, a heading, quote, HTML or rule line, or a marker at a lesser indent. Its target has
+not one), with the lines that continue them: indented ones, nested items, and un-indented lazy ones, up to an anchor
+line, a fence or table, a heading, quote, HTML or rule line, or a marker at a lesser indent. A blank line does not
+end a list when the next non-blank line continues it: a marker at the list's indent (of the same kind, ordered or bullet; a change
+between bullet characters or between `1.` and `1)` is not a change of kind, and without a blank line no change ends the list),
+or a deeper line (a second paragraph or nested item). A blank line before a paragraph, a lesser marker, a fence, a table, a
+heading, an anchor or the end of the text ends it, and the blank lines are never part of the list (append_after is after its last
+non-blank line). An item runs to its last non-blank line. Its target has
 `nitems` and `items` (the top-level items, those at the indent of the first marker; a nested list belongs to its parent
-item) and a `shape` dict: loose (only blank lines separate it from another list of the same indent, which a renderer
-reads as one loose list; here they are two lists), last_nested (the last line is in a nested item), ordered, and
+item) and a `shape` dict: loose (a blank line separates two top-level items: a renderer then makes a loose list; the list still
+spans them), last_nested (the last line is in a nested item), ordered, and
 followed_by_paragraph (the next line after the list and its anchor lines is a paragraph line with no blank between;
 anchor lines are hidden, so a renderer may read that paragraph as part of the last item). A table row or a line in a
 fence is never a list. `- - -` is read as a list, not as a rule, and four spaces of indent are not code. Cases L1a-L5,
@@ -334,7 +339,6 @@ class _Analysis:
                     el_at[x] = len(els) - 1
             p = q
         cur, prev, i = None, -2, 0
-        list_base = {}
         while i < n:
             if cand[i] or el_at[i] != -1:
                 cur = None
@@ -347,11 +351,27 @@ class _Analysis:
                 continue
             if _MARK.match(lines[i]):   # a list: its marker lines, and what continues them, to a blank line or a break
                 base = _indent(lines[i])
+                first_ordered = lines[i].lstrip(" \t")[0].isdigit()
                 j = i
                 while j + 1 < n:
                     k = j + 1
-                    if cand[k] or el_at[k] != -1 or not lines[k].strip():
+                    if cand[k] or el_at[k] != -1:
                         break
+                    if not lines[k].strip():   # blank lines: the list goes on only if the next line continues it
+                        m = k
+                        while m < n and not lines[m].strip():
+                            m += 1
+                        if m >= n or cand[m] or el_at[m] != -1:
+                            break
+                        if _MARK.match(lines[m]):
+                            if _indent(lines[m]) < base:
+                                break
+                            if _indent(lines[m]) == base and lines[m].lstrip(" \t")[0].isdigit() != first_ordered:
+                                break
+                        elif _indent(lines[m]) <= base:
+                            break
+                        j = m
+                        continue
                     if _MARK.match(lines[k]):
                         if _indent(lines[k]) < base:
                             break
@@ -359,13 +379,17 @@ class _Analysis:
                         break
                     j = k
                 starts = [k for k in range(i, j + 1) if _MARK.match(lines[k]) and _indent(lines[k]) == base]
-                items = [[st + 1, starts[x + 1] if x + 1 < len(starts) else j + 1] for x, st in enumerate(starts)]
+                items = []
+                for x, st in enumerate(starts):   # an item runs to its last non-blank line before the next top-level marker
+                    end = starts[x + 1] if x + 1 < len(starts) else j + 1
+                    while end > st + 1 and not lines[end - 1].strip():
+                        end -= 1
+                    items.append([st + 1, end])
                 last_nested = _indent(lines[j]) > base and any(
                     _MARK.match(lines[k]) and _indent(lines[k]) > base for k in range(starts[-1], j + 1))
-                shape = {"loose": False, "last_nested": last_nested, "ordered": lines[i].lstrip(" \t")[0].isdigit(),
+                shape = {"loose": any(items[x + 1][0] > items[x][1] + 1 for x in range(len(items) - 1)), "last_nested": last_nested, "ordered": lines[i].lstrip(" \t")[0].isdigit(),
                          "followed_by_paragraph": False}
                 els.append(_element("list", i, j, nitems=len(items), items=items, shape=shape))
-                list_base[len(els) - 1] = base
                 for x in range(i, j + 1):
                     el_at[x] = len(els) - 1
                 cur, prev, i = None, j, j + 1
@@ -380,11 +404,6 @@ class _Analysis:
             prev = i
             i += 1
         ls = sorted((k for k, el in enumerate(els) if el["type"] == "list"), key=lambda k: els[k]["first_line"])
-        for ka, kb in zip(ls, ls[1:]):   # only blank lines between two lists of one indent: a renderer reads one loose list
-            ea, eb = els[ka], els[kb]
-            if list_base[ka] == list_base[kb] and eb["first_line"] > ea["last_line"] + 1 and all(
-                    not lines[x].strip() for x in range(ea["last_line"], eb["first_line"] - 1)):
-                ea["shape"]["loose"] = eb["shape"]["loose"] = True
         for k in ls:   # a paragraph line right after the list (anchor lines do not count as a blank)
             x = els[k]["last_line"]
             while x < n and cand[x]:

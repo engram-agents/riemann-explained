@@ -54,7 +54,7 @@ in-file and byte checks did or did not do, and `N notes, M findings, K warnings`
 it does not judge whether a claim is right, and the LIMIT paragraph in the file lists the title rules and the
 translation rules that need a reader. Every group needs at least one root; a group with a null claim and no root passed
 in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A block anchored to a list must name its top-level
-item (`item`, 1-based; nested items are not numbered); shapes of list a renderer may show differently are refused through a table
+item (`item`, 1-based, counted across blank lines: a loose list is one list; nested items are not numbered); shapes of list a renderer may show differently are refused through a table
 that is empty until the renderer control is in. The run prints a count line for the outline (and for the strings file and the
 byte check when they ran); a header's group may be `root` only at level 0.
 `python3 tools/notes_meta.py NOTES_DIR outline.json decls.tsv [--src SRC_ROOT] [--strings strings.json] [--base REV]`
