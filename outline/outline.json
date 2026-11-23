@@ -1089,7 +1089,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "Every level (in the library's sense) has the Landau property: for every `la > 1` and every θ with 0 < θ < 1, if the level's error term `Gm` satisfies `Gm(x)` ≤ x^θ for all x in windows [Y, `Y^la`] lying beyond every point, then no L-function of a character the level keeps vanishes for Re s > θ"
+    "text": "Every level (in the library's sense) has the Landau property: for every `la > 1` and every θ with 0 < θ < 1, if the level's error term `Gm` satisfies `Gm(x)` ≤ x^θ for all x in windows [Y, Y^`la`] lying beyond every point, then no L-function of a character the level keeps vanishes for Re s > θ"
    },
    "id": "landau-every-level",
    "level": 4,
