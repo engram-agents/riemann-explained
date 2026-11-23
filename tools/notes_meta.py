@@ -203,6 +203,9 @@ FRAME_ONLY = ("argument", "interpretation")
 REFUSED_LIST_SHAPES = ()
 _CODESPAN = re.compile(r"(`+)(?!`).+?(?<!`)\1(?!`)")
 _LINE_SPLIT = re.compile(r"\r\n|\n|\r")
+_BACKTICK_SPAN = re.compile(r"(?<!`)`[^`\n]+`(?!`)")   # the span the page renders as code: single backticks, one line
+_DOTTED = re.compile(r"(?<![A-Za-z0-9_.])[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+(?![A-Za-z0-9_])")
+_WORD = re.compile(r"[A-Za-z0-9_]+")
 
 
 class _Unreadable(Exception):
@@ -314,6 +317,37 @@ def _check_claim(claim, label, path, out):
         c = claim["mathlib_read"]
         if not (isinstance(c, list) and all(isinstance(x, str) for x in c)):
             out.append(_f("BAD-VALUE", path, None, f"{pre}: mathlib_read must be a list of strings"))
+
+
+def _library_words(text):
+    """The library-looking tokens of a text outside single-backtick spans, in the order of the text, each once: a dotted token
+    (identifier parts joined by a dot, each part starting with a letter or `_`: Foo.bar) and a CamelCase word (a lower-case letter
+    directly followed by a capital inside a word of letters, digits and `_`: getValue). It is a prompt to the signer, not a proof."""
+    found = []
+    for line in _LINE_SPLIT.split(text):
+        line = _BACKTICK_SPAN.sub(lambda m: " " * len(m.group(0)), line)
+        hits = [(m.start(), m.group(0)) for m in _DOTTED.finditer(line)]
+        rest = _DOTTED.sub(lambda m: " " * len(m.group(0)), line)
+        hits += [(m.start(), m.group(0)) for m in _WORD.finditer(rest) if re.search(r"[a-z][A-Z]", m.group(0))]
+        found += [t for _pos, t in sorted(hits)]
+    return list(dict.fromkeys(found))
+
+
+def _claim_word_listings(data, path):
+    """CLAIM-LIBRARY-WORD listings for the claim text and each condition of every non-null claim, in the order of the outline."""
+    out = []
+    for g in data.get("groups", []) if isinstance(data, dict) and isinstance(data.get("groups"), list) else []:
+        claim = g.get("claim") if isinstance(g, dict) else None
+        if not isinstance(claim, dict):
+            continue
+        where = [("claim text", claim.get("text"))]
+        if isinstance(claim.get("conditions"), list):
+            where += [(f"conditions[{i}]", c) for i, c in enumerate(claim["conditions"])]
+        for label, text in where:
+            for tok in _library_words(text) if isinstance(text, str) else []:
+                out.append(_f("CLAIM-LIBRARY-WORD", path, None, f"group {g.get('id')!r} {label}: {tok!r} looks like a library name "
+                              "outside backticks (write it in backticks, or in plain words)", LISTING))
+    return out
 
 
 def _check_group_shape(g, label, path, out):
@@ -815,7 +849,8 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     if stop:
         return 3, stop
     found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index)
-    lines, errors, warnings = [_render(f) for f in found], len(found), 0
+    words = _claim_word_listings(odata, os.path.basename(outline))
+    lines, errors, warnings = [_render(f) for f in found + words], len(found), len(words)
     ctx.ids = {}
     hid, hline = {}, {}   # note ids: which notes carry each header id (a note with no header carries none)
     for n in names:
