@@ -113,7 +113,9 @@ def check(case, rep):
 
 def check_who_reads(case, out):
     readers = {r["decl"] for r in out.get("readers", [])}
-    fails = [f"{n} missing from readers" for n in case.get("readers_include", []) if n not in readers]
+    def has(n):
+        return any(r.endswith(n[1:]) for r in readers) if n.startswith("*") else n in readers
+    fails = [f"{n} missing from readers" for n in case.get("readers_include", []) if not has(n)]
     fails += [f"{n} wrongly listed as a reader" for n in case.get("readers_exclude", []) if n in readers]
     return fails
 
@@ -123,6 +125,10 @@ def check_budget(case, out):
     fails = []
     if rep.get("complete") is not case["expect_complete"]:
         fails.append(f"complete={rep.get('complete')!r}, expected {case['expect_complete']!r}")
+    for name, want in case.get("binder_labels", {}).items():
+        got = [b["labels"] for b in rep["binders"] if b["name"] == name]
+        if got != [want]:
+            fails.append(f"binder {name}: labels {got} != [{want}]")
     if "no_binder_label" in case:
         bad = [b["name"] for b in rep["binders"] if case["no_binder_label"] in b["labels"]]
         if bad:

@@ -1,6 +1,6 @@
 {
  "_doc": "Expected outputs for Controls.lean (sha256 of Controls.lean recorded at write time below), written BEFORE the classifier (C2a revised before the classifier; later cases added as the notes below say). Each case names one binder of one declaration and the labels the tool must give. Labels: unused, direct, passed_whole, instance_only, returned, in_types_only. 'path' is a projection path (positional or by field name), 'named' the field-name path; 'callee'/'pos' name a passed_whole occurrence (pos = 0-based explicit+implicit argument index); 'followed' lists auxiliary declarations the tool must have followed. 'must_not' lists labels that must be absent. Pairs differ in one way; a wrong classifier fails one side.",
- "controls_sha256": "113ab6d8203b0e0e46c8dd1a1f155dae343cf9d84b93cb3965afead06a376e10",
+ "controls_sha256": "92165869c092cf8566062b04a0d2733804690104f7ecf6e061a22d47db951ab2",
  "cases": [
   {
    "id": "C1a",
@@ -347,10 +347,13 @@
    "field": "FUControls.Pair2.x",
    "readers_include": [
     "FUControls.reads_x",
-    "FUControls.reads_x_match"
+    "FUControls.reads_x_match",
+    "*.FUControls.privReader"
    ],
    "readers_exclude": [
-    "FUControls.reads_y"
+    "FUControls.reads_y",
+    "FUControls.Pair2.noConfusionType",
+    "FUControls.Pair2.noConfusion"
    ],
    "note": "reads_x_match reads x only through a match_1 matcher"
   },
@@ -363,7 +366,9 @@
    ],
    "readers_exclude": [
     "FUControls.reads_x",
-    "FUControls.reads_x_match"
+    "FUControls.reads_x_match",
+    "FUControls.Pair2.noConfusionType",
+    "FUControls.Pair2.noConfusion"
    ]
   },
   {
@@ -424,6 +429,31 @@
     "in_types_only"
    ],
    "note": "p fills a strict-implicit slot of siUse (and h's type)"
+  },
+  {
+   "id": "C20",
+   "query": "uses",
+   "decl": "FUControls.c20_deep",
+   "binder": "h",
+   "must_not": [
+    "unused",
+    "in_types_only"
+   ],
+   "note": "the use is 260 applications deep, past the walk's depth limit: the report must be incomplete (h not_reached) or find the use, never say unused"
+  },
+  {
+   "id": "C21",
+   "query": "budget",
+   "decl": "FUControls.c21_typeThenValue",
+   "budget": 23,
+   "expect_complete": false,
+   "note_contains": "budget",
+   "binder_labels": {
+    "h": [
+     "not_reached"
+    ]
+   },
+   "note": "budget 23 (found by probing the v1.4c code) cuts after h's in-type occurrence and before its value use; on an incomplete walk a binder with no value use seen is not_reached, never in_types_only"
   }
  ],
  "mutation_check": [
@@ -463,7 +493,7 @@
    "must_fail_exactly": [
     "C3a"
    ],
-   "note": "v1.3, Kepler 35283: bug (ii) fails C3a and C3b together, so no planted bug singled out C3's point that a positional pattern is read like a projection. Prediction written 2026-11-23 before this bug's code existed and before its first run.",
+   "note": "v1.3: bug (ii) fails C3a and C3b together, so no planted bug singled out C3's point that a positional pattern is read like a projection. Prediction written 2026-11-23 before this bug's code existed and before its first run.",
    "id": "iv"
   }
  ],
@@ -478,6 +508,8 @@
   "v1.4 mutation lists, said plainly: the additions C14a/C14b (bug ii) and C13a/C13f (bug iii) were written AFTER the first v1.4 mutation run showed them failing. They follow from the bugs' own definitions (ii breaks every case that reads a path; iii turns off beta reduction, which C13 tests), but I did not update the lists before that run, so for these four entries the list is a record of the output, not a prediction. The lists for (i) and (iv) were not changed.",
   "v1.4b: C17-C19 added after the reviewer fairy's 14 mutants were rerun on v1.4 (9 killed). Printed as terms first; expectations written before this run. Measured: source-written projections elaborate to projection-function applications, never to Expr.proj nodes (c17_projOf and reads_x printed raw), so no control here reaches the Expr.proj branch or structFieldName; the README lists both as untested.",
   "v1.4c: C18a's first form put the lambda among the declaration's own leading binders, which are scanned separately, so the reviewer's lam_type_noop mutant survived it. Rewritten so the lambda is nested inside a constructor argument; expectation unchanged, written before the rerun.",
-  "Not separated by any control here (reviewer's mutants that still pass): (1) the Expr.proj branch and its field-name lookup, which source-written projections never produce; (2) scanning a projection chain's parameter arguments, equivalent because those parameters also occur in the structure binder's own type, which is scanned; (3) the binder type of a nested lambda, which also appears as an implicit type argument near it (C18a tried and did not separate it)."
+  "Not separated by any control here (reviewer's mutants that still pass): (1) the Expr.proj branch and its field-name lookup, which source-written projections never produce; (2) scanning a projection chain's parameter arguments, equivalent because those parameters also occur in the structure binder's own type, which is scanned; (3) the binder type of a nested lambda, which also appears as an implicit type argument near it (C18a tried and did not separate it).",
+  "v1.4d, from reviewer round 2: C20 (depth limit), C21 (in_types_only on a stopped walk), C15c (a private reader) and noConfusion/noConfusionType excluded from readers. Written before the fixes they test. C21's budget value was found by probing the code under test; the expectation does not depend on it.",
+  "A readers_include entry starting with '*' matches by suffix: a private declaration's full name embeds the module path it was compiled under (_private.<module>.0.<name>), which depends on the compile directory."
  ]
 }

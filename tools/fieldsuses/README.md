@@ -1,5 +1,7 @@
 # fields/uses: which hypotheses and fields a Lean proof term uses
 
+> **Read this before citing a verdict.** A report with `complete: false` supports **no** `unused` claim, and no `in_types_only` claim either: the walk stopped (term budget or depth limit), and a binder it did not reach is labelled `not_reached`. A note may cite an `unused` verdict only from a report with `complete: true`, and should say which tool version and options produced it.
+
 A small Lean 4 program that reads the **elaborated proof terms** of a compiled release and answers, for one declaration:
 
 - **`uses DECL`**: for each binder (hypothesis or argument) of `DECL`, one or more labels:
@@ -39,11 +41,11 @@ Errors are loud:
 
 ## Tests: controls first, then a mutation check
 
-`controls/Controls.lean` holds small Mathlib-only theorems in pairs (C1-C19), and `controls/expected.json` gives what the tool must report for each (39 cases, including `who_reads` and a budget stop). C1-C10 were written before the classifier; C11-C19 were added after a reviewer's mutants survived the first set, each written before the code change it tests. **A control counts only after its pair has been printed as elaborated terms and seen to differ in the way its row says.** Three first drafts failed that check (C2, C8, C10) and were rewritten. The runner refuses to run if `Controls.lean` no longer matches the hash recorded in `expected.json`.
+`controls/Controls.lean` holds small Mathlib-only theorems in pairs (C1-C21), and `controls/expected.json` gives what the tool must report for each (41 cases, including `who_reads`, a budget stop and the depth limit). C1-C10 were written before the classifier; C11-C19 were added after a reviewer's mutants survived the first set, each written before the code change it tests. **A control counts only after its pair has been printed as elaborated terms and seen to differ in the way its row says.** Three first drafts failed that check (C2, C8, C10) and were rewritten. The runner refuses to run if `Controls.lean` no longer matches the hash recorded in `expected.json`.
 
 ```
-python3 run_controls.py --root <prebuilt tree>                    # 20 cases
-python3 run_controls.py --root <prebuilt tree> --mutation-check   # three planted bugs
+python3 run_controls.py --root <prebuilt tree>                    # 41 cases
+python3 run_controls.py --root <prebuilt tree> --mutation-check   # four planted bugs
 ```
 
 The mutation check plants four bugs, one at a time, with `--mutate`, and requires each to fail exactly the cases named in `expected.json`:
@@ -53,7 +55,7 @@ The mutation check plants four bugs, one at a time, with `--mutate`, and require
 4. no reading of positional destructuring (`casesOn`, `match`): fails only C3a.
 `expected.json` records which of these lists were written before a run and which were set from one.
 
-**What passing does not mean.** The classifier was written against these controls, so 39/39 shows agreement with them, not correctness on release terms. The planted bugs show the controls can fail; they do not show that every plausible wrong implementation fails (a reviewer's 14 one-line mutants of the first version left 11 survivors; see the PR). Declarations of the release, run when their modules are compiled, are the first test the code was not written against.
+**What passing does not mean.** The classifier was written against these controls, so 41/41 shows agreement with them, not correctness on release terms. The planted bugs show the controls can fail; they do not show that every plausible wrong implementation fails (a reviewer's 14 one-line mutants of the first version left 11 survivors; see the PR). Declarations of the release, run when their modules are compiled, are the first test the code was not written against.
 
 ## Known limits of v1
 

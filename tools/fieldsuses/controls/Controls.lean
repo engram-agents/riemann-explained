@@ -1,5 +1,5 @@
 /-
-Controls for the fields/uses tool (README.md, cases C1-C19). Mathlib only.
+Controls for the fields/uses tool (README.md, cases C1-C21). Mathlib only.
 Each pair differs in one way; expected classifications are in expected.json, written before the classifier.
 -/
 import Mathlib.Data.Nat.Prime.Basic
@@ -101,5 +101,13 @@ theorem c18_value (n : ℕ) (h : 0 < n) : 0 < n ∧ 0 < n := ⟨h, h⟩
 -- C19: a strict-implicit slot, vs an explicit one
 theorem siUse ⦃p : Prop⦄ (h : p) : p := h
 theorem c19_strict (p : Prop) (h : p) : p := @siUse p h
+
+-- v1.4d, from reviewer round 2. C20: a value use 260 applications deep (beyond the walk's depth limit)
+set_option maxRecDepth 20000 in
+theorem c20_deep (p : Prop) (h : p) : p := id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (id (h))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+-- C21: h occurs in a type (hk's type) before its value use; a small budget cuts between them
+theorem c21_typeThenValue (n : ℕ) (h : 0 < n) (k : (m : ℕ) → 0 < m → Prop) (hk : k n h) : k n h ∧ 0 < n := ⟨hk, h⟩
+-- C15c: a private declaration that reads field x
+private def privReader (s : Pair2) : ℕ := s.x
 
 end FUControls

@@ -194,7 +194,11 @@ partial def go (e : Expr) (ctx : Ctx) : M Unit := do
     modify fun s => { s with stopped := true }
     return
   modify fun s => { s with visits := s.visits + 1 }
-  if ctx.depth > 200 then note "depth limit 200 reached; a subterm was not read"; return
+  if ctx.depth > 200 then
+    -- a subterm left unread makes the whole report incomplete, exactly like the budget
+    note "stopped: depth limit 200 reached; a subterm was not read and the labels are incomplete"
+    modify fun s => { s with stopped := true }
+    return
   -- A whole expression that is a component of a tracked binder.
   if let some al ← resolve e then
     useAlias al ctx (if al.isRoot then "occurs" else "proj")
@@ -374,7 +378,8 @@ def summarize (idx : Nat) (name : String) (bi : BinderInfo) (occs : Array Occ) (
   let value := mine.filter (·.label != .inTypesOnly)
   -- on a walk stopped by its budget, silence proves nothing: no binder is called unused
   let labs : Array Label :=
-    if value.isEmpty then (if mine.isEmpty then (if complete then #[.unused] else #[.notReached]) else #[.inTypesOnly])
+    if value.isEmpty then
+      (if !complete then #[.notReached] else if mine.isEmpty then #[.unused] else #[.inTypesOnly])
     else value.foldl (fun acc o => if acc.contains o.label then acc else acc.push o.label) #[]
   let direct := value.filter (·.label == .direct)
   let maximal := direct.filter (fun o => !direct.any (fun o' => isPrefixArr o.pos o'.pos))
@@ -439,7 +444,7 @@ def binderJson (b : BinderReport) (follow : Array Json) : Json :=
     ("follow", Json.arr follow),
     ("occurrences", Json.arr (b.occs.map occJson))]
 
-partial def followJson (env : Environment) (bug : Bug) (b : BinderReport) (depth : Nat) : Array Json := Id.run do
+partial def followJson (env : Environment) (bug : Bug) (b : BinderReport) (depth : Nat) (budget : Nat := 2000000) : Array Json := Id.run do
   let mut out := #[]
   for (callee, k) in b.passed do
     let calleeName := callee.toName
@@ -452,14 +457,14 @@ partial def followJson (env : Environment) (bug : Bug) (b : BinderReport) (depth
       match ci.value? (allowOpaque := true) with
       | none => out := out.push (Json.mkObj [("callee", callee), ("pos", k), ("not_followed", "no body")])
       | some v =>
-        let r := analyze env bug calleeName v
+        let r := analyze env bug calleeName v budget
         match r.binders[k.toNat]? with
         | none => out := out.push (Json.mkObj [("callee", callee), ("pos", k), ("not_followed", "position beyond the value's binders")])
         | some cb =>
           out := out.push (Json.mkObj [("callee", callee), ("pos", k), ("binder", cb.name),
-            ("labels", toJson cb.labels),
+            ("complete", r.complete), ("labels", toJson cb.labels),
             ("paths", Json.arr (cb.paths.map fun (p, n) => Json.mkObj [("path", p), ("named", n)])),
-            ("follow", Json.arr (followJson env bug cb (depth - 1)))])
+            ("follow", Json.arr (followJson env bug cb (depth - 1) budget))])
   return out
 
 -- who_reads S.field over the loaded environment
@@ -585,7 +590,7 @@ unsafe def main (argv : List String) : IO UInt32 := do
       | some v =>
         let r := analyze env bug target v budget
         let sorryNote := if v.hasSorry then #["the body contains sorry"] else #[]
-        let bs := r.binders.map fun b => binderJson b (followJson env bug b follow)
+        let bs := r.binders.map fun b => binderJson b (followJson env bug b follow budget)
         outs := outs.push (Json.mkObj [("scope", header), ("decl", toString target),
           ("complete", r.complete), ("subterm_visits", r.visits),
           ("binders", Json.arr bs), ("followed", toJson (r.followed.map toString)),
@@ -616,7 +621,10 @@ unsafe def main (argv : List String) : IO UInt32 := do
       if !inMod then continue
       -- generated declarations (matchers, noConfusion, recursor helpers) are not authored readers:
       -- a matcher is read where it is used; they are counted, not listed
-      if Lean.Meta.isMatcherCore env n || isNoConfusion env n || isAuxRecursor env n || n.isInternal then
+      -- private declarations have internal-looking names (`_private.…`) but are authored readers
+      let generated? := Lean.Meta.isMatcherCore env n || isNoConfusion env n || isAuxRecursor env n
+        || lastComponent n == "noConfusionType" || (n.isInternal && !isPrivateName n)
+      if generated? then
         generated := generated + 1
         continue
       match ci.value? (allowOpaque := true) with
