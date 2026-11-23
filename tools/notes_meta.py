@@ -71,6 +71,9 @@ CONTRACT (each line is a self-test case, written before the code)
  Summary lines (cases N5a N5b N5c): `outline: G groups, C claimed, Z null, R roots resolved, D defs_opened resolved, P
  premise links` always, counted over the whole outline; `strings: F frame phrases loaded for K kinds` and `byte check:
  N notes equal to REV, M new` when those ran. Header group (cases HROOT1 to HROOT3): `root` only at level 0.
+ Claim basis (cases BAS1 to BAS5): a claim may carry `basis`, exactly "read" or "census"; any other value is BAD-VALUE naming
+ the group and the type of the value; REQUIRE_CLAIM_BASIS (False) makes a claim without it CLAIM-BASIS-MISSING; the line
+ `claim basis: R read, C census, M without` counts the non-null claims.
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
@@ -109,6 +112,9 @@ hand-typed last line can read as a one-line-ending difference (anchors written b
 Z1). An anchor-looking line is kept as text only inside a fence: an indented code block or a list item is not tracked, as in
 rh_anchor's LIMIT. A malformed rh- line is kept as text, so fixing it since REV is a BYTE-DIFF. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
+Claim basis: optional while REQUIRE_CLAIM_BASIS is False. The next step of the sequence (the outline carries basis on every
+claim) comes first, then that constant is set to True and a claim without basis becomes an error. The summary counts a claim
+whose basis value is not read or census as without (it is also a BAD-VALUE), and does not count null claims.
 List items: a nested item is not numbered; a citation in a nested item anchors to its parent item, and the precision lives in
 the block's decls and lines (a future optional `subitem` could number nested items). A list whose last line is nested, a
 loose list (one list, numbered across its blank lines), an ordered list and a list directly followed by a paragraph may render
@@ -171,7 +177,11 @@ NOCODE = "CHECKED NOTHING"
 TOP_KEYS = ("groups", "release")
 GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
 CLAIM_REQUIRED = ("text", "reader", "date", "defs_opened", "conventions_checked")
-CLAIM_OPTIONAL = ("conditions", "mathlib_read")
+CLAIM_OPTIONAL = ("conditions", "mathlib_read", "basis")
+CLAIM_BASIS = ("read", "census")
+# While False a claim need not carry basis. The step that makes the outline carry it on every claim comes first; then this
+# constant is set to True and a claim without basis is CLAIM-BASIS-MISSING.
+REQUIRE_CLAIM_BASIS = False
 DECL_COLS = ["module", "name", "kind", "first_line", "last_line", "basis"]
 FRAME_ONLY = ("argument", "interpretation")
 # Shapes of a list that a renderer shows differently from the source: a tuple of frozensets of shape keys (loose,
@@ -248,8 +258,18 @@ def _decl_entry_ok(e):
 
 
 # ---- the outline
+def _jtype(v):
+    return ("null" if v is None else "boolean" if isinstance(v, bool) else "number" if isinstance(v, (int, float))
+            else "string" if isinstance(v, str) else "list" if isinstance(v, list) else "object")
+
+
 def _check_claim(claim, label, path, out):
     pre = f"{label} claim"
+    if "basis" in claim:
+        if not (isinstance(claim["basis"], str) and claim["basis"] in CLAIM_BASIS):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: basis must be 'read' or 'census' (the value is of type {_jtype(claim['basis'])})"))
+    elif REQUIRE_CLAIM_BASIS:
+        out.append(_f("CLAIM-BASIS-MISSING", path, None, f"{pre}: no basis (read or census)"))
     for k in sorted(claim):
         if k not in CLAIM_REQUIRED and k not in CLAIM_OPTIONAL:
             out.append(_f("UNKNOWN-KEY", path, None, f"{pre}: unknown key {k!r}"))
@@ -350,7 +370,7 @@ def _premise_cycles(graph, path, out):
 def _check_outline(data, path, index):
     """(findings, the ids of the groups that have a usable id)."""
     out = []
-    stats = {"groups": 0, "claimed": 0, "null": 0, "roots": 0, "defs": 0, "premises": 0}
+    stats = {"groups": 0, "claimed": 0, "null": 0, "roots": 0, "defs": 0, "premises": 0, "read": 0, "census": 0, "without": 0}
     if not isinstance(data, dict):
         return [_f("BAD-VALUE", path, None, "top level: must be a JSON object")], set(), stats
     for k in sorted(data):
@@ -377,6 +397,11 @@ def _check_outline(data, path, index):
         stats["groups"] += 1
         stats["claimed"] += isinstance(g.get("claim"), dict)
         stats["null"] += "claim" in g and g["claim"] is None
+        if isinstance(g.get("claim"), dict):   # claim basis, counted over the non-null claims; a bad value is "without"
+            b = g["claim"].get("basis")
+            stats["read"] += b == "read"
+            stats["census"] += b == "census"
+            stats["without"] += not (isinstance(b, str) and b in CLAIM_BASIS)
         labels[i] = f"group {gid!r}" if _str(gid) else f"groups[{i}]"
         _check_group_shape(g, labels[i], path, out)
         if _str(gid):
@@ -795,6 +820,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
                      f"{sum(1 for v in ctx.strings.values() if v)} kinds")
     lines.append(f"outline: {st['groups']} groups, {st['claimed']} claimed, {st['null']} null, {st['roots']} roots resolved, "
                  f"{st['defs']} defs_opened resolved, {st['premises']} premise links")
+    lines.append(f"claim basis: {st['read']} read, {st['census']} census, {st['without']} without")
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
     lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new" if base is not None else "byte check: did not run, no --base given")
