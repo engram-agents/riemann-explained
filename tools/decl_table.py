@@ -15,7 +15,8 @@ first_line = the 1-based keyword line; last_line = the 1-based last line of the 
 Rows are sorted by (module, first_line as a number, name, kind), so the output does not depend on the order the
 files were walked or on PYTHONHASHSEED.
 Stdout is two lines, printed whenever the tree was read, also when the exit is 1 for an undecodable or unreadable
-file. A run with no `.lean` file prints only the one `CHECKED NOTHING` line; exit 2 prints nothing to stdout:
+file. A run with no `.lean` file prints the `CHECKED NOTHING` line, then the stale-files line when OUT_DIR holds output of
+an earlier run (STALE1); exit 2 prints nothing to stdout:
   files N  declarations N  pairs unique U  pairs not unique D (rows R)  undecodable K
   not rows (counted lines): example E  instance without a name I
 U = distinct (module, name) pairs that occur once; D = distinct pairs that occur more than once; R = rows in
@@ -26,7 +27,7 @@ CONTRACT
  T1 Every `.lean` file is read once. A file that does not decode (`UNDECODABLE <relpath>`) or cannot be read at all
     (`UNREADABLE <relpath>`) is reported by path on stderr and counted in `undecodable`; the run still writes every
     other file's rows; the exit code is 1. No `.lean` file under SRC_ROOT: `CHECKED NOTHING: no .lean file under
-    SRC_ROOT` on stdout, exit 1, no table written. A usage error or a SRC_ROOT that is not a directory: exit 2. A
+    SRC_ROOT` on stdout (a stale-files line may follow, STALE1), exit 1, no table written. A usage error or a SRC_ROOT that is not a directory: exit 2. A
     failing self-test: exit 4, nothing else reported. Exit 0 otherwise, INCLUDING when duplicate pairs exist.
     Cases T1a T1b T1c T1d T1e T1f T1g EXIT4 (exit 0 with duplicates: T2a).
  T2 A (module, name) pair that occurs more than once is written, all of its rows, in decls.tsv AND in
@@ -518,7 +519,7 @@ def _selftest_cases():
         return _eq((rc, sorted(calls), _names(tabs)), (1, ["A.lean", "B.lean", "C.lean"], ["a", "b"]))
 
     # ---- T1f, T1g: what stdout holds on the two exits that print no summary
-    @case("T1f", "no .lean file: stdout is exactly the one line `CHECKED NOTHING: no .lean file under SRC_ROOT` (no summary line), "
+    @case("T1f", "no .lean file: stdout is exactly the one line `CHECKED NOTHING: no .lean file under SRC_ROOT` when OUT_DIR holds no old output (no summary line; STALE1 covers the stale-files line that may follow), "
                  "nothing on stderr; control: one .lean file prints the two summary lines")
     def _():
         rc, out, err, _t = _go({"readme.txt": "x"})

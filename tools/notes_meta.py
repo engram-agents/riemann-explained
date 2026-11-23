@@ -40,14 +40,15 @@ CONTRACT (each line is a self-test case, written before the code)
  Notes
   M1 Exactly one rh-note header per note, before the first `## ` heading: none NO-HEADER, two or more SECOND-HEADER
      naming the lines, one after the first `## ` heading HEADER-AFTER-H2. Case M1.
-  M2 header_problems() findings; the group exists in the outline; list_title is not only code spans and does not end
-     in a parenthetical. Cases M2a M2b.
+  M2 header_problems() findings; the group exists in the outline; the title rules (TITLE-CODE-FIRST, TITLE-PARENTHETICAL
+     as errors, TITLE-NOTE as a listing). Cases M2a TITLE1 TITLE2 TITLE3 TITLE4.
   M3 Every block: rh_anchor.problems(block, header id); block ids unique across all notes, DUPLICATE-ID naming both
      places. Cases M3a M3b.
   M4 Every `decls` entry resolves to exactly one row (UNRESOLVED, AMBIGUOUS). Case M4.
-  M5 With --src: `file` is listed in the note's file table and is a file under SRC_ROOT, `lines` are inside it.
+  M5 `file` is listed in the note's file table (always); with --src it is also a file under SRC_ROOT and `lines` are
+     inside it.
      Lines outside the text extent of every row the block's decls resolve to are an EXTENT-WARNING listing. Without
-     --src the in-file check is skipped and the run says so. Cases M5a M5b M5c.
+     --src the existence and line-count halves are skipped and the run says so. Cases M5a to M5f.
   M6 Every MALFORMED, UNCLOSED-FENCE and INSIDE-TABLE problem of rh_anchor.parse_note is an ERROR naming the line; a
      line that is not canonical is NONCANONICAL and prints the canonical form. Cases M6a M6b.
   M7 A block with `row` or `col` must follow a table (NOT-A-TABLE), `row` <= body rows, `col` <= columns. Case M7.
@@ -56,6 +57,11 @@ CONTRACT (each line is a self-test case, written before the code)
   BYTES With --base REV: the note at REV equals the current note without its anchor lines, byte for byte (BYTE-DIFF
      names the first differing line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
      Cases B1a B1b B1c B1d.
+ Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
+  R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
+  `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
+  R4 Every group has at least one root; a null claim with no root, once accepted, is now a ROOT-COUNT error.
+  R5 A strings file with no phrase at all is announced. R6 Without the git program a normal run is refused (exit 4).
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
@@ -87,6 +93,14 @@ the first other kind that matches is named; only a block whose target is a parag
 compares at the path the note has in the repository, so a note renamed since REV is NEW-NOTE, and BYTE-DIFF's line
 number is a line of the published text, not of the note with its anchors. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
+Title rules in the script are heuristics. A trailing parenthetical is allowed when it holds only code spans, commas and
+`and`, or only a one-letter or number argument (so a function argument like `(s)` or `(12)` passes and `(draft)` fails);
+a math argument longer than that is called a status. TITLE-NOTE listings (a math symbol or `Re s` outside code; `proved`
+or `proves` with no `Lean` directly before it) are heuristics too and never fail a note. Left to a human reader: plain
+words, no definite reference to something defined in another note, no interpretation stated as fact (other than
+`proved`), and the group-title rules (restate the root's statement, same vocabulary as the notes). The element types of
+`authors` and `readers` are not checked. A block's `defs_opened` lines are not order-checked. A strings file that
+holds no phrase is announced with one line and is not an error.
 
 usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--strings PATH] [--src SRC_ROOT]
                      [--glob PATTERN]
@@ -99,6 +113,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -375,7 +390,9 @@ def _check_outline(data, path, index):
             else:
                 graph[gid].append(p)
         claim, roots = g.get("claim"), g.get("roots")
-        if isinstance(claim, dict) and isinstance(roots, list) and len(roots) != 1:
+        if isinstance(roots, list) and not roots:
+            out.append(_f("ROOT-COUNT", path, None, f"{label}: a group needs at least one root"))
+        elif isinstance(claim, dict) and isinstance(roots, list) and len(roots) != 1:
             out.append(_f("ROOT-COUNT", path, None, f"{label}: a group with a claim has exactly one root, not {len(roots)}"))
         entries = [(f"{label} roots[{k}]", e) for k, e in enumerate(roots)] if isinstance(roots, list) else []
         if isinstance(claim, dict) and isinstance(claim.get("defs_opened"), list):
@@ -390,24 +407,53 @@ def _check_outline(data, path, index):
 
 
 # ---- the notes
-def _only_code(title):
-    s = title.strip()
-    return "`" in s and not _CODESPAN.sub("", s).strip()
+_ARG = re.compile(r"\s*(?:\w|\d+)(?:\s*,\s*(?:\w|\d+))*\s*")   # a math argument: one letter or number, or a list of them
+_MATH_SYMBOLS = "\u2264\u2265<>=^\u221a\u2211"
+_PROVED = re.compile(r"\b(proved|proves)\b", re.I)
 
 
 def _trailing_parenthetical(title):
+    """The text inside a trailing `(...)` of the title (brackets balanced), else None."""
     s = title.rstrip()
     if not s.endswith(")"):
-        return False
+        return None
     depth = 0
-    for ch in reversed(s):
-        if ch == ")":
+    for i in range(len(s) - 1, -1, -1):
+        if s[i] == ")":
             depth += 1
-        elif ch == "(":
+        elif s[i] == "(":
             depth -= 1
             if depth == 0:
-                return True
-    return False
+                return s[i + 1:-1]
+    return None
+
+
+def _status_parenthetical(content):
+    """True unless the bracket holds only code spans, commas and `and`, or a one-letter or number argument."""
+    if _ARG.fullmatch(content):
+        return False
+    if _CODESPAN.search(content) and not re.sub(r"\band\b|,", "", _CODESPAN.sub("", content)).strip():
+        return False
+    return True
+
+
+def _title_findings(name, line, t):
+    out = []
+    s = t.strip()
+    plain = _CODESPAN.sub("", s)
+    if s.startswith("`") or not re.search(r"\w", plain):
+        out.append(_f("TITLE-CODE-FIRST", name, line, f"list_title starts with code or has no word outside code: {t!r}"))
+    inner = _trailing_parenthetical(t)
+    if inner is not None and _status_parenthetical(inner):
+        out.append(_f("TITLE-PARENTHETICAL", name, line, f"list_title ends with a parenthetical: {t!r}"))
+    sym = next((ch for ch in _MATH_SYMBOLS if ch in plain), None) or ("Re s" if re.search(r"\bRe s\b", plain) else None)
+    if sym:
+        out.append(_f("TITLE-NOTE", name, line, f"list_title has math outside code ({sym!r}): {t!r}", LISTING))
+    for m in _PROVED.finditer(plain):
+        if not plain[:m.start()].endswith("Lean "):
+            out.append(_f("TITLE-NOTE", name, line, f"list_title says {m.group(0)!r} without 'Lean' directly before it: {t!r}", LISTING))
+            break
+    return out
 
 
 def _norm(s):
@@ -460,12 +506,8 @@ def _check_header(name, headers, ctx):
         out.append(_f("NONCANONICAL", name, h.line, "not the canonical form; canonical: " + _canon("rh-note", d)))
     if _str(d.get("group")) and d["group"] not in ctx.groups:
         out.append(_f("UNKNOWN-GROUP", name, h.line, f"group {d['group']!r} is not in the outline"))
-    t = d.get("list_title")
-    if _str(t):
-        if _only_code(t):
-            out.append(_f("TITLE-BACKTICK-ONLY", name, h.line, f"list_title is only code: {t!r}"))
-        if _trailing_parenthetical(t):
-            out.append(_f("TITLE-PARENTHETICAL", name, h.line, f"list_title ends with a parenthetical: {t!r}"))
+    if _str(d.get("list_title")):
+        out += _title_findings(name, h.line, d["list_title"])
     return out, (d["id"] if _str(d.get("id")) else None)
 
 
@@ -489,20 +531,29 @@ def _check_block(name, b, note_id, listed, lines, ctx, out):
                 out.append(fnd)
             else:
                 rows.append((e["module"], e["name"], row))
-    f, ln = d.get("file"), d.get("lines")   # M5
-    if _str(f) and isinstance(ln, list) and len(ln) == 2 and all(_int(x) for x in ln):
-        if ctx.src is not None:
-            if f not in (listed or []):
-                out.append(_f("FILE-NOT-LISTED", name, b.line, f"{label} file {f} is not in the note's file table"))
-            else:
-                n = ctx.file_lines(f)
-                if n is None:
-                    out.append(_f("FILE-MISSING", name, b.line, f"{label} file {f} is listed but not found under --src"))
-                elif n == -1:
-                    out.append(_f("FILE-UNREADABLE", name, b.line, f"{label} file {f} under --src is not valid UTF-8"))
-                elif ln[1] > n:
-                    out.append(_f("LINES-OUTSIDE-FILE", name, b.line, f"{label} lines {ln} but {f} has {n} lines"))
-        if rows and not any(r[0] <= ln[0] and ln[1] <= r[1] for _m, _n, r in rows):
+    for k, e in enumerate(d.get("defs_opened") if isinstance(d.get("defs_opened"), list) else []):
+        if _decl_entry_ok(e):
+            fnd, _row = _resolve(ctx.index, f"{label} defs_opened[{k}]", name, b.line, e["module"], e["name"])
+            if fnd:
+                out.append(fnd)
+    kind_of_target = (b.target or {}).get("type")   # a block anchors a paragraph, a table or a lean block
+    if kind_of_target in ("none", "other"):
+        out.append(_f("ORPHAN-BLOCK", name, b.line, f"{label} anchors nothing: its target is of type '{kind_of_target}', "
+                      "not a paragraph, table or lean block"))
+    f, ln = d.get("file"), d.get("lines")   # M5: the table half always, the existence and line-count halves with --src
+    lines_ok = isinstance(ln, list) and len(ln) == 2 and all(_int(x) for x in ln)
+    if _str(f):
+        if f not in (listed or []):
+            out.append(_f("FILE-NOT-LISTED", name, b.line, f"{label} file {f} is not in the note's file table"))
+        elif ctx.src is not None:
+            n = ctx.file_lines(f)
+            if n is None:
+                out.append(_f("FILE-MISSING", name, b.line, f"{label} file {f} is listed but not found under --src"))
+            elif n == -1:
+                out.append(_f("FILE-UNREADABLE", name, b.line, f"{label} file {f} under --src is not valid UTF-8"))
+            elif lines_ok and ln[1] > n:
+                out.append(_f("LINES-OUTSIDE-FILE", name, b.line, f"{label} lines {ln} but {f} has {n} lines"))
+        if lines_ok and rows and not any(r[0] <= ln[0] and ln[1] <= r[1] for _m, _n, r in rows):
             where = "; ".join(f"{m} {n} ({r[0]}, {r[1]})" for m, n, r in rows)
             out.append(_f("EXTENT-WARNING", name, b.line,
                           f"{label} lines {ln} are outside the text extent of every resolved row: {where}", LISTING))
@@ -533,7 +584,7 @@ def _check_note(name, text, ctx):
     hdr, note_id = _check_header(name, headers, ctx)
     out += hdr
     lines = _LINE_SPLIT.split(text) if ctx.strings is not None else None
-    listed = clb.listed_files(text) if ctx.src is not None else None
+    listed = clb.listed_files(text)
     counts, invalid = {k: 0 for k in rh.KINDS}, 0
     for b in blocks:
         kind = _check_block(name, b, note_id, listed, lines, ctx, out)
@@ -542,7 +593,7 @@ def _check_note(name, text, ctx):
         else:
             invalid += 1
     out.sort(key=lambda x: x[2] or 0)
-    return out, not hdr, note_id or os.path.splitext(name)[0], counts, invalid, len(blocks)
+    return out, not any(f[4] == ERROR for f in hdr), note_id or os.path.splitext(name)[0], counts, invalid, len(blocks)
 
 
 def _note_line(label, hdr_ok, counts, invalid, nblocks):
@@ -578,7 +629,7 @@ def _read_json(path, what):
     try:
         with open(path, "rb") as fh:
             return json.loads(fh.read().decode("utf-8"))
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RecursionError) as e:   # RecursionError: JSON nested too deep to parse
         raise _Unreadable(f"cannot read the {what}: {e}")
 
 
@@ -675,8 +726,10 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
         invalid_total += invalid
     if ctx.strings is None:
         lines.append("FRAME-NOTE skipped: no strings file")
+    elif not any(ctx.strings.values()):
+        lines.append("FRAME-NOTE skipped: no frame phrases were loaded from the strings file")
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
-    lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): skipped, no --src given")
+    lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
     lines.append(f"byte check: ran against {base}" if base is not None else "byte check: did not run, no --base given")
     lines.append(f"{len(names)} notes, {errors} findings, {warnings} warnings")
     return (1 if errors else 0), lines
@@ -1625,6 +1678,10 @@ def main(argv=None, check=None):
     if parsed is None:
         print(USAGE, file=sys.stderr)
         return 2
+    if check is None and shutil.which("git") is None:
+        print("REFUSED: the self-test of notes_meta.py needs the git program, which was not found on PATH; no result reported",
+              file=sys.stderr)
+        return 4
     if (selftest_quiet if check is None else check)() != 0:
         print("REFUSED: selftest failed; no result reported", file=sys.stderr)
         return 4

@@ -52,7 +52,8 @@ NOTES_DIR), `--glob PATTERN` changes which files are notes (default `[0-9][0-9]-
 note prints `note <id> header ok, blocks N (kind=count ...)`, and the run ends with the counts by kind, what the
 in-file and byte checks did or did not do, and `N notes, M findings, K warnings`. It checks shape and resolution;
 it does not judge whether a claim is right, and the LIMIT paragraph in the file lists the title rules and the
-translation rules that need a reader.
+translation rules that need a reader. Every group needs at least one root; a group with a null claim and no root passed
+in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT.
 `python3 tools/notes_meta.py NOTES_DIR outline.json decls.tsv [--src SRC_ROOT] [--strings strings.json] [--base REV]`
 
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
