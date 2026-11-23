@@ -605,13 +605,20 @@ def _selftest_cases():
     return cases
 
 
-def selftest(verbose=True, exclude=()):
+def selftest(verbose=True, only=None):
     """A case returns (True|False, detail), or (None, text) to be SKIPPED (a skip never fails the self-test).
-    `exclude` drops cases by id; the provenance-environment cases use it so their child run does not recurse."""
+    `only` is a list of case ids: exactly those cases run (an unknown id returns 2 and names it). The selector
+    lets a case that spawns a child self-test run just the cases it depends on, so no other case can redden it."""
     ok, skipped = True, 0
-    for cid, desc, fn in _selftest_cases():
-        if cid in exclude:
-            continue
+    cases = _selftest_cases()
+    if only is not None:
+        known = {c[0] for c in cases}
+        bad = [i for i in only if i not in known]
+        if bad or not only:
+            print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
+            return 2
+        cases = [c for c in cases if c[0] in only]
+    for cid, desc, fn in cases:
         try:
             good, detail = fn()
         except _SkipCase as e:
@@ -641,6 +648,8 @@ def selftest_quiet():
 def main(a):
     if a[1:] == ["--selftest"]:
         return selftest()
+    if len(a) == 4 and a[1] == "--selftest" and a[2] == "--only":   # selector, kept out of the usage block
+        return selftest(only=[i for i in a[3].split(",") if i])
     if len(a) != 3:
         print(__doc__.split("usage:")[1].strip(), file=sys.stderr)
         return 2
