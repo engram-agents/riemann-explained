@@ -415,15 +415,21 @@ def _selftest_cases():
             got = provenance("t", d, "not x")
         return _eq(got, "# t | source: git-unreadable| not x")
 
-    def child_selftest(env):
-        """The self-test (minus the two environment cases) in a fresh interpreter with the given environment."""
-        code = ("import sys; sys.path.insert(0, sys.argv[1]); import scan_graph; "
-                "sys.exit(scan_graph.selftest(exclude=('PROV4', 'PROV5')))")
-        here = os.path.dirname(os.path.abspath(__file__))
-        r = subprocess.run([sys.executable, "-I", "-c", code, here], capture_output=True, text=True, env=env, timeout=300)
-        return r.returncode, r.stdout
+    def run_selftest(args, env=None):
+        """This file's self-test in a fresh interpreter: (exit status, stdout, stderr, ids of the CASE lines)."""
+        r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"] + args,
+                           capture_output=True, text=True, env=env, timeout=300)
+        return r.returncode, r.stdout, r.stderr, [ln.split(" ")[1] for ln in r.stdout.splitlines() if ln.startswith("CASE ")]
 
-    @case("PROV4", "the self-test passes when TMPDIR sits inside a git work tree")
+    PROV_ONLY = ["--only", "PROV1,PROV2,PROV3"]
+
+    @case("SEL1", "`--selftest --only ID,ID` runs exactly the named cases and exits 0; an unknown id exits 2 naming it")
+    def _():
+        rc, out, _e, ids = run_selftest(["--only", "S1a,S3b"])
+        rc2, out2, err2, ids2 = run_selftest(["--only", "S1a,NOPE"])
+        return _eq((rc, ids, out.splitlines()[-1], rc2, ids2, "NOPE" in out2 + err2), (0, ["S1a", "S3b"], "SELFTEST PASS", 2, [], True))
+
+    @case("PROV4", "the provenance cases pass when TMPDIR sits inside a git work tree, and they alone run")
     def _():
         if not shutil.which("git"):
             return None, "git not on PATH"
@@ -433,14 +439,14 @@ def _selftest_cases():
             subprocess.run(["git", "-C", repo, "init", "-q"], check=True, capture_output=True)
             inner = os.path.join(repo, "tmp")
             os.makedirs(inner)
-            rc, out = child_selftest(dict(os.environ, TMPDIR=inner))
-        return _eq((rc, "CASE PROV1 PASS" in out, "FAIL" in out), (0, True, False))
+            rc, out, _e, ids = run_selftest(PROV_ONLY, dict(os.environ, TMPDIR=inner))
+        return _eq((rc, ids, "CASE PROV1 PASS" in out, "FAIL" in out), (0, ["PROV1", "PROV2", "PROV3"], True, False))
 
-    @case("PROV5", "with no git on PATH the self-test exits 0, PROV1 is SKIPped and nothing fails")
+    @case("PROV5", "with no git on PATH the provenance cases exit 0, PROV1 is SKIPped, nothing fails, and they alone run")
     def _():
         with tempfile.TemporaryDirectory() as d:
-            rc, out = child_selftest(dict(os.environ, PATH=d))
-        return _eq((rc, "CASE PROV1 SKIP git not on PATH" in out.splitlines(), "FAIL" in out), (0, True, False))
+            rc, out, _e, ids = run_selftest(PROV_ONLY, dict(os.environ, PATH=d))
+        return _eq((rc, ids, "CASE PROV1 SKIP git not on PATH" in out.splitlines(), "FAIL" in out), (0, ["PROV1", "PROV2", "PROV3"], True, False))
 
     # ---- the tool
     @case("S1a", "three files -> printed file count 3 and 3 rows in files.tsv")
