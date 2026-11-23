@@ -520,7 +520,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For every level (in the library's sense), all constants and every ε > 0, there is `x1` such that for every x ≥ `x1` and every host (in the library's sense) satisfying the library's conditions `EAtH` and `CoreAtH` at x with those constants, the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε); the threshold `x1` depends on the level and the constants, not on the host"
+    "text": "For every level (in the library's sense), all constants and every ε > 0, there is x1 such that for every x ≥ x1 and every host (in the library's sense) satisfying the library's conditions `EAtH` and `CoreAtH` at x with those constants, the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε); the threshold x1 depends on the level and the constants, not on the host"
    },
    "id": "window-bound",
    "level": 4,
