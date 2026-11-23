@@ -43,8 +43,9 @@ CONTRACT
     when every occurrence in that file sits inside a line or block comment.
  A5 callers.tsv: for every alias public name and every resolved (matches = 1) target full name, the files and
     lines where that exact full name occurs as a whole dotted token (maximal run of `[\\w'.₀-₉]` characters with
-    trailing dots trimmed), outside its own declaration line and outside the lines of an alias wrapper (the
-    wrapper naming its target is the alias link itself, already in aliases.tsv); one row per file and line, in_comment = 1 when
+    trailing dots trimmed), outside its own declaration line and outside the alias wrapper's own lines, from the
+    `first | exact @` line through the line where the shape ends, where the wrapper names its own target (that
+    is the alias link itself, already in aliases.tsv; any other name or line is kept); one row per file and line, in_comment = 1 when
     every occurrence on that line is inside a comment. A name with no row is listed in uncalled.tsv.
  D1 SRC_ROOT not a directory: exit 2. No `.lean` file: `CHECKED NOTHING: no .lean file under SRC_ROOT`, exit 1.
  D2 A file that does not decode is printed as `UNDECODABLE <relpath>`, one that cannot be read at all as
@@ -167,7 +168,7 @@ def norm_target(x):
 
 
 def find_wrappers(raw, masked):
-    """([(public, x, line, last_line)] exact wrappers, [(public, x1, x2, x3, line, reason, tail)] odd shapes).
+    """([(public, x, line, (first_line, last_line))] exact wrappers, the span being the wrapper's own lines, [(public, x1, x2, x3, line, reason, tail)] odd shapes).
     reason is `unequal_x` (the three X differ) or `trailing_text` (equal X, more non-blank text follows; tail is
     that text with whitespace runs collapsed, cut to 80 characters)."""
     good, odd = [], []
@@ -196,7 +197,9 @@ def find_wrappers(raw, masked):
         elif tail:
             odd.append((full, x1, x2, x3, line_no, "trailing_text", tail))
         else:
-            good.append((full, x1, line_no, end))
+            first = line_no + extent.count("\n", 0, start)
+            last = line_no + extent.count("\n", 0, start + m.end() - 1)
+            good.append((full, x1, line_no, (first, last)))
     return good, odd
 
 
@@ -221,7 +224,7 @@ def run(root, out):
     undecodable = []
     # pass 1: wrappers and the target set
     aliases, odd = [], []          # aliases: (public, target, file, line)
-    wrap_lines = collections.defaultdict(set)   # file -> lines inside an alias wrapper (the alias link itself)
+    wrap_hits = set()   # (file, line, name): the wrapper's own text naming its own target, which is the alias link itself
     for _, p in mods:
         text, ok = read_text(p)
         if not ok:
@@ -229,7 +232,8 @@ def run(root, out):
             continue
         good, bad = find_wrappers(text, mask_comments(text))
         aliases += [(pub, x, rel[p], ln) for pub, x, ln, _last in good]
-        wrap_lines[rel[p]].update(l for _pub, _x, ln, last in good for l in range(ln, last + 1))
+        for pub, x, _ln, (first, last) in good:
+            wrap_hits.update((rel[p], l, n) for l in range(first, last + 1) for n in (norm_target(x), pub))
         odd += [(pub, x1, x2, x3, rel[p], ln, why, tail) for pub, x1, x2, x3, ln, why, tail in bad]
     targets = {norm_target(a[1]) for a in aliases}   # resolution and callers use the stripped full name
     alias_names = {a[0] for a in aliases}
@@ -286,7 +290,7 @@ def run(root, out):
     for n, kind in sorted(universe):
         per_line = {}
         for f, ln, inc in occ.get(n, []):
-            if (f, ln) in decl_lines[(n, kind)] or ln in wrap_lines[f]:
+            if (f, ln) in decl_lines[(n, kind)] or (f, ln, n) in wrap_hits:
                 continue
             per_line[(f, ln)] = min(per_line.get((f, ln), 1), inc)
         for (f, ln), inc in sorted(per_line.items()):
