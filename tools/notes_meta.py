@@ -43,7 +43,8 @@ CONTRACT (each line is a self-test case, written before the code)
   M2 header_problems() findings; the group exists in the outline; the title rules (TITLE-CODE-FIRST, TITLE-PARENTHETICAL
      as errors, TITLE-NOTE as a listing). Cases M2a TITLE1 TITLE2 TITLE3 TITLE4.
   M3 Every block: rh_anchor.problems(block, header id); block ids unique across all notes, DUPLICATE-ID naming both
-     places. Cases M3a M3b.
+     places; two notes whose headers carry the same id are NOTE-ID-DUPLICATE (one finding, on the first, naming every
+     file that uses it). Cases M3a M3b ID1 to ID4.
   M4 Every `decls` entry resolves to exactly one row (UNRESOLVED, AMBIGUOUS). Case M4.
   M5 `file` is listed in the note's file table (always); with --src it is also a file under SRC_ROOT and `lines` are
      inside it.
@@ -112,6 +113,8 @@ hand-typed last line can read as a one-line-ending difference (anchors written b
 Z1). An anchor-looking line is kept as text only inside a fence: an indented code block or a list item is not tracked, as in
 rh_anchor's LIMIT. A malformed rh- line is kept as text, so fixing it since REV is a BYTE-DIFF. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
+NOTE-ID-DUPLICATE compares ids exactly (letter case counts) and only for notes that have a header with a non-empty id; it is one
+finding on the first file in name order, which names every file, so a reader of a later file's own findings does not see it.
 Claim basis: optional while REQUIRE_CLAIM_BASIS is False. The next step of the sequence (the outline carries basis on every
 claim) comes first, then that constant is set to True and a claim without basis becomes an error. The summary counts a claim
 whose basis value is not read or census as without (it is also a BAD-VALUE), and does not count null claims.
@@ -796,9 +799,23 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index)
     lines, errors, warnings = [_render(f) for f in found], len(found), 0
     ctx.ids = {}
+    hid, hline = {}, {}   # note ids: which notes carry each header id (a note with no header carries none)
+    for n in names:
+        hs = rh.parse_note(texts[n])[0]
+        hid_id = hs[0].data.get("id") if hs else None
+        if _str(hid_id):
+            hid.setdefault(hid_id, []).append(n)
+            hline[n] = hs[0].line
+    dup_at = {}
+    for hid_id, files in hid.items():
+        if len(files) > 1:
+            dup_at[files[0]] = f"note id {hid_id!r} is used by {len(files)} notes: " + ", ".join(files)
     totals, invalid_total, n_equal, n_new = {k: 0 for k in rh.KINDS}, 0, 0, 0
     for n in names:
         fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
+        if n in dup_at:
+            fs.append(_f("NOTE-ID-DUPLICATE", n, hline[n], dup_at[n]))
+            fs.sort(key=lambda x: x[2] or 0)
         bf = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else None
         fs += [bf] if bf else []
         if base is not None:
