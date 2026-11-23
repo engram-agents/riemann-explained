@@ -34,7 +34,8 @@ CONTRACT
     when every occurrence in that file sits inside a line or block comment.
  A5 callers.tsv: for every alias public name and every resolved (matches = 1) target full name, the files and
     lines where that exact full name occurs as a whole dotted token (maximal run of `[\\w'.₀-₉]` characters with
-    trailing dots trimmed), outside its own declaration line; one row per file and line, in_comment = 1 when
+    trailing dots trimmed), outside its own declaration line and outside the lines of an alias wrapper (the
+    wrapper naming its target is the alias link itself, already in aliases.tsv); one row per file and line, in_comment = 1 when
     every occurrence on that line is inside a comment. A name with no row is listed in uncalled.tsv.
  D1 SRC_ROOT not a directory: exit 2. No `.lean` file: `CHECKED NOTHING: no .lean file under SRC_ROOT`, exit 1.
  D2 A file that does not decode is printed as `UNDECODABLE <relpath>`, counted in the summary, and the exit
@@ -75,10 +76,219 @@ CALLERS_COLS = ["name", "kind", "file", "line", "in_comment"]
 UNCALLED_COLS = ["name", "kind"]
 
 
-# ---------------------------------------------------------------- the tool (STUB)
+# ---------------------------------------------------------------- the tool
+
+WRAP_QUICK = re.compile(r"first\s*\|\s*exact\s+@")
+WRAP = re.compile(r"first\s*\|\s*exact\s+@([^\s|]+)\s*\|\s*exact\s+([^\s|]+)\s*\|\s*"
+                  r"\(\s*intros\s*;\s*apply\s+([^\s<]+)\s*<;>\s*assumption\s*\)")
+BY = re.compile(r":=\s*by(?![\w'])")
+DECL_QUICK = re.compile(r"\b(?:theorem|lemma|def|abbrev|structure|class|inductive|instance)\b")
+DECL = re.compile(r"[ \t]*(?:@\[[^\]]*\][ \t]*)*(?:(?:private|protected|noncomputable|nonrec|unsafe|partial)[ \t]+)*"
+                  r"(theorem|lemma|def|abbrev|structure|class|inductive|instance)[ \t]+([^\s:({\[]*)")
+BOUND = re.compile(r"(?:(?:theorem|lemma|def|abbrev|structure|class|inductive|instance|end|namespace|section|open|"
+                   r"set_option|attribute|variable|universe|noncomputable|private|protected|nonrec|unsafe|partial|mutual)"
+                   r"(?![\w'.])|@\[)")
+NS = re.compile(r"namespace[ \t]+(\S+)")
+SEC = re.compile(r"(?:noncomputable[ \t]+)?section(?:[ \t]+(\S+))?[ \t]*$")
+END = re.compile(r"end(?:[ \t]+(\S+))?[ \t]*$")
+MUT = re.compile(r"mutual[ \t]*$")
+RUN = re.compile(r"[\w'.₀-₉]+")
+TOK = re.compile(r"GlobalTheory\.T\.[A-Za-z_][\w'₀-₉]*")
+PUB = "GlobalTheory.T."
+
+
+def parse_decls(raw, masked):
+    """[(line_no, kind, full_name, end_idx)] for every declaration with a name. Structure comes from the
+    masked text; end_idx is the 0-based index of the first line after the declaration's extent."""
+    if not DECL_QUICK.search(masked):
+        return []
+    ml, rl = masked.split("\n"), raw.split("\n")
+    n = len(ml)
+    nxt = [n] * (n + 1)
+    for k in range(n - 1, -1, -1):
+        m = ml[k]
+        is_b = bool(m) and m[0] not in " \t" and BOUND.match(m) is not None
+        nxt[k] = k if (is_b or rl[k].startswith("/-")) else nxt[k + 1]
+    stack, found = [], []
+    for k in range(n):
+        line = ml[k]
+        if not line.strip():
+            continue
+        if line[0] not in " \t":
+            m = NS.match(line)
+            if m:
+                stack.append(("namespace", m.group(1)))
+                continue
+            m = SEC.match(line)
+            if m:
+                stack.append(("section", m.group(1)))
+                continue
+            if MUT.match(line):
+                stack.append(("mutual", None))
+                continue
+            m = END.match(line)
+            if m:
+                want = m.group(1)
+                if want is None:
+                    if stack:
+                        stack.pop()
+                else:
+                    for j in range(len(stack) - 1, -1, -1):
+                        if stack[j][1] == want:
+                            del stack[j:]
+                            break
+                continue
+        m = DECL.match(line)
+        if not m:
+            continue
+        name = m.group(2).rstrip(".")
+        if not name:
+            continue
+        if name.startswith("_root_."):
+            full = name[len("_root_."):]
+        else:
+            prefix = ".".join(nm for kind, nm in stack if kind == "namespace")
+            full = prefix + "." + name if prefix else name
+        found.append((k + 1, m.group(1), full, nxt[k + 1]))
+    return found
+
+
+def find_wrappers(raw, masked):
+    """([(public, x, line, last_line)] with the three X equal, [(public, x1, x2, x3, line)] with them unequal)."""
+    good, odd = [], []
+    if not WRAP_QUICK.search(masked):
+        return good, odd
+    ml = masked.split("\n")
+    for line_no, kind, full, end in parse_decls(raw, masked):
+        if kind not in ("theorem", "lemma"):
+            continue
+        extent = "\n".join(ml[line_no - 1:end])
+        b = BY.search(extent)
+        if not b:
+            continue
+        m = WRAP.fullmatch(extent[b.end():].strip())
+        if not m:
+            continue
+        x1, x2, x3 = m.groups()
+        if x1 == x2 == x3:
+            good.append((full, x1, line_no, end))
+        else:
+            odd.append((full, x1, x2, x3, line_no))
+    return good, odd
+
+
+def write_tsv(out, name, header, cols, rows):
+    with open(os.path.join(out, name + ".tsv"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(header + "\n" + "\t".join(cols) + "\n")
+        for r in rows:
+            f.write("\t".join(str(x) for x in r) + "\n")
+
 
 def run(root, out):
-    return 0
+    root = root.rstrip(os.sep) or root
+    if not os.path.isdir(root):
+        print(f"SRC_ROOT is not a directory: {root}", file=sys.stderr)
+        return 2
+    mods = walk_lean(root)
+    if not mods:
+        print("CHECKED NOTHING: no .lean file under SRC_ROOT")
+        return 1
+    os.makedirs(out, exist_ok=True)
+    rel = {p: os.path.relpath(p, root).replace(os.sep, "/") for _, p in mods}
+    undecodable = []
+    # pass 1: wrappers and the target set
+    aliases, odd = [], []          # aliases: (public, target, file, line)
+    wrap_lines = collections.defaultdict(set)   # file -> lines inside an alias wrapper (the alias link itself)
+    for _, p in mods:
+        text, ok = read_text(p)
+        if not ok:
+            undecodable.append(rel[p])
+            continue
+        good, bad = find_wrappers(text, mask_comments(text))
+        aliases += [(pub, x, rel[p], ln) for pub, x, ln, _last in good]
+        wrap_lines[rel[p]].update(l for _pub, _x, ln, last in good for l in range(ln, last + 1))
+        odd += [(pub, x1, x2, x3, rel[p], ln) for pub, x1, x2, x3, ln in bad]
+    targets = {a[1] for a in aliases}
+    alias_names = {a[0] for a in aliases}
+    names = targets | alias_names
+    pub_t = {n for n in alias_names if n.startswith(PUB)}
+    wrapper_files = collections.defaultdict(set)
+    for pub, _x, f, _ln in aliases:
+        wrapper_files[pub].add(f)
+    # pass 2: declarations of the targets, and the tokens of A4 / A5
+    cands = collections.defaultdict(list)
+    occ = collections.defaultdict(list)             # name -> [(file, line, in_comment)]
+    refs = collections.defaultdict(lambda: [0, 0])  # (file, public) -> [occurrences, occurrences in code]
+    if aliases:
+        for _, p in mods:
+            text, ok = read_text(p)
+            if not ok:
+                continue
+            masked = mask_comments(text)
+            for line_no, _kind, full, _end in parse_decls(text, masked):
+                if full in targets:
+                    cands[full].append((rel[p], line_no))
+            for m in RUN.finditer(text):
+                tok = m.group().rstrip(".")
+                if tok in names:
+                    occ[tok].append((rel[p], text.count("\n", 0, m.start()) + 1, int(masked[m.start()] != text[m.start()])))
+                if PUB in tok:
+                    for t in TOK.finditer(tok):
+                        if t.group() in pub_t:
+                            pos = m.start() + t.start()
+                            c = refs[(rel[p], t.group())]
+                            c[0] += 1
+                            c[1] += int(masked[pos] == text[pos])
+    # outputs
+    alias_rows, cand_rows, counts = [], [], collections.Counter()
+    for pub, x, f, ln in sorted(aliases, key=lambda a: (a[0], a[2], a[3])):
+        c = sorted(cands.get(x, []))
+        if len(c) == 1:
+            alias_rows.append((pub, x, f, ln, c[0][0], c[0][1], 1))
+            counts["resolved"] += 1
+        else:
+            alias_rows.append((pub, x, f, ln, "-", "-", len(c)))
+            counts["ambiguous" if c else "unresolved"] += 1
+            cand_rows += [(pub, x, cf, cl) for cf, cl in c]
+    ref_rows = [(f, n, v[0], int(v[1] == 0)) for (f, n), v in sorted(refs.items()) if f not in wrapper_files[n]]
+    decl_lines = collections.defaultdict(set)
+    for pub, _x, f, ln in aliases:
+        decl_lines[(pub, "alias")].add((f, ln))
+    universe = {(n, "alias") for n in alias_names}
+    for x in targets:
+        if len(cands.get(x, [])) == 1:
+            universe.add((x, "target"))
+            decl_lines[(x, "target")].add(cands[x][0])
+    caller_rows, uncalled_rows = [], []
+    for n, kind in sorted(universe):
+        per_line = {}
+        for f, ln, inc in occ.get(n, []):
+            if (f, ln) in decl_lines[(n, kind)] or ln in wrap_lines[f]:
+                continue
+            per_line[(f, ln)] = min(per_line.get((f, ln), 1), inc)
+        for (f, ln), inc in sorted(per_line.items()):
+            caller_rows.append((n, kind, f, ln, inc))
+        if not per_line:
+            uncalled_rows.append((n, kind))
+    caveat = ("a full-name text match; a use through an opened namespace, a shorter name or dot notation is not seen, "
+              "so `uncalled` means \"not named in full anywhere\", not \"unused\"")
+    tool = "alias_edges.py"
+    write_tsv(out, "aliases", provenance(tool, root, "a row says the theorem's whole proof is the wrapper around the target, "
+                                         "not that the target proves the same statement"), ALIASES_COLS, alias_rows)
+    write_tsv(out, "aliases_odd", provenance(tool, root, "a row has the wrapper shape with unequal names; it is listed, not judged"),
+              ODD_COLS, sorted(odd))
+    write_tsv(out, "alias_candidates", provenance(tool, root, "a row is one declaration of the target's full name; none is chosen "
+                                                  "as the target"), CAND_COLS, cand_rows)
+    write_tsv(out, "refs", provenance(tool, root, "a row says the file writes the public name out in full, not that any proof "
+                                      "there uses it"), REFS_COLS, ref_rows)
+    write_tsv(out, "callers", provenance(tool, root, caveat), CALLERS_COLS, caller_rows)
+    write_tsv(out, "uncalled", provenance(tool, root, caveat), UNCALLED_COLS, uncalled_rows)
+    print(f"files {len(mods)}  aliases {len(aliases)}  odd shape {len(odd)}  undecodable {len(undecodable)}")
+    print(f"targets resolved {counts['resolved']} / ambiguous {counts['ambiguous']} / unresolved {counts['unresolved']}")
+    print(f"reference rows {len(ref_rows)}  callers rows {len(caller_rows)}  uncalled {len(uncalled_rows)}")
+    for r in undecodable:
+        print("UNDECODABLE", r)
+    return 1 if undecodable else 0
 
 
 # ---------------------------------------------------------------- self-test
@@ -313,6 +523,12 @@ def _selftest_cases():
         _rc, _o, _e, tabs, _n = _go({"C1/M.lean": decl("NsC"), "C2/M.lean": decl("NsC"), "Pub/W.lean": _W("viaC", "NsC.main"),
                                      "Use/U.lean": "exact NsC.main\n"})
         return _eq((tabs["callers"][2], _pairs(tabs, "uncalled", "name", "kind")), ([], [("viaC", "alias")]))
+
+    @case("A5h", "the wrapper naming its own target is the alias link, not a caller: alone, both alias and target are uncalled")
+    def _():
+        _rc, _o, _e, tabs, _n = _go(PUB_ALPHA)
+        return _eq((tabs["callers"][2], _pairs(tabs, "uncalled", "name", "kind")),
+                   ([], [("GlobalTheory.T.alpha", "alias"), ("Lib.alpha_core", "target")]))
 
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
