@@ -106,23 +106,287 @@ class PostConditionFailed(Exception):
 
 
 # ---------------------------------------------------------------- the tool
+DECL_COLS = ["module", "name", "kind", "first_line", "last_line", "basis"]
+
+
 def read_decls(lines):
-    """name -> list of row dicts, from the lines of a decls.tsv (comment lines start with '#', then a header row)."""
-    raise NotImplementedError
+    """name -> list of row dicts, from the lines of a decls.tsv (comment lines start with '#', then a header row).
+    A row that is not six columns with integer lines is a ValueError (unreadable input)."""
+    out = {}
+    header_seen = False
+    for n, raw in enumerate(lines, 1):
+        line = raw.rstrip("\r\n")
+        if not line or line.startswith("#"):
+            continue
+        cols = line.split("\t")
+        if not header_seen:
+            if cols != DECL_COLS:
+                raise ValueError(f"decls line {n}: header is not {' '.join(DECL_COLS)}")
+            header_seen = True
+            continue
+        if len(cols) != 6 or not cols[3].isdigit() or not cols[4].isdigit():
+            raise ValueError(f"decls line {n}: not six columns with numeric lines")
+        out.setdefault(cols[1], []).append({"module": cols[0], "name": cols[1], "kind": cols[2],
+                                            "first_line": int(cols[3]), "last_line": int(cols[4])})
+    if not header_seen:
+        raise ValueError("decls: no header row")
+    return out
 
 
 def resolve(rows_by_name, name, module=None):
-    raise NotImplementedError
+    rows = rows_by_name.get(name, [])
+    if not rows:
+        raise Refused("UNRESOLVED", f"{name} is not a name in decls.tsv")
+    if module is not None:
+        picked = [r for r in rows if r["module"] == module]
+        if not picked:
+            raise Refused("NOT-IN-MODULE", f"{name} has no row in module {module} (its modules: "
+                          + ", ".join(sorted({r['module'] for r in rows})) + ")")
+        rows = picked
+    if len(rows) > 1:
+        raise Refused("AMBIGUOUS", f"{name} has {len(rows)} rows; pick one with --module: "
+                      + "; ".join(f"{r['module']} lines {r['first_line']}-{r['last_line']}" for r in rows))
+    return rows[0]
+
+
+def _clean(text):
+    """The header data of a note the parser reads without problems, else Refused."""
+    headers, blocks, probs = rh.parse_note(text)
+    if probs:
+        p = probs[0]
+        raise Refused("NOT-CLEAN", f"line {p.line}: {p.code} {p.message} (fix the note first)")
+    if not headers:
+        raise Refused("NO-HEADER", "the note has no rh-note header")
+    if len(headers) > 1:
+        raise Refused("SECOND-HEADER", "the note has rh-note headers on lines " + ", ".join(str(h.line) for h in headers))
+    nid = headers[0].data.get("id") if isinstance(headers[0].data, dict) else None
+    if not isinstance(nid, str) or not nid:
+        raise Refused("NO-HEADER", f"the header on line {headers[0].line} has no id")
+    return nid, blocks, probs
 
 
 def cite(text, rows_by_name, used_ids, *, at, decl, kind, module=None, lines=None, reader=None, date=None,
          needs=None, item=None, row=None, col=None, machine=None, second_readers=None):
     """(new_text, block, after_line). Raises Refused, or PostConditionFailed on a bug."""
-    raise NotImplementedError
+    note_id, old_blocks, old_probs = _clean(text)
+    if kind in NEEDS_READER:
+        for f, v in (("reader", reader), ("date", date)):
+            if not (isinstance(v, str) and v):
+                raise Refused("MISSING-FIELD", f"kind {kind} needs --{f}; the helper fills none by default")
+    r = resolve(rows_by_name, decl, module)
+    path = r["module"].replace(".", "/") + ".lean"
+    if lines is not None:
+        a, b = lines
+        if not (r["first_line"] <= a <= b <= r["last_line"]):
+            raise Refused("OUTSIDE-EXTENT", f"lines {a}-{b} are not inside {decl}'s extent, lines "
+                          f"{r['first_line']}-{r['last_line']} of {path}")
+    files = clb.listed_files(text)
+    if not files:
+        raise Refused("NO-FILE-TABLE", "the note has no file table the checker can read")
+    if path not in files:
+        raise Refused("NOT-IN-FILE-TABLE", f"{path} is not in the note's file table; add its row first")
+
+    tgt = rh.target_at(text, at)
+    if tgt is None:
+        raise Refused("NO-TARGET", f"line {at} is not inside a paragraph, table, list or lean block, nor in the "
+                      "anchor lines after one")
+    if tgt["type"] not in ("paragraph", "table", "list", "lean"):
+        raise Refused("ORPHAN-TARGET", f"line {at} is in a {tgt['type']} element (lines {tgt['first_line']}-"
+                      f"{tgt['last_line']}): a heading, quote, HTML line or non-lean fence takes no anchor")
+    if item is not None and tgt["type"] != "list":
+        raise Refused("ITEM-NOT-LIST", f"--item given, but line {at} is in a {tgt['type']}")
+    if (row is not None or col is not None) and tgt["type"] != "table":
+        raise Refused("ROW-NOT-TABLE", f"--row/--col given, but line {at} is in a {tgt['type']}")
+    place = {}
+    if tgt["type"] == "table":
+        if row is None:
+            k = at - tgt["start_line"] - 1
+            if not (tgt["start_line"] + 2 <= at <= tgt["last_line"]):
+                raise Refused("ROW-NEEDED", f"line {at} is not a body row of the table at lines "
+                              f"{tgt['first_line']}-{tgt['last_line']}; give --row")
+            row = k
+        if not (1 <= row <= tgt["nrows"]):
+            raise Refused("ROW-RANGE", f"row {row}: the table has {tgt['nrows']} body rows")
+        place["row"] = row
+        if col is not None:
+            if not (1 <= col <= tgt["ncols"]):
+                raise Refused("COL-RANGE", f"col {col}: the table has {tgt['ncols']} columns")
+            place["col"] = col
+    elif tgt["type"] == "list":
+        if item is None:
+            item = rh.item_at(text, at)
+            if item is None:
+                raise Refused("ITEM-NEEDED", f"line {at} is not inside an item of the list at lines "
+                              f"{tgt['first_line']}-{tgt['last_line']}; give --item")
+        if not (1 <= item <= tgt["nitems"]):
+            raise Refused("ITEM-RANGE", f"item {item}: the list has {tgt['nitems']} top-level items")
+        place["item"] = item
+
+    block = {"id": rh.next_block_id(note_id, set(used_ids) | {x.data.get("id") for x in old_blocks
+                                                              if isinstance(x.data, dict)}),
+             "kind": kind, "decls": [{"module": r["module"], "name": r["name"]}], "file": path}
+    if lines is not None:
+        block["lines"] = [lines[0], lines[1]]
+    if reader is not None:
+        block["reader"] = reader
+    if date is not None:
+        block["date"] = date
+    if needs is not None:
+        block["needs"] = needs
+    if machine:
+        block.update(machine)
+    if second_readers:
+        block["second_readers"] = list(second_readers)
+    block.update(place)
+    bad = rh.problems(block, note_id)
+    if bad:
+        raise Refused("BAD-BLOCK", "; ".join(bad))
+
+    after = tgt["append_after"]
+    new = rh.insert_after_line(text, after, rh.render_block(block))
+    _post(text, new, block, tgt, len(old_blocks), len(old_probs))
+    return new, block, after
+
+
+def _post(old, new, block, tgt, nold, nprobs):
+    if rh.strip_anchor_lines(new) != rh.strip_anchor_lines(old):
+        raise PostConditionFailed("stripping the new note does not give the old one")
+    _, blocks, probs = rh.parse_note(new)
+    if len(blocks) != nold + 1:
+        raise PostConditionFailed(f"{len(blocks)} blocks after the insert, expected {nold + 1}")
+    mine = [x for x in blocks if x.data == block]
+    if len(mine) != 1:
+        raise PostConditionFailed("the new block does not parse back exactly once")
+    if not mine[0].canonical:
+        raise PostConditionFailed("the new block is not canonical")
+    if mine[0].target.get("first_line") != tgt["first_line"]:
+        raise PostConditionFailed(f"the new block's target starts at line {mine[0].target.get('first_line')}, "
+                                  f"expected {tgt['first_line']}")
+    if len(probs) != nprobs:
+        raise PostConditionFailed("the insert made a new parse problem")
+
+
+def _lines_arg(s):
+    a, sep, b = s.partition("-")
+    if not sep:
+        a = b = s
+    if not (a.isdigit() and b.isdigit()) or not (1 <= int(a) <= int(b)):
+        raise argparse.ArgumentTypeError(f"--lines {s!r}: want A-B with 1 <= A <= B")
+    return int(a), int(b)
+
+
+def _second_reader(s):
+    r, sep, d = s.partition(":")
+    if not sep or not r or not d:
+        raise argparse.ArgumentTypeError(f"--second-reader {s!r}: want READER:DATE")
+    return {"reader": r, "date": d}
+
+
+def _bool(s):
+    if s not in ("true", "false"):
+        raise argparse.ArgumentTypeError("--complete: true or false")
+    return s == "true"
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise SystemExit(f"usage: {message}")
 
 
 def main(argv=None):
-    raise NotImplementedError
+    argv = sys.argv[1:] if argv is None else argv
+    p = _Parser(prog="note_cite.py", description="Write one block anchor into a note (spec F3).")
+    p.add_argument("note")
+    p.add_argument("decls_tsv")
+    p.add_argument("--at", type=int, required=True)
+    p.add_argument("--decl", required=True)
+    p.add_argument("--kind", required=True, choices=rh.KINDS)
+    p.add_argument("--module")
+    p.add_argument("--lines", type=_lines_arg)
+    p.add_argument("--reader")
+    p.add_argument("--date")
+    p.add_argument("--needs")
+    p.add_argument("--item", type=int)
+    p.add_argument("--row", type=int)
+    p.add_argument("--col", type=int)
+    p.add_argument("--tool")
+    p.add_argument("--tool-version")
+    p.add_argument("--check")
+    p.add_argument("--options")
+    p.add_argument("--complete", type=_bool)
+    p.add_argument("--second-reader", type=_second_reader, action="append")
+    p.add_argument("--notes-dir")
+    p.add_argument("--src")
+    p.add_argument("--write", action="store_true")
+    try:
+        a = p.parse_args(argv)
+    except SystemExit as e:
+        print(e.code if isinstance(e.code, str) else "usage: see --help", file=sys.stderr)
+        return 2
+    try:
+        with open(a.note, encoding="utf-8", newline="") as f:
+            text = f.read()
+        with open(a.decls_tsv, encoding="utf-8") as f:
+            rows = read_decls(f)
+        ndir = a.notes_dir or os.path.dirname(os.path.abspath(a.note))
+        used = set()
+        for path in sorted(glob.glob(os.path.join(ndir, DEFAULT_GLOB))):
+            if os.path.abspath(path) == os.path.abspath(a.note):
+                continue
+            with open(path, encoding="utf-8", newline="") as f:
+                _, blocks, _ = rh.parse_note(f.read())
+            used |= {x.data.get("id") for x in blocks if isinstance(x.data, dict)}
+    except (OSError, UnicodeDecodeError, ValueError) as e:
+        print(f"unreadable input: {e}", file=sys.stderr)
+        return 2
+    machine = None
+    if a.kind == "machine_fact":
+        machine = {"tool": a.tool, "tool_version": a.tool_version, "check": a.check, "options": a.options}
+        if a.complete is not None:
+            machine["complete"] = a.complete
+        machine = {k: v for k, v in machine.items() if v is not None}
+    try:
+        new, block, after = cite(text, rows, used, at=a.at, decl=a.decl, kind=a.kind, module=a.module,
+                                 lines=a.lines, reader=a.reader, date=a.date, needs=a.needs, item=a.item,
+                                 row=a.row, col=a.col, machine=machine, second_readers=a.second_reader)
+        shown = None
+        if a.src is not None and a.lines is not None:
+            sp = os.path.join(a.src, block["file"])
+            if not os.path.isfile(sp):
+                raise Refused("SRC-MISSING", f"{block['file']} is not a file under the --src root")
+            with open(sp, encoding="utf-8") as f:
+                src_lines = f.read().splitlines()
+            if a.lines[1] > len(src_lines):
+                raise Refused("SRC-RANGE", f"{block['file']} has {len(src_lines)} lines, the citation ends at "
+                              f"{a.lines[1]}")
+            shown = src_lines[a.lines[0] - 1:a.lines[1]]
+    except Refused as e:
+        print(f"REFUSED {e.code} {e.message}")
+        return 5
+    except PostConditionFailed as e:
+        print(f"POST-CONDITION FAILED (a bug in note_cite; nothing written): {e}", file=sys.stderr)
+        return 4
+    if shown is not None:
+        print(f"{block['file']} lines {a.lines[0]}-{a.lines[1]}, from the --src copy:")
+        for k, l in enumerate(shown, a.lines[0]):
+            print(f"  {k:>5} | {l}")
+    print(rh.render_block(block))
+    print(f"after line {after} of {os.path.basename(a.note)}")
+    if a.write:
+        d = os.path.dirname(os.path.abspath(a.note))
+        fd, tmp = tempfile.mkstemp(dir=d, prefix=".note_cite.")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                f.write(new)
+            os.replace(tmp, a.note)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            raise
+        print(f"wrote {os.path.basename(a.note)}")
+    else:
+        print("dry run: nothing written (add --write)")
+    return 0
 
 
 # ---------------------------------------------------------------- self-test
@@ -368,7 +632,7 @@ def _():
     crlf = NOTE.replace("\n", "\r\n")
     new, b, after = ok_cite(text=crlf)
     eq(new.count("\n"), new.count("\r\n"), "every line ending CRLF")
-    eq(rh.strip_anchor_lines(new), crlf, "strip")
+    eq(rh.strip_anchor_lines(new), rh.strip_anchor_lines(crlf), "strip")
 
 
 def _tmp_tree(d):
@@ -414,7 +678,7 @@ def _():
         code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--write"])
         eq(code, 0, f"exit ({err})")
         new = open(note, encoding="utf-8", newline="").read()
-        eq(rh.strip_anchor_lines(new), NOTE, "strip of the written note")
+        eq(rh.strip_anchor_lines(new), rh.strip_anchor_lines(NOTE), "strip of the written note")
         if "wrote" not in out:
             raise AssertionError(f"output: {out!r}")
 
@@ -426,7 +690,7 @@ def _():
         src = os.path.join(d, "src")
         code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--lines", "3-4", "--src", src])
         eq(code, 0, f"exit ({err})")
-        if "line 3" not in out or "line 4" not in out or "line 5" in out:
+        if "    3 | line 3" not in out or "    4 | line 4" not in out or "| line 5" in out:
             raise AssertionError(f"cited lines: {out!r}")
         os.remove(os.path.join(src, "A", "B.lean"))
         code, out, err = _run_main([note, tsv] + BASE_ARGS + ["--lines", "3-4", "--src", src])
