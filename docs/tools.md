@@ -3,6 +3,16 @@
 These are text tools; they find where to read, they do not prove a dependency. Python 3, standard library
 only. Each one runs its own self-test first and refuses (exit 4) if it fails. `--selftest` shows the cases.
 
+A run that checks nothing (no `.lean` file under SRC_ROOT) writes nothing. If OUT_DIR already holds a file that run
+would have written, an earlier result looks like this run's to the next tool; so `scan_graph.py`, `alias_edges.py`
+and `decl_table.py` print one more line after `CHECKED NOTHING`, `OUT_DIR holds files from an earlier run: <names>;
+this run wrote nothing`, and keep exit 1. They do not delete the files.
+
+For whoever writes the next self-test: **the expected value in a case is a literal, never read back from the tool.**
+A case that computes its expectation with the code under test, or with a helper the tool exports, passes whatever
+the tool does. Write the number, the line or the list into the case, and run a wrong version of the tool (a copy)
+to see the case go red.
+
 **`tools/scan_graph.py SRC_ROOT OUT_DIR`** answers: which files exist, how big, what do they import?
 It writes `files.tsv` (one row per file, with word counts) and `edges.tsv` (one row per internal import).
 `python3 tools/scan_graph.py SRC_ROOT OUT_DIR`

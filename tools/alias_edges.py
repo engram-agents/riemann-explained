@@ -61,7 +61,10 @@ CONTRACT
  `CASE <id> PASS|FAIL` line each and a final `SELFTEST PASS|FAIL`; exit 0 or 4. A normal run does the same
  quietly first and refuses (exit 4, nothing else reported) if it fails.
 
-LIMIT. A target is looked up through the wrapper's own enclosing namespaces (innermost first, then outward
+LIMIT. A run that checks nothing (no `.lean` file) writes nothing, so an output file left in OUT_DIR by an earlier run is
+still there, and a tool that reads OUT_DIR next cannot tell it from this run's; the run names such files on stdout
+(STALE1) and keeps exit 1, it does not delete them.
+A target is looked up through the wrapper's own enclosing namespaces (innermost first, then outward
 to the root; the first level with a declaration decides). Not modelled: `open`, `export`, aliases, shorter
 names and dot notation, so a target that relies on one of them stays UNRESOLVED or resolves at the wrong
 level only if a declaration of the written name exists at another level.
@@ -88,7 +91,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scan_graph import failure_word, mask_comments, provenance, read_text, walk_lean  # noqa: E402
+from scan_graph import failure_word, mask_comments, provenance, read_text, report_stale_output, walk_lean  # noqa: E402
 from lean_decls import parse_decls  # noqa: E402
 
 ALIASES_COLS = ["public_name", "target", "file", "line", "target_file", "target_line", "target_matches"]
@@ -175,6 +178,7 @@ def run(root, out):
     mods = walk_lean(root)
     if not mods:
         print("CHECKED NOTHING: no .lean file under SRC_ROOT")
+        report_stale_output(out, [n + ".tsv" for n in TABLES])
         return 1
     os.makedirs(out, exist_ok=True)
     rel = {p: os.path.relpath(p, root).replace(os.sep, "/") for _, p in mods}
@@ -852,6 +856,30 @@ def _selftest_cases():
     def _():
         rc, out, _e, _t, _n = _go({"readme.txt": "x"})
         return _eq((rc, "CHECKED NOTHING: no .lean file under SRC_ROOT" in out.splitlines()), (1, True))
+
+    @case("STALE1", "no .lean file and OUT_DIR already holds output of an earlier run: the message names those files and says this run "
+                    "wrote nothing, exit 1, the old files untouched; only the files present are named; control: a fresh OUT_DIR "
+                    "gets the CHECKED NOTHING line alone")
+    def _():
+        nothing = "CHECKED NOTHING: no .lean file under SRC_ROOT"
+        got = []
+        for planted in (('aliases.tsv', 'refs.tsv'), ('uncalled.tsv',), ()):
+            with tempfile.TemporaryDirectory() as d:
+                root, out = os.path.join(d, "src"), os.path.join(d, "out")
+                os.makedirs(root)
+                os.makedirs(out)
+                for n in planted:
+                    with open(os.path.join(out, n), "w", encoding="utf-8", newline="\n") as f:
+                        f.write("old\n")
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    rc = run(root, out)
+                kept = [open(os.path.join(out, n), encoding="utf-8").read() for n in planted]
+                got.append((rc, buf.getvalue().splitlines(), kept, sorted(os.listdir(out)) == sorted(planted)))
+        return _eq(got, [
+            (1, [nothing, 'OUT_DIR holds files from an earlier run: aliases.tsv, refs.tsv; this run wrote nothing'], ["old\n"] * 2, True),
+            (1, [nothing, 'OUT_DIR holds files from an earlier run: uncalled.tsv; this run wrote nothing'], ["old\n"], True),
+            (1, [nothing], [], True)])
 
     @case("D2a", "a file that does not decode: UNDECODABLE <relpath> printed and counted, exit 1, the other files still processed")
     def _():
