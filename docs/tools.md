@@ -48,12 +48,12 @@ whose text opens with another kind's frame, `--base REV` checks that the note at
 their anchor lines removed, are equal byte for byte after that rule (this needs the `git` program; `--repo DIR` names the repository when it is not the one around
 NOTES_DIR), `--glob PATTERN` changes which files are notes (default `[0-9][0-9]-*.md`, so this folder's
 `tools.md` is not one). The format of the comments is read only through `rh_anchor.py`. A finding is one line,
-`CODE path:line message`; `EXTENT-WARNING`, `FRAME-NOTE` and `NEW-NOTE` are listings and never fail the run. Each
+`CODE path:line message`; `EXTENT-WARNING`, `FRAME-NOTE`, `NEW-NOTE` and `CLAIM-LIBRARY-WORD` are listings and never fail the run. Each
 note prints `note <id> header ok, blocks N (kind=count ...)`, and the run ends with the counts by kind, what the
 in-file and byte checks did or did not do, and `N notes, M findings, K warnings`. It checks shape and resolution;
 it does not judge whether a claim is right, and the LIMIT paragraph in the file lists the title rules and the
 translation rules that need a reader. Every group needs at least one root; a group with a null claim and no root passed
-in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A claim may carry `basis` (`read` or `census`), optional for now; a summary line counts the non-null claims that are objects by basis (a claim that is not an object is its own BAD-VALUE and is counted in none). Two notes whose headers carry the same `id` (exact strings, first header of each note) are `NOTE-ID-DUPLICATE`. A byte difference is reported at its line in the current file as it is on disk (and its index without anchors), so a reader opens the file at that line; where text is missing from the current file the number points past the end of the text: the line after the last non-anchor line, which is an anchor line when anchors trail it and otherwise one past the last line of the file (not a line that exists), or 1 when the file has no non-anchor line. The strip rule is `rh_anchor`'s: a last anchor line with
+in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A dotted token (`Foo.bar`) or a CamelCase word (`getValue`) in a claim `text` or a `conditions` entry outside single backticks is listed as `CLAIM-LIBRARY-WORD` (once per token and text; a prompt to write it in backticks or in plain words, not a proof; the rule is exact in the LIMIT). A claim may carry `basis` (`read` or `census`), optional for now; a summary line counts the non-null claims that are objects by basis (a claim that is not an object is its own BAD-VALUE and is counted in none). Two notes whose headers carry the same `id` (exact strings, first header of each note) are `NOTE-ID-DUPLICATE`. A byte difference is reported at its line in the current file as it is on disk (and its index without anchors), so a reader opens the file at that line; where text is missing from the current file the number points past the end of the text: the line after the last non-anchor line, which is an anchor line when anchors trail it and otherwise one past the last line of the file (not a line that exists), or 1 when the file has no non-anchor line. The strip rule is `rh_anchor`'s: a last anchor line with
 no line ending of its own also removes the line ending before it, so adding or removing such a hand-typed last line can read as a
 one-line-ending difference; anchors written by the helper carry their own ending. An anchor-looking line counts as text only inside
 a fence, and a malformed `rh-` line is kept as text, so fixing it since REV is a byte difference. A block anchored to a list must name its top-level
@@ -86,16 +86,16 @@ of the proof map look like, built from the notes, the outline and the declaratio
 check of `notes_meta.py` on the same inputs (its library function, not a subprocess) and refuses to build, writing
 nothing, not even OUT_DIR, if that finds an error. Then it writes, under OUT_DIR: `level0.json` (the steps of the
 chain in `order`, the counts of the two facts, the notes about the whole, the number of open questions), `level1.json` (each step with its child groups
-nested under it to any depth), one `group/<id>.json` per group (its roots with file, lines and, with
+nested under it to any depth), one `group/<id>.json` per group (its `premises`, its roots with file, lines and, with
 `--source-check`, the hash of the file, and per root the two facts `statement_read` and `proof_read`; the blocks that anchor them; the open `not_read` items), `manifest.json`
 (the hash of every other file, the three commit ids, the release id and archive hash, the counts), `data.js` (the
 same data as one assignment) and `index.html`. The page is one static file of plain HTML: each step is a card (claim,
-conditions, premises as links, two status lines, a line counting the open questions, the first sentence of the argument inside
-its frame, three reaction links), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
+conditions, premises as links (for a step with a null claim too), two status lines, a line counting the open questions (on a card only above zero; the first screen always says it), the first sentence of the argument inside
+its frame, three reaction links; a span between single backticks in a claim or a condition is shown as code, nothing else in them is markup), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
 makes a request. Every FIXED sentence on the page comes from the strings file, whose shape is provisional (the fixtures of the self-test carry their own wording, not the real one; the keys for the status
 lines are provisional names, the owner of the wording may rename them: `statement_read_line`, `statement_census_line`,
 `statement_not_read_line`, `proof_read_line`, `proof_not_read_line`, `statement_count_line`, `proof_count_line`,
-`open_items_line`, `steps_statement_line`, `steps_proof_line`, `steps_open_items_line`, besides `no_claim_label`); a
+`open_items_line`, `steps_statement_line`, `steps_proof_line`, `steps_open_items_line`, besides `no_claim_label` and the three labels of the evidence block, `evidence_module_label`, `evidence_name_label`, `evidence_kind_label`); a
 missing key stops the build and names itself, and a stale key (`coverage`, `not_read_yet`, `roots_not_read`, any other
 top-level key, or key directly under `labels`, whose name holds `not_read`) is refused. There is no coverage word. Per root there are two facts: the statement is
 read when the group's claim has basis `read` (a claim without a basis counts as `read` until the checker requires one) or
@@ -107,8 +107,8 @@ note id and then block number, not by date.
 A group whose claim is null shows its root's Lean name and the `no_claim_label` in the heading, then the status lines.
 Open questions are the distinct open `not_read` blocks, each counted once. The proof line names the reader and date of the first
 argument block of the root, by note id and then block number (the rule of the statement reader, not by date). Every value of the
-strings file, at any depth, may hold only the `{placeholders}` its key declares (`proof_read_line` declares `{reader}` and `{date}`,
-each optional); an undeclared one is refused naming the key and the token, a key that declares none may hold no brace, and a new key
+strings file, at any depth, may hold only the `{placeholders}` its key declares (`proof_read_line` declares `{reader}` and `{date}`);
+an undeclared one is refused naming the key and the token, nine keys must hold every placeholder they declare (the status, count and open-items lines named above; the frames, `shared_note`, `note_href` and the reaction hrefs may omit theirs; the refusal names the key and the missing placeholder), a key that declares none may hold no brace, and a new key
 is covered by default. The build also stops for: the words
 verified, explained, understood (or any word of `forbidden_words`), a percent sign or `of the proof` in the strings file
 (the builder's own sentences never contain them; its href templates may hold `%`; the words `Read by us`, `Partly read`

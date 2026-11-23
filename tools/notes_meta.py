@@ -76,6 +76,11 @@ CONTRACT (each line is a self-test case, written before the code)
  the group and the type of the value; REQUIRE_CLAIM_BASIS (False) makes a claim without it CLAIM-BASIS-MISSING; the line
  `claim basis: R read, C census, M without` counts the non-null claims that are objects (a claim that is not an
  object is its own BAD-VALUE and is counted in none of the three).
+  Claim words (cases CLW1 to CLW5): a claim `text` or a `conditions` entry that holds, OUTSIDE single-backtick spans, a dotted token
+ (identifier parts joined by a dot, each starting with a letter or `_`: Foo.bar, A.b_c.d) or a CamelCase word (a lower-case letter
+ directly followed by a capital inside a word of letters, digits and `_`: getValue, HypSalt) is a `CLAIM-LIBRARY-WORD` listing
+ naming the group, `claim text` or `conditions[i]`, and the token, once per token per text, in the order of the text; it never
+ changes the exit code and counts in the warnings.
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
@@ -136,6 +141,14 @@ is in. A citation inside a quote stays unanchored. The summary counts: premise l
 the outline (not the group itself); roots and defs_opened resolved are those with exactly one decls row; strings' kinds are
 those with at least one phrase; a group id that is repeated is counted in the groups but only its first is resolved. A header
 group of `root` is not looked up in the outline; a group literally named root is not supported.
+CLAIM-LIBRARY-WORD is a prompt to the signer, not a proof, and its rule is exactly this: a single-backtick span is a backtick, then
+one or more characters that are neither a backtick nor a line break, then a backtick, with no backtick directly outside it (the span the
+page renders as code; doubled backticks and a pair over a line break are not spans); outside spans, a dotted token has at least two
+parts, each a letter or `_` followed by letters, digits and `_`, with no letter, digit, `_` or `.` directly before it and no letter,
+digit or `_` directly after it (so a number like 3.5, a sentence-final period and `end. Next` are not listed, and `e.g.` is: it reads
+as a dotted token); a CamelCase word is a run of ASCII letters, digits and `_` (outside dotted tokens) holding a lower-case letter
+directly followed by a capital (so `RH`, `Riemann` and `LEAN` are not listed and `McDonald` is). ASCII letters only: a name with a
+non-ASCII letter is not seen. The outline has no line numbers, so a finding names the file, the group and the place, no line.
 Title rules in the script are heuristics. A trailing parenthetical is allowed when it holds only code spans, commas and
 `and`, or only a one-letter or number argument (so a function argument like `(s)` or `(12)` passes and `(draft)` fails);
 a math argument longer than that is called a status. TITLE-NOTE listings (a math symbol or `Re s` outside code; `proved`

@@ -17,12 +17,12 @@ Outputs under OUT_DIR (JSON: sorted keys, 1-space indent, LF, UTF-8, one final n
   index.html    ONE static page: plain semantic HTML, readable without JavaScript, no request of any kind
 Every JSON file carries `commits`: {notes, release, tools} (B5). A group id is used verbatim as the anchor id of its card.
 The group objects inside level0.json and level1.json (the steps and, in level1.json, their `children`) have: `claim`, which
-is {text, reader, date, basis (read or census), conditions, premises (group ids)} or null; `lean_name`, the name of the first
-root; `claim_label`, the strings file's `no_claim_label` when the claim is null; `statement_read` and `proof_read`, true when
+is {text, reader, date, basis (read or census), conditions} or null; `premises`, the group ids the group rests on, in the order
+of the outline (a field of the GROUP, null-claim groups included; [] when none); `lean_name`, the name of the first root; `claim_label`, the strings file's `no_claim_label` when the claim is null; `statement_read` and `proof_read`, true when
 EVERY root of the group has the fact; `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
 roots_proof_read, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
-`claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `roots`, `blocks`, `open_items`, `notes`
-and `commits`, and each root of it has the booleans `statement_read` and `proof_read`. level0.json has `facts` ({steps,
+`claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `premises`, `roots`, `blocks`,
+`open_items`, `notes` and `commits`, and each root of it has the booleans `statement_read` and `proof_read`. level0.json has `facts` ({steps,
 statement_read, statement_not_read, proof_read, proof_not_read}, counted over the level-1 steps) and `totals`, which holds
 `open_items`, the number of distinct open not_read blocks of the whole outline.
 
@@ -40,6 +40,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      what a build writes (the five files and the folder `group`), never another file. Cases OUT1 OUT2.
   X5 A group id that is not safe as a file name (letters, digits, `.`, `_`, `-`, not starting with `.`, at most 100
      characters; no two ids that differ only in case) is GROUP-ID-UNSAFE. Cases ID1 ID2 W1.
+  X6 A normal run first runs the self-test quietly and refuses with exit 4 if it fails; `--selftest` runs it (0 pass, 4
+     fail); `--selftest --only ID,ID` runs exactly those cases and an unknown id exits 2. Cases EXIT4 SEL1.
   X7 The build is written into a temporary sibling directory of OUT_DIR and renamed into place at the end: a failure before
      the rename leaves OUT_DIR absent (fresh run) or the old build and every other file in it untouched (--force), and no
      temporary directory behind. A failure to write (OSError) is exit 2 with ONE line, no traceback; a JSON too deep to
@@ -93,21 +95,34 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      reader sees is typed in code: a missing key is STRINGS-KEY naming it, and a build with every value a distinct
      marker shows only markers and data. Cases P1a P1b.
   P2 A card, open, in order: the claim (a bare declarative) or the null-claim heading, the conditions directly under it, the
-     premises each a link to the premise's card, the statement line, the proof line, the open-items line, the idea (the first
-     sentence of the argument inside its frame, when an argument block exists); all outside the closed section. Text from
-     the data is escaped. Cases P2a P2b.
-  P3 Evidence (Lean name, file, lines, hash, blocks, open items) is a closed `<details>` per card. A null claim shows the Lean
+     premises each a link to the premise's card (for a null-claim step too; a card with no premises has no premises heading
+     and no paragraph), the statement line, the proof line, the open-items line (only when its count is above zero), the idea
+     (the first sentence of the argument inside its frame, when an argument block exists); all outside the closed section.
+     Text from the data is escaped. Cases P2a P2b PRM1 PRM2 PRM3 OPN1.
+  P3 Evidence (Lean module and name and kind, file, lines, hash, blocks, open items) is a closed `<details>` per card; its
+     labels for module, name and kind are the strings keys evidence_module_label, evidence_name_label and evidence_kind_label
+     (like the labels File and Lines; a missing one is STRINGS-KEY). Cases EVD1 EVD2. A null claim shows the Lean
      name and the strings file's `no_claim_label` in the heading, then its status lines (H1). Case P3.
   PH Every string value of the strings file, at any depth, may hold only the placeholders its key declares: a `{name}` the
      key does not declare is STRINGS-KEY naming the key and the token, and a key that declares none may hold no brace at
      all (the check is built from the declared sets, so a new key is covered by default). proof_read_line declares {reader}
-     and {date} (each optional) and the card fills them from the first argument block of the root, by note id then block
-     number. Cases PRF1 PRF2 PH1 PH2.
+     and {date} and the card fills them from the first argument block of the root, by note id then block number. Cases PRF1
+     PRF2 PH1 PH2.
+  PHR Nine keys must hold EVERY placeholder they declare (the check is a value that lacks one: STRINGS-KEY naming the key and
+     `is missing the placeholder {name}`): statement_read_line, statement_census_line and proof_read_line ({reader} {date}),
+     statement_count_line, proof_count_line, steps_statement_line and steps_proof_line ({n} {m}), open_items_line and
+     steps_open_items_line ({n}). The frames (argument_frame, second_reader_frame, interpretation_frame, frames.*), shared_note,
+     note_href and the reaction hrefs may omit theirs. Cases PHR1 PHR2 PHR3.
+  CODE In a claim text and in a condition a span between single backticks on one line is rendered as <code>...</code>, its
+     content escaped like all data; nothing else is markup (no bold, link, heading or raw HTML: a `<b>` in the data stays
+     escaped text). An unpaired backtick, an empty pair, doubled backticks and a pair over a line break stay literal text.
+     In the JSON and in data.js the text stays as written, backticks included. Cases CODE1 CODE2.
   C1 The two status lines come from the strings keys: statement_read_line ({reader} {date} of the claim, or of the first
      reading block of the root when the claim is null, or when its basis is census), statement_census_line ({reader} {date}
      of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line. A group with several
-     roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is always shown.
-     Cases C1 C2 B7c.
+     roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is shown on a
+     card only when n is above zero (a zero is not said there); the first-screen line steps_open_items_line is ALWAYS shown, zero
+     included. The JSON counts are unchanged. Cases C1 C2 B7c OPN1 OPN2.
   Z1 A group with no root is never counted as read (the model, called directly, since the checker refuses it first; the guard is
      redundant by design). Case ZERO1. A step with arguments on some roots of several does not count for the proof. Case PRO1.
   S6 The statement reader of a root with several reading blocks is the first by note id, then block number, not by date.
@@ -136,7 +151,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   H1 A group whose claim is null shows its root's Lean name and the strings file's `no_claim_label` in the heading (not a
      status), and its status lines tell the facts: a null claim whose root has a reading block says the statement is read.
      Case H1.
-  E1 The premises of a card are linked in the order of the outline. Case ORD1.
+  E1 The premises of a card are linked in the order of the outline, for a null-claim step as for a claimed one. Cases ORD1 PRM2.
   D1 Whatever data or strings reach the page is escaped there (text and attributes), and data.js writes `<`, `>`, `&`,
      U+2028 and U+2029 as \\uXXXX. Cases ESC1 JS1.
   G1 --release-archive-sha is stored in lower case; PAGE-STATIC names where the token came from; the frame of a block
@@ -190,14 +205,19 @@ commit; an untracked file of the tools folder is not seen, and without --notes-c
 the notes are not judged. The sha256 of a root's file needs --source-check; a hash table in a note is not read. There is no
 coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the eleven
 of them: statement_read_line, statement_census_line, statement_not_read_line, proof_read_line, proof_not_read_line,
-statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line;
+statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
+(and the three labels of the evidence block, evidence_module_label, evidence_name_label, evidence_kind_label);
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
 missing is read as `read` until the checker requires it (the run line says how many). The page shows the claim's reader and
 date in the statement line; for a null claim with a reading block the first reading block in note and block order. The proof line names the reader and date of the first argument block of the root, by note id and then block number (the same
 rule as the statement reader, not by date). Placeholders are checked in every value of the strings file at any depth from the
 declared sets: a key that is not in the table declares none, so a new key is covered by default, and an `{name}` outside a value
 that declares it, or a brace in a value that declares none, refuses the build. A claimed
-group has one root, so the count lines appear only for null-claim groups. The sum assertions of F4 guard a MISSING flag, not a
+group has one root, so the count lines appear only for null-claim groups. A code span (CODE) is the one place the page turns
+claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
+(the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
+seen in the JSON and not on the page. The nine keys of PHR must hold their placeholders, so a value that says the fact without
+the reader or the count is refused rather than printed without it. The sum assertions of F4 guard a MISSING flag, not a
 WRONG one. A not_read block in a level-0 note is anchored to no group: it is not counted in totals.open_items and is shown on no card. NOTE-ID-DUPLICATE belongs to the checker of the
 notes; the builder has no rule of its own for it (the checker refuses first). WORD-NOTE reads the
 claim, the conditions, the note titles and the text of argument and interpretation blocks, not the strings file's
