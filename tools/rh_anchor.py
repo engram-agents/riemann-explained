@@ -32,7 +32,8 @@ CONTRACT (each line is a self-test case, written before the code)
     comment is text: not parsed, not a problem, not stripped. An unclosed fence runs to the end and is a Problem
     UNCLOSED-FENCE on its opening line. Case A2.
  A3 The canonical line is `<!-- {tag} {json} -->`, json with sorted keys, no spaces, non-ASCII kept, and `<` `>` `&`
-    written as \\u003c \\u003e \\u0026, so `-->` cannot occur inside it. A recognised line that is not byte-equal to the
+    written as \\u003c \\u003e \\u0026, and U+2028, U+2029 and U+0085 as \\u escapes too, so `-->` cannot occur inside it
+    and the comment is one line even under str.splitlines(). A recognised line that is not byte-equal to the
     canonical form of its own data is an Item with canonical False (the checker decides). Cases A3a A3b.
  A4 Round trip: parse_note(format_comment(tag, d) + "\\n") is exactly one Item with data == d and canonical True, no
     Problem, for objects of str, int, bool, None, list, dict. Case A4.
@@ -51,16 +52,18 @@ CONTRACT (each line is a self-test case, written before the code)
  A11 `--selftest` exits 0 (all pass), 1 (any fails), 2 (usage), 3 (no case ran). Case A11.
  B1 render_header/render_block equal format_comment with the tag; render(parse(line).data) == line. Case B1.
  B2 problems(): kind in KINDS; id form (and note prefix when note_id is given); machine_fact needs non-empty tool and
-    tool_version, check in text/index/proofterm, options a str (may be empty), `complete` True for proofterm, and a
-    machine_fact with complete False is refused (it can only be anchored as not_read); not_read needs a needs value
-    of NEEDS; argument needs reader, date and a non-empty decls list; decls entries have str module and name;
+    tool_version, check in text/index/proofterm, options a str (may be empty), `complete` (if present) exactly true
+    or false and true for proofterm, and a machine_fact with complete False is refused (it can only be anchored as
+    not_read); not_read needs a needs value of NEEDS; argument needs reader, date and a non-empty decls list;
+    interpretation needs reader and date (no other kind is extended); decls entries have str module and name; file
+    (if present) a non-empty str; lines (if present) two ints >= 1, first not after last; col needs row;
     defs_opened (if present) is a list of {module, name, lines:[int,int]}; conventions_checked (if present) is a list
     of "a".."e"; row and col (if present) are ints >= 1. Every problem string starts with the field name.
     header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f.
  B3 target_at gives the element holding a line, None between elements; a line inside a table is held by the table, so
     the insertion line is the table's last line, never between rows. Case B3.
  B4 next_block_id is the smallest number above the largest used for that note, at least two digits. Case B4.
- B5 insert_after_line uses CRLF if the line ended CRLF, else LF; on a last line with no line ending it adds one before
+ B5 insert_after_line uses that line's own ending, CRLF if it ended CRLF, else LF (a lone-CR file gets LF); on a last line with no line ending it adds one before
     the comment and none after, so strip_anchor_lines(insert_after_line(t, n, c)) == t. Cases B5a-B5d.
 
 LIMIT. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
@@ -75,6 +78,11 @@ other text before it (for example in an inline code span in prose) is reported M
 offsets into the str as given, not bytes. insert_after_line takes the line it is given: choosing the table's last
 line for a line inside a table is the caller's job (`target.insert_after`). A final anchor line without a line
 ending that was typed by hand after a note that ends in a newline takes that newline with it when stripped.
+A fence inside a list item (indented under the item) is not recognised as such: an anchor inside it is parsed, and
+a fence there can look unclosed. INSIDE-TABLE fires between any two lines that start with `|`, also when the run has
+no separator row and so is not a table. header_problems does not check the type of the entries of `authors` and
+`readers`, and the title rules of the notes (no backtick-only title, no trailing parenthetical) belong to the
+checker that reads the notes, not to this module.
 """
 from __future__ import annotations
 
@@ -128,6 +136,7 @@ def format_comment(tag, data):
         raise TypeError("data must be a dict")
     j = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     j = j.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+    j = j.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029").replace("\x85", "\\u0085")
     return f"<!-- {tag} {j} -->"
 
 
@@ -450,14 +459,16 @@ def problems(block, note_id=None):
             out.append("complete: a machine_fact with complete false can only be anchored as not_read")
         elif block.get("check") == "proofterm" and c is not True:
             out.append("complete: check proofterm needs complete true")
+        elif "complete" in block and c is not True:
+            out.append("complete: must be exactly true or false")
     elif kind == "not_read":
         if block.get("needs") not in NEEDS:
             out.append(f"needs: must be one of {', '.join(NEEDS)}")
-    elif kind == "argument":
+    elif kind in ("argument", "interpretation"):
         for f in ("reader", "date"):
             if not _str(block.get(f)):
-                out.append(f"{f}: an argument needs a non-empty string")
-        if block.get("decls", []) == []:
+                out.append(f"{f}: {'an argument' if kind == 'argument' else 'an interpretation'} needs a non-empty string")
+        if kind == "argument" and block.get("decls", []) == []:
             out.append("decls: an argument needs at least one declaration")
     if "decls" in block:
         _decl_list("decls", block["decls"], out)
@@ -467,9 +478,17 @@ def problems(block, note_id=None):
         cc = block["conventions_checked"]
         if not (isinstance(cc, list) and all(isinstance(x, str) and x in ("a", "b", "c", "d", "e") for x in cc)):
             out.append("conventions_checked: must be a list of letters a to e")
+    if "file" in block and not _str(block["file"]):
+        out.append("file: must be a non-empty string")
+    if "lines" in block:
+        ln = block["lines"]
+        if not (isinstance(ln, list) and len(ln) == 2 and all(_int(x) and x >= 1 for x in ln) and ln[0] <= ln[1]):
+            out.append("lines: must be a list of two integers of 1 or more, first not after last")
     for f in ("row", "col"):
         if f in block and not (_int(block[f]) and block[f] >= 1):
             out.append(f"{f}: must be an integer of 1 or more")
+    if "col" in block and _int(block["col"]) and block["col"] >= 1 and "row" not in block:
+        out.append("col: needs row (a cell is a row and a column)")
     return out
 
 
