@@ -66,6 +66,8 @@ structure Cfg where
 /-- A subterm is walked once per label-relevant context. Binders are instantiated as fresh free variables
     before the walk goes under them, so a key never holds a loose bound variable, and a free variable's alias
     status is fixed when it is created: two structurally equal keys produce identical records. -/
+-- Do not drop a field of this key to save visits: no control separates `resultPos`, and `enclosing` is pinned only by
+-- C21's budget edge (README, "memo key"), so a smaller key could pass every control and still merge walks that differ.
 structure MemoKey where
   e         : Expr
   inType    : Bool
