@@ -209,7 +209,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "`Green`, `VWin` and a `HypsAlt` structure (closed under `LinkN`, with the definite side condition) give: no L-function of a primitive character vanishes for Re s > 1/2"
+    "text": "`Green`, `VWin` and a `HypsAlt` structure (closed under `LinkN`, with the library's definite side condition) give: no L-function of a primitive character vanishes for Re s > 1/2"
    },
    "id": "three-inputs",
    "level": 1,
@@ -231,7 +231,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "`HostExW la`: for each ε with 0 < ε < 1/52 there are constants and an `la`-family of scales such that every scale of the family with that ε, beyond a starting point, has a host meeting `HostGood` and the requirement.",
+     "`HostExW la`: for each ε with 0 < ε < 1/52 there are constants and an `la`-family of scales (the library's notion) such that every scale of the family with that ε, beyond a starting point, has a host meeting `HostGood` and the requirement.",
      "The same `la` serves every ψ; on `Main`'s route `la = 3/2`. `TopG` is a statement about every requirement; here it is used for `GChi ψ`."
     ],
     "conventions_checked": [
@@ -520,7 +520,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For every level, all constants and every ε > 0, there is `x1` such that for every x ≥ `x1` and every host satisfying the library's conditions `EAtH` and `CoreAtH` at x with those constants, the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε); the threshold `x1` depends on the level and the constants, not on the host"
+    "text": "For every level (in the library's sense), all constants and every ε > 0, there is `x1` such that for every x ≥ `x1` and every host (in the library's sense) satisfying the library's conditions `EAtH` and `CoreAtH` at x with those constants, the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε); the threshold `x1` depends on the level and the constants, not on the host"
    },
    "id": "window-bound",
    "level": 4,
@@ -975,7 +975,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For every level, every ε > 0 and every host family (in the library's sense, `FamP`) that satisfies the conditions the library names `EFamC` for that level and `ChainTied` on its windows, with constants `eD` and `eL`: the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε) for all large x in the family's windows"
+    "text": "For every level (in the library's sense), every ε > 0 and every host family (in the library's sense, `FamP`) that satisfies the conditions the library names `EFamC` for that level and `ChainTied` on its windows (in the library's sense), with constants `eD` and `eL`: the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε) for all large x in the family's windows"
    },
    "id": "window-bound-every-level",
    "level": 4,
@@ -1089,7 +1089,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "Every level has the Landau property: for every `la > 1` and every θ with 0 < θ < 1, if the level's error term `Gm` satisfies `Gm(x)` ≤ x^θ for all x in windows [Y, `Y^la`] lying beyond every point, then no L-function of a character the level keeps vanishes for Re s > θ"
+    "text": "Every level (in the library's sense) has the Landau property: for every `la > 1` and every θ with 0 < θ < 1, if the level's error term `Gm` satisfies `Gm(x)` ≤ x^θ for all x in windows [Y, `Y^la`] lying beyond every point, then no L-function of a character the level keeps vanishes for Re s > θ"
    },
    "id": "landau-every-level",
    "level": 4,
