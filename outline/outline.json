@@ -141,7 +141,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "'A HypsAlt structure' means the statement assumes Nonempty (HypsAlt …): one inhabitant exists. Closed, LinkN and DefiniteSideCondition are not opened and keep the library's names."
+     "'A `HypsAlt` structure' means the statement assumes `Nonempty (HypsAlt …)`: one inhabitant exists. `Closed`, `LinkN` and `DefiniteSideCondition` are not opened and keep the library's names."
     ],
     "conventions_checked": [
      "e"
@@ -209,7 +209,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "Green, VWin and a HypsAlt structure (closed under LinkN, with the definite side condition) give: no L-function of a primitive character vanishes for Re s > 1/2"
+    "text": "`Green`, `VWin` and a `HypsAlt` structure (closed under `LinkN`, with the library's definite side condition) give: no L-function of a primitive character vanishes for Re s > 1/2"
    },
    "id": "three-inputs",
    "level": 1,
@@ -231,8 +231,8 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "HostExW la: for each ε with 0 < ε < 1/52 there are constants and an la-family of scales such that every scale of the family with that ε, beyond a starting point, has a host meeting HostGood and the requirement.",
-     "The same la serves every ψ; on Main's route la = 3/2. TopG is a statement about every requirement; here it is used for GChi ψ."
+     "`HostExW la`: for each ε with 0 < ε < 1/52 there are constants and an `la`-family of scales (the library's notion) such that every scale of the family with that ε, beyond a starting point, has a host meeting `HostGood` and the requirement.",
+     "The same `la` serves every ψ; on `Main`'s route `la = 3/2`. `TopG` is a statement about every requirement; here it is used for `GChi ψ`."
     ],
     "conventions_checked": [
      "d",
@@ -309,7 +309,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "If TopG holds and, for one la > 1, the host requirement the library builds from each primitive character ψ (GChi ψ) is met in the sense HostExW la, then no L-function of a primitive character vanishes for Re s > 1/2"
+    "text": "If `TopG` holds and, for one `la > 1`, the host requirement the library builds from each primitive character ψ (`GChi ψ`) is met in the sense `HostExW la`, then no L-function of a primitive character vanishes for Re s > 1/2"
    },
    "id": "families-from-topg",
    "level": 2,
@@ -344,7 +344,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "The theorem is generic in a family type (Fam), in a map from a family to its core data (core) and in one family condition (Tied); on Main's route they are FamP, the map Fm.toFamCore and ChainTied (ZeroFreeAllOfTopG.lean 28). Both named conditions are defined through ChebyshevInequalityOnFamilyWindows (TopWin 23-33). Level.ofSub, EFamC and the family fields are not opened, so the level and the two conditions keep the library's names."
+     "The theorem is generic in a family type (`Fam`), in a map from a family to its core data (`core`) and in one family condition (`Tied`); on `Main`'s route they are `FamP`, the map `Fm.toFamCore` and `ChainTied` (`ZeroFreeAllOfTopG.lean` 28). Both named conditions are defined through `ChebyshevInequalityOnFamilyWindows` (`TopWin` 23-33). `Level.ofSub`, `EFamC` and the family fields are not opened, so the level and the two conditions keep the library's names."
     ],
     "conventions_checked": [
      "d",
@@ -438,7 +438,7 @@
      "Subgroup.zpowers (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For a set Q of primitive characters and one la > 1: if, for each ψ in Q, the level the library builds from the powers of ψ's character satisfies the two conditions the library names ChebyshevInequalityOnWindows and ChebyshevInequalityAtWindowScale (the second at scale la), and the Landau property FormB, then L(ψ, s) ≠ 0 for every ψ in Q and every s with Re s > 1/2"
+    "text": "For a set Q of primitive characters and one `la > 1`: if, for each ψ in Q, the level the library builds from the powers of ψ's character satisfies the two conditions the library names `ChebyshevInequalityOnWindows` and `ChebyshevInequalityAtWindowScale` (the second at scale `la`), and the Landau property `FormB`, then L(ψ, s) ≠ 0 for every ψ in Q and every s with Re s > 1/2"
    },
    "id": "zeros-enter",
    "level": 3,
@@ -459,7 +459,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "EAtH and CoreAtH are the library's names for two conditions at x, each on the host, a finite set TT, ε and some of the constants (EAtH also on the level); they are not opened here. eD, eL, K, cHH, eK and C are real constants with no condition on them; eD, eL, K, cHH and eK are arguments of CoreAtH, C of EAtH, and eD and eL also set the exponent."
+     "`EAtH` and `CoreAtH` are the library's names for two conditions at x, each on the host, a finite set `TT`, ε and some of the constants (`EAtH` also on the level); they are not opened here. `eD`, `eL`, `K`, `cHH`, `eK` and `C` are real constants with no condition on them; `eD`, `eL`, `K`, `cHH` and `eK` are arguments of `CoreAtH`, `C` of `EAtH`, and `eD` and `eL` also set the exponent."
     ],
     "conventions_checked": [
      "d"
@@ -520,7 +520,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For every level, all constants and every ε > 0, there is x1 such that for every x ≥ x1 and every host satisfying the library's conditions EAtH and CoreAtH at x with those constants, the level's error term Gm(x) is at most x^(1/2 + (eD + eL + 7)ε); the threshold x1 depends on the level and the constants, not on the host"
+    "text": "For every level (in the library's sense), all constants and every ε > 0, there is x1 such that for every x ≥ x1 and every host (in the library's sense) satisfying the library's conditions `EAtH` and `CoreAtH` at x with those constants, the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε); the threshold x1 depends on the level and the constants, not on the host"
    },
    "id": "window-bound",
    "level": 4,
@@ -554,7 +554,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "Gm is a weighted sum, over the family, of smoothed twisted von Mangoldt sums Σ Λ(n)χ(n)(y/n − 1) with the main term subtracted: y log y − (1+γ)y for the trivial character, and a term y·L′(χ,1)/L(χ,1) otherwise (L(χ,1) ≠ 0 for χ ≠ 1 is Mathlib's theorem, so the quotient is a real value).",
+     "`Gm` is a weighted sum, over the family, of smoothed twisted von Mangoldt sums Σ Λ(n)χ(n)(y/n − 1) with the main term subtracted: y log y − (1+γ)y for the trivial character, and a term y·L′(χ,1)/L(χ,1) otherwise (L(χ,1) ≠ 0 for χ ≠ 1 is Mathlib's theorem, so the quotient is a real value).",
      "The constant C is any real number; the windows are: for every Y₀ there is Y ≥ Y₀ with the bound on all of [Y, Y^(1+δ)]."
     ],
     "conventions_checked": [
@@ -613,7 +613,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for 0 < θ < 1 and δ > 0: if the family's weighted error term Gm is at most a constant times y^θ for all y in windows [Y, Y^(1+δ)] lying beyond every starting point, then none of the family's L-functions vanishes for Re s > θ"
+    "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for 0 < θ < 1 and δ > 0: if the family's weighted error term `Gm` is at most a constant times y^θ for all y in windows [Y, Y^(1+δ)] lying beyond every starting point, then none of the family's L-functions vanishes for Re s > θ"
    },
    "id": "landau-step",
    "level": 4,
@@ -645,8 +645,8 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "The product is over i = 1, …, d − 1 and is computed in ℂ, so there is no truncated subtraction; the formula's sign (−1)^(d−1) uses natural-number subtraction, which is safe only because Green assumes 0 < d.",
-     "IsCusp, Gn, thetaOf, rootsBar and Mt are not opened."
+     "The product is over i = 1, …, d − 1 and is computed in ℂ, so there is no truncated subtraction; the formula's sign (−1)^(d−1) uses natural-number subtraction, which is safe only because `Green` assumes 0 < d.",
+     "`IsCusp`, `Gn`, `thetaOf`, `rootsBar` and `Mt` are not opened."
     ],
     "conventions_checked": [
      "b",
@@ -684,7 +684,7 @@
      "Polynomial.Monic, Irreducible (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "Input 1 (Green): for each prime g, label datum and d ≥ 1, a one-to-one correspondence between the monic irreducible degree-d polynomials over Z/g with nonzero constant term and the functions on Gn g d that the library calls cuspidal, each given by an explicit formula from the label datum on elements with irreducible characteristic polynomial, and with value ∏(g^i − 1) at 1"
+    "text": "Input 1 (`Green`): for each prime g, label datum and d ≥ 1, a one-to-one correspondence between the monic irreducible degree-d polynomials over Z/g with nonzero constant term and the functions on `Gn g d` that the library calls cuspidal, each given by an explicit formula from the label datum on elements with irreducible characteristic polynomial, and with value ∏(g^i − 1) at 1"
    },
    "id": "input-green",
    "level": 2,
@@ -785,7 +785,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "For each primitive character ψ, VWinAt ψ 401 gives ψ's host requirement at la = 3/2 (HostExW)"
+    "text": "For each primitive character ψ, `VWinAt ψ 401` gives ψ's host requirement at `la = 3/2` (`HostExW`)"
    },
    "id": "hosts",
    "level": 2,
@@ -805,7 +805,7 @@
    "claim": {
     "basis": "census",
     "conditions": [
-     "Counted by a regex over the structure's field lines, not by a parse: 46 field lines, 16 of them containing Closed."
+     "Counted by a regex over the structure's field lines, not by a parse: 46 field lines, 16 of them containing `Closed`."
     ],
     "conventions_checked": [
      "e"
@@ -823,7 +823,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "Input 3: the structure the library names HypsAlt; a regex count over its field lines finds 46, of which 16 contain the name Closed"
+    "text": "Input 3: the structure the library names `HypsAlt`; a regex count over its field lines finds 46, of which 16 contain the name `Closed`"
    },
    "id": "input-hypsalt",
    "level": 2,
@@ -870,7 +870,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "Three hypotheses bundled in one structure that the library names OpenLiteratureStatements, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
+    "text": "Three hypotheses bundled in one structure that the library names `OpenLiteratureStatements`, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
    },
    "id": "literature-statements",
    "level": 3,
@@ -888,8 +888,8 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "The bound is only as strong as the families that exist; their existence is ChebyshevInequalityAtWindowScale, supplied on Main's route by TopG and the hosts. FamP, EFamC and ChainTied are not opened.",
-     "'ChainTied on its windows, with constants eD and eL' is the library's ChebyshevInequalityOnFamilyWindows (TopWin 23-24): for some further constants K, cHH, eK and CL, ChainTied holds at every large x in the family's windows. ChebyshevInequalityOnWindows, which this theorem concludes, is defined through it (TopWin 26-28)."
+     "The bound is only as strong as the families that exist; their existence is `ChebyshevInequalityAtWindowScale`, supplied on `Main`'s route by `TopG` and the hosts. `FamP`, `EFamC` and `ChainTied` are not opened.",
+     "'`ChainTied` on its windows, with constants `eD` and `eL`' is the library's `ChebyshevInequalityOnFamilyWindows` (`TopWin` 23-24): for some further constants `K`, `cHH`, `eK` and `CL`, `ChainTied` holds at every large x in the family's windows. `ChebyshevInequalityOnWindows`, which this theorem concludes, is defined through it (`TopWin` 26-28)."
     ],
     "conventions_checked": [
      "d",
@@ -975,7 +975,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For every level, every ε > 0 and every host family (in the library's sense, FamP) that satisfies the conditions the library names EFamC for that level and ChainTied on its windows, with constants eD and eL: the level's error term Gm(x) is at most x^(1/2 + (eD + eL + 7)ε) for all large x in the family's windows"
+    "text": "For every level (in the library's sense), every ε > 0 and every host family (in the library's sense, `FamP`) that satisfies the conditions the library names `EFamC` for that level and `ChainTied` on its windows (in the library's sense), with constants `eD` and `eL`: the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε) for all large x in the family's windows"
    },
    "id": "window-bound-every-level",
    "level": 4,
@@ -995,7 +995,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "Proved for every level (Imports.lean 8-19), so it is a fact of the library, not an input. KSet / Level.KEPT and level_family are not opened."
+     "Proved for every level (`Imports.lean` 8-19), so it is a fact of the library, not an input. `KSet` / `Level.KEPT` and `level_family` are not opened."
     ],
     "conventions_checked": [
      "d",
@@ -1089,7 +1089,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "Every level has the Landau property: for every la > 1 and every θ with 0 < θ < 1, if the level's error term Gm satisfies Gm(x) ≤ x^θ for all x in windows [Y, Y^la] lying beyond every point, then no L-function of a character the level keeps vanishes for Re s > θ"
+    "text": "Every level (in the library's sense) has the Landau property: for every `la > 1` and every θ with 0 < θ < 1, if the level's error term `Gm` satisfies `Gm(x)` ≤ x^θ for all x in windows [Y, Y^`la`] lying beyond every point, then no L-function of a character the level keeps vanishes for Re s > θ"
    },
    "id": "landau-every-level",
    "level": 4,
