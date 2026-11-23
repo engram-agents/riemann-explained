@@ -97,15 +97,19 @@ lines are provisional names, the owner of the wording may rename them: `statemen
 `statement_not_read_line`, `proof_read_line`, `proof_not_read_line`, `statement_count_line`, `proof_count_line`,
 `open_items_line`, `steps_statement_line`, `steps_proof_line`, `steps_open_items_line`, besides `no_claim_label`); a
 missing key stops the build and names itself, and a stale key (`coverage`, `not_read_yet`, `roots_not_read`, any other
-key whose name holds `not_read`) is refused. There is no coverage word. Per root there are two facts: the statement is
+top-level key, or key directly under `labels`, whose name holds `not_read`) is refused. There is no coverage word. Per root there are two facts: the statement is
 read when the group's claim has basis `read` (a claim without a basis counts as `read` until the checker requires one) or
 a reading block anchors the root; the proof is read when an argument block anchors it. A claim of basis `census` does not
-count. A step counts for a fact when every root of it has it, and the build asserts read + not read = total for each fact.
+count. A step counts for a fact when every root of it has it (a group with no root is never counted as read; that guard is redundant by
+design, the checker refuses such a group first). The build asserts read + not read = total for each fact: these sums guard a
+MISSING flag, not a WRONG one. For a null claim or a census claim the statement reader is the first reading block of the root by
+note id and then block number, not by date.
 A group whose claim is null shows its root's Lean name and the `no_claim_label` in the heading, then the status lines.
 Open questions are the distinct open `not_read` blocks, each counted once. The build also stops for: the words
 verified, explained, understood (or any word of `forbidden_words`), a percent sign or `of the proof` in the strings file
 (the builder's own sentences never contain them; its href templates may hold `%`; the words `Read by us`, `Partly read`
-and `Not read yet` are refused too, the scale is gone); a reading, argument,
+and `Not read yet` are refused too, the scale is gone; that match is exact-case and single-space, so the lowercase phrase
+`not read yet` is allowed inside status wording); a reading, argument,
 interpretation or correction block with no reader or no date; a fact whose read and not-read counts do not add up to
 the total (SUM-STATEMENT, SUM-PROOF); a reaction target that is not an https URL (the hrefs may hold any word, a label
 may not); a link on the page with no target; a number
@@ -123,7 +127,8 @@ the outline (claims, conditions, note titles, argument and interpretation text) 
 hit is listed as `WORD-NOTE <where> <word>` on stdout, the exit code is unchanged and the text is never edited. For
 `of the proof` the listing is narrower than the refusal in the strings file (which takes any occurrence): in the notes'
 text only a number, a percent sign or a quantity word (half, third, quarter, most, part, fraction, portion, share,
-majority, all; the list is provisional) immediately before it is listed, so a title like `the top of the proof` is not. The
+majority, all; the list is provisional) immediately before it is listed, so a title like `the top of the proof` is not. A `not_read` block in a level-0 note is anchored to no group: it is not counted in the number of open questions and is shown on no
+card. The
 LIMIT paragraph in the file lists what is not checked.
 `python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--force]`
 
