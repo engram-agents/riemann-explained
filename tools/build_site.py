@@ -906,14 +906,12 @@ def _e(x):
     return html.escape(str(x), quote=True)
 
 
-_CODE_SPAN = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
-
-
 def _rich(text):
-    """Escaped text in which a span between single backticks on one line is a <code> element (its content escaped too). Nothing
-    else is markup: an unpaired backtick, an empty pair, doubled backticks and a pair over a line break stay literal."""
+    """Escaped text in which a span between single backticks on one line is a <code> element (its content escaped too). The span is
+    notes_meta's _BACKTICK_SPAN, the one definition the checker uses too. Nothing else is markup: an unpaired backtick, an empty
+    pair, doubled backticks and a pair over a line break (LF or CR) stay literal."""
     out, pos = [], 0
-    for mt in _CODE_SPAN.finditer(text):
+    for mt in nm._BACKTICK_SPAN.finditer(text):
         out.append(_e(text[pos:mt.start()]))
         out.append("<code>" + _e(mt.group(1)) + "</code>")
         pos = mt.end()
@@ -2688,12 +2686,13 @@ def _selftest_cases():
                     b.js("level0.json")["steps"][0]["claim"]["text"]),
                    (0, "a `Foo.bar baz` b", 0, ["a `x y` b"], 0, "a `Foo.bar\rbaz` b"))
 
-    @case("AGR1", "the page and the checker agree on which backtick spans are code: for each of ten texts the page renders <code>Foo.bar</code> "
-                  "exactly when notes_meta does not list Foo.bar")
+    @case("AGR1", "the page and the checker agree on which backtick spans are code: for each of ten texts the page puts Foo.bar inside a <code> "
+                  "element exactly when notes_meta does not list Foo.bar")
     def _():
         texts = ("`Foo.bar`", "a `Foo.bar` b", "``Foo.bar``", "``Foo.bar` x", "x `Foo.bar`` y", "an unpaired `Foo.bar here",
                  "a `Foo.bar\nbaz` b", "a `Foo.bar\rbaz` b", "`a` and Foo.bar", "`x Foo.bar y`")
-        got = [(t, "<code>Foo.bar</code>" in _rich(t), "Foo.bar" in nm._library_words(t)) for t in texts]
+        got = [(t, re.search(r"<code>[^<]*Foo\.bar[^<]*</code>", _rich(t)) is not None, "Foo.bar" in nm._library_words(t))
+               for t in texts]
         return _eq(got, [("`Foo.bar`", True, False), ("a `Foo.bar` b", True, False), ("``Foo.bar``", False, True),
                          ("``Foo.bar` x", False, True), ("x `Foo.bar`` y", False, True), ("an unpaired `Foo.bar here", False, True),
                          ("a `Foo.bar\nbaz` b", False, True), ("a `Foo.bar\rbaz` b", False, True), ("`a` and Foo.bar", False, True),

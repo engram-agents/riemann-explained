@@ -216,7 +216,10 @@ FRAME_ONLY = ("argument", "interpretation")
 REFUSED_LIST_SHAPES = ()
 _CODESPAN = re.compile(r"(`+)(?!`).+?(?<!`)\1(?!`)")
 _LINE_SPLIT = re.compile(r"\r\n|\n|\r")
-_BACKTICK_SPAN = re.compile(r"(?<!`)`[^`\n]+`(?!`)")   # the span the page renders as code: single backticks, one line
+# The ONE definition of a code span, used by this checker and by build_site.py (which renders the span as <code>): a backtick, one or
+# more characters that are no backtick and no line break (LF or CR), a backtick, with no backtick directly outside either end.
+# Group 1 is the content.
+_BACKTICK_SPAN = re.compile(r"(?<!`)`([^`\r\n]+)`(?!`)")
 _DOTTED = re.compile(r"(?<![A-Za-z0-9_.])[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+(?![A-Za-z0-9_])")
 _WORD = re.compile(r"[A-Za-z0-9_]+")
 
