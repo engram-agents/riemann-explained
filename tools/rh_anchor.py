@@ -1,60 +1,492 @@
 #!/usr/bin/env python3
-"""STUB: the shared anchor-format module (self-test first; the implementation follows in the next commit)."""
+"""The anchor format of the notes, in one module: read, write, check the shape, and place the one-line JSON comments.
+
+A note's Markdown carries its metadata in two kinds of one-line HTML comment, so the rendered page does not change:
+  <!-- rh-note {...} -->    the note header (one per note)
+  <!-- rh-block {...} -->   a block anchor, on its own line directly after the paragraph, table or lean block it anchors
+Both the checker and the helper that writes anchors import this module, so the format lives in one place. It is a
+library: `python3 tools/rh_anchor.py --selftest` is the only command line.
+
+API (the names are the contract)
+  NEEDS, KINDS                      the closed lists of `not_read` needs and of block kinds
+  parse_note(text)                  -> (headers, blocks, malformed); never raises for any str
+  format_comment(tag, data)         the canonical one-line comment for "rh-note" or "rh-block"; no line ending
+  render_header(d), render_block(d) format_comment with the tag filled in
+  strip_anchor_lines(text)          the note without its anchor lines; every other byte unchanged
+  block_id_ok(note_id, block_id)    True iff block_id is `<note_id>.b<nn>`, nn two or more ASCII digits
+  problems(block, note_id=None)     format-level check of one block dict; a list of strings, empty = fine
+  header_problems(d)                the same for a header dict
+  target_at(text, line)             the element (paragraph, table, fence) that holds a 1-based line, else None
+  next_block_id(note_id, used)      the next unused id of a note, never reusing a hole
+  insert_after_line(text, line, c)  insert a comment as its own line after a 1-based line, in that file's line ending
+`Item` has line (1-based), data (the parsed object), canonical (the line is byte-equal to format_comment of its own
+data), offset and end (character offsets of the line start and of the end after its line ending), and for blocks
+`target`, for headers `before_first_h2`. `Problem` has line, code and message.
+
+CONTRACT (each line is a self-test case, written before the code)
+ A1 A line whose stripped text starts `<!-- rh-note ` or `<!-- rh-block ` and ends ` -->`, with a JSON object between,
+    is recognised. Any other line that starts `<!-- rh-` (other tag, JSON that is not an object or does not parse, no
+    ` -->`, a second comment, the comment spread over lines) or that holds `<!-- rh-` after other text is a Problem
+    MALFORMED. Never silently ignored. Cases A1a-A1e.
+ A2 Inside a fenced block (``` or ~~~, three or more, closed by the same character with at least as many) an rh-
+    comment is text: not parsed, not a problem, not stripped. An unclosed fence runs to the end and is a Problem
+    UNCLOSED-FENCE on its opening line. Case A2.
+ A3 The canonical line is `<!-- {tag} {json} -->`, json with sorted keys, no spaces, non-ASCII kept, and `<` `>` `&`
+    written as \\u003c \\u003e \\u0026, so `-->` cannot occur inside it. A recognised line that is not byte-equal to the
+    canonical form of its own data is an Item with canonical False (the checker decides). Cases A3a A3b.
+ A4 Round trip: parse_note(format_comment(tag, d) + "\\n") is exactly one Item with data == d and canonical True, no
+    Problem, for objects of str, int, bool, None, list, dict. Case A4.
+ A5 Placement. A block's `target` is the nearest preceding non-blank element: paragraph, table, lean (a fence whose
+    info string starts `lean`), other (any other fence, heading, list item, quote, HTML line) or none. Each carries
+    first_line, last_line and insert_after (= last_line); a table also ncols, nrows (body rows) and start_line. Anchor
+    lines are not elements, so every anchor after a table has that table as its target. Cases A5a-A5d.
+ A6 An rh- comment line between two table lines (no blank line between) is a Problem INSIDE-TABLE naming the line;
+    the comment is still returned. Case A6.
+ A7 Every rh-note is a header; before_first_h2 says whether it comes before the first `## ` line outside a fence. The
+    parser does not enforce "exactly one". Case A7.
+ A8 strip_anchor_lines is the exact inverse of inserting recognised anchor lines (LF, CRLF, lone CR, no final newline);
+    fenced lines and malformed rh- lines are left. A final anchor line that has no line ending takes the line ending
+    before it with it. Cases A8a-A8c.
+ A9 Never raises: 300 seeded random strings. Case A9.   A10 The same content on two lines is two Items. Case A10.
+ A11 `--selftest` exits 0 (all pass), 1 (any fails), 2 (usage), 3 (no case ran). Case A11.
+ B1 render_header/render_block equal format_comment with the tag; render(parse(line).data) == line. Case B1.
+ B2 problems(): kind in KINDS; id form (and note prefix when note_id is given); machine_fact needs non-empty tool and
+    tool_version, check in text/index/proofterm, options a str (may be empty), `complete` True for proofterm, and a
+    machine_fact with complete False is refused (it can only be anchored as not_read); not_read needs a needs value
+    of NEEDS; argument needs reader, date and a non-empty decls list; decls entries have str module and name;
+    defs_opened (if present) is a list of {module, name, lines:[int,int]}; conventions_checked (if present) is a list
+    of "a".."e"; row and col (if present) are ints >= 1. Every problem string starts with the field name.
+    header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f.
+ B3 target_at gives the element holding a line, None between elements; a line inside a table is held by the table, so
+    the insertion line is the table's last line, never between rows. Case B3.
+ B4 next_block_id is the smallest number above the largest used for that note, at least two digits. Case B4.
+ B5 insert_after_line uses CRLF if the line ended CRLF, else LF; on a last line with no line ending it adds one before
+    the comment and none after, so strip_anchor_lines(insert_after_line(t, n, c)) == t. Cases B5a-B5d.
+
+LIMIT. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
+row, column, declaration or file exists (a table's size is only reported), no date format, no order check on
+`lines`, no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
+`conventions_checked` (open; they are validated when present and never required). Markdown is approximated by the
+rules in A2, A5 and A6, not CommonMark: a fence may be indented by any spaces or tabs, indented code blocks and HTML
+blocks are not recognised as fences, setext headings are not recognised, a table is a run of lines starting with `|`
+whose second line is a separator row (a paragraph line above it is not part of it), and a heading, list item, quote
+or HTML line is `other`. A line is a line ending in `\\n`, `\\r\\n` or a lone `\\r`. Text in an rh- comment on a line with
+other text before it (for example in an inline code span in prose) is reported MALFORMED. Item offsets are character
+offsets into the str as given, not bytes. insert_after_line takes the line it is given: choosing the table's last
+line for a line inside a table is the caller's job (`target.insert_after`). A final anchor line without a line
+ending that was typed by hand after a note that ends in a newline takes that newline with it when stripped.
+"""
 from __future__ import annotations
 
 import contextlib
 import io
+import json
 import random
 import re
 import sys
+from dataclasses import dataclass
 
 NEEDS = ("callers", "route", "enclosing", "resolve", "fields_read", "uses", "hand_read", "full_build")
 KINDS = ("machine_fact", "reading", "interpretation", "correction", "not_read", "argument")
 
 
-# ---------------------------------------------------------------- the module (stub)
-def parse_note(text):
-    raise NotImplementedError
+# ---------------------------------------------------------------- the module
+_TAGS = ("rh-note", "rh-block")
+_RH = "<!-- rh-"
+_SPLIT = re.compile(r"(\r\n|\n|\r)")
+_FENCE = re.compile(r"[ \t]*(`{3,}|~{3,})(.*)")
+_HEADING = re.compile(r"#{1,6}(\s|$)")
+_LISTISH = re.compile(r"([-*+]|\d{1,9}[.)])\s")
+_RULE = re.compile(r"([-*_])(\s*\1){2,}\s*")
+_CELL_SEP = re.compile(r"(?<!\\)\|")
+_SEP_CELL = re.compile(r":?-+:?")
+
+
+@dataclass
+class Item:
+    line: int
+    data: dict
+    canonical: bool
+    target: dict | None = None
+    before_first_h2: bool | None = None
+    offset: int = 0
+    end: int = 0
+
+
+@dataclass
+class Problem:
+    line: int
+    code: str
+    message: str
 
 
 def format_comment(tag, data):
-    raise NotImplementedError
+    """The canonical one-line comment; `<`, `>` and `&` are written as \\u escapes so `-->` cannot occur inside."""
+    if tag not in _TAGS:
+        raise ValueError(f"tag must be one of {_TAGS}, not {tag!r}")
+    if not isinstance(data, dict):
+        raise TypeError("data must be a dict")
+    j = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    j = j.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+    return f"<!-- {tag} {j} -->"
 
 
 def render_block(data):
-    raise NotImplementedError
+    return format_comment("rh-block", data)
 
 
 def render_header(data):
-    raise NotImplementedError
+    return format_comment("rh-note", data)
+
+
+def _split(text):
+    """(contents, endings): one entry per line; the last entry is the text after the final line ending."""
+    parts = _SPLIT.split(text)
+    return parts[0::2], parts[1::2] + [""]
+
+
+def _recognise(raw, st):
+    """(tag, data, canonical) for a recognised line, else None. `st` is `raw` stripped."""
+    for tag in _TAGS:
+        pre = "<!-- " + tag + " "
+        if st.startswith(pre):
+            break
+    else:
+        return None
+    if not st.endswith(" -->") or len(st) < len(pre) + 4:
+        return None
+    try:
+        data = json.loads(st[len(pre):-4])
+    except Exception:  # bad JSON, RecursionError on deep nesting, a huge integer: all the same answer
+        return None
+    if not isinstance(data, dict):
+        return None
+    try:
+        canonical = raw == format_comment(tag, data)
+    except Exception:
+        canonical = False
+    return tag, data, canonical
+
+
+def _is_sep(s):
+    t = s.strip()
+    if not t.startswith("|"):
+        return False
+    inner = t[1:]
+    if inner.endswith("|"):
+        inner = inner[:-1]
+    return all(_SEP_CELL.fullmatch(c.strip()) for c in inner.split("|"))
+
+
+def _ncols(s):
+    t = s.strip()[1:]
+    if t.endswith("|") and not t.endswith("\\|"):
+        t = t[:-1]
+    return len(_CELL_SEP.split(t))
+
+
+def _classify(s):
+    if _HEADING.match(s) or _LISTISH.match(s) or s.startswith((">", "<")) or _RULE.fullmatch(s):
+        return "other"
+    return "paragraph"
+
+
+def _element(kind, first, last, **extra):
+    d = {"type": kind, "first_line": first + 1, "last_line": last + 1, "insert_after": last + 1}
+    d.update(extra)
+    return d
+
+
+class _Analysis:
+    """One pass over the lines with a small state (in a fence, a run of table lines); shared by every reader."""
+
+    def __init__(self, text):
+        lines, ends = _split(text)
+        n = len(lines)
+        self.lines, self.ends, self.n = lines, ends, n
+        self.nreal = n - 1 if lines[-1] == "" else n
+        self.offs = []
+        o = 0
+        for c, e in zip(lines, ends):
+            self.offs.append(o)
+            o += len(c) + len(e)
+        # fences
+        fence_of = [-1] * n
+        fences = []
+        cur = None
+        for i, s in enumerate(lines):
+            if cur is not None:
+                fence_of[i] = cur
+                f = fences[cur]
+                t = s.strip()
+                if len(t) >= f["n"] and not t.strip(f["ch"]):
+                    f["close"] = i
+                    cur = None
+                continue
+            m = _FENCE.match(s)
+            if m and m.group(1)[0] == "`" and "`" in m.group(2):
+                m = None
+            if m:
+                fences.append({"open": i, "close": None, "ch": m.group(1)[0], "n": len(m.group(1)), "info": m.group(2).strip()})
+                cur = len(fences) - 1
+                fence_of[i] = cur
+        probs = []
+        for f in fences:
+            if f["close"] is None:
+                probs.append(Problem(f["open"] + 1, "UNCLOSED-FENCE", f"The code fence opened on line {f['open'] + 1} is never closed."))
+        # rh- lines
+        cand = [False] * n
+        rec = {}
+        for i, s in enumerate(lines):
+            if fence_of[i] != -1:
+                continue
+            st = s.strip()
+            if st.startswith(_RH):
+                cand[i] = True
+                r = _recognise(s, st)
+                if r:
+                    rec[i] = r
+                else:
+                    probs.append(Problem(i + 1, "MALFORMED", f"Line {i + 1} starts an rh- comment that is not one complete "
+                                         "`<!-- rh-note {...} -->` or `<!-- rh-block {...} -->` line with a JSON object."))
+            elif _RH in s:
+                probs.append(Problem(i + 1, "MALFORMED", f"Line {i + 1} has an rh- comment after other text; "
+                                     "an anchor comment must be a line of its own."))
+        self.fence_of, self.fences, self.cand, self.rec = fence_of, fences, cand, rec
+
+        def is_tl(x):
+            return 0 <= x < n and fence_of[x] == -1 and not cand[x] and lines[x].strip().startswith("|")
+
+        i = 0
+        while i < n:   # a run of rh- lines between two table lines
+            if not cand[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < n and cand[j + 1]:
+                j += 1
+            if is_tl(i - 1) and is_tl(j + 1):
+                for x in range(i, j + 1):
+                    probs.append(Problem(x + 1, "INSIDE-TABLE", f"Line {x + 1} puts an rh- comment between two table rows."))
+            i = j + 1
+        probs.sort(key=lambda p: (p.line, p.code))
+        self.problems = probs
+        # elements
+        els = []
+        el_at = [-1] * n
+        for f in fences:
+            last = f["close"] if f["close"] is not None else max(self.nreal - 1, f["open"])
+            els.append(_element("lean" if f["info"].startswith("lean") else "other", f["open"], last))
+            for x in range(f["open"], last + 1):
+                el_at[x] = len(els) - 1
+        core = [i for i in range(n) if not cand[i]]
+        p = 0
+        while p < len(core):
+            if not is_tl(core[p]):
+                p += 1
+                continue
+            q = p
+            while q < len(core) and is_tl(core[q]):
+                q += 1
+            run = core[p:q]
+            if len(run) >= 2 and _is_sep(lines[run[1]]):
+                els.append(_element("table", run[0], run[-1], ncols=_ncols(lines[run[0]]), nrows=len(run) - 2, start_line=run[0] + 1))
+                for x in run:
+                    el_at[x] = len(els) - 1
+            p = q
+        cur, prev = None, -2
+        for i in range(n):
+            if cand[i] or el_at[i] != -1:
+                cur = None
+                continue
+            s = lines[i].strip()
+            if not s:
+                cur = None
+                continue
+            kind = _classify(s)
+            if cur is not None and prev == i - 1 and els[cur]["type"] == kind:
+                els[cur]["last_line"] = els[cur]["insert_after"] = i + 1
+            else:
+                els.append(_element(kind, i, i))
+                cur = len(els) - 1
+            el_at[i] = cur
+            prev = i
+        self.elements = els
+        last_el = -1
+        self.target_of = {}
+        for i in range(n):
+            if cand[i]:
+                self.target_of[i] = last_el
+            elif el_at[i] != -1:
+                last_el = el_at[i]
+        self.h2 = next((i for i in range(n) if fence_of[i] == -1 and lines[i].startswith("## ")), None)
+
+
+def parse_note(text):
+    """(headers, blocks, malformed). Never raises for a str. See the module docstring for the contract."""
+    a = _Analysis(text)
+    headers, blocks = [], []
+    for i in sorted(a.rec):
+        tag, data, canon = a.rec[i]
+        off = a.offs[i]
+        end = off + len(a.lines[i]) + len(a.ends[i])
+        if tag == "rh-note":
+            headers.append(Item(i + 1, data, canon, None, a.h2 is None or i < a.h2, off, end))
+        else:
+            t = a.target_of[i]
+            blocks.append(Item(i + 1, data, canon, dict(a.elements[t]) if t != -1 else {"type": "none"}, None, off, end))
+    return headers, blocks, list(a.problems)
 
 
 def strip_anchor_lines(text):
-    raise NotImplementedError
-
-
-def block_id_ok(note_id, block_id):
-    raise NotImplementedError
-
-
-def problems(block, note_id=None):
-    raise NotImplementedError
-
-
-def header_problems(data):
-    raise NotImplementedError
+    a = _Analysis(text)
+    ends = list(a.ends)
+    last = a.n - 1
+    if a.lines[last] != "" and last in a.rec:   # a final anchor line without a line ending takes the ending before it
+        k = last - 1
+        while k >= 0 and k in a.rec:
+            k -= 1
+        if k >= 0:
+            ends[k] = ""
+    return "".join(a.lines[i] + ends[i] for i in range(a.n) if i not in a.rec)
 
 
 def target_at(text, line):
-    raise NotImplementedError
-
-
-def next_block_id(note_id, used_ids):
-    raise NotImplementedError
+    a = _Analysis(text)
+    if not isinstance(line, int) or not 1 <= line <= a.nreal:
+        return None
+    for el in a.elements:
+        if el["first_line"] <= line <= el["last_line"]:
+            return dict(el)
+    return None
 
 
 def insert_after_line(text, line, comment_line):
-    raise NotImplementedError
+    if "\n" in comment_line or "\r" in comment_line:
+        raise ValueError("the comment must be one line")
+    lines, ends = _split(text)
+    nreal = len(lines) - 1 if lines[-1] == "" else len(lines)
+    if not isinstance(line, int) or not 1 <= line <= nreal:
+        raise ValueError(f"line {line!r} is not one of the {nreal} lines of the text")
+    i = line - 1
+    if ends[i]:
+        nl = "\r\n" if ends[i] == "\r\n" else "\n"
+        pos = sum(len(lines[x]) + len(ends[x]) for x in range(i + 1))
+        return text[:pos] + comment_line + nl + text[pos:]
+    nl = "\r\n" if i > 0 and ends[i - 1] == "\r\n" else "\n"
+    return text + nl + comment_line
+
+
+def block_id_ok(note_id, block_id):
+    if not isinstance(note_id, str) or not isinstance(block_id, str):
+        return False
+    return re.fullmatch(re.escape(note_id) + r"\.b[0-9]{2,}", block_id) is not None
+
+
+def next_block_id(note_id, used_ids):
+    pat = re.compile(re.escape(note_id) + r"\.b([0-9]+)")
+    top = 0
+    for u in used_ids:
+        m = pat.fullmatch(u) if isinstance(u, str) else None
+        if m and len(m.group(1)) <= 30:
+            top = max(top, int(m.group(1)))
+    return f"{note_id}.b{top + 1:02d}"
+
+
+def _int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _str(v):
+    return isinstance(v, str) and v != ""
+
+
+def _decl_list(name, v, out):
+    if not isinstance(v, list):
+        out.append(f"{name}: must be a list")
+        return
+    for k, d in enumerate(v):
+        if not isinstance(d, dict):
+            out.append(f"{name}[{k}]: must be an object with module and name")
+            continue
+        for f in ("module", "name"):
+            if not _str(d.get(f)):
+                out.append(f"{name}[{k}].{f}: must be a non-empty string")
+        if name == "defs_opened":
+            ln = d.get("lines")
+            if not (isinstance(ln, list) and len(ln) == 2 and all(_int(x) for x in ln)):
+                out.append(f"{name}[{k}].lines: must be a list of two integers")
+
+
+def problems(block, note_id=None):
+    """Format-level problems of one block dict (a list of strings, each starting with the field name; [] = fine)."""
+    if not isinstance(block, dict):
+        return ["block: must be a JSON object"]
+    out = []
+    bid = block.get("id")
+    if not isinstance(bid, str):
+        out.append("id: missing or not a string")
+    else:
+        if note_id is None:
+            note, sep, _ = bid.rpartition(".b")
+            good = sep != "" and note != "" and block_id_ok(note, bid)
+        else:
+            good = block_id_ok(note_id, bid)
+        if not good:
+            out.append(f"id: {bid!r} is not <note id>.b<nn>" + (f" for note {note_id!r}" if note_id is not None else ""))
+    kind = block.get("kind")
+    if kind not in KINDS:
+        out.append(f"kind: must be one of {', '.join(KINDS)}")
+    elif kind == "machine_fact":
+        for f in ("tool", "tool_version"):
+            if not _str(block.get(f)):
+                out.append(f"{f}: a machine_fact needs a non-empty string")
+        if block.get("check") not in ("text", "index", "proofterm"):
+            out.append("check: must be text, index or proofterm")
+        if not isinstance(block.get("options"), str):
+            out.append("options: a machine_fact needs options as a string (it may be empty)")
+        c = block.get("complete")
+        if c is False:
+            out.append("complete: a machine_fact with complete false can only be anchored as not_read")
+        elif block.get("check") == "proofterm" and c is not True:
+            out.append("complete: check proofterm needs complete true")
+    elif kind == "not_read":
+        if block.get("needs") not in NEEDS:
+            out.append(f"needs: must be one of {', '.join(NEEDS)}")
+    elif kind == "argument":
+        for f in ("reader", "date"):
+            if not _str(block.get(f)):
+                out.append(f"{f}: an argument needs a non-empty string")
+        if block.get("decls", []) == []:
+            out.append("decls: an argument needs at least one declaration")
+    if "decls" in block:
+        _decl_list("decls", block["decls"], out)
+    if "defs_opened" in block:
+        _decl_list("defs_opened", block["defs_opened"], out)
+    if "conventions_checked" in block:
+        cc = block["conventions_checked"]
+        if not (isinstance(cc, list) and all(isinstance(x, str) and x in ("a", "b", "c", "d", "e") for x in cc)):
+            out.append("conventions_checked: must be a list of letters a to e")
+    for f in ("row", "col"):
+        if f in block and not (_int(block[f]) and block[f] >= 1):
+            out.append(f"{f}: must be an integer of 1 or more")
+    return out
+
+
+def header_problems(data):
+    if not isinstance(data, dict):
+        return ["header: must be a JSON object"]
+    out = []
+    for f in ("id", "group", "list_title", "release"):
+        if not _str(data.get(f)):
+            out.append(f"{f}: missing or not a non-empty string")
+    lv = data.get("level")
+    if not (_int(lv) and lv in (0, 1, 2)):
+        out.append("level: must be 0, 1 or 2")
+    for f in ("authors", "readers"):
+        if not isinstance(data.get(f), list):
+            out.append(f"{f}: missing or not a list")
+    return out
 
 
 # ---------------------------------------------------------------- self-test
@@ -629,7 +1061,7 @@ def _():
 @case("B5c", "strip(insert(t)) == t for every line of LF, CRLF, no-final-newline, single-line and fenced texts")
 def _():
     texts = ["a\nb\nc\n", "a\r\nb\r\nc\r\n", "a\nb\nc", "a\r\nb\r\nc", "a", "a\n", "a\r\n", "| h |\n|---|\n| 1 |\n",
-             "x\n```lean\ny\n```\nz", "a\rb\rc", "\n\n", "té\x00\n"]
+             "a\rb\rc", "\n\n", "té\x00\n"]
     C = B(1)
     for t in texts:
         n = len(re.split(r"\r\n|\n|\r", t))
@@ -639,6 +1071,10 @@ def _():
             r = insert_after_line(t, ln, C)
             eq(strip_anchor_lines(r), t, f"{t!r} after {ln}")
             ok(C in r, "comment present")
+    t = "x\n```lean\ny\n```\nz"
+    for ln in (1, 4, 5):   # outside the fence; a line inserted inside a fence is text and is not stripped (A2)
+        eq(strip_anchor_lines(insert_after_line(t, ln, C)), t, f"fenced text after {ln}")
+    eq(strip_anchor_lines(insert_after_line(t, 2, C)), insert_after_line(t, 2, C), "inside a fence stays")
     t = "a\nb"
     r = insert_after_line(insert_after_line(t, 2, B(1)), 3, B(2))
     eq((r, strip_anchor_lines(r)), ("a\nb\n" + B(1) + "\n" + B(2), t), "two insertions at the end")
