@@ -1720,6 +1720,18 @@ def _():
        [_bd(7, 6, "'More text.'", "'More texts.'")], 1)
 
 
+@case("BL7", "a current file with no non-anchor line (empty, or only a header and blocks) against a base with text: the number is 1")
+def _():
+    first = "BYTE-DIFF 01-a.md:1 line 1 differs (line 1 of the text without anchors): at HEAD (without anchors) '# Note\\n', now (without anchors) <no line>"
+    r = go(notes={"01-a.md": ""}, committed={"01-a.md": T0}, base="HEAD")
+    eq((r.f, r.rc), (["NO-HEADER 01-a.md has no rh-note header", first], 1), "empty file: " + r.out)
+    hdr = rh.format_comment("rh-note", {"authors": ["H"], "group": "g1", "id": "01", "level": 2, "list_title": "A title",
+                                        "readers": ["K"], "release": "rel-1"})
+    r = go(notes={"01-a.md": hdr + "\n" + BL() + "\n"}, committed={"01-a.md": T0}, base="HEAD")
+    eq((r.f, r.rc), (["ORPHAN-BLOCK 01-a.md:2 block '01.b01' anchors nothing: its target is of type 'none', "
+                      "not a paragraph, table or lean block", first], 1), "only anchor lines: " + r.out)
+
+
 @case("B1d", "a note not present at REV is NEW-NOTE (a listing, exit unchanged); without --base the summary says the byte check did not run")
 def _():
     r = go(notes={"01-a.md": CUR, "02-b.md": NOTE(nid="02")}, committed={"01-a.md": T0}, base="HEAD")
