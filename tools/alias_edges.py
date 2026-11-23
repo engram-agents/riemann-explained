@@ -23,7 +23,8 @@ CONTRACT
     within the declaration's extent; the extent runs from its line to the line
     before the next column-0 declaration keyword, `end`, `namespace`, `section`, `open`, `set_option`,
     `attribute`, `variable`, `universe`, `noncomputable`, `@[`, `/-` (also the modifiers private, protected,
-    nonrec, unsafe, partial and `mutual`), or to the end of the file. Whitespace around the tokens may vary.
+    nonrec, unsafe, partial, `mutual`, and example, axiom, opaque, macro, syntax, notation, local, scoped,
+    export, deriving, initialize, #check, #print, #eval), or to the end of the file. Whitespace around the tokens may vary.
  A2 A theorem whose body has the shape at its start but is not an exact equal-X wrapper is listed in
     aliases_odd.tsv, not dropped: reason `unequal_x` (the X differ) or `trailing_text` (equal X, then more
     non-blank text, e.g. a second chain). It is not in aliases.tsv.
@@ -95,8 +96,9 @@ DECL_QUICK = re.compile(r"\b(?:theorem|lemma|def|abbrev|structure|class|inductiv
 DECL = re.compile(r"[ \t]*(?:@\[[^\]]*\][ \t]*)*(?:(?:private|protected|noncomputable|nonrec|unsafe|partial)[ \t]+)*"
                   r"(theorem|lemma|def|abbrev|structure|class|inductive|instance)[ \t]+([^\s:({\[]*)")
 BOUND = re.compile(r"(?:(?:theorem|lemma|def|abbrev|structure|class|inductive|instance|end|namespace|section|open|"
-                   r"set_option|attribute|variable|universe|noncomputable|private|protected|nonrec|unsafe|partial|mutual)"
-                   r"(?![\w'.])|@\[)")
+                   r"set_option|attribute|variable|universe|noncomputable|private|protected|nonrec|unsafe|partial|mutual|"
+                   r"example|axiom|opaque|macro|syntax|notation|local|scoped|export|deriving|initialize)"
+                   r"(?![\w'.])|@\[|#(?:check|print|eval)(?![\w'.]))")
 NS = re.compile(r"namespace[ \t]+(\S+)")
 SEC = re.compile(r"(?:noncomputable[ \t]+)?section(?:[ \t]+(\S+))?[ \t]*$")
 END = re.compile(r"end(?:[ \t]+(\S+))?[ \t]*$")
