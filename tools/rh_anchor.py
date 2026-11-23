@@ -16,7 +16,8 @@ API (the names are the contract)
   block_id_ok(note_id, block_id)    True iff block_id is `<note_id>.b<nn>`, nn two or more ASCII digits
   problems(block, note_id=None)     format-level check of one block dict; a list of strings, empty = fine
   header_problems(d)                the same for a header dict
-  target_at(text, line)             the element (paragraph, table, fence) that holds a 1-based line, else None
+  target_at(text, line)             the element (paragraph, table, fence) that holds a 1-based line, or whose run of
+                                    anchor lines holds it, else None
   next_block_id(note_id, used)      the next unused id of a note, never reusing a hole
   insert_after_line(text, line, c)  insert a comment as its own line after a 1-based line, in that file's line ending
 `Item` has line (1-based), data (the parsed object), canonical (the line is byte-equal to format_comment of its own
@@ -39,8 +40,11 @@ CONTRACT (each line is a self-test case, written before the code)
     Problem, for objects of str, int, bool, None, list, dict. Case A4.
  A5 Placement. A block's `target` is the nearest preceding non-blank element: paragraph, table, lean (a fence whose
     info string starts `lean`), other (any other fence, heading, list item, quote, HTML line) or none. Each carries
-    first_line, last_line and insert_after (= last_line); a table also ncols, nrows (body rows) and start_line. Anchor
-    lines are not elements, so every anchor after a table has that table as its target. Cases A5a-A5d.
+    first_line, last_line and insert_after (= last_line) and append_after (the last line of the run of anchor lines
+    directly after the element, = insert_after when none follow); a table also ncols, nrows (body rows) and
+    start_line. Anchor lines are not elements, so every anchor after a table has that table as its target. Callers
+    insert a new anchor at append_after, never at insert_after, when a block may already be anchored there:
+    insert_after is the element's own last line, and a second insert there lands above the first. Cases A5a-A5d, W1, W3.
  A6 An rh- comment line between two table lines (no blank line between) is a Problem INSIDE-TABLE naming the line;
     the comment is still returned. Case A6.
  A7 Every rh-note is a header; before_first_h2 says whether it comes before the first `## ` line outside a fence. The
@@ -61,7 +65,9 @@ CONTRACT (each line is a self-test case, written before the code)
     of "a".."e"; row and col (if present) are ints >= 1. Every problem string starts with the field name.
     header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f.
  B3 target_at gives the element holding a line, None between elements; a line inside a table is held by the table, so
-    the insertion line is the table's last line, never between rows. Case B3.
+    the insertion line is the table's last line, never between rows. A line that is itself an anchor line directly
+    after an element (any rh- line, malformed ones too) gets that element, so a caller can find append_after from any
+    line of the run; a blank line or a line between elements is None. Cases B3, W2.
  B4 next_block_id is the smallest number above the largest used for that note, at least two digits. Case B4.
  B5 insert_after_line uses that line's own ending, CRLF if it ended CRLF, else LF (a lone-CR file gets LF); on a last line with no line ending it adds one before
     the comment and none after, so strip_anchor_lines(insert_after_line(t, n, c)) == t. Cases B5a-B5d.
@@ -320,6 +326,11 @@ class _Analysis:
                 cur = len(els) - 1
             el_at[i] = cur
             prev = i
+        for el in els:   # the run of rh- lines directly after the element: where the next anchor goes
+            x = el["last_line"]
+            while x < n and cand[x]:
+                x += 1
+            el["append_after"] = x
         self.elements = els
         last_el = -1
         self.target_of = {}
@@ -365,7 +376,7 @@ def target_at(text, line):
     if not isinstance(line, int) or not 1 <= line <= a.nreal:
         return None
     for el in a.elements:
-        if el["first_line"] <= line <= el["last_line"]:
+        if el["first_line"] <= line <= el["append_after"]:
             return dict(el)
     return None
 

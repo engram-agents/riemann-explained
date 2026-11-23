@@ -24,7 +24,7 @@ notes. A note carries its metadata in one-line comments, `<!-- rh-note {...} -->
 `<!-- rh-block {...} -->` (a block anchor, on its own line after the paragraph, table or lean block it anchors),
 so the rendered page does not change. The checker and the helper that writes anchors both import it. It reads and
 writes the lines (`parse_note`, `format_comment`, `strip_anchor_lines`), says which element an anchor follows and
-where a new one goes (`target`, `target_at`, `insert_after_line`), checks the shape of a block or header
+where a new one goes (`target`, `target_at`, `insert_after_line`; a new anchor goes at `append_after`, after any anchors already there), checks the shape of a block or header
 (`problems`, `header_problems`, `block_id_ok`) and numbers new ids (`next_block_id`). It checks shape only: not the
 outline, not the declaration table, not whether a table row exists. Markdown is approximated by three rules (fences,
 tables, one comment per line), not CommonMark; the LIMIT paragraph in the file lists what is not recognised.
