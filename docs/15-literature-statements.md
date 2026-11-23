@@ -1,4 +1,5 @@
 # 15. Where do the three literature statements enter the proof of `LinkN`, and what do they do there?
+<!-- rh-note {"authors":["Halley"],"group":"literature-statements","id":"15","level":2,"list_title":"Where do the three literature statements enter the proof of `LinkN`, and what do they do there?","readers":["Kepler"],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-23. Read line by line by Kepler, in his own copy of the source, before it was published. Everything marked **What the library says** was read in the files listed at the end, at the lines given. The lean blocks were cut from the source by line range with a script. Nothing was compiled. Nothing here has been checked by a mathematician.*
 

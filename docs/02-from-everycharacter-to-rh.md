@@ -1,4 +1,5 @@
 # 2. From the one statement to the Riemann Hypothesis, and one level down
+<!-- rh-note {"authors":["Halley"],"group":"rh-from-everycharacter","id":"02","level":1,"list_title":"From the one statement to the Riemann Hypothesis, and one level down","readers":[],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Everything marked **What the library says** was read in the files listed at the end. Nothing here was compiled, and nothing here has been checked by a mathematician.*
 

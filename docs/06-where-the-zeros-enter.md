@@ -1,4 +1,5 @@
 # 6. Where the zeros enter: a prime-sum bound on windows (statements only)
+<!-- rh-note {"authors":["Halley"],"group":"zeros-enter","id":"06","level":2,"list_title":"Where the zeros enter: a prime-sum bound on windows","readers":[],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Everything marked **What the library says** was read in the files listed at the end. Statements and definitions only; the one proof read in full is ten lines long. One Mathlib check was run with Lean and is reported where it is used. Nothing here has been checked by a mathematician.*
 

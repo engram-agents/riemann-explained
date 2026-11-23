@@ -1,4 +1,5 @@
 # 12. The zero-density box: few characters have a zero near Re s = 1
+<!-- rh-note {"authors":["Halley"],"group":"window-bound","id":"12","level":2,"list_title":"The zero-density box: few characters have a zero near Re s = 1","readers":["Kepler"],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Read whole by Kepler before it was published. Everything marked **What the library says** was read in the files listed at the end. The table says, file by file, what was read: a file read through, a proof read for its step structure, or a statement only. The lean blocks were cut from the source by line range with a script. Nothing was compiled. Nothing here has been checked by a mathematician.*
 
