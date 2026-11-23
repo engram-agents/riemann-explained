@@ -1539,7 +1539,7 @@ def _():
     fe(go(notes={"01-a.md": NOTE(body="Some text.\n")}, committed={"01-a.md": T0}, base="HEAD"),
        ["BYTE-DIFF 01-a.md:7 line 7 differs (line 6 of the text without anchors): at HEAD (without anchors) 'More text.\\n', now (without anchors) <no line>"], 1)
     fe(go(notes={"01-a.md": CUR}, committed={"01-a.md": short}, base="HEAD"),
-       ["BYTE-DIFF 01-a.md:8 line 8 differs (line 6 of the text without anchors): at HEAD (without anchors) <no line>, now (without anchors) 'More text.\\n'"], 1)
+       ["BYTE-DIFF 01-a.md:7 line 7 differs (line 6 of the text without anchors): at HEAD (without anchors) <no line>, now (without anchors) 'More text.\\n'"], 1)
 
 
 @case("B1e", "a blank line at the end of one side is a BYTE-DIFF: the comparison is exact, not trimmed")
@@ -1547,7 +1547,7 @@ def _():
     fe(go(notes={"01-a.md": CUR}, committed={"01-a.md": T0 + "\n"}, base="HEAD"),
        ["BYTE-DIFF 01-a.md:8 line 8 differs (line 7 of the text without anchors): at HEAD (without anchors) '\\n', now (without anchors) <no line>"], 1)
     fe(go(notes={"01-a.md": CUR + "\n"}, committed={"01-a.md": T0}, base="HEAD"),
-       ["BYTE-DIFF 01-a.md:9 line 9 differs (line 7 of the text without anchors): at HEAD (without anchors) <no line>, now (without anchors) '\\n'"], 1)
+       ["BYTE-DIFF 01-a.md:8 line 8 differs (line 7 of the text without anchors): at HEAD (without anchors) <no line>, now (without anchors) '\\n'"], 1)
 
 
 @case("B1c", "CRLF notes compare by bytes: anchors added with CRLF endings leave the note equal to the commit")
@@ -1686,7 +1686,8 @@ def _():
     fe(go(notes={"01-a.md": cur}, committed={"01-a.md": BASE3}, base="HEAD"), [_bd(8, 6, "'Second.\\n'", "'Seconds.\\n'")], 1)
 
 
-@case("BL4", "the now side has no line: the number is the line after the last non-anchor line of the current file; trailing anchors do not shift it")
+@case("BL4", "the now side has no line (text missing): the line after the last non-anchor line of the current file, trailing anchors not shifting it; "
+             "the now side has a line the base lacks (extra text): that line's own number, trailing anchors not shifting it")
 def _():
     trailing = NOTE(body="Some text.\n" + BL() + "\n")
     fe(go(notes={"01-a.md": trailing}, committed={"01-a.md": T0}, base="HEAD"), [_bd(7, 6, "'More text.\\n'", "<no line>")], 1)
@@ -1694,7 +1695,10 @@ def _():
     fe(go(notes={"01-a.md": two}, committed={"01-a.md": T0}, base="HEAD"), [_bd(7, 6, "'More text.\\n'", "<no line>")], 1)
     plain = NOTE(body="Some text.\n")
     fe(go(notes={"01-a.md": plain}, committed={"01-a.md": T0}, base="HEAD"), [_bd(7, 6, "'More text.\\n'", "<no line>")], 1)
-    fe(go(notes={"01-a.md": CUR}, committed={"01-a.md": "# Note\n\n## Body\n\nSome text.\n"}, base="HEAD"), [_bd(8, 6, "<no line>", "'More text.\\n'")], 1)
+    short = "# Note\n\n## Body\n\nSome text.\n"
+    fe(go(notes={"01-a.md": CUR}, committed={"01-a.md": short}, base="HEAD"), [_bd(7, 6, "<no line>", "'More text.\\n'")], 1)
+    extra = NOTE(body="Some text.\nMore text.\n" + BL() + "\n" + BL("01.b02") + "\n")
+    fe(go(notes={"01-a.md": extra}, committed={"01-a.md": short}, base="HEAD"), [_bd(7, 6, "<no line>", "'More text.\\n'")], 1)
 
 
 @case("BL5", "a malformed rh- line is text for the mapping: it is not counted as an anchor line")
