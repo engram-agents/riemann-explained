@@ -14,7 +14,8 @@ first_line = the 1-based keyword line; last_line = the 1-based last line of the 
 `text-extent`: the row is the text rule's extent, NOT Lean's.
 Rows are sorted by (module, first_line as a number, name, kind), so the output does not depend on the order the
 files were walked or on PYTHONHASHSEED.
-Stdout, two lines, printed even on failure:
+Stdout is two lines, printed whenever the tree was read, also when the exit is 1 for an undecodable or unreadable
+file. A run with no `.lean` file prints only the one `CHECKED NOTHING` line; exit 2 prints nothing to stdout:
   files N  declarations N  pairs unique U  pairs not unique D (rows R)  undecodable K
   not rows (counted lines): example E  instance without a name I
 U = distinct (module, name) pairs that occur once; D = distinct pairs that occur more than once; R = rows in
@@ -27,7 +28,7 @@ CONTRACT
     other file's rows; the exit code is 1. No `.lean` file under SRC_ROOT: `CHECKED NOTHING: no .lean file under
     SRC_ROOT` on stdout, exit 1, no table written. A usage error or a SRC_ROOT that is not a directory: exit 2. A
     failing self-test: exit 4, nothing else reported. Exit 0 otherwise, INCLUDING when duplicate pairs exist.
-    Cases T1a T1b T1c T1d T1e EXIT4 (exit 0 with duplicates: T2a).
+    Cases T1a T1b T1c T1d T1e T1f T1g EXIT4 (exit 0 with duplicates: T2a).
  T2 A (module, name) pair that occurs more than once is written, all of its rows, in decls.tsv AND in
     decls_dup.tsv, never one picked; the summary counts unique and non-unique pairs. The same name in two modules
     is not a duplicate. The pair ignores the kind: a `def x` and a `theorem x` in one module are a duplicate.
@@ -45,16 +46,20 @@ CONTRACT
     through the table.) Cases T5a T5b T5c.
  T6 `private`, `protected`, `noncomputable` and the other modifiers: the declaration appears under its written
     name and its kind is the declaring keyword. Cases T6a.
- T7 Nameless `instance` and `example` lines are not rows and are counted on the second summary line. Case T7a.
+ T7 Nameless `instance` and `example` lines are not rows and are counted on the second summary line. Cases T7a T7b T7c.
  T8 Determinism: two runs under different PYTHONHASHSEED values, and a tree whose files were created in another
     order, give byte-identical decls.tsv and decls_dup.tsv. Cases T8a T8b.
  T9 Files are read once: `run(root, out, reader=...)` takes the function that reads a file (default
     scan_graph.read_text); a counting reader sees exactly one call per file. Case T9a.
- Every row has the six tab-separated fields, none empty; the column row is exact (COL1); rows are sorted (SORT1);
+ Line endings and module names: a `\r\n` or lone `\r` file reads like a `\n` one (CRLF1 CRLF2 CRLF3); the module
+ column is the whole dotted path (MOD1); a leading byte-order mark is BOM1.
+ Every row has the six tab-separated fields, none empty; the column row is exact (COL1); rows are sorted (SORT1,
+ SORT2);
  `--selftest --only ID,ID` runs exactly the named cases and an unknown id exits 2 (SEL1).
  With --selftest the tool plants temporary trees, checks each contract line as its own CASE (each with its own
  planted tree and a control that resolves), prints one `CASE <id> PASS|FAIL` line each and a final
- `SELFTEST PASS|FAIL`; exit 0 or 4. A normal run does the same quietly first and refuses (exit 4, nothing else
+ `SELFTEST PASS|FAIL`; exit 0 or 4. The total with zero skips is for a non-root run: T1d skips as root, where a
+ mode-000 file stays readable. A normal run does the same quietly first and refuses (exit 4, nothing else
  reported) if it fails.
 
 LIMIT. A row is the text rule's extent of a named declaration. It is not Lean's extent and it does not say the
@@ -64,7 +69,10 @@ is not read; one inside a string literal is (strings are not special-cased when 
 line that is indented is read like one at column 0 (parse_decls does not look at the indent), so an indented
 `theorem` inside a `where` block or a tactic block is a row. Names come from the text: a `private` declaration is
 not given Lean's mangled name, a name made by a macro or a structure field is not seen, and `open`, `export` and
-aliases are not modelled. A `variable`, `open` or `set_option` line ends the extent of the declaration above it.
+aliases are not modelled. A `variable`, `open` or `set_option` line ends the extent of the declaration above it. Line endings `\r\n` (and a
+lone `\r`) are handled because the shared reader translates them to `\n` before the text rule runs (CRLF1-3). A
+UTF-8 byte-order mark at the start of a file hides a declaration on that first line (the rule is inherited from
+the moved parse_decls; BOM1 records it; none was found in the release read, a later release must be checked).
 `mutual` and `noncomputable section` push a scope entry like `section`. The pair test is on the written full name:
 two `private` declarations with one name in one module are listed as a duplicate although Lean tells them apart.
 
@@ -505,6 +513,77 @@ def _selftest_cases():
         rc, _o, _e, tabs = _go({"A.lean": "def a := 1\n", "sub/B.lean": "def b := 1\n", "C.lean": b"def c := 1\n\xff\n"}, reader=reader)
         return _eq((rc, sorted(calls), _names(tabs)), (1, ["A.lean", "B.lean", "C.lean"], ["a", "b"]))
 
+    # ---- T1f, T1g: what stdout holds on the two exits that print no summary
+    @case("T1f", "no .lean file: stdout is exactly the one line `CHECKED NOTHING: no .lean file under SRC_ROOT` (no summary line), "
+                 "nothing on stderr; control: one .lean file prints the two summary lines")
+    def _():
+        rc, out, err, _t = _go({"readme.txt": "x"})
+        rc1, out1, _e1, _t1 = _go({"A.lean": "def a := 1\n"})
+        return _eq((rc, out, err, rc1, out1.count("\n")), (1, "CHECKED NOTHING: no .lean file under SRC_ROOT\n", "", 0, 2))
+
+    @case("T1g", "SRC_ROOT not a directory (exit 2): nothing on stdout, a message on stderr; control: a directory prints the summary")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "src"))
+            _plant(os.path.join(d, "src"), {"A.lean": "def a := 1\n"})
+            res = []
+            for root in (os.path.join(d, "nope"), os.path.join(d, "src")):
+                o, e = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+                    rc = run(root, os.path.join(d, "out"))
+                res.append((rc, o.getvalue() != "", bool(e.getvalue().strip())))
+        return _eq(res, [(2, False, True), (0, True, False)])
+
+    # ---- line endings, the byte-order mark, module names
+    CRLF = "namespace N\r\ntheorem a : True := trivial\r\nend N\r\ntheorem b : True := trivial"
+
+    @case("CRLF1", "a file with `\\r\\n` line endings and a final `\\r\\n`: `end N` closes the namespace, so a is `N.a` (2,2) and b is `b` "
+                   "(4,4); pinned: the shared reader translates the newlines")
+    def _():
+        _rc, _o, _e, tabs = _go({"A.lean": (CRLF + "\r\n").encode("utf-8")})
+        return _eq([(r["name"], r["first_line"], r["last_line"]) for r in tabs["decls"][2]], [("N.a", "2", "2"), ("b", "4", "4")])
+
+    @case("CRLF2", "the same file without the final `\\r\\n`: the same rows; control: the same text with `\\n` endings")
+    def _():
+        _rc, _o, _e, tabs = _go({"A.lean": CRLF.encode("utf-8"), "B.lean": CRLF.replace("\r\n", "\n").encode("utf-8")})
+        return _eq([(r["module"], r["name"], r["first_line"], r["last_line"]) for r in tabs["decls"][2]],
+                   [("A", "N.a", "2", "2"), ("A", "b", "4", "4"), ("B", "N.a", "2", "2"), ("B", "b", "4", "4")])
+
+    @case("CRLF3", "a file with lone `\\r` line endings reads like `\\n` (the reader's universal newlines): the same rows, pinned")
+    def _():
+        _rc, _o, _e, tabs = _go({"A.lean": (CRLF.replace("\r\n", "\r") + "\r").encode("utf-8")})
+        return _eq([(r["name"], r["first_line"], r["last_line"]) for r in tabs["decls"][2]], [("N.a", "2", "2"), ("b", "4", "4")])
+
+    @case("BOM1", "a UTF-8 byte-order mark at the start of a file hides a declaration on that first line (the inherited rule, recorded); "
+                  "the declaration on line 2 is a row (control)")
+    def _():
+        _rc, _o, _e, tabs = _go({"A.lean": b"\xef\xbb\xbftheorem z : True := trivial\ntheorem y : True := trivial\n"})
+        return _eq([(r["name"], r["first_line"]) for r in tabs["decls"][2]], [("y", "2")])
+
+    @case("MOD1", "the module column of a nested file is the whole dotted path: `A/B.lean` is `A.B`, `A/C/D.lean` is `A.C.D`")
+    def _():
+        _rc, _o, _e, tabs = _go({"A/B.lean": "def b := 1\n", "A/C/D.lean": "def d := 1\n"})
+        return _eq([(r["module"], r["name"]) for r in tabs["decls"][2]], [("A.B", "b"), ("A.C.D", "d")])
+
+    @case("SORT2", "the sort matters: `A.B.lean` and `A/B.lean` are both module `A.B` and are walked in path order, so the line-10 "
+                   "declaration of the first would come before the line-2 declaration of the second; the table lists line 2 first")
+    def _():
+        _rc, _o, _e, tabs = _go({"A.B.lean": "\n" * 9 + "def late := 1\n", "A/B.lean": "\ndef early := 1\n"})
+        return _eq([(r["module"], r["name"], r["first_line"]) for r in tabs["decls"][2]], [("A.B", "early", "2"), ("A.B", "late", "10")])
+
+    @case("T7b", "a nameless `instance` inside a block comment is NOT counted; a real nameless one beside it is (control: count 1)")
+    def _():
+        src = "/-\ninstance : Inhabited Nat := \u27e80\u27e9\n-/\ninstance : Inhabited Bool := \u27e8true\u27e9\nend\n"
+        rc, out, _e, tabs = _go({"A.lean": src})
+        return _eq((rc, _sum(out).get("instance"), tabs["decls"][2]), (0, 1, []))
+
+    @case("T7c", "an `example` indented two spaces is NOT counted (column 0 only); after `noncomputable` and after `protected` it IS "
+                 "counted (control: 2)")
+    def _():
+        src = "section S\n  example : True := trivial\nend S\nnoncomputable example : True := trivial\nprotected example : True := trivial\n"
+        _rc, out, _e, _t = _go({"A.lean": src})
+        return _eq((_sum(out).get("example"), _sum(out).get("instance")), (2, 0))
+
     # ---- table shape
     @case("COL1", "both tables: the exact column row, six tab-separated fields on every row, no empty field, basis always `text-extent`")
     def _():
@@ -524,7 +603,8 @@ def _selftest_cases():
         return (not bad and n == (4, 2)), f"rows {n}, bad {bad!r}"
 
     @case("SORT1", "rows are sorted by (module, first_line as a number, name, kind) even when the file holds them in another order "
-                   "(names in reverse order; line 10 after line 2)")
+                   "(names in reverse order; line 10 after line 2). It pins the key's TYPE (number, not text) and the name tie-break; "
+                   "deleting the sort alone does not turn it red, because one file is already in line order (SORT2 pins that)")
     def _():
         zs = "".join(f"def {chr(ord('z') - i)} := {i}\n" for i in range(11)) + "end\n"
         _rc, _o, _e, tabs = _go({"Z.lean": zs, "A.lean": "def zz := 1\ndef aa := 2\nend\n"})
