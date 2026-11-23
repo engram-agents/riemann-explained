@@ -1,6 +1,6 @@
 {
  "_doc": "Expected outputs for Controls.lean (sha256 of Controls.lean recorded at write time below), written BEFORE the classifier (C2a revised before the classifier; later cases added as the notes below say). Each case names one binder of one declaration and the labels the tool must give. Labels: unused, direct, passed_whole, instance_only, returned, in_types_only. 'path' is a projection path (positional or by field name), 'named' the field-name path; 'callee'/'pos' name a passed_whole occurrence (pos = 0-based explicit+implicit argument index); 'followed' lists auxiliary declarations the tool must have followed. 'must_not' lists labels that must be absent. Pairs differ in one way; a wrong classifier fails one side.",
- "controls_sha256": "6fb5a0b151793055feb359f91f59e40b07de11f1275e9dec74ef192187bd2331",
+ "controls_sha256": "ede424562f411f95b50e0436f255eba24b330fa3ce318ffcc45b0b02c6e59351",
  "cases": [
   {
    "id": "C1a",
@@ -445,7 +445,7 @@
    "id": "C21",
    "query": "budget",
    "decl": "FUControls.c21_typeThenValue",
-   "budget": 23,
+   "budget": 15,
    "expect_complete": false,
    "note_contains": "budget",
    "binder_labels": {
@@ -453,7 +453,105 @@
      "not_reached"
     ]
    },
-   "note": "budget 23 (found by probing the v1.4c code) cuts after h's in-type occurrence and before its value use; on an incomplete walk a binder with no value use seen is not_reached, never in_types_only. The budget value depends on the traversal order: a change to the walk can move the cut, so re-probe and re-state it whenever the traversal changes."
+   "note": "budget 23 (found by probing the v1.4c code) cuts after h's in-type occurrence and before its value use; on an incomplete walk a binder with no value use seen is not_reached, never in_types_only. The budget value depends on the traversal order: a change to the walk can move the cut, so re-probe and re-state it whenever the traversal changes. v2 (memoised walk): re-probed as this note requires; budget 15 cuts after h's in-type occurrence (recorded) and before its value use (v1's value was 23)."
+  },
+  {
+   "id": "C24a",
+   "query": "uses",
+   "decl": "FUControls.c24_beta5",
+   "binder": "h",
+   "labels": [
+    "returned"
+   ],
+   "note": "v2: same labels as v1"
+  },
+  {
+   "id": "C24f",
+   "query": "flows_into",
+   "decl": "FUControls.c24_beta6",
+   "binder": "h",
+   "fields": [
+    "left",
+    "right"
+   ]
+  },
+  {
+   "id": "C24b",
+   "query": "uses",
+   "decl": "FUControls.c24_beta6",
+   "binder": "h",
+   "labels": [
+    "returned"
+   ]
+  },
+  {
+   "id": "C24L",
+   "query": "visits",
+   "decls": [
+    "FUControls.c24_beta5",
+    "FUControls.c24_beta6"
+   ],
+   "max_increase": 40,
+   "max_second": 189,
+   "note": "v1 measured 188 -> 380 (doubling per nesting level); v2 must grow linearly: depth-6 visits at most depth-5 visits + 40, and under half of v1's 380. Written before the v2 code."
+  },
+  {
+   "id": "C26a",
+   "query": "uses",
+   "decl": "FUControls.c26_twoBinders",
+   "binder": "h",
+   "labels": [
+    "passed_whole"
+   ],
+   "note": "one structural subterm (fun x => f x) under two binders; h's use must not be shared with g's"
+  },
+  {
+   "id": "C26b",
+   "query": "uses",
+   "decl": "FUControls.c26_twoBinders",
+   "binder": "g",
+   "labels": [
+    "passed_whole"
+   ]
+  },
+  {
+   "id": "C26f",
+   "query": "flows_into",
+   "decl": "FUControls.c26_twoBinders",
+   "binder": "g",
+   "fields": [
+    "right"
+   ]
+  },
+  {
+   "id": "C27a",
+   "query": "uses",
+   "decl": "FUControls.c27_destructNoUse",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "note": "written 2026-11-23 before any run, after printing the term (And.casesOn h fun left right => hr): destructuring alone gives direct with NO path; a reading must check paths (Kepler, PR 7 merge read) | CHANGED AFTER THE FIRST RUN (2026-11-23): written as 'no path'; the run showed the tool records a destructuring with no field read as ONE empty path ''. Same meaning, different form; the case now pins path ''. C27b (field 1 read) has only .1, no ''.",
+   "path": ""
+  },
+  {
+   "id": "C27b",
+   "query": "uses",
+   "decl": "FUControls.c27_destructUse",
+   "binder": "h",
+   "labels": [
+    "direct"
+   ],
+   "path": ".1",
+   "named": ".left",
+   "note": "written before any run; pair of C27a: field 1 used (fun hp right => hp)"
+  },
+  {
+   "id": "C28",
+   "query": "who_reads",
+   "field": "FUControls.Pair2.x",
+   "no_value_counted_min": 1,
+   "note": "written before any run; c28_noValueReader is an axiom whose type reads Pair2.x: who_reads must count it as skipped (no value), not drop it silently (Kepler, PR 7 merge read). Needs a code change in v2."
   }
  ],
  "mutation_check": [
@@ -462,39 +560,269 @@
    "must_fail_exactly": [
     "C2a"
    ],
-   "id": "i"
+   "id": "i",
+   "reviewed": [
+    "C10a",
+    "C10b",
+    "C11a",
+    "C11b",
+    "C12a",
+    "C12b",
+    "C12c",
+    "C13a",
+    "C13b",
+    "C13f",
+    "C14a",
+    "C14b",
+    "C15a",
+    "C15b",
+    "C16",
+    "C17a",
+    "C17b",
+    "C18a",
+    "C18b",
+    "C19a",
+    "C1a",
+    "C1b",
+    "C1c",
+    "C20",
+    "C21",
+    "C24L",
+    "C24a",
+    "C24b",
+    "C24f",
+    "C26a",
+    "C26b",
+    "C26f",
+    "C27a",
+    "C27b",
+    "C28",
+    "C2a",
+    "C2b",
+    "C3a",
+    "C3b",
+    "C4a",
+    "C4b",
+    "C5a",
+    "C5b",
+    "C6a",
+    "C6b",
+    "C7a",
+    "C7b",
+    "C8a",
+    "C8b",
+    "C9a",
+    "C9b"
+   ],
+   "notes": [
+    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b"
+   ]
   },
   {
    "bug": "stop at Expr.proj / projection application without reading its index",
    "must_fail_exactly": [
+    "C14a",
+    "C14b",
     "C1a",
+    "C27b",
     "C2b",
     "C3a",
     "C3b",
     "C9a",
-    "C9b",
-    "C14a",
-    "C14b"
+    "C9b"
    ],
    "note": "every case with a path depends on it; the discriminating claim is that C3a and C3b fail TOGETHER (positional and projection paths read by the same rule)",
-   "id": "ii"
+   "id": "ii",
+   "reviewed": [
+    "C10a",
+    "C10b",
+    "C11a",
+    "C11b",
+    "C12a",
+    "C12b",
+    "C12c",
+    "C13a",
+    "C13b",
+    "C13f",
+    "C14a",
+    "C14b",
+    "C15a",
+    "C15b",
+    "C16",
+    "C17a",
+    "C17b",
+    "C18a",
+    "C18b",
+    "C19a",
+    "C1a",
+    "C1b",
+    "C1c",
+    "C20",
+    "C21",
+    "C24L",
+    "C24a",
+    "C24b",
+    "C24f",
+    "C26a",
+    "C26b",
+    "C26f",
+    "C27a",
+    "C27b",
+    "C28",
+    "C2a",
+    "C2b",
+    "C3a",
+    "C3b",
+    "C4a",
+    "C4b",
+    "C5a",
+    "C5b",
+    "C6a",
+    "C6b",
+    "C7a",
+    "C7b",
+    "C8a",
+    "C8b",
+    "C9a",
+    "C9b"
+   ],
+   "notes": [
+    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b"
+   ]
   },
   {
    "bug": "do not reduce through a local renaming (have / letFun / beta)",
    "must_fail_exactly": [
-    "C9a",
     "C13a",
-    "C13f"
+    "C13f",
+    "C24a",
+    "C24b",
+    "C24f",
+    "C9a"
    ],
-   "id": "iii"
+   "id": "iii",
+   "reviewed": [
+    "C10a",
+    "C10b",
+    "C11a",
+    "C11b",
+    "C12a",
+    "C12b",
+    "C12c",
+    "C13a",
+    "C13b",
+    "C13f",
+    "C14a",
+    "C14b",
+    "C15a",
+    "C15b",
+    "C16",
+    "C17a",
+    "C17b",
+    "C18a",
+    "C18b",
+    "C19a",
+    "C1a",
+    "C1b",
+    "C1c",
+    "C20",
+    "C21",
+    "C24L",
+    "C24a",
+    "C24b",
+    "C24f",
+    "C26a",
+    "C26b",
+    "C26f",
+    "C27a",
+    "C27b",
+    "C28",
+    "C2a",
+    "C2b",
+    "C3a",
+    "C3b",
+    "C4a",
+    "C4b",
+    "C5a",
+    "C5b",
+    "C6a",
+    "C6b",
+    "C7a",
+    "C7b",
+    "C8a",
+    "C8b",
+    "C9a",
+    "C9b"
+   ],
+   "notes": [
+    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b"
+   ]
   },
   {
    "bug": "do not read positional destructuring (casesOn / match patterns): the binder is passed to the eliminator like any argument and its field variables are not tracked",
    "must_fail_exactly": [
+    "C27a",
+    "C27b",
     "C3a"
    ],
    "note": "v1.3: bug (ii) fails C3a and C3b together, so no planted bug singled out C3's point that a positional pattern is read like a projection. Prediction written 2026-11-23 before this bug's code existed and before its first run.",
-   "id": "iv"
+   "id": "iv",
+   "reviewed": [
+    "C10a",
+    "C10b",
+    "C11a",
+    "C11b",
+    "C12a",
+    "C12b",
+    "C12c",
+    "C13a",
+    "C13b",
+    "C13f",
+    "C14a",
+    "C14b",
+    "C15a",
+    "C15b",
+    "C16",
+    "C17a",
+    "C17b",
+    "C18a",
+    "C18b",
+    "C19a",
+    "C1a",
+    "C1b",
+    "C1c",
+    "C20",
+    "C21",
+    "C24L",
+    "C24a",
+    "C24b",
+    "C24f",
+    "C26a",
+    "C26b",
+    "C26f",
+    "C27a",
+    "C27b",
+    "C28",
+    "C2a",
+    "C2b",
+    "C3a",
+    "C3b",
+    "C4a",
+    "C4b",
+    "C5a",
+    "C5b",
+    "C6a",
+    "C6b",
+    "C7a",
+    "C7b",
+    "C8a",
+    "C8b",
+    "C9a",
+    "C9b"
+   ],
+   "notes": [
+    "C27a/C27b/C28 predictions written 2026-11-23 BEFORE any run: (i) none, (ii) C27b, (iii) none, (iv) C27a+C27b"
+   ]
   }
  ],
  "_notes": [
@@ -510,6 +838,9 @@
   "v1.4c: C18a's first form put the lambda among the declaration's own leading binders, which are scanned separately, so the reviewer's lam_type_noop mutant survived it. Rewritten so the lambda is nested inside a constructor argument; expectation unchanged, written before the rerun.",
   "Not separated by any control here (reviewer's mutants that still pass): (1) the Expr.proj branch and its field-name lookup, which source-written projections never produce; (2) scanning a projection chain's parameter arguments, equivalent because those parameters also occur in the structure binder's own type, which is scanned; (3) the binder type of a nested lambda, which also appears as an implicit type argument near it (C18a tried and did not separate it).",
   "v1.4d, from reviewer round 2: C20 (depth limit), C21 (in_types_only on a stopped walk), C15c (a private reader) and noConfusion/noConfusionType excluded from readers. Written before the fixes they test. C21's budget value was found by probing the code under test; the expectation does not depend on it.",
-  "A readers_include entry starting with '*' matches by suffix: a private declaration's full name embeds the module path it was compiled under (_private.<module>.0.<name>), which depends on the compile directory."
+  "A readers_include entry starting with '*' matches by suffix: a private declaration's full name embeds the module path it was compiled under (_private.<module>.0.<name>), which depends on the compile directory.",
+  "v2 (2026-11-23): C24 (nested duplicating beta-redexes, depth 5 and 6) and C26 (one structural subterm under two binders) added for the memoised walk. v1 measured on them before any v2 code: c24_beta5 188 visits, c24_beta6 380, h occurrences 32 -> 64; c26 h and g each passed_whole, f direct. Expectations written before the v2 code.",
+  "v2, said plainly: C24a/C24b/C24f were added to bug (iii)'s list AFTER the first v2 mutation run showed them failing. They follow from (iii)'s definition (C24 is built from beta-redexes), but I added the C24 cases without updating the list first: the same omission as the v1.4 lists, so for these three entries the list is a record of the output, not a prediction.",
+  "Each planted bug's 'reviewed' list names the cases its must_fail_exactly list was written against. The runner refuses the mutation check if a case is missing from any 'reviewed' list, so a new case forces a prediction under every bug before the run (remedy for the after-the-run lists of v1.4 and v2)."
  ]
 }

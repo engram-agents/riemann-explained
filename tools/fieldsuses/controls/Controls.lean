@@ -110,4 +110,27 @@ theorem c21_typeThenValue (n : ℕ) (h : 0 < n) (k : (m : ℕ) → 0 < m → Pro
 -- C15c: a private declaration that reads field x
 private def privReader (s : Pair2) : ℕ := s.x
 
+-- v2 controls (2026-11-23). Printed as terms before their expectations.
+-- T n a is a balanced tree of conjunctions of a, 2^n leaves; the proofs below are nested beta-redexes
+-- that duplicate their argument, so a tree walk visits h 2^k times and a shared-subterm walk k+1 times.
+def T : ℕ → Prop → Prop
+  | 0, a => a
+  | n + 1, a => T n a ∧ T n a
+theorem c24_beta5 (a : Prop) (h : a) : T 5 a := ((fun (x : T 4 a) => (⟨x, x⟩ : T 5 a)) ((fun (x : T 3 a) => (⟨x, x⟩ : T 4 a)) ((fun (x : T 2 a) => (⟨x, x⟩ : T 3 a)) ((fun (x : T 1 a) => (⟨x, x⟩ : T 2 a)) ((fun (x : T 0 a) => (⟨x, x⟩ : T 1 a)) h)))))
+theorem c24_beta6 (a : Prop) (h : a) : T 6 a := ((fun (x : T 5 a) => (⟨x, x⟩ : T 6 a)) ((fun (x : T 4 a) => (⟨x, x⟩ : T 5 a)) ((fun (x : T 3 a) => (⟨x, x⟩ : T 4 a)) ((fun (x : T 2 a) => (⟨x, x⟩ : T 3 a)) ((fun (x : T 1 a) => (⟨x, x⟩ : T 2 a)) ((fun (x : T 0 a) => (⟨x, x⟩ : T 1 a)) h))))))
+-- C26: one structural subterm (`f x`) under two binders; at one place x is h, at the other x is not h.
+theorem c26_twoBinders (p : Prop) (f : p → p) (h : p) (g : p) : p ∧ p :=
+  ⟨(fun x => f x) h, (fun x => f x) g⟩
+
+-- C27 (Kepler, PR 7 merge read): a binder taken apart with no field used afterwards, vs one field used.
+-- Pins that 'direct' from destructuring alone carries an EMPTY path list, so a reading must check paths.
+theorem c27_destructNoUse (p q r : Prop) (h : p ∧ q) (hr : r) : r := by
+  obtain ⟨_, _⟩ := h
+  exact hr
+theorem c27_destructUse (p q : Prop) (h : p ∧ q) : p := by
+  obtain ⟨hp, _⟩ := h
+  exact hp
+-- C28 (Kepler, PR 7 merge read): a declaration with no value whose type reads Pair2.x; who_reads must count it as skipped.
+axiom c28_noValueReader : ∀ s : Pair2, s.x = s.x
+
 end FUControls

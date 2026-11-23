@@ -85,6 +85,8 @@ def check(case, rep):
     for bad in case.get("must_not", []):
         if bad in labels:
             fails.append(f"label {bad} present (must_not)")
+    if case.get("paths_empty") and b["paths"]:
+        fails.append(f"paths {b['paths']} != [] (expected no path)")
     if "path" in case:
         ps = b["paths"]
         if len(ps) != 1 or case["path"] not in (ps[0]["path"], ps[0]["named"]):
@@ -114,9 +116,17 @@ def check(case, rep):
 def check_who_reads(case, out):
     readers = {r["decl"] for r in out.get("readers", [])}
     def has(n):
-        return any(r.endswith(n[1:]) for r in readers) if n.startswith("*") else n in readers
+        # '*Suffix' matches a reader whose name ends in that suffix at a name-component boundary
+        if not n.startswith("*"):
+            return n in readers
+        suf = n[1:] if n[1:].startswith(".") else "." + n[1:]
+        return any(r == suf[1:] or r.endswith(suf) for r in readers)
     fails = [f"{n} missing from readers" for n in case.get("readers_include", []) if not has(n)]
     fails += [f"{n} wrongly listed as a reader" for n in case.get("readers_exclude", []) if n in readers]
+    if "no_value_counted_min" in case and out.get("no_value_declarations_skipped", 0) < case["no_value_counted_min"]:
+        fails.append(f"no_value_declarations_skipped {out.get('no_value_declarations_skipped')} < {case['no_value_counted_min']}")
+    if out.get("lower_bound") is not True:
+        fails.append("who_reads output lacks lower_bound: true")
     return fails
 
 
@@ -150,9 +160,21 @@ def run_all(mutate=None):
     for c in exp["cases"]:
         try:
             if c["query"] in ("uses", "flows_into"):
+                if c["decl"] not in reps:
+                    results[c["id"]] = [f"{c['decl']} missing from the tool's output"]
+                    continue
                 results[c["id"]] = check(c, reps[c["decl"]])
             elif c["query"] == "who_reads":
                 results[c["id"]] = check_who_reads(c, run_tool([c["field"]], mutate, follow=0, query="who_reads"))
+            elif c["query"] == "visits":
+                reps2 = run_tool(c["decls"], mutate, follow=0)
+                a, b = (reps2[n]["subterm_visits"] for n in c["decls"])
+                f = []
+                if b - a > c["max_increase"]:
+                    f.append(f"visits grew {a} -> {b}, more than {c['max_increase']}")
+                if b > c["max_second"]:
+                    f.append(f"visits {b} above {c['max_second']}")
+                results[c["id"]] = f
             elif c["query"] == "budget":
                 results[c["id"]] = check_budget(c, run_tool([c["decl"]], mutate, follow=0, budget=c["budget"]))
             else:
@@ -180,6 +202,11 @@ def main():
         for k, v in base.items():
             if v:
                 print(f"  FAIL {k}: {'; '.join(v)}")
+        ids = [c["id"] for c in exp["cases"]]
+        unpredicted = {m["id"]: [i for i in ids if i not in m.get("reviewed", [])] for m in exp["mutation_check"]}
+        if any(unpredicted.values()):
+            raise SystemExit("mutation check refused: cases with no prediction under some planted bug "
+                             f"(add them to that bug's 'reviewed' list after deciding fail or pass): {unpredicted}")
         for m in exp["mutation_check"]:
             bug = m["id"]
             _, res = run_all(bug)
