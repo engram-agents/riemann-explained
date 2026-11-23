@@ -1,5 +1,5 @@
 /-
-Controls for the fields/uses tool (SPEC-fields-uses-v1.md, C1-C10). Mathlib only.
+Controls for the fields/uses tool (README.md, cases C1-C19). Mathlib only.
 Each pair differs in one way; expected classifications are in expected.json, written before the classifier.
 -/
 import Mathlib.Data.Nat.Prime.Basic
@@ -64,5 +64,42 @@ theorem c9_direct (p q : Prop) (h : p ∧ q) : q := h.2
 -- C10: in types only vs direct
 theorem c10_types_only (n : ℕ) (h : 0 < n) (f : (m : ℕ) → 0 < m → Prop) (hf : f n h) : f n h := hf
 theorem c10_value (n : ℕ) (h : 0 < n) : 0 < n := h
+
+-- v1.4 (2026-11-23), from the reviewer fairy's surviving mutants on PR 7. Each pair was printed as terms first.
+-- C11: a hypothesis applied as a function vs one never used
+theorem c11_applied (p q : Prop) (f : p → q) (hp : p) : q := f hp
+theorem c11_unapplied (p q : Prop) (f : p → q) (hq : q) : q := hq
+
+-- C12: a use inside a `let` value vs the same use inline
+def c12_let (n : ℕ) (f : ℕ → ℕ) : ℕ := let y := f n; y + 1
+def c12_inline (n : ℕ) (f : ℕ → ℕ) : ℕ := f n + 1
+
+-- C13: a beta-redex that duplicates its argument vs the reduced form
+theorem c13_beta (a : Prop) (h : a) : a ∧ a := (fun x => And.intro x x) h
+theorem c13_direct (a : Prop) (h : a) : a ∧ a := And.intro h h
+
+-- C14: a projection applied to a further argument vs a plain projection
+theorem c14_overapplied (p q r : Prop) (h : p ∧ (q → r)) (hq : q) : r := h.2 hq
+theorem c14_plain (p q r : Prop) (h : p ∧ (q → r)) : q → r := h.2
+
+-- C15: who_reads: one declaration reads field x (by projection, and by a match), another reads only y
+structure Pair2 where
+  x : ℕ
+  y : ℕ
+def reads_x (s : Pair2) : ℕ := s.x
+def reads_x_match (s : Pair2) : ℕ := match s with | ⟨a, _⟩ => a
+def reads_y (s : Pair2) : ℕ := s.y
+
+-- v1.4b, from the fairy's mutants that survived the first v1.4 run. Printed as terms first.
+-- C17: a projection of a compound expression that contains h, vs no h there
+def c17_projOf (f : ℕ → Pair2) (n : ℕ) : ℕ := (f n).x
+def c17_noArg (f : ℕ → Pair2) (n : ℕ) (m : ℕ) : ℕ := (f m).x
+-- C18: h only in the binder type of an inner lambda, vs h returned
+theorem c18_innerType (n : ℕ) (h : 0 < n) : (∀ (f : (m : ℕ) → 0 < m → Prop), f n h → f n h) ∧ True :=
+  ⟨fun _ hf => hf, trivial⟩
+theorem c18_value (n : ℕ) (h : 0 < n) : 0 < n ∧ 0 < n := ⟨h, h⟩
+-- C19: a strict-implicit slot, vs an explicit one
+theorem siUse ⦃p : Prop⦄ (h : p) : p := h
+theorem c19_strict (p : Prop) (h : p) : p := @siUse p h
 
 end FUControls

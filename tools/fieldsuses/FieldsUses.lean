@@ -8,9 +8,9 @@ Never `lake`.
 
 Labels for each leading binder of the declaration's value:
   unused, direct, passed_whole, instance_only, returned, in_types_only.
-`in_types_only` is shown only when no value label applies (spec Q1).
+`in_types_only` is shown only when no value label applies.
 
-`--mutate i|ii|iii` plants the spec's three bugs, for the mutation check only.
+`--mutate i|ii|iii|iv` plants the four bugs of the mutation check (README), for that check only.
 -/
 import Lean
 open Lean
@@ -21,13 +21,15 @@ structure Bug where
   instAsExplicit : Bool := false   -- (i)  instance-implicit slots treated as explicit
   projNoIndex    : Bool := false   -- (ii) projections / destructuring do not read the index
   noRenaming     : Bool := false   -- (iii) no reduction through `have`/let/beta renamings
+  noDestructure  : Bool := false   -- (iv) casesOn / match patterns not read positionally
 
-inductive Label | unused | direct | passedWhole | instanceOnly | returned | inTypesOnly
+inductive Label | unused | direct | passedWhole | instanceOnly | returned | inTypesOnly | notReached
   deriving BEq, Inhabited
 
 def Label.str : Label → String
   | .unused => "unused" | .direct => "direct" | .passedWhole => "passed_whole"
   | .instanceOnly => "instance_only" | .returned => "returned" | .inTypesOnly => "in_types_only"
+  | .notReached => "not_reached"
 
 /-- A local that stands for a component of one tracked binder. `pos`/`named` are the path components. -/
 structure Alias where
@@ -55,9 +57,10 @@ structure Ctx where
   depth     : Nat := 0
 
 structure Cfg where
-  env  : Environment
-  bug  : Bug
-  decl : Name
+  env    : Environment
+  bug    : Bug
+  decl   : Name
+  budget : Nat := 2000000
 
 structure St where
   next     : Nat := 0
@@ -65,6 +68,8 @@ structure St where
   occs     : Array Occ := #[]
   followed : Array Name := #[]
   notes    : Array String := #[]
+  visits   : Nat := 0
+  stopped  : Bool := false
 
 abbrev M := ReaderT Cfg (StateM St)
 
@@ -180,6 +185,15 @@ partial def useAlias (al : Alias) (ctx : Ctx) (kind : String) : M Unit := do
   else record (occOf al .passedWhole ctx kind)
 
 partial def go (e : Expr) (ctx : Ctx) : M Unit := do
+  -- term-size budget: a walk that inlines helpers and reduces redexes can grow without bound;
+  -- past the budget it stops, and the report says it is incomplete
+  let st ← get
+  if st.stopped then return
+  if st.visits ≥ (← read).budget then
+    note s!"stopped: budget of {(← read).budget} subterm visits exceeded; the labels are incomplete"
+    modify fun s => { s with stopped := true }
+    return
+  modify fun s => { s with visits := s.visits + 1 }
   if ctx.depth > 200 then note "depth limit 200 reached; a subterm was not read"; return
   -- A whole expression that is a component of a tracked binder.
   if let some al ← resolve e then
@@ -287,12 +301,6 @@ partial def goApp (e : Expr) (ctx : Ctx) : M Unit := do
       goArgs s!"<applied {al.binder}>" #[] args 0 { ctx with resultPos := false } none
     | none => goArgs "<local function>" #[] args 0 { ctx with resultPos := false } none
   | .const c us =>
-    -- `letFun v f` (older `have` encoding)
-    if c == ``letFun && args.size ≥ 4 then
-      match args[3]! with
-      | .lam n t b _ => goLet n t args[2]! b ctx; for a in args[4:] do go a { ctx with resultPos := false }
-      | _ => goArgs (toString c) (binderInfos cfg.env c) args 0 ctx none
-      return
     -- auxiliary declarations: inline their value and keep reading
     if isAux cfg.env cfg.decl c then
       match cfg.env.find? c with
@@ -314,7 +322,7 @@ partial def goApp (e : Expr) (ctx : Ctx) : M Unit := do
           goArgs (toString c) #[] args (info.numParams + 1) { ctx with resultPos := false } none
           return
     -- casesOn on a tracked binder: fields become aliases of the binder's components
-    if isCasesOnRecursor cfg.env c then
+    if isCasesOnRecursor cfg.env c && !cfg.bug.noDestructure then
       if let some (.inductInfo iv) := cfg.env.find? c.getPrefix then
         let majorIdx := iv.numParams + 1 + iv.numIndices
         if h : majorIdx < args.size then
@@ -361,11 +369,12 @@ structure BinderReport where
 def isPrefixArr (a b : Array String) : Bool :=
   a.size < b.size && (List.range a.size).all (fun i => a[i]! == b[i]!)
 
-def summarize (idx : Nat) (name : String) (bi : BinderInfo) (occs : Array Occ) : BinderReport :=
+def summarize (idx : Nat) (name : String) (bi : BinderInfo) (occs : Array Occ) (complete : Bool := true) : BinderReport :=
   let mine := occs.filter (·.binder == idx)
   let value := mine.filter (·.label != .inTypesOnly)
+  -- on a walk stopped by its budget, silence proves nothing: no binder is called unused
   let labs : Array Label :=
-    if value.isEmpty then (if mine.isEmpty then #[.unused] else #[.inTypesOnly])
+    if value.isEmpty then (if mine.isEmpty then (if complete then #[.unused] else #[.notReached]) else #[.inTypesOnly])
     else value.foldl (fun acc o => if acc.contains o.label then acc else acc.push o.label) #[]
   let direct := value.filter (·.label == .direct)
   let maximal := direct.filter (fun o => !direct.any (fun o' => isPrefixArr o.pos o'.pos))
@@ -373,7 +382,9 @@ def summarize (idx : Nat) (name : String) (bi : BinderInfo) (occs : Array Occ) :
     let p := ("." ++ ".".intercalate o.pos.toList, "." ++ ".".intercalate o.named.toList)
     let p := if o.pos.isEmpty then ("", "") else p
     if acc.contains p then acc else acc.push p) #[]
-  let passed := value.filter (fun o => o.label == .passedWhole || o.label == .instanceOnly)
+  -- only real constants are callees; `<local function>`, `<lambda>`, `let y` and the like stay in occurrences only
+  let isCallee := fun (c : String) => c != "" && !c.startsWith "<" && !c.startsWith "let "
+  let passed := value.filter (fun o => (o.label == .passedWhole || o.label == .instanceOnly) && isCallee o.callee)
     |>.foldl (fun acc o => if acc.contains (o.callee, o.argPos) then acc else acc.push (o.callee, o.argPos)) #[]
   let flows := value.foldl (fun acc o => if o.field != "" && !acc.contains o.field then acc.push o.field else acc) #[]
   let biStr := match bi with
@@ -384,9 +395,11 @@ structure DeclReport where
   binders  : Array BinderReport
   followed : Array Name
   notes    : Array String
+  complete : Bool
+  visits   : Nat
 
-def analyze (env : Environment) (bug : Bug) (decl : Name) (v : Expr) : DeclReport := Id.run do
-  let cfg : Cfg := { env, bug, decl }
+def analyze (env : Environment) (bug : Bug) (decl : Name) (v : Expr) (budget : Nat := 2000000) : DeclReport := Id.run do
+  let cfg : Cfg := { env, bug, decl, budget }
   let act : M (Array (Nat × String × BinderInfo)) := do
     let mut e := v
     let mut bs := #[]
@@ -407,8 +420,8 @@ def analyze (env : Environment) (bug : Bug) (decl : Name) (v : Expr) : DeclRepor
     go e { resultPos := true }
     return bs
   let (bs, st) := (act.run cfg).run {}
-  let reps := bs.map (fun (i, n, bi) => summarize i n bi st.occs)
-  return { binders := reps, followed := st.followed, notes := st.notes }
+  let reps := bs.map (fun (i, n, bi) => summarize i n bi st.occs !st.stopped)
+  return { binders := reps, followed := st.followed, notes := st.notes, complete := !st.stopped, visits := st.visits }
 
 -- JSON rendering
 
@@ -471,7 +484,25 @@ partial def readsField (env : Environment) (sname : Name) (idx : Nat) (projFn : 
             | _ => false
           else false
         | _ => false
-      casesHit || visit f || visit a
+      -- a `match` compiles to a matcher constant (`DECL.match_N`) applied to the scrutinee and the
+      -- alternatives; its value holds the `casesOn`, so read it with the arguments substituted
+      let matcherHit := match fn with
+        | .const c us =>
+          if Lean.Meta.isMatcherCore env c then
+            match env.find? c with
+            | some ci =>
+              match ci.value? (allowOpaque := true) with
+              | some v => visit ((v.instantiateLevelParams ci.levelParams us).beta e.getAppArgs)
+              | none => false
+            | none => false
+          else false
+        | _ => false
+      -- visit the head and each argument once; never a partial application `f a1 .. ak`, where an
+      -- inlined matcher would see its alternatives as unknown variables and report every field read
+      let headHit := match fn with
+        | .const c _ => c == projFn
+        | _ => visit fn
+      casesHit || matcherHit || headHit || e.getAppArgs.any visit
     | .lam _ t b _ | .forallE _ t b _ => visit t || visit b
     | .letE _ t v b _ => visit t || visit v || visit b
     | .mdata _ b => visit b
@@ -487,18 +518,21 @@ where
       match m with
       | .lam _ _ b _ => m := b; binders := binders + 1; n := n + 1
       | _ => break
-    if idx < binders then m.hasLooseBVar (binders - 1 - idx) else false
+    -- an inlined matcher leaves `(fun a y => a) x y` here: reduce it, or a discarded field looks read
+    if idx < binders then m.headBeta.hasLooseBVar (binders - 1 - idx) else false
 
 end FU
 
 open FU in
 def usage : String :=
-  "usage: lean --run FieldsUses.lean -- --module M [--module M2 ...] [--follow N] [--mutate i|ii|iii] (uses DECL | who_reads S.field)"
+  "usage: lean --run FieldsUses.lean -- --module M [--module M2 ...] [--follow N] [--budget N] [--scan-prefix P ...] [--mutate i|ii|iii|iv] (uses DECL | who_reads S.field)"
 
 open FU in
 unsafe def main (argv : List String) : IO UInt32 := do
   let mut mods : Array Name := #[]
   let mut follow : Nat := 0
+  let mut budget : Nat := 2000000
+  let mut scanPrefixes : Array Name := #[]
   let mut bug : Bug := {}
   let mut rest : List String := []
   let mut as := argv
@@ -506,9 +540,12 @@ unsafe def main (argv : List String) : IO UInt32 := do
     match as with
     | "--module" :: m :: t => mods := mods.push m.toName; as := t
     | "--follow" :: n :: t => follow := n.toNat!; as := t
+    | "--budget" :: n :: t => budget := n.toNat!; as := t
+    | "--scan-prefix" :: m :: t => scanPrefixes := scanPrefixes.push m.toName; as := t
     | "--mutate" :: "i" :: t => bug := { bug with instAsExplicit := true }; as := t
     | "--mutate" :: "ii" :: t => bug := { bug with projNoIndex := true }; as := t
     | "--mutate" :: "iii" :: t => bug := { bug with noRenaming := true }; as := t
+    | "--mutate" :: "iv" :: t => bug := { bug with noDestructure := true }; as := t
     | "--" :: t => as := t
     | x :: t => rest := rest ++ [x]; as := t
     | [] => as := []
@@ -528,8 +565,8 @@ unsafe def main (argv : List String) : IO UInt32 := do
   let target := targets.head!
   let header := Json.mkObj [("lean_version", Lean.versionString), ("modules_requested", toJson (mods.map toString)),
     ("modules_loaded", env.header.moduleNames.size), ("query", query), ("targets", toJson (targets.map toString)),
-    ("follow", follow),
-    ("mutation", toJson ((if bug.instAsExplicit then #["i"] else #[]) ++ (if bug.projNoIndex then #["ii"] else #[]) ++ (if bug.noRenaming then #["iii"] else #[])))]
+    ("follow", follow), ("budget", budget),
+    ("mutation", toJson ((if bug.instAsExplicit then #["i"] else #[]) ++ (if bug.projNoIndex then #["ii"] else #[]) ++  (if bug.noRenaming then #["iii"] else #[]) ++ (if bug.noDestructure then #["iv"] else #[])))]
   match query with
   | "uses" =>
    let mut outs : Array Json := #[]
@@ -546,10 +583,11 @@ unsafe def main (argv : List String) : IO UInt32 := do
           | _ => "no value"
         outs := outs.push (Json.mkObj [("scope", header), ("decl", toString target), ("no_body", why)])
       | some v =>
-        let r := analyze env bug target v
+        let r := analyze env bug target v budget
         let sorryNote := if v.hasSorry then #["the body contains sorry"] else #[]
         let bs := r.binders.map fun b => binderJson b (followJson env bug b follow)
         outs := outs.push (Json.mkObj [("scope", header), ("decl", toString target),
+          ("complete", r.complete), ("subterm_visits", r.visits),
           ("binders", Json.arr bs), ("followed", toJson (r.followed.map toString)),
           ("notes", toJson (r.notes ++ sorryNote))])
    IO.println (if outs.size == 1 then outs[0]! else Json.arr outs).pretty
@@ -563,7 +601,24 @@ unsafe def main (argv : List String) : IO UInt32 := do
     let some idx := names.findIdx? (· == fname) | IO.eprintln s!"error: {sname} has no field {fname}"; return 2
     let mut hits : Array Json := #[]
     let mut scanned : Nat := 0
+    let mut generated : Nat := 0
+    -- scope: only declarations of the modules given with --module, plus any module whose name starts
+    -- with a --scan-prefix; never the whole loaded environment (Mathlib would be scanned too)
+    let inScope := fun (m : Name) =>
+      mods.contains m || scanPrefixes.any (fun pre => pre.isPrefixOf m)
+    let mut scopeMods : Nat := 0
+    for m in env.header.moduleNames do
+      if inScope m then scopeMods := scopeMods + 1
     for (n, ci) in env.constants.toList do
+      let inMod := match env.getModuleIdxFor? n with
+        | some i => inScope (env.header.moduleNames[i.toNat]!)
+        | none => false
+      if !inMod then continue
+      -- generated declarations (matchers, noConfusion, recursor helpers) are not authored readers:
+      -- a matcher is read where it is used; they are counted, not listed
+      if Lean.Meta.isMatcherCore env n || isNoConfusion env n || isAuxRecursor env n || n.isInternal then
+        generated := generated + 1
+        continue
       match ci.value? (allowOpaque := true) with
       | some v =>
         scanned := scanned + 1
@@ -575,6 +630,8 @@ unsafe def main (argv : List String) : IO UInt32 := do
           hits := hits.push (Json.mkObj [("decl", toString n), ("module", modName)])
       | none => pure ()
     IO.println (Json.mkObj [("scope", header), ("field", toString target), ("index", idx),
-      ("declarations_scanned", scanned), ("readers", Json.arr hits)]).pretty
+      ("modules_scanned", scopeMods), ("scan_prefixes", toJson (scanPrefixes.map toString)),
+      ("declarations_scanned", scanned), ("generated_declarations_skipped", generated),
+      ("readers", Json.arr hits)]).pretty
     return 0
   | _ => IO.eprintln usage; return 1
