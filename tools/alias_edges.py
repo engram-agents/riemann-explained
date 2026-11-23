@@ -22,7 +22,8 @@ CONTRACT
     `attribute`, `variable`, `universe`, `noncomputable`, `@[`, `/-` (also the modifiers private, protected,
     nonrec, unsafe, partial and `mutual`), or to the end of the file. Whitespace around the tokens may vary.
  A2 A theorem whose body has the shape but with unequal X is listed in aliases_odd.tsv, not dropped.
- A3 Each target is resolved to its DECLARING file and line: a declaration whose full name equals X exactly.
+ A3 Each target is resolved to its DECLARING file and line: a declaration whose full name equals X exactly
+    (one leading `_root_.` of X is stripped first; the `target` column keeps X as written).
     target_matches = number of declarations found: 0 = UNRESOLVED, 1 = resolved, 2 or more = AMBIGUOUS; for
     2 or more every candidate is written to alias_candidates.tsv and target_file/target_line are `-`. The tool
     never picks one. The summary line prints `targets resolved N / ambiguous N / unresolved N`, counted per
@@ -153,6 +154,11 @@ def parse_decls(raw, masked):
     return found
 
 
+def norm_target(x):
+    """A target written `_root_.X` is the root name X: strip one leading `_root_.`, nothing else."""
+    return x[len("_root_."):] if x.startswith("_root_.") else x
+
+
 def find_wrappers(raw, masked):
     """([(public, x, line, last_line)] with the three X equal, [(public, x1, x2, x3, line)] with them unequal)."""
     good, odd = [], []
@@ -208,7 +214,7 @@ def run(root, out):
         aliases += [(pub, x, rel[p], ln) for pub, x, ln, _last in good]
         wrap_lines[rel[p]].update(l for _pub, _x, ln, last in good for l in range(ln, last + 1))
         odd += [(pub, x1, x2, x3, rel[p], ln) for pub, x1, x2, x3, ln in bad]
-    targets = {a[1] for a in aliases}
+    targets = {norm_target(a[1]) for a in aliases}   # resolution and callers use the stripped full name
     alias_names = {a[0] for a in aliases}
     names = targets | alias_names
     pub_t = {n for n in alias_names if n.startswith(PUB)}
@@ -242,7 +248,7 @@ def run(root, out):
     # outputs
     alias_rows, cand_rows, counts = [], [], collections.Counter()
     for pub, x, f, ln in sorted(aliases, key=lambda a: (a[0], a[2], a[3])):
-        c = sorted(cands.get(x, []))
+        c = sorted(cands.get(norm_target(x), []))
         if len(c) == 1:
             alias_rows.append((pub, x, f, ln, c[0][0], c[0][1], 1))
             counts["resolved"] += 1
