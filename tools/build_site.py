@@ -2249,6 +2249,29 @@ def _selftest_cases():
             return _eq((rc0, rc, out, err.count("\n"), same, _left(d), rc2, sorted(_tree(p["out"]))[:2]),
                        (0, 2, "", 1, True, [], 0, ["data.js", "group/g1.json"]))
 
+    @case("W6", "the last step fails (the rename of the new tree into place, injected once) under --force, after the old tree was set "
+                "aside: the old build and the foreign file are back byte-identical, no temporary directory is left, exit 2 with one line")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            _go(p)
+            _put(os.path.join(p["out"], "keep.txt"), "k")
+            old = _tree(p["out"])
+            target, real, calls = os.path.abspath(p["out"]), os.rename, []
+
+            def fake(a, b, *k, **kw):
+                if os.path.abspath(b) == target and not calls:
+                    calls.append(1)
+                    raise OSError(5, "Input/output error")
+                return real(a, b, *k, **kw)
+            os.rename = fake
+            try:
+                rc, out, err = _go(p, force=True)
+            finally:
+                os.rename = real
+            return _eq((rc, out, err, _tree(p["out"]) == old, _left(d), len(calls)),
+                       (2, "", "build_site: cannot write the site: Input/output error\n", True, [], 1))
+
     @case("W4", "an unwritable parent of OUT_DIR: exit 2, one line, no traceback, nothing left behind (SKIPPED when running as root, "
                 "which a directory mode does not stop)")
     def _():
@@ -2293,17 +2316,18 @@ def _selftest_cases():
                     "built: 6 groups, 4 notes, 8 blocks, 11 files, 0 word notes" in _base().out.splitlines()),
                    (0, ["WORD-NOTE g3.claim verified", "WORD-NOTE g3.claim of the proof"], True, True, [], True))
 
-    @case("WN2", "the other texts of the notes and the outline are listed too, never edited: a condition (g1), the text of an "
-                 "argument block (01.b02) and a note title (02), in that order")
+    @case("WN2", "the other texts of the notes and the outline are listed too, never edited: a condition (g1), a claim with only a "
+                 "percent sign (g1a1), the text of an argument block (01.b02) and a note title (02), in that order")
     def _():
         o = _outline()
         o["groups"][2]["claim"]["conditions"] = ["Condition understood here."]
+        o["groups"][5]["claim"]["text"] = "Half 50% done"
         n01 = _n01(arg_text="First argument was verified. Second argument sentence.")
         n02 = N02.replace('"list_title":"Note two"', '"list_title":"Explained at once"')
         b = _build(outline=o, notes=_notes() | {"01-one.md": n01, "02-two.md": n02})
         notes = [ln for ln in b.out.splitlines() if ln.startswith("WORD-NOTE")]
         return _eq((b.rc, notes, "Explained at once" in b.page),
-                   (0, ["WORD-NOTE g1.conditions[0] understood", "WORD-NOTE block:01.b02.text verified",
+                   (0, ["WORD-NOTE g1.conditions[0] understood", "WORD-NOTE g1a1.claim %", "WORD-NOTE block:01.b02.text verified",
                         "WORD-NOTE note:02.list_title explained"], True))
 
     @case("WN3", "the strings file is refused for a percent sign and for `of the proof` in the builder's own sentences (route_count, "
