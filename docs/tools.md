@@ -44,8 +44,8 @@ tables, one comment per line), not CommonMark; the LIMIT paragraph in the file l
 name in it resolve to one row of `decls.tsv`? It reads the outline (every group, its parent, level, order,
 premises, roots and claim), each note's header and anchors, and, with options, more: `--src SRC_ROOT` checks that
 a block's `file` is in the note's file table and its `lines` are inside the file, `--strings PATH` lists blocks
-whose text opens with another kind's frame, `--base REV` checks that the note at REV equals the current note with
-its anchor lines removed, byte for byte (this needs the `git` program; `--repo DIR` names the repository when it is not the one around
+whose text opens with another kind's frame, `--base REV` checks that the note at REV and the current note, both with
+their anchor lines removed, are equal byte for byte after that rule (this needs the `git` program; `--repo DIR` names the repository when it is not the one around
 NOTES_DIR), `--glob PATTERN` changes which files are notes (default `[0-9][0-9]-*.md`, so this folder's
 `tools.md` is not one). The format of the comments is read only through `rh_anchor.py`. A finding is one line,
 `CODE path:line message`; `EXTENT-WARNING`, `FRAME-NOTE` and `NEW-NOTE` are listings and never fail the run. Each
@@ -53,11 +53,33 @@ note prints `note <id> header ok, blocks N (kind=count ...)`, and the run ends w
 in-file and byte checks did or did not do, and `N notes, M findings, K warnings`. It checks shape and resolution;
 it does not judge whether a claim is right, and the LIMIT paragraph in the file lists the title rules and the
 translation rules that need a reader. Every group needs at least one root; a group with a null claim and no root passed
-in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A block anchored to a list must name its top-level
+in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. The strip rule is `rh_anchor`'s: a last anchor line with
+no line ending of its own also removes the line ending before it, so adding or removing such a hand-typed last line can read as a
+one-line-ending difference; anchors written by the helper carry their own ending. An anchor-looking line counts as text only inside
+a fence, and a malformed `rh-` line is kept as text, so fixing it since REV is a byte difference. A block anchored to a list must name its top-level
 item (`item`, 1-based, counted across blank lines: a loose list is one list; nested items are not numbered); shapes of list a renderer may show differently are refused through a table
 that is empty until the renderer control is in. The run prints a count line for the outline (and for the strings file and the
 byte check when they ran); a header's group may be `root` only at level 0.
 `python3 tools/notes_meta.py NOTES_DIR outline.json decls.tsv [--src SRC_ROOT] [--strings strings.json] [--base REV]`
+
+**`tools/note_cite.py NOTE DECLS_TSV --at LINE --decl FULL.NAME --kind KIND`** writes one block anchor, so nobody
+types the JSON. It finds the declaration's module in `decls.tsv` (`--module` picks one when the name is in several),
+takes the element of the note that holds line `--at` (a paragraph, table, list or lean block, or the anchor lines just
+after one), and puts the comment after that element and after any anchors already there, so a second anchor on one
+element lands below the first. For a table it fills `row` (and `col` if given), for a list `item`, from the line or
+from `--row`/`--item`. It refuses, with one line `REFUSED CODE message` and nothing written, when the name does not
+resolve to one row, when `--lines` cross the declaration's text extent, when the file is not in the note's file table,
+when the line is in a heading, quote or non-lean fence, when the note has no header or a comment the parser cannot
+read, when a kind that needs `--reader` and `--date` lacks one (it never fills either by default, and an empty value is
+refused too), and when a flag belongs to another kind (`--needs` outside `not_read`, the tool fields outside
+`machine_fact`: STRAY-FLAG). The block is
+checked with `rh_anchor.problems` before it is placed, and the result with the same parser the checker uses: the note
+without its anchor lines must not change. By default it only prints the comment and the line it would go after;
+`--write` writes the note, keeping its file mode, and through a symlink writes the link's target. `--src SRC_ROOT`
+(with `--lines`) also prints the cited lines from your local copy of the release, so you see the statement while you
+cite it. It does not judge whether the cited lines support the sentence, or whether the kind
+is right: that is the reader's and the peer's job, and `notes_meta.py` is the check of what it writes.
+`python3 tools/note_cite.py docs/13-how-the-sha-bound-is-used.md decls.tsv --at 214 --decl UpperTheory.Top.topDesWin --lines 25-25 --kind reading --reader NAME --date YYYY-MM-DD --src SRC_ROOT`
 
 **`tools/build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR`** answers: what do the first two zoom levels
 of the proof map look like, built from the notes, the outline and the declaration table alone? It first runs the
@@ -119,6 +141,7 @@ row. Exit codes, tool by tool (4 always means the self-test failed and nothing w
 - `decl_table.py`: 0 even when duplicate (module, name) pairs are written; 1 only for an undecodable or unreadable file or no `.lean` file; 2 usage error or SRC_ROOT not a directory.
 - `rh_anchor.py --selftest`: 0 all cases pass; 1 any case fails; 2 usage error (it has no other command line); 3 no case ran. (It has no exit 4: it has no normal run to refuse.)
 - `notes_meta.py`: 0 every note passed (listings do not count); 1 any finding of class ERROR; 2 usage error or an input that cannot be read (a note or strings file that is not UTF-8, an outline or strings file that is not JSON, a decls row that is not six columns, a `--base` that is not a commit), nothing on stdout; 3 CHECKED NOTHING (no note matches, the outline has no groups, or decls.tsv has no rows); 4 the self-test failed. `--selftest`: 0 all pass, 1 any fails, 2 usage, 3 no case ran.
+- `note_cite.py`: 0 done (or a dry run printed); 2 usage error, an input that cannot be read (also a `--src` file that is not UTF-8), or a note that cannot be written; 4 the self-test failed, nothing done; 5 REFUSED (the one-line reason on stdout), nothing written; 6 a post-condition failed (a bug in the helper), nothing written. `--selftest`: 0 all pass, 1 any fails, 3 no case ran.
 - `build_site.py`: 0 built; 1 refused, nothing written (an error of `notes_meta.py`, a strings key missing or a forbidden word, a build rule that failed, a non-empty OUT_DIR without `--force`, a release line found in an output); 2 usage error, an input that cannot be read or a site that cannot be written (one line, nothing on stdout, nothing left behind); 3 checked nothing (no note matches, or no `.lean` file under SRC_ROOT); 4 the self-test failed. `--selftest`: 0 all pass, 4 any fails, 2 an unknown id after `--only`.
 - `in_closure.py`: 0 only if every site is INSIDE or OUTSIDE; 1 for an AMBIGUOUS or NOT A MODULE site, or no site; 2 usage or input error, or a control equal to the start; 3 a broken control.
 - `import_closure.py`: 0 printed; 1 unresolved imports under the root's own folders (closure would be under-counted); 2 usage error or no file for the start module.

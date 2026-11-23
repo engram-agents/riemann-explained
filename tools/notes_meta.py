@@ -54,9 +54,10 @@ CONTRACT (each line is a self-test case, written before the code)
   M7 A block with `row` or `col` must follow a table (NOT-A-TABLE), `row` <= body rows, `col` <= columns. Case M7.
   F12 With --strings, an argument or interpretation block whose text opens with the frame of another kind is a
      FRAME-NOTE listing; without it one line says the check was skipped. Cases F12a F12b.
-  BYTES With --base REV: the note at REV equals the current note without its anchor lines, byte for byte (BYTE-DIFF
-     names the first differing line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
-     Cases B1a B1b B1c B1d.
+  BYTES With --base REV: the note at REV and the current note, each without its anchor lines (header and blocks), are equal
+     byte for byte after the strip rule of rh_anchor (BYTE-DIFF names the first differing line of those stripped texts; a base that is not UTF-8 is a
+     BYTE-DIFF with no line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
+     Cases B1a to B1e, Y1 to Y6, Z1, Z2a to Z2d.
  Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
   R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
@@ -99,7 +100,14 @@ phrases) from the strings file; that key is PROVISIONAL and its shape is not fin
 or `<` (a placeholder), the match is case-blind, ignores leading `*`, `_` and `>`, ends at a word boundary, and only
 the first other kind that matches is named; only a block whose target is a paragraph is read. The byte check
 compares at the path the note has in the repository, so a note renamed since REV is NEW-NOTE, and BYTE-DIFF's line
-number is a line of the published text, not of the note with its anchors. The self-test builds its repositories
+number is a line of the text with its anchor lines removed (on both sides), not of the note with its anchors. Both sides are
+stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
+result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
+with no line, and the other notes are still compared. "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
+last anchor line with no line ending of its own also removes the line ending before it, so adding or removing such a
+hand-typed last line can read as a one-line-ending difference (anchors written by the helper carry their own ending; case
+Z1). An anchor-looking line is kept as text only inside a fence: an indented code block or a list item is not tracked, as in
+rh_anchor's LIMIT. A malformed rh- line is kept as text, so fixing it since REV is a BYTE-DIFF. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
 List items: a nested item is not numbered; a citation in a nested item anchors to its parent item, and the precision lives in
 the block's decls and lines (a future optional `subitem` could number nested items). A list whose last line is nested, a
@@ -660,7 +668,11 @@ def _bytes_check(name, text, rel, ctx):
     show = _vcs(ctx.top, "cat-file", "blob", f"{ctx.rev}:{rel}")
     if show.returncode != 0:
         return _f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)
-    old, new = show.stdout, rh.strip_anchor_lines(text).encode("utf-8")
+    try:   # both sides without their anchor lines (header and blocks), decoded the same way
+        old = rh.strip_anchor_lines(show.stdout.decode("utf-8")).encode("utf-8")
+    except UnicodeDecodeError:
+        return _f("BYTE-DIFF", name, None, f"the note at {ctx.base} is not valid UTF-8 and cannot be compared")
+    new = rh.strip_anchor_lines(text).encode("utf-8")
     if old == new:
         return None
     a, b = old.splitlines(True), new.splitlines(True)
@@ -668,7 +680,7 @@ def _bytes_check(name, text, rel, ctx):
 
     def fmt(ls):
         return repr(ls[i].decode("utf-8", "replace")) if i < len(ls) else "<no line>"
-    return _f("BYTE-DIFF", name, i + 1, f"line {i + 1} of the published text differs: published {fmt(a)}, without anchors {fmt(b)}")
+    return _f("BYTE-DIFF", name, i + 1, f"line {i + 1} differs: at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}")
 
 
 # ---- the run
@@ -1502,27 +1514,27 @@ def _():
     eq((r.f, r.rc), ([], 0), "--repo given")
 
 
-@case("B1b", "BYTE-DIFF names the note and the first differing line, in the published text; a line ending is a difference")
+@case("B1b", "BYTE-DIFF names the note and the first differing line of the text without anchors (FLIPPED wording: at REV, now); a line ending is a difference")
 def _():
     cur = NOTE(body="Some texts.\n" + BL() + "\nMore text.\n")
     fe(go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD"),
-       ["BYTE-DIFF 01-a.md:5 line 5 of the published text differs: published 'Some text.\\n', without anchors 'Some texts.\\n'"], 1)
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Some text.\\n', now (without anchors) 'Some texts.\\n'"], 1)
     crlf = T0.replace("\n", "\r\n")
     fe(go(notes={"01-a.md": CUR}, committed={"01-a.md": crlf}, base="HEAD"),
-       ["BYTE-DIFF 01-a.md:1 line 1 of the published text differs: published '# Note\\r\\n', without anchors '# Note\\n'"], 1)
+       ["BYTE-DIFF 01-a.md:1 line 1 differs: at HEAD (without anchors) '# Note\\r\\n', now (without anchors) '# Note\\n'"], 1)
     short = "# Note\n\n## Body\n\nSome text.\n"
     fe(go(notes={"01-a.md": NOTE(body="Some text.\n")}, committed={"01-a.md": T0}, base="HEAD"),
-       ["BYTE-DIFF 01-a.md:6 line 6 of the published text differs: published 'More text.\\n', without anchors <no line>"], 1)
+       ["BYTE-DIFF 01-a.md:6 line 6 differs: at HEAD (without anchors) 'More text.\\n', now (without anchors) <no line>"], 1)
     fe(go(notes={"01-a.md": CUR}, committed={"01-a.md": short}, base="HEAD"),
-       ["BYTE-DIFF 01-a.md:6 line 6 of the published text differs: published <no line>, without anchors 'More text.\\n'"], 1)
+       ["BYTE-DIFF 01-a.md:6 line 6 differs: at HEAD (without anchors) <no line>, now (without anchors) 'More text.\\n'"], 1)
 
 
 @case("B1e", "a blank line at the end of one side is a BYTE-DIFF: the comparison is exact, not trimmed")
 def _():
     fe(go(notes={"01-a.md": CUR}, committed={"01-a.md": T0 + "\n"}, base="HEAD"),
-       ["BYTE-DIFF 01-a.md:7 line 7 of the published text differs: published '\\n', without anchors <no line>"], 1)
+       ["BYTE-DIFF 01-a.md:7 line 7 differs: at HEAD (without anchors) '\\n', now (without anchors) <no line>"], 1)
     fe(go(notes={"01-a.md": CUR + "\n"}, committed={"01-a.md": T0}, base="HEAD"),
-       ["BYTE-DIFF 01-a.md:7 line 7 of the published text differs: published <no line>, without anchors '\\n'"], 1)
+       ["BYTE-DIFF 01-a.md:7 line 7 differs: at HEAD (without anchors) <no line>, now (without anchors) '\\n'"], 1)
 
 
 @case("B1c", "CRLF notes compare by bytes: anchors added with CRLF endings leave the note equal to the commit")
@@ -1531,6 +1543,108 @@ def _():
     cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n").replace("\n", "\r\n")
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": crlf}, base="HEAD")
     eq((r.f, r.rc), ([], 0), r.out)
+
+
+# base and current are both compared WITHOUT their anchor lines (header and block anchors)
+BASEH = NOTE(body="Some text.\n" + BL() + "\nMore text.\n")     # at REV: a header and one anchor
+
+
+@case("Y1", "a base that already carries a header and an anchor, and a current note with one more anchor, are equal")
+def _():
+    cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n" + BL("01.b02") + "\n")
+    r = go(notes={"01-a.md": cur}, committed={"01-a.md": BASEH}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    r = go(notes={"01-a.md": BASEH}, committed={"01-a.md": BASEH}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), "unchanged")
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n")}, committed={"01-a.md": BASEH}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), "an anchor removed since REV is not a text change")
+
+
+@case("Y2", "a base with no header and a current note that adds the header are equal")
+def _():
+    r = go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+
+
+@case("Y3", "a base with header and anchor and a current note with one word of the body changed: BYTE-DIFF, the line counted without anchors")
+def _():
+    cur = NOTE(body="Some texts.\n" + BL() + "\nMore text.\n")
+    r = go(notes={"01-a.md": cur}, committed={"01-a.md": BASEH}, base="HEAD")
+    eq((r.f, r.rc), (["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Some text.\\n', now (without anchors) 'Some texts.\\n'"], 1), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new" in r.lines, r.out)
+
+
+@case("Y4", "an anchor-looking line inside a fence is text on both sides: it is compared, and a change to it is a BYTE-DIFF")
+def _():
+    fenced = lambda bid: NOTE(body="```text\n" + BL(bid) + "\n```\n")  # noqa: E731
+    r = go(notes={"01-a.md": fenced("01.b09")}, committed={"01-a.md": fenced("01.b09")}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), "unchanged")
+    r = go(notes={"01-a.md": fenced("01.b08")}, committed={"01-a.md": fenced("01.b09")}, base="HEAD")
+    eq((r.f, r.rc), (["BYTE-DIFF 01-a.md:6 line 6 differs: at HEAD (without anchors) '<!-- rh-block {\"id\":\"01.b09\",\"kind\":\"reading\"} -->\\n', "
+                      "now (without anchors) '<!-- rh-block {\"id\":\"01.b08\",\"kind\":\"reading\"} -->\\n'"], 1), r.out)
+
+
+@case("Y5", "a base that is not UTF-8 is a BYTE-DIFF without a line (not a crash, not exit 2: the other notes are still compared)")
+def _():
+    bad = b"# Note\n\xff\n"
+    r = go(notes={"01-a.md": CUR, "02-b.md": NOTE(nid="02")}, committed={"01-a.md": bad, "02-b.md": T0.replace("More text.\n", "")}, base="HEAD")
+    eq((r.f, r.rc), (["BYTE-DIFF 01-a.md the note at HEAD is not valid UTF-8 and cannot be compared"], 1), r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+
+
+@case("Y6", "CRLF notes and notes without a final newline strip the same way on both sides")
+def _():
+    crlf = lambda t: t.replace("\n", "\r\n")  # noqa: E731
+    r = go(notes={"01-a.md": crlf(NOTE(body="Some text.\n" + BL() + "\nMore text.\n" + BL("01.b02") + "\n"))},
+           committed={"01-a.md": crlf(BASEH)}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), "CRLF: " + r.out)
+    nofinal = NOTE(body="Some text.\nMore text.\n" + BL())   # the last line is an anchor with no line ending
+    two = NOTE(body="Some text.\nMore text.\n" + BL() + "\n" + BL("01.b02"))
+    r = go(notes={"01-a.md": two}, committed={"01-a.md": nofinal}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), "anchor at the end, no final newline: " + r.out)
+    plain = NOTE(body="Some text.\nMore text.")   # no final newline, no anchor
+    r = go(notes={"01-a.md": plain + "\n" + BL()}, committed={"01-a.md": plain}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), "an anchor added after a last line with no newline: " + r.out)
+
+
+@case("Z1", "a last anchor line with no line ending of its own also takes the line ending before it (rh_anchor's strip rule): the note reads as a one-line-ending "
+            "difference; with a final newline after the anchor it is equal")
+def _():
+    base = NOTE(body="Text.\n")
+    fe(go(notes={"01-a.md": NOTE(body="Text.\n" + BL())}, committed={"01-a.md": base}, base="HEAD"),
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Text.\\n', now (without anchors) 'Text.'"], 1)
+    r = go(notes={"01-a.md": NOTE(body="Text.\n" + BL() + "\n")}, committed={"01-a.md": base}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), r.out)
+
+
+def _z2(now_body):
+    return go(notes={"01-a.md": NOTE(body=now_body)}, committed={"01-a.md": NOTE(body="Some text.\nMore text.\n")}, base="HEAD")
+
+
+@case("Z2a", "a change confined to the last line, the line count the same, is a BYTE-DIFF at that line")
+def _():
+    fe(_z2("Some text.\nMore texts.\n"),
+       ["BYTE-DIFF 01-a.md:6 line 6 differs: at HEAD (without anchors) 'More text.\\n', now (without anchors) 'More texts.\\n'"], 1)
+
+
+@case("Z2b", "a trailing space on a line is a BYTE-DIFF")
+def _():
+    fe(_z2("Some text. \nMore text.\n"),
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Some text.\\n', now (without anchors) 'Some text. \\n'"], 1)
+
+
+@case("Z2c", "a leading space on a line is a BYTE-DIFF")
+def _():
+    fe(_z2(" Some text.\nMore text.\n"),
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Some text.\\n', now (without anchors) ' Some text.\\n'"], 1)
+
+
+@case("Z2d", "a change of letter case on a line is a BYTE-DIFF")
+def _():
+    fe(_z2("some text.\nMore text.\n"),
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Some text.\\n', now (without anchors) 'some text.\\n'"], 1)
 
 
 @case("B1d", "a note not present at REV is NEW-NOTE (a listing, exit unchanged); without --base the summary says the byte check did not run")
