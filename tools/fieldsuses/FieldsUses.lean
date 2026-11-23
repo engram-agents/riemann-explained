@@ -47,6 +47,7 @@ structure Occ where
   argPos : Int := -1
   kind   : String := ""
   field  : String := ""
+  deriving BEq
 
 structure Ctx where
   inType    : Bool := false
@@ -62,7 +63,22 @@ structure Cfg where
   decl   : Name
   budget : Nat := 2000000
 
+/-- A subterm is walked once per label-relevant context. Binders are instantiated as fresh free variables
+    before the walk goes under them, so a key never holds a loose bound variable, and a free variable's alias
+    status is fixed when it is created: two structurally equal keys produce identical records. -/
+-- Do not drop a field of this key to save visits: no control separates `resultPos`, and `enclosing` is pinned only by
+-- C21's budget edge (README, "memo key"), so a smaller key could pass every control and still merge walks that differ.
+structure MemoKey where
+  e         : Expr
+  inType    : Bool
+  resultPos : Bool
+  field     : String
+  enclosing : String
+  encPos    : Int
+  deriving BEq, Hashable
+
 structure St where
+  seen     : Std.HashSet MemoKey := {}
   next     : Nat := 0
   aliases  : Std.HashMap FVarId Alias := {}
   occs     : Array Occ := #[]
@@ -189,6 +205,11 @@ partial def go (e : Expr) (ctx : Ctx) : M Unit := do
   -- past the budget it stops, and the report says it is incomplete
   let st ← get
   if st.stopped then return
+  -- memo: a subterm already walked in this context adds nothing new (reports are sets)
+  let key : MemoKey := { e, inType := ctx.inType, resultPos := ctx.resultPos, field := ctx.field,
+                         enclosing := ctx.enclosing, encPos := ctx.encPos }
+  if st.seen.contains key then return
+  modify fun s => { s with seen := s.seen.insert key }
   if st.visits ≥ (← read).budget then
     note s!"stopped: budget of {(← read).budget} subterm visits exceeded; the labels are incomplete"
     modify fun s => { s with stopped := true }
@@ -374,7 +395,8 @@ def isPrefixArr (a b : Array String) : Bool :=
   a.size < b.size && (List.range a.size).all (fun i => a[i]! == b[i]!)
 
 def summarize (idx : Nat) (name : String) (bi : BinderInfo) (occs : Array Occ) (complete : Bool := true) : BinderReport :=
-  let mine := occs.filter (·.binder == idx)
+  -- a set: the same occurrence met twice (shared subterms) is one record
+  let mine := (occs.filter (·.binder == idx)).foldl (fun acc o => if acc.contains o then acc else acc.push o) #[]
   let value := mine.filter (·.label != .inTypesOnly)
   -- on a walk stopped by its budget, silence proves nothing: no binder is called unused
   let labs : Array Label :=
@@ -570,7 +592,7 @@ unsafe def main (argv : List String) : IO UInt32 := do
   let target := targets.head!
   let header := Json.mkObj [("lean_version", Lean.versionString), ("modules_requested", toJson (mods.map toString)),
     ("modules_loaded", env.header.moduleNames.size), ("query", query), ("targets", toJson (targets.map toString)),
-    ("follow", follow), ("budget", budget),
+    ("follow", follow), ("budget", budget), ("memo", "structural: Expr hash and equality, plus the label context"),
     ("mutation", toJson ((if bug.instAsExplicit then #["i"] else #[]) ++ (if bug.projNoIndex then #["ii"] else #[]) ++  (if bug.noRenaming then #["iii"] else #[]) ++ (if bug.noDestructure then #["iv"] else #[])))]
   match query with
   | "uses" =>
@@ -607,6 +629,9 @@ unsafe def main (argv : List String) : IO UInt32 := do
     let mut hits : Array Json := #[]
     let mut scanned : Nat := 0
     let mut generated : Nat := 0
+    -- declarations with no value (axioms, and anything value? does not open): their terms cannot be
+    -- read, so they are counted and said, never dropped silently (Kepler, PR 7 merge read)
+    let mut noValue : Nat := 0
     -- scope: only declarations of the modules given with --module, plus any module whose name starts
     -- with a --scan-prefix; never the whole loaded environment (Mathlib would be scanned too)
     let inScope := fun (m : Name) =>
@@ -636,10 +661,12 @@ unsafe def main (argv : List String) : IO UInt32 := do
             | some i => toString (env.header.moduleNames[i.toNat]!)
             | none => "(this file)"
           hits := hits.push (Json.mkObj [("decl", toString n), ("module", modName)])
-      | none => pure ()
+      | none => noValue := noValue + 1
     IO.println (Json.mkObj [("scope", header), ("field", toString target), ("index", idx),
+      ("lower_bound", true),
       ("modules_scanned", scopeMods), ("scan_prefixes", toJson (scanPrefixes.map toString)),
       ("declarations_scanned", scanned), ("generated_declarations_skipped", generated),
+      ("no_value_declarations_skipped", noValue),
       ("readers", Json.arr hits)]).pretty
     return 0
   | _ => IO.eprintln usage; return 1
