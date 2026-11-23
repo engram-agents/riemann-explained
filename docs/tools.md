@@ -44,8 +44,8 @@ tables, one comment per line), not CommonMark; the LIMIT paragraph in the file l
 name in it resolve to one row of `decls.tsv`? It reads the outline (every group, its parent, level, order,
 premises, roots and claim), each note's header and anchors, and, with options, more: `--src SRC_ROOT` checks that
 a block's `file` is in the note's file table and its `lines` are inside the file, `--strings PATH` lists blocks
-whose text opens with another kind's frame, `--base REV` checks that the note at REV equals the current note with
-its anchor lines removed, byte for byte (this needs the `git` program; `--repo DIR` names the repository when it is not the one around
+whose text opens with another kind's frame, `--base REV` checks that the note at REV and the current note, both with
+their anchor lines removed, are equal byte for byte after that rule (this needs the `git` program; `--repo DIR` names the repository when it is not the one around
 NOTES_DIR), `--glob PATTERN` changes which files are notes (default `[0-9][0-9]-*.md`, so this folder's
 `tools.md` is not one). The format of the comments is read only through `rh_anchor.py`. A finding is one line,
 `CODE path:line message`; `EXTENT-WARNING`, `FRAME-NOTE` and `NEW-NOTE` are listings and never fail the run. Each
@@ -53,7 +53,10 @@ note prints `note <id> header ok, blocks N (kind=count ...)`, and the run ends w
 in-file and byte checks did or did not do, and `N notes, M findings, K warnings`. It checks shape and resolution;
 it does not judge whether a claim is right, and the LIMIT paragraph in the file lists the title rules and the
 translation rules that need a reader. Every group needs at least one root; a group with a null claim and no root passed
-in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A block anchored to a list must name its top-level
+in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. The strip rule is `rh_anchor`'s: a last anchor line with
+no line ending of its own also removes the line ending before it, so adding or removing such a hand-typed last line can read as a
+one-line-ending difference; anchors written by the helper carry their own ending. An anchor-looking line counts as text only inside
+a fence, and a malformed `rh-` line is kept as text, so fixing it since REV is a byte difference. A block anchored to a list must name its top-level
 item (`item`, 1-based, counted across blank lines: a loose list is one list; nested items are not numbered); shapes of list a renderer may show differently are refused through a table
 that is empty until the renderer control is in. The run prints a count line for the outline (and for the strings file and the
 byte check when they ran); a header's group may be `root` only at level 0.
