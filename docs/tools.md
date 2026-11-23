@@ -70,17 +70,28 @@ nested under it to any depth), one `group/<id>.json` per group (its roots with f
 same data as one assignment) and `index.html`. The page is one static file of plain HTML: each step is a card (claim,
 conditions, premises as links, one coverage word, the first sentence of the argument inside its frame, three
 reaction links), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
-makes a request. Every sentence on the page comes from the strings file, whose shape is provisional (the table under
+makes a request. Every FIXED sentence on the page comes from the strings file, whose shape is provisional (the table under
 `coverage` that turns the counts into one word is data in it, and the fixtures of the self-test carry their own
-wording, not the real one); a missing key stops the build and names itself. The build also stops for: the words
-verified, explained, understood (or any word of `forbidden_words`) in the strings file; a reading, argument,
+wording, not the real one; the predicate keys `read_all`, `read_some_or_touched`, `read_none` and the key
+`no_claim_label` are provisional names, the owner of the wording may rename them); a missing key stops the build and
+names itself. Coverage is per root: a root is signed when a reading block anchors it, touched when only an argument
+block does, none otherwise; a step is Read by us when every root is signed, Not read yet when every root is none, Partly
+read in every other case. A group whose claim is null shows its root's Lean name and the `no_claim_label` in the
+heading, which is not a coverage word and may sit beside Read by us. The build also stops for: the words
+verified, explained, understood (or any word of `forbidden_words`), a percent sign or `of the proof` in the strings file
+(the builder's own sentences never contain them; its href templates may hold `%`); two notes with one header id (the
+builder refuses today, the merged checker does not yet); a reading, argument,
 interpretation or correction block with no reader or no date; read + partly + not read not adding up to the steps; a link on the page with no target; a number
 on the page that is in no JSON file; a group id that is not safe as a file name. `--source-check SRC_ROOT` compares
 the text lines of every output with the lines of the release (at least 20 non-space characters) and says what it
 ranged over; names and ids are left out by construction. `--notes-commit REV --repo DIR` stamps the notes commit; a
 tree whose notes, outline or strings differ from it, or whose tools differ from their commit, stamps `dirty` in every
 commit id and on the page. A fresh run into a non-empty OUT_DIR refuses unless `--force`, which removes only what a
-build writes. The LIMIT paragraph in the file lists what is not checked.
+build writes. The site is written into a temporary directory beside OUT_DIR and renamed into place, so a failure
+leaves OUT_DIR absent or the old build as it was; a failure to write is exit 2 with one line. Text from the notes and
+the outline (claims, conditions, note titles, argument and interpretation text) is not refused for those words: each
+hit is listed as `WORD-NOTE <where> <word>` on stdout, the exit code is unchanged and the text is never edited. The
+LIMIT paragraph in the file lists what is not checked.
 `python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--force]`
 
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
@@ -102,6 +113,6 @@ row. Exit codes, tool by tool (4 always means the self-test failed and nothing w
 - `decl_table.py`: 0 even when duplicate (module, name) pairs are written; 1 only for an undecodable or unreadable file or no `.lean` file; 2 usage error or SRC_ROOT not a directory.
 - `rh_anchor.py --selftest`: 0 all cases pass; 1 any case fails; 2 usage error (it has no other command line); 3 no case ran. (It has no exit 4: it has no normal run to refuse.)
 - `notes_meta.py`: 0 every note passed (listings do not count); 1 any finding of class ERROR; 2 usage error or an input that cannot be read (a note or strings file that is not UTF-8, an outline or strings file that is not JSON, a decls row that is not six columns, a `--base` that is not a commit), nothing on stdout; 3 CHECKED NOTHING (no note matches, the outline has no groups, or decls.tsv has no rows); 4 the self-test failed. `--selftest`: 0 all pass, 1 any fails, 2 usage, 3 no case ran.
-- `build_site.py`: 0 built; 1 refused, nothing written (an error of `notes_meta.py`, a strings key missing or a forbidden word, a build rule that failed, a non-empty OUT_DIR without `--force`, a release line found in an output); 2 usage error or an input that cannot be read, nothing on stdout; 3 checked nothing (no note matches, or no `.lean` file under SRC_ROOT); 4 the self-test failed. `--selftest`: 0 all pass, 4 any fails, 2 an unknown id after `--only`.
+- `build_site.py`: 0 built; 1 refused, nothing written (an error of `notes_meta.py`, a strings key missing or a forbidden word, a build rule that failed, a non-empty OUT_DIR without `--force`, a release line found in an output); 2 usage error, an input that cannot be read or a site that cannot be written (one line, nothing on stdout, nothing left behind); 3 checked nothing (no note matches, or no `.lean` file under SRC_ROOT); 4 the self-test failed. `--selftest`: 0 all pass, 4 any fails, 2 an unknown id after `--only`.
 - `in_closure.py`: 0 only if every site is INSIDE or OUTSIDE; 1 for an AMBIGUOUS or NOT A MODULE site, or no site; 2 usage or input error, or a control equal to the start; 3 a broken control.
 - `import_closure.py`: 0 printed; 1 unresolved imports under the root's own folders (closure would be under-counted); 2 usage error or no file for the start module.
