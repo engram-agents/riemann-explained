@@ -1435,6 +1435,32 @@ def _():
        ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 3 notes: 01-a.md, 02-b.md, 03-c.md"], 1)
 
 
+@case("ID5", "two notes with an empty header id: the two HEADER-PROBLEMs and no NOTE-ID-DUPLICATE")
+def _():
+    fe(go(notes={"01-a.md": NOTE(nid=""), "02-b.md": NOTE(nid="")}),
+       ["HEADER-PROBLEM 01-a.md:2 id: missing or not a non-empty string", "HEADER-PROBLEM 02-b.md:2 id: missing or not a non-empty string"], 1)
+
+
+@case("ID6", "the duplicate finding is in line order among the first note's findings: line 2 before a block problem at line 7")
+def _():
+    first = NOTE(body="Some text.\n" + BL(kind="nope") + "\n")
+    fe(go(notes={"01-a.md": first, "02-b.md": NOTE()}),
+       ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 2 notes: 01-a.md, 02-b.md",
+        "BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument"], 1)
+
+
+@case("ID7", "ids compare as exact strings: a trailing space makes another id, and so do two Unicode forms of one accented letter")
+def _():
+    clean(go(notes={"01-a.md": NOTE(nid="01"), "02-b.md": NOTE(nid="01 ")}))
+    clean(go(notes={"01-a.md": NOTE(nid="café"), "02-b.md": NOTE(nid="café")}))
+
+
+@case("ID8", "only a note's first header counts: a second header that reuses another note's id gets SECOND-HEADER and no NOTE-ID-DUPLICATE")
+def _():
+    second = NOTE(nid="02", body="Text.\n" + rh.format_comment("rh-note", {"id": "01"}) + "\n")
+    fe(go(notes={"01-a.md": NOTE(nid="01"), "02-b.md": second}), ["SECOND-HEADER 02-b.md:7 2 rh-note headers, on lines 2, 7"], 1)
+
+
 @case("M3b", "a block id used twice, in one note or in two, is DUPLICATE-ID naming both places")
 def _():
     two = NOTE(body="Some text.\n" + BL() + "\n" + BL() + "\n")
@@ -1956,7 +1982,8 @@ def _():
 def _():
     one = [R("A.B", "foo")]
     pre = "BAD-VALUE outline.json group 'g1' claim: basis must be 'read' or 'census' (the value is of type "
-    for v, t in (("", "string"), ("Read", "string"), ("CENSUS", "string"), ("reading", "string"), (None, "null"), (["read"], "list"),
+    for v, t in (("", "string"), ("Read", "string"), ("CENSUS", "string"), ("reading", "string"), (" read", "string"),
+                 ("read ", "string"), ("read\n", "string"), (None, "null"), (["read"], "list"),
                  (1, "number"), (1.5, "number"), (True, "boolean"), ({"a": 1}, "object")):
         fe(go(outline=OL(G("g1", roots=one, claim=dict(CLAIM, basis=v)))), [pre + t + ")"], 1)
 
