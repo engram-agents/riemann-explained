@@ -104,8 +104,10 @@ number after the note name is the 1-based line in the CURRENT file as it is on d
 not an anchor line of the note, the anchor lines being those rh_anchor.parse_note reports; a malformed rh- line is text and
 is not one), and the message gives the index in the text without anchors too. When the current file has a line at the first
 differing index (extra text) the number is that line's own number; when it has NO line there (text missing, `<no line>` on the
-now side) there is nothing to point at, and the number is the line after the last non-anchor line of the current file, or 1
-when there is none; trailing anchor lines do not shift either number. Both sides are
+now side) there is no line to point at, and the number points at the first line PAST the text, "past the end": the line
+after the last non-anchor line of the current file, which is an anchor line when anchors trail the text and otherwise one
+past the last line of the file (a line that is not there, so do not look for it), or 1 when there is no non-anchor line
+(an empty file, or one that holds only anchor lines). Trailing anchor lines do not shift either number. Both sides are
 stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
 result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
 with no line, and the other notes are still compared. "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
