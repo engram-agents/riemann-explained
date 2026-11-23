@@ -315,7 +315,8 @@ def _selftest_cases():
     def _():
         rc, out, _e, tabs = _go({"A.lean": "def t := 1\n", "B.lean": "def t := 1\n"})
         s = _sum(out)
-        got = (rc, [(r["module"], r["name"]) for r in tabs["decls"][2]], tabs["dup"][2], tabs["dup"][1] == COLS,
+        got = (rc, [(r["module"], r["name"]) for r in tabs["decls"][2]], tabs["dup"][2],
+               tabs["dup"][1] == ["module", "name", "kind", "first_line", "last_line", "basis"],
                (s.get("unique"), s.get("dup"), s.get("dup_rows")))
         return _eq(got, (0, [("A", "t"), ("B", "t")], [], True, (2, 0, 0)))
 
@@ -369,7 +370,7 @@ def _selftest_cases():
         _rc, _o, _e, tabs = _go({"A.lean": "def a := 1\n"})
         lines = tabs["decls"][0]
         ok = (len(lines) > 1 and lines[0].startswith("# decl_table.py | source: ") and "text extent" in lines[0]
-              and "NOT Lean" in lines[0] and lines[1] == "\t".join(COLS) and lines[0] == (tabs["dup"][0] or [""])[0])
+              and "NOT Lean" in lines[0] and lines[1] == "module\tname\tkind\tfirst_line\tlast_line\tbasis" and lines[0] == (tabs["dup"][0] or [""])[0])
         return ok, f"got {lines[:2]!r}, dup first line {(tabs['dup'][0] or [''])[0]!r}"
 
     def _ext(tabs):
@@ -513,11 +514,11 @@ def _selftest_cases():
         for key in ("decls", "dup"):
             lines, cols, rows = tabs[key]
             body = [ln for ln in lines if not ln.startswith("#")]
-            if cols != COLS:
+            if cols != ["module", "name", "kind", "first_line", "last_line", "basis"]:
                 bad.append((key, "columns", cols))
             for ln in body[1:]:
                 f = ln.split("\t")
-                if len(f) != 6 or "" in f or f[5] != BASIS:
+                if len(f) != 6 or "" in f or f[5] != "text-extent":
                     bad.append((key, ln))
         n = (len(tabs["decls"][2]), len(tabs["dup"][2]))
         return (not bad and n == (4, 2)), f"rows {n}, bad {bad!r}"
