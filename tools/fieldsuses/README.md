@@ -1,6 +1,6 @@
 # fields/uses: which hypotheses and fields a Lean proof term uses
 
-> **Read this before citing a verdict.** A report with `complete: false` supports **no** `unused` claim, and no `in_types_only` claim either: the walk stopped (term budget or depth limit), and a binder it did not reach is labelled `not_reached`. A note may cite an `unused` verdict only from a report with `complete: true`, and should say which tool version and options produced it.
+> **Read this before citing a verdict.** A report with `complete: false` supports **no** `unused` claim, and no `in_types_only` claim either: the walk stopped (term budget or depth limit), and a binder it did not reach is labelled `not_reached`. A note may cite an `unused` verdict only from a report with `complete: true`, and should say which tool version and options produced it. A `who_reads` list is a **lower bound**: it shows readers the tool found, never that no other reader exists (see Known limits: `partial def` readers are missed, and its scope and skip rules have no control yet).
 
 A small Lean 4 program that reads the **elaborated proof terms** of a compiled release and answers, for one declaration:
 
@@ -10,7 +10,7 @@ A small Lean 4 program that reads the **elaborated proof terms** of a compiled r
   - `passed_whole`: it is an explicit argument to another constant. The report names the callee and the argument position. With `--follow N`, the tool reads what the callee does with that argument, up to depth N, and says where it stopped.
   - `instance_only`: it fills only instance-implicit slots (found by instance search). Source text never shows these uses.
   - `returned`: it is the body itself, or a field of the structure the body builds.
-  - `in_types_only`: it occurs only inside types (binder types, eliminator motives) or in implicit and strict-implicit argument slots. It is shown only when no other label applies. An implicit slot gets this label even when the callee's own proof uses that argument, so `in_types_only` does not mean "does not matter for the proof".
+  - `in_types_only`: it occurs only inside types (binder types, and an eliminator's motive where the eliminator takes it as an implicit argument, as `subst` and `▸` produce) or in implicit and strict-implicit argument slots. A motive written as an explicit function argument (from `rw`, or `congrArg (fun x => …)`) is walked as a value; see Known limits. It is shown only when no other label applies. An implicit slot gets this label even when the callee's own proof uses that argument, so `in_types_only` does not mean "does not matter for the proof".
 - **`flows_into`** (in the same report): which fields of the structure a declaration builds contain the binder.
 - **`who_reads S.field`**: every declaration of the modules given with `--module` (widened with `--scan-prefix P`) whose term reads that field: through `Expr.proj`, the projection function, or `casesOn` (directly or inside a `match`) with the field's variable used. Generated declarations (matchers, `noConfusion`, internal helpers) are counted, not listed.
 
@@ -30,7 +30,7 @@ lean --run FieldsUses.lean -- --module Some.Module [--follow N] uses Full.Decl.N
 
 The output is JSON. It starts with a scope header: the Lean version, the modules requested, the module count loaded, the query and the options. Each `uses` report says `complete` and how many subterms it visited.
 
-**Memory.** Run every `lean` inside a memory-capped scope, e.g. `systemd-run --user --scope -q -p MemoryMax=10G -p MemorySwapMax=0 nice -n 15 lean …`; `run_controls.py` does this for every call. `--budget N` (default 2,000,000) caps the subterms one `uses` query visits: past it the walk stops, the report says `complete: false` with a note, and no label is claimed for the unread part.
+**Memory.** Run every `lean` inside a memory-capped scope, e.g. `systemd-run --user --scope -q -p MemoryMax=10G -p MemorySwapMax=0 nice -n 15 lean …`; `run_controls.py` does this for every call. `--budget N` (default 2,000,000) caps the subterms one walk visits (the declaration's own walk; under `--follow`, each followed callee's walk has its own budget, so one query can visit several budgets' worth): past it the walk stops, the report says `complete: false` with a note, and no label is claimed for the unread part.
 
 Errors are loud:
 - exit 3: a requested module has no `.olean` (not compiled yet);
@@ -73,4 +73,6 @@ The mutation check plants four bugs, one at a time, with `--mutate`, and require
 - A declaration whose value is eta-reduced (`theorem f : p → q := g`) has fewer leading binders than its type; the report lists only the value's binders and does not say so.
 - Under `--follow`, the top-level `complete` covers the declaration's own walk only; each followed callee has its own `complete`, which can be false under a true top-level flag.
 - Untested branches: an `Expr.proj` node and its field-name lookup. Source-written projections elaborate to projection-function applications, so no control here produces an `Expr.proj`; it appears in elaborated helpers.
+- A motive passed as an explicit lambda (`rw`, `congrArg (fun x => Q hp x) h`) is walked as a value: a hypothesis that occurs only there reads `passed_whole` to the constant inside the lambda (here `Q`), and `--follow` shows what that constant does with it (in the reviewer's probe that found this, nothing); `subst` and `▸` give `in_types_only`, as stated above. In this shape the error reports a use where there is none; it does not report an absence.
+- A hypothesis inside a lambda argument (`useFun (fun _ => hp)`) is reported as `passed_whole` to the callee at that position, although what is passed is a function returning it. `--follow` then describes what the callee does with the function, not with the hypothesis (a reviewer's probe found this).
 - Callees named `<local function>`, `<lambda>` and `let y` stay in the occurrence list but are not reported under `passed` and are never followed.
