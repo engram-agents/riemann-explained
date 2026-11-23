@@ -1605,6 +1605,44 @@ def _():
     eq((r.f, r.rc), ([], 0), "an anchor added after a last line with no newline: " + r.out)
 
 
+@case("Z1", "a last anchor line with no line ending of its own also takes the line ending before it (rh_anchor's strip rule): the note reads as a one-line-ending "
+            "difference; with a final newline after the anchor it is equal")
+def _():
+    base = NOTE(body="Text.\n")
+    fe(go(notes={"01-a.md": NOTE(body="Text.\n" + BL())}, committed={"01-a.md": base}, base="HEAD"),
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Text.\\n', now (without anchors) 'Text.'"], 1)
+    r = go(notes={"01-a.md": NOTE(body="Text.\n" + BL() + "\n")}, committed={"01-a.md": base}, base="HEAD")
+    eq((r.f, r.rc), ([], 0), r.out)
+
+
+def _z2(now_body):
+    return go(notes={"01-a.md": NOTE(body=now_body)}, committed={"01-a.md": NOTE(body="Some text.\nMore text.\n")}, base="HEAD")
+
+
+@case("Z2a", "a change confined to the last line, the line count the same, is a BYTE-DIFF at that line")
+def _():
+    fe(_z2("Some text.\nMore texts.\n"),
+       ["BYTE-DIFF 01-a.md:6 line 6 differs: at HEAD (without anchors) 'More text.\\n', now (without anchors) 'More texts.\\n'"], 1)
+
+
+@case("Z2b", "a trailing space on a line is a BYTE-DIFF")
+def _():
+    fe(_z2("Some text. \nMore text.\n"),
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Some text.\\n', now (without anchors) 'Some text. \\n'"], 1)
+
+
+@case("Z2c", "a leading space on a line is a BYTE-DIFF")
+def _():
+    fe(_z2(" Some text.\nMore text.\n"),
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Some text.\\n', now (without anchors) ' Some text.\\n'"], 1)
+
+
+@case("Z2d", "a change of letter case on a line is a BYTE-DIFF")
+def _():
+    fe(_z2("some text.\nMore text.\n"),
+       ["BYTE-DIFF 01-a.md:5 line 5 differs: at HEAD (without anchors) 'Some text.\\n', now (without anchors) 'some text.\\n'"], 1)
+
+
 @case("B1d", "a note not present at REV is NEW-NOTE (a listing, exit unchanged); without --base the summary says the byte check did not run")
 def _():
     r = go(notes={"01-a.md": CUR, "02-b.md": NOTE(nid="02")}, committed={"01-a.md": T0}, base="HEAD")
