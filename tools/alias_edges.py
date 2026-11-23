@@ -421,6 +421,18 @@ def _selftest_cases():
         return _eq((tabs["aliases"][2], tabs["aliases_odd"][2]),
                    ([], [dict(public_name="odd", x1="L.a", x2="L.b", x3="L.a", file="Odd.lean", line="1", reason="unequal_x", tail="")]))
 
+    @case("A2c", "only the THIRD X differs: one aliases_odd.tsv row (unequal_x, x1 = x2, x3 the other), none in aliases.tsv")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"Odd.lean": _W("odd", "A.t", "A.t", "A.other")})
+        return _eq((tabs["aliases"][2], _pairs(tabs, "aliases_odd", "public_name", "x1", "x2", "x3", "reason")),
+                   ([], [("odd", "A.t", "A.t", "A.other", "unequal_x")]))
+
+    @case("A2d", "only the SECOND X differs: one aliases_odd.tsv row (unequal_x), none in aliases.tsv")
+    def _():
+        _rc, _o, _e, tabs, _n = _go({"Odd.lean": _W("odd", "A.t", "A.other", "A.t")})
+        return _eq((tabs["aliases"][2], _pairs(tabs, "aliases_odd", "public_name", "x1", "x2", "x3", "reason")),
+                   ([], [("odd", "A.t", "A.other", "A.t", "unequal_x")]))
+
     def decl(ns, name="main"):
         return f"namespace {ns}\ntheorem {name} : P := sorry\nend {ns}\n"
 
