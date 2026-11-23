@@ -861,6 +861,13 @@ def _selftest_cases():
         return _eq((_pairs(tabs, "callers", "name", "kind", "file", "line", "in_comment"), _pairs(tabs, "uncalled", "name", "kind")),
                    ([("N.A.x", "target", "Use/U.lean", "1", "0")], [("N.w", "alias")]))
 
+    @case("NS9", "`section S` adds no lookup level, only `namespace` components do; a wrapper in a real `namespace N.S` does use N.S.A.x")
+    def _():
+        in_section = "namespace N\nsection S\n" + _W("w", "A.x") + "end S\nend N\n"
+        _rc, _o, _e, tabs, _n = _go({"D/One.lean": decl("N", "A.x"), "D/Two.lean": decl("N.S", "A.x"),
+                                     "Pub/W.lean": in_section, "Pub/V.lean": inside("N.S", _W("v", "A.x"))})
+        return _eq(by_pub(tabs), {"N.w": ("D/One.lean", "2", "1"), "N.S.v": ("D/Two.lean", "2", "1")})
+
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
         _rc, _o, _e, _t, n = _go({**PUB_ALPHA, "Use/E.lean": "theorem z : P := Lib.alpha_core\n"}, count_reads=True)
