@@ -83,14 +83,20 @@ verified, explained, understood (or any word of `forbidden_words`), a percent si
 builder refuses today, the merged checker does not yet); a reading, argument,
 interpretation or correction block with no reader or no date; read + partly + not read not adding up to the steps; a link on the page with no target; a number
 on the page that is in no JSON file; a group id that is not safe as a file name. `--source-check SRC_ROOT` compares
-the text lines of every output with the lines of the release (at least 20 non-space characters) and says what it
-ranged over; names and ids are left out by construction. `--notes-commit REV --repo DIR` stamps the notes commit; a
+the text lines of every output, and the source lines of every copied note text (an argument or interpretation
+paragraph, a note title) before they are joined, with the lines of the release (at least 20 non-space characters), and
+says what it ranged over; names and ids are left out by construction. What it shows is narrow: no output line equals a
+release line and no line of copied note text equals one; a release line quoted inside a longer sentence is not
+detected. `--notes-commit REV --repo DIR` stamps the notes commit; a
 tree whose notes, outline or strings differ from it, or whose tools differ from their commit, stamps `dirty` in every
 commit id and on the page. A fresh run into a non-empty OUT_DIR refuses unless `--force`, which removes only what a
 build writes. The site is written into a temporary directory beside OUT_DIR and renamed into place, so a failure
 leaves OUT_DIR absent or the old build as it was; a failure to write is exit 2 with one line. Text from the notes and
 the outline (claims, conditions, note titles, argument and interpretation text) is not refused for those words: each
-hit is listed as `WORD-NOTE <where> <word>` on stdout, the exit code is unchanged and the text is never edited. The
+hit is listed as `WORD-NOTE <where> <word>` on stdout, the exit code is unchanged and the text is never edited. For
+`of the proof` the listing is narrower than the refusal in the strings file (which takes any occurrence): in the notes'
+text only a number, a percent sign or a quantity word (half, third, quarter, most, part, fraction, portion, share,
+majority, all; the list is provisional) immediately before it is listed, so a title like `the top of the proof` is not. The
 LIMIT paragraph in the file lists what is not checked.
 `python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--force]`
 
