@@ -892,7 +892,7 @@ def one(block, field, note_id=None, word=None):
 def _():
     valid = [
         MF(), MF(check="index"), MF(check="proofterm", complete=True), MF(options="--x"),
-        vb(), vb(kind="interpretation"), vb(kind="correction"),
+        vb(), vb(kind="interpretation", reader="R", date="2026-11-23"), vb(kind="correction"),
         vb(decls=[DECL], file="F.lean", lines=[1, 2], reader="R", date="2026-11-23"),
         vb(kind="not_read", needs="callers"),
         vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL]),
@@ -1103,6 +1103,79 @@ def _():
         except ValueError:
             continue
         raise AssertionError(f"no ValueError for comment {c!r}")
+
+
+# ---- reviewer round: K (discriminating cases for existing behaviour) and V (new rules)
+@case("K1", "a backtick opener whose info string holds a backtick is not a fence")
+def _():
+    h, b, m = parse_note("```x``` y\n" + B(1) + "\n")
+    eq((len(b), len(m)), (1, 0), "one block, no problem")
+
+
+@case("K2", "next_block_id ignores an id with an absurd digit run and does not raise")
+def _():
+    eq(next_block_id("15", ["15.b" + "9" * 5000]), "15.b01", "5000 digits")
+
+
+@case("K3", "complete must be exactly true or false on a machine_fact; proofterm needs true")
+def _():
+    one(MF(check="proofterm", complete=1), "complete", word="proofterm")
+    one(MF(check="proofterm", complete=1.0), "complete", word="proofterm")
+    one(MF(check="text", complete=0), "complete")
+    one(MF(check="text", complete="no"), "complete")
+    one(MF(check="text", complete=1), "complete")
+    one(MF(check="text", complete=None), "complete")
+    eq(problems(MF(check="text", complete=True)), [], "true on text")
+    eq(problems(MF(check="proofterm", complete=True)), [], "true on proofterm")
+
+
+@case("K4", "target type other: a thematic break and ordered list items")
+def _():
+    eq(parse_note("***\n" + B(1) + "\n")[1][0].target, X("other", 1, 1), "***")
+    eq(parse_note("1. x\n" + B(1) + "\n")[1][0].target, X("other", 1, 1), "1.")
+    eq(parse_note("2) x\n" + B(1) + "\n")[1][0].target, X("other", 1, 1), "2)")
+    eq(parse_note("***bold*** x\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 1), "emphasis is a paragraph")
+
+
+@case("V1", "interpretation needs a non-empty reader and date; other kinds are not extended")
+def _():
+    eq(problems(vb(kind="interpretation", reader="R", date="2026-11-23")), [], "valid")
+    one(vb(kind="interpretation", date="2026-11-23"), "reader")
+    one(vb(kind="interpretation", reader="R"), "date")
+    one(vb(kind="interpretation", reader="", date="2026-11-23"), "reader")
+    one(vb(kind="interpretation", reader="R", date=5), "date")
+    eq(len(problems(vb(kind="interpretation"))), 2, "both missing")
+    eq(problems(vb(kind="correction")), [], "correction unchanged")
+    eq(problems(vb(kind="reading")), [], "reading unchanged")
+    eq(problems(vb(kind="not_read", needs="route")), [], "not_read unchanged")
+
+
+@case("V2", "file is a non-empty str; lines two ints >= 1 with first <= last; col needs row")
+def _():
+    eq(problems(vb(file="F.lean", lines=[1, 1])), [], "valid, equal ends")
+    one(vb(file=""), "file")
+    one(vb(file=5), "file")
+    one(vb(lines=[2, 1]), "lines")
+    one(vb(lines=[0, 1]), "lines")
+    one(vb(lines=[1]), "lines")
+    one(vb(lines=[1, "2"]), "lines")
+    one(vb(lines=[True, 2]), "lines")
+    one(vb(lines="1-2"), "lines")
+    one(vb(col=2), "col", word="row")
+    eq(problems(vb(row=1)), [], "row alone is fine")
+    eq(problems(vb(row=1, col=1)), [], "row and col")
+
+
+@case("V3", "format_comment escapes U+2028, U+2029 and U+0085, so the canonical comment is one line")
+def _():
+    d = {"t": "a b c\x85d"}
+    line = format_comment("rh-note", d)
+    eq(line, '<!-- rh-note {"t":"a\\u2028b\\u2029c\\u0085d"} -->', "literal")
+    eq(len(line.splitlines()), 1, "one line under str.splitlines")
+    h, b, m = parse_note(line + "\n")
+    eq((len(h), len(m), h[0].data, h[0].canonical), (1, 0, d, True), "round trip")
+    h, b, m = parse_note('<!-- rh-note {"t":"a b"} -->\n')
+    eq((len(h), h[0].canonical), (1, False), "a raw U+2028 in a hand-written line is not canonical")
 
 
 @case("CONST", "the closed lists, in order")
