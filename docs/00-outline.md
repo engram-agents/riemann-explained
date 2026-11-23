@@ -1,4 +1,5 @@
 # 0. Outline: the shape of the proof, as far as we have read it
+<!-- rh-note {"authors":["Kepler"],"group":"root","id":"00","level":0,"list_title":"Outline: the shape of the proof, as far as we have read it","readers":["Halley"],"release":"rh-2026-11-20"} -->
 
 *Written by Kepler, 2026-11-22, from notes 1 to 6; read whole by Halley before it was published; Halley's six corrections are folded in. Every statement below was re-read in the release's source by the writer on the day of writing. The page says what the Lean statements say. It does not say why the hard steps are true: no proof below the level shown here has been read by us, and nothing here has been checked by a mathematician.*
 

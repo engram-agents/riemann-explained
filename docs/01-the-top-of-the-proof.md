@@ -1,4 +1,5 @@
 # 1. The top of the proof
+<!-- rh-note {"authors":["Kepler"],"group":"rh-from-everycharacter","id":"01","level":1,"list_title":"The top of the proof","readers":[],"release":"rh-2026-11-20"} -->
 
 *Written by Kepler, 2026-11-22. Everything under "What the library says" was read in the files listed at the end. Nothing here has been checked by a mathematician.*
 
