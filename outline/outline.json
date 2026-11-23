@@ -2,6 +2,7 @@
  "groups": [
   {
    "claim": {
+    "basis": "read",
     "conventions_checked": [
      "a",
      "c",
@@ -41,6 +42,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conventions_checked": [
      "a",
      "d"
@@ -68,6 +70,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "The hypothesis has no exception at s = 1, also for the character of modulus 1 (whose L-function is ζ): it holds there only because Lean gives ζ(1) the defined value (γ − log 4π)/2, which is not 0, where mathematics has a pole."
     ],
@@ -136,6 +139,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "'A HypsAlt structure' means the statement assumes Nonempty (HypsAlt …): one inhabitant exists. Closed, LinkN and DefiniteSideCondition are not opened and keep the library's names."
     ],
@@ -225,6 +229,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "HostExW la: for each ε with 0 < ε < 1/52 there are constants and an la-family of scales such that every scale of the family with that ε, beyond a starting point, has a host meeting HostGood and the requirement.",
      "The same la serves every ψ; on Main's route la = 3/2. TopG is a statement about every requirement; here it is used for GChi ψ."
@@ -337,6 +342,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "The theorem is generic in a family type (Fam), in a map from a family to its core data (core) and in one family condition (Tied); on Main's route they are FamP, the map Fm.toFamCore and ChainTied (ZeroFreeAllOfTopG.lean 28). Both named conditions are defined through ChebyshevInequalityOnFamilyWindows (TopWin 23-33). Level.ofSub, EFamC and the family fields are not opened, so the level and the two conditions keep the library's names."
     ],
@@ -451,6 +457,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "EAtH and CoreAtH are the library's names for two conditions at x, each on the host, a finite set TT, ε and some of the constants (EAtH also on the level); they are not opened here. eD, eL, K, cHH, eK and C are real constants with no condition on them; eD, eL, K, cHH and eK are arguments of CoreAtH, C of EAtH, and eD and eL also set the exponent."
     ],
@@ -545,6 +552,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "Gm is a weighted sum, over the family, of smoothed twisted von Mangoldt sums Σ Λ(n)χ(n)(y/n − 1) with the main term subtracted: y log y − (1+γ)y for the trivial character, and a term y·L′(χ,1)/L(χ,1) otherwise (L(χ,1) ≠ 0 for χ ≠ 1 is Mathlib's theorem, so the quotient is a real value).",
      "The constant C is any real number; the windows are: for every Y₀ there is Y ≥ Y₀ with the bound on all of [Y, Y^(1+δ)]."
@@ -635,6 +643,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "The product is over i = 1, …, d − 1 and is computed in ℂ, so there is no truncated subtraction; the formula's sign (−1)^(d−1) uses natural-number subtraction, which is safe only because Green assumes 0 < d.",
      "IsCusp, Gn, thetaOf, rootsBar and Mt are not opened."
@@ -719,6 +728,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conventions_checked": [
      "d"
     ],
@@ -793,6 +803,7 @@
   },
   {
    "claim": {
+    "basis": "census",
     "conditions": [
      "Counted by a regex over the structure's field lines, not by a parse: 46 field lines, 16 of them containing Closed."
     ],
@@ -842,6 +853,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conventions_checked": [
      "e"
     ],
@@ -874,6 +886,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "The bound is only as strong as the families that exist; their existence is ChebyshevInequalityAtWindowScale, supplied on Main's route by TopG and the hosts. FamP, EFamC and ChainTied are not opened.",
      "'ChainTied on its windows, with constants eD and eL' is the library's ChebyshevInequalityOnFamilyWindows (TopWin 23-24): for some further constants K, cHH, eK and CL, ChainTied holds at every large x in the family's windows. ChebyshevInequalityOnWindows, which this theorem concludes, is defined through it (TopWin 26-28)."
@@ -980,6 +993,7 @@
   },
   {
    "claim": {
+    "basis": "read",
     "conditions": [
      "Proved for every level (Imports.lean 8-19), so it is a fact of the library, not an input. KSet / Level.KEPT and level_family are not opened."
     ],
