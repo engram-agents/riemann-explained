@@ -258,11 +258,34 @@ def _table(path):
     return lines, cols, [dict(zip(cols, ln.split("\t"))) for ln in body[1:]]
 
 
-def _go(files):
+class _SkipCase(Exception):
+    """Raised by a case that cannot set up its plant on this system; the case is reported SKIP."""
+
+
+def _plant_unreadable(root, rel):
+    """A `.lean` entry that cannot be read: a dangling symlink, else a mode-000 file (not as root)."""
+    p = os.path.join(root, *rel.split("/"))
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    try:
+        os.symlink(os.path.join(root, "no-such-target"), p)
+        return
+    except OSError:
+        pass
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        with open(p, "w") as f:
+            f.write("def a := 1\n")
+        os.chmod(p, 0)
+        return
+    raise _SkipCase("cannot plant an unreadable .lean entry here")
+
+
+def _go(files, prep=None):
     with tempfile.TemporaryDirectory() as d:
         root, out = os.path.join(d, "src"), os.path.join(d, "out")
         os.makedirs(root)
         _plant(root, files)
+        if prep:
+            prep(root)
         buf, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
             rc = run(root, out)
@@ -439,6 +462,20 @@ def _selftest_cases():
         r = _row(tabs, "files", "A")
         return _eq((r["whole_mathlib"], r["imp_ext"]), ("1", "Mathlib:1"))
 
+    @case("S2d", "a top-level FILE counts as an own top-level name: `import Top.Missing` is UNRESOLVED, exit 1")
+    def _():
+        rc, out, _e, _t = _go({"Top.lean": "def t := 1\n", "Sub/A.lean": "import Top.Missing\n"})
+        return _eq((rc, "UNRESOLVED Top.Missing 1" in out.splitlines()), (1, True))
+
+    @case("S1c", "an unreadable .lean entry: UNREADABLE <relpath> printed and counted, row decode ERROR with '-' counts, files.tsv complete, exit 1")
+    def _():
+        rc, out, _e, tabs = _go({"Good.lean": "def g := 1\n"}, prep=lambda root: _plant_unreadable(root, "sub/X.lean"))
+        r = _row(tabs, "files", "sub.X")
+        dash = {k: "-" for k in FILES_COLS[1:-1]}
+        got = (rc, "UNREADABLE sub/X.lean" in out.splitlines(), "undecodable 1" in out, len(tabs["files"][2]),
+               {k: r[k] for k in dash}, r["decode"], _row(tabs, "files", "Good")["decode"])
+        return _eq(got, (1, True, True, 2, dash, "ERROR", "ok"))
+
     @case("S3a", "a block-commented import before a real import: the commented one is not an edge, the real one is")
     def _():
         _rc, _o, _e, tabs = _go({"Entry.lean": "/-\nimport Hidden\n-/\nimport Real\n", "Hidden.lean": "", "Real.lean": ""})
@@ -557,6 +594,8 @@ def selftest(verbose=True, exclude=()):
             continue
         try:
             good, detail = fn()
+        except _SkipCase as e:
+            good, detail = None, str(e)
         except Exception as e:  # a crash is a failed case, not a skipped one
             good, detail = False, f"{type(e).__name__}: {e}"
         if good is None:

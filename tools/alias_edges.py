@@ -337,11 +337,34 @@ def _table(path):
 TABLES = ["aliases", "aliases_odd", "alias_candidates", "refs", "callers", "uncalled"]
 
 
-def _go(files, count_reads=False):
+class _SkipCase(Exception):
+    """Raised by a case that cannot set up its plant on this system; the case is reported SKIP."""
+
+
+def _plant_unreadable(root, rel):
+    """A `.lean` entry that cannot be read: a dangling symlink, else a mode-000 file (not as root)."""
+    p = os.path.join(root, *rel.split("/"))
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    try:
+        os.symlink(os.path.join(root, "no-such-target"), p)
+        return
+    except OSError:
+        pass
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        with open(p, "w") as f:
+            f.write("def a := 1\n")
+        os.chmod(p, 0)
+        return
+    raise _SkipCase("cannot plant an unreadable .lean entry here")
+
+
+def _go(files, count_reads=False, prep=None):
     with tempfile.TemporaryDirectory() as d:
         root, out = os.path.join(d, "src"), os.path.join(d, "out")
         os.makedirs(root)
         _plant(root, files)
+        if prep:
+            prep(root)
         buf, err = io.StringIO(), io.StringIO()
         reads = [0]
         real = globals()["read_text"]
@@ -726,23 +749,35 @@ def _selftest_cases():
         rc, out, _e, tabs, _n = _go({**PUB_ALPHA, "sub/Bad.lean": b"theorem \xff\n"})
         return _eq((rc, "UNDECODABLE sub/Bad.lean" in out.splitlines(), "undecodable 1" in out, len(tabs["aliases"][2])), (1, True, True, 1))
 
+    @case("D2b", "an unreadable .lean entry: UNREADABLE <relpath> printed and counted, exit 1, no traceback, the other files still processed")
+    def _():
+        rc, out, _e, tabs, _n = _go(PUB_ALPHA, prep=lambda root: _plant_unreadable(root, "sub/X.lean"))
+        return _eq((rc, "UNREADABLE sub/X.lean" in out.splitlines(), "undecodable 1" in out, len(tabs["aliases"][2])), (1, True, True, 1))
+
     return cases
 
 
 def selftest(verbose=True):
-    ok = True
+    ok, skipped = True, 0
     for cid, desc, fn in _selftest_cases():
         try:
             good, detail = fn()
+        except _SkipCase as e:
+            good, detail = None, str(e)
         except Exception as e:  # a crash is a failed case, not a skipped one
             good, detail = False, f"{type(e).__name__}: {e}"
+        if good is None:
+            skipped += 1
+            if verbose:
+                print(f"CASE {cid} SKIP {detail}")
+            continue
         ok = ok and bool(good)
         if verbose:
             print(f"CASE {cid} {'PASS' if good else 'FAIL'} {desc}")
             if not good:
                 print(f"  detail: {detail}")
     if verbose:
-        print("SELFTEST " + ("PASS" if ok else "FAIL"))
+        print("SELFTEST " + ("PASS" if ok else "FAIL") + (f" ({skipped} skipped)" if ok and skipped else ""))
     return 0 if ok else 4
 
 
