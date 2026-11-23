@@ -3,6 +3,16 @@
 These are text tools; they find where to read, they do not prove a dependency. Python 3, standard library
 only. Each one runs its own self-test first and refuses (exit 4) if it fails. `--selftest` shows the cases.
 
+A run that checks nothing (no `.lean` file under SRC_ROOT) writes nothing. If OUT_DIR already holds a file that run
+would have written, an earlier result looks like this run's to the next tool; so `scan_graph.py`, `alias_edges.py`
+and `decl_table.py` print one more line after `CHECKED NOTHING`, `OUT_DIR holds files from an earlier run: <names>;
+this run wrote nothing`, and keep exit 1. They do not delete the files.
+
+For whoever writes the next self-test: **the expected value in a case is a literal, never read back from the tool.**
+A case that computes its expectation with the code under test, or with a helper the tool exports, passes whatever
+the tool does. Write the number, the line or the list into the case, and run a wrong version of the tool (a copy)
+to see the case go red.
+
 **`tools/scan_graph.py SRC_ROOT OUT_DIR`** answers: which files exist, how big, what do they import?
 It writes `files.tsv` (one row per file, with word counts) and `edges.tsv` (one row per internal import).
 `python3 tools/scan_graph.py SRC_ROOT OUT_DIR`
@@ -30,6 +40,25 @@ outline, not the declaration table, not whether a table row exists. Markdown is 
 tables, one comment per line), not CommonMark; the LIMIT paragraph in the file lists what is not recognised.
 `python3 tools/rh_anchor.py --selftest`
 
+**`tools/notes_meta.py NOTES_DIR OUTLINE DECLS_TSV`** answers: is the metadata of the notes well formed, and does every
+name in it resolve to one row of `decls.tsv`? It reads the outline (every group, its parent, level, order,
+premises, roots and claim), each note's header and anchors, and, with options, more: `--src SRC_ROOT` checks that
+a block's `file` is in the note's file table and its `lines` are inside the file, `--strings PATH` lists blocks
+whose text opens with another kind's frame, `--base REV` checks that the note at REV equals the current note with
+its anchor lines removed, byte for byte (this needs the `git` program; `--repo DIR` names the repository when it is not the one around
+NOTES_DIR), `--glob PATTERN` changes which files are notes (default `[0-9][0-9]-*.md`, so this folder's
+`tools.md` is not one). The format of the comments is read only through `rh_anchor.py`. A finding is one line,
+`CODE path:line message`; `EXTENT-WARNING`, `FRAME-NOTE` and `NEW-NOTE` are listings and never fail the run. Each
+note prints `note <id> header ok, blocks N (kind=count ...)`, and the run ends with the counts by kind, what the
+in-file and byte checks did or did not do, and `N notes, M findings, K warnings`. It checks shape and resolution;
+it does not judge whether a claim is right, and the LIMIT paragraph in the file lists the title rules and the
+translation rules that need a reader. Every group needs at least one root; a group with a null claim and no root passed
+in the first version and is now a ROOT-COUNT error. The title rules the script applies are heuristics, named in the LIMIT. A block anchored to a list must name its top-level
+item (`item`, 1-based, counted across blank lines: a loose list is one list; nested items are not numbered); shapes of list a renderer may show differently are refused through a table
+that is empty until the renderer control is in. The run prints a count line for the outline (and for the strings file and the
+byte check when they ran); a header's group may be `root` only at level 0.
+`python3 tools/notes_meta.py NOTES_DIR outline.json decls.tsv [--src SRC_ROOT] [--strings strings.json] [--base REV]`
+
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
 file compiled before the start module (INSIDE, with one shortest import path) or not (OUTSIDE)? Give at
 least one control, a module you know is inside; if a control is not, the run stops and says BROKEN.
@@ -48,5 +77,6 @@ row. Exit codes, tool by tool (4 always means the self-test failed and nothing w
 - `alias_edges.py`: 0 even when unresolved or ambiguous targets or odd-shape rows are printed; 1 only for an undecodable or unreadable file or no `.lean` file; 2 usage error or SRC_ROOT not a directory.
 - `decl_table.py`: 0 even when duplicate (module, name) pairs are written; 1 only for an undecodable or unreadable file or no `.lean` file; 2 usage error or SRC_ROOT not a directory.
 - `rh_anchor.py --selftest`: 0 all cases pass; 1 any case fails; 2 usage error (it has no other command line); 3 no case ran. (It has no exit 4: it has no normal run to refuse.)
+- `notes_meta.py`: 0 every note passed (listings do not count); 1 any finding of class ERROR; 2 usage error or an input that cannot be read (a note or strings file that is not UTF-8, an outline or strings file that is not JSON, a decls row that is not six columns, a `--base` that is not a commit), nothing on stdout; 3 CHECKED NOTHING (no note matches, the outline has no groups, or decls.tsv has no rows); 4 the self-test failed. `--selftest`: 0 all pass, 1 any fails, 2 usage, 3 no case ran.
 - `in_closure.py`: 0 only if every site is INSIDE or OUTSIDE; 1 for an AMBIGUOUS or NOT A MODULE site, or no site; 2 usage or input error, or a control equal to the start; 3 a broken control.
 - `import_closure.py`: 0 printed; 1 unresolved imports under the root's own folders (closure would be under-counted); 2 usage error or no file for the start module.

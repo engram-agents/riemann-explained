@@ -40,9 +40,12 @@ CONTRACT
  quietly first and refuses (exit 4, nothing else reported) if it fails.
 
 SHARED API (importable, no side effects on import; the sibling tools use it): read_text, mask_comments,
-header_imports, walk_lean, provenance.
+header_imports, walk_lean, provenance, report_stale_output.
 
-LIMIT. A word count is a count of a word in the text, comments and strings included; it points to where
+LIMIT. A run that checks nothing (no `.lean` file) writes nothing, so an output file left in OUT_DIR by an earlier run is
+still there, and a tool that reads OUT_DIR next cannot tell it from this run's; the run names such files on stdout
+(STALE1) and keeps exit 1, it does not delete them.
+A word count is a count of a word in the text, comments and strings included; it points to where
 computation may sit and does not measure it. An import edge says the importer is compiled after the
 imported file; it does not say any proof in the importer uses anything in it. A string literal is not
 treated specially when comments are masked, so a `--` or `/-` inside a string starts a comment for the
@@ -202,6 +205,14 @@ def scan_text(text):
     return lines, c, header_imports(text)
 
 
+def report_stale_output(out, names):
+    """For a run that checked nothing and so wrote nothing: say which of the files it would have written already sit in
+    OUT_DIR (from an earlier run), because the next tool cannot tell them from this run's result."""
+    held = sorted(n for n in names if os.path.isfile(os.path.join(out, n)))
+    if held:
+        print("OUT_DIR holds files from an earlier run: " + ", ".join(held) + "; this run wrote nothing")
+
+
 def run(root, out):
     root = root.rstrip(os.sep) or root
     if not os.path.isdir(root):
@@ -210,6 +221,7 @@ def run(root, out):
     mods = walk_lean(root)
     if not mods:
         print("CHECKED NOTHING: no .lean file under SRC_ROOT")
+        report_stale_output(out, ("files.tsv", "edges.tsv"))
         return 1
     names = {m for m, _ in mods}
     own_tops = {m.split(".")[0] for m in names}
@@ -584,6 +596,49 @@ def _selftest_cases():
     def _():
         rc, out, _e, _t = _go({"readme.txt": "x"})
         return _eq((rc, "CHECKED NOTHING: no .lean file under SRC_ROOT" in out.splitlines()), (1, True))
+
+    @case("STALE1", "no .lean file and OUT_DIR already holds output of an earlier run: the message names those files and says this run "
+                    "wrote nothing, exit 1, the old files untouched; only the files present are named; control: a fresh OUT_DIR "
+                    "gets the CHECKED NOTHING line alone")
+    def _():
+        nothing = "CHECKED NOTHING: no .lean file under SRC_ROOT"
+        got = []
+        for planted in (('files.tsv', 'edges.tsv'), ('edges.tsv',), ()):
+            with tempfile.TemporaryDirectory() as d:
+                root, out = os.path.join(d, "src"), os.path.join(d, "out")
+                os.makedirs(root)
+                os.makedirs(out)
+                for n in planted:
+                    with open(os.path.join(out, n), "w", encoding="utf-8", newline="\n") as f:
+                        f.write("old\n")
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    rc = run(root, out)
+                kept = [open(os.path.join(out, n), encoding="utf-8").read() for n in planted]
+                got.append((rc, buf.getvalue().splitlines(), kept, sorted(os.listdir(out)) == sorted(planted)))
+        return _eq(got, [
+            (1, [nothing, 'OUT_DIR holds files from an earlier run: edges.tsv, files.tsv; this run wrote nothing'], ["old\n"] * 2, True),
+            (1, [nothing, 'OUT_DIR holds files from an earlier run: edges.tsv; this run wrote nothing'], ["old\n"], True),
+            (1, [nothing], [], True)])
+
+    @case("STALE2", "a DIRECTORY named like an output file is not a file an earlier run left: not listed; a file beside it is")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            root, out = os.path.join(d, "src"), os.path.join(d, "out")
+            os.makedirs(root)
+            os.makedirs(os.path.join(out, "files.tsv"))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = run(root, out)
+            first = buf.getvalue().splitlines()
+            with open(os.path.join(out, "edges.tsv"), "w", encoding="utf-8") as f:
+                f.write("old\n")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc2 = run(root, out)
+        return _eq((rc, first, rc2, buf.getvalue().splitlines()), (1, ["CHECKED NOTHING: no .lean file under SRC_ROOT"], 1, [
+            "CHECKED NOTHING: no .lean file under SRC_ROOT",
+            "OUT_DIR holds files from an earlier run: edges.tsv; this run wrote nothing"]))
 
     @case("AGREE1", "scan_graph's edges and import_closure.closure give the same closure for a header block comment hiding `import Hidden`")
     def _():

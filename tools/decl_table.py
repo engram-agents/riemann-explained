@@ -15,7 +15,8 @@ first_line = the 1-based keyword line; last_line = the 1-based last line of the 
 Rows are sorted by (module, first_line as a number, name, kind), so the output does not depend on the order the
 files were walked or on PYTHONHASHSEED.
 Stdout is two lines, printed whenever the tree was read, also when the exit is 1 for an undecodable or unreadable
-file. A run with no `.lean` file prints only the one `CHECKED NOTHING` line; exit 2 prints nothing to stdout:
+file. A run with no `.lean` file prints the `CHECKED NOTHING` line, then the stale-files line when OUT_DIR holds output of
+an earlier run (STALE1); exit 2 prints nothing to stdout:
   files N  declarations N  pairs unique U  pairs not unique D (rows R)  undecodable K
   not rows (counted lines): example E  instance without a name I
 U = distinct (module, name) pairs that occur once; D = distinct pairs that occur more than once; R = rows in
@@ -26,7 +27,7 @@ CONTRACT
  T1 Every `.lean` file is read once. A file that does not decode (`UNDECODABLE <relpath>`) or cannot be read at all
     (`UNREADABLE <relpath>`) is reported by path on stderr and counted in `undecodable`; the run still writes every
     other file's rows; the exit code is 1. No `.lean` file under SRC_ROOT: `CHECKED NOTHING: no .lean file under
-    SRC_ROOT` on stdout, exit 1, no table written. A usage error or a SRC_ROOT that is not a directory: exit 2. A
+    SRC_ROOT` on stdout (a stale-files line may follow, STALE1), exit 1, no table written. A usage error or a SRC_ROOT that is not a directory: exit 2. A
     failing self-test: exit 4, nothing else reported. Exit 0 otherwise, INCLUDING when duplicate pairs exist.
     Cases T1a T1b T1c T1d T1e T1f T1g EXIT4 (exit 0 with duplicates: T2a).
  T2 A (module, name) pair that occurs more than once is written, all of its rows, in decls.tsv AND in
@@ -62,7 +63,10 @@ CONTRACT
  mode-000 file stays readable. A normal run does the same quietly first and refuses (exit 4, nothing else
  reported) if it fails.
 
-LIMIT. A row is the text rule's extent of a named declaration. It is not Lean's extent and it does not say the
+LIMIT. A run that checks nothing (no `.lean` file) writes nothing, so an output file left in OUT_DIR by an earlier run is
+still there, and a tool that reads OUT_DIR next cannot tell it from this run's; the run names such files on stdout
+(STALE1) and keeps exit 1, it does not delete them.
+A row is the text rule's extent of a named declaration. It is not Lean's extent and it does not say the
 declaration is used or compiled. A block comment at column 0 after the last declaration is a boundary, so it is
 outside the extent (EOF5). A declaration inside a block comment
 is not read; one inside a string literal is (strings are not special-cased when comments are masked). A keyword
@@ -89,7 +93,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scan_graph import (_SkipCase, _plant, _plant_unreadable, _table, failure_word,  # noqa: E402
-                        mask_comments, provenance, read_text, walk_lean)
+                        mask_comments, provenance, read_text, report_stale_output, walk_lean)
 from lean_decls import DECL, parse_decls  # noqa: E402
 
 COLS = ["module", "name", "kind", "first_line", "last_line", "basis"]
@@ -128,6 +132,7 @@ def run(root, out, reader=None):
     mods = walk_lean(root)
     if not mods:
         print("CHECKED NOTHING: no .lean file under SRC_ROOT")
+        report_stale_output(out, ("decls.tsv", "decls_dup.tsv"))
         return 1
     rows, bad, n_example, n_instance = [], 0, 0, 0
     for module, path in mods:
@@ -514,12 +519,36 @@ def _selftest_cases():
         return _eq((rc, sorted(calls), _names(tabs)), (1, ["A.lean", "B.lean", "C.lean"], ["a", "b"]))
 
     # ---- T1f, T1g: what stdout holds on the two exits that print no summary
-    @case("T1f", "no .lean file: stdout is exactly the one line `CHECKED NOTHING: no .lean file under SRC_ROOT` (no summary line), "
+    @case("T1f", "no .lean file: stdout is exactly the one line `CHECKED NOTHING: no .lean file under SRC_ROOT` when OUT_DIR holds no old output (no summary line; STALE1 covers the stale-files line that may follow), "
                  "nothing on stderr; control: one .lean file prints the two summary lines")
     def _():
         rc, out, err, _t = _go({"readme.txt": "x"})
         rc1, out1, _e1, _t1 = _go({"A.lean": "def a := 1\n"})
         return _eq((rc, out, err, rc1, out1.count("\n")), (1, "CHECKED NOTHING: no .lean file under SRC_ROOT\n", "", 0, 2))
+
+    @case("STALE1", "no .lean file and OUT_DIR already holds output of an earlier run: the message names those files and says this run "
+                    "wrote nothing, exit 1, the old files untouched; only the files present are named; control: a fresh OUT_DIR "
+                    "gets the CHECKED NOTHING line alone")
+    def _():
+        nothing = "CHECKED NOTHING: no .lean file under SRC_ROOT"
+        got = []
+        for planted in (('decls.tsv', 'decls_dup.tsv'), ('decls_dup.tsv',), ()):
+            with tempfile.TemporaryDirectory() as d:
+                root, out = os.path.join(d, "src"), os.path.join(d, "out")
+                os.makedirs(root)
+                os.makedirs(out)
+                for n in planted:
+                    with open(os.path.join(out, n), "w", encoding="utf-8", newline="\n") as f:
+                        f.write("old\n")
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    rc = run(root, out)
+                kept = [open(os.path.join(out, n), encoding="utf-8").read() for n in planted]
+                got.append((rc, buf.getvalue().splitlines(), kept, sorted(os.listdir(out)) == sorted(planted)))
+        return _eq(got, [
+            (1, [nothing, 'OUT_DIR holds files from an earlier run: decls.tsv, decls_dup.tsv; this run wrote nothing'], ["old\n"] * 2, True),
+            (1, [nothing, 'OUT_DIR holds files from an earlier run: decls_dup.tsv; this run wrote nothing'], ["old\n"], True),
+            (1, [nothing], [], True)])
 
     @case("T1g", "SRC_ROOT not a directory (exit 2): nothing on stdout, a message on stderr; control: a directory prints the summary")
     def _():

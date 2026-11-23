@@ -16,7 +16,8 @@ API (the names are the contract)
   block_id_ok(note_id, block_id)    True iff block_id is `<note_id>.b<nn>`, nn two or more ASCII digits
   problems(block, note_id=None)     format-level check of one block dict; a list of strings, empty = fine
   header_problems(d)                the same for a header dict
-  target_at(text, line)             the element (paragraph, table, fence) that holds a 1-based line, or whose run of
+  item_at(text, line)               the 1-based top-level list item that holds a line (nested lines: the parent item)
+  target_at(text, line)             the element (paragraph, table, list, fence) that holds a 1-based line, or whose run of
                                     anchor lines holds it, else None
   next_block_id(note_id, used)      the next unused id of a note, never reusing a hole
   insert_after_line(text, line, c)  insert a comment as its own line after a 1-based line, in that file's line ending
@@ -39,7 +40,7 @@ CONTRACT (each line is a self-test case, written before the code)
  A4 Round trip: parse_note(format_comment(tag, d) + "\\n") is exactly one Item with data == d and canonical True, no
     Problem, for objects of str, int, bool, None, list, dict. Case A4.
  A5 Placement. A block's `target` is the nearest preceding non-blank element: paragraph, table, lean (a fence whose
-    info string starts `lean`), other (any other fence, heading, list item, quote, HTML line) or none. Each carries
+    info string starts `lean`), list, other (any other fence, heading, quote, HTML line) or none. Each carries
     first_line, last_line and insert_after (= last_line) and append_after (the last line of the run of anchor lines
     directly after the element, = insert_after when none follow); a table also ncols, nrows (body rows) and
     start_line. Anchor lines are not elements, so every anchor after a table has that table as its target. Callers
@@ -62,8 +63,9 @@ CONTRACT (each line is a self-test case, written before the code)
     interpretation needs reader and date (no other kind is extended); decls entries have str module and name; file
     (if present) a non-empty str; lines (if present) two ints >= 1, first not after last; col needs row;
     defs_opened (if present) is a list of {module, name, lines:[int,int]}; conventions_checked (if present) is a list
-    of "a".."e"; row and col (if present) are ints >= 1. Every problem string starts with the field name.
-    header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f.
+    of "a".."e"; second_readers (if present, any kind) is a list of {reader, date}, both non-empty strings (the list
+    may be empty); row and col (if present) are ints >= 1. Every problem string starts with the field name.
+    header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f, SR1-SR3, LN1.
  B3 target_at gives the element holding a line, None between elements; a line inside a table is held by the table, so
     the insertion line is the table's last line, never between rows. A line that is itself an anchor line directly
     after an element (any rh- line, malformed ones too) gets that element, so a caller can find append_after from any
@@ -74,17 +76,31 @@ CONTRACT (each line is a self-test case, written before the code)
 
 LIMIT. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
 row, column, declaration or file exists (a table's size is only reported), no date format, no order check on
-`lines`, no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
+`defs_opened[].lines` (a block's own `lines` IS order-checked: first not after last, B2), no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
 `conventions_checked` (open; they are validated when present and never required). Markdown is approximated by the
 rules in A2, A5 and A6, not CommonMark: a fence may be indented by any spaces or tabs, indented code blocks and HTML
 blocks are not recognised as fences, setext headings are not recognised, a table is a run of lines starting with `|`
-whose second line is a separator row (a paragraph line above it is not part of it), and a heading, list item, quote
+whose second line is a separator row (a paragraph line above it is not part of it), and a heading, quote
 or HTML line is `other`. A line is a line ending in `\\n`, `\\r\\n` or a lone `\\r`. Text in an rh- comment on a line with
 other text before it (for example in an inline code span in prose) is reported MALFORMED. Item offsets are character
 offsets into the str as given, not bytes. insert_after_line takes the line it is given: choosing the table's last
 line for a line inside a table is the caller's job (`target.insert_after`). A final anchor line without a line
 ending that was typed by hand after a note that ends in a newline takes that newline with it when stripped.
-A fence inside a list item (indented under the item) is not recognised as such: an anchor inside it is parsed, and
+A list is a run of lines that start, after any indent, with `-`, `*`, `+`, `N.` or `N)` and a space and text (a lone marker is
+not one), with the lines that continue them: indented ones, nested items, and un-indented lazy ones, up to an anchor
+line, a fence or table, a heading, quote, HTML or rule line, or a marker at a lesser indent. A blank line does not
+end a list when the next non-blank line continues it: a marker at the list's indent (of the same kind, ordered or bullet; a change
+between bullet characters or between `1.` and `1)` is not a change of kind, and without a blank line no change ends the list),
+or a deeper line (a second paragraph or nested item). A blank line before a paragraph, a lesser marker, a fence, a table, a
+heading, an anchor or the end of the text ends it, and the blank lines are never part of the list (append_after is after its last
+non-blank line). An item runs to its last non-blank line. Its target has
+`nitems` and `items` (the top-level items, those at the indent of the first marker; a nested list belongs to its parent
+item) and a `shape` dict: loose (a blank line separates two top-level items: a renderer then makes a loose list; the list still
+spans them), last_nested (the last line is in a nested item), ordered, and
+followed_by_paragraph (the next line after the list and its anchor lines is a paragraph line with no blank between;
+anchor lines are hidden, so a renderer may read that paragraph as part of the last item). A table row or a line in a
+fence is never a list. `- - -` is read as a list, not as a rule, and four spaces of indent are not code. Cases L1a-L5,
+L2, L3. A fence inside a list item (indented under the item) is not recognised as such: an anchor inside it is parsed, and
 a fence there can look unclosed. INSIDE-TABLE fires between any two lines that start with `|`, also when the run has
 no separator row and so is not a table. header_problems does not check the type of the entries of `authors` and
 `readers`, and the title rules of the notes (no backtick-only title, no trailing parenthetical) belong to the
@@ -110,7 +126,7 @@ _RH = "<!-- rh-"
 _SPLIT = re.compile(r"(\r\n|\n|\r)")
 _FENCE = re.compile(r"[ \t]*(`{3,}|~{3,})(.*)")
 _HEADING = re.compile(r"#{1,6}(\s|$)")
-_LISTISH = re.compile(r"([-*+]|\d{1,9}[.)])\s")
+_MARK = re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+\S")   # a list marker, a space, then text
 _RULE = re.compile(r"([-*_])(\s*\1){2,}\s*")
 _CELL_SEP = re.compile(r"(?<!\\)\|")
 _SEP_CELL = re.compile(r":?-+:?")
@@ -201,9 +217,22 @@ def _ncols(s):
 
 
 def _classify(s):
-    if _HEADING.match(s) or _LISTISH.match(s) or s.startswith((">", "<")) or _RULE.fullmatch(s):
+    if _HEADING.match(s) or s.startswith((">", "<")) or _RULE.fullmatch(s):
         return "other"
     return "paragraph"
+
+
+def _indent(line):
+    return len(line[:len(line) - len(line.lstrip(" \t"))].expandtabs(4))
+
+
+def _copy_el(el):
+    d = dict(el)
+    if "items" in d:
+        d["items"] = [list(x) for x in d["items"]]
+    if "shape" in d:
+        d["shape"] = dict(d["shape"])
+    return d
 
 
 def _element(kind, first, last, **extra):
@@ -309,14 +338,61 @@ class _Analysis:
                 for x in run:
                     el_at[x] = len(els) - 1
             p = q
-        cur, prev = None, -2
-        for i in range(n):
+        cur, prev, i = None, -2, 0
+        while i < n:
             if cand[i] or el_at[i] != -1:
                 cur = None
+                i += 1
                 continue
             s = lines[i].strip()
             if not s:
                 cur = None
+                i += 1
+                continue
+            if _MARK.match(lines[i]):   # a list: its marker lines, and what continues them, to a blank line or a break
+                base = _indent(lines[i])
+                first_ordered = lines[i].lstrip(" \t")[0].isdigit()
+                j = i
+                while j + 1 < n:
+                    k = j + 1
+                    if cand[k] or el_at[k] != -1:
+                        break
+                    if not lines[k].strip():   # blank lines: the list goes on only if the next line continues it
+                        m = k
+                        while m < n and not lines[m].strip():
+                            m += 1
+                        if m >= n or cand[m] or el_at[m] != -1:
+                            break
+                        if _MARK.match(lines[m]):
+                            if _indent(lines[m]) < base:
+                                break
+                            if _indent(lines[m]) == base and lines[m].lstrip(" \t")[0].isdigit() != first_ordered:
+                                break
+                        elif _indent(lines[m]) <= base:
+                            break
+                        j = m
+                        continue
+                    if _MARK.match(lines[k]):
+                        if _indent(lines[k]) < base:
+                            break
+                    elif _indent(lines[k]) <= base and _classify(lines[k].strip()) == "other":
+                        break
+                    j = k
+                starts = [k for k in range(i, j + 1) if _MARK.match(lines[k]) and _indent(lines[k]) == base]
+                items = []
+                for x, st in enumerate(starts):   # an item runs to its last non-blank line before the next top-level marker
+                    end = starts[x + 1] if x + 1 < len(starts) else j + 1
+                    while end > st + 1 and not lines[end - 1].strip():
+                        end -= 1
+                    items.append([st + 1, end])
+                last_nested = _indent(lines[j]) > base and any(
+                    _MARK.match(lines[k]) and _indent(lines[k]) > base for k in range(starts[-1], j + 1))
+                shape = {"loose": any(items[x + 1][0] > items[x][1] + 1 for x in range(len(items) - 1)), "last_nested": last_nested, "ordered": lines[i].lstrip(" \t")[0].isdigit(),
+                         "followed_by_paragraph": False}
+                els.append(_element("list", i, j, nitems=len(items), items=items, shape=shape))
+                for x in range(i, j + 1):
+                    el_at[x] = len(els) - 1
+                cur, prev, i = None, j, j + 1
                 continue
             kind = _classify(s)
             if cur is not None and prev == i - 1 and els[cur]["type"] == kind:
@@ -326,6 +402,14 @@ class _Analysis:
                 cur = len(els) - 1
             el_at[i] = cur
             prev = i
+            i += 1
+        ls = sorted((k for k, el in enumerate(els) if el["type"] == "list"), key=lambda k: els[k]["first_line"])
+        for k in ls:   # a paragraph line right after the list (anchor lines do not count as a blank)
+            x = els[k]["last_line"]
+            while x < n and cand[x]:
+                x += 1
+            els[k]["shape"]["followed_by_paragraph"] = (
+                x < n and el_at[x] != -1 and els[el_at[x]]["type"] == "paragraph")
         for el in els:   # the run of rh- lines directly after the element: where the next anchor goes
             x = el["last_line"]
             while x < n and cand[x]:
@@ -354,7 +438,7 @@ def parse_note(text):
             headers.append(Item(i + 1, data, canon, None, a.h2 is None or i < a.h2, off, end))
         else:
             t = a.target_of[i]
-            blocks.append(Item(i + 1, data, canon, dict(a.elements[t]) if t != -1 else {"type": "none"}, None, off, end))
+            blocks.append(Item(i + 1, data, canon, _copy_el(a.elements[t]) if t != -1 else {"type": "none"}, None, off, end))
     return headers, blocks, list(a.problems)
 
 
@@ -377,7 +461,20 @@ def target_at(text, line):
         return None
     for el in a.elements:
         if el["first_line"] <= line <= el["append_after"]:
-            return dict(el)
+            return _copy_el(el)
+    return None
+
+
+def item_at(text, line):
+    """The 1-based top-level item of a list that holds a 1-based line (a nested line belongs to its parent item), else None."""
+    a = _Analysis(text)
+    if not isinstance(line, int):
+        return None
+    for el in a.elements:
+        if el["type"] == "list" and el["first_line"] <= line <= el["last_line"]:
+            for k, (first, last) in enumerate(el["items"], 1):
+                if first <= line <= last:
+                    return k
     return None
 
 
@@ -489,6 +586,24 @@ def problems(block, note_id=None):
         cc = block["conventions_checked"]
         if not (isinstance(cc, list) and all(isinstance(x, str) and x in ("a", "b", "c", "d", "e") for x in cc)):
             out.append("conventions_checked: must be a list of letters a to e")
+    if "second_readers" in block:
+        sr = block["second_readers"]
+        if not isinstance(sr, list):
+            out.append("second_readers: must be a list of objects with reader and date")
+        else:
+            for k, e in enumerate(sr):
+                if not isinstance(e, dict):
+                    out.append(f"second_readers[{k}]: must be an object with reader and date")
+                    continue
+                for f in ("reader", "date"):
+                    if not _str(e.get(f)):
+                        out.append(f"second_readers[{k}].{f}: must be a non-empty string")
+    if "item" in block:
+        it = block["item"]
+        if not (_int(it) and it >= 1):
+            out.append("item: must be an integer of 1 or more")
+        if "row" in block or "col" in block:
+            out.append("item: cannot be combined with row or col (a block anchors a list item or a table row)")
     if "file" in block and not _str(block["file"]):
         out.append("file: must be a non-empty string")
     if "lines" in block:
@@ -549,6 +664,13 @@ def B(i, extra=""):
 
 def X(kind, first, last, app):
     return {"type": kind, "first_line": first, "last_line": last, "insert_after": last, "append_after": app}
+
+
+def LST(first, last, app, items, **shape):
+    sh = {"loose": False, "last_nested": False, "ordered": False, "followed_by_paragraph": False}
+    sh.update(shape)
+    return {"type": "list", "first_line": first, "last_line": last, "insert_after": last, "append_after": app,
+            "nitems": len(items), "items": items, "shape": sh}
 
 
 def T(first, last, ncols, nrows, app):
@@ -740,10 +862,10 @@ def _():
     eq(parse_note("```lean\nx\n\ny\n```\n" + B(1) + "\n")[1][0].target, X("lean", 1, 5, 6), "blank inside")
 
 
-@case("A5c", "other: headings and list items; a pipe run without a separator is a paragraph")
+@case("A5c", "other: headings; a list item is a list (flipped: it was other); a pipe run without a separator is a paragraph")
 def _():
     eq(parse_note("## H\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "heading")
-    eq(parse_note("- item\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "list")
+    eq(parse_note("- item\n" + B(1) + "\n")[1][0].target, LST(1, 1, 2, [[1, 1]]), "list")
     eq(parse_note("| a | b |\n| 1 | 2 |\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 2, 3), "pipes, no separator")
 
 
@@ -1159,11 +1281,11 @@ def _():
     eq(problems(MF(check="proofterm", complete=True)), [], "true on proofterm")
 
 
-@case("K4", "target type other: a thematic break and ordered list items")
+@case("K4", "target type other: a thematic break; ordered list items are lists (flipped: they were other)")
 def _():
     eq(parse_note("***\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "***")
-    eq(parse_note("1. x\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "1.")
-    eq(parse_note("2) x\n" + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), "2)")
+    eq(parse_note("1. x\n" + B(1) + "\n")[1][0].target, LST(1, 1, 2, [[1, 1]], ordered=True), "1.")
+    eq(parse_note("2) x\n" + B(1) + "\n")[1][0].target, LST(1, 1, 2, [[1, 1]], ordered=True), "2)")
     eq(parse_note("***bold*** x\n" + B(1) + "\n")[1][0].target, X("paragraph", 1, 1, 2), "emphasis is a paragraph")
 
 
@@ -1255,6 +1377,241 @@ def _():
     t1 = insert_after_line(table, 3, B(1))
     t2 = insert_after_line(t1, 3, B(2))
     eq([x.data["id"] for x in parse_note(t2)[1]], ["15.b02", "15.b01"], "insert_after twice reverses")
+
+
+@case("SR1", "second_readers (optional): a list of {reader, date}, both non-empty strings; allowed on every kind; an empty list is fine")
+def _():
+    sr = [{"reader": "K", "date": "2026-11-23"}, {"reader": "L", "date": "2026-11-24"}]
+    for v in [MF(second_readers=sr), vb(second_readers=sr), vb(kind="correction", second_readers=sr),
+              vb(kind="not_read", needs="callers", second_readers=sr),
+              vb(kind="interpretation", reader="R", date="2026-11-23", second_readers=sr),
+              vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL], second_readers=sr),
+              vb(second_readers=[]), vb(second_readers=sr[:1])]:
+        eq(problems(v), [], repr(v))
+        eq(problems(v, "15"), [], repr(v) + " with note")
+
+
+@case("SR2", "second_readers that is not a list is a problem starting second_readers; an entry that is not an object likewise")
+def _():
+    for bad in ("K", {"reader": "K", "date": "d"}, None, 5, True):
+        one(vb(second_readers=bad), "second_readers")
+    eq(problems(vb(second_readers="K")), ["second_readers: must be a list of objects with reader and date"], "literal")
+    for bad in ("K", None, 5, ["K", "d"]):
+        one(vb(second_readers=[bad]), "second_readers[0]")
+    eq(problems(vb(second_readers=["K"])), ["second_readers[0]: must be an object with reader and date"], "literal entry")
+    one(vb(second_readers=[{"reader": "K", "date": "d"}, "x"]), "second_readers[1]")
+
+
+@case("SR3", "an entry missing reader or date, or with an empty or non-string one, is a problem naming that field")
+def _():
+    one(vb(second_readers=[{"date": "d"}]), "second_readers[0].reader")
+    one(vb(second_readers=[{"reader": "K"}]), "second_readers[0].date")
+    one(vb(second_readers=[{"reader": "", "date": "d"}]), "second_readers[0].reader")
+    one(vb(second_readers=[{"reader": "K", "date": ""}]), "second_readers[0].date")
+    one(vb(second_readers=[{"reader": 5, "date": "d"}]), "second_readers[0].reader")
+    one(vb(second_readers=[{"reader": "K", "date": None}]), "second_readers[0].date")
+    one(vb(second_readers=[{"reader": "K", "date": "d"}, {"reader": "L"}]), "second_readers[1].date")
+    eq(problems(vb(second_readers=[{"reader": "", "date": 5}])),
+       ["second_readers[0].reader: must be a non-empty string", "second_readers[0].date: must be a non-empty string"], "both, literal")
+    eq(len(problems(vb(second_readers=[{}, {}]))), 4, "two empty entries, two fields each")
+
+
+@case("LN1", "lines is order-checked on a block (first <= last) and NOT on defs_opened[].lines")
+def _():
+    one(vb(lines=[5, 2]), "lines")
+    eq(problems(vb(lines=[2, 5])), [], "block lines in order")
+    eq(problems(vb(defs_opened=[{"module": "M", "name": "n", "lines": [5, 2]}])), [], "defs_opened lines out of order: no problem")
+
+
+# ---- lists as targets
+@case("L1a", "a bullet list is one element of type list: first and last line, items, nitems, append_after, a shape dict")
+def _():
+    eq(parse_note("- a\n- b\n- c\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 1], [2, 2], [3, 3]]), "bullets")
+    eq(parse_note("Intro\n\n* a\n* b\n" + B(1) + "\n")[1][0].target, LST(3, 4, 5, [[3, 3], [4, 4]]), "after a paragraph, star")
+    eq(parse_note("  - a\n  - b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]]), "indented")
+
+
+@case("L1b", "ordered lists `1.` and `1)` are lists with ordered true; mixed markers in one list are one list")
+def _():
+    eq(parse_note("1. a\n2. b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]], ordered=True), "1.")
+    eq(parse_note("1) a\n2) b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]], ordered=True), "1)")
+    eq(parse_note("- a\n* b\n+ c\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 1], [2, 2], [3, 3]]), "mixed")
+    eq(parse_note("10. a\n11. b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]], ordered=True), "two digits")
+
+
+@case("L1c", "a nested list belongs to its parent item: nitems counts top-level items; last_nested says the last line is nested")
+def _():
+    eq(parse_note("- a\n  - b\n  - c\n- d\n" + B(1) + "\n")[1][0].target, LST(1, 4, 5, [[1, 3], [4, 4]]), "nested in the first")
+    eq(parse_note("- a\n  - b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 2]], last_nested=True), "last line nested")
+    eq(parse_note("- a\n  - b\n    deeper\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 3]], last_nested=True), "nested continuation")
+    eq(parse_note("- a\n  cont\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 2]]), "an indented continuation is not nested")
+    eq(parse_note("1. a\n   1. b\n2. c\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 2], [3, 3]], ordered=True), "ordered nested")
+
+
+@case("L1d", "continuation lines, indented or lazy, belong to the item above; a marker at a lesser indent ends the list")
+def _():
+    eq(parse_note("- a\n  cont\n- b\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 2], [3, 3]]), "indented")
+    eq(parse_note("- a\nlazy\n- b\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 2], [3, 3]]), "lazy")
+    t = "  - a\n- b\n" + B(1) + "\n"
+    h, b, m = parse_note(t)
+    eq(b[0].target, LST(2, 2, 3, [[2, 2]]), "a marker at a lesser indent starts another list")
+    eq(target_at(t, 1), LST(1, 1, 1, [[1, 1]]), "the first list")
+
+
+@case("L1e", "FLIPPED: a blank line between same-indent items does not end the list; one list, the items listed, loose true")
+def _():
+    t = "- a\n\n- b\n" + B(1) + "\n"
+    h, b, m = parse_note(t)
+    eq(b[0].target, LST(1, 3, 4, [[1, 1], [3, 3]], loose=True), "one loose list")
+    eq(target_at(t, 1), LST(1, 3, 4, [[1, 1], [3, 3]], loose=True), "from its first line")
+    eq(target_at(t, 2), LST(1, 3, 4, [[1, 1], [3, 3]], loose=True), "from the blank line between items")
+    eq(parse_note("- a\n\n  - b\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 3]], last_nested=True), "a nested item after a blank")
+    t = "- a\n\ntext\n- b\n" + B(1) + "\n"
+    eq(parse_note(t)[1][0].target, LST(4, 4, 5, [[4, 4]]), "a paragraph between: two lists")
+    eq(target_at(t, 1), LST(1, 1, 1, [[1, 1]]), "the first of them, not loose")
+
+
+@case("LB1", "a loose list is one list: nitems counts every top-level item, items are per item, the last line and append_after are those of the last item")
+def _():
+    eq(parse_note("- a\n\n- b\n\n- c\n" + B(1) + "\n")[1][0].target, LST(1, 5, 6, [[1, 1], [3, 3], [5, 5]], loose=True), "three items")
+    eq(parse_note("- a\n  cont\n\n- b\n" + B(1) + "\n")[1][0].target, LST(1, 4, 5, [[1, 2], [4, 4]], loose=True), "a continuation in the first")
+    eq(parse_note("- a\n- b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]]), "a tight list is not loose")
+    eq(parse_note("- a\n\n\n- b\n" + B(1) + "\n")[1][0].target, LST(1, 4, 5, [[1, 1], [4, 4]], loose=True), "two blank lines")
+    eq([item_at("- a\n\n- b\n", ln) for ln in (1, 2, 3)], [1, None, 2], "item_at on a loose list")
+
+
+@case("LB2", "a blank line followed by a deeper line continues the item; a paragraph, a lesser marker, a fence, a table, a heading, "
+             "the end of the text end the list, and the blank lines are not part of it")
+def _():
+    eq(parse_note("- a\n\n  second\n- b\n" + B(1) + "\n")[1][0].target, LST(1, 4, 5, [[1, 3], [4, 4]]), "a second paragraph of an item")
+    t = "- a\n\npara\n"
+    eq((target_at(t, 1), target_at(t, 3)), (LST(1, 1, 1, [[1, 1]]), X("paragraph", 3, 3, 3)), "a paragraph ends it")
+    t = "  - a\n\n- b\n"
+    eq((target_at(t, 1), target_at(t, 3)), (LST(1, 1, 1, [[1, 1]]), LST(3, 3, 3, [[3, 3]])), "a lesser marker ends it")
+    eq(parse_note("- a\n- b\n\n\n" + B(1) + "\n")[1][0].target, LST(1, 2, 2, [[1, 1], [2, 2]]), "trailing blank lines are not in the list")
+    eq(target_at("- a\n\n", 1), LST(1, 1, 1, [[1, 1]]), "a blank line at the end of the text")
+    eq(target_at("- a\n\n```lean\nx\n```\n", 1), LST(1, 1, 1, [[1, 1]]), "a fence ends it")
+    eq(target_at("- a\n\n```lean\nx\n```\n", 3), X("lean", 3, 5, 5), "the fence")
+    eq(target_at("- a\n\n## H\n", 1), LST(1, 1, 1, [[1, 1]]), "a heading ends it")
+    eq(target_at("- a\n\n| a |\n|---|\n", 1), LST(1, 1, 1, [[1, 1]]), "a table ends it")
+    eq(target_at("- a\n\n" + B(1) + "\n- b\n", 1), LST(1, 1, 1, [[1, 1]]), "an anchor line ends it")
+
+
+@case("LB3", "a change between ordered and bullet markers after a blank line ends the list; a change of bullet character does not; "
+             "without a blank line any change stays in the list (pinned, not decided)")
+def _():
+    t = "1. a\n\n- b\n" + B(1) + "\n"
+    eq((target_at(t, 1), parse_note(t)[1][0].target), (LST(1, 1, 1, [[1, 1]], ordered=True), LST(3, 3, 4, [[3, 3]])), "bullet after ordered")
+    t = "- a\n\n1. b\n" + B(1) + "\n"
+    eq((target_at(t, 1), parse_note(t)[1][0].target), (LST(1, 1, 1, [[1, 1]]), LST(3, 3, 4, [[3, 3]], ordered=True)), "ordered after bullet")
+    eq(parse_note("- a\n\n* b\n\n+ c\n" + B(1) + "\n")[1][0].target, LST(1, 5, 6, [[1, 1], [3, 3], [5, 5]], loose=True), "bullet characters")
+    eq(parse_note("1. a\n\n2) b\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 1], [3, 3]], ordered=True, loose=True), "ordered delimiters")
+    eq(parse_note("- a\n1. b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]]), "no blank line: one list")
+
+
+@case("LB4", "the seven shapes of the renderer control: tight, ordered, last-line-nested, list then paragraph, nested then blank then anchor, "
+             "loose, loose then paragraph")
+def _():
+    eq(parse_note("- a\n- b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]]), "tight")
+    eq(parse_note("1. a\n2. b\n" + B(1) + "\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]], ordered=True), "ordered")
+    eq(parse_note("- a\n- b\n  - c\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 1], [2, 3]], last_nested=True), "last line nested")
+    eq(parse_note("- a\n- b\n" + B(1) + "\npara\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]], followed_by_paragraph=True), "then paragraph")
+    eq(parse_note("- a\n  - b\n\n" + B(1) + "\n")[1][0].target, LST(1, 2, 2, [[1, 2]], last_nested=True), "nested, blank, anchor")
+    eq(parse_note("- a\n\n- b\n" + B(1) + "\n")[1][0].target, LST(1, 3, 4, [[1, 1], [3, 3]], loose=True), "loose")
+    eq(target_at("- a\n\n- b\n\npara\n", 1), LST(1, 3, 3, [[1, 1], [3, 3]], loose=True), "loose then paragraph")
+
+
+@case("LB5", "for a loose list and a loose list followed by a paragraph: two anchors inserted at append_after come out in order and strip gives the text back")
+def _():
+    for t, want_lines in (("- a\n\n- b\n", [4, 5]), ("- a\n\n- b\n\npara\n", [4, 5])):
+        a1 = target_at(t, 1)["append_after"]
+        eq(a1, 3, "first append_after, after the last item")
+        t1 = insert_after_line(t, a1, B(1))
+        a2 = target_at(t1, 1)["append_after"]
+        eq(a2, 4, "second append_after, after the first anchor")
+        t2 = insert_after_line(t1, a2, B(2))
+        h, b, m = parse_note(t2)
+        eq(([x.data["id"] for x in b], [x.line for x in b], m), (["15.b01", "15.b02"], want_lines, []), "order")
+        eq(b[0].target["nitems"], 2, "the anchors follow the true last item")
+        eq(strip_anchor_lines(t2), t, "strip")
+
+
+@case("L1f", "an anchor after the whole list; two anchors in order; an anchor line breaks the list run")
+def _():
+    h, b, m = parse_note("- a\n  - b\n" + B(1) + "\n" + B(2) + "\n")
+    eq([x.target for x in b], [LST(1, 2, 4, [[1, 2]], last_nested=True)] * 2, "two anchors, append_after after both")
+    t = "- a\n- b\n\ntext\n"
+    a1 = target_at(t, 1)["append_after"]
+    t1 = insert_after_line(t, a1, B(1))
+    t2 = insert_after_line(t1, target_at(t1, 1)["append_after"], B(2))
+    eq(([x.data["id"] for x in parse_note(t2)[1]], [x.line for x in parse_note(t2)[1]], strip_anchor_lines(t2)),
+       (["15.b01", "15.b02"], [3, 4], t), "inserted at append_after twice")
+    h, b, m = parse_note("- a\n- b\n" + B(1) + "\n- c\n" + B(2) + "\n")
+    eq([x.target for x in b], [LST(1, 2, 3, [[1, 1], [2, 2]]), LST(4, 4, 5, [[4, 4]])], "the anchor breaks the run; items above only")
+
+
+@case("L1g", "CRLF and a missing final newline do not change a list")
+def _():
+    eq(parse_note("- a\r\n- b\r\n" + B(1) + "\r\n")[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]]), "CRLF")
+    eq(parse_note("- a\n- b\n" + B(1))[1][0].target, LST(1, 2, 3, [[1, 1], [2, 2]]), "no final newline")
+    eq(parse_note("a\r- b\r" + B(1) + "\r")[1][0].target, LST(2, 2, 3, [[2, 2]]), "lone CR")
+
+
+@case("L1h", "a paragraph directly followed by a list is two elements; a list in a lean fence is text; a table row is not a list")
+def _():
+    t = "Para\n- a\n" + B(1) + "\n"
+    eq(parse_note(t)[1][0].target, LST(2, 2, 3, [[2, 2]]), "the list")
+    eq(target_at(t, 1), X("paragraph", 1, 1, 1), "the paragraph")
+    eq(parse_note("```lean\n- a\n```\n" + B(1) + "\n")[1][0].target, X("lean", 1, 3, 4), "in a lean fence")
+    eq(parse_note("| - a | b |\n|---|---|\n| 1 | 2 |\n" + B(1) + "\n")[1][0].target, T(1, 3, 2, 1, 4), "a table row")
+
+
+@case("L4", "not lists: a lone marker, a marker with no space, a mid-line dash; headings, quotes, HTML lines and rules stay other")
+def _():
+    for t in ("-\n", "1.\n", "-a\n", "a - b\n", "1.a\n", "- \n"):
+        eq(parse_note(t + B(1) + "\n")[1][0].target, X("paragraph", 1, 1, 2), repr(t))
+    for t in ("## H\n", "> q\n", "<div>\n", "***\n", "---\n"):
+        eq(parse_note(t + B(1) + "\n")[1][0].target, X("other", 1, 1, 2), repr(t))
+    eq(parse_note("- a\n## H\n" + B(1) + "\n")[1][0].target, X("other", 2, 2, 3), "a heading ends a list")
+    eq(parse_note("- a\n> q\n" + B(1) + "\n")[1][0].target, X("other", 2, 2, 3), "a quote ends a list")
+
+
+@case("L5", "shape: followed_by_paragraph (an anchor between a list and a paragraph), loose, ordered, last_nested; each alone")
+def _():
+    eq(parse_note("- a\n" + B(1) + "\npara\n")[1][0].target, LST(1, 1, 2, [[1, 1]], followed_by_paragraph=True), "followed")
+    eq(parse_note("- a\n" + B(1) + "\n\npara\n")[1][0].target, LST(1, 1, 2, [[1, 1]]), "blank-separated")
+    eq(parse_note("- a\n" + B(1) + "\n## H\n")[1][0].target, LST(1, 1, 2, [[1, 1]]), "a heading after it")
+    eq(parse_note("- a\n" + B(1) + "\n- b\n")[1][0].target, LST(1, 1, 2, [[1, 1]]), "a list after it")
+
+
+@case("L2", "target_at gives the list for any line of an item, nested lines included, and for an anchor line after it; item_at gives the top-level item")
+def _():
+    t = "- a\n  - b\n- c\n" + B(1) + "\n\ntext\n"
+    want = LST(1, 3, 4, [[1, 2], [3, 3]])
+    for ln in (1, 2, 3, 4):
+        eq(target_at(t, ln), want, f"line {ln}")
+    eq(target_at(t, 5), None, "blank after")
+    eq([item_at(t, ln) for ln in (0, 1, 2, 3, 4, 5, 6, 7, 99)], [None, 1, 1, 2, None, None, None, None, None], "item_at")
+    eq(item_at("text\n", 1), None, "not a list")
+    eq(item_at("- a\n\n- b\n", 3), 2, "the second item of one loose list")
+    h, b, m = parse_note("- a\n" + B(1) + "\n" + B(2) + "\n")
+    b[0].target["items"][0][0] = 99
+    b[0].target["shape"]["loose"] = True
+    eq(b[1].target, LST(1, 1, 3, [[1, 1]]), "two blocks of one list do not share their items or shape")
+
+
+@case("L3", "item (int >= 1) is shape-checked in problems(); item with row or col is a problem; col without row stays one")
+def _():
+    eq(problems(vb(item=1)), [], "valid")
+    eq(problems(vb(item=7), "15"), [], "valid with note")
+    for bad in (0, -1, "1", True, 1.5, None, [1]):
+        one(vb(item=bad), "item")
+        eq(problems(vb(item=bad)), ["item: must be an integer of 1 or more"], repr(bad))
+    both = "item: cannot be combined with row or col (a block anchors a list item or a table row)"
+    eq(problems(vb(item=1, row=1)), [both], "item and row")
+    eq(sorted(problems(vb(item=1, col=1))), sorted([both, "col: needs row (a cell is a row and a column)"]), "item and col")
+    eq(problems(vb(item=1, row=1, col=1)), [both], "item, row and col")
+    eq(problems(vb(col=1)), ["col: needs row (a cell is a row and a column)"], "col without row is unchanged")
 
 
 @case("CONST", "the closed lists, in order")
