@@ -22,5 +22,9 @@ per-site questions. Both read the import lines through the same header reader in
 agree on what a header is.
 
 Every TSV starts with one `#` line (what was read, the source commit, what a row is NOT), then the column
-row. Exit codes: 0 clean, 1 something was reported or nothing was checked, 2 usage error, 3 broken
-control, 4 failed self-test.
+row. Exit codes, tool by tool (4 always means the self-test failed and nothing was reported):
+
+- `scan_graph.py`: 0 clean; 1 an unresolved import under a folder of the root, an undecodable or unreadable file, or no `.lean` file; 2 usage error or SRC_ROOT not a directory.
+- `alias_edges.py`: 0 even when unresolved or ambiguous targets or odd-shape rows are printed; 1 only for an undecodable or unreadable file or no `.lean` file; 2 usage error or SRC_ROOT not a directory.
+- `in_closure.py`: 0 only if every site is INSIDE or OUTSIDE; 1 for an AMBIGUOUS or NOT A MODULE site, or no site; 2 usage or input error, or a control equal to the start; 3 a broken control.
+- `import_closure.py`: 0 printed; 1 unresolved imports under the root's own folders (closure would be under-counted); 2 usage error or no file for the start module.

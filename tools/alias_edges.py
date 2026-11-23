@@ -9,7 +9,8 @@ and lists where the alias names and the targets are written out in full.
 Outputs under OUT_DIR (each starts with a `#` provenance line, then the column row):
   aliases.tsv           public_name, target, file, line, target_file, target_line, target_matches
   aliases_odd.tsv       public_name, x1, x2, x3, file, line, reason, tail   (wrapper shape that is not an exact
-                        wrapper: reason unequal_x or trailing_text; tail = the trailing text, first 80 characters)
+                        wrapper: reason unequal_x or trailing_text; tail = the trailing text with whitespace runs
+                        collapsed, cut to 80 characters)
   alias_candidates.tsv  public_name, target, candidate_file, candidate_line   (only when target_matches >= 2)
   refs.tsv              file, public_name, occurrences, in_comment_only
   callers.tsv           name, kind (alias|target), file, line, in_comment (0|1)
@@ -63,6 +64,9 @@ start; names built by macros, `private` name mangling and structure fields are n
 written as above; a differently written alias is not found. A string literal is not special-cased when
 comments are masked. Refs (A4) use the token `GlobalTheory.T.<name>` as written, so a longer dotted name
 that starts with a known public name also counts for the shorter one there, while callers (A5) do not.
+Names that end in `!` or `?` are not matched by the callers token rule. The bracket counting that finds a
+wrapper's body is not string-aware: a bracket inside a string literal can hide a wrapper, silently. A UTF-8
+byte-order mark at the start of a file is not removed.
 
 usage: alias_edges.py SRC_ROOT OUT_DIR
        alias_edges.py --selftest

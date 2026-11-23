@@ -45,7 +45,8 @@ computation may sit and does not measure it. An import edge says the importer is
 imported file; it does not say any proof in the importer uses anything in it. A string literal is not
 treated specially when comments are masked, so a `--` or `/-` inside a string starts a comment for the
 masker. Declarations are counted by raw line start, so a line inside a block comment that begins with
-`theorem` is counted.
+`theorem` is counted. A UTF-8 byte-order mark at the start of a file hides that file's imports (the file
+still decodes, so nothing is reported and the exit code stays 0).
 
 usage: scan_graph.py SRC_ROOT OUT_DIR
        scan_graph.py --selftest
