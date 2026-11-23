@@ -610,6 +610,15 @@ def _():
     eq((len(b), len(m)), (1, 0), "inline backticks are not a fence")
 
 
+@case("A2b", "a closing-looking line with an info string does not close a fence; a longer tilde line does")
+def _():
+    eq(parse_note("```\n" + B(1) + "\n```lean\n" + B(2) + "\n```\n"), ([], [], []), "```lean inside an open fence")
+    eq(parse_note("```\n" + B(1) + "\n``` x\n" + B(2) + "\n```\n"), ([], [], []), "``` x inside an open fence")
+    eq(parse_note("~~~\n" + B(1) + "\n~~~ x\n" + B(2) + "\n~~~\n"), ([], [], []), "~~~ x inside an open fence")
+    h, b, m = parse_note("~~~\n" + B(1) + "\n~~~~\n" + B(2) + "\n")
+    eq(([x.line for x in b], m), ([4], []), "a longer tilde line closes; the next anchor is parsed")
+
+
 # ---- A3 canonical form
 @case("A3a", "format_comment literals")
 def _():
