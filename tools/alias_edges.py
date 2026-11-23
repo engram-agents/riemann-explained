@@ -868,6 +868,29 @@ def _selftest_cases():
                                      "Pub/W.lean": in_section, "Pub/V.lean": inside("N.S", _W("v", "A.x"))})
         return _eq(by_pub(tabs), {"N.w": ("D/One.lean", "2", "1"), "N.S.v": ("D/Two.lean", "2", "1")})
 
+    @case("NS10", "a wrapper's own written `A.x` is not a use of a root `A.x` that is another wrapper's target; a real `exact N.A.x` is a use of N.A.x only")
+    def _():
+        base = {"D/One.lean": decl("N.A", "x"), "R/Root.lean": ROOT_AX,   # N.A.x declared without spelling `A.x`
+                "Pub/W.lean": inside("N", _W("w", "A.x")), "Pub/W2.lean": _W("w2", "A.x")}
+        _rc, _o, _e, tabs, _n = _go(base)
+        _rc2, _o2, _e2, tabs2, _n2 = _go({**base, "Use/U.lean": "exact N.A.x\n"})
+        return _eq((tabs["callers"][2], _pairs(tabs, "uncalled", "name", "kind"),
+                    _pairs(tabs2, "callers", "name", "kind", "file", "line", "in_comment")),
+                   ([], [("A.x", "target"), ("N.A.x", "target"), ("N.w", "alias"), ("w2", "alias")],
+                    [("N.A.x", "target", "Use/U.lean", "1", "0")]))
+
+    SHAPE_AX = "first | exact @A.x | exact A.x | (intros; apply A.x <;> assumption)"
+
+    @case("NS11", "the deciding full name written in a comment on the wrapper's own last line is the alias link, not a use; on the next line it is a use")
+    def _():
+        own = "theorem w : P := by\n  " + SHAPE_AX + " -- N.A.x\n"
+        nxt = "theorem w : P := by\n  " + SHAPE_AX + "\n-- N.A.x\n"
+        _rc, _o, _e, tabs, _n = _go({"D/One.lean": decl("N", "A.x"), "Pub/W.lean": inside("N", own)})
+        _rc2, _o2, _e2, tabs2, _n2 = _go({"D/One.lean": decl("N", "A.x"), "Pub/W.lean": inside("N", nxt)})
+        return _eq((tabs["callers"][2], _pairs(tabs, "uncalled", "name", "kind"),
+                    _pairs(tabs2, "callers", "name", "kind", "file", "line", "in_comment")),
+                   ([], [("N.A.x", "target"), ("N.w", "alias")], [("N.A.x", "target", "Pub/W.lean", "4", "1")]))
+
     @case("PASS2", "exactly two passes: every file is read exactly twice")
     def _():
         _rc, _o, _e, _t, n = _go({**PUB_ALPHA, "Use/E.lean": "theorem z : P := Lib.alpha_core\n"}, count_reads=True)
