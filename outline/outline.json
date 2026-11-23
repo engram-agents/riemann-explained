@@ -1,0 +1,1082 @@
+{
+ "groups": [
+  {
+   "claim": {
+    "conventions_checked": [
+     "a",
+     "c",
+     "d"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       13,
+       14
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.EveryCharacter",
+      "name": "UpperTheory.EveryCharacter"
+     }
+    ],
+    "mathlib_read": [
+     "RiemannHypothesis (Mathlib/NumberTheory/LSeries/RiemannZeta.lean 182-186)",
+     "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
+    ],
+    "reader": "Kepler",
+    "text": "If L(χ, s) ≠ 0 for every Dirichlet character χ and every s with Re s > 1/2, except a principal character at s = 1, then the Riemann Hypothesis holds (in Mathlib's formulation)"
+   },
+   "id": "rh-from-everycharacter",
+   "level": 1,
+   "order": 1,
+   "parent": "root",
+   "premises": [
+    "primitive-to-all"
+   ],
+   "roots": [
+    {
+     "module": "Formalism.GammaFactorNonvanishing.CritLine",
+     "name": "Formalism.VW.rh_of_every"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conventions_checked": [
+     "a",
+     "d"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [],
+    "mathlib_read": [
+     "RiemannHypothesis (Mathlib/NumberTheory/LSeries/RiemannZeta.lean 182-186)",
+     "riemannZeta (by standard meaning; docstring not re-read today)"
+    ],
+    "reader": "Kepler",
+    "text": "If ζ(s) ≠ 0 for every s with Re s > 1/2 and s ≠ 1, then the Riemann Hypothesis holds (in Mathlib's formulation)"
+   },
+   "id": "rh-from-zeta-right",
+   "level": 2,
+   "order": 1,
+   "parent": "rh-from-everycharacter",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Formalism.GammaFactorNonvanishing.RhOfRight",
+     "name": "Formalism.VW.rh_of_right"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "The hypothesis has no exception at s = 1, also for the character of modulus 1 (whose L-function is ζ): it holds there only because Lean gives ζ(1) the defined value (γ − log 4π)/2, which is not 0, where mathematics has a pole."
+    ],
+    "conventions_checked": [
+     "a",
+     "c",
+     "d",
+     "e"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       18,
+       18
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeAll"
+     },
+     {
+      "lines": [
+       14,
+       14
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeOn"
+     },
+     {
+      "lines": [
+       11,
+       12
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.PChar.ZeroFreeAbove"
+     },
+     {
+      "lines": [
+       7,
+       11
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.PrimePairSizeCondition",
+      "name": "Formalism.HC.PChar"
+     }
+    ],
+    "mathlib_read": [
+     "DirichletCharacter.IsPrimitive (Mathlib/NumberTheory/DirichletCharacter/Basic.lean 292)",
+     "riemannZeta_one (Mathlib/NumberTheory/Harmonic/ZetaAsymp.lean 418)",
+     "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
+    ],
+    "reader": "Halley",
+    "text": "If no L-function of a primitive character vanishes for Re s > 1/2, then L(χ, s) ≠ 0 for every Dirichlet character χ and every s with Re s > 1/2, except a principal character at s = 1"
+   },
+   "id": "primitive-to-all",
+   "level": 1,
+   "order": 2,
+   "parent": "root",
+   "premises": [
+    "three-inputs"
+   ],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.CharacterBoxes.Imprimitive",
+     "name": "UpperTheory.Top.imprimitive"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "'A HypsAlt structure' means the statement assumes Nonempty (HypsAlt …): one inhabitant exists. Closed, LinkN and DefiniteSideCondition are not opened and keep the library's names."
+    ],
+    "conventions_checked": [
+     "e"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       49,
+       49
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ExistsPageN",
+      "name": "UpperTheory.Top.VWin"
+     },
+     {
+      "lines": [
+       18,
+       18
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeAll"
+     },
+     {
+      "lines": [
+       14,
+       14
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeOn"
+     },
+     {
+      "lines": [
+       11,
+       12
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.PChar.ZeroFreeAbove"
+     },
+     {
+      "lines": [
+       7,
+       11
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.PrimePairSizeCondition",
+      "name": "Formalism.HC.PChar"
+     },
+     {
+      "lines": [
+       108,
+       112
+      ],
+      "module": "Development.AbelianVarietyTheory.Definitions.NonGaloisDescent.LabelDatum",
+      "name": "GlobalTheory.GLq.Green"
+     },
+     {
+      "lines": [
+       22,
+       90
+      ],
+      "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.Hyps",
+      "name": "GlobalTheory.Fc.HypsAlt"
+     }
+    ],
+    "mathlib_read": [
+     "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
+    ],
+    "reader": "Halley",
+    "text": "Green, VWin and a HypsAlt structure (closed under LinkN, with the definite side condition) give: no L-function of a primitive character vanishes for Re s > 1/2"
+   },
+   "id": "three-inputs",
+   "level": 1,
+   "order": 3,
+   "parent": "root",
+   "premises": [
+    "input-green",
+    "input-vwin",
+    "input-hypsalt"
+   ],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.TopPlug",
+     "name": "UpperTheory.Top.zero_free_all_of_green_v_win"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "HostExW la: for each ε with 0 < ε < 1/52 there are constants and an la-family of scales such that every scale of the family with that ε, beyond a starting point, has a host meeting HostGood and the requirement.",
+     "The same la serves every ψ; on Main's route la = 3/2. TopG is a statement about every requirement; here it is used for GChi ψ."
+    ],
+    "conventions_checked": [
+     "d",
+     "e"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       12,
+       14
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ZeroFreeAllOfTopG",
+      "name": "UpperTheory.Top.TopG"
+     },
+     {
+      "lines": [
+       120,
+       123
+      ],
+      "module": "Development.AbelianVarietyTheory.Definitions.GlobalTwisting.ThinScalesIffHostBound",
+      "name": "GlobalTheory.EX.HostExW"
+     },
+     {
+      "lines": [
+       101,
+       109
+      ],
+      "module": "Development.AbelianVarietyTheory.Definitions.GlobalTwisting.ThinScalesIffHostBound",
+      "name": "GlobalTheory.EX.HostGood"
+     },
+     {
+      "lines": [
+       42,
+       43
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.Supply",
+      "name": "UpperTheory.Top.GChi"
+     },
+     {
+      "lines": [
+       18,
+       18
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeAll"
+     },
+     {
+      "lines": [
+       14,
+       14
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeOn"
+     },
+     {
+      "lines": [
+       11,
+       12
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.PChar.ZeroFreeAbove"
+     },
+     {
+      "lines": [
+       7,
+       11
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.PrimePairSizeCondition",
+      "name": "Formalism.HC.PChar"
+     }
+    ],
+    "mathlib_read": [
+     "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
+    ],
+    "reader": "Halley",
+    "text": "If TopG holds and, for one la > 1, the host requirement the library builds from each primitive character ψ (GChi ψ) is met in the sense HostExW la, then no L-function of a primitive character vanishes for Re s > 1/2"
+   },
+   "id": "families-from-topg",
+   "level": 2,
+   "order": 1,
+   "parent": "three-inputs",
+   "premises": [
+    "topg",
+    "hosts"
+   ],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.CharacterBoxes.ZeroFreeAllOfTopG",
+     "name": "UpperTheory.Top.zeroFreeAll_of_topG"
+    }
+   ]
+  },
+  {
+   "claim": null,
+   "id": "topg",
+   "level": 3,
+   "order": 1,
+   "parent": "families-from-topg",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.CharacterBoxes.ZeroFreeAllOfTopG",
+     "name": "UpperTheory.Top.TopG"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "The theorem is generic in the family type and in the two family conditions (core, Tied); on Main's route they are FamP and ChainTied (ZeroFreeAllOfTopG.lean 28). Level.ofSub, EFamC and the family fields are not opened, so the level and the two conditions keep the library's names."
+    ],
+    "conventions_checked": [
+     "d",
+     "e"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       14,
+       14
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeOn"
+     },
+     {
+      "lines": [
+       11,
+       12
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.PChar.ZeroFreeAbove"
+     },
+     {
+      "lines": [
+       121,
+       121
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.cyc"
+     },
+     {
+      "lines": [
+       30,
+       31
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Window",
+      "name": "Formalism.HC.Level.FormBAt"
+     },
+     {
+      "lines": [
+       33,
+       33
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Window",
+      "name": "Formalism.HC.Level.FormB"
+     },
+     {
+      "lines": [
+       7,
+       8
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Window",
+      "name": "Formalism.HC.HasWindows"
+     },
+     {
+      "lines": [
+       23,
+       24
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.TopWin",
+      "name": "Formalism.HC.ChebyshevInequalityOnFamilyWindows"
+     },
+     {
+      "lines": [
+       26,
+       28
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.TopWin",
+      "name": "Formalism.HC.ChebyshevInequalityOnWindows"
+     },
+     {
+      "lines": [
+       30,
+       32
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.TopWin",
+      "name": "Formalism.HC.ChebyshevInequalityAtWindowScale"
+     },
+     {
+      "lines": [
+       155,
+       156
+      ],
+      "module": "Formalism.SharpRestriction.FamCore",
+      "name": "Formalism.MainNotions.FamCore.Windows"
+     }
+    ],
+    "mathlib_read": [
+     "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)",
+     "Subgroup.zpowers (by standard meaning)"
+    ],
+    "reader": "Halley",
+    "text": "For a set Q of primitive characters and one la > 1: if, for each ψ in Q, the level the library builds from the powers of ψ's character satisfies the two conditions the library names ChebyshevInequalityOnWindows and ChebyshevInequalityAtWindowScale (the second at scale la), and the Landau property FormB, then L(ψ, s) ≠ 0 for every ψ in Q and every s with Re s > 1/2"
+   },
+   "id": "zeros-enter",
+   "level": 3,
+   "order": 2,
+   "parent": "families-from-topg",
+   "premises": [
+    "window-bound-every-level",
+    "landau-every-level"
+   ],
+   "roots": [
+    {
+     "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.TopWin",
+     "name": "Formalism.HC.zeroFreeOn_of_tiedWin_cyc"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conventions_checked": [
+     "d"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       38,
+       38
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.Gm"
+     },
+     {
+      "lines": [
+       32,
+       32
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.Nt"
+     },
+     {
+      "lines": [
+       36,
+       36
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.wt"
+     },
+     {
+      "lines": [
+       11,
+       11
+      ],
+      "module": "Formalism.StatementOC",
+      "name": "Formalism.Sz"
+     },
+     {
+      "lines": [
+       13,
+       13
+      ],
+      "module": "Formalism.StatementOC",
+      "name": "Formalism.Gz"
+     },
+     {
+      "lines": [
+       23,
+       24
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.gChi"
+     }
+    ],
+    "mathlib_read": [
+     "ArithmeticFunction.vonMangoldt (by standard meaning)",
+     "Real.eulerMascheroniConstant (by standard meaning)"
+    ],
+    "reader": "Halley",
+    "text": "For every level, all constants and every ε > 0, there is x1 such that for every x ≥ x1 and every host satisfying the library's conditions EAtH and CoreAtH at x with those constants, the level's error term Gm(x) is at most x^(1/2 + (eD + eL + 7)ε); the threshold x1 depends on the level and the constants, not on the host"
+   },
+   "id": "window-bound",
+   "level": 4,
+   "order": 3,
+   "parent": "zeros-enter",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.PrimitiveCosets.CoreGm",
+     "name": "UpperTheory.Comparison₂.core_gm"
+    }
+   ]
+  },
+  {
+   "claim": null,
+   "id": "window-inequality",
+   "level": 4,
+   "order": 2,
+   "parent": "zeros-enter",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.PrimitiveCosets.WindowInequalityOfArtinInputs",
+     "name": "UpperTheory.Comparison₂.windowInequality_of_artinInputs"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "Gm is a weighted sum, over the family, of smoothed twisted von Mangoldt sums Σ Λ(n)χ(n)(y/n − 1) with the main term subtracted: y log y − (1+γ)y for the trivial character, and a term y·L′(χ,1)/L(χ,1) otherwise (L(χ,1) ≠ 0 for χ ≠ 1 is Mathlib's theorem, so the quotient is a real value).",
+     "The constant C is any real number; the windows are: for every Y₀ there is Y ≥ Y₀ with the bound on all of [Y, Y^(1+δ)]."
+    ],
+    "conventions_checked": [
+     "a",
+     "b",
+     "c",
+     "d"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       24,
+       32
+      ],
+      "module": "Development.AutomorphicArithmetic.DedekindLFunctions.CharFamily",
+      "name": "Deduction.CharFamily"
+     },
+     {
+      "lines": [
+       36,
+       36
+      ],
+      "module": "Development.AutomorphicArithmetic.DedekindLFunctions.CharFamily",
+      "name": "Deduction.Gm"
+     },
+     {
+      "lines": [
+       15,
+       19
+      ],
+      "module": "Development.AutomorphicArithmetic.DedekindLFunctions.CharFamily",
+      "name": "Deduction.Gchi"
+     },
+     {
+      "lines": [
+       10,
+       11
+      ],
+      "module": "Development.AutomorphicArithmetic.DedekindLFunctions.CharFamily",
+      "name": "Deduction.ramp"
+     },
+     {
+      "lines": [
+       38,
+       39
+      ],
+      "module": "Development.AutomorphicArithmetic.DedekindLFunctions.CharFamily",
+      "name": "Deduction.ZeroFree"
+     }
+    ],
+    "mathlib_read": [
+     "ArithmeticFunction.vonMangoldt (by standard meaning)",
+     "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)",
+     "DirichletCharacter.LFunction_apply_one_ne_zero (Mathlib/NumberTheory/LSeries/Nonvanishing.lean 406)",
+     "Real.eulerMascheroniConstant (by standard meaning)"
+    ],
+    "reader": "Halley",
+    "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for 0 < θ < 1 and δ > 0: if the family's weighted error term Gm is at most a constant times y^θ for all y in windows [Y, Y^(1+δ)] lying beyond every starting point, then none of the family's L-functions vanishes for Re s > θ"
+   },
+   "id": "landau-step",
+   "level": 4,
+   "order": 5,
+   "parent": "zeros-enter",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.DedekindLFunctions.LandauTheorems.ZeroFreeOfRpowWindow",
+     "name": "Deduction.zeroFree_of_rpow_window"
+    }
+   ]
+  },
+  {
+   "claim": null,
+   "id": "landau-property",
+   "level": 4,
+   "order": 6,
+   "parent": "zeros-enter",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Window",
+     "name": "Formalism.HC.Level.FormBAt"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "The product is over i = 1, …, d − 1 and is computed in ℂ, so there is no truncated subtraction; the formula's sign (−1)^(d−1) uses natural-number subtraction, which is safe only because Green assumes 0 < d.",
+     "IsCusp, Gn, thetaOf, rootsBar and Mt are not opened."
+    ],
+    "conventions_checked": [
+     "b",
+     "c",
+     "d"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       108,
+       112
+      ],
+      "module": "Development.AbelianVarietyTheory.Definitions.NonGaloisDescent.LabelDatum",
+      "name": "GlobalTheory.GLq.Green"
+     },
+     {
+      "lines": [
+       91,
+       91
+      ],
+      "module": "Development.AbelianVarietyTheory.Definitions.NonGaloisDescent.LabelDatum",
+      "name": "GlobalTheory.GLq.IsPrimeLab"
+     },
+     {
+      "lines": [
+       93,
+       96
+      ],
+      "module": "Development.AbelianVarietyTheory.Definitions.NonGaloisDescent.LabelDatum",
+      "name": "GlobalTheory.GLq.IsCuspOf"
+     }
+    ],
+    "mathlib_read": [
+     "Polynomial.Monic, Irreducible (by standard meaning)"
+    ],
+    "reader": "Halley",
+    "text": "Input 1 (Green): for each prime g, label datum and d ≥ 1, a one-to-one correspondence between the monic irreducible degree-d polynomials over Z/g with nonzero constant term and the functions on Gn g d that the library calls cuspidal, each given by an explicit formula from the label datum on elements with irreducible characteristic polynomial, and with value ∏(g^i − 1) at 1"
+   },
+   "id": "input-green",
+   "level": 2,
+   "order": 2,
+   "parent": "three-inputs",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AbelianVarietyTheory.Definitions.NonGaloisDescent.LabelDatum",
+     "name": "GlobalTheory.GLq.Green"
+    }
+   ]
+  },
+  {
+   "claim": null,
+   "id": "input-vwin",
+   "level": 2,
+   "order": 3,
+   "parent": "three-inputs",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.CharacterBoxes.ExistsPageN",
+     "name": "UpperTheory.Top.VWin"
+    }
+   ]
+  },
+  {
+   "claim": null,
+   "id": "vwin-proof",
+   "level": 3,
+   "order": 1,
+   "parent": "input-vwin",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.AutomorphicVarieties.ModularityArgument.ThresholdArguments.DenseThresholdCases.VwinOfRow",
+     "name": "UpperTheory.One.vwin_of_row"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conventions_checked": [
+     "d"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       41,
+       42
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ExistsPageN",
+      "name": "UpperTheory.Top.VAt"
+     },
+     {
+      "lines": [
+       44,
+       47
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ExistsPageN",
+      "name": "UpperTheory.Top.VWinAt"
+     },
+     {
+      "lines": [
+       49,
+       49
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ExistsPageN",
+      "name": "UpperTheory.Top.VWin"
+     },
+     {
+      "lines": [
+       120,
+       123
+      ],
+      "module": "Development.AbelianVarietyTheory.Definitions.GlobalTwisting.ThinScalesIffHostBound",
+      "name": "GlobalTheory.EX.HostExW"
+     },
+     {
+      "lines": [
+       101,
+       109
+      ],
+      "module": "Development.AbelianVarietyTheory.Definitions.GlobalTwisting.ThinScalesIffHostBound",
+      "name": "GlobalTheory.EX.HostGood"
+     },
+     {
+      "lines": [
+       42,
+       43
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.Supply",
+      "name": "UpperTheory.Top.GChi"
+     }
+    ],
+    "mathlib_read": [],
+    "reader": "Halley",
+    "text": "For each primitive character ψ, VWinAt ψ 401 gives ψ's host requirement at la = 3/2 (HostExW)"
+   },
+   "id": "hosts",
+   "level": 2,
+   "order": 4,
+   "parent": "three-inputs",
+   "premises": [
+    "input-vwin"
+   ],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.CharacterBoxes.SupplyChi",
+     "name": "UpperTheory.Top.supplyChi"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "Counted by a regex over the structure's field lines, not by a parse: 46 field lines, 16 of them containing Closed."
+    ],
+    "conventions_checked": [
+     "e"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       22,
+       90
+      ],
+      "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.Hyps",
+      "name": "GlobalTheory.Fc.HypsAlt"
+     }
+    ],
+    "mathlib_read": [],
+    "reader": "Halley",
+    "text": "Input 3: a structure with 46 fields, 16 of them closure conditions on family classes"
+   },
+   "id": "input-hypsalt",
+   "level": 2,
+   "order": 5,
+   "parent": "three-inputs",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.Hyps",
+     "name": "GlobalTheory.Fc.HypsAlt"
+    }
+   ]
+  },
+  {
+   "claim": null,
+   "id": "linkn",
+   "level": 3,
+   "order": 1,
+   "parent": "input-hypsalt",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Formalism.SharpRestriction.GlobalTheoremInputs",
+     "name": "Formalism.MainNotions.LinkN"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conventions_checked": [
+     "e"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       215,
+       218
+      ],
+      "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.EveryCharacterOfLiteratureOfVWin",
+      "name": "UpperTheory.LiteratureTheorems.OpenLiteratureStatements"
+     }
+    ],
+    "mathlib_read": [],
+    "reader": "Halley",
+    "text": "Three hypotheses bundled in one structure that the library names OpenLiteratureStatements, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
+   },
+   "id": "literature-statements",
+   "level": 3,
+   "order": 2,
+   "parent": "input-hypsalt",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.EveryCharacterOfLiteratureOfVWin",
+     "name": "UpperTheory.LiteratureTheorems.OpenLiteratureStatements"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "The bound is only as strong as the families that exist; their existence is ChebyshevInequalityAtWindowScale, supplied on Main's route by TopG and the hosts. FamP, EFamC and ChainTied are not opened."
+    ],
+    "conventions_checked": [
+     "d",
+     "e"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       23,
+       24
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.TopWin",
+      "name": "Formalism.HC.ChebyshevInequalityOnFamilyWindows"
+     },
+     {
+      "lines": [
+       26,
+       28
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.TopWin",
+      "name": "Formalism.HC.ChebyshevInequalityOnWindows"
+     },
+     {
+      "lines": [
+       38,
+       38
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.Gm"
+     },
+     {
+      "lines": [
+       32,
+       32
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.Nt"
+     },
+     {
+      "lines": [
+       36,
+       36
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.wt"
+     },
+     {
+      "lines": [
+       11,
+       11
+      ],
+      "module": "Formalism.StatementOC",
+      "name": "Formalism.Sz"
+     },
+     {
+      "lines": [
+       13,
+       13
+      ],
+      "module": "Formalism.StatementOC",
+      "name": "Formalism.Gz"
+     },
+     {
+      "lines": [
+       23,
+       24
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.gChi"
+     }
+    ],
+    "mathlib_read": [
+     "ArithmeticFunction.vonMangoldt (by standard meaning)",
+     "Real.eulerMascheroniConstant (by standard meaning)"
+    ],
+    "reader": "Halley",
+    "text": "For every level, every ε > 0 and every host family (in the library's sense, FamP) that satisfies the conditions the library names EFamC for that level and ChainTied on its windows, with constants eD and eL: the level's error term Gm(x) is at most x^(1/2 + (eD + eL + 7)ε) for all large x in the family's windows"
+   },
+   "id": "window-bound-every-level",
+   "level": 4,
+   "order": 1,
+   "parent": "zeros-enter",
+   "premises": [
+    "window-inequality"
+   ],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.PrimitiveCosets.LevelGmLeOnFamilyScales",
+     "name": "UpperTheory.Comparison₂.level_gm_le_on_family_scales"
+    }
+   ]
+  },
+  {
+   "claim": {
+    "conditions": [
+     "Proved for every level (Imports.lean 8-19), so it is a fact of the library, not an input. KSet / Level.KEPT and level_family are not opened."
+    ],
+    "conventions_checked": [
+     "d",
+     "e"
+    ],
+    "date": "2026-11-23",
+    "defs_opened": [
+     {
+      "lines": [
+       30,
+       31
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Window",
+      "name": "Formalism.HC.Level.FormBAt"
+     },
+     {
+      "lines": [
+       33,
+       33
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Window",
+      "name": "Formalism.HC.Level.FormB"
+     },
+     {
+      "lines": [
+       7,
+       8
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Window",
+      "name": "Formalism.HC.HasWindows"
+     },
+     {
+      "lines": [
+       24,
+       24
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.ZeroFreeAbove"
+     },
+     {
+      "lines": [
+       38,
+       38
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.Gm"
+     },
+     {
+      "lines": [
+       32,
+       32
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.Nt"
+     },
+     {
+      "lines": [
+       36,
+       36
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.Level.wt"
+     },
+     {
+      "lines": [
+       11,
+       11
+      ],
+      "module": "Formalism.StatementOC",
+      "name": "Formalism.Sz"
+     },
+     {
+      "lines": [
+       13,
+       13
+      ],
+      "module": "Formalism.StatementOC",
+      "name": "Formalism.Gz"
+     },
+     {
+      "lines": [
+       23,
+       24
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.gChi"
+     }
+    ],
+    "mathlib_read": [
+     "ArithmeticFunction.vonMangoldt (by standard meaning)",
+     "Real.eulerMascheroniConstant (by standard meaning)"
+    ],
+    "reader": "Halley",
+    "text": "Every level has the Landau property: for every la > 1 and every θ with 0 < θ < 1, if the level's error term Gm satisfies Gm(x) ≤ x^θ for all x in windows [Y, Y^la] lying beyond every point, then no L-function of a character the level keeps vanishes for Re s > θ"
+   },
+   "id": "landau-every-level",
+   "level": 4,
+   "order": 4,
+   "parent": "zeros-enter",
+   "premises": [
+    "landau-step"
+   ],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.PrimitiveCosets.Imports",
+     "name": "UpperTheory.Comparison₂.formB"
+    }
+   ]
+  }
+ ],
+ "release": "rh-2026-11-20"
+}
