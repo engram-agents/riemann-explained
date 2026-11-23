@@ -309,7 +309,7 @@ What `hOneTwo_holds` proves, read from its statement, its last lines and the def
   intro _ hTD hEC F Ω _ _ _ _ _ l _ M _ _ _ _ _ A v rho hA hl hrho hex
 ```
 
-An underscore has no name, so the proof cannot refer to local finiteness, and it does not.
+An underscore has no name, so the proof cannot refer to local finiteness by name; and no tactic in lines 22-60 searches the context for a hypothesis (there is no `assumption`, `simp_all`, `aesop`, `omega`, `tauto`, `decide`, `linarith`, `simpa` or anonymous-hypothesis bracket there), so it is not picked up that way either.
 
 **Local Tate duality is used at lines 48-49:**
 
@@ -343,7 +343,7 @@ With `H0` and `H2` trivial, this makes `H1` trivial (line 59 of `tame_vanish`).
 
 **What this means for a reader.** On the path we read, the proof of `LinkN` needs local Tate duality and the local Euler characteristic formula, and carries local finiteness without using it there. Local finiteness may be used on a path we have not read, so we do not say it is unused in the proof.
 
-**How far the counts in this note can be trusted.** The counts above and in the Clarification look for each hypothesis by its name. A name count cannot see a hypothesis used through instance resolution, where Lean fills an argument from the context without the name being written; `tame_vanish` itself does this with `hdual`, which is never named after line 34 and is used at line 53. That route is closed for the three local statements: they are plain propositions (`def ... : Prop`, `GalCoh.lean` lines 195, 201 and 213), not classes, so Lean does not fill arguments from them on its own.
+**How far the counts in this note can be trusted.** The counts above and in the Clarification look for each hypothesis by its name. A name count cannot see a hypothesis used through instance resolution, where Lean fills an argument from the context without the name being written; `tame_vanish` itself does this with `hdual`, which is never named after line 34 and, on our reading of the types (`Subsingleton.elim z 0` needs that instance), is used at line 53. That route is closed for the three local statements: they are plain propositions (`def ... : Prop`, `GalCoh.lean` lines 195, 201 and 213), not classes, so Lean does not fill arguments from them on its own.
 
 **Files added with this addition** are marked in the table below.
 
