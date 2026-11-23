@@ -62,8 +62,9 @@ CONTRACT (each line is a self-test case, written before the code)
     interpretation needs reader and date (no other kind is extended); decls entries have str module and name; file
     (if present) a non-empty str; lines (if present) two ints >= 1, first not after last; col needs row;
     defs_opened (if present) is a list of {module, name, lines:[int,int]}; conventions_checked (if present) is a list
-    of "a".."e"; row and col (if present) are ints >= 1. Every problem string starts with the field name.
-    header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f.
+    of "a".."e"; second_readers (if present, any kind) is a list of {reader, date}, both non-empty strings (the list
+    may be empty); row and col (if present) are ints >= 1. Every problem string starts with the field name.
+    header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f, SR1-SR3, LN1.
  B3 target_at gives the element holding a line, None between elements; a line inside a table is held by the table, so
     the insertion line is the table's last line, never between rows. A line that is itself an anchor line directly
     after an element (any rh- line, malformed ones too) gets that element, so a caller can find append_after from any
@@ -74,7 +75,7 @@ CONTRACT (each line is a self-test case, written before the code)
 
 LIMIT. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
 row, column, declaration or file exists (a table's size is only reported), no date format, no order check on
-`lines`, no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
+`defs_opened[].lines` (a block's own `lines` IS order-checked: first not after last, B2), no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
 `conventions_checked` (open; they are validated when present and never required). Markdown is approximated by the
 rules in A2, A5 and A6, not CommonMark: a fence may be indented by any spaces or tabs, indented code blocks and HTML
 blocks are not recognised as fences, setext headings are not recognised, a table is a run of lines starting with `|`
@@ -489,6 +490,18 @@ def problems(block, note_id=None):
         cc = block["conventions_checked"]
         if not (isinstance(cc, list) and all(isinstance(x, str) and x in ("a", "b", "c", "d", "e") for x in cc)):
             out.append("conventions_checked: must be a list of letters a to e")
+    if "second_readers" in block:
+        sr = block["second_readers"]
+        if not isinstance(sr, list):
+            out.append("second_readers: must be a list of objects with reader and date")
+        else:
+            for k, e in enumerate(sr):
+                if not isinstance(e, dict):
+                    out.append(f"second_readers[{k}]: must be an object with reader and date")
+                    continue
+                for f in ("reader", "date"):
+                    if not _str(e.get(f)):
+                        out.append(f"second_readers[{k}].{f}: must be a non-empty string")
     if "file" in block and not _str(block["file"]):
         out.append("file: must be a non-empty string")
     if "lines" in block:
@@ -1255,6 +1268,50 @@ def _():
     t1 = insert_after_line(table, 3, B(1))
     t2 = insert_after_line(t1, 3, B(2))
     eq([x.data["id"] for x in parse_note(t2)[1]], ["15.b02", "15.b01"], "insert_after twice reverses")
+
+
+@case("SR1", "second_readers (optional): a list of {reader, date}, both non-empty strings; allowed on every kind; an empty list is fine")
+def _():
+    sr = [{"reader": "K", "date": "2026-11-23"}, {"reader": "L", "date": "2026-11-24"}]
+    for v in [MF(second_readers=sr), vb(second_readers=sr), vb(kind="correction", second_readers=sr),
+              vb(kind="not_read", needs="callers", second_readers=sr),
+              vb(kind="interpretation", reader="R", date="2026-11-23", second_readers=sr),
+              vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL], second_readers=sr),
+              vb(second_readers=[]), vb(second_readers=sr[:1])]:
+        eq(problems(v), [], repr(v))
+        eq(problems(v, "15"), [], repr(v) + " with note")
+
+
+@case("SR2", "second_readers that is not a list is a problem starting second_readers; an entry that is not an object likewise")
+def _():
+    for bad in ("K", {"reader": "K", "date": "d"}, None, 5, True):
+        one(vb(second_readers=bad), "second_readers")
+    eq(problems(vb(second_readers="K")), ["second_readers: must be a list of objects with reader and date"], "literal")
+    for bad in ("K", None, 5, ["K", "d"]):
+        one(vb(second_readers=[bad]), "second_readers[0]")
+    eq(problems(vb(second_readers=["K"])), ["second_readers[0]: must be an object with reader and date"], "literal entry")
+    one(vb(second_readers=[{"reader": "K", "date": "d"}, "x"]), "second_readers[1]")
+
+
+@case("SR3", "an entry missing reader or date, or with an empty or non-string one, is a problem naming that field")
+def _():
+    one(vb(second_readers=[{"date": "d"}]), "second_readers[0].reader")
+    one(vb(second_readers=[{"reader": "K"}]), "second_readers[0].date")
+    one(vb(second_readers=[{"reader": "", "date": "d"}]), "second_readers[0].reader")
+    one(vb(second_readers=[{"reader": "K", "date": ""}]), "second_readers[0].date")
+    one(vb(second_readers=[{"reader": 5, "date": "d"}]), "second_readers[0].reader")
+    one(vb(second_readers=[{"reader": "K", "date": None}]), "second_readers[0].date")
+    one(vb(second_readers=[{"reader": "K", "date": "d"}, {"reader": "L"}]), "second_readers[1].date")
+    eq(problems(vb(second_readers=[{"reader": "", "date": 5}])),
+       ["second_readers[0].reader: must be a non-empty string", "second_readers[0].date: must be a non-empty string"], "both, literal")
+    eq(len(problems(vb(second_readers=[{}, {}]))), 4, "two empty entries, two fields each")
+
+
+@case("LN1", "lines is order-checked on a block (first <= last) and NOT on defs_opened[].lines")
+def _():
+    one(vb(lines=[5, 2]), "lines")
+    eq(problems(vb(lines=[2, 5])), [], "block lines in order")
+    eq(problems(vb(defs_opened=[{"module": "M", "name": "n", "lines": [5, 2]}])), [], "defs_opened lines out of order: no problem")
 
 
 @case("CONST", "the closed lists, in order")
