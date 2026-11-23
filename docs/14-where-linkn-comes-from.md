@@ -241,6 +241,64 @@ That result is the field `what₂` of `prN`, a record with thirteen other fields
 
 *On the twin.* Three declarations in the release share the short name `locComp_of_isRc_classMapD_cenLoc`. The one this chain cites is the full name given above, in `PublishedInputsCombined.lean`; Halley first opened another (in `ConductorValuationDeltaComparison.lean`) and re-read. The file table at the end lists each file by full path and hash, the rows added with this correction marked as such.
 
+### Clarification, 2026-11-23: where local duality is used, and what the member preconditions read
+
+*Found by Halley reading the two proofs this note listed as not read (`galois_preconditions_at_mem` and `exists_good_cut_facts_tie4`), and the chain below them; read by Kepler before it was published. The body above is unchanged. Instrument for every "is not used" below: a count of each bound name's occurrences in the proof's source lines, with the other bound names of the same proof as the control (each of them shows a use). Lean was not run. Nothing here has been checked by a mathematician.*
+
+**The sentence in "Interpretation" that this changes.** It reads: "On this reading, local duality does not produce the inequality; it prepares the sub-datum and the preconditions on which the inequality is proved." The first half stands. The second half is half wrong: local duality prepares the facts of the cut (the sub-datum); it does not prepare the preconditions on members.
+
+**The member branch carries the three local statements and does not use them.** `final_alt_alt` passes `lf ltd lec` to `galois_preconditions_at_mem` (`CFinal.lean`, line 22). That theorem passes them on in one place only, line 95 of `PreAtMem.lean`:
+
+```lean
+  have core : _root_.UpperTheory.GalS.Core0Alt (w.D Z) := _root_.UpperTheory.GalS.core0_of_local_duality_inputs prn.what₂ prn.hc prn.decay dzs lf ltd lec hL (w.D Z) I jumps
+```
+
+`core0_of_local_duality_inputs` takes them as `hF hT hE` (line 56):
+
+```lean
+  intro hP hc hd hs hF hT hE hL D I hJ
+```
+
+and its proof (lines 57-85) never names `hF`, `hT` or `hE` again. The only tactic in that proof that reads hypotheses it is not given by name is `omega`, at lines 70-71, on goals about natural numbers. Despite its name, this theorem does not use local duality.
+
+**What the member branch does read: three fields of `prN`.** The same line 95 passes `prn.what₂`, `prn.hc` and `prn.decay`. Inside `core0_of_local_duality_inputs`, `prn.what₂` (bound as `hP`) goes to `theta_conditions_of_inputs_of_jumpsCard` (line 57), whose result becomes the field `what₂` of the preconditions; `hP.fin` goes to `MuUnrTie.main_alt_alt` (line 82); and `hP` goes to `depthZeroG_of_rowMod` (line 83). `galois_preconditions_at_mem` also passes `prn` whole to three theorems (lines 90-91). We have read none of these proofs.
+
+**What the proof of `LinkN` reads from the preconditions.** In `linkN_of_twGood_galoisPreconditions` (`LinkNFam.lean`), the preconditions `(hF x hx i).1` are handed to the cut (line 44), and five of their fields are read directly:
+
+```lean
+  refine linkN_of_gd Fm c (fun x hx i => ⟨(hc x i hx).1, ?_, (hF x hx i).1.what₂.rank _⟩)
+```
+
+```lean
+  exact GlobalTheory.T.goodPointMultiplicityLeRank_proof _ _ p.Conclusion1.2.2 p.z p.adm.2.2 p.c2
+```
+
+**So the correction's open line has a partial answer.** The correction above said: "Whether the proof of `LinkN` reads these fields of `prN` is not read." It does read `prN.what₂`, at one remove: `prN.what₂` is the input of the theorem that builds the field `what₂` of the preconditions, and line 50 reads that field. Whether the literature statements inside `prN.what₂` are used by `theta_conditions_of_inputs_of_jumpsCard`, or only carried by it, we have not read.
+
+**The cut branch uses local duality, once, for a vanishing of local cohomology.** `final_alt_alt` passes `lf ltd lec` to `exists_good_cut_facts_tie4` (`CFinal.lean`, line 21), which passes them on in one place (`CFacts.lean`, line 62):
+
+```lean
+  exact ⟨c, hc, _root_.UpperTheory.GalC.facts_of_galois_preconditions_of_cutRec hCh lf ltd lec (_root_.UpperTheory.GalC.pre_cut_alt hc h) (cutRec_cut hc), compatibilityTies_eigenRestriction c hT⟩
+```
+
+`facts_of_galois_preconditions_of_cutRec` passes them on in one place (line 52), to `prvG5_of_admissible_cutRec`, which uses them at line 33 of `AdmissibleJOfRestricted.lean`:
+
+```lean
+  have hH : HOneTwo D := GlobalTheory.T.hOneTwo_of_localFiniteness_tateDuality_eulerChar h1 h2 h3 D
+```
+
+and uses `hH` at line 44. `hOneTwo_of_localFiniteness_tateDuality_eulerChar` is one tactic line that applies `HOneTwoLevel.hOneTwo_holds` (`H1H2LocalDualityStatement.lean`, line 8). In `hOneTwo_holds` (`H1H2LocalDuality.lean`, lines 149-217) the three statements are named at line 150 and once more, at line 212:
+
+```lean
+  have key := GlobalTheory.T.localCohomology_vanishes_tame_inertia_no_fixed hF hT hE D.host.E D.nd.Om (D.nd.l i)
+```
+
+What `hOneTwo_holds` proves, read from its statement, its last lines and the definition of `HOneTwoZero` (`ExistsInertiaCharpolyFactorOfTameType.lean`, lines 1471-1477): at a place `w` in the set `S`, when the twisted residual representation has no fixed vector under one chosen element (the bijectivity `hbij`, lines 198-211), the groups the library calls `H1` and `H2` of that representation, restricted to the decomposition group at `w`, have at most one element (line 217). This is a real use. `final_alt_alt` hands the three statements to two theorems (lines 21 and 22); below it, on the cut branch, each proof we read has exactly one consumer of them, so on that branch they enter `LinkN` once, here. *Not read:* the proof of `localCohomology_vanishes_tame_inertia_no_fixed`, and the library's definitions of `H1` and `H2`.
+
+**What the interpretation sentence should read.** "On this reading, local duality does not produce the inequality; it prepares the cut, through the vanishing of `H1` and `H2` of local representations at the places in `S` (`hOneTwo_holds`). The member preconditions are built without it."
+
+**Files added with this clarification** are marked in the table below.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me.
@@ -266,3 +324,9 @@ Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files
 | `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/PublishedInputsCombined.lean` (lines 18-36 read; added with the Correction of 2026-11-22) | `f756b62df6738c6bac01310d3308f0857759143262a10de14504823088c609d5` |
 | `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/EveryCharacterOfLiteratureOfVWin.lean` (lines 282-287, 351-352, 456-461, 609-621, 645-651 read; added with the Correction of 2026-11-22) | `246b74eeb03dae250c45b46c155b3590cb53c2bac86f5e35f4b74338db487068` |
 | `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/MemberBundlesLargeUnramifiedExponents.lean` (line 34 and lines 55-72 read; added with the Correction of 2026-11-22) | `8115bc1c4fc9df8eac928acb5f04bc966f0448f4619585d633cd5d1f1614786a` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/PreAtMem.lean` (lines 54-103 read; added with the Clarification of 2026-11-23) | `59235430eabcc407ecf19981de0b06273135a1d89ecd266a2c848340ff5bcc49` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/CFacts.lean` (lines 40-62 read; added with the Clarification of 2026-11-23) | `6e8f8be134679aa1522ba1eac64346f40ce1c0d3a0d8806d37407316cd7e2fe9` |
+| `Development/AutomorphicArithmetic/ThetaCorrespondence/ThetaPairLifts/ThirdPlaceSeries/AdmissibleJOfRestricted.lean` (lines 28-44 read; added with the Clarification of 2026-11-23) | `fe62c53ab34139e42e3be84294d801a91c8dd8e9603f4a92af6710a8c5659c6e` |
+| `Development/AbelianVarietyTheory/Proofs/SatakeParameters/H1H2LocalDualityStatement.lean` (read whole; added with the Clarification of 2026-11-23) | `69a0a732d481c9b61bdf1bd82f0eb7e76d22f3fd21c4e25760db59cd63b8656e` |
+| `Development/AbelianVarietyTheory/Proofs/SatakeParameters/H1H2LocalDuality.lean` (lines 149-219 read; added with the Clarification of 2026-11-23) | `55724bcc2f6d52e86d93258fb802a4bd5e209cef91b7e03e485c763c063fc385` |
+| `Formalism/SharpRestriction/LevelLetterCocycles/ExistsInertiaCharpolyFactorOfTameType.lean` (lines 1471-1477 read; added with the Clarification of 2026-11-23) | `522b0eabca4bb285abc7e4bcf2976677c594b8ec11b313d2e0eb3da7eeab35d6` |
