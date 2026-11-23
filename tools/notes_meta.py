@@ -55,9 +55,9 @@ CONTRACT (each line is a self-test case, written before the code)
   F12 With --strings, an argument or interpretation block whose text opens with the frame of another kind is a
      FRAME-NOTE listing; without it one line says the check was skipped. Cases F12a F12b.
   BYTES With --base REV: the note at REV and the current note, each without its anchor lines (header and blocks), are equal
-     byte for byte after the strip rule of rh_anchor (BYTE-DIFF names the first differing line of those stripped texts; a base that is not UTF-8 is a
+     byte for byte after the strip rule of rh_anchor (BYTE-DIFF names the first differing line as a line of the current file on disk and as an index of the stripped texts; a base that is not UTF-8 is a
      BYTE-DIFF with no line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
-     Cases B1a to B1e, Y1 to Y6, Z1, Z2a to Z2d.
+     Cases B1a to B1e, Y1 to Y6, Z1, Z2a to Z2d, BL1 to BL6.
  Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
   R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
@@ -100,7 +100,12 @@ phrases) from the strings file; that key is PROVISIONAL and its shape is not fin
 or `<` (a placeholder), the match is case-blind, ignores leading `*`, `_` and `>`, ends at a word boundary, and only
 the first other kind that matches is named; only a block whose target is a paragraph is read. The byte check
 compares at the path the note has in the repository, so a note renamed since REV is NEW-NOTE, and BYTE-DIFF's line
-number is a line of the text with its anchor lines removed (on both sides), not of the note with its anchors. Both sides are
+number after the note name is the 1-based line in the CURRENT file as it is on disk, anchor lines included (the i-th line that is
+not an anchor line of the note, the anchor lines being those rh_anchor.parse_note reports; a malformed rh- line is text and
+is not one), and the message gives the index in the text without anchors too. When the difference is at the END of one side
+(`<no line>`, on either side) the number is the line after the last non-anchor line of the current file, or 1 when there is
+none; trailing anchor lines do not shift it, and for a base with a line the current file lacks it points one past the last
+non-anchor line, not at the extra text. Both sides are
 stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
 result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
 with no line, and the other notes are still compared. "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
@@ -680,7 +685,15 @@ def _bytes_check(name, text, rel, ctx):
 
     def fmt(ls):
         return repr(ls[i].decode("utf-8", "replace")) if i < len(ls) else "<no line>"
-    return _f("BYTE-DIFF", name, i + 1, f"line {i + 1} differs: at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}")
+    # the line in the CURRENT file as it is on disk: the i-th line that is not an anchor line of this note (the anchor lines are
+    # the ones parse_note reports, the set strip_anchor_lines removes); at the end it is the line after the last non-anchor line
+    headers, blocks, _problems = rh.parse_note(text)
+    anchors = {x.line for x in headers + blocks}
+    parts = _LINE_SPLIT.split(text)
+    plain = [k for k in range(1, len(parts) - (parts[-1] == "") + 1) if k not in anchors]
+    line = plain[i] if i < len(a) and i < len(b) and i < len(plain) else (plain[-1] + 1 if plain else 1)
+    return _f("BYTE-DIFF", name, line, f"line {line} differs (line {i + 1} of the text without anchors): "
+              f"at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}")
 
 
 # ---- the run
