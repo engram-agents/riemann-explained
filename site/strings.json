@@ -86,5 +86,5 @@
  },
  "evidence_module_label": "Lean module",
  "evidence_name_label": "Lean name",
- "evidence_kind_label": "Kind"
+ "evidence_kind_label": "Declared as"
 }
