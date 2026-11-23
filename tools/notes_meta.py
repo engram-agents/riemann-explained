@@ -1002,6 +1002,7 @@ def _():
                  "NO-HEADER 03-c.md has no rh-note header",
                  "note 03-c header FAILED, blocks 0",
                  "FRAME-NOTE skipped: no strings file",
+                 "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 1 premise links",
                  "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0",
                  "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
@@ -1441,7 +1442,7 @@ def _():
     cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n" + BL("01.b02") + "\n")
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD")
     eq((r.f, r.rc), ([], 0), r.out)
-    ok("byte check: ran against HEAD" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD", repo_arg=True)
     eq((r.f, r.rc), ([], 0), "--repo given")
 
@@ -1556,7 +1557,9 @@ def _():
     msg = "ORPHAN-BLOCK 01-a.md:%d block '01.b01' anchors nothing: its target is of type '%s', not a paragraph, table or lean block"
     fe(go(notes={"01-a.md": BL() + "\n" + NOTE()}), [msg % (1, "none")], 1)
     fe(go(notes={"01-a.md": NOTE(body=BL() + "\n")}), [msg % (6, "other")], 1)
-    fe(go(notes={"01-a.md": NOTE(body="- item\n" + BL() + "\n")}), [msg % (7, "other")], 1)
+    fe(go(notes={"01-a.md": NOTE(body="- item\n" + BL() + "\n")}),
+       ["ITEM-REQUIRED 01-a.md:7 block '01.b01': a list needs 'item' (1-based, like 'row')"], 1)   # flipped: a list item is a list now
+    fe(go(notes={"01-a.md": NOTE(body="<div>x</div>\n" + BL() + "\n")}), [msg % (7, "other")], 1)
     fe(go(notes={"01-a.md": NOTE(body="> quote\n" + BL() + "\n")}), [msg % (7, "other")], 1)
     fe(go(notes={"01-a.md": NOTE(body="```text\nx\n```\n" + BL() + "\n")}), [msg % (9, "other")], 1)
     clean(go(notes={"01-a.md": NOTE(body="Some text.\n" + BL() + "\n")}))
@@ -1588,6 +1591,110 @@ def _():
             os.environ["PATH"] = saved
     eq((rc, out.getvalue()), (4, ""), "exit and stdout")
     ok(err.getvalue().startswith("REFUSED: the self-test of notes_meta.py needs the git program, which was not found on PATH"), err.getvalue())
+
+
+@case("ITEM1", "a block on a list must carry item; item above the number of top-level items is out of range; the last item is fine; "
+               "nested items are not numbered")
+def _():
+    lst = "- a\n- b\n"
+    n = lambda body, **kw: {"01-a.md": NOTE(body=body + BL(**kw) + "\n")}  # noqa: E731
+    clean(go(notes=n(lst, item=1)))
+    clean(go(notes=n(lst, item=2)))
+    fe(go(notes=n(lst, item=3)), ["ITEM-OUT-OF-RANGE 01-a.md:8 block '01.b01' item 3 but the list has 2 top-level items"], 1)
+    fe(go(notes=n(lst)), ["ITEM-REQUIRED 01-a.md:8 block '01.b01': a list needs 'item' (1-based, like 'row')"], 1)
+    clean(go(notes=n("1. a\n2. b\n", item=2)))
+    clean(go(notes=n("- a\n  - b\n", item=1)))
+    fe(go(notes=n("- a\n  - b\n", item=2)), ["ITEM-OUT-OF-RANGE 01-a.md:8 block '01.b01' item 2 but the list has 1 top-level items"], 1)
+
+
+@case("ITEM2", "item on a target that is not a list is NOT-A-LIST naming the type; a bad item value is ITEM-BAD-VALUE and nothing else on a list; "
+               "item with row is a block problem")
+def _():
+    n = lambda body, **kw: {"01-a.md": NOTE(body=body + BL(**kw) + "\n")}  # noqa: E731
+    fe(go(notes=n("Some text.\n", item=1)), ["NOT-A-LIST 01-a.md:7 block '01.b01' carries item but its target is of type 'paragraph', not a list"], 1)
+    fe(go(notes=n("```lean\nx\n```\n", item=1)), ["NOT-A-LIST 01-a.md:9 block '01.b01' carries item but its target is of type 'lean', not a list"], 1)
+    bad = "ITEM-BAD-VALUE 01-a.md:8 block '01.b01': item: must be an integer of 1 or more"
+    for v in (0, -1, "1", True, 1.5):
+        fe(go(notes=n("- a\n- b\n", item=v)), [bad], 1)
+    fe(go(notes=n("| a |\n|---|\n| 1 |\n", item=1, row=1)),
+       ["BLOCK-PROBLEM 01-a.md:9 block '01.b01': item: cannot be combined with row or col (a block anchors a list item or a table row)",
+        "NOT-A-LIST 01-a.md:9 block '01.b01' carries item but its target is of type 'table', not a list"], 1)
+
+
+@case("CONST2", "the refusal table of list shapes is empty by default")
+def _():
+    eq(REFUSED_LIST_SHAPES, (), "empty")
+
+
+@case("LSH1", "a list whose shape has every key of a refused entry is LIST-SHAPE-REFUSED naming the shape; the same note with the empty table is clean")
+def _():
+    loose = {"01-a.md": NOTE(body="- a\n\n- b\n" + BL(item=1) + "\n")}
+    ordered_loose = {"01-a.md": NOTE(body="1. a\n\n2. b\n" + BL(item=1) + "\n")}
+    msg = "LIST-SHAPE-REFUSED 01-a.md:9 block '01.b01' anchors a list whose shape the renderer shows differently: "
+    saved = globals()["REFUSED_LIST_SHAPES"]
+    try:
+        clean(go(notes=loose))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(go(notes=loose), [msg + "loose"], 1)
+        fe(go(notes=ordered_loose), [msg + "loose"], 1)
+        clean(go(notes={"01-a.md": NOTE(body="- a\n- b\n" + BL(item=1) + "\n")}))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose", "ordered"}),)
+        fe(go(notes=ordered_loose), [msg + "loose, ordered"], 1)
+        clean(go(notes=loose))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose", "last_nested"}),)
+        clean(go(notes=loose))
+    finally:
+        globals()["REFUSED_LIST_SHAPES"] = saved
+    clean(go(notes=loose))
+    eq(REFUSED_LIST_SHAPES, (), "restored")
+
+
+@case("N5a", "the outline summary line on the pilot-shape fixture, literal; every number counted")
+def _():
+    ok("outline: 7 groups, 3 claimed, 4 null, 8 roots resolved, 1 defs_opened resolved, 5 premise links" in go(outline=OL(*_real())).lines, "REAL1")
+
+
+@case("N5b", "the outline summary line still prints, with the numbers of what resolved, when the outline has findings")
+def _():
+    d = [{"module": "A.C", "name": "baz", "lines": [5, 9]}, {"module": "A.B", "name": "nope", "lines": [1, 2]}]
+    ol = OL(G("g1", roots=[R("A.B", "foo")], claim=dict(CLAIM, defs_opened=d)),
+            G("g2", order=2, roots=[R("A.D", "dup"), R("A.C", "baz")], premises=["g1", "zz"]))
+    r = go(outline=ol)
+    eq(r.f, ["UNRESOLVED outline.json group 'g1' claim defs_opened[1] A.B nope: no row in decls.tsv",
+             "BAD-PREMISE outline.json group 'g2': premise 'zz' is not a group id",
+             "AMBIGUOUS outline.json group 'g2' roots[0] A.D dup: 2 rows; candidates (first_line, last_line): (1, 3), (7, 9)"], "findings")
+    ok("outline: 2 groups, 1 claimed, 1 null, 2 roots resolved, 1 defs_opened resolved, 1 premise links" in r.lines, r.out)
+    eq(r.rc, 1, "exit")
+
+
+@case("N5c", "positive lines for the strings file and the byte check when they ran: phrases and kinds that hold one; notes equal and new")
+def _():
+    fr = {"frames": {"claim": ["From"], "argument": ["How this is proved, as", "Next"], "interpretation": []}}
+    other = NOTE(nid="02", body="Other.\n")
+    r = go(notes={"01-a.md": CUR, "02-b.md": other, "03-c.md": NOTE(nid="03")}, committed={"01-a.md": T0, "02-b.md": T0},
+           base="HEAD", strings=fr)
+    ok("strings: 3 frame phrases loaded for 2 kinds" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 1 new" in r.lines, r.out)
+    eq((r.rc, [x[:9] for x in r.f]), (1, ["BYTE-DIFF", "NEW-NOTE "]), "findings")
+    ok(not any(x.startswith("FRAME-NOTE skipped") for x in r.lines), "no skip notice when phrases loaded")
+
+
+@case("HROOT1", "a header's group may be root when its level is 0; a level-0 note may name a real group; an unknown group is still UNKNOWN-GROUP")
+def _():
+    clean(go(notes={"01-a.md": NOTE(group="root", level=0)}))
+    clean(go(notes={"01-a.md": NOTE(group="g1", level=0)}))
+    fe(go(notes={"01-a.md": NOTE(group="zz", level=0)}), ["UNKNOWN-GROUP 01-a.md:2 group 'zz' is not in the outline"], 1)
+    fe(go(notes={"01-a.md": NOTE(group="zz", level=1)}), ["UNKNOWN-GROUP 01-a.md:2 group 'zz' is not in the outline"], 1)
+
+
+@case("HROOT2", "group root with level 1 is an error naming the line and saying root is for level 0 only")
+def _():
+    fe(go(notes={"01-a.md": NOTE(group="root", level=1)}), ["GROUP-ROOT-LEVEL 01-a.md:2 group 'root' is for level 0 only (this note has level 1)"], 1)
+
+
+@case("HROOT3", "group root with level 2 is the same error")
+def _():
+    fe(go(notes={"01-a.md": NOTE(group="root", level=2)}), ["GROUP-ROOT-LEVEL 01-a.md:2 group 'root' is for level 0 only (this note has level 2)"], 1)
 
 
 @case("REAL1", "an outline in the pilot's shape (depth 4, a step whose premises name a deeper group, null and non-null claims) passes")
