@@ -353,6 +353,10 @@ With `H0` and `H2` trivial, this makes `H1` trivial (line 59 of `tame_vanish`).
 
 The paragraph "On the twin" in the Correction of 2026-11-22 says that three declarations in the release share the short name `locComp_of_isRc_classMapD_cenLoc`. That number was given from the declarations we had met, not from a count over the whole release. A count on 2026-11-23 finds 21: we searched every `.lean` file of the release for declaration lines (`theorem`, `lemma`, `def` or `abbrev`, with or without a namespace prefix) whose name ends in `locComp_of_isRc_classMapD_cenLoc`, and found 21 such lines in 21 files, all in the folder `ThirdPlaceSeries`, each in a different namespace. The point of that paragraph stands, more strongly: these theorems must be cited by their full names.
 
+### Addition, 2026-11-23 (later the same day): where the literature statements go next
+
+*Read by Kepler before it was published. The body above is unchanged.* [Note 15](15-literature-statements.md) follows the three literature statements of the Correction of 2026-11-22 past `prN.what₂`. It also shows that a second form of local Tate duality, the field `tate` of `NLink.Hypotheses₂`, enters `LinkN`'s proof, so the sentences above about "the three local statements" cover `final_alt_alt`'s three hypotheses only.
+
 ## Files this note was written from
 
 Paths are relative to the release's `lean/src/`. Hashes are SHA-256 of the files as released, computed by me.
