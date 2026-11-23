@@ -343,12 +343,25 @@ def _selftest_cases():
 
     @case("PROV1", "provenance: a root outside any git work tree says `unversioned`")
     def _():
+        if not shutil.which("git"):
+            return None, "git not on PATH"
         with tempfile.TemporaryDirectory() as d:
-            got = provenance("t", d, "not x")
+            # a TMPDIR inside a git work tree must not make the planted root look versioned
+            old = os.environ.get("GIT_CEILING_DIRECTORIES")
+            os.environ["GIT_CEILING_DIRECTORIES"] = os.path.dirname(os.path.realpath(d))
+            try:
+                got = provenance("t", d, "not x")
+            finally:
+                if old is None:
+                    del os.environ["GIT_CEILING_DIRECTORIES"]
+                else:
+                    os.environ["GIT_CEILING_DIRECTORIES"] = old
         return _eq(got, "# t | source: unversioned| not x")
 
     @case("PROV2", "provenance: a root in a git work tree carries `git rev-parse HEAD`")
     def _():
+        if not shutil.which("git"):
+            return None, "git not on PATH"
         with tempfile.TemporaryDirectory() as d:
             g = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-C", d]
             subprocess.run(g + ["init", "-q"], check=True, capture_output=True)
@@ -360,7 +373,8 @@ def _selftest_cases():
     @case("PROV3", "provenance: a git work tree whose HEAD cannot be read says `git-unreadable`")
     def _():
         with tempfile.TemporaryDirectory() as d:
-            subprocess.run(["git", "-C", d, "init", "-q"], check=True, capture_output=True)
+            if shutil.which("git"):   # without git the word is the same: git is missing, which is `git-unreadable`
+                subprocess.run(["git", "-C", d, "init", "-q"], check=True, capture_output=True)
             got = provenance("t", d, "not x")
         return _eq(got, "# t | source: git-unreadable| not x")
 
