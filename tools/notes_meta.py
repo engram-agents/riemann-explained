@@ -55,9 +55,9 @@ CONTRACT (each line is a self-test case, written before the code)
   F12 With --strings, an argument or interpretation block whose text opens with the frame of another kind is a
      FRAME-NOTE listing; without it one line says the check was skipped. Cases F12a F12b.
   BYTES With --base REV: the note at REV and the current note, each without its anchor lines (header and blocks), are equal
-     byte for byte (BYTE-DIFF names the first differing line of those stripped texts; a base that is not UTF-8 is a
+     byte for byte after the strip rule of rh_anchor (BYTE-DIFF names the first differing line of those stripped texts; a base that is not UTF-8 is a
      BYTE-DIFF with no line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
-     Cases B1a to B1e, Y1 to Y6.
+     Cases B1a to B1e, Y1 to Y6, Z1, Z2a to Z2d.
  Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
   R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
@@ -103,7 +103,11 @@ compares at the path the note has in the repository, so a note renamed since REV
 number is a line of the text with its anchor lines removed (on both sides), not of the note with its anchors. Both sides are
 stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
 result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
-with no line, and the other notes are still compared. The self-test builds its repositories
+with no line, and the other notes are still compared. "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
+last anchor line with no line ending of its own also removes the line ending before it, so adding or removing such a
+hand-typed last line can read as a one-line-ending difference (anchors written by the helper carry their own ending; case
+Z1). An anchor-looking line is kept as text only inside a fence: an indented code block or a list item is not tracked, as in
+rh_anchor's LIMIT. A malformed rh- line is kept as text, so fixing it since REV is a BYTE-DIFF. The self-test builds its repositories
 with the user's own configuration switched off and needs the `git` program.
 List items: a nested item is not numbered; a citation in a nested item anchors to its parent item, and the precision lives in
 the block's decls and lines (a future optional `subitem` could number nested items). A list whose last line is nested, a
