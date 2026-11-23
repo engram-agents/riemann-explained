@@ -61,7 +61,11 @@ CONTRACT
  `CASE <id> PASS|FAIL` line each and a final `SELFTEST PASS|FAIL`; exit 0 or 4. A normal run does the same
  quietly first and refuses (exit 4, nothing else reported) if it fails.
 
-LIMIT. A reference is a text match on the fully written name; a use through an opened namespace, a shorter
+LIMIT. A target is looked up through the wrapper's own enclosing namespaces (innermost first, then outward
+to the root; the first level with a declaration decides). Not modelled: `open`, `export`, aliases, shorter
+names and dot notation, so a target that relies on one of them stays UNRESOLVED or resolves at the wrong
+level only if a declaration of the written name exists at another level.
+A reference is a text match on the fully written name; a use through an opened namespace, a shorter
 name or dot notation is not seen, so `uncalled` means "not named in full anywhere", not "unused". Names
 inside comments are matched (flagged by in_comment). A declaration is recognised by its keyword at a line
 start; names built by macros, `private` name mangling and structure fields are not seen. The shape must be

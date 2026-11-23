@@ -21,6 +21,8 @@ least one control, a module you know is inside; if a control is not, the run sto
 per-site questions. Both read the import lines through the same header reader in `scan_graph.py`, so they
 agree on what a header is.
 
+The header reader ends the header at the first line that is not blank, `import`, `module` or `prelude`, so Lean's `public import` and `meta import` forms would end it early and hide what follows (none was found in the release read; a later release must be checked).
+
 Every TSV starts with one `#` line (what was read, the source commit, what a row is NOT), then the column
 row. Exit codes, tool by tool (4 always means the self-test failed and nothing was reported):
 

@@ -21,7 +21,9 @@ CONTRACT
     no file is printed as `UNRESOLVED <module> <count>` and the exit code is 1. Imports of outside
     libraries are counted by first component and are not errors.
  S3 Import lines are read only from the file's header (see header_imports); a block comment in the header
-    does not end the header early and contributes no imports.
+    does not end the header early and contributes no imports. The header ends at the first line that is not
+    blank, `import`, `module` or `prelude`, so Lean's `public import` and `meta import` forms would end it
+    early and hide what follows (none was found in the release read; a later release must be checked).
  S4 Word counts (`decide`, `native_decide`, `norm_num`, `omega`, `simp`) are whole-word; `decide` does not
     count inside `native_decide`; the files.tsv `#` line says the counts include comments and strings.
     They are taken on the RAW text, not the masked text.
@@ -367,6 +369,11 @@ def _selftest_cases():
     def _():
         got = header_imports("/- doc -/\nimport A\n/-\nimport X\n-/\nimport B\n/-! t -/\ndef f := 1\nimport Late\n")
         return _eq(got, ["A", "B"])
+
+    @case("S3e", "header_imports: a `public import` line is not an import line, so it ends the header and later imports are not read")
+    def _():
+        got = header_imports("import A\npublic import X\nimport B\n")
+        return _eq(got, ["A"])
 
     @case("WALK1", "walk_lean: sorted (module, path) for every .lean, dots for separators, symlinked dirs not followed")
     def _():
