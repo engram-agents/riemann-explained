@@ -36,7 +36,9 @@ CONTRACT
     line, so it can include trailing blank lines and plain comment lines. A doc comment (`/-` at column 0) that
     precedes the NEXT declaration is outside the extent; a declaration's own doc comment above it and an attribute
     on its own line above it are not part of its extent; first_line is the keyword line. The `#` line says the
-    extent is a text extent, NOT Lean's. Cases T3a T3b T3c T3d T3e EOF1.
+    extent is a text extent, NOT Lean's. The extent of the last declaration in a file ends at the file's last
+    physical line (parse_decls' end_idx is one larger when the file ends in a newline; last_line is clamped to
+    the line count as an editor shows it). Cases T3a T3b T3c T3d T3e EOF1 EOF2 EOF3 EOF4 EOF5.
  T4 A declaration inside a block comment, nested ones included, does not appear. Cases T4a T4b.
  T5 Names: inside `namespace A.B`, `theorem x` is `A.B.x`; `end B` closes only B (a later declaration in the same
     block is `A.y`); `_root_.x` is `x`; a `section S` adds no prefix. (This is parse_decls' behaviour, pinned here
@@ -56,8 +58,8 @@ CONTRACT
  reported) if it fails.
 
 LIMIT. A row is the text rule's extent of a named declaration. It is not Lean's extent and it does not say the
-declaration is used or compiled. last_line is parse_decls' end_idx as it stands: for the last declaration of a
-file that ends in a newline it is one past the last physical line (EOF1). A declaration inside a block comment
+declaration is used or compiled. A block comment at column 0 after the last declaration is a boundary, so it is
+outside the extent (EOF5). A declaration inside a block comment
 is not read; one inside a string literal is (strings are not special-cased when comments are masked). A keyword
 line that is indented is read like one at column 0 (parse_decls does not look at the indent), so an indented
 `theorem` inside a `where` block or a tactic block is a row. Names come from the text: a `private` declaration is
@@ -96,6 +98,12 @@ def _nameless_instance(line):
     return bool(m) and m.group(1) == "instance" and not m.group(2).rstrip(".")
 
 
+def _physical_lines(text):
+    """Lines as an editor shows them: a final newline does not start a new line, a last partial line counts, an
+    empty text has none."""
+    return text.count("\n") + (0 if text == "" or text.endswith("\n") else 1)
+
+
 def _write(path, prov, rows):
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(prov + "\n" + "\t".join(COLS) + "\n")
@@ -121,8 +129,9 @@ def run(root, out, reader=None):
             print(failure_word(path), os.path.relpath(path, root).replace(os.sep, "/"), file=sys.stderr)
             continue
         masked = mask_comments(text)
+        last_physical = _physical_lines(text)
         for line_no, kind, full, end_idx, _ns in parse_decls(text, masked):
-            rows.append((module, full, kind, line_no, end_idx, BASIS))
+            rows.append((module, full, kind, line_no, min(end_idx, last_physical), BASIS))
         n_example += len(EXAMPLE.findall(masked))
         n_instance += sum(1 for ln in masked.split("\n") if _nameless_instance(ln))
     rows.sort(key=lambda r: (r[0], r[3], r[1], r[2]))
@@ -363,12 +372,37 @@ def _selftest_cases():
               and "NOT Lean" in lines[0] and lines[1] == "\t".join(COLS) and lines[0] == (tabs["dup"][0] or [""])[0])
         return ok, f"got {lines[:2]!r}, dup first line {(tabs['dup'][0] or [''])[0]!r}"
 
-    @case("EOF1", "today's rule, recorded: the last declaration of a file that ends in a newline has last_line one past the last "
-                  "physical line (parse_decls' end_idx); a file without the final newline has last_line equal to it")
+    def _ext(tabs):
+        return [(r["module"], r["name"], r["first_line"], r["last_line"]) for r in tabs["decls"][2]]
+
+    @case("EOF1", "the last declaration of a file WITH a final newline ends at the last physical line (2 lines: last_line 2, not 3); "
+                  "control: the non-last declaration ends at the line before the next boundary")
     def _():
-        _rc, _o, _e, tabs = _go({"A.lean": "def a := 1\ndef b := 2\n", "B.lean": "def a := 1\ndef b := 2"})
-        got = [(r["module"], r["name"], r["first_line"], r["last_line"]) for r in tabs["decls"][2]]
-        return _eq(got, [("A", "a", "1", "1"), ("A", "b", "2", "3"), ("B", "a", "1", "1"), ("B", "b", "2", "2")])
+        _rc, _o, _e, tabs = _go({"A.lean": "def a := 1\ndef b := 2\n"})
+        return _eq(_ext(tabs), [("A", "a", "1", "1"), ("A", "b", "2", "2")])
+
+    @case("EOF2", "the same file WITHOUT a final newline: the last declaration's last_line is its last line (2); control: the first one")
+    def _():
+        _rc, _o, _e, tabs = _go({"A.lean": "def a := 1\ndef b := 2"})
+        return _eq(_ext(tabs), [("A", "a", "1", "1"), ("A", "b", "2", "2")])
+
+    @case("EOF3", "blank lines at the end of the file after the last declaration are inside its extent (the text rule, as in T3c): "
+                  "last_line is the last physical blank line (4), not one past it; control: the first declaration")
+    def _():
+        _rc, _o, _e, tabs = _go({"A.lean": "def a := 1\ndef b := 2\n\n\n"})
+        return _eq(_ext(tabs), [("A", "a", "1", "1"), ("A", "b", "2", "4")])
+
+    @case("EOF4", "a file whose last line is a declaration's keyword line with no newline: first_line = last_line; control: the "
+                  "declaration above it, with blank lines between, ends at the line before the next boundary")
+    def _():
+        _rc, _o, _e, tabs = _go({"A.lean": "def a := 1\n\n\ndef b := 2"})
+        return _eq(_ext(tabs), [("A", "a", "1", "3"), ("A", "b", "4", "4")])
+
+    @case("EOF5", "one declaration followed by a block comment at column 0 and nothing else: the comment starts a boundary, so the "
+                  "extent is the keyword line only (last_line 1, pinned); control: a `--` line there stays inside it (last_line 2)")
+    def _():
+        _rc, _o, _e, tabs = _go({"Block.lean": "def a := 1\n/- note -/\n", "Line.lean": "def a := 1\n-- note\n"})
+        return _eq(_ext(tabs), [("Block", "a", "1", "1"), ("Line", "a", "1", "2")])
 
     # ---- T4: comments
     @case("T4a", "a declaration inside a block comment does not appear; the real one after it does (control)")
