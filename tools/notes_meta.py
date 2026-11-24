@@ -877,6 +877,10 @@ def _bytes_check(name, text, rel, ctx):
     published = rh._Analysis(old_text)   # rh_anchor's reading of both texts, for their fences
     current = rh._Analysis(new_text)
 
+    def blank(j):   # a line of the stripped current text with nothing on it but white space (its ending does not count)
+        return not b[j].strip()
+    first_text = next((k for k, x in enumerate(a) if x.strip()), None)   # the first published non-blank line, None when there is none
+
     def judge(right):
         """(ADDITION listings, None) when every run of this alignment is legal and no matched line changes its fence state, else (None, the BYTE-DIFF)."""
         match = _align(a, b, right)
@@ -899,6 +903,13 @@ def _bytes_check(name, text, rel, ctx):
             for day in days:
                 if day > ctx.today or (rel_date is not None and day < rel_date):
                     return None, bytediff(start, f"; the added heading's date {day.isoformat()} is outside the window {window}")
+            if first_text is not None and prev < first_text:   # F6: above the first published line of text
+                return None, bytediff(start, f"; the inserted run at line {plain[start]} begins above the first published non-blank line")
+            lit = [x for x in range(start, end) if not blank(x)]   # F5: the run may not touch published text on either side
+            if lit[0] > 0 and not blank(lit[0] - 1):
+                return None, bytediff(start, f"; the inserted run at line {plain[start]} has no blank line before it")
+            if lit[-1] + 1 < len(b) and not blank(lit[-1] + 1):
+                return None, bytediff(start, f"; the inserted run at line {plain[start]} has no blank line after it")
             adds.append(_f("ADDITION", name, plain[start], f"{end - start} lines, heading {heading}", LISTING))
         for k, j in enumerate(match):   # F1: a base line that was inside a fence must still be, and one that was outside must still be
             was, now = published.fence_of[k] != -1, current.fence_of[j] != -1
@@ -2461,9 +2472,9 @@ def _():
 @case("ADD4", "two additions in one note: two ADDITION lines in file order, each with its own first line, count and heading; "
               "both count in the warnings and in `additions`")
 def _():
-    r = _add("Some text.\n\n## 2026-11-21 First add\nA.\nMore text.\n\n### 2026-11-22 Second add\nB.\n")
-    eq((r.f, r.rc), (["ADDITION 01-a.md:7 3 lines, heading 2026-11-21 First add",
-                      "ADDITION 01-a.md:11 3 lines, heading 2026-11-22 Second add"], 0), r.out)
+    r = _add("Some text.\n\n## 2026-11-21 First add\nA.\n\nMore text.\n\n### 2026-11-22 Second add\nB.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 4 lines, heading 2026-11-21 First add",
+                      "ADDITION 01-a.md:12 3 lines, heading 2026-11-22 Second add"], 0), r.out)
     ok("byte check: 0 notes equal to HEAD, 0 new, 2 additions" in r.lines, r.out)
     eq(r.lines[-1], "1 notes, 0 findings, 2 warnings", "count line")
 
@@ -2589,8 +2600,8 @@ def _():
 @case("ADD16", "one bad run makes the whole note BYTE-DIFF even beside a legal one, and no ADDITION line is printed for that note; "
                "the first bad run is the one named")
 def _():
-    r = _add("Some text.\n\n## 2026-11-21 Good\nA.\nMore text.\n\nNo heading here.\n")
-    eq((r.f, r.rc), ([_bd(11, 10, "<no line>", "'\\n'")], 1), r.out)
+    r = _add("Some text.\n\n## 2026-11-21 Good\nA.\n\nMore text.\n\nNo heading here.\n")
+    eq((r.f, r.rc), ([_bd(12, 11, "<no line>", "'\\n'")], 1), r.out)
     ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
 
 
@@ -2684,16 +2695,16 @@ def _():
                "marker inserted before a published fence flips the other way (inside at HEAD, outside now)")
 def _():
     base = "# Note\n\n## Body\n\nintro\nsecret claim\nmore\n"
-    wrap = "intro\n## 2026-11-10 x\n```\nsecret claim\nmore\n## 2026-11-11 y\n```\n"
+    wrap = "intro\n\n## 2026-11-10 x\n```\n\nsecret claim\nmore\n\n## 2026-11-11 y\n```\n"
     r = _add(wrap, base=base)
-    eq((r.f, r.rc), ([_bdt(7, 6, "'secret claim\\n'", "'## 2026-11-10 x\\n'",
+    eq((r.f, r.rc), ([_bdt(7, 6, "'secret claim\\n'", "'\\n'",
                            "; the inserted run at line 7 changes whether line 6 of the text without anchors is inside a code fence "
                            "(outside at HEAD, inside now)")], 1), r.out)
     ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
-    r = _add("intro\n## 2026-11-10 x\n```\ncode\n```\nsecret claim\nmore\n", base=base)
-    eq((r.f, r.rc), (["ADDITION 01-a.md:7 4 lines, heading 2026-11-10 x"], 0), "balanced inside one run: " + r.out)
+    r = _add("intro\n\n## 2026-11-10 x\n```\ncode\n```\n\nsecret claim\nmore\n", base=base)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 6 lines, heading 2026-11-10 x"], 0), "balanced inside one run: " + r.out)
     fbase = "# Note\n\n## Body\n\n````\nsecret\n`````\n"   # a 4-tick opener and a 5-tick closer: every line is unique
-    r = _add("## 2026-11-10 x\n```\n````\nsecret\n`````\n", base=fbase)   # the inserted 3-tick opener is closed by the published opener
+    r = _add("## 2026-11-10 x\n```\n\n````\nsecret\n`````\n", base=fbase)   # the inserted 3-tick opener is closed by the published opener
     ok(_bdt(6, 5, "'````\\n'", "'## 2026-11-10 x\\n'",
             "; the inserted run at line 6 changes whether line 6 of the text without anchors is inside a code fence "
             "(inside at HEAD, outside now)") in r.f, r.out)
@@ -2706,14 +2717,15 @@ def _():
                "the UNCLOSED-FENCE error of rh_anchor (exit 1 either way)")
 def _():
     base = "# Note\n\n## Body\n\nintro\nsecret claim\nmore\n"
-    r = _add("intro\n## 2026-11-10 x\n```\nsecret claim\nmore\n", base=base)
-    ok(_bdt(7, 6, "'secret claim\\n'", "'## 2026-11-10 x\\n'",
+    r = _add("intro\n\n## 2026-11-10 x\n```\n\nsecret claim\nmore\n", base=base)
+    ok(_bdt(7, 6, "'secret claim\\n'", "'\\n'",
             "; the inserted run at line 7 changes whether line 6 of the text without anchors is inside a code fence "
             "(outside at HEAD, inside now)") in r.f, r.out)
     ok(not any(x.startswith("ADDITION") for x in r.f), "no ADDITION: " + r.out)
     eq(r.rc, 1, "exit code")
-    r = _add("intro\nsecret claim\nmore\n## 2026-11-10 x\n```\ncode\n", base=base)
-    ok("UNCLOSED-FENCE 01-a.md:10 The code fence opened on line 10 is never closed." in r.f, r.out)
+    r = _add("intro\nsecret claim\nmore\n\n## 2026-11-10 x\n```\ncode\n", base=base)
+    ok("UNCLOSED-FENCE 01-a.md:11 The code fence opened on line 11 is never closed." in r.f, r.out)
+    ok("ADDITION 01-a.md:9 4 lines, heading 2026-11-10 x" in r.f, r.out)
     eq(r.rc, 1, "exit code at the end")
 
 
