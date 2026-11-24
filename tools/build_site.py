@@ -170,15 +170,22 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      (exit 1, nothing written), the same code as the request-making findings; every bad attribute of a tag is reported, each against its
      own element's list. `<script>`, `<annotation>`, an event attribute, a `data-*` attribute and an `href` on a MathML element are each
      refused. `style` and `title`, the allowed elements html.parser reads as text (HIDING_ELEMENTS, from the parser's own lists; EL7 pins
-     them), are refused anywhere but directly inside <head> as `PAGE-STATIC element <name> outside head`: inside MathML a browser reads their
-     content as markup, html.parser does not report it (EL6; measured with html5lib 1.1, which builds an <img onerror> from
-     `<math><style><img src=x onerror=alert(1)></style></math>` where element_problems alone returned nothing).
+     them), are allowed only in the OPENING RUN of the page, the start tags before the first one that is not html, head, meta or one of
+     them, and refused after it as `PAGE-STATIC element <name> outside head`: inside MathML a browser reads their content as markup,
+     html.parser does not report it (EL6; measured with html5lib 1.1, which builds an <img onerror> from
+     `<math><style><img src=x onerror=alert(1)></style></math>` where element_problems alone returned nothing). The rule reads START tags:
+     an end tag that a browser ignores (`</head>` while <math> is open, `</body>`) pops what html.parser tracks and not what a browser
+     tracks, so a rule built on end tags was passed by `<head><math></head><style>`, `<body><math></body><style>` and the same with
+     `title`, each a live <img onerror> in html5lib 1.1; here no end tag reopens the run. The one end tag looked at is `</head>`, which
+     only CLOSES the run (it can add a refusal, never remove one). The real page's opening run is html, head, meta, title, style.
      LIMIT. This gate is a name check on the tags as html.parser sees them, not a browser-grade parse. It does not claim that every page it
      passes parses in a browser to the same tree. Differentials between html.parser and the HTML spec's parser are known to exist and are
      NOT measured here beyond the one above: other places where foreign content changes how text is read (the MathML text integration points
      and `annotation-xml`, `<![CDATA[`), the other raw-text and RCDATA elements (`textarea`, `xmp`, `iframe`, `noembed`, `noframes`, `script`,
      none of which is allowed, so each is refused by name as an element), comments and bogus comments, attribute quoting, and how an unclosed
-     or misnested tag ends. The stack of open elements built from end tags is an approximation (omitted end tags only make it refuse more).
+     or misnested tag ends. Only the opening run may hold a raw-text element: a page that needs one elsewhere must change this rule, with
+     its case. The search that found no page passed by the rule with a live <img> was bounded (html5lib standing in for a browser, a
+     hand-picked pool of the allowed start tags and five end tags, one to three tokens before the payload) and is not part of this repository.
      Cases EL1 to EL7.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
