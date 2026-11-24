@@ -126,7 +126,8 @@ CONTRACT (each line is a self-test case, written before the code)
  BAD-VALUE `edition 3 needs a ruling`. `edition_date` is a real date YYYY-MM-DD not later than the day of the run (--today, else the clock's
  UTC date), required at edition 2 and refused at edition 1 or absent. EDITION_TEXT_FIELDS is the one definition of the reader-facing text of
  a group: claim.text, claim.conditions, recognition.result, .difference, .note, each citation's where, source and source_date, and
- `recognition.established` (the string not_traced, or the root it names). Every field whose OWN text the page prints outside its Evidence
+ `recognition.established` (the string not_traced, or the root it names), and the group's `title` (the heading of a card with no claim, the
+ title in a definition card, the premise rows; reader-facing text, compared as text). Every field whose OWN text the page prints outside its Evidence
  section is here (the builder's marker case, ED10 and ED11, ties the list to the page); what only Evidence prints (reader, date, who opened
  a source, the established line's reader and date) and what orders or wires the groups (roots, order, parent, level) are not text. The fields
  that choose which sentence the page prints (recognition.form, root_role, claim.basis, a citation's says_open) and premises are not text
