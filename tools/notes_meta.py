@@ -12,7 +12,7 @@ CONTRACT (each line is a self-test case, written before the code)
      `CHECKED NOTHING: <reason>` line per reason on stdout, exit 3, nothing else checked. Cases X1a X1b X1c.
   X2 Exit 0: every note passed. Exit 1: any finding of class ERROR. Exit 2: usage, or an input that cannot be read
      (a message on stderr, nothing on stdout). Exit 3: see X1. Exit 4: the self-test failed (REFUSED, nothing else).
-     A listing (EXTENT-WARNING, FRAME-NOTE, NEW-NOTE, CLAIM-LIBRARY-WORD) never changes the exit code. Cases X2a X2b X2c EXIT4.
+     A listing (EXTENT-WARNING, FRAME-NOTE, NEW-NOTE, ADDITION, CLAIM-LIBRARY-WORD) never changes the exit code. Cases X2a X2b X2c EXIT4.
   X3 One line per finding, `CODE path:line message` (`CODE path message` when it has no line); path is the file's
      name (a note: its name in NOTES_DIR). Per note, after its findings: `note <id> header ok|FAILED, blocks N
      (kind=count ...)` (the breakdown is left out when N is 0). Then the run's lines: the FRAME-NOTE skip notice
@@ -59,6 +59,27 @@ CONTRACT (each line is a self-test case, written before the code)
      byte for byte after the strip rule of rh_anchor (BYTE-DIFF names the first differing line as a line of the current file on disk and as an index of the stripped texts; a base that is not UTF-8 is a
      BYTE-DIFF with no line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
      Cases B1a to B1e, Y1 to Y6, Z1, Z2a to Z2d, BL1 to BL6.
+  ADD A pure insertion of dated text is an ADDITION, not a BYTE-DIFF (F27). With the same two stripped texts: the base is
+     a subsequence of the current when each base line (with its line ending) matches, in order, a current line; the unmatched
+     current lines are the inserted runs (maximal gaps, one after the last base line too). Two alignments are tried, not all:
+     the LEFT-greedy one (each base line takes the earliest equal line after the previous match) and the RIGHT-greedy one (each
+     takes the latest equal line before the next match). The note is accepted when either gives only legal runs, and the runs of
+     the first such alignment, the left one before the right one, are listed; when neither does, the BYTE-DIFF is the left
+     alignment's. A base that is not a subsequence (a line removed or altered) is a BYTE-DIFF as before, under both. Each run,
+     after its LEADING blank lines, must begin with a heading (1 to 6 `#`, a space, text) whose text holds a real calendar date
+     YYYY-MM-DD; EVERY real date of the heading is not later than --today (default the UTC date of the clock) and not earlier
+     than the date in the `release` of the BASE text's header (the published one) when it is `rh-YYYY-MM-DD` (a release with no
+     such date, or none, gives no lower bound). A run inside a fence of the published text (opened by base lines before it and
+     closed after, or never closed) fails. A run may not touch published text (F5): the line before its first non-blank line
+     and the line after its last non-blank line, in the stripped current text, must each be blank or the edge of the text (a blank
+     line inside the run counts), else the BYTE-DIFF message says `no blank line before it` or `no blank line after it` and names
+     the run's line; an alignment whose runs fail this is not legal. A run above the first published non-blank line fails (F6).
+     Fence state is kept (F1): for every base line matched to a current line, being inside a
+     fence (rh_anchor's reading of each stripped text) must be the same in both texts, else the note is a BYTE-DIFF whose message
+     names the run before that line. One failing run makes the whole note a BYTE-DIFF at the run's first line (a date
+     outside the window adds its date and the window to the message). Each legal run is an ADDITION listing
+     `ADDITION path:first_line N lines, heading TEXT` (first_line on disk, N in the text without anchors), a warning, never
+     an error; the byte-check line ends `additions A` (runs). Cases ADD1 to ADD33.
  Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
   R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
@@ -165,7 +186,21 @@ past the last line of the file (a line that is not there, so do not look for it)
 (an empty file, or one that holds only anchor lines). Trailing anchor lines do not shift either number. Both sides are
 stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
 result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
-with no line, and the other notes are still compared. "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
+with no line, and the other notes are still compared. ADDITION (F27): the floor of the date window is the date of the `release` in the header of the BASE
+text, not the note's own and not the current header's (a release deleted or reworded since REV does not lower it), and a base
+without a header, or whose release carries no date or an impossible one such as `rh-2026-02-30`, has no floor; the upper bound
+is the day of the run. Two alignments of the base into the current are tried (left-greedy, then right-greedy), not every
+order-preserving one, so an addition that no other alignment reads as legal can still be a BYTE-DIFF (an inserted line that
+repeats a base line can leave the original unmatched as a second run on both sides); a base whose last line has no line ending
+cannot gain text after it (the line differs). The fence test compares the fence state of every matched base line in the two
+texts, so an inserted marker that wraps or unwraps published text is a BYTE-DIFF; a fence opened in a run and never closed, at the
+very end of the note, swallows no base line and is left to rh_anchor's UNCLOSED-FENCE error. Every real date in an added heading
+must lie in the window; an impossible date beside a real one is skipped. The boundary rule reads blank lines only: a run that
+carries its own blank line on each side and is placed between two rows of a published table, or between a list item and its
+indented continuation, has a blank on each side and passes (the table or the list is split); a note that gains one is read by a
+person. Blank means white space only, in the text without its anchor lines, so an anchor line between a run and a published line
+is no blank line. --today is
+a test hook and a value that is not a real date is a usage error (exit 2). "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
 last anchor line with no line ending of its own also removes the line ending before it, so adding or removing such a
 hand-typed last line can read as a one-line-ending difference (anchors written by the helper carry their own ending; case
 Z1). An anchor-looking line is kept as text only inside a fence: an indented code block or a list item is not tracked, as in
@@ -217,7 +252,7 @@ words, no definite reference to something defined in another note, no interpreta
 holds no phrase is announced with one line and is not an error.
 
 usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--strings PATH] [--src SRC_ROOT]
-                     [--glob PATTERN]
+                     [--glob PATTERN] [--today YYYY-MM-DD]
        notes_meta.py --selftest
 """
 import contextlib
@@ -1146,31 +1181,148 @@ def _vcs(top, *args):
         raise _Unreadable("git is needed for --base but could not be run")
 
 
+_HEADING = re.compile(r"#{1,6} (.+)\Z")   # F27: 1 to 6 marks, a space, text; at column 0, on the line without its ending
+_DATE_TOKEN = re.compile(r"(?<![0-9])[0-9]{4}-[0-9]{2}-[0-9]{2}(?![0-9])")
+_RELEASE_DATE = re.compile(r"rh-([0-9]{4}-[0-9]{2}-[0-9]{2})")   # matched with fullmatch
+
+
+def _real_date(s):
+    """The datetime.date of a YYYY-MM-DD string, None when it is not a real calendar date."""
+    try:
+        return datetime.date(int(s[:4]), int(s[5:7]), int(s[8:10]))
+    except ValueError:
+        return None
+
+
+def _align(a, b, right=False):
+    """F27 alignment: match each line of a, in order, to a line of b. From the left (the default) each line takes the EARLIEST equal
+    line of b after the previous match; from the right each takes the LATEST equal line before the next one. The index in b of
+    every line of a, or None when a is not a subsequence of b (that does not depend on the side)."""
+    n = len(a)
+    match = [None] * n
+    if right:
+        k = n - 1
+        for j in range(len(b) - 1, -1, -1):
+            if k >= 0 and a[k] == b[j]:
+                match[k] = j
+                k -= 1
+        return match if k < 0 else None
+    k = 0
+    for j, line in enumerate(b):
+        if k < n and a[k] == line:
+            match[k] = j
+            k += 1
+    return match if k == n else None
+
+
+def _insertion_runs(a, b, right=False):
+    """The maximal gaps of b left by the alignment of a (see _align) as (start, end, index in a of the base line before the gap,
+    -1 for none), in file order, including a gap after the last matched line; None when a is not a subsequence of b."""
+    match = _align(a, b, right)
+    if match is None:
+        return None
+    runs, pos = [], 0
+    for k, j in enumerate(match):
+        if j > pos:
+            runs.append((pos, j, k - 1))
+        pos = j + 1
+    if pos < len(b):
+        runs.append((pos, len(b), len(a) - 1))
+    return runs
+
+
 def _bytes_check(name, text, rel, ctx):
+    """The findings of the byte check for one note: [] when equal, [NEW-NOTE], one BYTE-DIFF, or one ADDITION listing per run
+    when the note only gained dated additions (F27)."""
     show = _vcs(ctx.top, "cat-file", "blob", f"{ctx.rev}:{rel}")
     if show.returncode != 0:
-        return _f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)
+        return [_f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)]
     try:   # both sides without their anchor lines (header and blocks), decoded the same way
-        old = rh.strip_anchor_lines(show.stdout.decode("utf-8")).encode("utf-8")
+        base_text = show.stdout.decode("utf-8")
+        old_text = rh.strip_anchor_lines(base_text)
+        old = old_text.encode("utf-8")
     except UnicodeDecodeError:
-        return _f("BYTE-DIFF", name, None, f"the note at {ctx.base} is not valid UTF-8 and cannot be compared")
-    new = rh.strip_anchor_lines(text).encode("utf-8")
+        return [_f("BYTE-DIFF", name, None, f"the note at {ctx.base} is not valid UTF-8 and cannot be compared")]
+    new_text = rh.strip_anchor_lines(text)
+    new = new_text.encode("utf-8")
     if old == new:
-        return None
+        return []
     a, b = old.splitlines(True), new.splitlines(True)
     i = next((k for k in range(min(len(a), len(b))) if a[k] != b[k]), min(len(a), len(b)))
 
-    def fmt(ls):
-        return repr(ls[i].decode("utf-8", "replace")) if i < len(ls) else "<no line>"
     # the line in the CURRENT file as it is on disk: the i-th line that is not an anchor line of this note (the anchor lines are
     # the ones parse_note reports, the set strip_anchor_lines removes); at the end it is the line after the last non-anchor line
     headers, blocks, _problems = rh.parse_note(text)
     anchors = {x.line for x in headers + blocks}
     parts = _LINE_SPLIT.split(text)
     plain = [k for k in range(1, len(parts) - (parts[-1] == "") + 1) if k not in anchors]
-    line = plain[i] if i < len(b) and i < len(plain) else (plain[-1] + 1 if plain else 1)
-    return _f("BYTE-DIFF", name, line, f"line {line} differs (line {i + 1} of the text without anchors): "
-              f"at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}")
+
+    def bytediff(i, extra=""):
+        def fmt(ls):
+            return repr(ls[i].decode("utf-8", "replace")) if i < len(ls) else "<no line>"
+        line = plain[i] if i < len(b) and i < len(plain) else (plain[-1] + 1 if plain else 1)
+        return _f("BYTE-DIFF", name, line, f"line {line} differs (line {i + 1} of the text without anchors): "
+                  f"at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}{extra}")
+    if _align(a, b) is None:   # a base line was removed or altered: as before, whatever the alignment
+        return [bytediff(i)]
+    rel_date = None   # the floor: the date of the PUBLISHED header's `release` (the base text's) when it is rh-YYYY-MM-DD and real, else none
+    base_headers = rh.parse_note(base_text)[0]
+    if base_headers and isinstance(base_headers[0].data.get("release"), str):
+        m = _RELEASE_DATE.fullmatch(base_headers[0].data["release"])
+        rel_date = _real_date(m.group(1)) if m else None
+    window = (f"{rel_date.isoformat()} to {ctx.today.isoformat()}" if rel_date else f"up to {ctx.today.isoformat()} (no lower bound)")
+    published = rh._Analysis(old_text)   # rh_anchor's reading of both texts, for their fences
+    current = rh._Analysis(new_text)
+
+    def blank(j):   # a line of the stripped current text with nothing on it but white space (its ending does not count)
+        return not b[j].strip()
+    first_text = next((k for k, x in enumerate(a) if x.strip()), None)   # the first published non-blank line, None when there is none
+
+    def judge(right):
+        """(ADDITION listings, None) when every run of this alignment is legal and no matched line changes its fence state, else (None, the BYTE-DIFF)."""
+        match = _align(a, b, right)
+        runs = _insertion_runs(a, b, right)
+        adds = []
+        for start, end, prev in runs:
+            if prev >= 0:   # inside a fence of the published text: opened at or before the base line before the run, closed after it
+                fi = published.fence_of[prev]
+                if fi != -1 and (published.fences[fi]["close"] is None or published.fences[fi]["close"] > prev):
+                    return None, bytediff(start)
+            lines = [x.decode("utf-8") for x in b[start:end]]
+            first = next((x for x in lines if x.strip()), None)   # the first line after the LEADING blank lines
+            m = _HEADING.match(first.rstrip("\r\n")) if first is not None else None
+            if not m:
+                return None, bytediff(start)
+            heading = m.group(1).strip()
+            days = [d for d in map(_real_date, _DATE_TOKEN.findall(heading)) if d]   # every REAL date of the heading, in file order
+            if not days:
+                return None, bytediff(start)
+            for day in days:
+                if day > ctx.today or (rel_date is not None and day < rel_date):
+                    return None, bytediff(start, f"; the added heading's date {day.isoformat()} is outside the window {window}")
+            if first_text is not None and prev < first_text:   # F6: above the first published line of text
+                return None, bytediff(start, f"; the inserted run at line {plain[start]} begins above the first published non-blank line")
+            lit = [x for x in range(start, end) if not blank(x)]   # F5: the run may not touch published text on either side
+            if lit[0] > 0 and not blank(lit[0] - 1):
+                return None, bytediff(start, f"; the inserted run at line {plain[start]} has no blank line before it")
+            if lit[-1] + 1 < len(b) and not blank(lit[-1] + 1):
+                return None, bytediff(start, f"; the inserted run at line {plain[start]} has no blank line after it")
+            adds.append(_f("ADDITION", name, plain[start], f"{end - start} lines, heading {heading}", LISTING))
+        for k, j in enumerate(match):   # F1: a base line that was inside a fence must still be, and one that was outside must still be
+            was, now = published.fence_of[k] != -1, current.fence_of[j] != -1
+            if was != now:
+                start = max((r[0] for r in runs if r[1] <= j), default=j)   # the run just before the line is the one that flipped it
+                return None, bytediff(start, f"; the inserted run at line {plain[start]} changes whether line {k + 1} of the text without anchors "
+                                             f"is inside a code fence ({'inside' if was else 'outside'} at {ctx.base}, {'inside' if now else 'outside'} now)")
+        return adds, None
+
+    first_failure = None   # two alignments are tried, left then right: the first all-legal one is listed, else the LEFT one's failure
+    for right in (False, True):
+        adds, failure = judge(right)
+        if failure is None:
+            return adds
+        first_failure = first_failure or failure
+    return [first_failure]
 
 
 # ---- the run
@@ -1228,8 +1380,18 @@ def _setup_git(ctx, notes_dir, names, base, repo):
     return rels
 
 
-def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
+def _parse_today(today):
+    if today is None:
+        return datetime.datetime.now(datetime.timezone.utc).date()
+    d = _real_date(today) if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", today) else None
+    if d is None:
+        raise _Unreadable(f"--today must be a real date written YYYY-MM-DD, got {today!r}")
+    return d
+
+
+def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     ctx = _Ctx()
+    ctx.today = _parse_today(today)
     if not os.path.isdir(notes_dir):
         raise _Unreadable(f"NOTES_DIR is not a directory: {notes_dir}")
     odata = _read_json(outline, "outline")
@@ -1280,7 +1442,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     for nid, files in hid.items():
         if len(files) > 1:
             dup_at[files[0]] = f"note id {nid!r} is used by {len(files)} notes: " + ", ".join(files)
-    totals, invalid_total, n_equal, n_new = {k: 0 for k in rh.KINDS}, 0, 0, 0
+    totals, invalid_total, n_equal, n_new, n_add = {k: 0 for k in rh.KINDS}, 0, 0, 0, 0
     cross = _check_sketches(names, texts, odata, ctx)
     for n in names:
         fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
@@ -1289,11 +1451,12 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
         fs += cross[n]
         if n in dup_at or cross[n]:
             fs.sort(key=lambda x: x[2] or 0)
-        bf = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else None
-        fs += [bf] if bf else []
+        bfs = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else []
+        fs += bfs
         if base is not None:
-            n_new += bool(bf and bf[0] == "NEW-NOTE")
-            n_equal += bf is None
+            n_new += any(f[0] == "NEW-NOTE" for f in bfs)
+            n_equal += not bfs
+            n_add += sum(1 for f in bfs if f[0] == "ADDITION")
         lines += [_render(f) for f in fs]
         errors += sum(1 for f in fs if f[4] == ERROR)
         warnings += sum(1 for f in fs if f[4] == LISTING)
@@ -1314,15 +1477,15 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     lines.append(_recognition_line(rec_counts))
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
-    lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new" if base is not None else "byte check: did not run, no --base given")
+    lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new, {n_add} additions" if base is not None else "byte check: did not run, no --base given")
     lines.append(f"{len(names)} notes, {errors} findings, {warnings} warnings")
     return (1 if errors else 0), lines
 
 
-def run(notes_dir, outline, decls, base=None, repo=None, strings=None, src=None, glob=DEFAULT_GLOB):
+def run(notes_dir, outline, decls, base=None, repo=None, strings=None, src=None, glob=DEFAULT_GLOB, today=None):
     """Check the notes and print the report; return the exit code 0, 1, 2 or 3. Exit 2 prints nothing to stdout."""
     try:
-        rc, lines = _run(notes_dir, outline, decls, base, repo, strings, src, glob)
+        rc, lines = _run(notes_dir, outline, decls, base, repo, strings, src, glob, today)
     except _Unreadable as e:
         print("notes_meta: " + str(e), file=sys.stderr)
         return 2
@@ -1431,7 +1594,7 @@ def _put(path, text):
 
 
 def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None, committed=None, glob=None,
-       raw_outline=None, repo_arg=False, check_dirs=None):
+       raw_outline=None, repo_arg=False, check_dirs=None, today=None):
     """Plant a fixture and call run(); (rc, stdout, stderr) as a Res. `committed` names files of NOTES_DIR that exist
     at the commit called HEAD of a throwaway git repository around the fixture (BYTES)."""
     notes = {"01-a.md": NOTE()} if notes is None else notes
@@ -1467,6 +1630,8 @@ def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None,
             kw["repo"] = d
         if glob is not None:
             kw["glob"] = glob
+        if today is not None:
+            kw["today"] = today
         buf, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
             rc = run(nd, op, dp, **kw)
@@ -2089,7 +2254,7 @@ def _():
     cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n" + BL("01.b02") + "\n")
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD")
     eq((r.f, r.rc), ([], 0), r.out)
-    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD", repo_arg=True)
     eq((r.f, r.rc), ([], 0), "--repo given")
 
@@ -2134,7 +2299,7 @@ def _():
     cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n" + BL("01.b02") + "\n")
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": BASEH}, base="HEAD")
     eq((r.f, r.rc), ([], 0), r.out)
-    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
     r = go(notes={"01-a.md": BASEH}, committed={"01-a.md": BASEH}, base="HEAD")
     eq((r.f, r.rc), ([], 0), "unchanged")
     r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n")}, committed={"01-a.md": BASEH}, base="HEAD")
@@ -2145,7 +2310,7 @@ def _():
 def _():
     r = go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD")
     eq((r.f, r.rc), ([], 0), r.out)
-    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
 
 
 @case("Y3", "a base with header and anchor and a current note with one word of the body changed: BYTE-DIFF, the line counted without anchors")
@@ -2153,7 +2318,7 @@ def _():
     cur = NOTE(body="Some texts.\n" + BL() + "\nMore text.\n")
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": BASEH}, base="HEAD")
     eq((r.f, r.rc), (["BYTE-DIFF 01-a.md:6 line 6 differs (line 5 of the text without anchors): at HEAD (without anchors) 'Some text.\\n', now (without anchors) 'Some texts.\\n'"], 1), r.out)
-    ok("byte check: 0 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
 
 
 @case("Y4", "an anchor-looking line inside a fence is text on both sides: it is compared, and a change to it is a BYTE-DIFF")
@@ -2171,7 +2336,7 @@ def _():
     bad = b"# Note\n\xff\n"
     r = go(notes={"01-a.md": CUR, "02-b.md": NOTE(nid="02")}, committed={"01-a.md": bad, "02-b.md": T0.replace("More text.\n", "")}, base="HEAD")
     eq((r.f, r.rc), (["BYTE-DIFF 01-a.md the note at HEAD is not valid UTF-8 and cannot be compared"], 1), r.out)
-    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
 
 
 @case("Y6", "CRLF notes and notes without a final newline strip the same way on both sides")
@@ -2502,7 +2667,7 @@ def _():
     r = go(notes={"01-a.md": CUR, "02-b.md": other, "03-c.md": NOTE(nid="03")}, committed={"01-a.md": T0, "02-b.md": T0},
            base="HEAD", strings=fr)
     ok("strings: 3 frame phrases loaded for 2 kinds" in r.lines, r.out)
-    ok("byte check: 1 notes equal to HEAD, 1 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 1 new, 0 additions" in r.lines, r.out)
     eq((r.rc, [x[:9] for x in r.f]), (1, ["BYTE-DIFF", "NEW-NOTE "]), "findings")
     ok(not any(x.startswith("FRAME-NOTE skipped") for x in r.lines), "no skip notice when phrases loaded")
 
@@ -3139,6 +3304,433 @@ def _():
     eq((r.rc, [x.split(" ")[0] for x in r.f]), (1, ["UNRESOLVED", "RECOGNITION-WORD"]), "an error beside a listing")
 
 
+# ---- F27: a dated pure insertion is an ADDITION (a listing), not a BYTE-DIFF
+TODAY = "2026-11-24"
+T2 = "# Note\n\n## Body\n\nFirst.\n\nSecond.\n"   # two paragraphs, no anchors; the body starts on line 6 of the file on disk
+
+
+def _add(body, base=T0, today=TODAY, **hdr):
+    return go(notes={"01-a.md": NOTE(body=body, **hdr)}, committed={"01-a.md": base}, base="HEAD", today=today)
+
+
+def _bdt(l, sidx, a, b, extra=""):
+    return _bd(l, sidx, a, b) + extra
+
+
+@case("ADD1", "an insert-only dated addition at the end (a blank line, then a heading with a date): no finding, one ADDITION line, "
+              "exit 0, counted in the warnings and in the byte-check summary; the base note is not 'equal' and not 'new'")
+def _():
+    r = _add("Some text.\nMore text.\n\n## 2026-11-22 Added\nNew words.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 1 additions" in r.lines, r.out)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "count line")
+
+
+@case("ADD2", "the same insertion with the date removed from its heading is a BYTE-DIFF at the first line of the run (today's message)")
+def _():
+    r = _add("Some text.\nMore text.\n\n## Added\nNew words.\n")
+    eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'\\n'")], 1), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+
+
+@case("ADD3", "an insertion plus one altered earlier line is a BYTE-DIFF naming the altered line, as before")
+def _():
+    r = _add("Some texts.\nMore text.\n\n## 2026-11-22 Added\nNew words.\n")
+    eq((r.f, r.rc), ([_bd(6, 5, "'Some text.\\n'", "'Some texts.\\n'")], 1), r.out)
+
+
+@case("ADD4", "two additions in one note: two ADDITION lines in file order, each with its own first line, count and heading; "
+              "both count in the warnings and in `additions`")
+def _():
+    r = _add("Some text.\n\n## 2026-11-21 First add\nA.\n\nMore text.\n\n### 2026-11-22 Second add\nB.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 4 lines, heading 2026-11-21 First add",
+                      "ADDITION 01-a.md:12 3 lines, heading 2026-11-22 Second add"], 0), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 2 additions" in r.lines, r.out)
+    eq(r.lines[-1], "1 notes, 0 findings, 2 warnings", "count line")
+
+
+@case("ADD5", "an addition inside a fenced block of the published text is a BYTE-DIFF; control: the same addition after the closing "
+              "fence is an ADDITION; an unclosed published fence swallows an addition too")
+def _():
+    base = "# Note\n\n## Body\n\n```text\nline a\nline b\n```\n"
+    ins = NOTE(body="```text\nline a\n## 2026-11-22 Added\nline b\n```\n")
+    r = go(notes={"01-a.md": ins}, committed={"01-a.md": base}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), ([_bd(8, 7, "'line b\\n'", "'## 2026-11-22 Added\\n'")], 1), r.out)
+    after = NOTE(body="```text\nline a\nline b\n```\n\n## 2026-11-22 Added\nX.\n")
+    r = go(notes={"01-a.md": after}, committed={"01-a.md": base}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:10 3 lines, heading 2026-11-22 Added"], 0), "after the fence: " + r.out)
+    open_base = "# Note\n\n## Body\n\n```text\nline a\n"
+    r = go(notes={"01-a.md": NOTE(body="```text\nline a\n## 2026-11-22 Added\n")}, committed={"01-a.md": open_base},
+           base="HEAD", today=TODAY)
+    eq(r.rc, 1, "unclosed fence: " + r.out)
+    ok(not any(x.startswith("ADDITION") for x in r.f), "no ADDITION inside an unclosed fence: " + r.out)
+
+
+@case("ADD6", "an addition between two paragraphs: the run begins with the heading itself (no blank line to skip), and the blank line "
+              "after it is part of the run")
+def _():
+    r = _add("First.\n\n## 2026-11-22 Added\nExtra.\n\nSecond.\n", base=T2)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), r.out)
+
+
+@case("ADD7", "the heading is the first line of the run after its LEADING blank lines only: several blank lines then a heading is "
+              "legal and the run counts them; text then a heading (the heading is the SECOND line) is a BYTE-DIFF at the run's first line")
+def _():
+    r = _add("Some text.\nMore text.\n\n\n\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 5 lines, heading 2026-11-22 Added"], 0), r.out)
+    r = _add("Some text.\nMore text.\n\nIntro.\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'\\n'")], 1), r.out)
+    r = _add("Some text.\nMore text.\nIntro.\n## 2026-11-22 Added\n")
+    eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'Intro.\\n'")], 1), "text first, no blank: " + r.out)
+
+
+@case("ADD8", "the heading is 1 to 6 `#`, a space, then text with a date: levels 1, 2, 4 and 6 are accepted; seven `#`, no space after "
+              "the marks, and indented are not headings (BYTE-DIFF)")
+def _():
+    for marks in ("#", "##", "####", "######"):
+        r = _add("Some text.\nMore text.\n\n" + marks + " 2026-11-22 Added\nX.\n")
+        eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), marks + " " + r.out)
+    for bad in ("####### 2026-11-22 Added", "##2026-11-22 Added", " ## 2026-11-22 Added", "2026-11-22 Added", "## "):
+        r = _add("Some text.\nMore text.\n\n" + bad + "\nX.\n")
+        eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'\\n'")], 1), repr(bad) + " " + r.out)
+
+
+@case("ADD9", "the heading text of the listing has no `#` marks and no surrounding spaces; the date may sit anywhere in the heading")
+def _():
+    r = _add("Some text.\nMore text.\n\n##   Notes of 2026-11-22, a day later   \nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading Notes of 2026-11-22, a day later"], 0), r.out)
+
+
+@case("ADD10", "the date must be a real calendar date: 2026-13-45, 2026-02-30 and 2026-00-10 are BYTE-DIFF (today's message, no suffix); "
+               "a heading with an impossible date and later a real one is read by its first REAL date; 2028-02-29 is real")
+def _():
+    for bad in ("2026-13-45", "2026-02-30", "2026-00-10", "2026-11-31"):
+        r = _add("Some text.\nMore text.\n\n## " + bad + " Added\nX.\n")
+        eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'\\n'")], 1), bad + " " + r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-13-45 then 2026-11-22\nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-13-45 then 2026-11-22"], 0), r.out)
+    r = _add("Some text.\nMore text.\n\n## 2028-02-29 leap\nX.\n", today="2028-03-01")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2028-02-29 leap"], 0), r.out)
+
+
+@case("ADD11", "upper bound: a date later than --today is a BYTE-DIFF whose message names the date and the window (no lower bound "
+               "when the release has no date); a date equal to --today is accepted")
+def _():
+    r = _add("Some text.\nMore text.\n\n## 2026-11-25 Added\nX.\n")
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'",
+                           "; the added heading's date 2026-11-25 is outside the window up to 2026-11-24 (no lower bound)")], 1), r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-11-24 Added\nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-24 Added"], 0), "equal to today: " + r.out)
+
+
+@case("ADD12", "lower bound: the date of the BASE header's `release` (F3: the published one) when it is `rh-YYYY-MM-DD` and real; a date before "
+               "it is a BYTE-DIFF naming the window, a date equal to it is accepted; the upper bound still applies")
+def _():
+    rel = dict(release="rh-2026-11-20", base=NOTE(body="Some text.\nMore text.\n", release="rh-2026-11-20"))
+    r = _add("Some text.\nMore text.\n\n## 2026-11-19 Added\nX.\n", **rel)
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'",
+                           "; the added heading's date 2026-11-19 is outside the window 2026-11-20 to 2026-11-24")], 1), r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-11-20 Added\nX.\n", **rel)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-20 Added"], 0), "equal to the release date: " + r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-11-25 Added\nX.\n", **rel)
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'",
+                           "; the added heading's date 2026-11-25 is outside the window 2026-11-20 to 2026-11-24")], 1), r.out)
+
+
+@case("ADD13", "a BASE release that does not parse as rh-YYYY-MM-DD with a real date gives NO lower bound: a date far in the past is accepted "
+               "for rel-1, rh-1, rh-2026-13-45, rh-2026-02-30, a prefix-only and a suffixed release")
+def _():
+    for rel in ("rel-1", "rh-1", "rh-2026-13-45", "rh-2026-02-30", "x-rh-2026-11-20", "rh-2026-11-20-b", "RH-2026-11-20"):
+        r = _add("Some text.\nMore text.\n\n## 2001-01-01 Added\nX.\n", release=rel,
+                 base=NOTE(body="Some text.\nMore text.\n", release=rel))
+        eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2001-01-01 Added"], 0), rel + " " + r.out)
+
+
+@case("ADD14", "a CRLF note with an addition: CRLF endings are part of the line compare, the heading text and count carry no carriage return")
+def _():
+    crlf = T0.replace("\n", "\r\n")
+    cur = NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 Added\nNew words.\n").replace("\n", "\r\n")
+    r = go(notes={"01-a.md": cur}, committed={"01-a.md": crlf}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), r.out)
+    r = go(notes={"01-a.md": cur.replace("Some text.\r\n", "Some text.\n", 1)}, committed={"01-a.md": crlf}, base="HEAD", today=TODAY)
+    eq(r.rc, 1, "a line ending changed in a base line is not an addition: " + r.out)
+
+
+@case("ADD15", "alignment (F2): the LEFT-greedy alignment (a repeated base line takes its EARLIEST match) is tried first, so an addition whose "
+               "last line repeats a base line is a legal run when the repeat comes after the original; the same words before the original "
+               "leave it unmatched as a second run without a heading on the left; the RIGHT-greedy alignment, which takes the LATEST "
+               "match, reads one run whose last line touches the published line after it (F5), so both fail and the LEFT message is shown")
+def _():
+    r = _add("Some text.\nMore text.\n\n## 2026-11-22 Extra\nMore text.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Extra"], 0), r.out)
+    r = _add("Some text.\n\n## 2026-11-22 Extra\nMore text.\nMore text.\n")
+    eq((r.f, r.rc), ([_bd(7, 6, "'More text.\\n'", "'\\n'") + "; the inserted run at line 7 has no blank line after it"], 1), r.out)
+
+
+@case("ADD16", "one bad run makes the whole note BYTE-DIFF even beside a legal one, and no ADDITION line is printed for that note; "
+               "the first bad run is the one named")
+def _():
+    r = _add("Some text.\n\n## 2026-11-21 Good\nA.\n\nMore text.\n\nNo heading here.\n")
+    eq((r.f, r.rc), ([_bd(12, 11, "<no line>", "'\\n'")], 1), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+
+
+@case("ADD17", "removed or altered base lines are never additions: a deleted line beside a legal addition and a replaced line are "
+               "BYTE-DIFF at the first positional difference, as before")
+def _():
+    r = _add("Some text.\n\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), ([_bd(7, 6, "'More text.\\n'", "'\\n'")], 1), "deleted: " + r.out)
+    r = _add("Some text.\nOther text.\n\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), ([_bd(7, 6, "'More text.\\n'", "'Other text.\\n'")], 1), "replaced: " + r.out)
+
+
+@case("ADD18", "the byte check runs per note: one note with an addition lists it, another with an altered line is BYTE-DIFF, exit 1; "
+               "the counts say one finding and one warning")
+def _():
+    a = NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n")
+    b = NOTE(nid="02", group="g2", body="Some texts.\nMore text.\n")
+    r = go(notes={"01-a.md": a, "02-b.md": b}, committed={"01-a.md": T0, "02-b.md": T0}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added",
+                      "BYTE-DIFF 02-b.md:6 line 6 differs (line 5 of the text without anchors): at HEAD (without anchors) "
+                      "'Some text.\\n', now (without anchors) 'Some texts.\\n'"], 1), r.out)
+    eq(r.lines[-1], "2 notes, 1 findings, 1 warnings", "count line")
+    ok("byte check: 0 notes equal to HEAD, 0 new, 1 additions" in r.lines, r.out)
+
+
+@case("ADD19", "a note with an addition and another finding reports both: the other finding first (line order), then the ADDITION; "
+               "the exit code is the other finding's")
+def _():
+    r = _add("Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n", level=3)
+    eq((r.f, r.rc), (["HEADER-PROBLEM 01-a.md:2 level: must be 0, 1 or 2",
+                      "ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 1), r.out)
+    eq(r.lines[-1], "1 notes, 1 findings, 1 warnings", "count line")
+
+
+@case("ADD20", "anchor lines in the current file shift the line numbers of the listing and of a BYTE-DIFF, as for any difference: "
+               "an addition after a block anchor is numbered on disk")
+def _():
+    cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n\n## 2026-11-22 Added\nX.\n")
+    r = go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:9 3 lines, heading 2026-11-22 Added"], 0), r.out)
+    bad = NOTE(body="Some text.\n" + BL() + "\nMore text.\n\n## Added\nX.\n")
+    r = go(notes={"01-a.md": bad}, committed={"01-a.md": T0}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), ([_bd(9, 7, "<no line>", "'\\n'")], 1), r.out)
+
+
+@case("ADD21", "--today: the clock's UTC date is the default (a far-future heading date is refused without --today, a past one "
+               "accepted), a value that is not a real YYYY-MM-DD date is exit 2 with nothing on stdout, and the option parses once with a value")
+def _():
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2999-01-01 Added\nX.\n")}, committed={"01-a.md": T0}, base="HEAD")
+    eq(r.rc, 1, "future: " + r.out)
+    ok("is outside the window up to " in r.out and "2999-01-01" in r.out, r.out)
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2001-01-01 Added\nX.\n")}, committed={"01-a.md": T0}, base="HEAD")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2001-01-01 Added"], 0), "past: " + r.out)
+    for bad in ("2026-13-45", "yesterday", "2026-1-1", ""):
+        r = _add("Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n", today=bad)
+        eq((r.rc, r.out), (2, ""), repr(bad))
+        ok("--today" in r.err, r.err)
+    eq(_parse(["a", "b", "c", "--today", "2026-11-24"]), (["a", "b", "c"], {"today": "2026-11-24"}), "parse")
+    eq(_parse(["a", "b", "c", "--today", "2026-11-24", "--today", "2026-11-25"]), None, "twice")
+    eq(_parse(["a", "b", "c", "--today"]), None, "no value")
+
+
+@case("ADD22", "without --base nothing is compared: an addition-shaped note is not listed and the summary says the check did not run")
+def _():
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n")}, today=TODAY)
+    eq((r.f, r.rc), ([], 0), r.out)
+    ok("byte check: did not run, no --base given" in r.lines, r.out)
+
+
+@case("ADD23", "a published note whose text BEGINS with a fenced block: a dated insertion right after the opening line (the base line "
+               "before the run is the first line of the note) is inside the fence, so a BYTE-DIFF; control: the same insertion after "
+               "the closing fence is an ADDITION")
+def _():
+    base = "```text\nline a\nline b\n```\n"
+    hdr = rh.format_comment("rh-note", {"authors": ["H"], "group": "g1", "id": "01", "level": 2, "list_title": "A title",
+                                        "readers": ["K"], "release": "rel-1"}) + "\n"
+    r = go(notes={"01-a.md": hdr + "```text\n## 2026-11-22 Added\nline a\nline b\n```\n"}, committed={"01-a.md": base},
+           base="HEAD", today=TODAY)
+    ok("BYTE-DIFF 01-a.md:3 line 3 differs (line 2 of the text without anchors): at HEAD (without anchors) 'line a\\n', "
+       "now (without anchors) '## 2026-11-22 Added\\n'" in r.lines, r.out)
+    ok(not any(x.startswith("ADDITION") for x in r.lines), "no ADDITION inside the fence: " + r.out)
+    eq(r.rc, 1, "exit code")
+    r = go(notes={"01-a.md": hdr + "```text\nline a\nline b\n```\n\n## 2026-11-22 Added\nX.\n"}, committed={"01-a.md": base},
+           base="HEAD", today=TODAY)
+    ok("ADDITION 01-a.md:6 3 lines, heading 2026-11-22 Added" in r.lines, "after the fence: " + r.out)
+
+
+@case("ADD24", "F1: an inserted unbalanced fence marker may not wrap published text in a code block. The probe (a dated heading run and an opening "
+               "fence line, the published lines unchanged, then a dated heading run and a closing fence) is a BYTE-DIFF whose message names "
+               "the run that flipped the fence state of a published line; a fence BALANCED inside one run is still an ADDITION; a closing "
+               "marker inserted before a published fence flips the other way (inside at HEAD, outside now)")
+def _():
+    base = "# Note\n\n## Body\n\nintro\nsecret claim\nmore\n"
+    wrap = "intro\n\n## 2026-11-10 x\n```\n\nsecret claim\nmore\n\n## 2026-11-11 y\n```\n"
+    r = _add(wrap, base=base)
+    eq((r.f, r.rc), ([_bdt(7, 6, "'secret claim\\n'", "'\\n'",
+                           "; the inserted run at line 7 changes whether line 6 of the text without anchors is inside a code fence "
+                           "(outside at HEAD, inside now)")], 1), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+    r = _add("intro\n\n## 2026-11-10 x\n```\ncode\n```\n\nsecret claim\nmore\n", base=base)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 6 lines, heading 2026-11-10 x"], 0), "balanced inside one run: " + r.out)
+    fbase = "# Note\n\n## Body\n\n````\nsecret\n`````\n"   # a 4-tick opener and a 5-tick closer: every line is unique
+    r = _add("## 2026-11-10 x\n```\n\n````\nsecret\n`````\n", base=fbase)   # the inserted 3-tick opener is closed by the published opener
+    ok(_bdt(6, 5, "'````\\n'", "'## 2026-11-10 x\\n'",
+            "; the inserted run at line 6 changes whether line 6 of the text without anchors is inside a code fence "
+            "(inside at HEAD, outside now)") in r.f, r.out)
+    ok(not any(x.startswith("ADDITION") for x in r.f), "no ADDITION: " + r.out)
+    eq(r.rc, 1, "exit code")
+
+
+@case("ADD25", "F1: a fence opened in a run and never closed. Followed by published lines it swallows them: BYTE-DIFF naming the run. At the very end "
+               "of the note no published line is swallowed, so the byte check lists the run as before and the unclosed fence is "
+               "the UNCLOSED-FENCE error of rh_anchor (exit 1 either way)")
+def _():
+    base = "# Note\n\n## Body\n\nintro\nsecret claim\nmore\n"
+    r = _add("intro\n\n## 2026-11-10 x\n```\n\nsecret claim\nmore\n", base=base)
+    ok(_bdt(7, 6, "'secret claim\\n'", "'\\n'",
+            "; the inserted run at line 7 changes whether line 6 of the text without anchors is inside a code fence "
+            "(outside at HEAD, inside now)") in r.f, r.out)
+    ok(not any(x.startswith("ADDITION") for x in r.f), "no ADDITION: " + r.out)
+    eq(r.rc, 1, "exit code")
+    r = _add("intro\nsecret claim\nmore\n\n## 2026-11-10 x\n```\ncode\n", base=base)
+    ok("UNCLOSED-FENCE 01-a.md:11 The code fence opened on line 11 is never closed." in r.f, r.out)
+    ok("ADDITION 01-a.md:9 4 lines, heading 2026-11-10 x" in r.f, r.out)
+    eq(r.rc, 1, "exit code at the end")
+
+
+@case("ADD26", "F2: any order-preserving alignment of the base into the current may make every run legal. Two published blank lines with the run "
+               "inserted between them: the left-greedy match gives the second blank to the blank that ends the run and leaves a lone blank "
+               "line as a headingless run; the right-greedy alignment reads one legal run (a blank, the heading, a line). The first two probes "
+               "(an inserted heading directly after `A`, then the blank the left match takes from the base; the same at the end of a base "
+               "that ends in a blank line) have no blank line before the heading, so F5 refuses them on both alignments. "
+               "When both alignments are legal the LEFT one is listed")
+def _():
+    b1 = "# Note\n\n## Body\n\nA\n\nB\n"
+    r = _add("A\n## 2026-11-10 add\n\nbody\n\nB\n", base=b1)
+    eq((r.f, r.rc), ([_bd(7, 6, "'\\n'", "'## 2026-11-10 add\\n'") + "; the inserted run at line 7 has no blank line before it"], 1), "probe 1: " + r.out)
+    r = _add("A\n\nB\n## 2026-11-10 add\n\nbody\n\n", base="# Note\n\n## Body\n\nA\n\nB\n\n")
+    eq((r.f, r.rc), ([_bd(9, 8, "'\\n'", "'## 2026-11-10 add\\n'") + "; the inserted run at line 9 has no blank line before it"], 1), "probe 3: " + r.out)
+    r = _add("A\n\n## 2026-11-10 d\nx\n\n\nB\n", base="# Note\n\n## Body\n\nA\n\n\nB\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 3 lines, heading 2026-11-10 d"], 0), "two blanks, right alignment: " + r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 1 additions" in r.lines, r.out)
+    r = _add("A\n\n## 2026-11-10 d\n\nx\n\nB\n", base=b1)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 4 lines, heading 2026-11-10 d"], 0), "both legal, left listed: " + r.out)
+
+
+@case("ADD27", "F2: a true removal is a BYTE-DIFF under both alignments (the base is not a subsequence of the current), at the first positional "
+               "difference as before; and a headingless run stays a BYTE-DIFF when NEITHER alignment makes it legal")
+def _():
+    r = _add("A\n## 2026-11-10 add\n\nbody\n", base="# Note\n\n## Body\n\nA\n\nB\n")
+    eq((r.f, r.rc), ([_bd(7, 6, "'\\n'", "'## 2026-11-10 add\\n'")], 1), "removal: " + r.out)
+    r = _add("A\n\nB\nx\n", base="# Note\n\n## Body\n\nA\n\nB\n")
+    eq((r.f, r.rc), ([_bd(9, 8, "<no line>", "'x\\n'")], 1), "no heading in either alignment: " + r.out)
+
+
+@case("ADD28", "F3: the floor of the date window is read from the BASE text's header (the published one), not from the current header: "
+               "a release edited in the current note to an early date leaves the base's later floor; a base with no release date "
+               "(or no header at all, or an impossible date) has no floor whatever the current header says")
+def _():
+    body = "Some text.\nMore text.\n\n## 2026-11-10 Added\nX.\n"
+    low = "; the added heading's date 2026-11-10 is outside the window 2026-11-20 to 2026-11-24"
+    r = go(notes={"01-a.md": NOTE(body=body, release="rh-2026-11-01")},
+           committed={"01-a.md": NOTE(body="Some text.\nMore text.\n", release="rh-2026-11-20")}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'", low)], 1), "edited early: " + r.out)
+    r = go(notes={"01-a.md": NOTE(body=body, release="rel-1")},
+           committed={"01-a.md": NOTE(body="Some text.\nMore text.\n", release="rh-2026-11-20")}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'", low)], 1), "reworded: " + r.out)
+    for base_rel in ("rel-1", "rh-2026-02-30"):
+        r = go(notes={"01-a.md": NOTE(body=body, release="rh-2026-11-20")},
+               committed={"01-a.md": NOTE(body="Some text.\nMore text.\n", release=base_rel)}, base="HEAD", today=TODAY)
+        eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-10 Added"], 0), "base release " + base_rel + ": " + r.out)
+    r = _add(body, release="rh-2026-11-20")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-10 Added"], 0), "base with no header: " + r.out)
+
+
+@case("ADD29", "F4: EVERY real calendar date in the heading must lie in the window, not only the first: a later date, an earlier one, or a "
+               "middle one outside it is a BYTE-DIFF naming the first date (in file order) that is outside; an impossible date beside a "
+               "real one is still skipped (ADDITION), before or after it")
+def _():
+    far = "; the added heading's date 2099-01-01 is outside the window up to 2026-11-24 (no lower bound)"
+    for h in ("2026-11-10 and 2099-01-01", "2099-01-01 and 2026-11-10", "2026-11-10 then 2099-01-01 then 2026-11-11"):
+        r = _add("Some text.\nMore text.\n\n## " + h + "\nX.\n")
+        eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'", far)], 1), h + " " + r.out)
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 and 2026-11-01\nX.\n", release="rh-2026-11-20")},
+           committed={"01-a.md": NOTE(body="Some text.\nMore text.\n", release="rh-2026-11-20")}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'",
+                           "; the added heading's date 2026-11-01 is outside the window 2026-11-20 to 2026-11-24")], 1), "below the floor: " + r.out)
+    for h in ("2026-13-45 then 2026-11-10", "2026-11-10 then 2026-13-45"):
+        r = _add("Some text.\nMore text.\n\n## " + h + "\nX.\n")
+        eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading " + h], 0), h + " " + r.out)
+
+
+F5BODY = ("| File | SHA |\n|---|---|\n| a | 1 |\n| b | 2 |\n\n- item one\n  continued\n- item two\n\nPara one\nPara two\n")
+F5BASE = "# Note\n\n## Body\n\n" + F5BODY   # a table (lines 6 to 9 on disk), a list with an indented continuation, a paragraph
+
+
+def _f5(after_line, crlf=False):
+    """The current note: F5BODY with a dated run (heading and one line) inserted after its `after_line`-th line, against F5BASE."""
+    lines = F5BODY.splitlines(True)
+    cur, base = NOTE(body="".join(lines[:after_line]) + "## 2026-11-10 x\nbody\n" + "".join(lines[after_line:])), F5BASE
+    if crlf:
+        cur, base = cur.replace("\n", "\r\n"), base.replace("\n", "\r\n")
+    return go(notes={"01-a.md": cur}, committed={"01-a.md": base}, base="HEAD", today=TODAY)
+
+
+@case("ADD30", "F5: a dated run may not touch published text: the line before its first non-blank line and the line after its last one must "
+               "each be blank or the edge of the text. Probes: a run between two table rows, a run between a list item and its indented "
+               "continuation (no blank line BEFORE), a run with no blank line after it right before a published paragraph")
+def _():
+    r = _f5(3)
+    eq((r.f, r.rc), ([_bd(9, 8, "'| b | 2 |\\n'", "'## 2026-11-10 x\\n'") + "; the inserted run at line 9 has no blank line before it"], 1), "table: " + r.out)
+    r = _f5(6)
+    eq((r.f, r.rc), ([_bd(12, 11, "'  continued\\n'", "'## 2026-11-10 x\\n'") + "; the inserted run at line 12 has no blank line before it"], 1),
+       "list: " + r.out)
+    r = _f5(9)
+    eq((r.f, r.rc), ([_bd(15, 14, "'Para one\\n'", "'## 2026-11-10 x\\n'") + "; the inserted run at line 15 has no blank line after it"], 1),
+       "paragraph: " + r.out)
+
+
+@case("ADD31", "F5: the same probes with CRLF line endings are refused the same way (the blank test reads the line without its ending)")
+def _():
+    r = _f5(3, crlf=True)
+    eq((r.f, r.rc), ([_bd(9, 8, "'| b | 2 |\\r\\n'", "'## 2026-11-10 x\\r\\n'") + "; the inserted run at line 9 has no blank line before it"], 1),
+       "table: " + r.out)
+    r = _f5(9, crlf=True)
+    eq((r.f, r.rc), ([_bd(15, 14, "'Para one\\r\\n'", "'## 2026-11-10 x\\r\\n'") + "; the inserted run at line 15 has no blank line after it"], 1),
+       "paragraph: " + r.out)
+
+
+@case("ADD32", "F5 controls: a run with a blank line on both sides between two paragraphs, a run at the end of the note, a run whose own last line "
+               "is blank (the next published line follows a blank) are ADDITIONs; a run right after the last published line with no blank "
+               "before it is a BYTE-DIFF; an anchor line between a run and a published line does not count as the blank line between them")
+def _():
+    r = _add("First.\n\n## 2026-11-22 Added\nExtra.\n\nSecond.\n", base=T2)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), "between paragraphs: " + r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), "at the end: " + r.out)
+    r = _add("Some text.\n\n## 2026-11-22 d\nX.\n\nMore text.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 4 lines, heading 2026-11-22 d"], 0), "own last line blank: " + r.out)
+    r = _add("Some text.\nMore text.\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'## 2026-11-22 Added\\n'") + "; the inserted run at line 8 has no blank line before it"], 1),
+       "no blank before: " + r.out)
+    tail = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n" + BL() + "\nTail.\n")},
+              committed={"01-a.md": "# Note\n\n## Body\n\nSome text.\nMore text.\nTail.\n"}, base="HEAD", today=TODAY)
+    ok(_bd(8, 7, "'Tail.\\n'", "'\\n'") + "; the inserted run at line 8 has no blank line after it" in tail.f, "anchor between: " + tail.out)
+    ok(not any(x.startswith("ADDITION") for x in tail.f), "no ADDITION: " + tail.out)
+
+
+@case("ADD33", "F6: a run that begins above the first published non-blank line (above the H1 title) is a BYTE-DIFF whose message names it")
+def _():
+    r = go(notes={"01-a.md": "## 2026-11-10 x\nbody\n\n" + NOTE(body="Some text.\nMore text.\n")}, committed={"01-a.md": T0},
+           base="HEAD", today=TODAY)
+    ok(_bd(1, 1, "'# Note\\n'", "'## 2026-11-10 x\\n'") + "; the inserted run at line 1 begins above the first published non-blank line" in r.f, r.out)
+    ok(not any(x.startswith("ADDITION") for x in r.f), "no ADDITION: " + r.out)
+    eq(r.rc, 1, "exit code")
+    r = go(notes={"01-a.md": "\n" + NOTE(body="Some text.\nMore text.\n")}, committed={"01-a.md": T0}, base="HEAD", today=TODAY)
+    eq(r.rc, 1, "a lone blank line above the title is not a dated run: " + r.out)
+
+
 @case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "
                "in line order")
 def _():
@@ -3336,9 +3928,9 @@ def selftest_quiet():
         return selftest()
 
 
-_OPTIONS = {"--base": "base", "--repo": "repo", "--strings": "strings", "--src": "src", "--glob": "glob"}
+_OPTIONS = {"--base": "base", "--repo": "repo", "--strings": "strings", "--src": "src", "--glob": "glob", "--today": "today"}
 USAGE = ("usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--strings PATH] [--src SRC_ROOT]\n"
-         "                     [--glob PATTERN]\n"
+         "                     [--glob PATTERN] [--today YYYY-MM-DD]\n"
          "       notes_meta.py --selftest")
 
 
