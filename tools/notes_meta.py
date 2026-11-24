@@ -86,10 +86,12 @@ CONTRACT (each line is a self-test case, written before the code)
   R4 Every group has at least one root; a null claim with no root, once accepted, is now a ROOT-COUNT error.
   R5 A strings file with no phrase at all is announced. R6 Without the git program a normal run is refused (exit 4).
  List items (cases ITEM1 ITEM2 CONST2 LSH1; rh_anchor L1a to L5):
-  I1 A block whose target is a list must carry `item` (ITEM-REQUIRED); `item` above the number of top-level items is
+  I1 A block whose target is a list must carry `item` (ITEM-REQUIRED), a sketch excepted (F33: it covers whole elements, and `item`
+  on it is a BLOCK-PROBLEM from rh_anchor.problems, with no NOT-A-LIST, ITEM-OUT-OF-RANGE or ITEM-REQUIRED beside it); `item` above the number of top-level items is
   ITEM-OUT-OF-RANGE; `item` that is not an integer of 1 or more is ITEM-BAD-VALUE; `item` on a target that is not a list is
   NOT-A-LIST. Nested items are not numbered. A heading, quote, HTML line or non-lean fence is still ORPHAN-BLOCK.
-  I2 A list target whose shape has every key of an entry of REFUSED_LIST_SHAPES (empty by default) is LIST-SHAPE-REFUSED.
+  I2 A list target whose shape has every key of an entry of REFUSED_LIST_SHAPES (empty by default) is LIST-SHAPE-REFUSED; for a
+  sketch it is every list in the run (rh_anchor.run_lists), the target included; cases F33a F33b F33c.
  Summary lines (cases N5a N5b N5c): `outline: G groups, C claimed, Z null, R roots resolved, D defs_opened resolved, P
  premise links` always, counted over the whole outline; `strings: F frame phrases loaded for K kinds` and `byte check:
  N notes equal to REV, M new` when those ran. Header group (cases HROOT1 to HROOT3): `root` only at level 0.
@@ -157,7 +159,7 @@ allowed (the spec is silent on that case; this is our reading, and a role added 
 a named statement only, also under open_in_literature. The line `sketches: S of P steps with a proof read` is NOT printed
 here: what a step is belongs to the builder, so it counts there. note_cite.py is unchanged: its --kind takes its choices from
 rh_anchor.KINDS, and a sketch cannot be valid through it for want of a basis flag (BAD-BLOCK). A sketch anchored on a list
-is asked for `item` like any block on a list. Extra keys are UNKNOWN-KEY for the outline, a group and a
+is not asked for `item` (F33). Extra keys are UNKNOWN-KEY for the outline, a group and a
 claim only; a roots or defs_opened entry with extra keys is accepted, and a JSON key repeated in the outline keeps
 its last value. Notes are the files directly in NOTES_DIR that match the pattern, so docs/tools.md, which sits
 beside the notes, is not a note; a finding names a note by its name in NOTES_DIR and the outline and the table by

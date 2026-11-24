@@ -85,12 +85,14 @@ CONTRACT (each line is a self-test case, written before the code)
     the insertion line is the table's last line, never between rows. A line that is itself an anchor line directly
     after an element (any rh- line, malformed ones too) gets that element, so a caller can find append_after from any
     line of the run; a blank line or a line between elements is None. Cases B3, W2.
+ F33 problems: a sketch carries no `item` ("item: a sketch covers whole elements and carries no item", the only problem for the key); run_lists(text, line, span) gives
+    the lists of that run with their shape, from the shape the parse computes. Cases SK5, RN7.
  B4 next_block_id is the smallest number above the largest used for that note, at least two digits. Case B4.
  B5 insert_after_line uses that line's own ending, CRLF if it ended CRLF, else LF (a lone-CR file gets LF); on a last line with no line ending it adds one before
     the comment and none after, so strip_anchor_lines(insert_after_line(t, n, c)) == t. Cases B5a-B5d.
 
 LIMIT. run_at reads the same approximation of Markdown as the rest of the module: a list at the end of a run is a list element,
-and whether the anchor of a sketch may sit on one (the checker asks a list for `item`) is not decided here. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
+and a sketch may sit on one: it covers whole elements and carries no `item` (F33; problems refuses the key). The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
 row, column, declaration or file exists (a table's size is only reported), no date format, no order check on
 `defs_opened[].lines` (a block's own `lines` IS order-checked: first not after last, B2), no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
 `conventions_checked` (open; they are validated when present and never required). Markdown is approximated by the
