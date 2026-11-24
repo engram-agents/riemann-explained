@@ -1463,7 +1463,7 @@ def _():
                  "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 1 premise links",
                  "claim basis: 0 read, 0 census, 0 without",
                  "recognition: 0 known, 0 variant, 0 not recognised, 0 open in literature, 0 not written, of 0 groups with a claim",
-                 "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0",
+                 "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0 sketch=0",
                  "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
                  "3 notes, 1 findings, 0 warnings"], "output")
@@ -2894,6 +2894,163 @@ def _():
                      "HEADER-PROBLEM 02-b.md:2 level: must be 0, 1 or 2", "note 02 header FAILED, blocks 0"], "order")
     r = go(notes={"01-a.md": NOTE(level=3, body="Some text.\n<!-- rh-block {bad} -->\n")})
     eq([x.split(" ")[0] + " " + x.split(" ")[1] for x in r.f], ["HEADER-PROBLEM 01-a.md:2", "MALFORMED 01-a.md:7"], "by line")
+
+
+# ---- F25a: the sketch kind in the cross-checks; an argument on a root that is not a theorem or lemma is listed
+# Notes made by NOTE() have the first body line on line 6, so a block anchored after one-line paragraphs sits on a literal line.
+def _AB(bid="01.b01", decls=None, reader="R"):
+    return BL(bid, kind="argument", reader=reader, date="2026-11-23", decls=[R("A.B", "foo")] if decls is None else decls)
+
+
+def _SB(bid="01.b02", decls=None, **kw):
+    d = dict(kind="sketch", reader="R", date="2026-11-23", decls=[R("A.B", "foo")] if decls is None else decls, basis="source")
+    d.update(kw)
+    return BL(bid, **d)
+
+
+_AS = "Idea.\n" + _AB() + "\n\nSketch.\n" + _SB() + "\n"   # the argument is on line 7, the sketch on line 10
+FOO, BAR, BAZ = R("A.B", "foo"), R("A.B", "bar"), R("A.C", "baz")
+
+
+def _sx(body, outline=None, decls=DECLS_K, **hdr):
+    return go(notes={"01-a.md": NOTE(body=body, **hdr)}, outline=OL(G("g1")) if outline is None else outline, decls=decls)
+
+
+NOPROOF = "ARGUMENT-NO-PROOF 01-a.md:{} block '01.b01': root {} has kind {!r}, not a theorem or lemma: say in the argument which proof inside it was read"
+
+
+@case("SKC1", "a sketch with an argument on its root passes: with or without a claim, with more decls than the root, with a run of two, "
+              "and when the argument is in another note of the group by another reader")
+def _():
+    clean(_sx(_AS))
+    clean(_sx(_AS, outline=OL(G("g1", claim=CLAIM))))
+    clean(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(decls=[FOO, BAR]) + "\n"))
+    clean(_sx("Idea.\n" + _AB() + "\n\nOne.\n\nTwo.\n" + _SB(span=2) + "\n"))
+    clean(go(notes={"01-a.md": NOTE(body="Idea.\n" + _AB(reader="X") + "\n"),
+                    "02-b.md": NOTE(nid="02", body="Sketch.\n" + _SB("02.b01") + "\n")}, outline=OL(G("g1")), decls=DECLS_K))
+
+
+@case("SKC2", "SKETCH-NO-ARGUMENT: a sketch whose root has no argument block in its group is refused; an argument of another group, or one "
+              "whose decls do not hold the root, does not count")
+def _():
+    msg = "SKETCH-NO-ARGUMENT 01-a.md:7 block '01.b01': root A.B foo has no argument block in group 'g1'"
+    fe(_sx("Sketch.\n" + _SB("01.b01") + "\n"), [msg], 1)
+    two = OL(G("g1"), G("g2", order=2, roots=[BAR]))
+    fe(go(notes={"01-a.md": NOTE(body="Sketch.\n" + _SB("01.b01") + "\n"),
+                 "02-b.md": NOTE(nid="02", group="g2", body="Idea.\n" + _AB("02.b01") + "\n")}, outline=two, decls=DECLS_K), [msg], 1)
+    fe(_sx("Idea.\n" + _AB(decls=[BAR]) + "\n\nSketch.\n" + _SB() + "\n"),
+       ["SKETCH-NO-ARGUMENT 01-a.md:10 block '01.b02': root A.B foo has no argument block in group 'g1'"], 1)
+
+
+@case("SKC3", "SKETCH-DUPLICATE: a second sketch on one root, in the same note or another, is refused naming both block ids; "
+              "two roots of one group may each have one; a sketch on two roots both taken gives one finding per root")
+def _():
+    body = "Idea.\n" + _AB() + "\n\nS1.\n" + _SB("01.b02") + "\n\nS2.\n" + _SB("01.b03") + "\n"
+    fe(_sx(body), ["SKETCH-DUPLICATE 01-a.md:13 block '01.b03': root A.B foo already has the sketch '01.b02' (at 01-a.md:10)"], 1)
+    fe(go(notes={"01-a.md": NOTE(body=_AS), "02-b.md": NOTE(nid="02", body="S.\n" + _SB("02.b01") + "\n")},
+          outline=OL(G("g1")), decls=DECLS_K),
+       ["SKETCH-DUPLICATE 02-b.md:7 block '02.b01': root A.B foo already has the sketch '01.b02' (at 01-a.md:10)"], 1)
+    two = OL(G("g1", roots=[FOO, BAR]))
+    arg = "Idea.\n" + _AB(decls=[FOO, BAR]) + "\n\nS1.\n" + _SB("01.b02", decls=[FOO]) + "\n\nS2.\n" + _SB("01.b03", decls=[BAR]) + "\n"
+    clean(_sx(arg, outline=two))
+    both = "Idea.\n" + _AB(decls=[FOO, BAR]) + "\n\nS1.\n" + _SB("01.b02", decls=[FOO, BAR]) + "\n\nS2.\n" + _SB("01.b03", decls=[FOO, BAR]) + "\n"
+    fe(_sx(both, outline=two),
+       ["SKETCH-DUPLICATE 01-a.md:13 block '01.b03': root A.B foo already has the sketch '01.b02' (at 01-a.md:10)",
+        "SKETCH-DUPLICATE 01-a.md:13 block '01.b03': root A.B bar already has the sketch '01.b02' (at 01-a.md:10)"], 1)
+
+
+@case("SKC4", "SKETCH-ROLE: the role of the group decides when it has one (only result), else the kind of the root (only theorem or lemma), "
+              "each root of a null-claim group by its own kind; the argument on a definition is listed beside it")
+def _():
+    arg_baz = "Idea.\n" + _AB(decls=[BAZ]) + "\n\nSketch.\n" + _SB(decls=[BAZ]) + "\n"
+    kind = "SKETCH-ROLE 01-a.md:10 block '01.b02': root {} has kind {!r}; a sketch is only for a theorem or lemma"
+    fe(_sx(arg_baz, outline=OL(G("g1", roots=[BAZ]))),
+       [NOPROOF.format(7, "A.C baz", "def"), kind.format("A.C baz", "def")], 1)
+    stru = "Idea.\n" + _AB(decls=[R("A.E", "stru")]) + "\n\nSketch.\n" + _SB(decls=[R("A.E", "stru")]) + "\n"
+    fe(_sx(stru, outline=OL(G("g1", roots=[R("A.E", "stru")]))),
+       [NOPROOF.format(7, "A.E stru", "structure"), kind.format("A.E stru", "structure")], 1)
+    lem = "Idea.\n" + _AB(decls=[R("A.E", "lem")]) + "\n\nSketch.\n" + _SB(decls=[R("A.E", "lem")]) + "\n"
+    clean(_sx(lem, outline=OL(G("g1", roots=[R("A.E", "lem")]))))
+    clean(_sx(lem, outline=OL(_rg("result", root=("A.E", "lem")))))
+    for role in ("named_statement", "object"):
+        fe(_sx(arg_baz, outline=OL(_rg(role, root=("A.C", "baz")))),
+           [NOPROOF.format(7, "A.C baz", "def"),
+            f"SKETCH-ROLE 01-a.md:10 block '01.b02': root A.C baz: root_role is {role!r}; a sketch is only for 'result'"], 1)
+    multi = OL(G("g1", roots=[FOO, BAZ]))
+    both = "Idea.\n" + _AB(decls=[FOO, BAZ]) + "\n\nSketch.\n" + _SB(decls=[FOO, BAZ]) + "\n"
+    fe(_sx(both, outline=multi), [NOPROOF.format(7, "A.C baz", "def"), kind.format("A.C baz", "def")], 1)
+    clean(_sx("Idea.\n" + _AB(decls=[FOO]) + "\n\nSketch.\n" + _SB(decls=[FOO]) + "\n", outline=multi))
+
+
+@case("SKC5", "SKETCH-ROOT: the sketch's decls must include a root of its group (one is enough, more decls are fine); a note whose group is not "
+              "in the outline anchors none; an unresolved or ambiguous decl is only the finding already coded")
+def _():
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(decls=[BAR]) + "\n"),
+       ["SKETCH-ROOT 01-a.md:10 block '01.b02': its decls include no root of group 'g1' (roots: A.B foo)"], 1)
+    clean(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(decls=[BAR, FOO]) + "\n"))
+    fe(_sx("Sketch.\n" + _SB("01.b01") + "\n", group="gx"),
+       ["UNKNOWN-GROUP 01-a.md:2 group 'gx' is not in the outline",
+        "SKETCH-ROOT 01-a.md:7 block '01.b01': group 'gx' is not a group of the outline; a sketch needs a group root in its decls"], 1)
+    dup = R("A.D", "dup")
+    amb = "(first_line, last_line): (1, 3), (7, 9)"
+    fe(_sx("Idea.\n" + _AB(decls=[dup]) + "\n\nSketch.\n" + _SB(decls=[dup]) + "\n", outline=OL(G("g1", roots=[dup]))),
+       [f"AMBIGUOUS outline.json group 'g1' roots[0] A.D dup: 2 rows; candidates {amb}",
+        f"AMBIGUOUS 01-a.md:7 block '01.b01' decls[0] A.D dup: 2 rows; candidates {amb}",
+        f"AMBIGUOUS 01-a.md:10 block '01.b02' decls[0] A.D dup: 2 rows; candidates {amb}"], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(decls=[R("A.B", "nope"), FOO]) + "\n"),
+       ["UNRESOLVED 01-a.md:10 block '01.b02' decls[0] A.B nope: no row in decls.tsv"], 1)
+
+
+@case("SKC6", "SKETCH-RUN: the reason of run_at for the block's span, naming the block; an anchor, a heading or a table in the run, a span past "
+              "the start of the note; a bad span value is only the format problem")
+def _():
+    run = "SKETCH-RUN 01-a.md:{} block '01.b02': {}"
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(span=3) + "\n"), [run.format(10, "the run holds another rh anchor line (line 7)")], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\n### Sub\n\nSketch.\n" + _SB(span=2) + "\n"), [run.format(12, "the run holds a heading at line 9")], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\n| a |\n|---|\n| 1 |\n" + _SB() + "\n"), [run.format(12, "the run holds a table at lines 9-11")], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(span=0) + "\n"),
+       ["BLOCK-PROBLEM 01-a.md:10 block '01.b02': span: must be an integer of 1 or more"], 1)
+    head = NOTE().split("\n")[1]   # a note with no heading, so a span can pass the start of it
+    r = go(notes={"01-a.md": head + "\nSketch.\n" + _SB("01.b01", span=2) + "\n",
+                  "02-b.md": NOTE(nid="02", body="Idea.\n" + _AB("02.b01") + "\n")}, outline=OL(G("g1")), decls=DECLS_K)
+    fe(r, ["SKETCH-RUN 01-a.md:3 block '01.b01': span 2 asks for more elements than the note has before this anchor (only 1)"], 1)
+
+
+@case("SKC7", "the format problems of a sketch and of span come through as BLOCK-PROBLEM: span on an argument, a bad basis, compiled "
+              "without a build, source with a build")
+def _():
+    bp = "BLOCK-PROBLEM 01-a.md:{} block '{}': {}"
+    fe(_sx("Idea.\n" + BL("01.b01", kind="argument", reader="R", date="2026-11-23", decls=[FOO], span=1) + "\n"),
+       [bp.format(7, "01.b01", "span: only a sketch carries span")], 1)
+    for kw, why in ((dict(basis="x"), "basis: must be source or compiled"),
+                    (dict(basis="compiled"), "build: basis compiled needs a non-empty string"),
+                    (dict(build="lake build"), "build: not allowed when basis is source")):
+        fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(**kw) + "\n"), [bp.format(10, "01.b02", why)], 1)
+    clean(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(basis="compiled", build="lake build", unexpanded=["x"]) + "\n"))
+
+
+@case("SKC8", "the note line and the `blocks by kind:` line count sketches as a seventh kind; the checker prints no `sketches:` line (the "
+              "builder counts proofs read)")
+def _():
+    r = _sx(_AS)
+    ok("note 01 header ok, blocks 2 (argument=1 sketch=1)" in r.lines, "note line\n" + r.out)
+    ok("blocks by kind: machine_fact=0 reading=0 interpretation=0 correction=0 not_read=0 argument=1 sketch=1" in r.lines, "kinds\n" + r.out)
+    ok(not any(x.startswith("sketches:") for x in r.lines), "no sketches line\n" + r.out)
+
+
+@case("ARGNP", "ARGUMENT-NO-PROOF is a listing (exit unchanged) for an argument anchored on a root of its group whose kind is not theorem or "
+               "lemma: def and structure listed, theorem and lemma not; a def that is not a root of the group is not listed")
+def _():
+    one = "Idea.\n" + _AB(decls=[BAZ]) + "\n"
+    r = _sx(one, outline=OL(G("g1", roots=[BAZ])))
+    fe(r, [NOPROOF.format(7, "A.C baz", "def")], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "a listing is a warning, not a finding")
+    fe(_sx("Idea.\n" + _AB(decls=[R("A.E", "stru")]) + "\n", outline=OL(G("g1", roots=[R("A.E", "stru")]))),
+       [NOPROOF.format(7, "A.E stru", "structure")], 0)
+    clean(_sx("Idea.\n" + _AB() + "\n"))
+    clean(_sx("Idea.\n" + _AB(decls=[R("A.E", "lem")]) + "\n", outline=OL(G("g1", roots=[R("A.E", "lem")]))))
+    clean(_sx("Idea.\n" + _AB(decls=[FOO, BAZ]) + "\n"))
+    fe(_sx(one, outline=OL(_rg("named_statement", root=("A.C", "baz")))), [NOPROOF.format(7, "A.C baz", "def")], 0)
 
 
 def _run_cases(cases, write):
