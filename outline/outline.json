@@ -254,7 +254,7 @@
       "opened_on": "2026-11-24"
      }
     ],
-    "difference": "The textbook statement is about primitive characters of modulus $q > 1$ and says that every zero in the critical strip $0 \\le \\operatorname{Re} s \\le 1$ has real part $1/2$. The Lean statement says only that there is no zero with $\\operatorname{Re} s > 1/2$, and it includes modulus 1, that is $\\zeta$. With the functional equation, which the Lean statement does not contain, the two agree for $q > 1$ (a zero to the left of the line gives one to the right for $\\bar\\chi$, page 333 again), and modulus 1 is the Riemann Hypothesis.",
+    "difference": "The textbook statement is about primitive characters of modulus $q > 1$ and says that every non-trivial zero has real part $1/2$. The Lean statement says only that there is no zero with $\\operatorname{Re} s > 1/2$, and it includes modulus 1, that is $\\zeta$. With the functional equation, which the Lean statement does not contain, the two agree for $q > 1$ (a zero to the left of the line gives one to the right for $\\bar\\chi$, page 333 again), and modulus 1 is the Riemann Hypothesis.",
     "established": "not_traced",
     "reader": "Halley",
     "date": "2026-11-24"
