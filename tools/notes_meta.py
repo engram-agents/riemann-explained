@@ -12,7 +12,7 @@ CONTRACT (each line is a self-test case, written before the code)
      `CHECKED NOTHING: <reason>` line per reason on stdout, exit 3, nothing else checked. Cases X1a X1b X1c.
   X2 Exit 0: every note passed. Exit 1: any finding of class ERROR. Exit 2: usage, or an input that cannot be read
      (a message on stderr, nothing on stdout). Exit 3: see X1. Exit 4: the self-test failed (REFUSED, nothing else).
-     A listing (EXTENT-WARNING, FRAME-NOTE, NEW-NOTE, CLAIM-LIBRARY-WORD) never changes the exit code. Cases X2a X2b X2c EXIT4.
+     A listing (EXTENT-WARNING, FRAME-NOTE, NEW-NOTE, ADDITION, CLAIM-LIBRARY-WORD) never changes the exit code. Cases X2a X2b X2c EXIT4.
   X3 One line per finding, `CODE path:line message` (`CODE path message` when it has no line); path is the file's
      name (a note: its name in NOTES_DIR). Per note, after its findings: `note <id> header ok|FAILED, blocks N
      (kind=count ...)` (the breakdown is left out when N is 0). Then the run's lines: the FRAME-NOTE skip notice
@@ -59,6 +59,18 @@ CONTRACT (each line is a self-test case, written before the code)
      byte for byte after the strip rule of rh_anchor (BYTE-DIFF names the first differing line as a line of the current file on disk and as an index of the stripped texts; a base that is not UTF-8 is a
      BYTE-DIFF with no line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
      Cases B1a to B1e, Y1 to Y6, Z1, Z2a to Z2d, BL1 to BL6.
+  ADD A pure insertion of dated text is an ADDITION, not a BYTE-DIFF (F27). With the same two stripped texts: the base is
+     a subsequence of the current when each base line (with its line ending) matches, in order and GREEDILY from the left (the
+     earliest equal line after the previous match), a current line; the unmatched current lines are the inserted runs (maximal
+     gaps, one after the last base line too). A base that is not a subsequence (a line removed or altered) is a BYTE-DIFF as
+     before. Each run, after its LEADING blank lines, must begin with a heading (1 to 6 `#`, a space, text) whose text holds a
+     real calendar date YYYY-MM-DD (the first real one is the heading's date); that date is not later than --today (default
+     the UTC date of the clock) and not earlier than the date in the header's `release` when it is `rh-YYYY-MM-DD` (a release
+     with no such date gives no lower bound). A run inside a fence of the published text (opened by base lines before it and
+     closed after, or never closed) fails. One failing run makes the whole note a BYTE-DIFF at the run's first line (a date
+     outside the window adds its date and the window to the message). Each legal run is an ADDITION listing
+     `ADDITION path:first_line N lines, heading TEXT` (first_line on disk, N in the text without anchors), a warning, never
+     an error; the byte-check line ends `additions A` (runs). Cases ADD1 to ADD22.
  Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
   R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
@@ -122,7 +134,13 @@ past the last line of the file (a line that is not there, so do not look for it)
 (an empty file, or one that holds only anchor lines). Trailing anchor lines do not shift either number. Both sides are
 stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
 result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
-with no line, and the other notes are still compared. "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
+with no line, and the other notes are still compared. ADDITION (F27): the floor of the date window is the date of the header's
+`release`, not the note's own, and a note whose release carries no date has no floor; the upper bound is the day of the run.
+The alignment is greedy, so an inserted line that repeats a base line can leave the original unmatched as a second run (a
+BYTE-DIFF unless that run is itself a dated addition); a base whose last line has no line ending cannot gain text after it
+(the line differs). The fence test reads the published text only: an inserted fence marker that changes how later base lines
+read as fenced is not detected. A heading with an impossible date beside a real one is read by the real one. --today is
+a test hook and a value that is not a real date is a usage error (exit 2). "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
 last anchor line with no line ending of its own also removes the line ending before it, so adding or removing such a
 hand-typed last line can read as a one-line-ending difference (anchors written by the helper carry their own ending; case
 Z1). An anchor-looking line is kept as text only inside a fence: an indented code block or a list item is not tracked, as in
@@ -163,10 +181,11 @@ words, no definite reference to something defined in another note, no interpreta
 holds no phrase is announced with one line and is not an error.
 
 usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--strings PATH] [--src SRC_ROOT]
-                     [--glob PATTERN]
+                     [--glob PATTERN] [--today YYYY-MM-DD]
        notes_meta.py --selftest
 """
 import contextlib
+import datetime
 import fnmatch
 import importlib.util
 import io
@@ -756,31 +775,99 @@ def _vcs(top, *args):
         raise _Unreadable("git is needed for --base but could not be run")
 
 
+_HEADING = re.compile(r"#{1,6} (.+)\Z")   # F27: 1 to 6 marks, a space, text; at column 0, on the line without its ending
+_DATE_TOKEN = re.compile(r"(?<![0-9])[0-9]{4}-[0-9]{2}-[0-9]{2}(?![0-9])")
+_RELEASE_DATE = re.compile(r"rh-([0-9]{4}-[0-9]{2}-[0-9]{2})")   # matched with fullmatch
+
+
+def _real_date(s):
+    """The datetime.date of a YYYY-MM-DD string, None when it is not a real calendar date."""
+    try:
+        return datetime.date(int(s[:4]), int(s[5:7]), int(s[8:10]))
+    except ValueError:
+        return None
+
+
+def _insertion_runs(a, b):
+    """F27 alignment: match each line of a, in order and greedily from the left, to the earliest equal line of b after the
+    previous match. None when a is not a subsequence of b; else the maximal gaps of b as (start, end, index in a of the
+    base line before the gap, -1 for none), in file order, including a gap after the last matched line."""
+    runs, k, start = [], 0, None
+    for j, line in enumerate(b):
+        if k < len(a) and a[k] == line:
+            if start is not None:
+                runs.append((start, j, k - 1))
+                start = None
+            k += 1
+        elif start is None:
+            start = j
+    if k < len(a):
+        return None
+    if start is not None:
+        runs.append((start, len(b), k - 1))
+    return runs
+
+
 def _bytes_check(name, text, rel, ctx):
+    """The findings of the byte check for one note: [] when equal, [NEW-NOTE], one BYTE-DIFF, or one ADDITION listing per run
+    when the note only gained dated additions (F27)."""
     show = _vcs(ctx.top, "cat-file", "blob", f"{ctx.rev}:{rel}")
     if show.returncode != 0:
-        return _f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)
+        return [_f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)]
     try:   # both sides without their anchor lines (header and blocks), decoded the same way
-        old = rh.strip_anchor_lines(show.stdout.decode("utf-8")).encode("utf-8")
+        old_text = rh.strip_anchor_lines(show.stdout.decode("utf-8"))
+        old = old_text.encode("utf-8")
     except UnicodeDecodeError:
-        return _f("BYTE-DIFF", name, None, f"the note at {ctx.base} is not valid UTF-8 and cannot be compared")
+        return [_f("BYTE-DIFF", name, None, f"the note at {ctx.base} is not valid UTF-8 and cannot be compared")]
     new = rh.strip_anchor_lines(text).encode("utf-8")
     if old == new:
-        return None
+        return []
     a, b = old.splitlines(True), new.splitlines(True)
     i = next((k for k in range(min(len(a), len(b))) if a[k] != b[k]), min(len(a), len(b)))
 
-    def fmt(ls):
-        return repr(ls[i].decode("utf-8", "replace")) if i < len(ls) else "<no line>"
     # the line in the CURRENT file as it is on disk: the i-th line that is not an anchor line of this note (the anchor lines are
     # the ones parse_note reports, the set strip_anchor_lines removes); at the end it is the line after the last non-anchor line
     headers, blocks, _problems = rh.parse_note(text)
     anchors = {x.line for x in headers + blocks}
     parts = _LINE_SPLIT.split(text)
     plain = [k for k in range(1, len(parts) - (parts[-1] == "") + 1) if k not in anchors]
-    line = plain[i] if i < len(b) and i < len(plain) else (plain[-1] + 1 if plain else 1)
-    return _f("BYTE-DIFF", name, line, f"line {line} differs (line {i + 1} of the text without anchors): "
-              f"at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}")
+
+    def bytediff(i, extra=""):
+        def fmt(ls):
+            return repr(ls[i].decode("utf-8", "replace")) if i < len(ls) else "<no line>"
+        line = plain[i] if i < len(b) and i < len(plain) else (plain[-1] + 1 if plain else 1)
+        return _f("BYTE-DIFF", name, line, f"line {line} differs (line {i + 1} of the text without anchors): "
+                  f"at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}{extra}")
+    runs = _insertion_runs(a, b)
+    if runs is None:   # a base line was removed or altered: as before
+        return [bytediff(i)]
+    rel_date = None   # the floor: the date of the header's `release` when it is rh-YYYY-MM-DD and real, else none
+    if headers and isinstance(headers[0].data.get("release"), str):
+        m = _RELEASE_DATE.fullmatch(headers[0].data["release"])
+        rel_date = _real_date(m.group(1)) if m else None
+    window = (f"{rel_date.isoformat()} to {ctx.today.isoformat()}" if rel_date else f"up to {ctx.today.isoformat()} (no lower bound)")
+    published = None   # rh_anchor's reading of the published text, for its fences
+    adds = []
+    for start, end, prev in runs:
+        if prev >= 0:   # inside a fence of the published text: opened at or before the base line before the run, closed after it
+            if published is None:
+                published = rh._Analysis(old_text)
+            fi = published.fence_of[prev]
+            if fi != -1 and (published.fences[fi]["close"] is None or published.fences[fi]["close"] > prev):
+                return [bytediff(start)]
+        lines = [x.decode("utf-8") for x in b[start:end]]
+        first = next((x for x in lines if x.strip()), None)   # the first line after the LEADING blank lines
+        m = _HEADING.match(first.rstrip("\r\n")) if first is not None else None
+        if not m:
+            return [bytediff(start)]
+        heading = m.group(1).strip()
+        day = next((d for d in map(_real_date, _DATE_TOKEN.findall(heading)) if d), None)   # the first REAL date in the heading
+        if day is None:
+            return [bytediff(start)]
+        if day > ctx.today or (rel_date is not None and day < rel_date):
+            return [bytediff(start, f"; the added heading's date {day.isoformat()} is outside the window {window}")]
+        adds.append(_f("ADDITION", name, plain[start], f"{end - start} lines, heading {heading}", LISTING))
+    return adds
 
 
 # ---- the run
@@ -838,8 +925,18 @@ def _setup_git(ctx, notes_dir, names, base, repo):
     return rels
 
 
-def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
+def _parse_today(today):
+    if today is None:
+        return datetime.datetime.now(datetime.timezone.utc).date()
+    d = _real_date(today) if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", today) else None
+    if d is None:
+        raise _Unreadable(f"--today must be a real date written YYYY-MM-DD, got {today!r}")
+    return d
+
+
+def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     ctx = _Ctx()
+    ctx.today = _parse_today(today)
     if not os.path.isdir(notes_dir):
         raise _Unreadable(f"NOTES_DIR is not a directory: {notes_dir}")
     odata = _read_json(outline, "outline")
@@ -883,17 +980,18 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     for nid, files in hid.items():
         if len(files) > 1:
             dup_at[files[0]] = f"note id {nid!r} is used by {len(files)} notes: " + ", ".join(files)
-    totals, invalid_total, n_equal, n_new = {k: 0 for k in rh.KINDS}, 0, 0, 0
+    totals, invalid_total, n_equal, n_new, n_add = {k: 0 for k in rh.KINDS}, 0, 0, 0, 0
     for n in names:
         fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
         if n in dup_at:
             fs.append(_f("NOTE-ID-DUPLICATE", n, hline[n], dup_at[n]))
             fs.sort(key=lambda x: x[2] or 0)
-        bf = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else None
-        fs += [bf] if bf else []
+        bfs = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else []
+        fs += bfs
         if base is not None:
-            n_new += bool(bf and bf[0] == "NEW-NOTE")
-            n_equal += bf is None
+            n_new += any(f[0] == "NEW-NOTE" for f in bfs)
+            n_equal += not bfs
+            n_add += sum(1 for f in bfs if f[0] == "ADDITION")
         lines += [_render(f) for f in fs]
         errors += sum(1 for f in fs if f[4] == ERROR)
         warnings += sum(1 for f in fs if f[4] == LISTING)
@@ -913,15 +1011,15 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
     lines.append(f"claim basis: {st['read']} read, {st['census']} census, {st['without']} without")
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
-    lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new" if base is not None else "byte check: did not run, no --base given")
+    lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new, {n_add} additions" if base is not None else "byte check: did not run, no --base given")
     lines.append(f"{len(names)} notes, {errors} findings, {warnings} warnings")
     return (1 if errors else 0), lines
 
 
-def run(notes_dir, outline, decls, base=None, repo=None, strings=None, src=None, glob=DEFAULT_GLOB):
+def run(notes_dir, outline, decls, base=None, repo=None, strings=None, src=None, glob=DEFAULT_GLOB, today=None):
     """Check the notes and print the report; return the exit code 0, 1, 2 or 3. Exit 2 prints nothing to stdout."""
     try:
-        rc, lines = _run(notes_dir, outline, decls, base, repo, strings, src, glob)
+        rc, lines = _run(notes_dir, outline, decls, base, repo, strings, src, glob, today)
     except _Unreadable as e:
         print("notes_meta: " + str(e), file=sys.stderr)
         return 2
@@ -2553,9 +2651,9 @@ def selftest_quiet():
         return selftest()
 
 
-_OPTIONS = {"--base": "base", "--repo": "repo", "--strings": "strings", "--src": "src", "--glob": "glob"}
+_OPTIONS = {"--base": "base", "--repo": "repo", "--strings": "strings", "--src": "src", "--glob": "glob", "--today": "today"}
 USAGE = ("usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--strings PATH] [--src SRC_ROOT]\n"
-         "                     [--glob PATTERN]\n"
+         "                     [--glob PATTERN] [--today YYYY-MM-DD]\n"
          "       notes_meta.py --selftest")
 
 
