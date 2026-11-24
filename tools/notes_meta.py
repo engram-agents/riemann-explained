@@ -70,12 +70,16 @@ CONTRACT (each line is a self-test case, written before the code)
      YYYY-MM-DD; EVERY real date of the heading is not later than --today (default the UTC date of the clock) and not earlier
      than the date in the `release` of the BASE text's header (the published one) when it is `rh-YYYY-MM-DD` (a release with no
      such date, or none, gives no lower bound). A run inside a fence of the published text (opened by base lines before it and
-     closed after, or never closed) fails. Fence state is kept (F1): for every base line matched to a current line, being inside a
+     closed after, or never closed) fails. A run may not touch published text (F5): the line before its first non-blank line
+     and the line after its last non-blank line, in the stripped current text, must each be blank or the edge of the text (a blank
+     line inside the run counts), else the BYTE-DIFF message says `no blank line before it` or `no blank line after it` and names
+     the run's line; an alignment whose runs fail this is not legal. A run above the first published non-blank line fails (F6).
+     Fence state is kept (F1): for every base line matched to a current line, being inside a
      fence (rh_anchor's reading of each stripped text) must be the same in both texts, else the note is a BYTE-DIFF whose message
      names the run before that line. One failing run makes the whole note a BYTE-DIFF at the run's first line (a date
      outside the window adds its date and the window to the message). Each legal run is an ADDITION listing
      `ADDITION path:first_line N lines, heading TEXT` (first_line on disk, N in the text without anchors), a warning, never
-     an error; the byte-check line ends `additions A` (runs). Cases ADD1 to ADD29.
+     an error; the byte-check line ends `additions A` (runs). Cases ADD1 to ADD33.
  Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
   R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
@@ -148,7 +152,11 @@ repeats a base line can leave the original unmatched as a second run on both sid
 cannot gain text after it (the line differs). The fence test compares the fence state of every matched base line in the two
 texts, so an inserted marker that wraps or unwraps published text is a BYTE-DIFF; a fence opened in a run and never closed, at the
 very end of the note, swallows no base line and is left to rh_anchor's UNCLOSED-FENCE error. Every real date in an added heading
-must lie in the window; an impossible date beside a real one is skipped. --today is
+must lie in the window; an impossible date beside a real one is skipped. The boundary rule reads blank lines only: a run that
+carries its own blank line on each side and is placed between two rows of a published table, or between a list item and its
+indented continuation, has a blank on each side and passes (the table or the list is split); a note that gains one is read by a
+person. Blank means white space only, in the text without its anchor lines, so an anchor line between a run and a published line
+is no blank line. --today is
 a test hook and a value that is not a real date is a usage error (exit 2). "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
 last anchor line with no line ending of its own also removes the line ending before it, so adding or removing such a
 hand-typed last line can read as a one-line-ending difference (anchors written by the helper carry their own ending; case
