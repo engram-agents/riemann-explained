@@ -5399,6 +5399,22 @@ def _():
              "EDITION-BLOCK 01-a.md 01.b02 element 4 paragraph -> 3 paragraph"], "the lines")
 
 
+@case("NE11", "the +A -R count of the EDITION line is made with autojunk off: a note of 320 lines in which four lines recur (every fourth paragraph "
+              "ends with the same refrain, and a blank line follows every paragraph) with ONE paragraph of four lines moved is `+4 -4`; with "
+              "difflib's default (autojunk on) the popular lines are dropped from the match and the same input counts far more")
+def _():
+    refrains = ["Hence the step holds.", "This is used below.", "The case is closed.", "Nothing else is needed."]
+    base = []
+    for k in range(64):
+        base += [f"Paragraph {k} opens with its own claim.", f"Paragraph {k} gives a reason.", f"Paragraph {k} adds a detail.", refrains[k % 4], ""]
+    eq(len(base), 320, "the note has 320 lines")
+    moved = base[50:54]    # paragraph 10 without its blank line
+    rest = base[:50] + base[54:]
+    cur = rest[:196] + moved + rest[196:]
+    r = _en("".join(x + "\n" for x in base), "".join(x + "\n" for x in cur), cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=4, r=4)], 0), r.out)
+
+
 # ---- the title of a group is printed author text (the heading of a card with no claim, of a definition card, the premise rows)
 def _tg3(title, text="T3", ed=None):
     """A third group, a definition with a claim (so a title is legal), with `title` (None: no key) and, with `ed`, edition 2 at that date."""
