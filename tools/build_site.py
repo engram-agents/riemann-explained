@@ -6320,14 +6320,17 @@ def _selftest_cases():
                 M_("<msup><mi>x</mi><mn>2</mn></msup>"), M_("<msup><mi>x</mi><mi>α</mi></msup>")] + [None] * 10
         return _eq(got, want)
 
-    @case("CV3", "converter, primes (a choice, pinned): `L'` is <msup> of <mo>′</mo>; `f''` an <msup> over an <mrow> of two; a prime then a superscript "
-                 "merge into ONE <msup> whose script is an <mrow> of the primes and the superscript (`r'^{-k}` as TeX reads it); a prime and a "
-                 "subscript are <msubsup>; a prime after a superscript (`x^2'`) and a prime with no base are unsupported")
+    @case("CV3", "converter, primes (a choice, pinned): a prime is FLAT right after its base, `<mo stretchy=\"false\">′</mo>` (U+2032), as a sibling "
+                 "(`L'` is <mrow><mi>L</mi><mo>′</mo></mrow>, `f''` two primes); a prime then a superscript or a subscript make the base and its primes an "
+                 "<mrow> that takes the script (`r'^{-k}` is <msup> of <mrow>r ′</mrow> and the script group); a prime after a superscript "
+                 "(`x^2'`) and a prime with no base are unsupported")
     def _():
-        got = [cv(x) for x in ("L'", "f''", "r'^{-k}", "L'_s", "x'^2", "x^2'", "'")]
-        want = [M_("<msup><mi>L</mi><mo>′</mo></msup>"), M_("<msup><mi>f</mi><mrow><mo>′</mo><mo>′</mo></mrow></msup>"),
-                M_("<msup><mi>r</mi><mrow><mo>′</mo><mrow><mo>−</mo><mi>k</mi></mrow></mrow></msup>"),
-                M_("<msubsup><mi>L</mi><mi>s</mi><mo>′</mo></msubsup>"), M_("<msup><mi>x</mi><mrow><mo>′</mo><mn>2</mn></mrow></msup>"), None, None]
+        pr, mo = '<mo stretchy="false">′</mo>', '<mo stretchy="false">/</mo>'
+        got = [cv(x) for x in ("L'", "f''", "r'^{-k}", "L'_s", "x'^2", "x^2'", "'", "\\zeta'", "L'/L")]
+        want = [M_("<mrow><mi>L</mi>" + pr + "</mrow>"), M_("<mrow><mi>f</mi>" + pr + pr + "</mrow>"),
+                M_("<msup><mrow><mi>r</mi>" + pr + "</mrow><mrow><mo>−</mo><mi>k</mi></mrow></msup>"),
+                M_("<msub><mrow><mi>L</mi>" + pr + "</mrow><mi>s</mi></msub>"), M_("<msup><mrow><mi>x</mi>" + pr + "</mrow><mn>2</mn></msup>"), None, None,
+                M_("<mrow><mi>ζ</mi>" + pr + "</mrow>"), M_("<mrow><mi>L</mi>" + pr + mo + "<mi>L</mi></mrow>")]
         return _eq(got, want)
 
     @case("CV4", "converter, Greek: each of the 37 Greek letter commands is one <mi> of its Unicode letter (U+03F5 for `\\epsilon`, U+03B5 for "
@@ -6370,12 +6373,15 @@ def _selftest_cases():
                 M_('<msup><mi mathvariant="normal">Re</mi><mn>2</mn></msup>')] + [None] * 5
         return _eq(got, want)
 
-    @case("CV8", "converter, K1: `\\bar` takes one token or one brace group, like `^` and `_`: `\\bar\\chi` and `\\bar{\\chi}` are the same <mover> over "
-                 "U+00AF, `\\bar x_i` scripts the whole <mover>, `\\bar` alone and `\\bar^2` are unsupported")
+    @case("CV8", "converter, K1: `\\bar` takes one token or one brace group, like `^` and `_`: `\\bar\\chi` and `\\bar{\\chi}` are the same <mover "
+                 "accent=\"true\"> over a stretchy <mo> U+2015 (the horizontal bar: it gives a full-width overline in a browser, the macron and the "
+                 "overline character do not), the base of the second is an <mrow>, `\\bar x_i` scripts the whole <mover>, `\\bar` alone and `\\bar^2` "
+                 "are unsupported")
     def _():
+        ov = '<mo stretchy="true">―</mo></mover>'
         got = [cv(x) for x in ("\\bar\\chi", "\\bar{\\chi}", "\\bar x_i", "\\bar", "\\bar^2")]
-        want = [M_("<mover><mi>χ</mi><mo>¯</mo></mover>"), M_("<mover><mrow><mi>χ</mi></mrow><mo>¯</mo></mover>"),
-                M_("<msub><mover><mi>x</mi><mo>¯</mo></mover><mi>i</mi></msub>"), None, None]
+        want = [M_('<mover accent="true"><mi>χ</mi>' + ov), M_('<mover accent="true"><mrow><mi>χ</mi></mrow>' + ov),
+                M_('<msub><mover accent="true"><mi>x</mi>' + ov + "<mi>i</mi></msub>"), None, None]
         return _eq(got, want)
 
     @case("CV9", "converter, big delimiters: `\\bigl(` `\\bigr)` `\\big|` give the delimiter alone as <mo>; only ( ) [ ] | and \\lceil \\rceil \\mid may "
@@ -6398,7 +6404,7 @@ def _selftest_cases():
                 M_("<mrow><mi>a</mi>" + sp("0.278em") + "<mi>b</mi></mrow>"), M_("<mrow><mi>a</mi>" + sp("-0.167em") + "<mi>b</mi></mrow>"),
                 M_("<mrow><mi>a</mi>" + sp("0.222em") + "<mi>b</mi></mrow>"), M_("<mrow><mi>x</mi>" + sp("0.167em") + "</mrow>"),
                 M_('<mrow><mi mathvariant="normal">a</mi><mi mathvariant="normal">b</mi></mrow>'), None, None, None, None,
-                M_('<mrow><mo stretchy="false">|</mo><mi>a</mi><mo stretchy="false">|</mo></mrow>'),
+                M_('<mrow><mo form="prefix" stretchy="false">|</mo><mi>a</mi><mo form="postfix" stretchy="false">|</mo></mrow>'),
                 M_('<mrow><mi>p</mi><mo stretchy="false">∣</mo><mi>N</mi></mrow>')]
         return _eq(got, want)
 
@@ -6427,10 +6433,35 @@ def _selftest_cases():
                    '<mo stretchy="false" form="postfix">)</mo></mrow>'),
                 M_("<mrow>" + fn("max") + '<mspace width="0.167em"></mspace>' + "<mi>x</mi></mrow>"),
                 M_("<mrow><msub>" + fn("max") + "<mi>x</mi></msub>" + sp + "<mi>y</mi></mrow>"),
-                M_("<mrow>" + fn("max") + '<mo stretchy="false">|</mo><mi>x</mi><mo stretchy="false">|</mo></mrow>'), M_("<msup>" + fn("max") + "<mo>′</mo></msup>"),
+                M_("<mrow>" + fn("max") + '<mo form="prefix" stretchy="false">|</mo><mi>x</mi><mo form="postfix" stretchy="false">|</mo></mrow>'),
+                M_("<mrow>" + fn("max") + '<mo stretchy="false">′</mo></mrow>'),
                 M_("<mrow><mrow>" + fn("log") + "</mrow><mi>x</mi></mrow>"),
                 M_("<mrow>" + fn("max") + '<mo stretchy="false" form="prefix">(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo stretchy="false" form="postfix">)</mo></mrow>'),
-                M_("<mrow>" + fn("cos") + sp + "<mover><mi>x</mi><mo>¯</mo></mover></mrow>")]
+                M_("<mrow>" + fn("cos") + sp + '<mover accent="true"><mi>x</mi><mo stretchy="true">―</mo></mover></mrow>')]
+        return _eq(got, want)
+
+    @case("CV15", "converter, bars (a choice, pinned): the `|` signs of ONE group (a group is the formula or a brace group; parentheses are flat in it) "
+                  "pair in order of appearance, the first of a pair `<mo form=\"prefix\" stretchy=\"false\">`, the second `form=\"postfix\"`; an odd "
+                  "leftover stays a flat non-stretchy <mo>; the bars of a brace group pair among themselves and never with those outside; `\\mid` and "
+                  "`\\big|` are not paired bars")
+    def _():
+        P_, Q_, F_ = '<mo form="prefix" stretchy="false">|</mo>', '<mo form="postfix" stretchy="false">|</mo>', '<mo stretchy="false">|</mo>'
+        lp, rp = '<mo stretchy="false" form="prefix">(</mo>', '<mo stretchy="false" form="postfix">)</mo>'
+        sp = '<mspace width="0.167em"></mspace>'
+        ak = "<msub><mi>a</mi><mi>k</mi></msub>"
+        got = [cv(x) for x in ("|C|", "|a_k(\\sigma+i\\gamma)| + \\operatorname{Re} a_k(\\sigma)", "|x|+|y|", "|a|b|", "{|a} |b|", "(|C| + 1)",
+                               "|a \\mid b|", "||", "|a|b|c|d", "x^{|a|}")]
+        want = [M_("<mrow>" + P_ + "<mi>C</mi>" + Q_ + "</mrow>"),
+                M_("<mrow>" + P_ + ak + lp + "<mi>σ</mi><mo>+</mo><mi>i</mi><mi>γ</mi>" + rp + Q_ + "<mo>+</mo>"
+                   '<mi mathvariant="normal">Re</mi>' + sp + ak + lp + "<mi>σ</mi>" + rp + "</mrow>"),
+                M_("<mrow>" + P_ + "<mi>x</mi>" + Q_ + "<mo>+</mo>" + P_ + "<mi>y</mi>" + Q_ + "</mrow>"),
+                M_("<mrow>" + P_ + "<mi>a</mi>" + Q_ + "<mi>b</mi>" + F_ + "</mrow>"),
+                M_("<mrow><mrow>" + F_ + "<mi>a</mi></mrow>" + P_ + "<mi>b</mi>" + Q_ + "</mrow>"),
+                M_("<mrow>" + lp + P_ + "<mi>C</mi>" + Q_ + "<mo>+</mo><mn>1</mn>" + rp + "</mrow>"),
+                M_("<mrow>" + P_ + "<mi>a</mi>" + '<mo stretchy="false">∣</mo>' + "<mi>b</mi>" + Q_ + "</mrow>"),
+                M_("<mrow>" + P_ + Q_ + "</mrow>"),
+                M_("<mrow>" + P_ + "<mi>a</mi>" + Q_ + "<mi>b</mi>" + P_ + "<mi>c</mi>" + Q_ + "<mi>d</mi></mrow>"),
+                M_("<msup><mi>x</mi><mrow>" + P_ + "<mi>a</mi>" + Q_ + "</mrow></msup>")]
         return _eq(got, want)
 
     @case("CV11", "converter, K2: a Greek letter typed directly is <mi> (`α`, `é`), a symbol or punctuation mark typed directly is <mo> (`≤`, `∑`, `→`, `·`), "
