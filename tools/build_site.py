@@ -1500,6 +1500,17 @@ _TEX_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _TEX_NAME = re.compile(r"[A-Za-z]+")
 
 
+# A fence or a bar is NOT stretchy here: in a flat <mrow> a stretchy operator grows to the tallest sibling of the whole row (a subscript, a sum),
+# which would blow every bracket of a formula up. The attributes are the ones the allow-list lets through (stretchy, form).
+_FENCE_ATTRS = {"(": ' stretchy="false" form="prefix"', ")": ' stretchy="false" form="postfix"', "[": ' stretchy="false" form="prefix"',
+                "]": ' stretchy="false" form="postfix"', "⌈": ' stretchy="false" form="prefix"', "⌉": ' stretchy="false" form="postfix"',
+                "|": ' stretchy="false"', "∣": ' stretchy="false"', "/": ' stretchy="false"'}
+
+
+def _mo(ch):
+    return f"<mo{_FENCE_ATTRS.get(ch, '')}>{html.escape(ch)}</mo>"
+
+
 class _Unsupported(Exception):
     """The formula is outside the subset."""
 
@@ -1632,7 +1643,7 @@ class _TexParser:
         if k == "mn":
             return f"<mn>{t[1]}</mn>"
         if k == "mo":
-            return f"<mo>{html.escape(t[1])}</mo>"
+            return _mo(t[1])
         if k == "{":
             return "<mrow>" + "".join(self.seq(True)) + "</mrow>"
         if k == "cmd":
@@ -1644,7 +1655,7 @@ class _TexParser:
         if kind == "mi":
             return f"<mi>{val}</mi>"
         if kind == "mo":
-            return f"<mo>{val}</mo>"
+            return _mo(val)
         if kind == "fn":
             return f'<mi mathvariant="normal">{val}</mi>'
         if kind == "bar":
@@ -1653,10 +1664,10 @@ class _TexParser:
             t = self.peek()
             if t is not None and t[0] == "mo" and t[1] in "()[]|":
                 self.i += 1
-                return f"<mo>{t[1]}</mo>"
+                return _mo(t[1])
             if t is not None and t[0] == "cmd" and t[1] in ("lceil", "rceil", "mid"):
                 self.i += 1
-                return f"<mo>{FORMULA_COMMANDS[t[1]][1]}</mo>"
+                return _mo(FORMULA_COMMANDS[t[1]][1])
             raise _Unsupported
         if self.peek() is None or self.peek()[0] != "{":   # a font command: a group of letters, one <mi> per word
             raise _Unsupported
@@ -6222,26 +6233,29 @@ def _selftest_cases():
              ("xi", "ξ"), ("pi", "π"), ("rho", "ρ"), ("sigma", "σ"), ("tau", "τ"), ("upsilon", "υ"), ("phi", "ϕ"), ("varphi", "φ"),
              ("chi", "χ"), ("psi", "ψ"), ("omega", "ω"), ("Gamma", "Γ"), ("Delta", "Δ"), ("Theta", "Θ"), ("Lambda", "Λ"), ("Xi", "Ξ"),
              ("Pi", "Π"), ("Sigma", "Σ"), ("Upsilon", "Υ"), ("Phi", "Φ"), ("Psi", "Ψ"), ("Omega", "Ω")]
-    SYMBOLS = [("le", "≤"), ("ge", "≥"), ("leq", "≤"), ("geq", "≥"), ("ne", "≠"), ("neq", "≠"), ("pm", "±"), ("cdot", "⋅"),
-               ("infty", "∞"), ("dots", "…"), ("mid", "∣"), ("lceil", "⌈"), ("rceil", "⌉"), ("sum", "∑"), ("prod", "∏"), ("int", "∫")]
-    OPS = [("+", "+"), ("-", "−"), ("=", "="), ("<", "&lt;"), (">", "&gt;"), ("/", "/"), ("(", "("), (")", ")"), ("[", "["), ("]", "]"),
-           (",", ","), (";", ";"), (":", ":"), ("!", "!"), ("|", "|"), (".", "."), ("*", "∗")]
+    NS_, PRE_, POST_ = ' stretchy="false"', ' stretchy="false" form="prefix"', ' stretchy="false" form="postfix"'
+    SYMBOLS = [("le", "≤", ""), ("ge", "≥", ""), ("leq", "≤", ""), ("geq", "≥", ""), ("ne", "≠", ""), ("neq", "≠", ""), ("pm", "±", ""),
+               ("cdot", "⋅", ""), ("infty", "∞", ""), ("dots", "…", ""), ("mid", "∣", NS_), ("lceil", "⌈", PRE_), ("rceil", "⌉", POST_),
+               ("sum", "∑", ""), ("prod", "∏", ""), ("int", "∫", "")]
+    OPS = [("+", "+", ""), ("-", "−", ""), ("=", "=", ""), ("<", "&lt;", ""), (">", "&gt;", ""), ("/", "/", NS_), ("(", "(", PRE_), (")", ")", POST_),
+           ("[", "[", PRE_), ("]", "]", POST_), (",", ",", ""), (";", ";", ""), (":", ":", ""), ("!", "!", ""), ("|", "|", NS_), (".", ".", ""),
+           ("*", "∗", "")]
 
     @case("CV0", "the subset is a named constant: FORMULA_COMMANDS holds 67 commands (37 Greek letters, 13 symbols, sum prod int, max min log cos, "
                  "bar mathrm operatorname bigl bigr big, and the four spacing commands `,` `;` `!` and the space), FORMULA_VERSION is `1`, and "
                  "every name of the tables of these cases is in it")
     def _():
-        tabled = {n for n, _c in GREEK} | {n for n, _c in SYMBOLS} | {"max", "min", "log", "cos", "bar", "mathrm", "operatorname", "bigl", "bigr",
+        tabled = {n for n, _c in GREEK} | {n for n, _c, _a in SYMBOLS} | {"max", "min", "log", "cos", "bar", "mathrm", "operatorname", "bigl", "bigr",
                                                                        "big", ",", ";", "!", " "}
         return _eq((len(FORMULA_COMMANDS), FORMULA_VERSION, tabled == set(FORMULA_COMMANDS)), (67, "1", True))
 
     @case("CV1", "converter, tokens: a letter is <mi>, a run of digits (with one decimal point between digits) one <mn>, `3.` is <mn>3</mn> then "
                  "<mo>.</mo>, each of the operators and punctuation `+ - = < > / ( ) [ ] , ; : ! | . *` is <mo> (the minus is U+2212, `<` is "
-                 "escaped, `*` is U+2217), several tokens are in one <mrow>")
+                 "escaped, `*` is U+2217; `/ | ( [` `) ]` carry stretchy=\"false\", the brackets also form=prefix or postfix), several tokens are in one <mrow>")
     def _():
-        got = [cv(x) for x in ("x", "Z", "12", "12.5", "3.", "2x", "x+1")] + [cv(o) for o, _e in OPS]
+        got = [cv(x) for x in ("x", "Z", "12", "12.5", "3.", "2x", "x+1")] + [cv(o) for o, _e, _a in OPS]
         want = [M_("<mi>x</mi>"), M_("<mi>Z</mi>"), M_("<mn>12</mn>"), M_("<mn>12.5</mn>"), M_("<mrow><mn>3</mn><mo>.</mo></mrow>"),
-                M_("<mrow><mn>2</mn><mi>x</mi></mrow>"), M_("<mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow>")] + [M_(f"<mo>{e}</mo>") for _o, e in OPS]
+                M_("<mrow><mn>2</mn><mi>x</mi></mrow>"), M_("<mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow>")] + [M_(f"<mo{a}>{e}</mo>") for _o, e, a in OPS]
         return _eq(got, want)
 
     @case("CV2", "converter, scripts and groups: `x^2` is <msup>, `x_i` <msub> (base first), `x_i^2` and `x^2_i` <msubsup> (base, sub, sup), a script "
@@ -6277,11 +6291,11 @@ def _selftest_cases():
     @case("CV5", "converter, symbols and large operators: each of le ge leq geq ne neq pm cdot infty dots mid lceil rceil sum prod int is one <mo> "
                  "(`\\infty` too, as F26B says), and `\\sum`, `\\prod`, `\\int` take limits as <msub>, <msup> or <msubsup> in line")
     def _():
-        bad = [(n, cv("\\" + n)) for n, c in SYMBOLS if cv("\\" + n) != M_(f"<mo>{c}</mo>")]
+        bad = [(n, cv("\\" + n)) for n, c, a in SYMBOLS if cv("\\" + n) != M_(f"<mo{a}>{c}</mo>")]
         got = [cv("\\sum_{n \\le y} a"), cv("\\int_0^\\infty g"), cv("\\prod_{p \\mid N} x"), cv("\\sum^n"), cv("\\sum x")]
         want = [M_("<mrow><msub><mo>∑</mo><mrow><mi>n</mi><mo>≤</mo><mi>y</mi></mrow></msub><mi>a</mi></mrow>"),
                 M_("<mrow><msubsup><mo>∫</mo><mn>0</mn><mo>∞</mo></msubsup><mi>g</mi></mrow>"),
-                M_("<mrow><msub><mo>∏</mo><mrow><mi>p</mi><mo>∣</mo><mi>N</mi></mrow></msub><mi>x</mi></mrow>"),
+                M_('<mrow><msub><mo>∏</mo><mrow><mi>p</mi><mo stretchy="false">∣</mo><mi>N</mi></mrow></msub><mi>x</mi></mrow>'),
                 M_("<msup><mo>∑</mo><mi>n</mi></msup>"), M_("<mrow><mo>∑</mo><mi>x</mi></mrow>")]
         return _eq((bad, got), ([], want))
 
@@ -6289,7 +6303,8 @@ def _selftest_cases():
     def _():
         got = [cv("\\" + n) for n in ("max", "min", "log", "cos")] + [cv("\\max(a, b)")]
         want = [M_(f'<mi mathvariant="normal">{n}</mi>') for n in ("max", "min", "log", "cos")] + [
-            M_('<mrow><mi mathvariant="normal">max</mi><mo>(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo>)</mo></mrow>')]
+            M_('<mrow><mi mathvariant="normal">max</mi><mo stretchy="false" form="prefix">(</mo><mi>a</mi><mo>,</mo><mi>b</mi>'
+              '<mo stretchy="false" form="postfix">)</mo></mrow>')]
         return _eq(got, want)
 
     @case("CV7", "converter, \\mathrm and \\operatorname (a choice, pinned): a group of letters is ONE <mi mathvariant=\"normal\"> per word, several "
@@ -6314,8 +6329,10 @@ def _selftest_cases():
                  "follow; `\\bigl x` and `\\bigl` alone are unsupported")
     def _():
         got = [cv(x) for x in ("\\bigl(a\\bigr)", "\\big|a\\big|", "\\bigl\\lceil x\\bigr\\rceil", "\\bigl[x\\bigr]", "\\bigl x", "\\bigl")]
-        want = [M_("<mrow><mo>(</mo><mi>a</mi><mo>)</mo></mrow>"), M_("<mrow><mo>|</mo><mi>a</mi><mo>|</mo></mrow>"),
-                M_("<mrow><mo>⌈</mo><mi>x</mi><mo>⌉</mo></mrow>"), M_("<mrow><mo>[</mo><mi>x</mi><mo>]</mo></mrow>"), None, None]
+        want = [M_('<mrow><mo stretchy="false" form="prefix">(</mo><mi>a</mi><mo stretchy="false" form="postfix">)</mo></mrow>'),
+                M_('<mrow><mo stretchy="false">|</mo><mi>a</mi><mo stretchy="false">|</mo></mrow>'),
+                M_('<mrow><mo stretchy="false" form="prefix">⌈</mo><mi>x</mi><mo stretchy="false" form="postfix">⌉</mo></mrow>'),
+                M_('<mrow><mo stretchy="false" form="prefix">[</mo><mi>x</mi><mo stretchy="false" form="postfix">]</mo></mrow>'), None, None]
         return _eq(got, want)
 
     @case("CV10", "converter, spaces (a choice, pinned): a space and the commands `\\,` `\\;` `\\!` `\\ ` give NOTHING (the allow-list has no width "
@@ -6323,7 +6340,8 @@ def _selftest_cases():
     def _():
         got = [cv(x) for x in ("a b", "a\\,b", "a\\;b", "a\\!b", "a\\ b", "", " ", "\\,", "|a|", "p \\mid N")]
         want = [M_("<mrow><mi>a</mi><mi>b</mi></mrow>")] * 5 + [None, None, None] + [
-            M_("<mrow><mo>|</mo><mi>a</mi><mo>|</mo></mrow>"), M_("<mrow><mi>p</mi><mo>∣</mo><mi>N</mi></mrow>")]
+            M_('<mrow><mo stretchy="false">|</mo><mi>a</mi><mo stretchy="false">|</mo></mrow>'),
+            M_('<mrow><mi>p</mi><mo stretchy="false">∣</mo><mi>N</mi></mrow>')]
         return _eq(got, want)
 
     @case("CV11", "converter, K2: a Greek letter typed directly is <mi> (`α`, `é`), a symbol or punctuation mark typed directly is <mo> (`≤`, `∑`, `→`, `·`), "
