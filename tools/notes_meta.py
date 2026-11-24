@@ -307,7 +307,13 @@ ERROR, LISTING = "error", "listing"
 NOCODE = "CHECKED NOTHING"
 TOP_KEYS = ("groups", "release")
 GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
-GROUP_OPTIONAL = ("recognition", "root_role")
+GROUP_OPTIONAL = ("recognition", "root_role", "edition", "edition_date")
+EDITIONS = (1, 2)   # F44: a published text is rewritten in place once, as edition 2; a third needs a ruling
+# F44 (Q6): the ONE definition of the reader-facing author text of a group: dotted paths into the group, `[]` meaning each element of a
+# list (the value of such a path is the list of that key over the elements). The edition check compares exactly these between the
+# outline at --base and the outline now. Pinned against the page by the builder's marker case: a field the page prints as words is here.
+EDITION_TEXT_FIELDS = ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
+                       "recognition.citations[].where", "recognition.citations[].source")
 ROOT_ROLES = ("result", "named_statement", "object")
 RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that take the role `result`; every other kind does not
 # While False a group with a claim need not carry root_role (ROOT-ROLE-MISSING is then a listing). The real outline has no roles
@@ -493,7 +499,38 @@ def _claim_word_listings(data, path):
     return out
 
 
-def _check_group_shape(g, label, path, out):
+def _check_edition(g, label, path, today, out):
+    """F44: `edition` is the integer 1 or 2 (absent is 1); `edition_date` is a real date YYYY-MM-DD not later than `today`, required at
+    edition 2 and refused at edition 1 or with no edition (when the edition itself is unusable the date is not asked for either way)."""
+    def bad(what):
+        out.append(_f("BAD-VALUE", path, None, f"{label}: {what}"))
+    ed = 1
+    if "edition" in g:
+        e = g["edition"]
+        if not _int(e):
+            bad(f"edition must be the integer 1 or 2 (the value is of type {_jtype(e)})")
+            ed = None
+        elif e >= 3:
+            bad(f"edition {e} needs a ruling")
+            ed = None
+        elif e < 1:
+            bad(f"edition must be 1 or 2, not {e}")
+            ed = None
+        else:
+            ed = e
+    if "edition_date" in g:
+        d = g["edition_date"]
+        if not _is_date(d):
+            bad("edition_date must be a date YYYY-MM-DD")
+        elif _real_date(d) > today:
+            bad(f"edition_date {d} is later than the day of the run, {today.isoformat()}")
+        if ed == 1:
+            bad("edition_date is refused when edition is 1 or absent (it dates an edition 2)")
+    elif ed == 2:
+        bad("edition_date is required when edition is 2")
+
+
+def _check_group_shape(g, label, path, out, today=None):
     def bad(what):
         out.append(_f("BAD-VALUE", path, None, f"{label}: {what}"))
     for k in sorted(g):
@@ -529,6 +566,7 @@ def _check_group_shape(g, label, path, out):
             _check_claim(g["claim"], label, path, out)
         else:
             bad("claim must be an object or null")
+    _check_edition(g, label, path, _parse_today(None) if today is None else today, out)
 
 
 # ---- root_role and recognition (F24): the role is compared with the kind class here, and the builder reads it
@@ -777,8 +815,8 @@ def _premise_cycles(graph, path, out):
                 trail.append(nxt)
 
 
-def _check_outline(data, path, index):
-    """(findings, the ids of the groups that have a usable id)."""
+def _check_outline(data, path, index, today=None):
+    """(findings, the ids of the groups that have a usable id). `today` is the day of the run (edition_date may not be later)."""
     out = []
     stats = {"groups": 0, "claimed": 0, "null": 0, "roots": 0, "defs": 0, "premises": 0, "read": 0, "census": 0, "without": 0}
     if not isinstance(data, dict):
@@ -813,7 +851,7 @@ def _check_outline(data, path, index):
             stats["census"] += b == "census"
             stats["without"] += not (isinstance(b, str) and b in CLAIM_BASIS)
         labels[i] = f"group {gid!r}" if _str(gid) else f"groups[{i}]"
-        _check_group_shape(g, labels[i], path, out)
+        _check_group_shape(g, labels[i], path, out, today)
         if _str(gid):
             if gid not in by_id:
                 by_id[gid] = g
@@ -1353,6 +1391,96 @@ def _bytes_check(name, text, rel, ctx):
     return [first_failure]
 
 
+# ---- F44 (Q6): the edition check of the outline against the outline at --base
+def _walk(node, parts):
+    for p in parts:
+        node = node.get(p) if isinstance(node, dict) else None
+    return node
+
+
+def _text_value(g, path):
+    """The value of one EDITION_TEXT_FIELDS path in a group: None when it is not there; `a.b[].c` is the list of `c` over the
+    elements of the list `a.b` (None for an element that is not an object or has no `c`)."""
+    if "[]." in path:
+        head, leaf = path.split("[].", 1)
+        lst = _walk(g, head.split("."))
+        return [(x.get(leaf) if isinstance(x, dict) else None) for x in lst] if isinstance(lst, list) else None
+    return _walk(g, path.split("."))
+
+
+def _text_changes(base, cur):
+    """The EDITION_TEXT_FIELDS paths whose value differs between two groups, sorted."""
+    return sorted(p for p in EDITION_TEXT_FIELDS if _text_value(base, p) != _text_value(cur, p))
+
+
+def _edition_of(g):
+    """1 or 2; None when the value is not usable (the shape check has already said so)."""
+    if "edition" not in g:
+        return 1
+    e = g["edition"]
+    return e if _int(e) and e in EDITIONS else None
+
+
+def _edition_check(odata, outline, ctx, name):
+    """(findings, the summary line) of the comparison of the groups of the outline with those of the outline at --base."""
+    def unusable(reason):
+        return ([_f("OUTLINE-BASE", name, None, f"{reason}, so the edition check did not run", LISTING)],
+                f"edition check: did not run, the outline at {ctx.base} could not be used")
+    if not (isinstance(odata, dict) and isinstance(odata.get("groups"), list)):
+        return [], "edition check: did not run, the outline has no groups list"
+    rel = os.path.relpath(os.path.realpath(outline), ctx.top)
+    if rel.startswith(".."):
+        return unusable("is outside the repository")
+    r = _vcs(ctx.top, "cat-file", "blob", f"{ctx.rev}:{rel.replace(os.sep, '/')}")
+    if r.returncode != 0:
+        return unusable(f"is not in {ctx.base}")
+    try:
+        bdata = json.loads(r.stdout.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return unusable(f"at {ctx.base} is not valid JSON")
+    if not (isinstance(bdata, dict) and isinstance(bdata.get("groups"), list)):
+        return unusable(f"at {ctx.base} has no groups list")
+    bmap, cmap = _group_map(bdata), _group_map(odata)
+    out, compared = [], 0
+
+    def err(code, gid, msg):
+        out.append(_f(code, name, None, f"group {gid!r}: {msg}"))
+    for gid, g in cmap.items():
+        ce = _edition_of(g)
+        if ce is None:
+            continue
+        if gid not in bmap:
+            if ce == 2:
+                err("EDITION-NEW-GROUP", gid, f"edition 2, but the group is not in the outline at {ctx.base} (there is no edition 1 to rewrite)")
+            continue
+        b = bmap[gid]
+        be = _edition_of(b)
+        if be is None:
+            continue
+        compared += 1
+        paths = _text_changes(b, g)
+        cd, bd = g.get("edition_date"), b.get("edition_date")
+        if be == 1 and ce == 1:
+            if paths:
+                err("OUTLINE-CHANGED", gid, f"{', '.join(paths)} changed, but the edition is not raised to 2 with an edition_date")
+        elif be == 1:
+            if paths and isinstance(cd, str):
+                out.append(_f("EDITION", name, None, f"{gid} fields {', '.join(paths)}, edition 1 to 2, {cd}", LISTING))
+            elif not paths:
+                err("EDITION-EMPTY", gid, f"edition 2 with edition_date, but no reader-facing text changed since {ctx.base}")
+        else:
+            if ce == 1:
+                err("EDITION-DOWN", gid, f"edition is 1, but it was 2 at {ctx.base} (an edition is not lowered)")
+            if paths:
+                err("OUTLINE-CHANGED", gid, f"{', '.join(paths)} changed after edition 2 was set at {ctx.base} (a third edition needs a ruling)")
+            if ce == 2 and cd != bd:
+                err("EDITION-DATE-CHANGED", gid, f"edition_date {cd} differs from {bd} at {ctx.base}")
+    for gid in bmap:
+        if gid not in cmap:
+            out.append(_f("GROUP-GONE", name, None, gid, LISTING))
+    return out, f"edition check: {compared} groups compared to {ctx.base}"
+
+
 # ---- the run
 def _read_json(path, what):
     try:
@@ -1448,13 +1576,17 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
         stop.append(f"{NOCODE}: decls.tsv has no rows")
     if stop:
         return 3, stop
-    found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index)
+    found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index, ctx.today)
     words = _claim_word_listings(odata, os.path.basename(outline))
     rec_found, rec_forms = _check_recognition(odata, os.path.basename(outline), ctx.index, ctx.kinds)
     rec_counts = _recognition_counts(rec_forms)
     sum_f = _recognition_sum_finding(rec_forms)
     rec_found += [sum_f] if sum_f else []
-    found = found + rec_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions
+    if base is not None:
+        ed_found, ed_line = _edition_check(odata, outline, ctx, os.path.basename(outline))
+    else:
+        ed_found, ed_line = [], "edition check: did not run, no --base given"
+    found = found + rec_found + ed_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions, then the edition check's
     lines = [_render(f) for f in found + words]
     errors = sum(1 for f in found if f[4] == ERROR)
     warnings = len(words) + sum(1 for f in found if f[4] == LISTING)
@@ -1506,6 +1638,9 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
     lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new, {n_add} additions" if base is not None else "byte check: did not run, no --base given")
+    lines.append(ed_line)
+    n_ed2 = sum(1 for g in odata["groups"] if isinstance(g, dict) and _int(g.get("edition")) and g["edition"] == 2) if isinstance(odata, dict) and isinstance(odata.get("groups"), list) else 0
+    lines.append(f"editions: {n_ed2} of {st['groups']} groups at edition 2")
     lines.append(f"{len(names)} notes, {errors} findings, {warnings} warnings")
     return (1 if errors else 0), lines
 
@@ -1634,7 +1769,8 @@ def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None,
        raw_outline=None, repo_arg=False, check_dirs=None, today=None, committed_outline=None):
     """Plant a fixture and call run(); (rc, stdout, stderr) as a Res. `committed` names files of NOTES_DIR that exist
     at the commit called HEAD of a throwaway git repository around the fixture (BYTES). `committed_outline` (a dict, or a
-    string written as it is) is the outline.json that exists at that commit; None leaves the outline out of it."""
+    string written as it is) is the outline.json that exists at that commit; None commits the outline of the run as it is (so
+    the edition check finds nothing to say), False leaves the outline out of the commit."""
     notes = {"01-a.md": NOTE()} if notes is None else notes
     outline = OL(G("g1"), G("g2", order=2, premises=["g1"])) if outline is None else outline
     with tempfile.TemporaryDirectory() as d:
@@ -1644,8 +1780,9 @@ def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None,
             _git(d, "init", "-q")
             for k, v in committed.items():
                 _put(os.path.join(nd, k), v)
-            if committed_outline is not None:
-                _put(os.path.join(d, "outline.json"), committed_outline if isinstance(committed_outline, str) else json.dumps(committed_outline))
+            if committed_outline is not False:
+                co = committed_outline if committed_outline is not None else (raw_outline if raw_outline is not None else outline)
+                _put(os.path.join(d, "outline.json"), co if isinstance(co, str) else json.dumps(co))
             _git(d, "add", "-A")
             _git(d, "commit", "-q", "-m", "base")
         for k, v in notes.items():
@@ -1805,6 +1942,8 @@ def _():
                  "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0 sketch=0",
                  "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
+                 "edition check: did not run, no --base given",
+                 "editions: 0 of 2 groups at edition 2",
                  "3 notes, 1 findings, 0 warnings"], "output")
     eq(r.rc, 1, "exit")
 
@@ -4183,7 +4322,8 @@ def _eof(o, gid):
 
 def _edb(cur, base):
     """Run the check: the current outline `cur`, and the outline committed at HEAD `base` (None: none committed)."""
-    return go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD", outline=cur, committed_outline=base, today=ED_DAY)
+    return go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD", outline=cur,
+              committed_outline=False if base is None else base, today=ED_DAY)
 
 
 def _edc(cur_mut=None, base_mut=None):
