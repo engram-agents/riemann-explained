@@ -4457,8 +4457,8 @@ def _selftest_cases():
                      "https://example.invalid/react?card=zrk&kind=detail"], 66))
 
     @case("RU1", "A6: the named-statement line shows on every card whose role is named_statement, with a recognition or without (zwn, g1a1: a "
-                 "definition with no role and no recognition), by the role or by the kind (zkn), after the recognition block and before "
-                 "the status lines, and on no card of another role or of no claim")
+                 "definition with no role and no recognition), by the role or by the kind (zkn), directly after the claim (F36: BEFORE the recognition block, "
+                 "also when it is the not-written line) and before the status lines, and on no card of another role or of no claim")
     def _():
         b = _zbase()
         dom = _dom(b.page)
@@ -4467,9 +4467,25 @@ def _selftest_cases():
         return _eq((ids, _raw(_direct(_card(b, "znk"), "p", "named-statement-use")[0]), lead(_card(b, "zwn"))[:4], lead(_card(b, "znk"))[:4],
                     lead(_card(b, "g1a1"))[:5]),
                    (["g1a1", "zkn", "znk", "znn", "zno", "znv", "zwn"], line,
-                    [("h3", "claim"), ("div", "recognition"), ("p", "named-statement-use"), ("p", "statement")],
-                    [("h3", "claim"), ("div", "recognition"), ("p", "named-statement-use"), ("p", "statement")],
-                    [("h3", "claim"), ("div", "recognition"), ("p", "named-statement-use"), ("p", "statement"), ("p", "proof")]))
+                    [("h3", "claim"), ("p", "named-statement-use"), ("div", "recognition"), ("p", "statement")],
+                    [("h3", "claim"), ("p", "named-statement-use"), ("div", "recognition"), ("p", "statement")],
+                    [("h3", "claim"), ("p", "named-statement-use"), ("div", "recognition"), ("p", "statement"), ("p", "proof")]))
+
+    @case("RU2", "F36 (b): on a named-statement card the use line comes directly after the claim and its conditions, BEFORE the premises line "
+                 "and the recognition block (the choice where the spec is silent on the premises line: the use line is the first thing after "
+                 "the claim and conditions), also when the recognition is not written (zwn: the use line, then the not-written line); a "
+                 "result card (zrk) and an object card (zok) with the same conditions and premises have no use line")
+    def _():
+        o = _zoo()
+        for g in o["groups"]:
+            if g["id"] in ("znk", "zwn", "zrk", "zok"):
+                g["claim"]["conditions"], g["premises"] = ["Condition holds."], ["g1a"]
+        b = _build(outline=o)
+        return _eq([[k[1] for k in lead(_card(b, g))][:6] for g in ("znk", "zwn", "zrk", "zok")],
+                   [["claim", "conditions", "named-statement-use", "premises", "recognition", "statement"],
+                    ["claim", "conditions", "named-statement-use", "premises", "recognition", "statement"],
+                    ["claim", "conditions", "premises", "recognition", "statement", "proof"],
+                    ["claim", "conditions", "premises", "recognition", "statement", "proof"]])
 
     @case("RE1", "A7: `established` of a named statement shows after the citations and before the label line: by -> `Where it is proved: the "
                  "release proves this statement as A.B.foo (read by Reader Two on 2026-11-23).` (the name is module.name), not_traced -> "
