@@ -2517,7 +2517,8 @@ def _origin(token, sj, level0, level1, groups):
 def _formula_locator(m):
     """The function `where -> where the author wrote it` for FORMULA-RAW: a block id gives the note file and the line of the block's anchor,
     a note id (a list title) the note file, a group id `outline/outline.json group <id>`; a place the model does not know gives None. A block
-    id is looked at first, then a note id, then a group id (the three do not share a shape in the notes and outlines of this project)."""
+    id is looked at first, then a note id, then a group id. DOCUMENTED LIMIT (case FRW7): the log records the id and not the kind of place, so a group
+    id that is also a note id is named by the note file, and one formula at two such places is one error. The checker refuses a repeated id of one kind, not across kinds."""
     def locate(where):
         for n in m.notes:
             if where in n["_anchors"]:
@@ -7244,6 +7245,16 @@ def _selftest_cases():
     def _():
         got = [_frw(outline=_og(g, "Claim $\\foo$")) for g in ("g3", "g2", "g1a", "g1a1")]
         return _eq(got, [(1, [f"BUILD-ERROR FORMULA-RAW {g} outline/outline.json group {g}: $\\foo$"], False) for g in ("g3", "g2", "g1a", "g1a1")])
+
+    @case("FRW7", "DOCUMENTED LIMIT, pinned as it is (review F3): the place of a FORMULA-RAW is found by looking the id up as a block id, then as a note id, "
+                  "then as a group id, because the log records the id and not the kind of place. A group whose id is also a note id (a group `01` "
+                  "beside the note `01`; the checker refuses a repeated id of one kind, never across kinds) is therefore named by the note file: "
+                  "`BUILD-ERROR FORMULA-RAW 01 01-one.md: $\\foo$`, not `outline/outline.json group 01`; the refusal itself is not affected")
+    def _():
+        o = _outline()
+        g = next(g_ for g_ in o["groups"] if g_["id"] == "g1a1x")
+        g["id"], g["claim"] = "01", _claim("Claim $\\foo$")
+        return _eq(_frw(outline=o), (1, ["BUILD-ERROR FORMULA-RAW 01 01-one.md: $\\foo$"], False))
 
     @case("FRW6", "S1, the flag does not survive a failed render: a render that raises inside an Evidence section leaves `_IN_EVIDENCE` False and "
                   "`_FORMULA_LOG` None, and the next build refuses a surface formula as before")
