@@ -3259,6 +3259,12 @@ def _():
         fe(_ro(_rg(role, rec=dict(rec, note=NOTE_TEXT), root=root)), want, 1)
         fe(_ro(_rg(role, rec=dict(rec, note=""), root=root)), want, 1)
         clean(_ro(_rg(role, rec=rec, root=root)))
+    fe(_ro(_rg(rec=dict(var, note="A novel thing"))),
+       [_fl("RECOGNITION-FORBIDDEN", p + "key 'note' is not allowed with form 'variant'"),
+        _fl("RECOGNITION-WORD-REFUSED", " recognition note: 'novel' is never said of a statement")], 1)
+    fe(_ro(_rg(rec=dict(var, note="The new step"))),
+       [_fl("RECOGNITION-FORBIDDEN", p + "key 'note' is not allowed with form 'variant'"),
+        _fl("RECOGNITION-WORD", " recognition note: 'new' (a prompt to the signer and the reviewer, not a verdict)")], 1)
     fe(_ro(_rg(rec=dict(drop(REC, "form"), note=NOTE_TEXT))), [_fl("MISSING-KEY", p + "missing key 'form'")], 1)
     fe(_ro(_rg(rec=dict(REC, form="novel_form", note=NOTE_TEXT))),
        [_fl("BAD-VALUE", p + "form must be one of 'known', 'variant', 'not_recognised', 'open_in_literature', not 'novel_form'")], 1)
@@ -3315,6 +3321,10 @@ def _():
         else:
             raise AssertionError(f"{cid}: a second registration was accepted")
     eq(len(reg), 2, "refused cases are not added")
+    # the comparison is exact: ids that differ in case or by a space are different ids
+    for cid in ("rec1", "REC1", "REC1 ", " REC1", "Rec1"):
+        _register_case(reg, cid, "d " + cid, f1)
+    eq([c[0] for c in reg][2:], ["rec1", "REC1", "REC1 ", " REC1", "Rec1"], "exact string comparison")
     # the decorator itself, on a scratch registry swapped in for the call
     saved = list(_CASES)
     try:
@@ -3329,6 +3339,20 @@ def _():
     finally:
         _CASES[:] = saved
     eq(_CASES, saved, "the real registry is restored")
+
+
+@case("NOTE5", "a bad note is found on a group that is not the first: of four groups the first is clean and the 2nd, 3rd and 4th carry "
+               "a blank note on not_recognised (BAD-VALUE), a note on a known form (RECOGNITION-FORBIDDEN) and a `novel` note on "
+               "not_recognised (RECOGNITION-WORD-REFUSED), each reported once, in the order of the outline")
+def _():
+    p = " recognition: "
+    r = _ro(_rg(rec=NOTE_NR),
+            _rg(rec=dict(NOTE_NR, note="  "), gid="g2", order=2),
+            _rg(rec=dict(REC, note=NOTE_TEXT), gid="g3", order=3),
+            _rg(rec=dict(NOTE_NR, note="A novel step"), gid="g4", order=4))
+    fe(r, [_fl("BAD-VALUE", p + "note must be a non-empty string", gid="g2"),
+           _fl("RECOGNITION-FORBIDDEN", p + "key 'note' is not allowed with form 'known'", gid="g3"),
+           _fl("RECOGNITION-WORD-REFUSED", " recognition note: 'novel' is never said of a statement", gid="g4")], 1)
 
 
 @case("UNIQ2", "every id in the real registry is unique (the runner's own list, checked here independently of the decorator)")
