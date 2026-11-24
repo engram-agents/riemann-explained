@@ -5695,6 +5695,35 @@ def _selftest_cases():
         controls = ['<a class="citation" href="#x">a</a>', '<p class="mapped">a</p>']
         return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[], []]))
 
+    @case("EL6", "a raw-text or RCDATA element (`style`, `title`) is refused unless it is directly inside <head> (`element style outside head`), because "
+                 "html.parser reads its content as text wherever it stands while a browser reads it as MARKUP inside MathML: each of style and title "
+                 "directly inside <math>, inside <math><mrow>, inside <mi>, in <body> and after </head> is refused, with an <img onerror> behind it "
+                 "(which the parser cannot see); a real style after a clean head's own is refused too; controls: the real <head> with its meta, "
+                 "title and style, and a <style> in a head after an earlier clean page, are clean")
+    def _():
+        ep = element_problems
+        img = '<img src="x" onerror="alert(1)">'
+        planted = []
+        for t in ("style", "title"):
+            for pre, post in (("<math>", "</math>"), ("<math><mrow>", "</mrow></math>"), ("<math><mi>", "</mi></math>"), ("<body>", "</body>"),
+                              ("<html><head></head>", "</html>")):
+                planted.append((f"{pre}<{t}>{img}</{t}>{post}", [f"element {t} outside head"]))
+        planted.append(('<html><head><style>p{}</style></head><body><math><style>' + img + '</style></math></body></html>', ["element style outside head"]))
+        planted.append(('<html><head><style>p{}</style></head><body><math><title>' + img + '</title></math></body></html>', ["element title outside head"]))
+        planted.append(('<html><head><math><style>' + img + '</style></math></head></html>', ["element style outside head"]))
+        controls = ['<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>T</title><style>p { color: red; }</style></head><body><p>a</p></body></html>',
+                    '<html><head><style>a{}</style></head><body><p>a</p></body></html>']
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[], []]))
+
+    @case("EL7", "the hiding set (the elements html.parser reads as text, from its own CDATA_CONTENT_ELEMENTS and, where it has it, RCDATA_CONTENT_ELEMENTS, "
+                 "among the allowed elements) is `style` and `title` today: a future allowed raw-text element must be classified, as this case fails until it is")
+    def _():
+        hp = html.parser.HTMLParser
+        rc = hasattr(hp, "RCDATA_CONTENT_ELEMENTS")
+        return _eq((sorted(HIDING_ELEMENTS), sorted((set(hp.CDATA_CONTENT_ELEMENTS) | set(getattr(hp, "RCDATA_CONTENT_ELEMENTS", ()))) & set(ALLOWED_ELEMENTS)),
+                    "style" in hp.CDATA_CONTENT_ELEMENTS, "script" in ALLOWED_ELEMENTS),
+                   (["style", "title"] if rc else ["style"], ["style", "title"] if rc else ["style"], True, False))
+
     @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the Evidence section (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
                  "the JSON keeps the path as written")
     def _():
