@@ -2010,7 +2010,7 @@ def _():
                  "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
                  "edition check: did not run, no --base given",
-                 "editions: 0 of 2 groups at edition 2",
+                 "editions: 0 of 3 notes and 0 of 2 groups at edition 2",
                  "selector changes: did not run, no --base given",
                  "3 notes, 1 findings, 0 warnings"], "output")
     eq(r.rc, 1, "exit")
@@ -4472,11 +4472,11 @@ def _():
     r = go(outline=o, today=ED_DAY)
     clean(r)
     ok("edition check: did not run, no --base given" in r.lines, r.out)
-    ok("editions: 1 of 2 groups at edition 2" in r.lines, r.out)
+    ok("editions: 0 of 1 notes and 1 of 2 groups at edition 2" in r.lines, r.out)
     r = go(outline=_epair(), today=ED_DAY)
-    ok("editions: 0 of 2 groups at edition 2" in r.lines, r.out)
+    ok("editions: 0 of 1 notes and 0 of 2 groups at edition 2" in r.lines, r.out)
     r = _edc(_ed2("g2"), None)
-    ok("editions: 1 of 2 groups at edition 2" in r.lines, r.out)
+    ok("editions: 0 of 1 notes and 1 of 2 groups at edition 2" in r.lines, r.out)
 
 
 _PATHS = (("E23a", "claim.text", _set("g1", "claim.text", "T1b")),
@@ -4596,7 +4596,7 @@ def _():
     fe(_edb(cur, '{"release": "x"}'), ["OUTLINE-BASE outline.json at HEAD has no groups list, so the edition check did not run"], 0)
     fe(_edb(cur, "[]"), ["OUTLINE-BASE outline.json at HEAD has no groups list, so the edition check did not run"], 0)
     r = _edb(cur, None)
-    ok("edition check: did not run, the outline at HEAD could not be used" in r.lines, r.out)
+    ok("edition check: did not run, the outline at HEAD could not be used; 1 notes compared to HEAD" in r.lines, r.out)
 
 
 @case("E23p", "an outline outside the repository of the run: one OUTLINE-BASE listing, the rule does not run, exit 0")
@@ -4861,13 +4861,253 @@ def _():
 def _():
     r = _edb(_epair(), '{"release": "x", "groups": []}')
     fe(r, [], 0)
-    ok("edition check: 0 groups compared to HEAD, the outline at HEAD has no groups" in r.lines, r.out)
+    ok("edition check: 0 groups compared to HEAD, the outline at HEAD has no groups; 1 notes compared to HEAD" in r.lines, r.out)
     cur = _epair()
     _ed2("g1")(cur)
     fe(_edb(cur, '{"release": "x", "groups": []}'),
        ["EDITION-NEW-GROUP outline.json group 'g1': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)"], 1)
     for bad in ('{"groups": [1, "x"]}', '{"groups": [{"id": "g1"}, 3]}'):
         fe(_edb(_epair(), bad), ["OUTLINE-BASE outline.json at HEAD has no usable groups, so the edition check did not run"], 0)
+
+
+# ---- F44B: the edition of a note, and the edition check of a note against the note at --base
+EN_DAY = "2026-11-24"   # the day of these runs (--today)
+EN_B = "First.\nSecond.\nThird.\n"   # a base body: First. is line 6 of the file on disk and line 5 of the text without anchors
+EN_HDR = {"edition": 2, "edition_date": "2026-11-23"}
+EN_NEW = "EDITION 01-a.md +{a} -{r} lines, edition 1 to 2, 2026-11-23"
+
+
+def _en(base_body, cur_body, base_hdr=None, cur_hdr=None, today=EN_DAY):
+    """Run with the note 01-a.md committed at HEAD with `base_body` and `base_hdr` (header fields), and now with `cur_body` and `cur_hdr`."""
+    return go(notes={"01-a.md": NOTE(body=cur_body, **(cur_hdr or {}))}, committed={"01-a.md": NOTE(body=base_body, **(base_hdr or {}))},
+              base="HEAD", today=today)
+
+
+@case("NE1a", "a bump (edition 2 with a date) on a note whose base has no edition and whose text changed is one EDITION listing, no BYTE-DIFF, "
+              "exit 0: a one-line replace counts +1 -1, a pure insertion +2 -0, a pure deletion +0 -1, a moved block of two lines +2 -2")
+def _():
+    r = _en(EN_B, "First.\nSecond, changed.\nThird.\n", cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1)], 0), r.out)
+    r = _en(EN_B, "First.\nSecond.\nInserted one.\nInserted two.\nThird.\n", cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=2, r=0)], 0), r.out)
+    r = _en(EN_B, "First.\nThird.\n", cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=0, r=1)], 0), r.out)
+    r = _en("a1.\na2.\nb1.\nb2.\nc1.\nc2.\n", "b1.\nb2.\na1.\na2.\nc1.\nc2.\n", cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=2, r=2)], 0), r.out)
+    r = _en(EN_B, "First.\nSecond, changed.\nThird.\n", base_hdr={"edition": 1}, cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1)], 0), "a base that says edition 1: " + r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "the listing counts as a warning")
+
+
+@case("NE1b", "the same change with no bump is a BYTE-DIFF as today, exit 1; an edition 1 written out is no bump either")
+def _():
+    one = _bd(7, 6, "'Second.\\n'", "'Second, changed.\\n'")
+    r = _en(EN_B, "First.\nSecond, changed.\nThird.\n")
+    eq((r.f, r.rc), ([one], 1), r.out)
+    r = _en(EN_B, "First.\nSecond, changed.\nThird.\n", cur_hdr={"edition": 1})
+    eq((r.f, r.rc), ([one], 1), r.out)
+
+
+@case("NE1c", "a base note with no header at all counts as edition 1: a bump on it with a changed text is the EDITION listing")
+def _():
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text, changed.\n", **EN_HDR)}, committed={"01-a.md": T0}, base="HEAD", today=EN_DAY)
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1)], 0), r.out)
+
+
+@case("NE1d", "a bump with an ADDITION-shaped change is EDITION only (no ADDITION line); a bump with a replace and an addition in one note is "
+              "one EDITION line counting both (+4 -1)")
+def _():
+    r = _en(EN_B, EN_B + "\n## 2026-11-22 Added\nNew words.\n", cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=3, r=0)], 0), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+    r = _en(EN_B, "First, changed.\nSecond.\nThird.\n\n## 2026-11-22 Added\nNew words.\n", cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=4, r=1)], 0), r.out)
+    r = _en(EN_B, EN_B + "\n## 2026-11-22 Added\nNew words.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:9 3 lines, heading 2026-11-22 Added"], 0), "control, no bump: an ADDITION as today: " + r.out)
+
+
+@case("NE2", "a bump with the stripped texts EQUAL is refused as EDITION-EMPTY, exit 1: an edition names a rewrite and there is none; a header-only "
+             "change that is not a bump is nothing")
+def _():
+    r = _en(EN_B, EN_B, cur_hdr=EN_HDR)
+    eq((r.f, r.rc), (["EDITION-EMPTY 01-a.md edition 2 with edition_date, but the text without its anchor lines is the same as at HEAD "
+                      "(an edition names a rewrite and there is none)"], 1), r.out)
+    r = _en(EN_B, EN_B, base_hdr={"edition": 1}, cur_hdr=EN_HDR)
+    eq(r.f, ["EDITION-EMPTY 01-a.md edition 2 with edition_date, but the text without its anchor lines is the same as at HEAD "
+             "(an edition names a rewrite and there is none)"], "a base that says edition 1")
+    clean(_en(EN_B, EN_B))
+    clean(_en(EN_B, EN_B, cur_hdr={"edition": 1}))
+
+
+@case("NE3", "the edition fields of a header, run with no --base: each bad value is a BAD-VALUE on the header line that names the field "
+             "(edition true, \"2\", 2.0, 0, -1, 3 and 7; edition_date missing at 2, given at 1 or with no edition, not a string, not real, "
+             "later than the day of the run); no HEADER-PROBLEM beside it")
+def _():
+    def one(hdr, msg):
+        r = go(notes={"01-a.md": NOTE(**hdr)}, today=EN_DAY)
+        eq((r.f, r.rc), (["BAD-VALUE 01-a.md:2 " + msg], 1), f"{hdr!r}: {r.out}")
+    d = "2026-11-23"
+    one({"edition": True, "edition_date": d}, "edition: must be the integer 1 or 2")
+    one({"edition": "2", "edition_date": d}, "edition: must be the integer 1 or 2")
+    one({"edition": 2.0, "edition_date": d}, "edition: must be the integer 1 or 2")
+    one({"edition": 0}, "edition: must be 1 or 2, not 0")
+    one({"edition": -1}, "edition: must be 1 or 2, not -1")
+    one({"edition": 3, "edition_date": d}, "edition: edition 3 needs a ruling")
+    one({"edition": 7, "edition_date": d}, "edition: edition 7 needs a ruling")
+    one({"edition": 2}, "edition_date: required when edition is 2")
+    one({"edition": 1, "edition_date": d}, "edition_date: refused when edition is 1 or absent (it dates an edition 2)")
+    one({"edition_date": d}, "edition_date: refused when edition is 1 or absent (it dates an edition 2)")
+    one({"edition": 2, "edition_date": 20261123}, "edition_date: must be a date YYYY-MM-DD")
+    one({"edition": 2, "edition_date": "2026-02-30"}, "edition_date: must be a date YYYY-MM-DD")
+    one({"edition": 2, "edition_date": "2026-11-25"}, "edition_date 2026-11-25 is later than the day of the run, 2026-11-24")
+    clean(go(notes={"01-a.md": NOTE(edition=2, edition_date="2026-11-24")}, today=EN_DAY))
+    clean(go(notes={"01-a.md": NOTE(edition=1)}, today=EN_DAY))
+
+
+@case("NE4", "a bump whose edition_date is a BAD-VALUE (later than the day of the run) prints that and no EDITION listing, no BYTE-DIFF, "
+             "no EDITION-EMPTY")
+def _():
+    late = {"edition": 2, "edition_date": "2026-11-25"}
+    want = ["BAD-VALUE 01-a.md:2 edition_date 2026-11-25 is later than the day of the run, 2026-11-24"]
+    eq(_en(EN_B, "First.\nSecond, changed.\nThird.\n", cur_hdr=late).f, want, "a changed text")
+    eq(_en(EN_B, EN_B, cur_hdr=late).f, want, "an equal text")
+
+
+@case("NE5", "a note at edition 2 at REV follows the ordinary rules: unchanged is clean, an ADDITION is legal, any other change is BYTE-DIFF; "
+             "edition 3 is a BAD-VALUE; edition 1 or absent is EDITION-DOWN (and a text change beside it is still a BYTE-DIFF); "
+             "a changed edition_date is EDITION-DATE-CHANGED")
+def _():
+    at2 = {"edition": 2, "edition_date": "2026-11-20"}
+    clean(_en(EN_B, EN_B, at2, at2))
+    r = _en(EN_B, EN_B + "\n## 2026-11-22 Added\nNew words.\n", at2, at2)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:9 3 lines, heading 2026-11-22 Added"], 0), r.out)
+    r = _en(EN_B, "First.\nSecond, changed.\nThird.\n", at2, at2)
+    eq((r.f, r.rc), ([_bd(7, 6, "'Second.\\n'", "'Second, changed.\\n'")], 1), r.out)
+    r = _en(EN_B, EN_B, at2, dict(at2, edition=3))
+    eq((r.f, r.rc), (["BAD-VALUE 01-a.md:2 edition: edition 3 needs a ruling"], 1), r.out)
+    down = "EDITION-DOWN 01-a.md edition is 1, but it was 2 at HEAD (an edition is not lowered)"
+    eq(_en(EN_B, EN_B, at2, {}).f, [down], "absent")
+    eq(_en(EN_B, EN_B, at2, {"edition": 1}).f, [down], "written 1")
+    eq(_en(EN_B, "First.\nSecond, changed.\nThird.\n", at2, {}).f, [down, _bd(7, 6, "'Second.\\n'", "'Second, changed.\\n'")], "down and changed")
+    r = _en(EN_B, EN_B, at2, dict(at2, edition_date="2026-11-21"))
+    eq((r.f, r.rc), (["EDITION-DATE-CHANGED 01-a.md edition_date 2026-11-21 differs from 2026-11-20 at HEAD"], 1), r.out)
+
+
+@case("NE6", "a base whose edition is not usable (a string) is said once as a listing EDITION-BASE and the edition rule does not run for it: "
+             "equal texts are clean beside it, a changed text is the ordinary BYTE-DIFF even with a bump now")
+def _():
+    bad = {"edition": "x"}
+    say = "EDITION-BASE 01-a.md the note at HEAD has an edition that is not usable, so the edition check did not run for it"
+    r = _en(EN_B, EN_B, bad, {})
+    eq((r.f, r.rc), ([say], 0), r.out)
+    r = _en(EN_B, "First.\nSecond, changed.\nThird.\n", bad, EN_HDR)
+    eq((r.f, r.rc), ([say, _bd(7, 6, "'Second.\\n'", "'Second, changed.\\n'")], 1), r.out)
+
+
+@case("NE7", "a note not at REV is NEW-NOTE as before; edition 2 on it is also refused as EDITION-NEW-NOTE (there is no edition 1 to rewrite), exit 1")
+def _():
+    r = go(notes={"01-a.md": CUR, "02-b.md": NOTE(nid="02", **EN_HDR)}, committed={"01-a.md": T0}, base="HEAD", today=EN_DAY)
+    eq((r.f, r.rc), (["NEW-NOTE 02-b.md is not present at HEAD",
+                      "EDITION-NEW-NOTE 02-b.md edition 2, but the note is not present at HEAD (there is no edition 1 to rewrite)"], 1), r.out)
+    r = go(notes={"01-a.md": CUR, "02-b.md": NOTE(nid="02")}, committed={"01-a.md": T0}, base="HEAD", today=EN_DAY)
+    eq((r.f, r.rc), (["NEW-NOTE 02-b.md is not present at HEAD"], 0), "control: a new note with no edition: " + r.out)
+
+
+def _enb(*blocks):
+    """A body of paragraphs P1, P2, P3 ... where each (text, anchor ids) is a paragraph followed by its anchors."""
+    return "".join(t + "\n" + "".join(BL(b, decls=[R("A.B", "foo")]) + "\n" for b in ids) + "\n" for t, ids in blocks)
+
+
+@case("NE8a", "EDITION-BLOCK lists a block whose target element moved from the 4th to the 5th element of the note (a paragraph inserted before it), "
+              "after the EDITION line; a block whose target is the same element is not listed; the listing leaves the exit code 0")
+def _():
+    base = _enb(("Para one.", []), ("Para two.", ["01.b01"]), ("Para three.", ["01.b02"]))
+    moved = _enb(("Para one.", []), ("New para.", []), ("Para two.", ["01.b01"]), ("Para three.", ["01.b02"]))
+    r = _en(base, moved, cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=2, r=0), "EDITION-BLOCK 01-a.md 01.b01 element 4 paragraph -> 5 paragraph",
+                      "EDITION-BLOCK 01-a.md 01.b02 element 5 paragraph -> 6 paragraph"], 0), r.out)
+    same = _enb(("Para one.", []), ("Para two, reworded.", ["01.b01"]), ("Para three.", ["01.b02"]))
+    r = _en(base, same, cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1)], 0), "same targets: " + r.out)
+
+
+@case("NE8b", "EDITION-BLOCK lists a block whose target keeps its ordinal but changes its KIND (paragraph to list)")
+def _():
+    base = _enb(("Para one.", []), ("Para two.", ["01.b01"]))
+    cur = _enb(("Para one.", []), ("- item one\n- item two", ["01.b01"]))
+    r = _en(base, cur, cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=2, r=1), "EDITION-BLOCK 01-a.md 01.b01 element 4 paragraph -> 4 list"], 0), r.out)
+
+
+@case("NE8c", "blocks are matched by block id, not by position: two blocks that swap their targets are both listed, in the order of the base; "
+              "a block in the base missing now is listed as gone; a block only in the current note is not listed")
+def _():
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"]))
+    swapped = _enb(("Para one.", ["01.b02"]), ("Para two, edited.", ["01.b01"]))
+    r = _en(base, swapped, cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1), "EDITION-BLOCK 01-a.md 01.b01 element 3 paragraph -> 4 paragraph",
+                      "EDITION-BLOCK 01-a.md 01.b02 element 4 paragraph -> 3 paragraph"], 0), r.out)
+    r = _en(_enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"])), _enb(("Para one, changed.", ["01.b01"]), ("Para two.", [])),
+            cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1), "EDITION-BLOCK 01-a.md 01.b02 gone"], 0), r.out)
+    r = _en(_enb(("Para one.", ["01.b01"])), _enb(("Para one, changed.", ["01.b01"]), ("Para two.", ["01.b02"])), cur_hdr=EN_HDR)
+    eq((r.f, r.rc), ([EN_NEW.format(a=3, r=1)], 0), "a new block: " + r.out)
+
+
+@case("NE8d", "the block listing is for a note at edition 2 only: the same moved block with no bump is a BYTE-DIFF and no EDITION-BLOCK")
+def _():
+    base = _enb(("Para one.", []), ("Para two.", ["01.b01"]))
+    moved = _enb(("Para one.", []), ("New para.", []), ("Para two.", ["01.b01"]))
+    r = _en(base, moved)
+    eq(len(r.f), 1, r.out)
+    ok(r.f[0].startswith("BYTE-DIFF "), r.out)
+
+
+@case("NE9", "the run lines count the notes: `editions: K of N notes and J of M groups at edition 2` (K from the current headers, N the notes read, "
+             "with or without --base; a note with no header is read and not at edition 2) and `edition check:` says how many notes it compared "
+             "to REV (a note at REV with a usable edition; a new note is not compared)")
+def _():
+    n3 = {"01-a.md": NOTE(body="Some text.\nMore text, changed.\n", **EN_HDR), "02-b.md": NOTE(nid="02"), "03-c.md": "# T\n"}
+    r = go(notes=n3, today=EN_DAY)
+    ok("editions: 1 of 3 notes and 0 of 2 groups at edition 2" in r.lines, r.out)
+    ok("edition check: did not run, no --base given" in r.lines, r.out)
+    r = go(notes=dict(n3, **{"04-d.md": NOTE(nid="04", **EN_HDR)}), committed={"01-a.md": T0, "02-b.md": NOTE(nid="02"), "03-c.md": "# T\n"},
+           base="HEAD", today=EN_DAY)
+    ok("editions: 2 of 4 notes and 0 of 2 groups at edition 2" in r.lines, r.out)
+    ok("edition check: 2 groups compared to HEAD; 3 notes compared to HEAD" in r.lines, r.out)
+    r = go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD", today=EN_DAY, committed_outline='{"groups": [1]}')
+    ok("edition check: did not run, the outline at HEAD could not be used; 1 notes compared to HEAD" in r.lines, r.out)
+
+
+@case("NE10", "the note edition check is deterministic: two runs in fresh interpreters under PYTHONHASHSEED 0 and 3 print the same bytes, with the literal lines")
+def _():
+    outs = []
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"]))
+    cur = _enb(("Para one.", ["01.b02"]), ("Para two, changed.", ["01.b01"]))
+    for seed in ("0", "3"):
+        with tempfile.TemporaryDirectory() as d:
+            nd = os.path.join(d, "notes")
+            _git(d, "init", "-q")
+            _put(os.path.join(nd, "01-a.md"), NOTE(body=base))
+            _put(os.path.join(d, "outline.json"), json.dumps(OL(G("g1"), G("g2", order=2, premises=["g1"]))))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-q", "-m", "base")
+            _put(os.path.join(nd, "01-a.md"), NOTE(body=cur, **EN_HDR))
+            _put(os.path.join(d, "decls.tsv"), DECLS)
+            code = ("import importlib.util, sys\n"
+                    "spec = importlib.util.spec_from_file_location('nm_child', sys.argv[1])\n"
+                    "m = importlib.util.module_from_spec(spec)\nsys.modules['nm_child'] = m\nspec.loader.exec_module(m)\n"
+                    "sys.exit(m.run(sys.argv[2], sys.argv[3], sys.argv[4], base='HEAD', today='2026-11-24'))\n")
+            r = subprocess.run([sys.executable, "-I", "-c", code, os.path.abspath(__file__), nd, os.path.join(d, "outline.json"),
+                                os.path.join(d, "decls.tsv")], capture_output=True, text=True, env=dict(os.environ, PYTHONHASHSEED=seed))
+            outs.append((r.returncode, r.stdout, r.stderr))
+    eq(outs[0], outs[1], "the two seeds")
+    eq(outs[0][0], 0, "exit")
+    got = [x for x in outs[0][1].splitlines() if x.split(" ")[0] in ("EDITION", "EDITION-BLOCK")]
+    eq(got, ["EDITION 01-a.md +1 -1 lines, edition 1 to 2, 2026-11-23",
+             "EDITION-BLOCK 01-a.md 01.b01 element 3 paragraph -> 4 paragraph",
+             "EDITION-BLOCK 01-a.md 01.b02 element 4 paragraph -> 3 paragraph"], "the lines")
 
 
 def _run_cases(cases, write):
