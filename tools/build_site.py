@@ -3546,6 +3546,103 @@ def _selftest_cases():
                     [n["list_title"] for n in wrapped.js("level0.json")["steps"][0]["notes"]], inside.rc, _base_src().rc),
                    (0, True, 0, "`" + other + "`", ["`" + other + "`"], ["Note one", "Note two\n`" + other + "`"], 0, 0))
 
+    # ---- F28: the text of an argument or interpretation block goes through the one span rule
+    def _para(page, cls):
+        """The text after the frame of the last `<p class=cls>` of the page (the evidence list's paragraph, not the card's)."""
+        return re.findall(r'<p class="' + cls + r'">(.*?)</p>', page, re.S)[-1].rsplit("</span> ", 1)[1]
+
+    BT_TEXTS = ["See `a<b` here", "`one` and `two` end", "a ` b", "a ``x`` b", "a `` b", "a `x\ny` b", "Plain text only"]
+    BT_WANT = ["See <code>a&lt;b</code> here", "<code>one</code> and <code>two</code> end", "a ` b", "a ``x`` b", "a `` b",
+               "a <code>x y</code> b", "Plain text only"]
+
+    @case("BT1", "an ARGUMENT block's text is rendered by the span rule on the evidence list: a span between single backticks is <code> "
+                 "with its content escaped (`a<b` gives a&lt;b); two spans in one block; an unpaired backtick, doubled backticks, an "
+                 "empty pair stay literal; a span over a SOURCE line break is a span (the paragraph is joined by spaces first: `a `x` + `y` b` gives "
+                 "<code>x y</code>); a block with no backtick is as before")
+    def _():
+        got = [_para(_build(notes=_notes(arg_text=t)).page, "argument") for t in BT_TEXTS]
+        return _eq(got, BT_WANT)
+
+    @case("BT2", "the same for an INTERPRETATION block (the frame stays escaped text)")
+    def _():
+        got = [_para(_build(notes=_notes(interp_text=t)).page, "interpretation") for t in BT_TEXTS]
+        frame = '<span class="frame">Our interpretation, by Reader Two on 2026-11-24:</span> '
+        whole = re.findall(r'<p class="interpretation">(.*?)</p>', _build(notes=_notes(interp_text="Plain text only")).page, re.S)
+        return _eq((got, whole), (BT_WANT, [frame + "Plain text only"]))
+
+    @case("BT3", "the JSON and data.js keep the block text and the first sentence as written, backticks included")
+    def _():
+        b = _build(notes=_notes(arg_text="See `a<b` here", interp_text="We `think` so"))
+        blk = {x["block"]: x for x in b.js("group/g1.json")["blocks"] if x["kind"] in ("argument", "interpretation")}
+        return _eq(({k: (v["text"], v["first_sentence"]) for k, v in blk.items()},
+                    "See `a\\u003cb` here" in b.text("data.js"), "We `think` so" in b.text("data.js")),
+                   ({"01.b02": ("See `a<b` here", "See `a<b` here"), "01.b03": ("We `think` so", "We `think` so")}, True, True))
+
+    CARD_TEXTS = ["See `a<b` here. More `x` text.", "a ` b. c", "a ``x`` b. c", "a `` b. c", "Plain only. More."]
+    CARD_WANT = ["See <code>a&lt;b</code> here.", "a ` b.", "a ``x`` b.", "a `` b.", "Plain only."]
+
+    @case("BT5", "the first sentence of an argument block on the CARD is rendered by the span rule too (a span is <code>, content "
+                 "escaped; an unpaired backtick, doubled backticks and an empty pair stay literal; no backtick as before)")
+    def _():
+        got = []
+        for t in CARD_TEXTS:
+            card = re.findall(r'<p class="argument">(.*?)</p>', _build(notes=_notes(arg_text=t)).page, re.S)[0]
+            got.append(card.rsplit("</span> ", 1)[1].split(' <a href=')[0])
+        return _eq(got, CARD_WANT)
+
+    R1 = "Zq release text one sentence here. And the second sentence of it."   # leaks through the block `text` only when wrapped whole
+    R2 = "Zq release first sentence words here."   # leaks through the `first_sentence` only when its span is unwrapped
+    srcs2 = {"A/B.lean": "x = 1\n" + LEAK + "\n" + R1 + "\n" + R2 + "\n"}
+    LEAKFILES = [leak_line(w) for w in ("data.js", "group/g1.json")]
+    BT4_PLANTS = [("`" + LEAK + "`", "text and first sentence"), ("`" + R1 + "`", "text only"),
+                  ("`" + R2[:-1] + "`. More text after it.", "first sentence only")]
+
+    @case("BT4", "the source check compares block text and first sentence as a reader sees them: a release line inside single backticks "
+                 "as an ARGUMENT block is refused (SOURCE-LEAK naming data.js and group/g1.json), as an INTERPRETATION block too; "
+                 "three plants: the whole text and first sentence, the text only (a two-sentence release line), the first sentence "
+                 "only; exit 1, OUT_DIR absent")
+    def _():
+        res = []
+        for field in ("arg_text", "interp_text"):
+            for plant, _what in BT4_PLANTS:
+                b = _build(notes=_notes(**{field: plant}), src=srcs2)
+                res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
+        return _eq(res, [(1, LEAKFILES, False)] * 6)
+
+    @case("BT6", "what is NOT a span is compared as written: the same three plants in DOUBLED backticks build (exit 0) as argument and "
+                 "as interpretation; a wrapped line that is no release line builds; the ids-only base build stays green")
+    def _():
+        res = []
+        for field in ("arg_text", "interp_text"):
+            for plant, _what in BT4_PLANTS:
+                dbl = plant.replace("`", "``")
+                b = _build(notes=_notes(**{field: dbl}), src=srcs2)
+                res.append((b.rc, b.existed))
+        ok = _build(notes=_notes(arg_text="`" + other + "`", interp_text="`" + other + "`"), src=srcs2)
+        return _eq((res, ok.rc, _base_src().rc), ([(0, True)] * 6, 0, 0))
+
+    def _fr(**kw):
+        b = _build(notes=_notes(**kw))
+        return b.rc, [ln for ln in b.out.splitlines() if ln.startswith("FORMULA-RAW")]
+
+    @case("FR1", "a block whose text, outside its single-backtick spans, holds `$`, `\\(`, `\\[` or `\\begin{` is LISTED as one line "
+                 "`FORMULA-RAW <block id>` and the build exits 0; the same mark inside a span is not listed; a plain `5` is not; "
+                 "a block with two marks is listed once")
+    def _():
+        res = [_fr(arg_text=t) for t in ("Take $x$ here", "Take `$x$` here", "Take \\(x\\) here", "Take \\[x\\] here",
+                                         "Take \\begin{align} x", "Take 5 here", "Cost $5 and $6", "A `$x$` and then $y$")]
+        return _eq(res, [(0, ["FORMULA-RAW 01.b02"]), (0, []), (0, ["FORMULA-RAW 01.b02"]), (0, ["FORMULA-RAW 01.b02"]),
+                         (0, ["FORMULA-RAW 01.b02"]), (0, []), (0, ["FORMULA-RAW 01.b02"]), (0, ["FORMULA-RAW 01.b02"])])
+
+    @case("FR2", "an INTERPRETATION block is listed the same way; two blocks of one note give one line each in output order, one "
+                 "block listed alone gives one line; the base build lists none")
+    def _():
+        res = [_fr(interp_text="We think $x$ here"), _fr(arg_text="Take $x$", interp_text="We \\(y\\) too"),
+               _fr(arg_text="Take $x$"), _fr(interp_text="We `$y$` too")]
+        return _eq((res, [ln for ln in _base().out.splitlines() if ln.startswith("FORMULA-RAW")]),
+                   ([(0, ["FORMULA-RAW 01.b03"]), (0, ["FORMULA-RAW 01.b02", "FORMULA-RAW 01.b03"]), (0, ["FORMULA-RAW 01.b02"]),
+                     (0, [])], []))
+
     # ---- B1: no release text
     @case("B1a", "leak_check: a planted shard whose `text` value is a line of the release (>= 20 non-space characters) is named "
                  "(SOURCE-LEAK data); a short release line and a line of other text are not")
