@@ -788,23 +788,40 @@ def _real_date(s):
         return None
 
 
-def _insertion_runs(a, b):
-    """F27 alignment: match each line of a, in order and greedily from the left, to the earliest equal line of b after the
-    previous match. None when a is not a subsequence of b; else the maximal gaps of b as (start, end, index in a of the
-    base line before the gap, -1 for none), in file order, including a gap after the last matched line."""
-    runs, k, start = [], 0, None
+def _align(a, b, right=False):
+    """F27 alignment: match each line of a, in order, to a line of b. From the left (the default) each line takes the EARLIEST equal
+    line of b after the previous match; from the right each takes the LATEST equal line before the next one. The index in b of
+    every line of a, or None when a is not a subsequence of b (that does not depend on the side)."""
+    n = len(a)
+    match = [None] * n
+    if right:
+        k = n - 1
+        for j in range(len(b) - 1, -1, -1):
+            if k >= 0 and a[k] == b[j]:
+                match[k] = j
+                k -= 1
+        return match if k < 0 else None
+    k = 0
     for j, line in enumerate(b):
-        if k < len(a) and a[k] == line:
-            if start is not None:
-                runs.append((start, j, k - 1))
-                start = None
+        if k < n and a[k] == line:
+            match[k] = j
             k += 1
-        elif start is None:
-            start = j
-    if k < len(a):
+    return match if k == n else None
+
+
+def _insertion_runs(a, b, right=False):
+    """The maximal gaps of b left by the alignment of a (see _align) as (start, end, index in a of the base line before the gap,
+    -1 for none), in file order, including a gap after the last matched line; None when a is not a subsequence of b."""
+    match = _align(a, b, right)
+    if match is None:
         return None
-    if start is not None:
-        runs.append((start, len(b), k - 1))
+    runs, pos = [], 0
+    for k, j in enumerate(match):
+        if j > pos:
+            runs.append((pos, j, k - 1))
+        pos = j + 1
+    if pos < len(b):
+        runs.append((pos, len(b), len(a) - 1))
     return runs
 
 
@@ -815,11 +832,13 @@ def _bytes_check(name, text, rel, ctx):
     if show.returncode != 0:
         return [_f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)]
     try:   # both sides without their anchor lines (header and blocks), decoded the same way
-        old_text = rh.strip_anchor_lines(show.stdout.decode("utf-8"))
+        base_text = show.stdout.decode("utf-8")
+        old_text = rh.strip_anchor_lines(base_text)
         old = old_text.encode("utf-8")
     except UnicodeDecodeError:
         return [_f("BYTE-DIFF", name, None, f"the note at {ctx.base} is not valid UTF-8 and cannot be compared")]
-    new = rh.strip_anchor_lines(text).encode("utf-8")
+    new_text = rh.strip_anchor_lines(text)
+    new = new_text.encode("utf-8")
     if old == new:
         return []
     a, b = old.splitlines(True), new.splitlines(True)
@@ -838,36 +857,55 @@ def _bytes_check(name, text, rel, ctx):
         line = plain[i] if i < len(b) and i < len(plain) else (plain[-1] + 1 if plain else 1)
         return _f("BYTE-DIFF", name, line, f"line {line} differs (line {i + 1} of the text without anchors): "
                   f"at {ctx.base} (without anchors) {fmt(a)}, now (without anchors) {fmt(b)}{extra}")
-    runs = _insertion_runs(a, b)
-    if runs is None:   # a base line was removed or altered: as before
+    if _align(a, b) is None:   # a base line was removed or altered: as before, whatever the alignment
         return [bytediff(i)]
-    rel_date = None   # the floor: the date of the header's `release` when it is rh-YYYY-MM-DD and real, else none
-    if headers and isinstance(headers[0].data.get("release"), str):
-        m = _RELEASE_DATE.fullmatch(headers[0].data["release"])
+    rel_date = None   # the floor: the date of the PUBLISHED header's `release` (the base text's) when it is rh-YYYY-MM-DD and real, else none
+    base_headers = rh.parse_note(base_text)[0]
+    if base_headers and isinstance(base_headers[0].data.get("release"), str):
+        m = _RELEASE_DATE.fullmatch(base_headers[0].data["release"])
         rel_date = _real_date(m.group(1)) if m else None
     window = (f"{rel_date.isoformat()} to {ctx.today.isoformat()}" if rel_date else f"up to {ctx.today.isoformat()} (no lower bound)")
-    published = None   # rh_anchor's reading of the published text, for its fences
-    adds = []
-    for start, end, prev in runs:
-        if prev >= 0:   # inside a fence of the published text: opened at or before the base line before the run, closed after it
-            if published is None:
-                published = rh._Analysis(old_text)
-            fi = published.fence_of[prev]
-            if fi != -1 and (published.fences[fi]["close"] is None or published.fences[fi]["close"] > prev):
-                return [bytediff(start)]
-        lines = [x.decode("utf-8") for x in b[start:end]]
-        first = next((x for x in lines if x.strip()), None)   # the first line after the LEADING blank lines
-        m = _HEADING.match(first.rstrip("\r\n")) if first is not None else None
-        if not m:
-            return [bytediff(start)]
-        heading = m.group(1).strip()
-        day = next((d for d in map(_real_date, _DATE_TOKEN.findall(heading)) if d), None)   # the first REAL date in the heading
-        if day is None:
-            return [bytediff(start)]
-        if day > ctx.today or (rel_date is not None and day < rel_date):
-            return [bytediff(start, f"; the added heading's date {day.isoformat()} is outside the window {window}")]
-        adds.append(_f("ADDITION", name, plain[start], f"{end - start} lines, heading {heading}", LISTING))
-    return adds
+    published = rh._Analysis(old_text)   # rh_anchor's reading of both texts, for their fences
+    current = rh._Analysis(new_text)
+
+    def judge(right):
+        """(ADDITION listings, None) when every run of this alignment is legal and no matched line changes its fence state, else (None, the BYTE-DIFF)."""
+        match = _align(a, b, right)
+        runs = _insertion_runs(a, b, right)
+        adds = []
+        for start, end, prev in runs:
+            if prev >= 0:   # inside a fence of the published text: opened at or before the base line before the run, closed after it
+                fi = published.fence_of[prev]
+                if fi != -1 and (published.fences[fi]["close"] is None or published.fences[fi]["close"] > prev):
+                    return None, bytediff(start)
+            lines = [x.decode("utf-8") for x in b[start:end]]
+            first = next((x for x in lines if x.strip()), None)   # the first line after the LEADING blank lines
+            m = _HEADING.match(first.rstrip("\r\n")) if first is not None else None
+            if not m:
+                return None, bytediff(start)
+            heading = m.group(1).strip()
+            days = [d for d in map(_real_date, _DATE_TOKEN.findall(heading)) if d]   # every REAL date of the heading, in file order
+            if not days:
+                return None, bytediff(start)
+            for day in days:
+                if day > ctx.today or (rel_date is not None and day < rel_date):
+                    return None, bytediff(start, f"; the added heading's date {day.isoformat()} is outside the window {window}")
+            adds.append(_f("ADDITION", name, plain[start], f"{end - start} lines, heading {heading}", LISTING))
+        for k, j in enumerate(match):   # F1: a base line that was inside a fence must still be, and one that was outside must still be
+            was, now = published.fence_of[k] != -1, current.fence_of[j] != -1
+            if was != now:
+                start = max((r[0] for r in runs if r[1] <= j), default=j)   # the run just before the line is the one that flipped it
+                return None, bytediff(start, f"; the inserted run at line {plain[start]} changes whether line {k + 1} of the text without anchors "
+                                             f"is inside a code fence ({'inside' if was else 'outside'} at {ctx.base}, {'inside' if now else 'outside'} now)")
+        return adds, None
+
+    first_failure = None   # two alignments are tried, left then right: the first all-legal one is listed, else the LEFT one's failure
+    for right in (False, True):
+        adds, failure = judge(right)
+        if failure is None:
+            return adds
+        first_failure = first_failure or failure
+    return [first_failure]
 
 
 # ---- the run
@@ -2645,9 +2683,9 @@ def _():
     ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
     r = _add("intro\n## 2026-11-10 x\n```\ncode\n```\nsecret claim\nmore\n", base=base)
     eq((r.f, r.rc), (["ADDITION 01-a.md:7 4 lines, heading 2026-11-10 x"], 0), "balanced inside one run: " + r.out)
-    fbase = "# Note\n\n## Body\n\n```\nsecret\n```\n"
-    r = _add("## 2026-11-10 x\n```\n```\nsecret\n```\n", base=fbase)
-    ok(_bdt(6, 5, "'```\\n'", "'## 2026-11-10 x\\n'",
+    fbase = "# Note\n\n## Body\n\n````\nsecret\n`````\n"   # a 4-tick opener and a 5-tick closer: every line is unique
+    r = _add("## 2026-11-10 x\n```\n````\nsecret\n`````\n", base=fbase)   # the inserted 3-tick opener is closed by the published opener
+    ok(_bdt(6, 5, "'````\\n'", "'## 2026-11-10 x\\n'",
             "; the inserted run at line 6 changes whether line 6 of the text without anchors is inside a code fence "
             "(inside at HEAD, outside now)") in r.f, r.out)
     ok(not any(x.startswith("ADDITION") for x in r.f), "no ADDITION: " + r.out)
