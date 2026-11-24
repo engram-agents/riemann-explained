@@ -117,6 +117,12 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      date, {link} to `edition_href_blob` with {file} = outline/outline.json). The two addresses must be https and are no sentences. The static
      check exempts `<a class=edition-link href=https://...>` by class token. A page with no group at edition 2 is byte-equal to before. Cases
      ED1 to ED11 (ED10 and ED11: the marker case that ties notes_meta's EDITION_TEXT_FIELDS to what the page prints).
+  F44B EDITION OF A NOTE. A note header may carry `edition` 2 and `edition_date` (checked by notes_meta). group/<id>.json and data.js carry per card
+     `editions`, a list of {note: file, edition: 2, date} for the notes of the card (header group, level not 0) at edition 2 in note order, [] when
+     none; manifest counts keep `editions` (the groups at 2) and gain `note_editions` (the notes at 2). The first-screen paragraph appears when any
+     group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph, one `edition_note_card` paragraph per
+     edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
+     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6.
   F28 BLOCK TEXT GOES THROUGH THE SAME RULE. The text of an argument or interpretation block (the evidence list) and the first
      sentence of an argument block (the card) are rendered by the span rule, the frame staying escaped text. The block text is
      ONE paragraph, its source lines joined by spaces before the rule is applied, so a span that runs over a source line break
@@ -508,6 +514,7 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "edition_href_blob")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
+EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
 PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
@@ -1229,7 +1236,8 @@ def _load_notes(notes_dir, strings):
         h = headers[0].data
         lines = _LINE_SPLIT.split(text)
         note = {"name": name, "id": h["id"], "title": h["list_title"], "level": h["level"], "group": h["group"],
-                "link": _fill(strings["note_href"], file=urllib.parse.quote(name, safe="")), "blocks": []}
+                "link": _fill(strings["note_href"], file=urllib.parse.quote(name, safe="")), "blocks": [],
+                "edition": h.get("edition_date") if h.get("edition") == 2 else None}   # F44B: the edition_date of a note at edition 2, else None
         for b in blocks:
             d, t = b.data, b.target or {}
             rec = {"block": d["id"], "kind": d["kind"], "note": h["id"], "reader": d.get("reader"), "date": d.get("date")}
@@ -1373,6 +1381,8 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "premises": list(g["premises"]), "roots": root_rows,
                         "root_role": role, "root_kind": root_kind, "recognition": copy.deepcopy(recognition), "sketches": sketches,
                         "edition": {"number": 2, "date": g["edition_date"]} if g.get("edition") == 2 else None,   # F44
+                        "editions": [{"note": n["name"], "edition": 2, "date": n["edition"]} for n in m.notes   # F44B: the notes of this card at edition 2
+                                     if n["level"] != 0 and n["group"] == gid and n["edition"]],
                         "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
                                        for b in brecs if b["kind"] == "not_read"], "notes": notes}
@@ -2020,7 +2030,7 @@ def _render_page(m, s, facts, dirty):
     out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', f"<title>{_e(s['page_title'])}</title>",
            "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>"]
     out += [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
-    ed_dates = [f["edition"]["date"] for f in files.values() if f["edition"]]
+    ed_dates = [f["edition"]["date"] for f in files.values() if f["edition"]] + [n["edition"] for n in m.notes if n["edition"]]   # groups and notes (F44B)
     if ed_dates:   # F44: said once on the first screen, with the LATEST date of a rewrite
         out.append('<p class="edition-note">' + _edition_html(s["edition_note_first_screen"], max(ed_dates), s["edition_href_tree"],
                                                               s["edition_link_label"]) + "</p>")
@@ -2192,6 +2202,12 @@ def _render_page(m, s, facts, dirty):
             o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], fl["edition"]["date"],
                                                                 _fill(s["edition_href_blob"], file=EDITION_OUTLINE_FILE),
                                                                 s["edition_link_label"]) + "</p>")
+        for ne in fl["editions"]:   # F44B: one paragraph per note at edition 2 whose date is not the group's own edition date
+            if fl["edition"] and ne["date"] == fl["edition"]["date"]:
+                continue
+            o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], ne["date"],
+                                                                _fill(s["edition_href_blob"], file=EDITION_NOTES_DIR + ne["note"]),
+                                                                s["edition_link_label"]) + "</p>")
         for r in fl["roots"]:
             o.append('<div class="root">')
             o.append(f'<dl><dt>{_e(s["evidence_module_label"])}</dt><dd><code>{_e(r["module"])}</code></dd>'
@@ -2359,6 +2375,7 @@ def _output_files(level0, level1, groups, page, commits, m, release_id, archive)
     out["data.js"] = data.encode("utf-8")
     out["index.html"] = page.encode("utf-8")
     manifest = {"commits": commits, "counts": {"blocks": m.totals["blocks"], "editions": sum(1 for g in groups.values() if g["edition"]),
+                                               "note_editions": sum(1 for n in m.notes if n["edition"]),
                                                "groups": m.totals["groups"], "notes": m.totals["notes"]},
                 "files": {k: _sha(v) for k, v in sorted(out.items())}, "release_archive_sha": archive,
                 "release_id": release_id}
@@ -7705,12 +7722,12 @@ def _selftest_cases():
         nest = _nb(new={"04-four.md": ("04", "g1a1x", "2026-11-23")})
         outside = lambda b_: ["rewritten for readers" in surface(_card(b_, g)) for g in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")]
         ev = lambda b_: static_problems(b_.page, b_.text("data.js")) + element_problems(b_.page)
-        return _eq(([count(same, g) for g in ("g1", "g1a", "g3")], same.page.count(ED_SUMMARY + nd_group("2026-11-21") + nd_card("2026-11-20", "docs/05-five.md")),
+        return _eq(([count(same, g) for g in ("g1", "g1a", "g3")], same.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-20", "docs/05-five.md")),
                     "docs/01-one.md" in same.page,
                     [count(diff, g) for g in ("g1", "g3")],
-                    diff.page.count(ED_SUMMARY + nd_group("2026-11-21") + nd_card("2026-11-22", "docs/01-one.md")),
+                    diff.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-22", "docs/01-one.md")),
                     [count(two, g) for g in ("g1", "g3", "g2")],
-                    two.page.count(ED_SUMMARY + nd_card("2026-11-22", "docs/03-three.md") + nd_card("2026-11-19", "docs/06-six.md")),
+                    two.page.count(ED_SUMMARY + nd_card("2026-11-22", "docs/03-three.md") + "\n" + nd_card("2026-11-19", "docs/06-six.md")),
                     two.page.count(nd_group("2026-11-21")),
                     [count(nest, g) for g in ("g1", "g1a", "g1a1", "g1a1x")],
                     nest.page.count(ED_SUMMARY + nd_card("2026-11-23", "docs/04-four.md")),
