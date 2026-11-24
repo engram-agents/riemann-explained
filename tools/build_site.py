@@ -298,7 +298,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      text) is only LISTED when it does: one line `WORD-NOTE <where> <word>` per text and word (`of the proof` stands for
      that phrase or a percent sign) on stdout, exit unchanged, the count in the `built:` line; the text is never edited.
      Cases R3a R3b WN1 WN2 WN3.
-  H1 A group whose claim is null shows its root's Lean name and the strings file's `no_claim_label` in the heading (not a
+  H1 A group whose claim is null and that has no outline title (F47) shows its root's Lean name and the strings file's `no_claim_label` in the heading (not a
      status), and its status lines tell the facts: a null claim whose root has a reading block says the statement is read.
      Case H1.
   E1 The premises of a card are linked in the order of the outline, for a null-claim step as for a claimed one. Cases ORD1 PRM2.
