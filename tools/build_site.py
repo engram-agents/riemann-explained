@@ -7898,6 +7898,33 @@ def _selftest_cases():
             t1, t2 = _tree(os.path.join(d, "o1")), _tree(os.path.join(d, "o2"))
             return _eq((r1[0], r2[0], len(t1), t1 == t2, t1["index.html"].decode().count('<p class="edition-note">')), (0, 0, 11, True, 4))
 
+    @case("ND7", "F44B: the file part of a note's card link is percent-encoded like the note_href link (quote with safe=''): a note whose file name holds "
+                 "`#`, `?`, `%` and a space gives `%23`, `%3F`, `%25` and `%20` in the href, and the prefix `docs/` stays as it is")
+    def _():
+        name = "07-a#b?c%d e.md"
+        b = _nb(new={name: ("07", "g3", "2026-11-19")})
+        hrefs = re.findall(r'<a class="edition-link" href="([^"]+)">first edition</a>', b.page)
+        return _eq((b.rc, hrefs, "07-a#b" in b.page, "c%d e" in b.page),
+                   (0, [EDITION_TREE, "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/docs/07-a%23b%3Fc%25d%20e.md"], False, False))
+
+    @case("ND8", "F44B: a level-0 note gets no card paragraph even when its header group is a real card: with a level-0 note at edition 2 that names g1, "
+                 "g1's `editions` is [] (a note at level 1 or more of the same group is listed), `note_editions` counts the note, the first-screen sentence "
+                 "carries its date (also as the latest over a group's earlier date), and no card's Evidence has a note paragraph for it")
+    def _():
+        notes = _nnotes()
+        notes["00-whole.md"] = _nset(N00.replace('"group":"root"', '"group":"g1"'), 2, "2026-11-22")
+        alone = _build(outline=_eo(), notes=notes, strings=_strings())
+        later = _build(outline=_eo(("g1", "2026-11-20")), notes=notes, strings=_strings())
+        own = lambda b_, g: _direct(_card(b_, g), "details", "evidence")[0]
+        count = lambda b_, g: len(own(b_, g).find("p", "edition-note"))
+        return _eq((alone.rc, alone.js("group/g1.json")["editions"], alone.js("manifest.json")["counts"]["note_editions"],
+                    alone.page.count(nd_first("2026-11-22")), [count(alone, g) for g in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")],
+                    "docs/00-whole.md" in alone.page,
+                    later.rc, later.js("group/g1.json")["editions"], later.js("manifest.json")["counts"]["note_editions"],
+                    later.page.count(nd_first("2026-11-22")), count(later, "g1"), "docs/00-whole.md" in later.page),
+                   (0, [], 1, 1, [0, 0, 0, 0, 0, 0], False,
+                    0, [], 1, 1, 1, False))
+
     # ---- F44 (Q6) the marker case: every field of a group the page prints as words outside Evidence is in EDITION_TEXT_FIELDS
     def _marker_build():
         """(the build, [(path, group id, marker)], the decls): three groups under g1 (the forms exclude one another, so one group cannot hold
