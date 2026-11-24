@@ -200,7 +200,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      formula works). `\\$` is a literal dollar sign; an unescaped `$` with no partner on its line stays literal and is listed `FORMULA-UNPAIRED
      <where>`; `$$...$$` is not converted (stays as written, listed as unsupported). `<where>` is the block id (a group id for a claim, its conditions
      and the recognition, a note id for a list title). THE CONVERTER `formula_to_mathml` is a pure function over a closed subset of TeX named by
-     FORMULA_COMMANDS (67 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
+     FORMULA_COMMANDS (69 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
      `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
      formula, marks included>` when the place is inside the Evidence section of a card; on the reader's surface (everything outside Evidence) a formula the
      converter cannot convert (unsupported, `$$..$$`, an unpaired `$`) REFUSES the build: `FORMULA-RAW <where> <note file and the line of the block's anchor,
@@ -217,6 +217,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      sat in the top stroke of a zeta and an <msup> floated it away, as a browser look showed), a base that is no one-token <mi> keeps a flat
      <mo stretchy="false">, and a script after a primed base starts with a thin <mspace> (`r'^{-k}`), the `|` signs of one group pair in order (prefix, postfix; an odd one stays flat), `\\bar`
      takes one token or one group (<mover accent="true"> over a stretchy U+2015, which renders a full-width overline), \\mathrm{..} and \\operatorname{..} give one <mi mathvariant="normal"> per word,
+     \\mathbb{C} \\mathbb{F} \\mathbb{Z} \\mathcal{H} (one letter, in a group or braceless like \\bar; the CLOSED letter table is what the real notes use) are the Unicode
+     letter itself in a plain <mi>, no attribute; any other letter is unsupported,
      \\bigl \\bigr \\big give the delimiter alone, `\\,` `\\;` `\\ ` `\\!` are an <mspace> of width 0.167em, 0.278em, 0.222em, -0.167em
      and a plain space is nothing, a `{}` is an empty <mrow>, a literal non-ASCII letter is <mi>, a symbol or punctuation mark <mo>, any
      other non-ASCII character makes the formula unsupported (K2). The first sentence is not cut at a stop inside a formula. The run prints
@@ -229,7 +231,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      parentheses: `$a [b](c) d$`, `$[a](b)$`) is read as a link first, the formula is converted from what is left and a spurious LINK-OUTSIDE is
      listed; no formula of the real notes or of the corpus has the shape, and the order of the passes is not changed here. A formula that needs
      such text uses another notation. `tools/formula_oracle.py` compares the converter with pandoc's MathML on a list of formulas (a measurement, not a build step). Cases CV0 to
-     CV13 FM1 to FM5 PL1 to PL15 LS1 LS2 RL1 to RL4 JS1b LF1 to LF4, and the moved FR1 FR2 FR3 FR4 FR5 BD4 NS4.
+     CV13 LT1 to LT4 FM1 to FM5 PL1 to PL15 LS1 LS2 RL1 to RL4 JS1b LF1 to LF4, and the moved FR1 FR2 FR3 FR4 FR5 BD4 NS4.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
   F29 The base name of the block's file and the range of its lines are shown in the Evidence section (F37 moved them out of the frame;
@@ -1585,12 +1587,17 @@ _GREEK = (("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("e
           ("Pi", "Π"), ("Sigma", "Σ"), ("Upsilon", "Υ"), ("Phi", "Φ"), ("Psi", "Ψ"), ("Omega", "Ω"))
 _FSYMBOLS = (("le", "≤"), ("ge", "≥"), ("leq", "≤"), ("geq", "≥"), ("ne", "≠"), ("neq", "≠"), ("pm", "±"), ("cdot", "⋅"), ("infty", "∞"),
              ("dots", "…"), ("mid", "∣"), ("lceil", "⌈"), ("rceil", "⌉"), ("sum", "∑"), ("prod", "∏"), ("int", "∫"))
-# The subset: every command the converter knows, as name -> (kind, value). 67 commands: 37 Greek letters, 16 symbols and large operators,
-# 4 named functions, bar, mathrm, operatorname, bigl, bigr, big, and the four spacing commands (`\,` `\;` `\!` and the backslash-space).
+# The letter table (S4), CLOSED: exactly the letters the real notes and drafts write under \mathbb and \mathcal. The converter writes the Unicode letter
+# itself as a plain <mi> with no attribute (MathML Core takes no script or double-struck variant through mathvariant). F is not in the Letterlike block:
+# its double-struck capital is U+1D53D, in the mathematical alphanumeric block.
+_BLACKBOARD = {"C": "ℂ", "F": "\U0001D53D", "Z": "ℤ"}
+_SCRIPT = {"H": "ℋ"}
+# The subset: every command the converter knows, as name -> (kind, value). 69 commands: 37 Greek letters, 16 symbols and large operators,
+# 4 named functions, bar, mathrm, operatorname, bigl, bigr, big, mathbb, mathcal, and the four spacing commands (`\,` `\;` `\!` and the backslash-space).
 FORMULA_COMMANDS = dict(
     [(n, ("mi", c)) for n, c in _GREEK] + [(n, ("mo", c)) for n, c in _FSYMBOLS] + [(n, ("fn", n)) for n in ("max", "min", "log", "cos")]
     + [("bar", ("bar", "―")), ("mathrm", ("font", "")), ("operatorname", ("font", "")), ("bigl", ("big", "")), ("bigr", ("big", "")),
-       ("big", ("big", ""))] + [(c, ("space", "")) for c in (",", ";", "!", " ")])
+       ("big", ("big", "")), ("mathbb", ("face", _BLACKBOARD)), ("mathcal", ("face", _SCRIPT))] + [(c, ("space", "")) for c in (",", ";", "!", " ")])
 _FOPS = {"+": "+", "-": "−", "=": "=", "<": "<", ">": ">", "/": "/", "(": "(", ")": ")", "[": "[", "]": "]", ",": ",", ";": ";",
          ":": ":", "!": "!", "|": "|", ".": ".", "*": "∗"}
 _FSPACES = {",": "0.167em", ";": "0.278em", " ": "0.222em", "!": "-0.167em"}   # the spacing commands, with pandoc's widths
@@ -1683,7 +1690,7 @@ def _after_function(t):
         return True
     if t[0] != "cmd":
         return False
-    return FORMULA_COMMANDS[t[1]][0] in ("mi", "fn", "bar", "font") or t[1] in ("infty", "sum", "prod", "int")
+    return FORMULA_COMMANDS[t[1]][0] in ("mi", "fn", "bar", "font", "face") or t[1] in ("infty", "sum", "prod", "int")
 
 
 class _TexParser:
@@ -1799,6 +1806,17 @@ class _TexParser:
             return f'<mi mathvariant="normal">{val}</mi>'
         if kind == "bar":
             return f'<mover accent="true">{self.script()}<mo stretchy="true">{val}</mo></mover>'   # U+2015 renders a full-width overline
+        if kind == "face":   # \mathbb, \mathcal: ONE letter, braceless or in a group (as \bar takes its argument), and only a letter of the command's table
+            if self.peek() is not None and self.peek()[0] == "{":
+                self.i += 1
+                t = self.take()
+                if self.take()[0] != "}":
+                    raise _Unsupported
+            else:
+                t = self.take()
+            if t[0] != "mi" or t[1] not in val:
+                raise _Unsupported
+            return f"<mi>{val[t[1]]}</mi>"
         if kind == "big":   # the delimiter alone
             t = self.peek()
             if t is not None and t[0] == "mo" and t[1] in "()[]|":
@@ -6620,13 +6638,13 @@ def _selftest_cases():
            ("[", "[", PRE_), ("]", "]", POST_), (",", ",", ""), (";", ";", ""), (":", ":", ""), ("!", "!", ""), ("|", "|", NS_), (".", ".", ""),
            ("*", "∗", "")]
 
-    @case("CV0", "the subset is a named constant: FORMULA_COMMANDS holds 67 commands (37 Greek letters, 13 symbols, sum prod int, max min log cos, "
-                 "bar mathrm operatorname bigl bigr big, and the four spacing commands `,` `;` `!` and the space), FORMULA_VERSION is `1`, and "
-                 "every name of the tables of these cases is in it")
+    @case("CV0", "the subset is a named constant: FORMULA_COMMANDS holds 69 commands (37 Greek letters, 13 symbols, sum prod int, max min log cos, "
+                 "bar mathrm operatorname bigl bigr big, mathbb and mathcal (S4, was 67), and the four spacing commands `,` `;` `!` and the space), "
+                 "FORMULA_VERSION is `1`, and every name of the tables of these cases is in it")
     def _():
         tabled = {n for n, _c in GREEK} | {n for n, _c, _a in SYMBOLS} | {"max", "min", "log", "cos", "bar", "mathrm", "operatorname", "bigl", "bigr",
-                                                                       "big", ",", ";", "!", " "}
-        return _eq((len(FORMULA_COMMANDS), FORMULA_VERSION, tabled == set(FORMULA_COMMANDS)), (67, "1", True))
+                                                                       "big", "mathbb", "mathcal", ",", ";", "!", " "}
+        return _eq((len(FORMULA_COMMANDS), FORMULA_VERSION, tabled == set(FORMULA_COMMANDS)), (69, "1", True))
 
     @case("CV1", "converter, tokens: a letter is <mi>, a run of digits (with one decimal point between digits) one <mn>, `3.` is <mn>3</mn> then "
                  "<mo>.</mo>, each of the operators and punctuation `+ - = < > / ( ) [ ] , ; : ! | . *` is <mo> (the minus is U+2212, `<` is "
@@ -6813,6 +6831,44 @@ def _selftest_cases():
     def _():
         got = [cv(x) for x in ("\\frac{a}{b}", "a + \\begin{x}", "\\foo", "a\\\\b", "a\\$b", "a`b", "a$b", "a&b", "a#b", "a%b", "a~b", 'a"b', "a\\")]
         return _eq(got, [None] * 13)
+
+    BBC, BBF, BBZ, CALH = "\u2102", "\U0001D53D", "\u2124", "\u210B"   # the letters the real notes and drafts use: C, F, Z double-struck; H script (F has no code point in the Letterlike block)
+
+    @case("LT1", "S4, the letter table: `\\mathbb{C}`, `\\mathbb{F}`, `\\mathbb{Z}` and `\\mathcal{H}` (and, as `\\bar` takes its argument, the braceless "
+                 "`\\mathbb Z`, `\\mathcal H` and a group with spaces `\\mathbb{ Z }`) are the one Unicode letter in a plain <mi> with NO attribute: U+2102, "
+                 "U+1D53D (the math alphanumeric block: F has no code point of its own in the Letterlike block), U+2124, U+210B")
+    def _():
+        got = [cv(x) for x in ("\\mathbb{C}", "\\mathbb{F}", "\\mathbb{Z}", "\\mathcal{H}", "\\mathbb Z", "\\mathcal H", "\\mathbb{ Z }")]
+        return _eq(got, [M_(f"<mi>{c}</mi>") for c in (BBC, BBF, BBZ, CALH, BBZ, CALH, BBZ)])
+
+    @case("LT2", "S4: a letter outside the table is unsupported (None), the table being CLOSED and per command: `\\mathbb{R}` `\\mathbb{N}` `\\mathbb{Q}` "
+                 "`\\mathbb{H}` `\\mathcal{L}` `\\mathcal{F}` `\\mathcal{Z}` `\\mathcal{C}` (a letter of the other command's table) `\\mathbb{c}` `\\mathbb{1}` "
+                 "`\\mathbb{\\alpha}` `\\mathbb{Zx}` `\\mathbb{ZZ}`, an empty group `\\mathbb{}` `\\mathcal{}`, `\\mathbb` and `\\mathcal` alone, "
+                 "an unclosed group, a stray brace; `\\mathbbZ` is no command")
+    def _():
+        bad = ("\\mathbb{R}", "\\mathbb{N}", "\\mathbb{Q}", "\\mathbb{H}", "\\mathcal{L}", "\\mathcal{F}", "\\mathcal{Z}", "\\mathcal{C}", "\\mathbb{c}", "\\mathbb{1}",
+               "\\mathbb{\\alpha}", "\\mathbb{Zx}", "\\mathbb{ZZ}", "\\mathbb{}", "\\mathcal{}", "\\mathbb", "\\mathcal", "\\mathbb{Z", "\\mathbb{Z}}", "\\mathbbZ", "x\\mathbb")
+        return _eq([cv(x) for x in bad], [None] * len(bad))
+
+    @case("LT3", "S4: a script or an operator after a table letter works on the <mi>: `\\mathbb{Z}/g` is <mi>U+2124</mi> then the slash then g, "
+                 "`\\mathbb{F}_g` is an <msub> with the letter as its base, `GL_d(\\mathbb{F}_g)` holds it in a group of fences, `\\mathbb{C}^2` is an <msup>, "
+                 "`\\mathcal{H}'` carries the prime inside the token")
+    def _():
+        lp, rp = '<mo stretchy="false" form="prefix">(</mo>', '<mo stretchy="false" form="postfix">)</mo>'
+        got = [cv("\\mathbb{Z}/g"), cv("\\mathbb{F}_g"), cv("GL_d(\\mathbb{F}_g)"), cv("\\mathbb{C}^2"), cv("\\mathcal{H}'")]
+        want = [M_(f'<mrow><mi>{BBZ}</mi><mo stretchy="false">/</mo><mi>g</mi></mrow>'), M_(f"<msub><mi>{BBF}</mi><mi>g</mi></msub>"),
+                M_(f"<mrow><mi>G</mi><msub><mi>L</mi><mi>d</mi></msub>{lp}<msub><mi>{BBF}</mi><mi>g</mi></msub>{rp}</mrow>"),
+                M_(f"<msup><mi>{BBC}</mi><mn>2</mn></msup>"), M_(f"<mi>{CALH}\u2032</mi>")]
+        return _eq(got, want)
+
+    @case("LT4", "S4: a page with every table letter builds clean: the surface formulas `$\\mathbb{C} \\mathbb{F} \\mathbb{Z} \\mathcal{H}$` convert (exit 0, "
+                 "4 <mi> of the letters, no attribute on them, PAGE-STATIC finds nothing: `mi` has no attribute to allow), and a letter outside the table "
+                 "on the surface (`$\\mathbb{R}$`) refuses the build (FORMULA-RAW)")
+    def _():
+        b = _build(outline=_cond("$\\mathbb{C} \\mathbb{F} \\mathbb{Z} \\mathcal{H}$ holds"))
+        r = _frw(outline=_cond("$\\mathbb{R}$ holds"))
+        return _eq((b.rc, b.page.count(f"<mi>{BBC}</mi><mi>{BBF}</mi><mi>{BBZ}</mi><mi>{CALH}</mi>"), element_problems(b.page), r),
+                   (0, 1, [], (1, ["BUILD-ERROR FORMULA-RAW g1 outline/outline.json group g1: $\\mathbb{R}$"], False)))
 
     @case("CV13", "the converter is deterministic: the conversions of a sample and the page of a build that holds formulas are the same text under "
                   "PYTHONHASHSEED 0 and 3 (a fresh interpreter each)")
@@ -7058,7 +7114,7 @@ def _selftest_cases():
         return _eq((b.rc, pick(b), pick(_base())), (0, [], []))
 
     @case("RL1", "the run line, in the output after `sketches:`: `formulas: N converted, U unsupported, P unpaired, of T marks, converter "
-                 "own-subset-1 (67 commands)`; the base build is `0 converted, 0 unsupported, 0 unpaired, of 0 marks`; the counts are of renderings "
+                 "own-subset-1 (69 commands)`; the base build is `0 converted, 0 unsupported, 0 unpaired, of 0 marks`; the counts are of renderings "
                  "(the card's first sentence and the evidence text both count; moved by S1, since a formula the converter cannot convert may not be in "
                  "the first sentence, which is on the surface): `A $x$ and \\$ here. Then $\\frac{1}{2}$ and a $ here` is 2 converted (the first "
                  "sentence and Evidence), 1 unsupported, 1 unpaired, of 3")
@@ -7067,8 +7123,8 @@ def _selftest_cases():
         b = _build(notes=_notes(arg_text="A $x$ and \\$ here. Then $\\frac{1}{2}$ and a $ here"))
         idx = b.out.splitlines()
         return _eq((line(_base()), line(b), idx.index(line(b)[0]) > next(i for i, x in enumerate(idx) if x.startswith("sketches: "))),
-                   (["formulas: 0 converted, 0 unsupported, 0 unpaired, of 0 marks, converter own-subset-1 (67 commands)"],
-                    ["formulas: 2 converted, 1 unsupported, 1 unpaired, of 3 marks, converter own-subset-1 (67 commands)"], True))
+                   (["formulas: 0 converted, 0 unsupported, 0 unpaired, of 0 marks, converter own-subset-1 (69 commands)"],
+                    ["formulas: 2 converted, 1 unsupported, 1 unpaired, of 3 marks, converter own-subset-1 (69 commands)"], True))
 
     @case("RL2", "the sum N + U = T (code FORMULA-SUM) is asserted on the pure counting function: `formula_counts` of a log with a mark that has no "
                  "result is (0, 0, 0, 1) and `formula_sum_errors` of it is FORMULA-SUM; a log that adds up gives none; a build whose counting "
@@ -7136,7 +7192,7 @@ def _selftest_cases():
                      (1, ["BUILD-ERROR FORMULA-RAW 01.b02 01-one.md line 10: $$y$$"], False)], 0, True,
                     ["FORMULA-UNSUPPORTED 01.b02 $\\foo$", "FORMULA-UNSUPPORTED 01.b02 $$y$$", "FORMULA-UNPAIRED 01.b02",
                      "FORMULA-UNSUPPORTED 01.b03 $\\bar$"],
-                    ["formulas: 0 converted, 3 unsupported, 1 unpaired, of 3 marks, converter own-subset-1 (67 commands)"]))
+                    ["formulas: 0 converted, 3 unsupported, 1 unpaired, of 3 marks, converter own-subset-1 (69 commands)"]))
 
     @case("FRW3", "S1: a literal dollar sign written `\\$` is no formula and is never refused (a claim, a first sentence); a formula inside a code "
                   "span is no formula either; the same formula both on the surface (the first sentence) and in Evidence (the whole text) is one "
