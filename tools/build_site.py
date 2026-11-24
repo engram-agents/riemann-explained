@@ -1863,9 +1863,7 @@ def _outline():
         _g("g1a1", 3, "g1a", 1, [BAZ], _claim("Claim three & <more>"))]}
 
 
-# the wording of the recognition, the established line and the sketch: a fixture copy of the wording file's values, except
-# sketch_basis_compiled, which says `part of the argument` here, because the wording file's `part of the proof` is refused by the
-# rule R3 (`of the proof` in the builder's own sentences)
+# the wording of the recognition, the established line and the sketch: a fixture copy of the wording file's values
 WORDING = {
     "recognition_result_known_line": "Our reading: this is a well-known result in mathematics ({result}).",
     "recognition_result_variant_line": "Our reading: this is a version of a well-known result ({result}), changed to fit this proof.",
@@ -1888,7 +1886,7 @@ WORDING = {
     "established_not_traced_line": "Where it is proved: we have not yet traced where in the release this statement is proved.",
     "sketch_frame": "The proof in order, as {reader} read it on {date}, {basis}:",
     "sketch_basis_source": "reading the Lean source",
-    "sketch_basis_compiled": "from the goals shown in a compiled part of the argument ({build})",
+    "sketch_basis_compiled": "from the goals Lean showed when we compiled the part of the release that holds it ({build})",
     "sketch_note": "A sketch for a reader, not a proof: it leaves steps out and may hide the hard part.",
     "sketch_missing_line": "Proof sketch: not written yet.",
     "unexpanded_heading": "Places where Lean finishes the proof by automation we have not opened up:",
@@ -4750,7 +4748,7 @@ def _selftest_cases():
         two = skd(_card(_build(notes=_notes_s(build="lake build {date}")), "g1"))[0]
         return _eq((skd(c), skd(a), [c_.text() for c_ in _direct(c, "div", "sketch")[0].find("code")],
                     names.index(("p", "argument")) < names.index(("div", "sketch")) < names.index(("ul", "reactions")), two),
-                   ([("p", "frame sketch-frame", frame + "from the goals shown in a compiled part of the argument (lake build A.B):"),
+                   ([("p", "frame sketch-frame", frame + "from the goals Lean showed when we compiled the part of the release that holds it (lake build A.B):"),
                      ("p", "", "First sketch paragraph with a span."), ("ol", "", ["Ordered item one.", "Ordered item two here."]),
                      ("p", "", "Last sketch paragraph, see note 6."),
                      ("p", "unexpanded-heading", "Places where Lean finishes the proof by automation we have not opened up:"),
@@ -4759,7 +4757,7 @@ def _selftest_cases():
                      ("p", "", "Opening paragraph of the bar sketch."), ("ul", "", ["Bullet one.", "Bullet two."]),
                      ("p", "", "Closing paragraph of the bar sketch."), ("p", "sketch-note", note_line)],
                     ["a span", "two", "omega", "simp"], True,
-                    ("p", "frame sketch-frame", frame + "from the goals shown in a compiled part of the argument (lake build {date}):")))
+                    ("p", "frame sketch-frame", frame + "from the goals Lean showed when we compiled the part of the release that holds it (lake build {date}):")))
 
     @case("SK3", "C2: with no sketch the card shows `Proof sketch: not written yet.` ONLY when its proof is read (base: g1; with the sketch "
                  "notes: g3, since g1 and g1a have sketches); a card whose proof is not read (g3, g2, g1a, g1a1x) or not applicable (g1a1, a "
@@ -4885,7 +4883,7 @@ def _selftest_cases():
                        "[c](06-x.md) and d and e and ![img](06-x.md) end. Read again by Reader Two on 2026-11-24. Read the note",
                     ["[c](06-x.md)"], 1,
                     ["links in block text: 4 shown as text", "LINK-OUTSIDE 01.b02 99-missing.md",
-                     "LINK-OUTSIDE 01.b02 https://example.org/p#f", "LINK-OUTSIDE 01.b02 "]))
+                     "LINK-OUTSIDE 01.b02 https://example.org/p#f", "LINK-OUTSIDE 01.b02"]))
 
     @case("LK3", "E1 E2: the rule is for argument, interpretation and sketch text alike (an interpretation with two links, a sketch paragraph "
                  "and a sketch list item with one each: 4 shown as text, only `https://x.example` listed, with its block id 01.b03), and "
@@ -5002,6 +5000,69 @@ def _selftest_cases():
         return _eq(([sm[g]["root_role"] for g in ("zkr", "zkn", "g1a1")], form("zkr"), form("zkn"), use),
                    ([None, None, None], "Our reading: this is a well-known result in mathematics (res-zkr).",
                     "Our reading: the statement named here is a well-known result in mathematics (res-zkn).", ["zkn", "g1a1"]))
+
+    # ---- the reviewer round on F24b: survivors of 64 plausible-wrong mutants, pinned
+    def _open_g1(cits):
+        o = _outline()
+        g = next(g for g in o["groups"] if g["id"] == "g1")
+        g["root_role"] = "result"
+        g["recognition"] = _rec("open_in_literature", result="R", citations=cits)
+        return o
+
+    @case("SK9", "C1: every list marker the checker's list reading takes is pinned: a sketch whose lists open with `1.` (also `2.` and `10.` "
+                 "after it), `2)`, `-`, `*` and `+` has the first two as ordered (<ol>, ordered true) and the other three as bulleted (<ul>, "
+                 "ordered false), in the JSON and on the card")
+    def _():
+        marks = (("1. A\n2. B\n10. C", "p1"), ("2) D\n3) E", "p2"), ("- F\n- G", "p3"), ("* H\n* I", "p4"), ("+ J\n+ K", "p5"))
+        body = "".join(lst + "\n\n" + par + " text.\n\n" for lst, par in marks)
+        n = ("# Note four\n" + _h(id="04", group="g1", list_title="Note four") + "\n\n## Body\n\n" + body + "Last paragraph.\n"
+             + _b(id="04.b01", kind="sketch", decls=[FOO], reader="Reader Two", date="2026-11-24", basis="source", span=11) + "\n")
+        b = _build(notes=_notes() | {"04-sketch.md": n})
+        sk = b.js("group/g1.json")["sketches"][0]["blocks"]
+        lists = [x for x in sk if x["type"] == "list"]
+        card = _direct(_card(b, "g1"), "div", "sketch")[0]
+        return _eq((b.rc, [x["ordered"] for x in lists], [x["items"] for x in lists][:2], [k.tag for k in card.elems() if k.tag in ("ol", "ul")]),
+                   (0, [True, True, False, False, False], [["A", "B", "C"], ["D", "E"]], ["ol", "ol", "ul", "ul", "ul"]))
+
+    @case("RD3", "A4: the citation's `where` goes through the span rule like its source (a code span in it is <code>, content escaped): "
+                 "`Section `3.1`` shows `Section 3.1` with `3.1` as code")
+    def _():
+        b = _build(outline=_outline_r("where", "Section `3.1`"))
+        li = _direct(rcn(b, "g1"), "ul", "recognition-citations")[0].elems()[0]
+        return _eq((b.rc, _raw(li), [c.text() for c in li.find("code")]), (0, "A source, Section 3.1 (as read by Reader One on 2026-11-22)", ["3.1"]))
+
+    @case("RD4", "A3: a year and a year-month of the same year, the LONGER first, are compared as the strings as written in either order "
+                 "(2006-11 then 2006, and 2006 then 2006-11, both read `as of 2006-11`): the newest by the strings, never the last cited")
+    def _():
+        got = []
+        for cits in ([_oc("L1", "2006-11"), _oc("L2", "2006")], [_oc("L1", "2006"), _oc("L2", "2006-11")]):
+            b = _build(outline=_open_g1(cits))
+            got.append((b.rc, _raw(_direct(rcn(b, "g1"), "p", "recognition-form")[0])))
+        line = "Our reading: this result's statement is R, an open problem as of 2006-11 according to the dated source below."
+        return _eq(got, [(0, line)] * 2)
+
+    @case("P7f", "static_problems, the class of a citation anchor is a TOKEN of its class list (`citation extra` passes, as `reaction extra` "
+                 "does) and the exemption is for `href` alone: `citationx`, `xcitation`, a citation anchor with `xlink:href`, `action` or "
+                 "`formaction` to an https address, and `xreaction`, are each refused")
+    def _():
+        sp = static_problems
+        planted = [('<a class="citationx" href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="xcitation" href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="citation" xlink:href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="citation" action="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="citation" formaction="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="xreaction" href="http://x.invalid/">x</a>', ["href=http"])]
+        controls = ['<a class="citation extra" href="https://x.invalid/">x</a>', '<a class="extra reaction" href="http://x.invalid/">x</a>']
+        return _eq(([sp(h, "") for h, _w in planted], [sp(h, "") for h in controls]), ([w for _h, w in planted], [[], []]))
+
+    @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the frame (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
+                 "the JSON keeps the path as written")
+    def _():
+        n = _n01().replace('"file":"A/B.lean"', '"file":"A\\\\Deep\\\\Nest.lean"').replace("| `A/B.lean` |", "| `A\\Deep\\Nest.lean` |")
+        b = _build(notes=_notes() | {"01-one.md": n})
+        idea = _direct(_card(b, "g1"), "p", "argument")[0].text()
+        return _eq((b.rc, "(Nest.lean, lines 15-18)" in idea, "Deep" in idea, b.js("group/g1.json")["blocks"][1]["file"]),
+                   (0, True, False, "A\\Deep\\Nest.lean"))
 
     return cases
 
