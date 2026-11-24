@@ -565,6 +565,35 @@ def static_problems(page, js):
     return sorted(found)
 
 
+_HTML_ELEMENTS = {"a": ("class", "href"), "article": ("class", "id"), "aside": (), "body": (), "code": (), "dd": (), "details": ("class",),
+                  "div": ("class",), "dl": (), "dt": (), "h1": (), "h2": (), "h3": ("class",), "head": (), "header": (), "html": ("lang",),
+                  "li": (), "main": (), "meta": ("charset",), "ol": (), "p": ("class",), "section": ("class",), "span": ("class",),
+                  "strong": (), "style": (), "summary": (), "time": (), "title": (), "ul": ("class",)}
+_MATHML_ELEMENTS = ("math", "mrow", "mi", "mn", "mo", "msub", "msup", "msubsup", "mover", "munder", "munderover", "mspace")
+_MATHML_ATTRIBUTES = ("mathvariant", "stretchy", "form")
+# Every element the built page may hold, with the attributes each may carry: the 29 elements the builder emits (measured over the
+# self-test fixtures and a build of the notes of the repository, not guessed) and the 12 of MathML Core that the formula converter writes
+# (F26B), with mathvariant, stretchy and form on the MathML elements only. 41 elements, 49 element-attribute pairs.
+ALLOWED_ELEMENTS = dict(_HTML_ELEMENTS, **{t: _MATHML_ATTRIBUTES for t in _MATHML_ELEMENTS})
+
+
+def element_problems(page):
+    """What the page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list
+    and `attribute <name> on <element>` for each attribute an allowed element may not carry. The BUILT page is read with html.parser;
+    an end tag, a comment and the doctype are not looked at."""
+    found = set()
+
+    class P(html.parser.HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag not in ALLOWED_ELEMENTS:
+                found.add("element " + tag)
+                return
+            found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in ALLOWED_ELEMENTS[tag])
+
+    P(convert_charrefs=True).feed(page)
+    return sorted(found)
+
+
 def link_problems(page):
     """Every `#` link that has no element of that id on the page (as `#id`), then every id used twice (`duplicate id X`)."""
     ids, links = [], []
@@ -1861,6 +1890,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
+    for pb in element_problems(page):
+        errors.append(("PAGE-STATIC", pb, "found in index.html"))
     for pb in link_problems(page):
         errors.append(("PAGE-LINK", pb, "does not resolve on the page"))
     for pb in number_problems(page, number_pool([level0, level1] + list(groups.values())), json.dumps(sj, ensure_ascii=False)):
