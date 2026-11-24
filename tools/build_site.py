@@ -209,7 +209,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      `FORMULA-CANDIDATE <card id> <rule> <the first 40 characters of the text node>` for a text node (outside <code>, <math>, <style>, <script>) that holds
      a caret (`caret`), `_{` (`underscore-brace`), a backslash and a letter (`backslash-command`), `\\(` (`paren-form`), `\\[` (`bracket-form`) or `\\begin{`
      (`begin-form`); and `CODE-ON-SURFACE <card id> <text, first 60 characters> x<n>` for each <code> span (once per card and text, n occurrences); the
-     card id is the nearest enclosing <article>, `page` for the first screen; the run prints `formula candidates: C in K cards` and `code on surface:
+     card id is the nearest enclosing <article>, `page` for the first screen; the listing has one line per card and text, while D of the run line counts the
+     DISTINCT TEXTS across the whole page; the run prints `formula candidates: C in K cards` and `code on surface:
      N spans (D distinct) in K cards`. Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
      minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command (the 11 capitals with mathvariant="normal", upright as TeX sets them; the page CSS gives a lone <mi> `text-transform: none; font-style: italic` and the normal variant upright), \\max \\min \\log \\cos
      <mi mathvariant="normal"> (after \\operatorname and these, and their scripts, a thin <mspace> when an identifier, number, group, Greek letter or another function follows in the group: TeX's rule), \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
@@ -2117,7 +2118,7 @@ def code_lines(spans):
 
 
 def code_run_line(spans):
-    return f"code on surface: {sum(k for _c, _t, k in spans)} spans ({len(spans)} distinct) in {len({s[0] for s in spans})} cards"
+    return f"code on surface: {sum(k for _c, _t, k in spans)} spans ({len({s[1] for s in spans})} distinct) in {len({s[0] for s in spans})} cards"
 
 
 def _rich(text, links=False, where=None):
@@ -7267,13 +7268,13 @@ def _selftest_cases():
                     ("c", "begin-form", "\\begin{a}"), ("c", "caret", "q^ " + "a" * 37)])
 
     @case("SP3", "S3, the pure count: `code_spans(codes)` gives (card, text, n) once per card and text, in order of first appearance, n the number of "
-                 "occurrences in the card; the same text in two cards is two entries; the run line counts N spans (all occurrences), D distinct (the entries) "
-                 "in K cards: `code on surface: 4 spans (3 distinct) in 2 cards`")
+                 "occurrences in the card; the same text in two cards is two entries; the run line counts N spans (all occurrences), D distinct texts across the page (2 here, though the listing has 3 lines) "
+                 "in K cards: `code on surface: 4 spans (2 distinct) in 2 cards`")
     def _():
         codes = [("a", "x"), ("a", "y"), ("a", "x"), ("b", "x")]
         sp = code_spans(codes)
         return _eq((sp, code_run_line(sp), code_run_line([]), code_lines([("a", "z" * 70, 2)])),
-                   ([("a", "x", 2), ("a", "y", 1), ("b", "x", 1)], "code on surface: 4 spans (3 distinct) in 2 cards",
+                   ([("a", "x", 2), ("a", "y", 1), ("b", "x", 1)], "code on surface: 4 spans (2 distinct) in 2 cards",
                     "code on surface: 0 spans (0 distinct) in 0 cards", ["CODE-ON-SURFACE a " + "z" * 60 + " x2"]))
 
     def _cand(b_):
@@ -7332,13 +7333,13 @@ def _selftest_cases():
         return [ln for ln in b_.out.splitlines() if ln.startswith("code on surface: ")]
 
     @case("CS1", "S3: the base build lists the five spans of its surface in page order, one line per card and text, `CODE-ON-SURFACE <card> <text> x<n>`, "
-                 "exit 0, and its run line is `code on surface: 5 spans (5 distinct) in 5 cards`; the constant CODE_ON_SURFACE_REFUSES is False")
+                 "exit 0, and its run line is `code on surface: 5 spans (3 distinct) in 5 cards`; the constant CODE_ON_SURFACE_REFUSES is False")
     def _():
         return _eq((_base().rc, _code(_base()), _crun2(_base()), CODE_ON_SURFACE_REFUSES),
-                   (0, CS0, ["code on surface: 5 spans (5 distinct) in 5 cards"], False))
+                   (0, CS0, ["code on surface: 5 spans (3 distinct) in 5 cards"], False))
 
     @case("CS2", "S3: a span in a claim (shown again as a premise: a line for each card), in a condition, in a sketch paragraph and in the title of a note "
-                 "about the whole (card `page`) is listed; with the five base spans that is 10 spans (10 distinct) in 6 cards")
+                 "about the whole (card `page`) is listed; with the five base spans that is 10 spans (7 distinct) in 6 cards")
     def _():
         o = _ol(lambda g: g["claim"].update(text="Claim `s1` here", conditions=["Cond `s2` here"]))
         n = _notes_s(para="P `s3` here.", item="plain item", last="plain last", unexpanded=()) | {
@@ -7346,14 +7347,14 @@ def _selftest_cases():
         b = _build(outline=o, notes=n)
         return _eq((b.rc, sorted(_code(b)), _crun2(b)),
                    (0, sorted(CS0 + ["CODE-ON-SURFACE g1 s1 x1", "CODE-ON-SURFACE g3 s1 x1", "CODE-ON-SURFACE g1 s2 x1", "CODE-ON-SURFACE g1 s3 x1",
-                                     "CODE-ON-SURFACE page s4 x1"]), ["code on surface: 10 spans (10 distinct) in 6 cards"]))
+                                     "CODE-ON-SURFACE page s4 x1"]), ["code on surface: 10 spans (7 distinct) in 6 cards"]))
 
-    @case("CS3", "S3: two equal spans in one card are one line `x2` (the run line counts 2 spans, 1 distinct): `CODE-ON-SURFACE g1 dup x2`, "
-                 "`code on surface: 7 spans (6 distinct) in 5 cards`")
+    @case("CS3", "S3: two equal spans in one card are one line `x2` (the run line counts 2 spans, 1 new distinct text): `CODE-ON-SURFACE g1 dup x2`, "
+                 "`code on surface: 7 spans (4 distinct) in 5 cards`")
     def _():
         b = _build(outline=_cond("Cond `dup` a", "Cond `dup` b"))
         return _eq((b.rc, [ln for ln in _code(b) if "dup" in ln], _crun2(b)),
-                   (0, ["CODE-ON-SURFACE g1 dup x2"], ["code on surface: 7 spans (6 distinct) in 5 cards"]))
+                   (0, ["CODE-ON-SURFACE g1 dup x2"], ["code on surface: 7 spans (4 distinct) in 5 cards"]))
 
     @case("CS4", "S3 controls: a span inside Evidence (the second sentence of an argument and an interpretation) is not counted: the build lists the five "
                  "base spans only; a formula that holds a span on the surface is refused by S1 (FORMULA-RAW) and lists no span")
@@ -7361,7 +7362,7 @@ def _selftest_cases():
         b = _build(notes=_notes(arg_text=EV1 + "see `ev` here", interp_text="We think `ev2` here"))
         f = _build(outline=_cond("Cond $a `b` c$ here"))
         return _eq((b.rc, _code(b), _crun2(b), f.rc, _code(f), [ln for ln in f.out.splitlines() if ln.startswith("BUILD-ERROR")]),
-                   (0, CS0, ["code on surface: 5 spans (5 distinct) in 5 cards"], 1, [],
+                   (0, CS0, ["code on surface: 5 spans (3 distinct) in 5 cards"], 1, [],
                     ["BUILD-ERROR FORMULA-RAW g1 outline/outline.json group g1: $a `b` c$"]))
 
     @case("CS5", "S3, the flag: with CODE_ON_SURFACE_REFUSES True a build with a span on its surface is refused, one line per card and text "
