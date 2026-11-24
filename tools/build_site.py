@@ -2292,7 +2292,7 @@ def _render_page(m, s, facts, dirty):
             if fl["edition"] and ne["date"] == fl["edition"]["date"]:
                 continue
             o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], ne["date"],
-                                                                _fill(s["edition_href_blob"], file=EDITION_NOTES_DIR + ne["note"]),
+                                                                _fill(s["edition_href_blob"], file=EDITION_NOTES_DIR + urllib.parse.quote(ne["note"], safe="")),
                                                                 s["edition_link_label"]) + "</p>")
         for r in fl["roots"]:
             o.append('<div class="root">')
