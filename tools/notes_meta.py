@@ -121,6 +121,30 @@ CONTRACT (each line is a self-test case, written before the code)
  on a definition or structure card; a group with a claim whose root is a result and a title is TITLE-WITH-CLAIM (an error), because the page
  would ignore a title there and the author must choose. The ONE predicate `definition_card(role, kinds)` decides (build_site loads it too): a usable root_role decides, else the kinds of ALL the
  roots (no root a theorem or lemma, at least one root; an unknown kind is a definition card); a root with no row, or with several, is not judged. A bad title is BAD-VALUE alone.
+ Edition of a rewritten text (F44, Q6; cases E21a to E21c, E22, E23a to E23t). A group may carry `edition` (the integer 1 or 2; absent is 1)
+ and `edition_date`. `edition` of 0, a negative, a boolean, a string or a float is BAD-VALUE naming the group and the key, and 3 or more is
+ BAD-VALUE `edition 3 needs a ruling`. `edition_date` is a real date YYYY-MM-DD not later than the day of the run (--today, else the clock's
+ UTC date), required at edition 2 and refused at edition 1 or absent. EDITION_TEXT_FIELDS is the one definition of the reader-facing text of
+ a group: claim.text, claim.conditions, recognition.result, .difference, .note, each citation's where, source and source_date, and
+ `recognition.established` (the string not_traced, or the root it names), and the group's `title` (the heading of a card with no claim, the
+ title in a definition card, the premise rows; reader-facing text, compared as text). Every field whose OWN text the page prints outside its Evidence
+ section is here (the builder's marker case, ED10 and ED11, ties the list to the page); what only Evidence prints (reader, date, who opened
+ a source, the established line's reader and date) and what orders or wires the groups (roots, order, parent, level) are not text. The fields
+ that choose which sentence the page prints (recognition.form, root_role, claim.basis, a citation's says_open) and premises are not text
+ either: they are listed, not compared (SELECTOR-CHANGED below). The compare is strict on purpose: text byte for byte (a space, a newline,
+ NFC against NFD is a change), lists in order (a reorder or a duplicate is a change); an empty list and no value are equal. With --base
+ REV the outline at REV is read with `git cat-file blob REV:<path of the outline in the repository>` and each group is compared with its
+ own at REV, edition absent = 1: text changed with edition 2 and a date is the listing `EDITION <id> fields <paths sorted, comma-separated>,
+ edition 1 to 2, <date>`; text changed with no bump is OUTLINE-CHANGED; edition 2 and nothing changed is EDITION-EMPTY; a group at edition 2 at
+ REV may not change text (OUTLINE-CHANGED), date (EDITION-DATE-CHANGED) or edition (EDITION-DOWN; 3 is BAD-VALUE); edition 2 on a group not in
+ the outline at REV is EDITION-NEW-GROUP; a group at REV and not now is the listing GROUP-GONE. An outline at REV that is missing, not JSON or
+ has no groups list, and an outline outside the repository, are one OUTLINE-BASE listing and the rule does not run. Listings never change
+ the exit code; the refusals do. The summary has `edition check: N groups compared to REV` (or `did not run`) and `editions: J of M groups at
+ edition 2` (counted from the current outline, with or without --base). For a group in both outlines, each changed selector or premises
+ list is one listing `SELECTOR-CHANGED <id> <path> <old> -> <new>` (values as short JSON, a missing value `none`; paths recognition.form,
+ root_role, claim.basis, recognition.citations[<i>].says_open, premises, in that order), with or without a bump, exit code unchanged; the
+ summary has `selector changes: K` (or `did not run`). A base outline with `groups: []` compares nothing and says so; a groups list holding a
+ non-object is OUTLINE-BASE `has no usable groups`. A bad edition_date prints its BAD-VALUE and no EDITION line.
 
  Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
@@ -316,7 +340,18 @@ ERROR, LISTING = "error", "listing"
 NOCODE = "CHECKED NOTHING"
 TOP_KEYS = ("groups", "release")
 GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
-GROUP_OPTIONAL = ("recognition", "root_role", "title")
+GROUP_OPTIONAL = ("recognition", "root_role", "title", "edition", "edition_date")
+EDITIONS = (1, 2)   # F44: a published text is rewritten in place once, as edition 2; a third needs a ruling
+# F44 (Q6): the ONE definition of the reader-facing author text of a group: dotted paths into the group, `[]` meaning each element of a
+# list (the value of such a path is the list of that key over the elements; `recognition.established` is the string `not_traced` or the
+# `by` of the object, since its reader and date are provenance). The edition check compares exactly these between the outline at --base
+# and the outline now. Pinned against the page by the builder's marker case: every field whose OWN text the page prints outside its Evidence
+# section is here; what only the Evidence section prints (who read, when, who opened a source) is deliberately not. The fields that CHOOSE
+# which sentence the page prints (recognition.form, root_role, claim.basis, a citation's says_open) and premises (what a step rests on) are
+# not text: a change to one is a change of substance, not a rewrite for readers, so the check lists it as SELECTOR-CHANGED and never as EDITION.
+EDITION_TEXT_FIELDS = ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
+                       "recognition.citations[].where", "recognition.citations[].source", "recognition.citations[].source_date",
+                       "recognition.established", "title")
 ROOT_ROLES = ("result", "named_statement", "object")
 RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that take the role `result`; every other kind does not
 
@@ -520,7 +555,38 @@ def _claim_word_listings(data, path):
     return out
 
 
-def _check_group_shape(g, label, path, out):
+def _check_edition(g, label, path, today, out):
+    """F44: `edition` is the integer 1 or 2 (absent is 1); `edition_date` is a real date YYYY-MM-DD not later than `today`, required at
+    edition 2 and refused at edition 1 or with no edition (when the edition itself is unusable the date is not asked for either way)."""
+    def bad(what):
+        out.append(_f("BAD-VALUE", path, None, f"{label}: {what}"))
+    ed = 1
+    if "edition" in g:
+        e = g["edition"]
+        if not _int(e):
+            bad(f"edition must be the integer 1 or 2 (the value is of type {_jtype(e)})")
+            ed = None
+        elif e >= 3:
+            bad(f"edition {e} needs a ruling")
+            ed = None
+        elif e < 1:
+            bad(f"edition must be 1 or 2, not {e}")
+            ed = None
+        else:
+            ed = e
+    if "edition_date" in g:
+        d = g["edition_date"]
+        if not _is_date(d):
+            bad("edition_date must be a date YYYY-MM-DD")
+        elif _real_date(d) > today:
+            bad(f"edition_date {d} is later than the day of the run, {today.isoformat()}")
+        if ed == 1:
+            bad("edition_date is refused when edition is 1 or absent (it dates an edition 2)")
+    elif ed == 2:
+        bad("edition_date is required when edition is 2")
+
+
+def _check_group_shape(g, label, path, out, today=None):
     def bad(what):
         out.append(_f("BAD-VALUE", path, None, f"{label}: {what}"))
     for k in sorted(g):
@@ -562,6 +628,7 @@ def _check_group_shape(g, label, path, out):
             bad("title must be a non-empty string with no blank at either end and no line break")
         elif why == "capital":
             bad("title must start with a capital letter or a character that is not a lowercase letter")
+    _check_edition(g, label, path, _parse_today(None) if today is None else today, out)
 
 
 def _title_problem(v):
@@ -848,8 +915,8 @@ def _premise_cycles(graph, path, out):
                 trail.append(nxt)
 
 
-def _check_outline(data, path, index):
-    """(findings, the ids of the groups that have a usable id)."""
+def _check_outline(data, path, index, today=None):
+    """(findings, the ids of the groups that have a usable id). `today` is the day of the run (edition_date may not be later)."""
     out = []
     stats = {"groups": 0, "claimed": 0, "null": 0, "roots": 0, "defs": 0, "premises": 0, "read": 0, "census": 0, "without": 0}
     if not isinstance(data, dict):
@@ -884,7 +951,7 @@ def _check_outline(data, path, index):
             stats["census"] += b == "census"
             stats["without"] += not (isinstance(b, str) and b in CLAIM_BASIS)
         labels[i] = f"group {gid!r}" if _str(gid) else f"groups[{i}]"
-        _check_group_shape(g, labels[i], path, out)
+        _check_group_shape(g, labels[i], path, out, today)
         if _str(gid):
             if gid not in by_id:
                 by_id[gid] = g
@@ -1424,6 +1491,133 @@ def _bytes_check(name, text, rel, ctx):
     return [first_failure]
 
 
+# ---- F44 (Q6): the edition check of the outline against the outline at --base
+def _walk(node, parts):
+    for p in parts:
+        node = node.get(p) if isinstance(node, dict) else None
+    return node
+
+
+def _text_value(g, path):
+    """The value of one EDITION_TEXT_FIELDS path in a group: None when it is not there; `a.b[].c` is the list of `c` over the
+    elements of the list `a.b` (None for an element that is not an object or has no `c`)."""
+    if "[]." in path:
+        head, leaf = path.split("[].", 1)
+        lst = _walk(g, head.split("."))
+        v = [(x.get(leaf) if isinstance(x, dict) else None) for x in lst] if isinstance(lst, list) else None
+    elif path == "recognition.established":
+        e = _walk(g, ["recognition", "established"])
+        v = e.get("by") if isinstance(e, dict) else e
+    else:
+        v = _walk(g, path.split("."))
+    return None if v == [] else v   # an empty list and no value show the same on the page: equal
+
+
+def _text_changes(base, cur):
+    """The EDITION_TEXT_FIELDS paths whose value differs between two groups, sorted."""
+    return sorted(p for p in EDITION_TEXT_FIELDS if _text_value(base, p) != _text_value(cur, p))
+
+
+def _short(v):
+    """A value as short JSON, `none` for a missing one."""
+    return "none" if v is None else json.dumps(v, ensure_ascii=False, separators=(",", ":"))
+
+
+def _says_open(g, i):
+    c = _walk(g, ["recognition", "citations"])
+    return c[i].get("says_open") if isinstance(c, list) and i < len(c) and isinstance(c[i], dict) else None
+
+
+def _selector_changes(b, g):
+    """[(path, old, new)] for the selectors that differ between two groups, in the fixed order: recognition.form, root_role, claim.basis,
+    each citation's says_open by index, premises (the ordered list). They choose the sentences the card shows, or what a step rests on;
+    they are not text, so the edition check lists them and never compares them as text."""
+    pairs = [("recognition.form", _walk(b, ["recognition", "form"]), _walk(g, ["recognition", "form"])),
+             ("root_role", b.get("root_role"), g.get("root_role")), ("claim.basis", _walk(b, ["claim", "basis"]), _walk(g, ["claim", "basis"]))]
+    n = max((len(c) if isinstance(c, list) else 0) for c in (_walk(b, ["recognition", "citations"]), _walk(g, ["recognition", "citations"])))
+    pairs += [(f"recognition.citations[{i}].says_open", _says_open(b, i), _says_open(g, i)) for i in range(n)]
+    pairs.append(("premises", b.get("premises"), g.get("premises")))
+    return [(path, o, c) for path, o, c in pairs if o != c]
+
+
+def _edition_of(g):
+    """1 or 2; None when the value is not usable (the shape check has already said so)."""
+    if "edition" not in g:
+        return 1
+    e = g["edition"]
+    return e if _int(e) and e in EDITIONS else None
+
+
+def _edition_check(odata, outline, ctx, name):
+    """(findings, the edition check line, the selector changes line) of the comparison of the groups of the outline with those of the
+    outline at --base."""
+    def unusable(reason):
+        why = f"the outline at {ctx.base} could not be used"
+        return ([_f("OUTLINE-BASE", name, None, f"{reason}, so the edition check did not run", LISTING)],
+                f"edition check: did not run, {why}", f"selector changes: did not run, {why}")
+    if not (isinstance(odata, dict) and isinstance(odata.get("groups"), list)):
+        return [], "edition check: did not run, the outline has no groups list", "selector changes: did not run, the outline has no groups list"
+    rel = os.path.relpath(os.path.realpath(outline), ctx.top)
+    if rel.startswith(".."):
+        return unusable("is outside the repository")
+    r = _vcs(ctx.top, "cat-file", "blob", f"{ctx.rev}:{rel.replace(os.sep, '/')}")
+    if r.returncode != 0:
+        return unusable(f"is not in {ctx.base}")
+    try:
+        bdata = json.loads(r.stdout.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return unusable(f"at {ctx.base} is not valid JSON")
+    if not (isinstance(bdata, dict) and isinstance(bdata.get("groups"), list)):
+        return unusable(f"at {ctx.base} has no groups list")
+    if any(not isinstance(x, dict) for x in bdata["groups"]):
+        return unusable(f"at {ctx.base} has no usable groups")
+    bmap, cmap = _group_map(bdata), _group_map(odata)
+    out, compared, n_sel = [], 0, 0
+
+    def err(code, gid, msg):
+        out.append(_f(code, name, None, f"group {gid!r}: {msg}"))
+    for gid, g in cmap.items():
+        ce = _edition_of(g)
+        if ce is None:
+            continue
+        if gid not in bmap:
+            if ce == 2:
+                err("EDITION-NEW-GROUP", gid, f"edition 2, but the group is not in the outline at {ctx.base} (there is no edition 1 to rewrite)")
+            continue
+        b = bmap[gid]
+        be = _edition_of(b)
+        if be is None:
+            continue
+        compared += 1
+        paths = _text_changes(b, g)
+        cd, bd = g.get("edition_date"), b.get("edition_date")
+        if be == 1 and ce == 1:
+            if paths:
+                err("OUTLINE-CHANGED", gid, f"{', '.join(paths)} changed, but the edition is not raised to 2 with an edition_date")
+        elif be == 1:
+            if paths and _is_date(cd) and _real_date(cd) <= ctx.today:   # a bad date is already a BAD-VALUE: no listing beside it
+                out.append(_f("EDITION", name, None, f"{gid} fields {', '.join(paths)}, edition 1 to 2, {cd}", LISTING))
+            elif not paths:
+                err("EDITION-EMPTY", gid, f"edition 2 with edition_date, but no reader-facing text changed since {ctx.base}")
+        else:
+            if ce == 1:
+                err("EDITION-DOWN", gid, f"edition is 1, but it was 2 at {ctx.base} (an edition is not lowered)")
+            if paths:
+                err("OUTLINE-CHANGED", gid, f"{', '.join(paths)} changed after edition 2 was set at {ctx.base} (a third edition needs a ruling)")
+            if ce == 2 and cd != bd:
+                err("EDITION-DATE-CHANGED", gid, f"edition_date {cd} differs from {bd} at {ctx.base}")
+        for path, o, c in _selector_changes(b, g):   # whether or not the group carries a bump
+            out.append(_f("SELECTOR-CHANGED", name, None, f"{gid} {path} {_short(o)} -> {_short(c)}", LISTING))
+            n_sel += 1
+    for gid in bmap:
+        if gid not in cmap:
+            out.append(_f("GROUP-GONE", name, None, gid, LISTING))
+    line = f"edition check: {compared} groups compared to {ctx.base}"
+    if not bdata["groups"]:
+        line += f", the outline at {ctx.base} has no groups"
+    return out, line, f"selector changes: {n_sel}"
+
+
 # ---- the run
 def _read_json(path, what):
     try:
@@ -1519,14 +1713,18 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
         stop.append(f"{NOCODE}: decls.tsv has no rows")
     if stop:
         return 3, stop
-    found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index)
+    found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index, ctx.today)
     words = _claim_word_listings(odata, os.path.basename(outline))
     rec_found, rec_forms = _check_recognition(odata, os.path.basename(outline), ctx.index, ctx.kinds)
     rec_counts = _recognition_counts(rec_forms)
     sum_f = _recognition_sum_finding(rec_forms)
     rec_found += [sum_f] if sum_f else []
     rec_found += _check_titles(odata, os.path.basename(outline), ctx.index, ctx.kinds)
-    found = found + rec_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions
+    if base is not None:
+        ed_found, ed_line, sel_line = _edition_check(odata, outline, ctx, os.path.basename(outline))
+    else:
+        ed_found, ed_line, sel_line = [], "edition check: did not run, no --base given", "selector changes: did not run, no --base given"
+    found = found + rec_found + ed_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions, then the edition check's
     lines = [_render(f) for f in found + words]
     errors = sum(1 for f in found if f[4] == ERROR)
     warnings = len(words) + sum(1 for f in found if f[4] == LISTING)
@@ -1578,6 +1776,10 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
     lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new, {n_add} additions" if base is not None else "byte check: did not run, no --base given")
+    lines.append(ed_line)
+    n_ed2 = sum(1 for g in odata["groups"] if isinstance(g, dict) and _int(g.get("edition")) and g["edition"] == 2) if isinstance(odata, dict) and isinstance(odata.get("groups"), list) else 0
+    lines.append(f"editions: {n_ed2} of {st['groups']} groups at edition 2")
+    lines.append(sel_line)
     lines.append(f"{len(names)} notes, {errors} findings, {warnings} warnings")
     return (1 if errors else 0), lines
 
@@ -1703,9 +1905,11 @@ def _put(path, text):
 
 
 def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None, committed=None, glob=None,
-       raw_outline=None, repo_arg=False, check_dirs=None, today=None):
+       raw_outline=None, repo_arg=False, check_dirs=None, today=None, committed_outline=None):
     """Plant a fixture and call run(); (rc, stdout, stderr) as a Res. `committed` names files of NOTES_DIR that exist
-    at the commit called HEAD of a throwaway git repository around the fixture (BYTES)."""
+    at the commit called HEAD of a throwaway git repository around the fixture (BYTES). `committed_outline` (a dict, or a
+    string written as it is) is the outline.json that exists at that commit; None commits the outline of the run as it is (so
+    the edition check finds nothing to say), False leaves the outline out of the commit."""
     notes = {"01-a.md": NOTE()} if notes is None else notes
     outline = OL(G("g1"), G("g2", order=2, premises=["g1"])) if outline is None else outline
     with tempfile.TemporaryDirectory() as d:
@@ -1715,6 +1919,9 @@ def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None,
             _git(d, "init", "-q")
             for k, v in committed.items():
                 _put(os.path.join(nd, k), v)
+            if committed_outline is not False:
+                co = committed_outline if committed_outline is not None else (raw_outline if raw_outline is not None else outline)
+                _put(os.path.join(d, "outline.json"), co if isinstance(co, str) else json.dumps(co))
             _git(d, "add", "-A")
             _git(d, "commit", "-q", "-m", "base")
         for k, v in notes.items():
@@ -1874,6 +2081,9 @@ def _():
                  "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0 sketch=0",
                  "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
+                 "edition check: did not run, no --base given",
+                 "editions: 0 of 2 groups at edition 2",
+                 "selector changes: did not run, no --base given",
                  "3 notes, 1 findings, 0 warnings"], "output")
     eq(r.rc, 1, "exit")
 
@@ -4336,6 +4546,552 @@ def _():
     clean(_sx("Idea.\n" + _AB(decls=[R("A.E", "lem")]) + "\n", outline=OL(G("g1", roots=[R("A.E", "lem")]))))
     clean(_sx("Idea.\n" + _AB(decls=[FOO, BAZ]) + "\n"))
     fe(_sx(one, outline=OL(_rg("named_statement", root=("A.C", "baz")))), [NOPROOF.format(7, "A.C baz", "def")], 0)
+
+
+# ---- F44 (Q6): the edition fields of a group, and the edition check of the outline against the outline at --base
+ED_DAY = "2026-11-24"   # the day of these runs (--today)
+
+
+def _eg1():
+    return _rg(gid="g1", claim=dict(CLAIM, text="T1", conditions=["c1"]),
+               rec={"form": "variant", "result": "R1", "difference": "D1", "reader": "R", "date": "2026-11-23",
+                    "citations": [dict(CIT, source="S1", where="W1")]})
+
+
+def _eg2():
+    return _rg(gid="g2", order=2, root=("A.B", "bar"), claim=dict(CLAIM, text="T2"),
+               rec={"form": "not_recognised", "note": "N1", "reader": "R", "date": "2026-11-23"})
+
+
+def _epair():
+    return OL(_eg1(), _eg2())
+
+
+def _eof(o, gid):
+    return next(g for g in o["groups"] if g["id"] == gid)
+
+
+def _edb(cur, base):
+    """Run the check: the current outline `cur`, and the outline committed at HEAD `base` (None: none committed)."""
+    return go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD", outline=cur,
+              committed_outline=False if base is None else base, today=ED_DAY)
+
+
+def _edc(cur_mut=None, base_mut=None):
+    """The pair of groups at HEAD and now, each changed by its function."""
+    cur, base = _epair(), _epair()
+    if base_mut:
+        base_mut(base)
+    if cur_mut:
+        cur_mut(cur)
+    return _edb(cur, base)
+
+
+def _set(gid, path, value):
+    def f(o):
+        node = _eof(o, gid)
+        parts = path.split(".")
+        for p in parts[:-1]:
+            node = node[p]
+        node[parts[-1]] = value
+    return f
+
+
+def _both(*fs):
+    def f(o):
+        for x in fs:
+            x(o)
+    return f
+
+
+def _ed2(gid="g1", date="2026-11-23"):
+    return _both(_set(gid, "edition", 2), _set(gid, "edition_date", date))
+
+
+def _chg(gid, paths):
+    return f"OUTLINE-CHANGED outline.json group {gid!r}: {paths} changed, but the edition is not raised to 2 with an edition_date"
+
+
+def _edone(**kw):
+    return go(outline=OL(_rg(**kw)), today=ED_DAY)
+
+
+@case("E21a", "edition is the integer 1 or 2 (absent is 1): 0, -1, 3 (needs a ruling), a string, a boolean and 2.0 are BAD-VALUE naming the group "
+              "and the key; control: 1 and 2 with their date pass")
+def _():
+    bad = lambda t: _fl("BAD-VALUE", ": " + t)
+    fe(_edone(edition=0), [bad("edition must be 1 or 2, not 0")], 1)
+    fe(_edone(edition=-1), [bad("edition must be 1 or 2, not -1")], 1)
+    fe(_edone(edition=3), [bad("edition 3 needs a ruling")], 1)
+    fe(_edone(edition=7), [bad("edition 7 needs a ruling")], 1)
+    fe(_edone(edition="2"), [bad("edition must be the integer 1 or 2 (the value is of type string)")], 1)
+    fe(_edone(edition=True), [bad("edition must be the integer 1 or 2 (the value is of type boolean)")], 1)
+    fe(_edone(edition=2.0), [bad("edition must be the integer 1 or 2 (the value is of type number)")], 1)
+    clean(_edone(edition=1))
+    clean(_edone(edition=2, edition_date="2026-11-23"))
+    clean(_edone())
+
+
+@case("E21b", "edition_date is a real YYYY-MM-DD date not later than the day of the run; required at edition 2, refused at edition 1 or "
+              "with no edition; each a BAD-VALUE naming the group and the key")
+def _():
+    bad = lambda t: _fl("BAD-VALUE", ": " + t)
+    fe(_edone(edition=2), [bad("edition_date is required when edition is 2")], 1)
+    fe(_edone(edition=1, edition_date="2026-11-23"), [bad("edition_date is refused when edition is 1 or absent (it dates an edition 2)")], 1)
+    fe(_edone(edition_date="2026-11-23"), [bad("edition_date is refused when edition is 1 or absent (it dates an edition 2)")], 1)
+    fe(_edone(edition=2, edition_date="2026/11/23"), [bad("edition_date must be a date YYYY-MM-DD")], 1)
+    fe(_edone(edition=2, edition_date="2026-02-30"), [bad("edition_date must be a date YYYY-MM-DD")], 1)
+    fe(_edone(edition=2, edition_date=20261123), [bad("edition_date must be a date YYYY-MM-DD")], 1)
+    fe(_edone(edition=2, edition_date="2026-11-25"), [bad("edition_date 2026-11-25 is later than the day of the run, 2026-11-24")], 1)
+    clean(_edone(edition=2, edition_date="2026-11-24"))
+    clean(_edone(edition=2, edition_date="2026-11-23"))
+
+
+@case("E21c", "with no --base the run says the edition check did not run; the editions line counts the groups at edition 2 over the outline "
+              "as it is now, with or without --base")
+def _():
+    o = _epair()
+    _ed2("g2")(o)
+    r = go(outline=o, today=ED_DAY)
+    clean(r)
+    ok("edition check: did not run, no --base given" in r.lines, r.out)
+    ok("editions: 1 of 2 groups at edition 2" in r.lines, r.out)
+    r = go(outline=_epair(), today=ED_DAY)
+    ok("editions: 0 of 2 groups at edition 2" in r.lines, r.out)
+    r = _edc(_ed2("g2"), None)
+    ok("editions: 1 of 2 groups at edition 2" in r.lines, r.out)
+
+
+_PATHS = (("E23a", "claim.text", _set("g1", "claim.text", "T1b")),
+          ("E23b", "claim.conditions", _set("g1", "claim.conditions", ["c1b"])),
+          ("E23c", "claim.conditions", _set("g1", "claim.conditions", ["c1", "c2"])),
+          ("E23d", "recognition.difference", _set("g1", "recognition.difference", "D1b")),
+          ("E23e", "recognition.note", _set("g2", "recognition.note", "N1b")),
+          ("E23f", "recognition.citations[].where", _set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1b")])),
+          ("E23g", "recognition.citations[].source", _set("g1", "recognition.citations", [dict(CIT, source="S1b", where="W1")])),
+          ("E23x", "recognition.result", _set("g1", "recognition.result", "R1b")))
+
+
+def _mk_path_case(cid, path, mut):
+    gid = "g2" if path == "recognition.note" else "g1"
+    desc = f"a change of {path} (as the case sets it) with no bump is OUTLINE-CHANGED naming the group and the path, exit 1"
+
+    def fn():
+        fe(_edc(mut), [_chg(gid, path)], 1)
+    _register_case(_CASES, cid, desc, fn)
+
+
+for _c in _PATHS:
+    _mk_path_case(*_c)
+
+
+@case("E23h", "a first claim on a group that had none, and no bump, is OUTLINE-CHANGED (the card shows something new); the same with a bump is EDITION")
+def _():
+    def base(o):
+        _eof(o, "g1")["claim"] = None
+        _eof(o, "g1").pop("recognition")
+        _eof(o, "g1").pop("root_role")
+
+    def cur(o):
+        g = _eof(o, "g1")
+        g["claim"] = dict(CLAIM, text="T1")
+        g.pop("recognition")
+    role = 'SELECTOR-CHANGED outline.json g1 root_role none -> "result"'   # the first claim brings its root_role: a selector, listed
+    fe(_edc(cur, base), [_chg("g1", "claim.text"), role], 1)
+    r = _edc(_both(cur, _ed2()), base)
+    fe(r, ["EDITION outline.json g1 fields claim.text, edition 1 to 2, 2026-11-23", role], 0)
+
+
+@case("E23i", "a bump with a change is one EDITION listing: the group id, the changed paths sorted and comma-separated, edition 1 to 2, the date; "
+              "exit 0, counted as a warning; two groups give two lines in the outline's order")
+def _():
+    cur = _both(_set("g1", "claim.text", "T1b"), _set("g1", "claim.conditions", ["c9"]),
+                _set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1b")]), _ed2("g1"))
+    r = _edc(cur)
+    fe(r, ["EDITION outline.json g1 fields claim.conditions, claim.text, recognition.citations[].where, edition 1 to 2, 2026-11-23"], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "count line")
+    both = _both(_set("g1", "claim.text", "T1b"), _ed2("g1", "2026-11-22"), _set("g2", "recognition.note", "N1b"), _ed2("g2", "2026-11-23"))
+    fe(_edc(both), ["EDITION outline.json g1 fields claim.text, edition 1 to 2, 2026-11-22",
+                    "EDITION outline.json g2 fields recognition.note, edition 1 to 2, 2026-11-23"], 0)
+
+
+@case("E23j", "edition 2 with nothing changed since REV is EDITION-EMPTY (an edition names a rewrite and there is none), exit 1")
+def _():
+    fe(_edc(_ed2()), ["EDITION-EMPTY outline.json group 'g1': edition 2 with edition_date, but no reader-facing text changed since HEAD"], 1)
+
+
+def _at2():
+    return _ed2("g1", "2026-11-20")
+
+
+@case("E23k", "a group at edition 2 at REV: a text change is OUTLINE-CHANGED, a changed edition_date is EDITION-DATE-CHANGED, a lowered edition is "
+              "EDITION-DOWN, edition 3 is BAD-VALUE; unchanged is clean; a bump line is never printed")
+def _():
+    clean(_edc(_at2(), _at2()))
+    fe(_edc(_both(_at2(), _set("g1", "claim.text", "T1b")), _at2()),
+       ["OUTLINE-CHANGED outline.json group 'g1': claim.text changed after edition 2 was set at HEAD (a third edition needs a ruling)"], 1)
+    fe(_edc(_ed2("g1", "2026-11-21"), _at2()),
+       ["EDITION-DATE-CHANGED outline.json group 'g1': edition_date 2026-11-21 differs from 2026-11-20 at HEAD"], 1)
+    fe(_edc(None, _at2()), ["EDITION-DOWN outline.json group 'g1': edition is 1, but it was 2 at HEAD (an edition is not lowered)"], 1)
+    fe(_edc(_both(_at2(), _set("g1", "edition", 3)), _at2()), [_fl("BAD-VALUE", ": edition 3 needs a ruling")], 1)
+
+
+@case("E23l", "a group that is not in the outline at REV has no comparison; edition 2 on it is EDITION-NEW-GROUP (there is no edition 1 to rewrite), "
+              "edition 1 on it is nothing")
+def _():
+    def add(o):
+        o["groups"].append(_rg(gid="g3", order=3, root=("A.B", "foo"), claim=dict(CLAIM, text="T3")))
+    clean(_edc(add))
+    fe(_edc(_both(add, _ed2("g3"))),
+       ["EDITION-NEW-GROUP outline.json group 'g3': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)"], 1)
+
+
+@case("E23m", "a group that is in the outline at REV and not now is a GROUP-GONE listing (a card disappearing is not silent), exit 0")
+def _():
+    def gone(o):
+        o["groups"] = [g for g in o["groups"] if g["id"] != "g2"]
+    r = _edc(gone)
+    fe(r, ["GROUP-GONE outline.json g2"], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "count line")
+
+
+@case("E23n", "a change of reader, date, order, roots, conventions_checked, mathlib_read, and a recognition's reader and date "
+              "is no change of the text: no finding (edition 1 stays)")
+def _():
+    for what, f in (("claim.reader", _set("g1", "claim.reader", "R2")), ("claim.date", _set("g1", "claim.date", "2026-11-20")),
+                    ("order", _set("g2", "order", 5)),
+                    ("roots", _set("g2", "roots", [R("A.B", "foo")])),
+                    ("conventions_checked", _set("g1", "claim.conventions_checked", ["a", "b"])),
+                    ("mathlib_read", _set("g1", "claim.mathlib_read", ["Mathlib.X"])),
+                    ("recognition.reader", _set("g1", "recognition.reader", "R2")),
+                    ("recognition.date", _set("g1", "recognition.date", "2026-11-20"))):
+        r = _edc(f)
+        eq((r.f, r.rc), ([], 0), what + "\n" + r.out)
+
+
+@case("E23o", "the base outline missing at REV, not JSON, not an object with a groups list: one OUTLINE-BASE listing with the reason, the rule does not run, "
+              "exit 0; and a text change with no bump is then not refused")
+def _():
+    cur = _epair()
+    _set("g1", "claim.text", "T1b")(cur)
+    fe(_edb(cur, None), ["OUTLINE-BASE outline.json is not in HEAD, so the edition check did not run"], 0)
+    fe(_edb(cur, "{not json"), ["OUTLINE-BASE outline.json at HEAD is not valid JSON, so the edition check did not run"], 0)
+    fe(_edb(cur, '{"release": "x"}'), ["OUTLINE-BASE outline.json at HEAD has no groups list, so the edition check did not run"], 0)
+    fe(_edb(cur, "[]"), ["OUTLINE-BASE outline.json at HEAD has no groups list, so the edition check did not run"], 0)
+    r = _edb(cur, None)
+    ok("edition check: did not run, the outline at HEAD could not be used" in r.lines, r.out)
+
+
+@case("E23p", "an outline outside the repository of the run: one OUTLINE-BASE listing, the rule does not run, exit 0")
+def _():
+    with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as o:
+        nd = os.path.join(d, "notes")
+        _git(d, "init", "-q")
+        _put(os.path.join(nd, "01-a.md"), T0)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-q", "-m", "base")
+        _put(os.path.join(nd, "01-a.md"), CUR)
+        op, dp = os.path.join(o, "outline.json"), os.path.join(o, "decls.tsv")
+        _put(op, json.dumps(_epair()))
+        _put(dp, DECLS)
+        buf, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            rc = run(nd, op, dp, base="HEAD", repo=d, today=ED_DAY)
+        r = Res(rc, buf.getvalue(), err.getvalue())
+    fe(r, ["OUTLINE-BASE outline.json is outside the repository, so the edition check did not run"], 0)
+
+
+@case("E23q", "the base is read from REV, not from the working tree: the outline as committed is compared with the one on disk; "
+              "an edit in place with no bump is refused, the same edit committed first is not")
+def _():
+    fe(_edc(_set("g1", "claim.text", "T1b")), [_chg("g1", "claim.text")], 1)
+    base = _epair()
+    _set("g1", "claim.text", "T1b")(base)
+    cur = _epair()
+    _set("g1", "claim.text", "T1b")(cur)
+    clean(_edb(cur, base))
+    fe(_edb(cur, _epair()), [_chg("g1", "claim.text")], 1)
+
+
+@case("E23r", "the edition check is deterministic: two runs in fresh interpreters under PYTHONHASHSEED 0 and 3 print the same bytes")
+def _():
+    outs = []
+    for seed in ("0", "3"):
+        with tempfile.TemporaryDirectory() as d:
+            nd = os.path.join(d, "notes")
+            _git(d, "init", "-q")
+            _put(os.path.join(nd, "01-a.md"), T0)
+            _put(os.path.join(d, "outline.json"), json.dumps(_epair()))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-q", "-m", "base")
+            cur = _epair()
+            _both(_set("g1", "claim.text", "T1b"), _set("g1", "claim.conditions", ["c9"]), _ed2("g1"), _set("g1", "recognition.form", "known"))(cur)
+            cur["groups"] = [g for g in cur["groups"] if g["id"] != "g2"] + [
+                _rg(gid="g3", order=3, claim=dict(CLAIM, text="T3"), edition=2, edition_date="2026-11-23")]
+            _put(os.path.join(nd, "01-a.md"), CUR)
+            _put(os.path.join(d, "outline.json"), json.dumps(cur))
+            _put(os.path.join(d, "decls.tsv"), DECLS)
+            code = ("import importlib.util, sys\n"
+                    "spec = importlib.util.spec_from_file_location('nm_child', sys.argv[1])\n"
+                    "m = importlib.util.module_from_spec(spec)\nsys.modules['nm_child'] = m\nspec.loader.exec_module(m)\n"
+                    "sys.exit(m.run(sys.argv[2], sys.argv[3], sys.argv[4], base='HEAD', today='2026-11-24'))\n")
+            r = subprocess.run([sys.executable, "-I", "-c", code, os.path.abspath(__file__), nd, os.path.join(d, "outline.json"),
+                                os.path.join(d, "decls.tsv")], capture_output=True, text=True, env=dict(os.environ, PYTHONHASHSEED=seed))
+            outs.append((r.returncode, r.stdout, r.stderr))
+    eq(outs[0], outs[1], "the two seeds")
+    eq(outs[0][0], 1, "exit")
+    want = ["EDITION outline.json g1 fields claim.conditions, claim.text, edition 1 to 2, 2026-11-23",
+            'SELECTOR-CHANGED outline.json g1 recognition.form "variant" -> "known"',
+            "EDITION-NEW-GROUP outline.json group 'g3': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)",
+            "GROUP-GONE outline.json g2"]
+    got = [x for x in outs[0][1].splitlines() if x.split(" ")[0] in ("EDITION", "SELECTOR-CHANGED", "EDITION-NEW-GROUP", "GROUP-GONE")]
+    eq(got, want, "the lines")
+
+
+@case("E22", "EDITION_TEXT_FIELDS is the one definition of the reader-facing author text of a group, a literal list in a fixed order")
+def _():
+    eq(EDITION_TEXT_FIELDS, ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
+                             "recognition.citations[].where", "recognition.citations[].source", "recognition.citations[].source_date",
+                             "recognition.established", "title"), "the fields")
+
+
+def _named(est):
+    """A third group, a named statement whose recognition carries `established`."""
+    def f(o):
+        o["groups"].append(_rg("named_statement", root=("A.C", "baz"), gid="g3", order=3, claim=dict(CLAIM, text="T3"),
+                               rec={"form": "known", "result": "R3", "reader": "R", "date": "2026-11-23", "citations": [CIT],
+                                    "established": est}))
+    return f
+
+
+_BY_FOO = {"by": R("A.B", "foo"), "reader": "R", "date": "2026-11-23"}
+
+
+@case("E23s", "E2.5: a citation's source_date, printed on an open card, is text: a first source_date, or a changed one, with no bump is OUTLINE-CHANGED "
+              "naming recognition.citations[].source_date")
+def _():
+    sd = _set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1", source_date="2007-01")])
+    fe(_edc(sd), [_chg("g1", "recognition.citations[].source_date")], 1)
+    base = _both(_set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1", source_date="2007-01")]))
+    fe(_edc(_set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1", source_date="2008-01")]), base),
+       [_chg("g1", "recognition.citations[].source_date")], 1)
+
+
+@case("E23t", "E2.5: `established`, printed outside Evidence on a named statement, is text: not_traced to a root, a root to not_traced and a changed root "
+              "with no bump are OUTLINE-CHANGED naming recognition.established; a changed reader or date of the established line is not")
+def _():
+    fe(_edc(_named("not_traced"), _named(_BY_FOO)), [_chg("g3", "recognition.established")], 1)
+    fe(_edc(_named(_BY_FOO), _named("not_traced")), [_chg("g3", "recognition.established")], 1)
+    fe(_edc(_named(dict(_BY_FOO, by=R("A.B", "bar"))), _named(_BY_FOO)), [_chg("g3", "recognition.established")], 1)
+    r = _edc(_named(dict(_BY_FOO, reader="R2", date="2026-11-20")), _named(_BY_FOO))
+    eq((r.f, r.rc), ([], 0), r.out)
+    r = _edc(_named("not_traced"), _named("not_traced"))
+    eq((r.f, r.rc), ([], 0), r.out)
+
+
+# ---- review round: selectors and premises are listed, T compares strictly, small edges
+def _sel(gid, path, old, new):
+    return f"SELECTOR-CHANGED outline.json {gid} {path} {old} -> {new}"
+
+
+def _addg3(role, premises=()):
+    """A third group, a definition with no recognition, with the given role and premises."""
+    def f(o):
+        o["groups"].append(_rg(role, root=("A.C", "baz"), gid="g3", order=3, claim=dict(CLAIM, text="T3"), premises=list(premises)))
+    return f
+
+
+def _cits(*flags):
+    """Citations that differ in `where`, each with says_open as given (None leaves the key out) and a source_date."""
+    out = []
+    for i, fl in enumerate(flags):
+        c = dict(CIT, source="S1", where=f"W{i}", source_date="2007-01")
+        if fl is not None:
+            c["says_open"] = fl
+        out.append(c)
+    return _set("g1", "recognition.citations", out)
+
+
+@case("S1a", "a changed recognition form alone is one SELECTOR-CHANGED listing (values as short JSON), exit 0, not a refusal; the summary counts it")
+def _():
+    r = _edc(_set("g1", "recognition.form", "known"))
+    fe(r, [_sel("g1", "recognition.form", '"variant"', '"known"')], 0)
+    ok("selector changes: 1" in r.lines, r.out)
+
+
+@case("S1b", "a changed root_role alone is one SELECTOR-CHANGED listing, exit 0")
+def _():
+    fe(_edc(_addg3("object"), _addg3("named_statement")), [_sel("g3", "root_role", '"named_statement"', '"object"')], 0)
+
+
+@case("S1c", "a changed claim basis alone is one SELECTOR-CHANGED listing, a missing value is `none`, exit 0")
+def _():
+    fe(_edc(_set("g1", "claim.basis", "census"), _set("g1", "claim.basis", "read")), [_sel("g1", "claim.basis", '"read"', '"census"')], 0)
+    fe(_edc(_set("g1", "claim.basis", "census")), [_sel("g1", "claim.basis", "none", '"census"')], 0)
+    fe(_edc(None, _set("g1", "claim.basis", "read")), [_sel("g1", "claim.basis", '"read"', "none")], 0)
+
+
+@case("S1d", "a changed says_open alone is one SELECTOR-CHANGED listing naming the citation by index, exit 0")
+def _():
+    fe(_edc(_cits(True), _cits(False)), [_sel("g1", "recognition.citations[0].says_open", "false", "true")], 0)
+
+
+@case("S1e", "a changed premises list is one SELECTOR-CHANGED listing: the ordered list, old -> new, exit 0")
+def _():
+    fe(_edc(_set("g2", "premises", ["g1"])), [_sel("g2", "premises", "[]", '["g1"]')], 0)
+
+
+@case("S2", "says_open on the SECOND citation is named citations[1]; the first stays unlisted")
+def _():
+    fe(_edc(_cits(False, True), _cits(False, False)), [_sel("g1", "recognition.citations[1].says_open", "false", "true")], 0)
+    fe(_edc(_cits(False, False), _cits(False, False)), [], 0)
+
+
+@case("S3", "premises reordered is listed, premises equal is nothing")
+def _():
+    base = _both(_addg3("named_statement"), _set("g2", "premises", ["g1", "g3"]))
+    cur = _both(_addg3("named_statement"), _set("g2", "premises", ["g3", "g1"]))
+    fe(_edc(cur, base), [_sel("g2", "premises", '["g1","g3"]', '["g3","g1"]')], 0)
+    fe(_edc(base, base), [], 0)
+
+
+@case("S4", "two selectors changed at once: two lines in the fixed order (form, root_role, basis, says_open by index, premises), the summary says 2; "
+            "groups in the outline's order")
+def _():
+    r = _edc(_both(_set("g1", "claim.basis", "census"), _set("g1", "recognition.form", "known"), _set("g2", "premises", ["g1"])),
+             _set("g1", "claim.basis", "read"))
+    fe(r, [_sel("g1", "recognition.form", '"variant"', '"known"'), _sel("g1", "claim.basis", '"read"', '"census"'),
+           _sel("g2", "premises", "[]", '["g1"]')], 0)
+    ok("selector changes: 3" in r.lines, r.out)
+    eq(r.lines[-1], "1 notes, 0 findings, 3 warnings", "count line")
+
+
+@case("S5", "a bump with a text change AND a selector change prints the EDITION line and the SELECTOR-CHANGED line (the rewrite still answers each line), exit 0")
+def _():
+    cur = _both(_set("g1", "claim.text", "T1b"), _set("g1", "recognition.form", "known"), _ed2())
+    fe(_edc(cur), ["EDITION outline.json g1 fields claim.text, edition 1 to 2, 2026-11-23",
+                   _sel("g1", "recognition.form", '"variant"', '"known"')], 0)
+
+
+@case("S6", "an unchanged selector is nothing and the summary says 0; with no --base the rule did not run and the summary says so; "
+            "a group at the base only or the current only has no selector listing")
+def _():
+    r = _edc()
+    fe(r, [], 0)
+    ok("selector changes: 0" in r.lines, r.out)
+    r = go(outline=_epair(), today=ED_DAY)
+    ok("selector changes: did not run, no --base given" in r.lines, r.out)
+    fe(_edc(None, _addg3("object")), ["GROUP-GONE outline.json g3"], 0)
+    fe(_edc(_addg3("object")), [], 0)
+    r = _edb(_epair(), None)
+    ok("selector changes: did not run, the outline at HEAD could not be used" in r.lines, r.out)
+
+
+@case("S7", "a selector change is not a text change: with the edition at 1 it is never OUTLINE-CHANGED, and a bump with only a selector change is EDITION-EMPTY")
+def _():
+    fe(_edc(_both(_set("g1", "recognition.form", "known"), _ed2())),
+       ["EDITION-EMPTY outline.json group 'g1': edition 2 with edition_date, but no reader-facing text changed since HEAD",
+        _sel("g1", "recognition.form", '"variant"', '"known"')], 1)
+
+
+@case("E23u", "a REORDER of claim.conditions is a change (OUTLINE-CHANGED naming claim.conditions); so is a reorder of the citations (their where and source)")
+def _():
+    two = lambda o: _set("g1", "claim.conditions", ["c1", "c2"])(o)
+    fe(_edc(_set("g1", "claim.conditions", ["c2", "c1"]), two), [_chg("g1", "claim.conditions")], 1)
+    a = dict(CIT, source="SA", where="WA")
+    b = dict(CIT, source="SB", where="WB")
+    fe(_edc(_set("g1", "recognition.citations", [b, a]), _set("g1", "recognition.citations", [a, b])),
+       [_chg("g1", "recognition.citations[].source, recognition.citations[].where")], 1)
+
+
+@case("E23v", "a DUPLICATED citation is a change (the lists differ in length)")
+def _():
+    c = dict(CIT, source="S1", where="W1")
+    fe(_edc(_set("g1", "recognition.citations", [c, c])),
+       [_chg("g1", "recognition.citations[].source, recognition.citations[].source_date, recognition.citations[].where")], 1)
+
+
+@case("E23w", "T compares text strictly, byte for byte: a trailing space, a double space, a newline for a space in claim.text, and NFC against NFD "
+              "of the same text each count as a change")
+def _():
+    base = _set("g1", "claim.text", "T1 x")
+    for cur in ("T1 x ", "T1  x", "T1\nx"):
+        fe(_edc(_set("g1", "claim.text", cur), base), [_chg("g1", "claim.text")], 1)
+    fe(_edc(_set("g1", "claim.text", "café"), _set("g1", "claim.text", "café")), [_chg("g1", "claim.text")], 1)
+    fe(_edc(_set("g1", "claim.text", "T1 x"), base), [], 0)
+
+
+@case("E24a", "no EDITION listing beside a BAD-VALUE edition_date: a future date, an impossible date and a date with spaces print the BAD-VALUE only")
+def _():
+    chg = _set("g1", "claim.text", "T1b")
+    for d, why in (("2026-11-30", "edition_date 2026-11-30 is later than the day of the run, 2026-11-24"),
+                   ("2026-02-30", "edition_date must be a date YYYY-MM-DD"), (" 2026-11-23 ", "edition_date must be a date YYYY-MM-DD")):
+        fe(_edc(_both(chg, _ed2("g1", d))), [_fl("BAD-VALUE", ": " + why)], 1)
+
+
+@case("E24b", "`conditions: []` and the key absent are EQUAL (the page shows the same); a real list to [] is a change, [] to a real list is a change")
+def _():
+    drop = lambda o: _eof(o, "g1")["claim"].pop("conditions")
+    empty = _set("g1", "claim.conditions", [])
+    fe(_edc(empty, drop), [], 0)
+    fe(_edc(drop, empty), [], 0)
+    fe(_edc(empty), [_chg("g1", "claim.conditions")], 1)
+    fe(_edc(None, empty), [_chg("g1", "claim.conditions")], 1)
+
+
+@case("E24c", "a base outline with `groups: []` is legal (compares nothing, the summary says so, a new group at edition 2 is still EDITION-NEW-GROUP); "
+              "a groups list holding a non-object is OUTLINE-BASE `has no usable groups`")
+def _():
+    r = _edb(_epair(), '{"release": "x", "groups": []}')
+    fe(r, [], 0)
+    ok("edition check: 0 groups compared to HEAD, the outline at HEAD has no groups" in r.lines, r.out)
+    cur = _epair()
+    _ed2("g1")(cur)
+    fe(_edb(cur, '{"release": "x", "groups": []}'),
+       ["EDITION-NEW-GROUP outline.json group 'g1': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)"], 1)
+    for bad in ('{"groups": [1, "x"]}', '{"groups": [{"id": "g1"}, 3]}'):
+        fe(_edb(_epair(), bad), ["OUTLINE-BASE outline.json at HEAD has no usable groups, so the edition check did not run"], 0)
+
+
+# ---- the title of a group is printed author text (the heading of a card with no claim, of a definition card, the premise rows)
+def _tg3(title, text="T3", ed=None):
+    """A third group, a definition with a claim (so a title is legal), with `title` (None: no key) and, with `ed`, edition 2 at that date."""
+    def f(o):
+        g = _rg("named_statement", root=("A.C", "baz"), gid="g3", order=3, claim=dict(CLAIM, text=text))
+        if title is not None:
+            g["title"] = title
+        if ed:
+            g["edition"], g["edition_date"] = 2, ed
+        o["groups"].append(g)
+    return f
+
+
+@case("E25a", "a title changed alone, with no bump, is OUTLINE-CHANGED naming `title`; a first title on a group that had none is a change too; "
+              "the same title is nothing; a change of case is a change")
+def _():
+    fe(_edc(_tg3("New title"), _tg3("Old title")), [_chg("g3", "title")], 1)
+    fe(_edc(_tg3("New title"), _tg3(None)), [_chg("g3", "title")], 1)
+    fe(_edc(_tg3("Old title"), _tg3("Old title")), [], 0)
+    fe(_edc(_tg3("Old Title"), _tg3("Old title")), [_chg("g3", "title")], 1)
+
+
+@case("E25b", "a title changed with a bump is one EDITION listing naming `title`; a title is not a selector: no SELECTOR-CHANGED line beside it")
+def _():
+    fe(_edc(_tg3("New title", ed="2026-11-23"), _tg3("Old title")), ["EDITION outline.json g3 fields title, edition 1 to 2, 2026-11-23"], 0)
+
+
+@case("E25c", "a title added AND the edition bumped in the same change, with the claim text changed too: the EDITION line names claim.text and title")
+def _():
+    fe(_edc(_tg3("New title", text="T3b", ed="2026-11-23"), _tg3(None)),
+       ["EDITION outline.json g3 fields claim.text, title, edition 1 to 2, 2026-11-23"], 0)
+    fe(_edc(_tg3("New title", ed="2026-11-23"), _tg3(None)), ["EDITION outline.json g3 fields title, edition 1 to 2, 2026-11-23"], 0)
+
+
+@case("E25d", "a title changed on a group at edition 2 at REV is OUTLINE-CHANGED (a third edition needs a ruling); unchanged is clean")
+def _():
+    fe(_edc(_tg3("New title", ed="2026-11-20"), _tg3("Old title", ed="2026-11-20")),
+       ["OUTLINE-CHANGED outline.json group 'g3': title changed after edition 2 was set at HEAD (a third edition needs a ruling)"], 1)
+    fe(_edc(_tg3("Old title", ed="2026-11-20"), _tg3("Old title", ed="2026-11-20")), [], 0)
 
 
 def _run_cases(cases, write):
