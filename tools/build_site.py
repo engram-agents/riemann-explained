@@ -7721,13 +7721,14 @@ def _selftest_cases():
                    (False, 1, ["BUILD-ERROR TITLE-MISSING fz needs a title and has none", "BUILD-ERROR TITLE-MISSING fn needs a title and has none"],
                     False, 0, [], ["titles: 6 of 6 cards that need one"], 1))
 
-    @case("TT13", "F47: the CSS holds one rule for the title text (normal weight, the muted colour GrayText: the page's CSS has no other colour "
-                  "to reuse) and it is in the page's <style>; no other new rule; the page still passes the element and attribute list")
+    @case("TT13", "F47: the CSS holds one rule for the title text, normal weight and no colour (the page's CSS holds no colour at all), and it is in "
+                  "the page's <style>; no other new rule; the page still passes the element and attribute list")
     def _():
-        rule = ".title-text { font-weight: normal; color: GrayText; }"
+        rule = ".title-text { font-weight: normal; }"
         b = _faces()
-        return _eq((rule in CSS, rule in b.page, CSS.count(".title-"), static_problems(b.page, b.text("data.js")), element_problems(b.page)),
-                   (True, True, 1, [], []))
+        return _eq((rule in CSS, rule in b.page, CSS.count(".title-"), "color" in CSS.lower() or "colour" in CSS.lower(),
+                    static_problems(b.page, b.text("data.js")), element_problems(b.page)),
+                   (True, True, 1, False, [], []))
 
     @case("TT14", "F48 (a): the card's id is not on the reader's surface: a build whose group ids are not English words (zqx1, vlp2, wnr3: a "
                   "step, a card it rests on and a card nested under that) has no text node, outside the attributes, that holds an id as a "
