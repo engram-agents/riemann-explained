@@ -158,6 +158,41 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      title only; its reader and date are in the Evidence block list (the who-span of its block). Cases PV1 to PV12, and the cases that
      moved with it (R6 B7a B7c B7f F1b H1 C1 C1b RDR1 PRF1 PRF2 PH1 PHR1 PHR2 PHR4 PHR5 PHR6 PHR7 BT2 RD1 RD2 RD3 RL1 RE1 RS3 PB1 PB3 DF1
      DF3 DF4 SK2 SK8 LK1 LK2 LK3 ESC1 MK1).
+  F26B-E THE ELEMENTS OF THE PAGE. One module-level list, ALLOWED_ELEMENTS (40 elements, 53 element-attribute pairs), names every element
+     and attribute NAME the built page may hold, and no other element or attribute name is allowed: the 28 elements and 15 pairs the builder
+     emits (measured over the five self-test fixture pages, which EL4 pins; an entry no path emits is not kept, as `<time>` went with F37) and the
+     MathML set, reserved for the converter and emitted by no path yet (12 elements: math mrow mi mn mo msub msup msubsup mover munder
+     munderover mspace; attributes mathvariant, stretchy and form on those only, width on mspace alone and accent on mover alone).
+     `element_problems(page)` reads the start tags of the BUILT page, after it is rendered and before anything is written, with html.parser
+     (not the CSS, not data.js): it looks at element names and attribute NAMES only. Attribute values and the text inside <style> are not
+     checked here; a `javascript:` or `data:` value of an `href` is a limit of the separate static check, which looks only for http(s) and
+     protocol-relative addresses and the request APIs. An element or an attribute outside the list is `PAGE-STATIC element <name>` or `PAGE-STATIC attribute <name> on <element>`
+     (exit 1, nothing written), the same code as the request-making findings; every bad attribute of a tag is reported, each against its
+     own element's list. `<script>`, `<annotation>`, an event attribute, a `data-*` attribute and an `href` on a MathML element are each
+     refused. `style` and `title`, the allowed elements html.parser reads as text (HIDING_ELEMENTS, from the parser's own lists; EL7 pins
+     them), are allowed only in the OPENING RUN of the page, the start tags before the first one that is not html, head, meta or one of
+     them, and refused after it as `PAGE-STATIC element <name> outside head`: inside MathML a browser reads their content as markup,
+     html.parser does not report it (EL6; measured with html5lib 1.1, which builds an <img onerror> from
+     `<math><style><img src=x onerror=alert(1)></style></math>` where element_problems alone returned nothing). The rule reads START tags:
+     an end tag that a browser ignores (`</head>` while <math> is open, `</body>`) pops what html.parser tracks and not what a browser
+     tracks, so a rule built on end tags was passed by `<head><math></head><style>`, `<body><math></body><style>` and the same with
+     `title`, each a live <img onerror> in html5lib 1.1; here no end tag reopens the run. The one end tag looked at is `</head>`, which
+     only CLOSES the run (it can add a refusal, never remove one). The real page's opening run is html, head, meta, title, style.
+     LIMIT. This gate is a name check on the tags as html.parser sees them, not a browser-grade parse. It does not claim that every page it
+     passes parses in a browser to the same tree. Differentials between html.parser and the HTML spec's parser are known to exist and are
+     NOT measured here beyond the ones above: other places where foreign content changes how text is read (the MathML text integration
+     points and `annotation-xml`), the other raw-text and RCDATA elements (`textarea`, `xmp`, `iframe`, `noembed`, `noframes`, `script`, none
+     of which is allowed, so each is refused by name as an element), attribute quoting, and how a misnested tag ends. Comments and CDATA
+     are no longer on that list because they are refused by construction: every comment (an ordinary one too, and `<!x>`, which the parser
+     hands over as one), every processing instruction and every declaration but one `<!doctype html>` before the first start tag
+     (compared lower-cased, so the page's `<!DOCTYPE html>` is the same doctype) is `PAGE-STATIC comment`, `processing instruction` or
+     `declaration`, and any markup html.parser still holds back at the end of the page (an unterminated comment, CDATA section, tag or
+     style, which it never reports and a browser still reads) is `unterminated markup`. That is stricter than a browser needs: a
+     comment is harmless to a browser, and the page has none. Only the opening run may hold a raw-text element: a page that needs one elsewhere must change this rule, with
+     its case. The search that found no page passed by the rule with a live <img> was bounded (html5lib standing in for a browser, a
+     hand-picked pool of the allowed start tags and five end tags, one to three tokens before the payload; a second search put comment,
+     CDATA, processing-instruction and doctype tokens in front of an <img onerror> after the real <body>) and is not part of this
+     repository. Cases EL1 to EL9.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
   F29 The base name of the block's file and the range of its lines are shown in the Evidence section (F37 moved them out of the frame;
@@ -573,6 +608,84 @@ def static_problems(page, js):
                     found.add("href=http")
 
     P(convert_charrefs=True).feed(page)
+    return sorted(found)
+
+
+_HTML_ELEMENTS = {"a": ("class", "href"), "article": ("class", "id"), "aside": (), "body": (), "code": (), "dd": (), "details": ("class",),
+                  "div": ("class",), "dl": ("class",), "dt": (), "h1": (), "h2": (), "h3": ("class",), "head": (), "header": (), "html": ("lang",),
+                  "li": ("class",), "main": (), "meta": ("charset",), "ol": (), "p": ("class",), "section": ("class",), "span": ("class",),
+                  "strong": (), "style": (), "summary": (), "title": (), "ul": ("class",)}
+_MATHML_ELEMENTS = ("math", "mrow", "mi", "mn", "mo", "msub", "msup", "msubsup", "mover", "munder", "munderover", "mspace")
+_MATHML_ATTRIBUTES = ("mathvariant", "stretchy", "form")
+# Every element and attribute NAME the built page may hold (values and <style> text are not checked), and no other: the 28 elements and
+# 15 pairs the builder emits (measured over the five self-test fixture pages, pinned by EL4, not guessed; an entry no path emits is
+# removed, EL4) and the 12 of MathML Core RESERVED FOR THE CONVERTER (no path emits them yet), with mathvariant, stretchy and form on
+# the MathML elements only, width on <mspace> alone and accent on <mover> alone. 40 elements, 53 element-attribute pairs.
+ALLOWED_ELEMENTS = dict(_HTML_ELEMENTS, **{t: _MATHML_ATTRIBUTES for t in _MATHML_ELEMENTS})
+ALLOWED_ELEMENTS["mover"] = _MATHML_ATTRIBUTES + ("accent",)   # the overline of \\bar
+ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element that may carry a width: the spacing commands of a formula
+
+
+# The elements html.parser reads as TEXT (raw text, RCDATA) wherever they stand, among the allowed ones: today `style` and `title`, taken from the
+# parser's own lists so a Python that has more (or fewer) of them is followed, and EL7 fails when the set changes. A browser reads their content as text
+# only in HTML content; inside MathML they are MathML elements and their content is MARKUP, so a tag behind them is one the parser never reports. The page
+# has them in <head> only, in the OPENING RUN of the page: the start tags before the first one that is not html, head, meta or one of them. Once any
+# other start tag has been seen, every later one is refused (`element <name> outside head`), whatever end tags came between: an end tag that a browser
+# ignores (`</head>` while <math> is open, `</body>`) must not buy the permission back, so the run is never reopened by one.
+HIDING_ELEMENTS = frozenset(set(html.parser.HTMLParser.CDATA_CONTENT_ELEMENTS)
+                            | set(getattr(html.parser.HTMLParser, "RCDATA_CONTENT_ELEMENTS", ()))) & frozenset(ALLOWED_ELEMENTS)
+_OPENING_RUN = frozenset({"html", "head", "meta"}) | HIDING_ELEMENTS
+
+
+def element_problems(page):
+    """What the BUILT page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list,
+    `attribute <name> on <element>` for each attribute an allowed element may not carry, and `element <name> outside head` for an element of
+    HIDING_ELEMENTS (style, title) after the opening run of the page. The BUILT page is read with html.parser, start tags and attribute NAMES; the
+    one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one). Every comment is `comment`
+    (an ordinary one too: stricter than a browser needs, because html.parser and a browser disagree where `<!-->` ends), every processing
+    instruction is `processing instruction`, and every declaration but ONE `<!doctype html>` before the first start tag (compared lower-cased and
+    stripped) and every unknown declaration (`<![CDATA[`) is `declaration`. Markup html.parser still holds back at the end of the page (an
+    unterminated comment, CDATA section, start tag or style: it reports none of it, a browser still reads the tag behind it) is
+    `unterminated markup`. It is a name check on the tags as html.parser sees them, not a
+    browser-grade parse."""
+    found = set()
+    run = [True]   # the page is still in its opening run
+    seen = {"start": False, "decl": False}   # a start tag has been seen; a declaration has been seen
+
+    class P(html.parser.HTMLParser):
+        def handle_comment(self, data):
+            found.add("comment")
+
+        def handle_pi(self, data):
+            found.add("processing instruction")
+
+        def unknown_decl(self, data):
+            found.add("declaration")
+
+        def handle_decl(self, decl):
+            if seen["start"] or seen["decl"] or decl.strip().lower() != "doctype html":
+                found.add("declaration")
+            seen["decl"] = True
+
+        def handle_starttag(self, tag, attrs):
+            seen["start"] = True
+            if tag in HIDING_ELEMENTS and not run[0]:
+                found.add(f"element {tag} outside head")
+            if tag not in _OPENING_RUN:
+                run[0] = False
+            if tag not in ALLOWED_ELEMENTS:
+                found.add("element " + tag)
+            else:
+                found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in ALLOWED_ELEMENTS[tag])
+
+        def handle_endtag(self, tag):
+            if tag == "head":
+                run[0] = False
+
+    parser = P(convert_charrefs=True)
+    parser.feed(page)
+    if "<" in parser.rawdata:   # what html.parser still holds back (an unterminated comment, CDATA, tag or style): it reports none of it
+        found.add("unterminated markup")   # no close(): it would flush the held text and report it a second way
     return sorted(found)
 
 
@@ -1877,6 +1990,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
+    for pb in element_problems(page):
+        errors.append(("PAGE-STATIC", pb, "found in index.html"))
     for pb in link_problems(page):
         errors.append(("PAGE-LINK", pb, "does not resolve on the page"))
     for pb in number_problems(page, number_pool([level0, level1] + list(groups.values())), json.dumps(sj, ensure_ascii=False)):
@@ -5707,6 +5822,174 @@ def _selftest_cases():
                    ('<a class="xreaction" href="http://x.invalid/">x</a>', ["href=http"])]
         controls = ['<a class="citation extra" href="https://x.invalid/">x</a>', '<a class="extra reaction" href="http://x.invalid/">x</a>']
         return _eq(([sp(h, "") for h, _w in planted], [sp(h, "") for h in controls]), ([w for _h, w in planted], [[], []]))
+
+    @case("EL1", "element_problems, planted: `<script>`, `<annotation>`, `<iframe>` and an unknown element are `element <name>`; an `onclick` on a "
+                 "<p>, a `style` on a <p> (the builder has none), an `href` on a <mi> and a `mathvariant` on a <p> are `attribute <name> on <element>`; "
+                 "`<time>` (no builder path emits it since F37 moved the dates), an `onclick` on a <dl> and an `id` on a <li> are refused too; "
+                 "controls: <strong>, a nested <ul>/<li>, the Evidence markup (`<ul class=provenance>` with `<li class=statement>`, `<dl class=block-source>`), "
+                 "and a MathML tree with mathvariant, stretchy and form on its elements are clean")
+    def _():
+        ep = element_problems
+        planted = [("<script>x</script>", ["element script"]), ("<math><annotation>x</annotation></math>", ["element annotation"]),
+                   ("<iframe></iframe>", ["element iframe"]), ("<p onclick=\"x\">a</p>", ["attribute onclick on p"]),
+                   ("<p style=\"color:red\">a</p>", ["attribute style on p"]), ("<math><mi href=\"#a\">x</mi></math>", ["attribute href on mi"]),
+                   ("<p mathvariant=\"normal\">a</p>", ["attribute mathvariant on p"]), ("<blink>a</blink>", ["element blink"]),
+                   ("<math><mi width=\"1em\">x</mi></math>", ["attribute width on mi"]),
+                   ("<p accent=\"true\">a</p>", ["attribute accent on p"]), ("<math><mi accent=\"true\">x</mi></math>", ["attribute accent on mi"]), ("<p width=\"1em\">a</p>", ["attribute width on p"]),
+                   ("<time>2026</time>", ["element time"]), ("<dl onclick=\"x\"><dt>a</dt><dd>b</dd></dl>", ["attribute onclick on dl"]),
+                   ("<ul><li id=\"a\">a</li></ul>", ["attribute id on li"]),
+                   ("<p>a</p><script></script><iframe></iframe>", ["element iframe", "element script"])]
+        controls = ["<p>a <strong>b</strong></p>", "<ul><li>a<ul><li>b</li></ul></li></ul>",
+                    '<ul class="provenance"><li class="statement">a</li><li class="citation">b</li></ul>',
+                    '<details class="evidence"><summary>s</summary><dl class="block-source"><dt>File</dt><dd>B.lean</dd></dl>'
+                    '<p class="second-reader">x</p><p class="sketch-build">y</p></details>',
+                    '<math><mrow><mi mathvariant="normal">f</mi><mo stretchy="false" form="prefix">(</mo><msubsup><mi>x</mi><mn>1</mn><mn>2</mn></msubsup>'
+                    '<mover accent="true"><mi>x</mi><mo stretchy="true">&#8213;</mo></mover><munder><mi>a</mi><mi>b</mi></munder><munderover><mo>&#8721;</mo><mi>a</mi><mi>b</mi></munderover>'
+                    '<msub><mi>a</mi><mi>b</mi></msub><msup><mi>a</mi><mi>b</mi></msup><mspace></mspace><mspace width="0.167em"></mspace></mrow></math>']
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 5))
+
+    @case("EL2", "the allow-list: 40 elements (the 28 the builder emits and the 12 of MathML reserved for the converter) and 53 element-attribute pairs "
+                 "(15 of the page, 36 of mathvariant, stretchy and form on the 12 MathML elements, `width` on <mspace> and `accent` on <mover>); the built page of "
+                 "the base fixture, the zoo, the sketch fixture, the definition fixture and one with bold and a nested sub-item is clean under it")
+    def _():
+        bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
+        pages = [_base().page, _zbase().page, _sbase().page, _bbase().page, bold.page]
+        return _eq(([element_problems(x) for x in pages], len(ALLOWED_ELEMENTS), sum(len(v) for v in ALLOWED_ELEMENTS.values()),
+                     "<strong>" in bold.page, "<ul><li>" in bold.page.replace("\n", "")),
+                   ([[]] * 5, 40, 53, True, True))
+
+    @case("EL3", "the check runs on the BUILT page and refuses like the other static findings: a page with an <iframe> added is "
+                 "`BUILD-ERROR PAGE-STATIC element iframe found in index.html`, one with an `onclick` on a <p> is `attribute onclick on p`; "
+                 "exit 1, OUT_DIR absent; the same build without the addition passes")
+    def _():
+        real = _render_page
+        res = []
+        for old, new in (("</main>", "<iframe></iframe></main>"), ('<p class="mapped">', '<p onclick="x" class="mapped">'), ("</main>", "</main>")):
+            with _patched("_render_page", lambda *a, _o=old, _n=new: real(*a).replace(_o, _n, 1)):
+                b = _build()
+            res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR PAGE-STATIC")), b.existed))
+        return _eq(res, [(1, ["BUILD-ERROR PAGE-STATIC element iframe found in index.html"], False),
+                         (1, ["BUILD-ERROR PAGE-STATIC attribute onclick on p found in index.html"], False), (0, [], True)])
+
+    @case("EL4", "nothing else: the elements and attributes the five fixture pages of EL2 hold are exactly the 28 elements and 15 pairs of the list outside "
+                 "MathML (no entry nobody emits: `time` went with F37); what the list holds besides is the MathML set reserved for the converter, 12 elements, "
+                 "mathvariant, stretchy and form on all 12, `width` on <mspace> alone and `accent` on <mover> alone")
+    def _():
+        bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
+        mathml = ["math", "mi", "mn", "mo", "mover", "mrow", "mspace", "msub", "msubsup", "msup", "munder", "munderover"]
+        emitted, pairs = set(), set()
+
+        class P(html.parser.HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                emitted.add(tag)
+                pairs.update(f"{tag}[{k}]" for k, _v in attrs)
+
+        for pg in (_base().page, _zbase().page, _sbase().page, _bbase().page, bold.page):
+            P(convert_charrefs=True).feed(pg)
+        outside = {t: a for t, a in ALLOWED_ELEMENTS.items() if t not in mathml}
+        by_attr = {}
+        for t in mathml:
+            for k in ALLOWED_ELEMENTS.get(t, ()):
+                by_attr.setdefault(k, []).append(t)
+        html_tags = ["a", "article", "aside", "body", "code", "dd", "details", "div", "dl", "dt", "h1", "h2", "h3", "head", "header", "html", "li",
+                     "main", "meta", "ol", "p", "section", "span", "strong", "style", "summary", "title", "ul"]
+        html_pairs = ["a[class]", "a[href]", "article[class]", "article[id]", "details[class]", "div[class]", "dl[class]", "h3[class]", "html[lang]",
+                      "li[class]", "meta[charset]", "p[class]", "section[class]", "span[class]", "ul[class]"]
+        return _eq((sorted(emitted - set(mathml)), sorted(p for p in pairs if p.split("[")[0] not in mathml), sorted(outside),
+                    sorted(f"{t}[{k}]" for t, a in outside.items() for k in a), sorted(t for t in mathml if t in ALLOWED_ELEMENTS),
+                    {k: sorted(v) for k, v in sorted(by_attr.items())}),
+                   (html_tags, html_pairs, html_tags, html_pairs, mathml,
+                    {"accent": ["mover"], "form": mathml, "mathvariant": mathml, "stretchy": mathml, "width": ["mspace"]}))
+
+    @case("EL5", "element_problems checks every attribute NAME of every tag, against that element's own list: `<a href onclick>` refuses the onclick and "
+                 "not the href, `<p data-x>` refuses the data-x (no `data-*` family is allowed), `<p onclick style>` reports BOTH attributes, not the first; "
+                 "controls: `<a class href>` and a `<p class>` are clean")
+    def _():
+        ep = element_problems
+        planted = [('<a href="#x" onclick="x">a</a>', ["attribute onclick on a"]), ('<p data-x="1">a</p>', ["attribute data-x on p"]),
+                   ('<p onclick="x" style="y">a</p>', ["attribute onclick on p", "attribute style on p"]),
+                   ('<a href="#x" onclick="x" onmouseover="y" data-z="1">a</a>',
+                    ["attribute data-z on a", "attribute onclick on a", "attribute onmouseover on a"])]
+        controls = ['<a class="citation" href="#x">a</a>', '<p class="mapped">a</p>']
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[], []]))
+
+    @case("EL6", "a raw-text or RCDATA element (`style`, `title`) is allowed only in the page's OPENING RUN, before the first start tag that is not "
+                 "html, head, meta or one of them (`element style outside head` after that, whatever end tags came between): each of style and title "
+                 "directly inside <math>, <math><mrow>, <mi>, in <body>, after </head>, behind a <p> in the head, and behind the four pages a browser reads "
+                 "as MathML although html.parser's end tags say otherwise (`<head><math></head>` and `<body><math></body>` then the element), each with "
+                 "an <img onerror> behind it (which the parser cannot see), is refused; controls: the real <head> with its meta, title and style; a "
+                 "SECOND style and a SECOND title still inside the opening run (allowed: a browser is still in its head modes); a style after a meta "
+                 "after a title")
+    def _():
+        ep = element_problems
+        img = '<img src="x" onerror="alert(1)">'
+        pre = '<!doctype html><html><head><meta charset="utf-8">'
+        planted = []
+        for t in ("style", "title"):
+            for pre_, post in (("<math>", "</math>"), ("<math><mrow>", "</mrow></math>"), ("<math><mi>", "</mi></math>"), ("<body>", "</body>"),
+                               ("<html><head></head>", "</html>")):
+                planted.append((f"{pre_}<{t}>{img}</{t}>{post}", [f"element {t} outside head"]))
+        planted.append(('<html><head><style>p{}</style></head><body><math><style>' + img + '</style></math></body></html>', ["element style outside head"]))
+        planted.append(('<html><head><style>p{}</style></head><body><math><title>' + img + '</title></math></body></html>', ["element title outside head"]))
+        planted.append(('<html><head><math><style>' + img + '</style></math></head></html>', ["element style outside head"]))
+        planted += [(pre + "<head><math></head><style>" + img + "</style>", ["element style outside head"]),
+                    (pre + "<head><math></head><title>" + img + "</title>", ["element title outside head"]),
+                    (pre + "<body><math></body><style>" + img + "</style>", ["element style outside head"]),
+                    (pre + "<body><math></body><title>" + img + "</title>", ["element title outside head"]),
+                    (pre + "<p>a</p><style>" + img + "</style>", ["element style outside head"]),
+                    (pre + "<p>a</p><title>" + img + "</title>", ["element title outside head"])]
+        controls = [pre + '<title>T</title><style>p { color: red; }</style></head><body><p>a</p></body></html>',
+                    '<html><head><style>a{}</style></head><body><p>a</p></body></html>',
+                    pre + "<title>T</title><style>a{}</style><title>U</title><style>b{}</style></head><body><p>a</p></body></html>",
+                    '<html><head><title>T</title><meta charset="utf-8"><style>a{}</style></head><body><p>a</p></body></html>']
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 4))
+
+    @case("EL7", "the hiding set (the elements html.parser reads as text, from its own CDATA_CONTENT_ELEMENTS and, where it has it, RCDATA_CONTENT_ELEMENTS, "
+                 "among the allowed elements) is `style` and `title` today: a future allowed raw-text element must be classified, as this case fails until it is")
+    def _():
+        hp = html.parser.HTMLParser
+        rc = hasattr(hp, "RCDATA_CONTENT_ELEMENTS")
+        return _eq((sorted(HIDING_ELEMENTS), sorted((set(hp.CDATA_CONTENT_ELEMENTS) | set(getattr(hp, "RCDATA_CONTENT_ELEMENTS", ()))) & set(ALLOWED_ELEMENTS)),
+                    "style" in hp.CDATA_CONTENT_ELEMENTS, "script" in ALLOWED_ELEMENTS),
+                   (["style", "title"] if rc else ["style"], ["style", "title"] if rc else ["style"], True, False))
+
+    @case("EL8", "no comment, processing instruction or declaration but ONE `<!doctype html>` before the first start tag: `<!-->` and `<!--->` "
+                 "(html.parser reads a comment open until the next `-->`, a browser closes it at once, so a tag behind them is live) are `comment`, "
+                 "`<![CDATA[>` (a bogus comment in HTML content, to the first `>`) is `declaration`, an ordinary `<!-- x -->` and `<!x>` (the parser "
+                 "hands both to handle_comment) are `comment` (stricter than a browser needs), `<?xml ...?>` is `processing instruction`, a second "
+                 "doctype, a doctype after a start tag and `<!doctype html public \"x\">` are `declaration`; controls: the real page's `<!DOCTYPE html>` "
+                 "(upper case is the same doctype: the check compares the declaration lower-cased and stripped), `<!doctype html>`, `<!doctype html >`, "
+                 "and a fragment with no doctype")
+    def _():
+        ep = element_problems
+        pre = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
+        img = "<img src=x onerror=alert(1)>"
+        planted = [(pre + "<!-->" + img + "-->", ["comment"]), (pre + "<!--->" + img + "-->", ["comment"]),
+                   (pre + "<![CDATA[>" + img + "]]>", ["declaration"]),
+                   (pre + "<!-- x -->", ["comment"]), (pre + "<!x>", ["comment"]), (pre + '<?xml version="1.0"?>', ["processing instruction"]),
+                   ("<!doctype html>" + pre, ["declaration"]), (pre + "<!doctype html>", ["declaration"]),
+                   ('<!doctype html><html><!doctype html><head></head>', ["declaration"]),
+                   ('<!doctype html public "x"><html></html>', ["declaration"]), ('<!doctype html system "about:legacy-compat"><html></html>', ["declaration"]),
+                   ("<!doctype><html></html>", ["declaration"]),
+                   ("<html><!DOCTYPE html><head></head></html>", ["declaration"]), ("<p>a</p><!doctype html>", ["declaration"]),
+                   (pre + "<!-- a --><?x>", ["comment", "processing instruction"]), (pre + "<!-- a --><!-- b -->", ["comment"])]
+        controls = [pre + "<p>a</p></body></html>", "<!doctype html>" + pre[len("<!DOCTYPE html>"):], "<!doctype html >" + pre[len("<!DOCTYPE html>"):],
+                    "<p>a</p>", "<!DocType HTML><html></html>"]
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 5))
+
+    @case("EL9", "markup html.parser holds back at the end of the page is `unterminated markup`, because it never reports it while a browser still reads the "
+                 "tag behind it: `<![CDATA[<!-->` then an <img onerror> (a live img in a browser, nothing from the parser), an unterminated `<![CDATA[`, "
+                 "`<!--`, a start tag with no `>`, and a <style> never closed; controls: a complete page, text with a trailing `&`, a fragment")
+    def _():
+        ep = element_problems
+        pre = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
+        img = "<img src=x onerror=1>"
+        planted = [(pre + "<![CDATA[<!-->" + img, ["unterminated markup"]), (pre + "<![CDATA[" + img, ["unterminated markup"]),
+                   (pre + "<!-- x" + img, ["unterminated markup"]), (pre + "<img src=x onerror=1", ["unterminated markup"]),
+                   (pre + "<p", ["unterminated markup"]), ('<!DOCTYPE html><html><head><style>' + img, ["unterminated markup"]),
+                   (pre + "<p>a</p><!--", ["unterminated markup"])]
+        controls = [pre + "<p>a</p></body></html>\n", pre + "<p>AT&T</p> and AT&T", pre + "<p>a &amp; b</p> x & y", "<p>a</p>"]
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 4))
 
     @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the Evidence section (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
                  "the JSON keeps the path as written")
