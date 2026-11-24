@@ -118,7 +118,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      `first_sentence` on the JSON and data.js side, as for a claim (doubled backticks compare as written). A block whose text,
      once the content of its single-backtick spans is taken out, holds `$`, `\\(`, `\\[` or `\\begin{` is LISTED, one line
      `FORMULA-RAW <block id>` per block in note order, on stdout after KIND-NOTE; exit unchanged, nothing written. Formulas
-     are not converted here (F26 will). Cases BT1 BT2 BT3 BT4 BT5 BT6 FR1 FR2.
+     are not converted here (F26 will). Cases BT1 BT2 BT3 BT4 BT5 BT6 BT7 BT8 FR1 FR2 FR3 FR4.
   F9 The run prints the builder's own line `claim basis: R read, C census, M without (treated as read)` (without the
      parenthesis when M is 0), counted over the non-null claims of the outline, beside the checker's line of the same
      counts. Case BAS1.
@@ -258,8 +258,11 @@ has such a kind (a step with several roots too), and proof_not_applicable_line o
 distinguish: it shows steps_proof_not_applicable_line whenever no step has a proof, and a root of an unknown kind among the
 top-level steps is not reachable on a real table (the table holds the eight kinds only). The source check ranges over what a reader sees: the text of claims, conditions and note titles
 with the backticks of a span removed (on the JSON and data.js side, and on the copied title lines; the page skips <code>), the
-other values as written; a release line that is inside a longer sentence, or that is split by a span in its middle, is still not
-seen. FORMULA-RAW ranges over argument and interpretation blocks only (the `sketch` kind joins in the F24b change). It is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
+other values as written, except the text of a block and a block's first sentence, which are compared BOTH as written and with the
+backticks removed (so a release line that itself holds a span is still seen there); a release line that is inside a longer sentence
+(of a claim, of block text or of a first sentence), or that is split by a span in its middle, is still not seen. The first sentence
+is cut at the first `.`, `!` or `?` followed by white space even inside a span (`We apply `f. g` here.` gives `We apply `f.`, the
+backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). FORMULA-RAW ranges over argument and interpretation blocks only (the `sketch` kind joins in the F24b change). It is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
 span, is listed too, and a formula inside a code span is not; F26 will convert formulas. A K1 source line is compared as it
 stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
 claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>

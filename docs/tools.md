@@ -121,8 +121,8 @@ on the page that is in no JSON file; a group id that is not safe as a file name.
 the text lines of every output (what a reader sees: the backticks of a span are removed from claim text, conditions, note titles, block text and a block's first sentence first, on the JSON side; the page itself is not compared inside `<code>`), and the source lines of every copied note text (an argument or interpretation
 paragraph, a note title) before they are joined, with the lines of the release (at least 20 non-space characters), and
 says what it ranged over; names and ids are left out by construction. What it shows is narrow: no output line equals a
-release line and no line of copied note text equals one; a release line quoted inside a longer sentence is not
-detected. `--notes-commit REV --repo DIR` stamps the notes commit; a
+release line and no line of copied note text equals one; a release line quoted inside a longer sentence (of a claim, of block text or of a first sentence) is not
+detected. Block text and a block's first sentence are compared both as written and with span backticks removed, so a release line that itself holds a span is still seen there. The first sentence of an argument block is cut at the first `.`, `!` or `?` followed by white space even inside a span (a span holding `f. g` gives the sentence ending in `f.`, its backtick left literal on the card): a known limit, not changed. `--notes-commit REV --repo DIR` stamps the notes commit; a
 tree whose notes, outline or strings differ from it, or whose tools differ from their commit, stamps `dirty` in every
 commit id and on the page. A fresh run into a non-empty OUT_DIR refuses unless `--force`, which removes only what a
 build writes. The site is written into a temporary directory beside OUT_DIR and renamed into place, so a failure
