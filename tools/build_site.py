@@ -302,7 +302,10 @@ sketch's paragraphs, list items and unexpanded entries (as written, span backtic
 and each link target as a line); WORD-NOTE does not read them. A link is `[text](target)` with a text of no bracket and a target of no
 parenthesis or white space; a link text that holds `. ` is cut by the first-sentence rule (a known limit). Links in the recognition and
 in the `unexpanded` entries are not rewritten. The strings rule R3 refuses `of the proof` in any value, so a wording that holds it (a
-compiled part of the proof) is refused until the rule or the wording changes. A block's frame uses the roots of the card it is shown
+compiled part of the proof) is refused until the rule or the wording changes. A sketch belongs to the group named in its note's header, the group notes_meta checks it against (SKETCH-NO-ARGUMENT, SKETCH-DUPLICATE), and
+shows on that group's card and in its JSON only: a root of another group among the sketch's further decls does not give that group the
+sketch, and the sketch block is not in that group's block list either. A sketch whose header names a group that does not own a root of its
+decls is refused by the checker (SKETCH-ROOT) and never reaches the page. A block's frame uses the roots of the card it is shown
 on, by ruling (F34): a card speaks about its own root, so one block can be framed as a definition on one card and as a proof on another.
 The static check's exemption for an <a class=citation> (and for a reaction anchor) is by class TOKEN: `citation extra` passes, `citationx` does
 not, and the citation exemption holds for `href` alone.
@@ -1021,6 +1024,8 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                 blocks.setdefault(rec["block"], rec)
         brecs, sketches = [], []
         for rec in sorted(blocks.values(), key=_block_key):
+            if rec["kind"] == "sketch" and by_note[rec["note"]]["group"] != gid:
+                continue   # a sketch is of the group its note's header names (as notes_meta assigns it), whatever else its decls list
             out = {k: v for k, v in rec.items() if k not in ("_decls", "_src", "_sk")}
             if rec.get("_src") and rec["block"] not in seen_blocks:
                 seen_blocks.add(rec["block"])
