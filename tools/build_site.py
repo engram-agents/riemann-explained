@@ -292,6 +292,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import urllib.parse
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -3665,6 +3666,14 @@ def _selftest_cases():
         return _eq((res, [ln for ln in _base().out.splitlines() if ln.startswith("FORMULA-RAW")]),
                    ([(0, ["FORMULA-RAW 01.b03"]), (0, ["FORMULA-RAW 01.b02", "FORMULA-RAW 01.b03"]), (0, ["FORMULA-RAW 01.b02"]),
                      (0, [])], []))
+
+    @case("FR3", "FORMULA-RAW ranges over argument and interpretation blocks only: `_formula_raw` on a model whose blocks of every other "
+                 "kind carry a `$x$` text lists none of them, and lists the argument and the interpretation block that hold the same text")
+    def _():
+        kinds = ("reading", "correction", "not_read", "machine_fact", "sketch", "argument", "interpretation")
+        note = {"id": "n", "blocks": [{"block": "n.b" + k, "kind": k, "text": "Take $x$ here"} for k in kinds]}
+        got = _formula_raw(types.SimpleNamespace(notes=[note]))
+        return _eq(got, ["n.bargument", "n.binterpretation"])
 
     # ---- B1: no release text
     @case("B1a", "leak_check: a planted shard whose `text` value is a line of the release (>= 20 non-space characters) is named "
