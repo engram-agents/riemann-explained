@@ -140,10 +140,29 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      FORMULA-RAW; exit unchanged). In a sketch list the indented `- ` or `* ` lines of an item are one nested <ul> in its <li>; the
      JSON item is {text, items}; a deeper level is flat and listed `NEST-DEPTH <block id>`. The source check removes the asterisks
      of a pair. CSS `code { overflow-wrap: anywhere; }`. Cases BD1 to BD8 NS1 to NS4 LB1 CW1.
+  F37 PROVENANCE OFF THE READER'S SURFACE (a to c). No sentence of the card names a reader, a date of ours, a file, lines or a build:
+     the status lines say the fact (`statement_read_line`, `proof_read_line`, `statement_census_line`, the not-read lines), the argument,
+     no-proof and interpretation frames and the sketch frame name nobody (the sketch frame names its basis only), a citation line is
+     `{source}, {where}` (and `, dated {source_date}` of a source that says open), the established line names the statement only, and
+     the label line is ONE standing sentence at the end of each recognition block (none on a card with the not-written line). The
+     second readers' line is not on the card nor in the closed card's first sentence. What left the card is in the card's closed
+     <details class="evidence">, which has no `open`: after the root blocks and before the block list, `<ul class="provenance">` with
+     in this order the statement line (`evidence_statement_read_line`, or `evidence_statement_census_line`; only a card with one root
+     or none, as the card's own status lines), the proof line (`evidence_proof_read_line`; the first argument block), the recognition
+     (`evidence_recognition_line`), one line per citation (`evidence_citation_line`: source, opened_by, opened_on, the source through
+     the span rule) and the established line of a named statement (`evidence_established_line`; none for `not_traced`); in each
+     block `<li>` of the block list, after its text: for an argument or sketch block a `<dl class="block-source">` with the File
+     (base name) and Lines labels (`not given` when it has none), then one `<p class="second-reader">` per second reader of the block
+     (any kind) and, for a sketch built from a compiled part, `<p class="sketch-build">`. The data (group files, level files,
+     data.js) is unchanged: every reader, date, second reader, file and line range stays. A correction on a card shows its kind and its
+     title only; its reader and date are in the Evidence block list (the who-span of its block). Cases PV1 to PV12, and the cases that
+     moved with it (R6 B7a B7c B7f F1b H1 C1 C1b RDR1 PRF1 PRF2 PH1 PHR1 PHR2 PHR4 PHR5 PHR6 PHR7 BT2 RD1 RD2 RD3 RL1 RE1 RS3 PB1 PB3 DF1
+     DF3 DF4 SK2 SK8 LK1 LK2 LK3 ESC1 MK1).
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
-  F29 `{file}` (optional) is the base name of the block's file and `{lines}` the range only; the second readers follow the text. Cases
-     DF1 DF3 PHR7.
+  F29 The base name of the block's file and the range of its lines are shown in the Evidence section (F37 moved them out of the frame;
+     the labels are File and Lines, `not given` for a missing file or lines); the second readers follow the block's text there.
+     Cases DF1 DF3 DF4 PHR7.
   F30 A link `[text](target)` in block text is shown as its text, no anchor; the run prints `links in block text: N shown as text`
      and `LINK-OUTSIDE <block id> <target>` (a listing). Cases LK1 to LK5.
  F9 The run prints the builder's own line `claim basis: R read, C census, M without (treated as read)` (without the
@@ -164,23 +183,28 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      name and the strings file's `no_claim_label` in the heading, then its status lines (H1). Case P3.
   PH Every string value of the strings file, at any depth, may hold only the placeholders its key declares: a `{name}` the
      key does not declare is STRINGS-KEY naming the key and the token, and a key that declares none may hold no brace at
-     all (the check is built from the declared sets, so a new key is covered by default). proof_read_line declares {reader}
-     and {date} and the card fills them from the first argument block of the root, by note id then block number. Cases PRF1
+     all (the check is built from the declared sets, so a new key is covered by default). evidence_proof_read_line declares {reader}
+     and {date} and the Evidence section fills them from the first argument block of the root, by note id then block number. Cases PRF1
      PRF2 PH1 PH2.
-  PHR Nine keys must hold EVERY placeholder they declare (the check is a value that lacks one: STRINGS-KEY naming the key and
-     `is missing the placeholder {name}`): statement_read_line, statement_census_line and proof_read_line ({reader} {date}),
-     statement_count_line, proof_count_line, steps_statement_line and steps_proof_line ({n} {m}), open_items_line and
-     steps_open_items_line ({n}). The frames (argument_frame, second_reader_frame, interpretation_frame, frames.*), shared_note,
-     note_href and the reaction hrefs may omit theirs. Cases PHR1 PHR2 PHR3 PHR4 (the nine keys declare exactly the placeholders they must hold).
+  PHR The keys that must hold EVERY placeholder they declare (the check is a value that lacks one: STRINGS-KEY naming the key and
+     `is missing the placeholder {name}`) are the counts (statement_count_line, proof_count_line, steps_statement_line and
+     steps_proof_line ({n} {m}), open_items_line and steps_open_items_line ({n})), the recognition lines, the citation lines
+     (`{source}` `{where}`, and `{source_date}` on the open one), established_by_line ({name}), sketch_frame ({basis}) and the eight
+     Evidence keys of F37 (`{reader}` `{date}`; `{source}` `{opened_by}` `{opened_on}`; `{name}`; `{build}`). The read lines, the frames
+     (argument_frame, argument_frame_no_proof, interpretation_frame), the label line and sketch_basis_compiled declare no placeholder
+     since F37 (second_reader_frame is no key any more, and no longer required); frames.argument is the detector `How this is proved`
+     (it was `How this is proved, as`; the frame has no `, as` any more); shared_note, note_href and the reaction hrefs may omit
+     theirs. Cases PHR1 PHR2 PHR3 PHR4 PHR5 PHR6 PHR7 PV2 (the 27 keys declare exactly the placeholders they must hold).
   CODE In a claim text and in a condition a span between single backticks on one line is rendered as <code>...</code>, its
      content escaped like all data; nothing else is markup (no bold, link, heading or raw HTML: a `<b>` in the data stays
      escaped text). An unpaired backtick, an empty pair, doubled backticks and a pair over a line break (LF or CR) stay literal text.
      In the JSON and in data.js the text stays as written, backticks included. The span is notes_meta's `_BACKTICK_SPAN`, the one
      definition the checker uses for CLAIM-LIBRARY-WORD too, so the page and the checker agree on what is code. Cases CODE1 CODE2
      CODE3 CODE4 AGR1.
-  C1 The two status lines come from the strings keys: statement_read_line ({reader} {date} of the claim, or of the first
-     reading block of the root when the claim is null, or when its basis is census), statement_census_line ({reader} {date}
-     of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line, proof_not_applicable_line and proof_none_other_line (a root that has no proof,
+  C1 The two status lines come from the strings keys, and since F37 name nobody: statement_read_line (the claim is read, or a reading
+     block anchors the root; the Evidence line names the reader and date of the claim, or of the first reading block of the root
+     when the claim is null, or when its basis is census), statement_census_line (a census claim; it does not count; the Evidence
+     line names the claim's reader and date), statement_not_read_line; proof_read_line, proof_not_read_line, proof_not_applicable_line and proof_none_other_line (a root that has no proof,
      no placeholders). A group with several
      roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is shown on a
      card only when n is above zero (a zero is not said there); the first-screen line steps_open_items_line is ALWAYS shown, zero
@@ -270,8 +294,8 @@ of them: statement_read_line, statement_census_line, statement_not_read_line, pr
 proof_not_applicable_line, proof_none_other_line, steps_proof_not_applicable_line, statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
 (and the three labels of the evidence block, evidence_module_label, evidence_name_label, evidence_kind_label);
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
-missing is read as `read` until the checker requires it (the run line says how many). The page shows the claim's reader and
-date in the statement line; for a null claim with a reading block the first reading block in note and block order. The proof line names the reader and date of the first argument block of the root, by note id and then block number (the same
+missing is read as `read` until the checker requires it (the run line says how many). The Evidence section shows the claim's reader and
+date in its statement line (the card says only that the statement is read); for a null claim with a reading block the first reading block in note and block order. Its proof line names the reader and date of the first argument block of the root, by note id and then block number (the same
 rule as the statement reader, not by date). Placeholders are checked in every value of the strings file at any depth from the
 declared sets: a key that is not in the table declares none, so a new key is covered by default, and an `{name}` outside a value
 that declares it, or a brace in a value that declares none, refuses the build. A claimed
@@ -294,13 +318,13 @@ span, is listed too, and a formula inside a code span is not; F26 will convert f
 stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
 claim or condition text into markup (F35 adds <strong> and a nested <ul> for block text; the static check has no list of allowed elements), and the only new element for those is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
-seen in the JSON and not on the page. The nine keys of PHR must hold their placeholders, so a value that says the fact without
+seen in the JSON and not on the page. The keys of PHR must hold their placeholders, so an Evidence value that says the fact without
 the reader or the count is refused rather than printed without it. The sum assertions of F4 guard a MISSING flag, not a
 WRONG one. A not_read block in a level-0 note is anchored to no group: it is not counted in totals.open_items and is shown on no card. NOTE-ID-DUPLICATE belongs to the checker of the
 notes; the builder has no rule of its own for it (the checker refuses first). WORD-NOTE reads the
 claim, the conditions, the note titles and the text of argument and interpretation blocks, not the strings file's
-hrefs; it lists, it does not judge. The block of an argument is framed with its lines and file name together; a block with
-lines and no file shows `lines_missing`, because the lines name no file. The notes are the files NOTES_DIR matches by notes_meta's default pattern. The page's
+hrefs; it lists, it does not judge. The Evidence section shows a block's lines and file name together; a block with
+lines and no file shows `lines_missing` for both, because the lines name no file. The notes are the files NOTES_DIR matches by notes_meta's default pattern. The page's
 note links are the strings file's `note_href` with the note's file name filled in.
 
 LIMIT (F24b). The page trusts the checker's rules on roles and forms: a model that breaks them (open_in_literature on an object, an
@@ -317,6 +341,16 @@ decls is refused by the checker (SKETCH-ROOT) and never reaches the page. A bloc
 on, by ruling (F34): a card speaks about its own root, so one block can be framed as a definition on one card and as a proof on another.
 The static check's exemption for an <a class=citation> (and for a reaction anchor) is by class TOKEN: `citation extra` passes, `citationx` does
 not, and the citation exemption holds for `href` alone.
+
+LIMIT (F37). The card names nobody, but two places still can: the author's own text (a sketch or an argument that says who read what,
+or a seat's name) and the first screen. A correction stays on the card with its kind and its title (what was wrong: a doubt a reader should
+see); its reader and date are in the Evidence block list, in the who-span beside the block's kind (the existing line, no key of its own). The Evidence section is closed, not hidden: it is in the page and in the JSON for whoever opens it. The
+order and the markup of the Evidence lines are stated above (F37); the card of several roots has no statement or proof line there, as
+none on the card. The recognition's citations are listed with their opener for every citation (not only the ones with a url), the
+source through the span rule like on the card. The wording of the Evidence keys is the wording seat's; this tool checks only the
+placeholders and the builder-sentence rules (R3: forbidden words, no percent sign, no `of the proof`). `frames.interpretation` still
+declares {reader} and {date} (a detector list that may use them; the real file holds none). (d), a record of the publishing commit
+written by the builder, is not done here.
 
 usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX]
                      [--notes-commit REV --repo DIR] [--force]
@@ -376,7 +410,7 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "statement_not_read_line", "proof_read_line", "proof_not_read_line", "proof_not_applicable_line", "proof_none_other_line",
              "steps_proof_not_applicable_line", "statement_count_line",
              "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
-             "second_reader_frame", "interpretation_frame", "evidence_label", "evidence_module_label", "evidence_name_label", "evidence_kind_label",
+             "interpretation_frame", "evidence_label", "evidence_module_label", "evidence_name_label", "evidence_kind_label",
              "roots_only_note", "dirty_note", "shared_note", "note_href",
              "recognition_result_known_line", "recognition_result_variant_line", "recognition_result_not_recognised_line",
              "recognition_result_open_line", "recognition_named_statement_known_line",
@@ -386,15 +420,19 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "recognition_citation_line", "recognition_citation_dated_line", "recognition_citation_open_line",
              "named_statement_use_line", "established_by_line", "established_not_traced_line", "sketch_frame",
              "sketch_basis_source", "sketch_basis_compiled", "sketch_note", "sketch_missing_line", "unexpanded_heading",
-             "argument_frame_no_proof")
-PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_line": {"reader", "date"},
+             "argument_frame_no_proof", "evidence_statement_read_line", "evidence_statement_census_line", "evidence_proof_read_line",
+             "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
+             "evidence_sketch_build_line")
+# F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
+PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+                "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
+                "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
+                "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
-                "argument_frame": {"reader", "date", "lines", "file"}, "second_reader_frame": {"reader", "date"},
-                "interpretation_frame": {"reader", "date"}, "shared_note": {"groups"}, "note_href": {"file"},
-                "proof_read_line": {"reader", "date"},
+                "shared_note": {"groups"}, "note_href": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
-                "frames.argument": {"reader", "date", "lines"}, "frames.interpretation": {"reader", "date"},
+                "frames.interpretation": {"reader", "date"},
                 "recognition_result_known_line": {"result"},
                 "recognition_result_variant_line": {"result"},
                 "recognition_result_open_line": {"result", "source_date"},
@@ -403,18 +441,18 @@ PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_lin
                 "recognition_named_statement_open_line": {"result", "source_date"},
                 "recognition_object_known_line": {"result"},
                 "recognition_object_variant_line": {"result"},
-                "recognition_label_line": {"date", "reader"},
                 "recognition_citation_line": {"source", "where"},
-                "recognition_citation_dated_line": {"opened_by", "opened_on", "source", "where"},
-                "recognition_citation_open_line": {"opened_by", "opened_on", "source", "source_date", "where"},
-                "established_by_line": {"date", "name", "reader"},
-                "sketch_frame": {"basis", "date", "reader"},
-                "sketch_basis_compiled": {"build"},
-                "argument_frame_no_proof": {"reader", "date", "lines", "file"},
+                "recognition_citation_dated_line": {"source", "where"},
+                "recognition_citation_open_line": {"source", "source_date", "where"},
+                "established_by_line": {"name"},
+                "sketch_frame": {"basis"},
                 "reactions.href": {"card"}}
-# the keys whose value must hold EVERY placeholder it declares (the frames, the notes' hrefs and the reaction hrefs may omit theirs)
-REQUIRED_PLACEHOLDERS = {"statement_read_line": ("reader", "date"), "statement_census_line": ("reader", "date"),
-                         "proof_read_line": ("reader", "date"), "statement_count_line": ("n", "m"), "proof_count_line": ("n", "m"),
+# the keys whose value must hold EVERY placeholder it declares (the notes' hrefs and the reaction hrefs may omit theirs)
+REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "evidence_statement_census_line": ("reader", "date"),
+                         "evidence_proof_read_line": ("reader", "date"), "evidence_second_reader_line": ("reader", "date"),
+                         "evidence_recognition_line": ("reader", "date"), "evidence_citation_line": ("source", "opened_by", "opened_on"),
+                         "evidence_established_line": ("name", "reader", "date"), "evidence_sketch_build_line": ("build",),
+                         "statement_count_line": ("n", "m"), "proof_count_line": ("n", "m"),
                          "steps_statement_line": ("n", "m"), "steps_proof_line": ("n", "m"), "open_items_line": ("n",),
                          "steps_open_items_line": ("n",),
                          "recognition_result_known_line": ("result",),
@@ -425,14 +463,11 @@ REQUIRED_PLACEHOLDERS = {"statement_read_line": ("reader", "date"), "statement_c
                          "recognition_named_statement_open_line": ("result", "source_date"),
                          "recognition_object_known_line": ("result",),
                          "recognition_object_variant_line": ("result",),
-                         "recognition_label_line": ("reader", "date"),
                          "recognition_citation_line": ("source", "where"),
-                         "recognition_citation_dated_line": ("source", "where", "opened_by", "opened_on"),
-                         "recognition_citation_open_line": ("source", "where", "source_date", "opened_by", "opened_on"),
-                         "established_by_line": ("name", "reader", "date"),
-                         "sketch_frame": ("reader", "date", "basis"),
-                         "sketch_basis_compiled": ("build",),
-                         "argument_frame_no_proof": ("reader", "date")}
+                         "recognition_citation_dated_line": ("source", "where"),
+                         "recognition_citation_open_line": ("source", "where", "source_date"),
+                         "established_by_line": ("name",),
+                         "sketch_frame": ("basis",)}
 PROOF_KINDS = frozenset(["theorem", "lemma"])   # the table kinds that HAVE a proof; any other kind has none (F22)
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
@@ -1376,20 +1411,20 @@ def _render_page(m, s, facts, dirty):
         out += ["</ul>", "</section>"]
     out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
 
-    def frames(b, rows):
-        """(the frame of a block, the frames of its second readers, each led by a space): the second readers come AFTER the text of
-        the block, so the two are apart. {file} is the base name of the block's file (`not given` with no file), {lines} the range
-        only (`not given` with no lines, or no file for them to name). A block anchored only on roots whose kind is not a theorem or
-        a lemma is framed by argument_frame_no_proof (`rows` are the root rows of the card)."""
+    def where(b):
+        """(the base name of the block's file, the range of its lines) as the Evidence section shows them (F29, moved there by F37):
+        `not given` for the file with no file, and for the lines with no lines or no file for them to name."""
         fname = (b["file"].replace("\\", "/").rsplit("/", 1)[-1] if b.get("file") else "") or lab["lines_missing"]
         lines = f"{b['lines'][0]}-{b['lines'][1]}" if b.get("lines") and b.get("file") else lab["lines_missing"]
+        return fname, lines
+
+    def frames(b, rows):
+        """The frame of a block (F37: it names nobody, no date, no file and no lines; the second readers, the file and the lines are
+        in the Evidence section). A block anchored only on roots whose kind is not a theorem or a lemma is framed by
+        argument_frame_no_proof (`rows` are the root rows of the card)."""
         kind_of = {(r["module"], r["name"]): r["kind"] for r in rows}
         proofless = bool(b.get("roots")) and not any(kind_of.get((x["module"], x["name"])) in PROOF_KINDS for x in b["roots"])
-        first = _fill(s["argument_frame_no_proof" if proofless else "argument_frame"], reader=b["reader"], date=b["date"], file=fname,
-                      lines=lines)
-        more = [_fill(s["second_reader_frame"], reader=r["reader"], date=r["date"]) for r in b.get("second_readers", [])]
-        return (f'<span class="frame">{_e(first)}</span>',
-                "".join(f' <span class="frame second">{_e(x)}</span>' for x in more))
+        return f'<span class="frame">{_e(s["argument_frame_no_proof" if proofless else "argument_frame"])}</span>'
 
     def recognition(sm, role):
         """The recognition block of a card with a claim: the form line, the difference, the citations, the established line (a named
@@ -1414,8 +1449,7 @@ def _render_page(m, s, facts, dirty):
             for c in cits:
                 key = "recognition_citation_open_line" if rec["form"] == "open_in_literature" and c.get("says_open") is True \
                     else "recognition_citation_dated_line"
-                text = _fillh(s[key], ("source", "where"), source=c["source"], where=c["where"], source_date=c.get("source_date", ""),
-                              opened_by=c["opened_by"], opened_on=c["opened_on"])
+                text = _fillh(s[key], ("source", "where"), source=c["source"], where=c["where"], source_date=c.get("source_date", ""))
                 if c.get("url"):
                     text = f'<a class="citation" href="{_e(c["url"])}">{text}</a>'
                 o.append(f"<li>{text}</li>")
@@ -1423,18 +1457,17 @@ def _render_page(m, s, facts, dirty):
         est = rec.get("established")
         if role == "named_statement" and est is not None:
             line = (_e(s["established_not_traced_line"]) if est == "not_traced" else
-                    _fillh(s["established_by_line"], name=f"{est['by']['module']}.{est['by']['name']}", reader=est["reader"],
-                           date=est["date"]))
+                    _fillh(s["established_by_line"], name=f"{est['by']['module']}.{est['by']['name']}"))
             o.append(f'<p class="recognition-established">{line}</p>')
-        o.append(f'<p class="recognition-label">{_fillh(s["recognition_label_line"], reader=rec["reader"], date=rec["date"])}</p>')
+        o.append(f'<p class="recognition-label">{_e(s["recognition_label_line"])}</p>')   # F37: one standing sentence, no name and no date
         o.append("</div>")
         return o
 
     def sketch(sk):
         """The sketch of a root: its frame (the basis string filled first, then the frame), its paragraphs and lists, the places
         Lean finishes by automation when there are any, and the note that it is a sketch."""
-        basis = _fill(s["sketch_basis_compiled"], build=sk["build"]) if sk["basis"] == "compiled" else s["sketch_basis_source"]
-        frame = _fill(s["sketch_frame"], reader=sk["reader"], date=sk["date"], basis=basis)
+        basis = s["sketch_basis_compiled"] if sk["basis"] == "compiled" else s["sketch_basis_source"]   # F37: the build string is in Evidence
+        frame = _fill(s["sketch_frame"], basis=basis)
         o = ['<div class="sketch">', f'<p class="frame sketch-frame">{_e(frame)}</p>']
         item = lambda x: (f"<li>{_rich(x, links=True)}</li>" if isinstance(x, str) else
                           f"<li>{_rich(x['text'], links=True)}<ul>" + "".join(f"<li>{_rich(y, links=True)}</li>" for y in x["items"]) + "</ul></li>")
@@ -1484,13 +1517,13 @@ def _render_page(m, s, facts, dirty):
                   if c["roots_proof_applicable"] else none_line)   # counted over the roots that HAVE a proof
         else:
             if sm["statement_read"]:
-                st = _fill(s["statement_read_line"], reader=by["reader"], date=by["date"])
+                st = s["statement_read_line"]
             elif by and by["source"] == "census":
-                st = _fill(s["statement_census_line"], reader=by["reader"], date=by["date"])
+                st = s["statement_census_line"]
             else:
                 st = s["statement_not_read_line"]
             pf = (none_line if sm["proof_read"] is None
-                  else _fill(s["proof_read_line"], reader=args[0]["reader"], date=args[0]["date"]) if sm["proof_read"]
+                  else s["proof_read_line"] if sm["proof_read"]
                   else s["proof_not_read_line"])
         o.append(f'<p class="status statement">{_e(st)}</p>')
         o.append(f'<p class="status proof">{_e(pf)}</p>')
@@ -1502,8 +1535,7 @@ def _render_page(m, s, facts, dirty):
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
             sent = f" {_rich(b['first_sentence'], links=True)}" if b.get("first_sentence") else ""
-            first, more = frames(b, fl["roots"])
-            o.append(f'<p class="argument">{first}{sent}{more} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
+            o.append(f'<p class="argument">{frames(b, fl["roots"])}{sent} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
         for sk in fl["sketches"]:
             o += sketch(sk)
         if not fl["sketches"] and sm["proof_read"] is True:   # a card whose proof is read and that has no sketch says so
@@ -1513,8 +1545,8 @@ def _render_page(m, s, facts, dirty):
             o.append('<ul class="corrections">')
             for b in corr:
                 n = next(n for n in sm["notes"] if n["note"] == b["note"])
-                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <span class="reader">{_e(b["reader"])}</span> '
-                         f'<time>{_e(b["date"])}</time> <a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>')
+                # F37: the kind and the title (what was wrong) stay; the reader and the date are in the Evidence block list
+                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>')
             o.append("</ul>")
         if sm["notes"]:
             o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
@@ -1536,6 +1568,28 @@ def _render_page(m, s, facts, dirty):
             if r["shared_with"]:
                 o.append(f'<p class="shared">{_e(_fill(s["shared_note"], groups=", ".join(r["shared_with"])))}</p>')
             o.append("</div>")
+        # F37: who read what, and when, the sentences that left the card; in a fixed order: the statement, the proof, the recognition,
+        # each citation, the established line (the second readers, the file and the lines and the build of a sketch follow their block)
+        reads = []
+        if c["roots"] <= 1:   # a card with counts (several roots) names nobody, as before
+            if sm["statement_read"] and by:
+                reads.append(("statement", _e(_fill(s["evidence_statement_read_line"], reader=by["reader"], date=by["date"]))))
+            elif by and by["source"] == "census":
+                reads.append(("statement", _e(_fill(s["evidence_statement_census_line"], reader=by["reader"], date=by["date"]))))
+            if sm["proof_read"]:
+                reads.append(("proof", _e(_fill(s["evidence_proof_read_line"], reader=args[0]["reader"], date=args[0]["date"]))))
+        rec = sm["recognition"]
+        if sm["claim"] and rec is not None:
+            reads.append(("recognition", _e(_fill(s["evidence_recognition_line"], reader=rec["reader"], date=rec["date"]))))
+            for ct in rec.get("citations") or []:
+                reads.append(("citation", _fillh(s["evidence_citation_line"], ("source",), source=ct["source"], opened_by=ct["opened_by"],
+                                                 opened_on=ct["opened_on"])))
+            est = rec.get("established")
+            if role == "named_statement" and isinstance(est, dict):
+                reads.append(("established", _fillh(s["evidence_established_line"], name=f"{est['by']['module']}.{est['by']['name']}",
+                                                    reader=est["reader"], date=est["date"])))
+        if reads:
+            o.append('<ul class="provenance">' + "".join(f'<li class="{k}">{v}</li>' for k, v in reads) + "</ul>")
         if fl["blocks"]:
             o += [f'<p class="label">{_e(lab["blocks"])}</p>', '<ul class="blocks">']
             for b in fl["blocks"]:
@@ -1544,10 +1598,19 @@ def _render_page(m, s, facts, dirty):
                 o.append(f'<li><a href="{_e(n["link"])}"><code>{_e(b["note"])}</code></a> <code>{_e(b["block"])}</code> '
                          f'<span class="kind">{_e(kinds[b["kind"]])}</span> {who}')
                 if b["kind"] == "argument" and b.get("text"):
-                    first, more = frames(b, fl["roots"])
-                    o.append(f'<p class="argument">{first} {_rich(b["text"], links=True)}{more}</p>')
+                    o.append(f'<p class="argument">{frames(b, fl["roots"])} {_rich(b["text"], links=True)}</p>')
+                if b["kind"] in ("argument", "sketch"):   # F37: the file and the lines left the frame of the block
+                    fname, lines = where(b)
+                    o.append(f'<dl class="block-source"><dt>{_e(lab["file"])}</dt><dd><code>{_e(fname)}</code></dd>'
+                             f'<dt>{_e(lab["lines"])}</dt><dd>{_e(lines)}</dd></dl>')
+                for sr in b.get("second_readers", []):
+                    o.append(f'<p class="second-reader">{_e(_fill(s["evidence_second_reader_line"], reader=sr["reader"], date=sr["date"]))}</p>')
+                if b["kind"] == "sketch":
+                    sk = next(x for x in fl["sketches"] if x["block"] == b["block"])
+                    if sk["basis"] == "compiled":
+                        o.append(f'<p class="sketch-build">{_e(_fill(s["evidence_sketch_build_line"], build=sk["build"]))}</p>')
                 if b["kind"] == "interpretation" and b.get("text"):
-                    fr = _fill(s["interpretation_frame"], reader=b["reader"], date=b["date"])
+                    fr = s["interpretation_frame"]
                     o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_rich(b["text"], links=True)}</p></aside>')
                 o.append("</li>")
             o.append("</ul>")
@@ -1972,21 +2035,75 @@ WORDING = {
     "recognition_object_variant_line": "Our reading: this is a version of the standard definition of {result}, changed to fit this proof.",
     "recognition_object_not_recognised_line": "Our reading: we do not recognise this as a standard definition. It may be made for this proof, or it may be standard and we have not found it.",
     "recognition_not_written_line": "Our reading of this statement: not written yet.",
-    "recognition_label_line": "This is {reader}'s understanding, written on {date}. No mathematician has checked this reading yet. If you think we have it wrong, or you know more, please tell us.",
+    "recognition_label_line": "No mathematician has checked our reading yet. If you think we have it wrong, or you know more, please tell us.",
     "recognition_citation_line": "{source}, {where}",
-    "recognition_citation_dated_line": "{source}, {where} (as read by {opened_by} on {opened_on})",
-    "recognition_citation_open_line": "{source}, {where}, dated {source_date} (as read by {opened_by} on {opened_on})",
+    "recognition_citation_dated_line": "{source}, {where}",
+    "recognition_citation_open_line": "{source}, {where}, dated {source_date}",
     "named_statement_use_line": "This step gives a name to a statement. Steps that use the name take the statement as a hypothesis.",
-    "established_by_line": "Where it is proved: the release proves this statement as {name} (read by {reader} on {date}).",
+    "established_by_line": "Where it is proved: the release proves this statement as {name}.",
     "established_not_traced_line": "Where it is proved: we have not yet traced where in the release this statement is proved.",
-    "sketch_frame": "The proof in order, as {reader} read it on {date}, {basis}:",
-    "sketch_basis_source": "reading the Lean source",
-    "sketch_basis_compiled": "from the goals Lean showed when we compiled the part of the release that holds it ({build})",
+    "sketch_frame": "The proof in order, {basis}:",
+    "sketch_basis_source": "from reading the Lean source",
+    "sketch_basis_compiled": "from the goals Lean shows when this part of the release is compiled",
     "sketch_note": "A sketch for a reader, not a proof: it leaves steps out and may hide the hard part.",
     "sketch_missing_line": "Proof sketch: not written yet.",
     "unexpanded_heading": "Places where Lean finishes the proof by automation we have not opened up:",
 }
-NO_PROOF_FRAME = "What this definition contains, as {reader} read it on {date} ({file}, lines {lines}):"
+NO_PROOF_FRAME = "What this definition contains:"
+
+# F37: the wording of provenance off the reader's surface (the wording seat's file, the CARD and EVIDENCE sections, copied as written)
+F37_CARD = {
+    "statement_read_line": "We have read this statement.",
+    "statement_not_read_line": "We have not read this statement yet.",
+    "statement_census_line": "We have not read this statement: what it says here comes from a program's count of its parts.",
+    "proof_read_line": "We have read this proof.",
+    "proof_not_read_line": "We have not read this proof yet.",
+    "argument_frame": "How this is proved:",
+    "argument_frame_no_proof": "What this definition contains:",
+    "interpretation_frame": "What we think it means:",
+    "sketch_frame": "The proof in order, {basis}:",
+    "sketch_basis_source": "from reading the Lean source",
+    "sketch_basis_compiled": "from the goals Lean shows when this part of the release is compiled",
+    "recognition_label_line": "No mathematician has checked our reading yet. If you think we have it wrong, or you know more, please tell us.",
+    "recognition_citation_dated_line": "{source}, {where}",
+    "recognition_citation_open_line": "{source}, {where}, dated {source_date}",
+    "established_by_line": "Where it is proved: the release proves this statement as {name}.",
+}
+F37_EVIDENCE = {
+    "evidence_statement_read_line": "Statement read by {reader} on {date}.",
+    "evidence_statement_census_line": "Statement counted by a program, not read, recorded by {reader} on {date}.",
+    "evidence_proof_read_line": "Proof read by {reader} on {date}.",
+    "evidence_second_reader_line": "Read again by {reader} on {date}.",
+    "evidence_recognition_line": "Our reading of where this statement stands: written by {reader} on {date}.",
+    "evidence_citation_line": "{source}: opened by {opened_by} on {opened_on}.",
+    "evidence_established_line": "Where it is proved: traced to {name} by {reader} on {date}.",
+    "evidence_sketch_build_line": "Proof sketch from a compiled part of the release: {build}.",
+}
+# the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
+F37_UNCHANGED = {
+    "proof_not_applicable_line": "Proof: none needed. This step is a definition, not a theorem: it gives a name to a statement (or to a kind of object) and does not claim that the statement is true, so there is no proof to read.",
+    "proof_none_other_line": "Proof: none to read. Our table of the release's declarations does not list this step as a theorem or a lemma, so the page shows no proof for it.",
+    "established_not_traced_line": "Where it is proved: we have not yet traced where in the release this statement is proved.",
+    "recognition_citation_line": "{source}, {where}",
+    "recognition_result_known_line": "Our reading: this is a well-known result in mathematics ({result}).",
+    "recognition_result_variant_line": "Our reading: this is a version of a well-known result ({result}), changed to fit this proof.",
+    "recognition_result_not_recognised_line": "Our reading: we do not recognise this as a known result. It may come from this proof, or it may be known and we have not found it.",
+    "recognition_result_open_line": "Our reading: this result's statement is {result}, an open problem as of {source_date} according to the dated source below.",
+    "recognition_named_statement_known_line": "Our reading: the statement named here is a well-known result in mathematics ({result}).",
+    "recognition_named_statement_variant_line": "Our reading: the statement named here is a version of a well-known result ({result}), changed to fit this proof.",
+    "recognition_named_statement_not_recognised_line": "Our reading: we do not recognise the statement named here as a known result. It may come from this proof, or it may be known and we have not found it.",
+    "recognition_named_statement_open_line": "Our reading: the statement named here is {result}, an open problem as of {source_date} according to the dated source below.",
+    "recognition_object_known_line": "Our reading: this is the standard definition of {result}.",
+    "recognition_object_variant_line": "Our reading: this is a version of the standard definition of {result}, changed to fit this proof.",
+    "recognition_object_not_recognised_line": "Our reading: we do not recognise this as a standard definition. It may be made for this proof, or it may be standard and we have not found it.",
+    "recognition_not_written_line": "Our reading of this statement: not written yet.",
+    "named_statement_use_line": "This step gives a name to a statement. Steps that use the name take the statement as a hypothesis.",
+    "sketch_note": "A sketch for a reader, not a proof: it leaves steps out and may hide the hard part.",
+    "sketch_missing_line": "Proof sketch: not written yet.",
+    "unexpanded_heading": "Places where Lean finishes the proof by automation we have not opened up:",
+    "evidence_label": "Evidence: where this sits in the Lean code, and who read what",
+    "mapped_line": "Each step below names results in the Lean code; a program located each one in the code and linked it. Under each step, two lines say whether one of us has read what it states and how it is proved.",
+}
 
 
 def _strings():
@@ -1995,11 +2112,11 @@ def _strings():
         "first_screen": ["First screen paragraph one.", "First screen paragraph two."],
         "mapped_line": "Mapped by machine line.",
         "no_claim_label": "No plain statement yet",
-        "statement_read_line": "Statement read by {reader} on {date}.",
-        "statement_census_line": "Statement counted by a script, not read ({reader}, {date}).",
-        "statement_not_read_line": "Statement: not read yet.",
-        "proof_read_line": "Proof read by {reader} on {date}.",
-        "proof_not_read_line": "Proof: not read yet.",
+        "statement_read_line": "We have read this statement.",
+        "statement_census_line": "We have not read this statement: what it says here comes from a program's count of its parts.",
+        "statement_not_read_line": "We have not read this statement yet.",
+        "proof_read_line": "We have read this proof.",
+        "proof_not_read_line": "We have not read this proof yet.",
         "proof_not_applicable_line": "Proof: none to read, this is not a theorem.",
         "proof_none_other_line": "Proof: none to read, and this declaration is of a kind we do not know.",
         "steps_proof_not_applicable_line": "No step here has a proof to read.",
@@ -2009,10 +2126,9 @@ def _strings():
         "steps_statement_line": "Statements read: {n} of {m} steps.",
         "steps_proof_line": "Proofs read: {n} of {m} steps.",
         "steps_open_items_line": "Questions written down in these notes: {n}.",
-        "frames": {"argument": ["How this is proved, as {reader} read it"], "interpretation": ["We think"], "claim": []},
-        "argument_frame": "How this is proved, as {reader} read it on {date} (lines {lines}):",
-        "second_reader_frame": "Read again by {reader} on {date}.",
-        "interpretation_frame": "Our interpretation, by {reader} on {date}:",
+        "frames": {"argument": ["How this is proved"], "interpretation": ["We think"], "claim": []},
+        "argument_frame": "How this is proved:",
+        "interpretation_frame": "What we think it means:",
         "evidence_label": "Evidence: where this sits in the Lean code, and who read what",
         "evidence_module_label": "Module", "evidence_name_label": "Name", "evidence_kind_label": "Kind",
         "reactions": [{"label": "This makes sense", "href": "https://example.invalid/react?card={card}&kind=sense"},
@@ -2032,8 +2148,8 @@ def _strings():
                              "correction": "Correction", "not_read": "Not read", "argument": "Argument",
                              "sketch": "Proof sketch"}}}
     s.update(WORDING)
-    s["argument_frame"] = "How this is proved, as {reader} read it on {date} ({file}, lines {lines}):"
     s["argument_frame_no_proof"] = NO_PROOF_FRAME
+    s.update(F37_EVIDENCE)
     return s
 
 
@@ -2071,6 +2187,17 @@ def _notes_s(**kw):
 def _notes_e(**kw):
     """The notes with a note named 06-x.md, so that a link to it is a link to a note of the build."""
     return _notes(**kw) | {"06-x.md": N06}
+
+
+def _notes_corr():
+    """The notes with a correction on the definition g1a1 in two notes (eight and nine), and one on the theorem g3 (ten): each has its
+    own reader and date (g1 has the one of note one, 01.b06)."""
+    def note(i, group, root, who, date):
+        return (f"# Note {i}\n" + _h(id=i, group=group, list_title="Note " + {"08": "eight", "09": "nine", "10": "ten"}[i]) + "\n\n## Body\n\n"
+                "What was wrong here.\n" + _b(id=f"{i}.b01", kind="correction", decls=[root], reader=who, date=date) + "\n")
+    return _notes() | {"08-corr.md": note("08", "g1a1", BAZ, "Reader Three", "2026-11-26"),
+                       "09-corr.md": note("09", "g1a1", BAZ, "Reader Four", "2026-11-27"),
+                       "10-corr.md": note("10", "g3", CORGE, "Reader Five", "2026-11-28")}
 
 
 CITA = {"source": "The Source Book", "where": "Theorem 2.1", "opened_by": "Reader Two", "opened_on": "2026-11-21",
@@ -2156,11 +2283,15 @@ _REQ2 = (("recognition_result_known_line", ("result",)), ("recognition_result_va
          ("recognition_named_statement_known_line", ("result",)), ("recognition_named_statement_variant_line", ("result",)),
          ("recognition_named_statement_open_line", ("result", "source_date")),
          ("recognition_object_known_line", ("result",)), ("recognition_object_variant_line", ("result",)),
-         ("recognition_label_line", ("reader", "date")), ("recognition_citation_line", ("source", "where")),
-         ("recognition_citation_dated_line", ("source", "where", "opened_by", "opened_on")),
-         ("recognition_citation_open_line", ("source", "where", "source_date", "opened_by", "opened_on")),
-         ("established_by_line", ("name", "reader", "date")), ("sketch_frame", ("reader", "date", "basis")),
-         ("sketch_basis_compiled", ("build",)), ("argument_frame_no_proof", ("reader", "date")))   # the keys that must hold their placeholders
+         ("recognition_citation_line", ("source", "where")),
+         ("recognition_citation_dated_line", ("source", "where")),
+         ("recognition_citation_open_line", ("source", "where", "source_date")),
+         ("established_by_line", ("name",)), ("sketch_frame", ("basis",)),
+         ("evidence_statement_read_line", ("reader", "date")), ("evidence_statement_census_line", ("reader", "date")),
+         ("evidence_proof_read_line", ("reader", "date")), ("evidence_second_reader_line", ("reader", "date")),
+         ("evidence_recognition_line", ("reader", "date")), ("evidence_citation_line", ("source", "opened_by", "opened_on")),
+         ("evidence_established_line", ("name", "reader", "date")),
+         ("evidence_sketch_build_line", ("build",)))   # the keys of the recognition, the established line, the sketch and the Evidence that must hold their placeholders
 
 
 def _marked(v, path=""):
@@ -2438,14 +2569,14 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "statement_not_read_line", "proof_read_line", "proof_not_read_line", "proof_not_applicable_line", "proof_none_other_line",
                "steps_proof_not_applicable_line", "statement_count_line",
                "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "frames",
-               "argument_frame", "second_reader_frame", "interpretation_frame", "evidence_label",
+               "argument_frame", "interpretation_frame", "evidence_label",
                "evidence_module_label", "evidence_name_label", "evidence_kind_label", "reactions",
                "roots_only_note", "dirty_note", "shared_note", "note_href", "forbidden_words",
                "labels", "labels.chain", "labels.level0_notes", "labels.premises", "labels.notes", "labels.go_deeper",
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE)
 
 
 def _real_strings_facts(path):
@@ -2465,6 +2596,24 @@ def _selftest_cases():
             cases.append((cid, desc, fn))
             return fn
         return deco
+
+    # ---- helpers for the cases that read the Evidence section (F37)
+    def surface(node):
+        """The text of a node outside every closed Evidence section (F37: the corrections list is read too)."""
+        out = []
+        for k in node.kids:
+            if isinstance(k, _Node):
+                if k.tag == "details" and "evidence" in k.cls:
+                    continue
+                out.append(surface(k))
+            else:
+                out.append(k)
+        return " ".join(out)
+
+    evd = lambda b_, g: _card(b_, g).find("details", "evidence")[0]
+    prov = lambda b_, g: [_raw(li) for li in _direct(evd(b_, g), "ul", "provenance")[0].elems()] if _direct(evd(b_, g), "ul", "provenance") else None
+    blk = lambda b_, g, bid: next(li for li in evd(b_, g).find("ul", "blocks")[0].elems() if bid in [c.text() for c in li.find("code")])
+    pairs = lambda li: [[(t.text(), d.text()) for t, d in zip(dl.find("dt"), dl.find("dd"))] for dl in li.find("dl", "block-source")]
 
     # ---- X: command, output, exit codes
     @case("X1a", "usage: no argument, four positionals, an unknown option, --notes-commit without --repo, a bad archive hash, a REV that is no commit: exit 2, stdout empty, "
@@ -2806,7 +2955,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 79 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 86 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -2819,7 +2968,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 79))
+        return _eq((bad, len(STRING_KEYS)), ([], 86))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -3021,18 +3170,18 @@ def _selftest_cases():
                     b.js("group/g1a1x.json")["roots"][0]["shared_with"], b.js("level0.json")["totals"]["roots"]),
                    (True, 6, ["Also a root of: g1a1x"], ["Also a root of: g2"], [], ["g2"], 6))
 
-    @case("R6", "the correction block on foo is shown on g1's card, outside the closed sections, with its kind, reader and date; "
+    @case("R6", "the correction block on foo is shown on g1's card, outside the closed sections, with its kind and its title and (F37) no reader "
+                "and no date, see PV12; "
                 "a card with none has no corrections list")
     def _():
         c = _card(_base(), "g1")
         li = _direct(c, "ul", "corrections")
         return _eq(([x.text() for x in li[0].find("li")], len(_direct(_card(_base(), "g3"), "ul", "corrections"))),
-                   (["Correction Reader Two 2026-11-22 Note one"], 0))
+                   (["Correction Note one"], 0))
 
-    @case("B7a", "an argument is shown in ONE element, frame first: `How this is proved, as Reader One read it on 2026-11-23 "
-                 "(B.lean, lines 15-18):` then the first sentence then the second reader's frame (F29: after the text); the full text with the "
-                 "frame and then the second reader's frame is in the evidence; an interpretation is in its own aside with its own frame, "
-                 "apart from the argument")
+    @case("B7a", "an argument is shown in ONE element, frame first: `How this is proved:` (F37: no reader, no date, no file, no lines) "
+                 "then the first sentence and the link, no second reader's line; the full text with the frame is in the evidence (the second "
+                 "reader's line follows it there, see PV7); an interpretation is in its own aside with its own frame, apart from the argument")
     def _():
         c = _card(_base(), "g1")
         idea = _direct(c, "p", "argument")[0]
@@ -3040,11 +3189,9 @@ def _selftest_cases():
         interp = c.find("aside")[0]
         return _eq((idea.text(), idea.elems()[0].cls, full.text(), interp.find("p", "interpretation")[0].text(),
                     full.inside("aside"), interp.inside("details", "evidence")),
-                   ("How this is proved, as Reader One read it on 2026-11-23 (B.lean, lines 15-18): First argument sentence. "
-                    "Read again by Reader Two on 2026-11-24. Read the note", ["frame"],
-                    "How this is proved, as Reader One read it on 2026-11-23 (B.lean, lines 15-18): First argument sentence. "
-                    "Second argument sentence. Read again by Reader Two on 2026-11-24.",
-                    "Our interpretation, by Reader Two on 2026-11-24: We think this is the key step.", False, True))
+                   ("How this is proved: First argument sentence. Read the note", ["frame"],
+                    "How this is proved: First argument sentence. Second argument sentence.",
+                    "What we think it means: We think this is the key step.", False, True))
 
     @case("B7b", "the first sentence of the argument is under the claim of the step, outside every closed section, and the second "
                  "sentence is not there")
@@ -3054,9 +3201,9 @@ def _selftest_cases():
         return _eq(("First argument sentence." in idea, "Second argument sentence." in idea, idea.startswith("How this is proved")),
                    (True, False, True))
 
-    @case("B7c", "a step with no argument block shows only the proof status line (`Proof: not read yet.`), no frame and no second "
+    @case("B7c", "a step with no argument block shows only the proof status line (`We have not read this proof yet.`), no frame and no second "
                  "sentence about the proof; a stale `no_argument` key in the strings file is ignored and never printed; control: "
-                 "the step with an argument block shows `Proof read by Reader One on 2026-11-23.` and its idea")
+                 "the step with an argument block shows `We have read this proof.` and its idea")
     def _():
         c = _card(_base(), "g3")
         st = _strings()
@@ -3065,7 +3212,7 @@ def _selftest_cases():
         return _eq(([p.text() for p in c.find("p", "proof")], len(_direct(c, "p", "argument")), len(_direct(c, "p", "no-argument")),
                     b.rc, "We have not read how this is proved." in b.page,
                     [p.text() for p in _card(_base(), "g1").find("p", "proof")][:1]),
-                   (["Proof: not read yet."], 0, 0, 0, False, ["Proof read by Reader One on 2026-11-23."]))
+                   (["We have not read this proof yet."], 0, 0, 0, False, ["We have read this proof."]))
 
     @case("B7d", "link_problems: a # link with no id of that name is named, a repeated id is named; controls: resolving links "
                  "(also one with percent-encoding): none; the built page has none")
@@ -3081,7 +3228,7 @@ def _selftest_cases():
         b = _build(notes=_notes(drop_reader=True))
         return _eq((b.rc, "BUILD-ERROR BLOCK-NO-READER 01.b01 " in b.out, b.existed, _base().rc), (1, True, False, 0))
 
-    @case("B7f", "an argument block whose target is a list shows its frame (with no file, `not given` for the file and for the lines) and a "
+    @case("B7f", "an argument block whose target is a list shows its frame (F37: the frame only) and a "
                  "link and no list text; the page never shows the "
                  "text of a list item or a table cell (ListItemTextXYZ, TableCellTextXYZ), nor does any output file")
     def _():
@@ -3095,7 +3242,7 @@ def _selftest_cases():
         idea = _direct(c, "p", "argument")[0].text()
         every = " ".join(v.decode() for v in b.files.values()) + " ".join(v.decode() for v in _base().files.values())
         return _eq((b.rc, idea, "ListItemTextXYZ" in every, "TableCellTextXYZ" in every),
-                   (0, "How this is proved, as Reader Two read it on 2026-11-23 (not given, lines not given): Read the note", False, False))
+                   (0, "How this is proved: Read the note", False, False))
 
     @case("U2", "a block anchored to a list carries its `item` and a table block its `row` in the group JSON, as data only")
     def _():
@@ -3143,18 +3290,19 @@ def _selftest_cases():
                     [(False, False)]])
 
     @case("F1b", "a census claim with an argument block on its root: proof only; a census claim plus a reading block on its root: "
-                 "statement read by the BLOCK (the statement line names the block's reader and date); a claim without basis "
-                 "alone, a claim with basis read alone: statement only")
+                 "statement read by the BLOCK (the Evidence line names the block's reader and date; the card only says it is read); a claim "
+                 "without basis alone, a claim with basis read alone: statement only")
     def _():
         arg = N03 + _b(id="03.b01", kind="argument", decls=[CORGE], reader="Reader Two", date="2026-11-23") + "\n"
         rd = N03 + _b(id="03.b01", kind="reading", decls=[CORGE], reader="Reader Two", date="2026-11-23") + "\n"
         ba = _build(notes=_notes() | {"03-three.md": arg})
         br = _build(notes=_notes() | {"03-three.md": rd})
         f = lambda b_: [(r["statement_read"], r["proof_read"]) for r in b_.js("group/g3.json")["roots"]]
-        line = lambda b_: _card(b_, "g3").find("p", "statement")[0].text()
+        line = lambda b_: (_card(b_, "g3").find("p", "statement")[0].text(), prov(b_, "g3")[:1])   # the card, then the Evidence line (F37)
         return _eq((f(ba), line(ba), f(br), line(br)),
-                   ([(False, True)], "Statement counted by a script, not read (Reader One, 2026-11-20).",
-                    [(True, False)], "Statement read by Reader Two on 2026-11-23."))
+                   ([(False, True)], ("We have not read this statement: what it says here comes from a program's count of its parts.",
+                                      ["Statement counted by a program, not read, recorded by Reader One on 2026-11-20."]),
+                    [(True, False)], ("We have read this statement.", ["Statement read by Reader Two on 2026-11-23."])))
 
     @case("W1", "a group id that is safe but longer than 100 characters is GROUP-ID-UNSAFE; 100 characters build")
     def _():
@@ -3290,16 +3438,16 @@ def _selftest_cases():
         return _eq((res, _build(strings=st).rc), ([(1, True, False)] * 3, 0))
 
     @case("H1", "a null claim with a reading block (g1a, root bar): the heading shows the Lean name and the no_claim_label (`bar No "
-                "plain statement yet`), the statement line tells the fact (`Statement read by Reader One on 2026-11-23.`, the "
-                "reading block's reader and date), the proof line `Proof: not read yet.`; the JSON carries the label")
+                "plain statement yet`), the statement line tells the fact (`We have read this statement.`; the Evidence line names the "
+                "reading block's reader and date), the proof line `We have not read this proof yet.`; the JSON carries the label")
     def _():
         b = _base()
         c = _card(b, "g1a")
         step = b.js("level1.json")["steps"][0]["children"][0]
         return _eq((c.find("h3", "claim")[0].text(), c.find("p", "statement")[0].text(), c.find("p", "proof")[0].text(),
-                    step["claim_label"], step["statement_read"], step["proof_read"], "coverage" in step),
-                   ("bar No plain statement yet", "Statement read by Reader One on 2026-11-23.", "Proof: not read yet.",
-                    "No plain statement yet", True, False, False))
+                    step["claim_label"], step["statement_read"], step["proof_read"], "coverage" in step, prov(b, "g1a")),
+                   ("bar No plain statement yet", "We have read this statement.", "We have not read this proof yet.",
+                    "No plain statement yet", True, False, False, ["Statement read by Reader One on 2026-11-23."]))
 
     @case("ORD1", "the premises of a card are linked in the order of the outline (g2 then g1), not sorted")
     def _():
@@ -3482,30 +3630,26 @@ def _selftest_cases():
                          ("a `Foo.bar\nbaz` b", False, True), ("a `Foo.bar\rbaz` b", False, True), ("`a` and Foo.bar", False, True),
                          ("`x Foo.bar y`", True, False)])
 
-    @case("PHR4", "the keys that must hold their placeholders (the nine of the two facts and the counts, and the sixteen of the recognition, "
-                  "the established line, the sketch and the no-proof frame) are exactly the 25 listed, each declares exactly the placeholders it "
-                  "must hold, except that argument_frame_no_proof must hold {reader} and {date} and declares {file} and {lines} too "
-                  "(argument_frame declares all four and requires none)")
+    @case("PHR4", "the keys that must hold their placeholders (the counts and the open-items lines, the recognition lines, the citation lines, "
+                  "established_by_line, sketch_frame and the eight Evidence keys of F37) are exactly the 27 listed, each declares exactly the "
+                  "placeholders it must hold; the card keys of F37 (the read lines, the frames, the label line, the compiled basis) and the "
+                  "retired second_reader_frame declare none and require none")
     def _():
-        keys = ["statement_read_line", "statement_census_line", "proof_read_line", "statement_count_line", "proof_count_line",
-                "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
+        keys = ["statement_count_line", "proof_count_line", "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
         new = [k for k, _n in _REQ2]
-        exact = [k for k in keys + new if k != "argument_frame_no_proof"]
-        return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in exact],
-                    PLACEHOLDERS["argument_frame_no_proof"], REQUIRED_PLACEHOLDERS["argument_frame_no_proof"],
-                    PLACEHOLDERS["argument_frame"], "argument_frame" in REQUIRED_PLACEHOLDERS),
-                   (sorted(keys + new), [True] * 24, {"reader", "date", "file", "lines"}, ("reader", "date"),
-                    {"reader", "date", "file", "lines"}, False))
+        none_keys = ["statement_read_line", "statement_census_line", "proof_read_line", "argument_frame", "argument_frame_no_proof",
+                     "interpretation_frame", "recognition_label_line", "sketch_basis_compiled", "second_reader_frame", "frames.argument"]
+        return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys + new],
+                    [PLACEHOLDERS.get(k, set()) for k in none_keys], [k in REQUIRED_PLACEHOLDERS for k in none_keys]),
+                   (sorted(keys + new), [True] * 27, [set()] * 10, [False] * 10))
 
-    _REQ = (("statement_read_line", ("reader", "date")), ("statement_census_line", ("reader", "date")),
-            ("proof_read_line", ("reader", "date")), ("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
+    _REQ = (("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
             ("steps_open_items_line", ("n",)))
 
-    @case("PHR1", "each of the nine keys statement_read_line, statement_census_line, proof_read_line, statement_count_line, "
-                  "proof_count_line, steps_statement_line, steps_proof_line, open_items_line, steps_open_items_line that lacks one of "
-                  "its placeholders ({reader} {date}, or {n} {m}, or {n}) is refused as STRINGS-KEY naming the key and the placeholder "
-                  "(16 cases), exit 1, nothing written; control: the fixture with every placeholder builds")
+    @case("PHR1", "each of the six keys statement_count_line, proof_count_line, steps_statement_line, steps_proof_line, open_items_line, "
+                  "steps_open_items_line that lacks one of its placeholders ({n} {m}, or {n}) is refused as STRINGS-KEY naming the key "
+                  "and the placeholder (10 cases), exit 1, nothing written; control: the fixture with every placeholder builds")
     def _():
         res = []
         for key, names in _REQ:
@@ -3515,15 +3659,13 @@ def _selftest_cases():
                 b = _build(strings=st)
                 res.append((key, name, b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
         want = [(k, n, 1, [f"BUILD-ERROR STRINGS-KEY {k} is missing the placeholder {{{n}}}"], False) for k, ns in _REQ for n in ns]
-        return _eq((res, len(res), _base().rc), (want, 16, 0))
+        return _eq((res, len(res), _base().rc), (want, 10, 0))
 
-    @case("PHR2", "the placeholders of the other keys stay optional: argument_frame, second_reader_frame, interpretation_frame, "
-                  "shared_note, note_href, frames.argument and reactions[0].href with no placeholder at all build")
+    @case("PHR2", "the placeholders of the other keys stay optional: shared_note, note_href and reactions[0].href with no placeholder at all "
+                  "build (the frames and the read lines of the card declare none since F37, see PHR4)")
     def _():
         res = []
-        for path, value in (("argument_frame", "How this is proved:"), ("second_reader_frame", "Read again."),
-                            ("interpretation_frame", "Our interpretation:"), ("shared_note", "Also a root elsewhere."),
-                            ("note_href", "notes/index.md"), ("frames.argument[0]", "How this is proved"),
+        for path, value in (("shared_note", "Also a root elsewhere."), ("note_href", "notes/index.md"),
                             ("reactions[0].href", "https://example.invalid/react?kind=sense")):
             st = _strings()
             node = st
@@ -3533,8 +3675,7 @@ def _selftest_cases():
             node[int(parts[-1]) if parts[-1].isdigit() else parts[-1]] = value
             b = _build(strings=st)
             res.append((path, b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")]))
-        return _eq(res, [(p_, 0, []) for p_ in ("argument_frame", "second_reader_frame", "interpretation_frame", "shared_note",
-                                                "note_href", "frames.argument[0]", "reactions[0].href")])
+        return _eq(res, [(p_, 0, []) for p_ in ("shared_note", "note_href", "reactions[0].href")])
 
     @case("PHR3", "the strings file of this checkout (site/strings.json) has none of the nine required placeholders missing")
     def _():
@@ -3604,7 +3745,8 @@ def _selftest_cases():
         dom = _dom(b.page)
         g1, g3 = _card(b, "g1"), _card(b, "g3")
         prem = [(a.attrs["href"], _raw(a)) for a in g3.find("p", "premises")[0].find("a")]
-        full = g1.find("details", "evidence")[0].find("p", "argument")[0]
+        ev_ = g1.find("details", "evidence")[0]
+        full = next(li for li in ev_.find("ul", "blocks")[0].elems() if "01.b02" in _raw(li))   # F37: the reader, date and second reader moved here
         corr = _direct(g1, "ul", "corrections")[0].find("li")[0]
         react = g1.find("a", "reaction")[0].attrs["href"]
         js = b.text("data.js")
@@ -3615,11 +3757,13 @@ def _selftest_cases():
                [_raw(a) for a in _direct(g1, "ul", "notes")[0].find("a")], _raw(full).count(HOST), _raw(corr).count(HOST),
                react, _raw(dom.find("header")[0].find("p")[0]), _raw(_card(b, "g2").find("h3", "claim")[0]).count("quux" + HOST),
                [c in js for c in "<>&\u2028\u2029"],
-               json.loads(js[len("window.RH_DATA = "):-2])["groups"]["g1"] == b.js("group/g1.json"))
+               json.loads(js[len("window.RH_DATA = "):-2])["groups"]["g1"] == b.js("group/g1.json"),
+               _raw(ev_.find("ul", "provenance")[0]).count(HOST),
+               _raw(next(li for li in ev_.find("ul", "blocks")[0].elems() if "01.b06" in _raw(li))).count(HOST))
         want = ([], [], [False, False, False], True, True, "Claim " + HOST, [HOST],
-                [("#g1", "Claim " + HOST), ("#g2", "quux" + HOST)], ["T " + HOST, "Note two"], 5, 3,
+                [("#g1", "Claim " + HOST), ("#g2", "quux" + HOST)], ["T " + HOST, "Note two"], 5, 1,
                 "https://example.invalid/react?card=g1&kind=sense" + HOST, "First screen paragraph one. " + HOST_S, 1,
-                [False] * 5, True)
+                [False] * 5, True, 2, 2)
         return _eq(got, want)
 
     # ---- F19: the two facts
@@ -3668,19 +3812,30 @@ def _selftest_cases():
         every = _base().page + _base().text("data.js")
         return _eq((res, [w in every for w in ("Read by us", "Partly read", "Not read yet")]), ([(1, True, False)] * 3, [False] * 3))
 
-    @case("C1", "the status lines of the cards (statement, proof; the open-items line is absent at 0): g1 `Statement read by Reader One on 2026-11-20.` (the "
-                "claim's reader and date, not the reading block's), `Proof read by Reader One on 2026-11-23.` (the first argument block); g1a `Statement read by Reader One on "
-                "2026-11-23.` (the reading block), proof not read; g1a1x `Statement read by Reader Two on 2026-11-23.`; g3 the census "
-                "line, `Proof: not read yet.`")
+    @case("C1", "the status lines of the cards (statement, proof; the open-items line is absent at 0) say the fact and name nobody (F37): g1 "
+                "`We have read this statement.`, `We have read this proof.`; g1a the statement read (by its reading block), proof not read; g1a1x the "
+                "statement read, proof not read; g3 the census line, `We have not read this proof yet.`; the Evidence line of each says who and "
+                "when: g1 the claim's reader and date (not the reading block's) and the first argument block's, g1a and g1a1x the reading block's, "
+                "g3 the claim's, counted by a program")
     def _():
         b = _base()
         line = lambda g: [c.text() for c in (_card(b, g).find("p", "statement")[0], _card(b, g).find("p", "proof")[0])]
         return _eq(([line(g) for g in ("g1", "g1a", "g1a1x", "g3")],
                     [len(_card(b, g).find("p", "open-items")) for g in ("g1a", "g1a1x", "g3")]),
-                   ([["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23."],
-                     ["Statement read by Reader One on 2026-11-23.", "Proof: not read yet."],
-                     ["Statement read by Reader Two on 2026-11-23.", "Proof: not read yet."],
-                     ["Statement counted by a script, not read (Reader One, 2026-11-20).", "Proof: not read yet."]], [0, 0, 0]))
+                   ([["We have read this statement.", "We have read this proof."],
+                     ["We have read this statement.", "We have not read this proof yet."],
+                     ["We have read this statement.", "We have not read this proof yet."],
+                     ["We have not read this statement: what it says here comes from a program's count of its parts.",
+                      "We have not read this proof yet."]], [0, 0, 0]))
+
+    @case("C1b", "F37: the Evidence section says who read what and when for the cards of C1: g1 `Statement read by Reader One on 2026-11-20.` "
+                 "and `Proof read by Reader One on 2026-11-23.`; g1a and g1a1x the reading block's reader and date; g3 the census line")
+    def _():
+        b = _base()
+        return _eq([prov(b, g) for g in ("g1", "g1a", "g1a1x", "g3")],
+                   [["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23."],
+                    ["Statement read by Reader One on 2026-11-23."], ["Statement read by Reader Two on 2026-11-23."],
+                    ["Statement counted by a program, not read, recorded by Reader One on 2026-11-20."]])
 
     @case("C2", "the line open_items_line comes from its key and shows the number and never `not read` (the fixture value holds none): "
                 "on g2 `Questions written down: 1.`; a build whose key says `Open: {n} questions` shows `Open: 1 questions` on g2")
@@ -3732,12 +3887,12 @@ def _selftest_cases():
 
     @case("RDR1", "a root with two reading blocks in different notes: the statement reader is the first by NOTE ID then block number, "
                   "not by date: g1a (root bar) has 01.b04 (Reader One, 2026-11-23) and 03.b01 (Reader Three, 2026-11-01); the "
-                  "line names Reader One on 2026-11-23 although the other date is earlier")
+                  "Evidence line names Reader One on 2026-11-23 although the other date is earlier (the card line names nobody)")
     def _():
         n03 = N03 + "\nAlso read.\n" + _b(id="03.b01", kind="reading", decls=[BAR], reader="Reader Three", date="2026-11-01") + "\n"
         b = _build(notes=_notes() | {"03-three.md": n03})
-        return _eq((b.rc, _card(b, "g1a").find("p", "statement")[0].text(), b.js("level1.json")["steps"][0]["children"][0]["statement_by"]),
-                   (0, "Statement read by Reader One on 2026-11-23.",
+        return _eq((b.rc, prov(b, "g1a"), b.js("level1.json")["steps"][0]["children"][0]["statement_by"]),
+                   (0, ["Statement read by Reader One on 2026-11-23."],
                     {"date": "2026-11-23", "reader": "Reader One", "source": "block"}))
 
     @case("ORG1", "a PAGE-STATIC finding is attributed to the strings key that holds the offending token: note_href `http://...` "
@@ -3749,30 +3904,31 @@ def _selftest_cases():
         return _eq((b.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in b.out.splitlines(), b.existed),
                    (1, True, False))
 
-    @case("PRF1", "the proof line is filled from the argument block of the root: g1 `Proof read by Reader One on 2026-11-23.` (01.b02) and, "
-                  "with an argument block by Reader Two on 2026-11-23 on qux, g1a1x `Proof read by Reader Two on 2026-11-23.`; no brace "
-                  "character from the strings file is anywhere in the page text")
+    @case("PRF1", "the proof line says `We have read this proof.` and the Evidence line is filled from the argument block of the root: g1 "
+                  "`Proof read by Reader One on 2026-11-23.` (01.b02) and, with an argument block by Reader Two on 2026-11-23 on qux, g1a1x "
+                  "`Proof read by Reader Two on 2026-11-23.`; no brace character from the strings file is anywhere in the page text")
     def _():
         n03 = N03 + "\nArgues qux.\n" + _b(id="03.b01", kind="argument", decls=[QUX], reader="Reader Two", date="2026-11-23") + "\n"
         b = _build(notes=_notes() | {"03-three.md": n03})
         text = " ".join(_page_text(b.page))
-        return _eq((b.rc, _card(b, "g1a1x").find("p", "proof")[0].text(), _card(b, "g1").find("p", "proof")[0].text(),
+        return _eq((b.rc, _card(b, "g1a1x").find("p", "proof")[0].text(), prov(b, "g1a1x")[1], prov(b, "g1")[1],
                     "{" in text, "}" in text),
-                   (0, "Proof read by Reader Two on 2026-11-23.", "Proof read by Reader One on 2026-11-23.", False, False))
+                   (0, "We have read this proof.", "Proof read by Reader Two on 2026-11-23.", "Proof read by Reader One on 2026-11-23.",
+                    False, False))
 
     @case("PRF2", "two argument blocks on one root in different notes where the note order disagrees with the date order: g1 (root foo) has "
-                  "01.b02 (Reader One, 2026-11-23) and 03.b01 (Reader Three, 2026-11-01); the proof line and the idea name the "
-                  "first by note id then block number, Reader One on 2026-11-23, not the earlier date")
+                  "01.b02 (Reader One, 2026-11-23) and 03.b01 (Reader Three, 2026-11-01); the Evidence proof line names the "
+                  "first by note id then block number, Reader One on 2026-11-23, not the earlier date, and the idea is that block's")
     def _():
         n03 = N03 + "\nArgues foo.\n" + _b(id="03.b01", kind="argument", decls=[FOO], reader="Reader Three", date="2026-11-01") + "\n"
         b = _build(notes=_notes() | {"03-three.md": n03})
         c = _card(b, "g1")
-        return _eq((b.rc, c.find("p", "proof")[0].text(), _direct(c, "p", "argument")[0].text().startswith(
-            "How this is proved, as Reader One read it on 2026-11-23")), (0, "Proof read by Reader One on 2026-11-23.", True))
+        return _eq((b.rc, prov(b, "g1")[1], _direct(c, "p", "argument")[0].text().startswith("How this is proved: First argument sentence.")),
+                   (0, "Proof read by Reader One on 2026-11-23.", True))
 
     @case("PH1", "a `{bogus}` planted in statement_not_read_line, in a frames phrase, in a reactions label, in a first_screen paragraph "
                  "and in a reaction href is refused naming the key and the token (`has an unknown placeholder {bogus}`); a key that "
-                 "declares none (mapped_line) refuses any brace; a brace-free value builds; a proof_read_line with only {reader} "
+                 "declares none (mapped_line) refuses any brace; a brace-free value builds; an evidence_proof_read_line with only {reader} "
                  "is refused (it lacks {date}) and so is one with none (it lacks both), see PHR1")
     def _():
         res = []
@@ -3790,14 +3946,14 @@ def _selftest_cases():
         brace["mapped_line"] = "A set { x } line."
         bb = _build(strings=brace)
         one, none = _strings(), _strings()
-        one["proof_read_line"], none["proof_read_line"] = "Proof read by {reader}.", "Proof read."
+        one["evidence_proof_read_line"], none["evidence_proof_read_line"] = "Proof read by {reader}.", "Proof read."
         b1, b0 = _build(strings=one), _build(strings=none)
         err = lambda b: [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")]
         return _eq((res, bb.rc, "BUILD-ERROR STRINGS-KEY mapped_line holds a brace" in bb.out, _base().rc, err(b1), err(b0)),
                    ([(1, True, False)] * 5, 1, True, 0,
-                    ["BUILD-ERROR STRINGS-KEY proof_read_line is missing the placeholder {date}"],
-                    ["BUILD-ERROR STRINGS-KEY proof_read_line is missing the placeholder {reader}",
-                     "BUILD-ERROR STRINGS-KEY proof_read_line is missing the placeholder {date}"]))
+                    ["BUILD-ERROR STRINGS-KEY evidence_proof_read_line is missing the placeholder {date}"],
+                    ["BUILD-ERROR STRINGS-KEY evidence_proof_read_line is missing the placeholder {reader}",
+                     "BUILD-ERROR STRINGS-KEY evidence_proof_read_line is missing the placeholder {date}"]))
 
     @case("PH2", "the built page text (tags stripped, script and style removed) holds no `{name}` token from the strings file, in the base "
                  "build and in a build whose notes give every status line a reader")
@@ -4244,7 +4400,7 @@ def _selftest_cases():
     @case("BT2", "the same for an INTERPRETATION block (the frame stays escaped text)")
     def _():
         got = [_para(_build(notes=_notes(interp_text=t)).page, "interpretation") for t in BT_TEXTS]
-        frame = '<span class="frame">Our interpretation, by Reader Two on 2026-11-24:</span> '
+        frame = '<span class="frame">What we think it means:</span> '
         whole = re.findall(r'<p class="interpretation">(.*?)</p>', _build(notes=_notes(interp_text="Plain text only")).page, re.S)
         return _eq((got, whole), (BT_WANT, [frame + "Plain text only"]))
 
@@ -4509,8 +4665,8 @@ def _selftest_cases():
         want = ([("p", "recognition-form"), ("p", "recognition-difference"), ("ul", "recognition-citations"), ("p", "recognition-label")],
                 [("p", "recognition-form"), ("ul", "recognition-citations"), ("p", "recognition-label")],
                 "Here the bound is n, not 2n.", ["n", "2n"],
-                [(["citation"], "https://example.invalid/book", "The Source Book, Theorem 2.1 (as read by Reader Two on 2026-11-21)")], True,
-                ["The Source Book, Theorem 2.1 (as read by Reader Two on 2026-11-21)", "Other Paper, Section 3 (as read by Reader One on 2026-11-22)"],
+                [(["citation"], "https://example.invalid/book", "The Source Book, Theorem 2.1")], True,
+                ["The Source Book, Theorem 2.1", "Other Paper, Section 3"],
                 ["Paper"], ["prime"])
         return _eq(got, want)
 
@@ -4520,25 +4676,24 @@ def _selftest_cases():
     def _():
         b = _zbase()
         cits = lambda g: [_raw(li) for li in _direct(rcn(b, g), "ul", "recognition-citations")[0].elems()]
-        who = " (as read by Reader Two on 2026-11-22)"
         return _eq([cits(g) for g in ("zro", "zry", "zno", "zov")],
-                   [["List A, Problem 7, dated 2007-01" + who, "List B, Problem 7, dated 2004-05-17" + who,
-                     "List C, Problem 7, dated 2010-03" + who, "List D, Problem 7" + who],
-                    ["List Y, Problem 7, dated 2006" + who],
-                    ["List E, Problem 7, dated 2006" + who, "List F, Problem 7, dated 2006-11" + who],
-                    ["Other Paper, Section 3 (as read by Reader One on 2026-11-22)", "List G, Problem 7" + who]])
+                   [["List A, Problem 7, dated 2007-01", "List B, Problem 7, dated 2004-05-17",
+                     "List C, Problem 7, dated 2010-03", "List D, Problem 7"],
+                    ["List Y, Problem 7, dated 2006"],
+                    ["List E, Problem 7, dated 2006", "List F, Problem 7, dated 2006-11"],
+                    ["Other Paper, Section 3", "List G, Problem 7"]])
 
-    @case("RL1", "A5: the label line carries the reader and date of the RECOGNITION (zrk: Reader One, 2026-11-22; zok: Reader Two, "
-                 "2026-11-23; the claim's date is 2026-11-20), the block adds no link of its own (zrn has none, zrk only the citation "
-                 "anchor), and the three reaction links at the foot of the card are unchanged (zrk's hrefs; 22 cards give 66 reaction anchors)")
+    @case("RL1", "A5, as F37 left it: the label line is one standing sentence with no reader and no date (the reader and date of the RECOGNITION "
+                 "are in the Evidence section: zrk Reader One 2026-11-22, zok Reader Two 2026-11-23), the block adds no link of its own (zrn has "
+                 "none, zrk only the citation anchor), and the three reaction links at the foot of the card are unchanged (zrk's hrefs; 22 cards "
+                 "give 66 reaction anchors)")
     def _():
         b = _zbase()
         lab = lambda g: _raw(_direct(rcn(b, g), "p", "recognition-label")[0])
-        tail = " No mathematician has checked this reading yet. If you think we have it wrong, or you know more, please tell us."
+        tail = "No mathematician has checked our reading yet. If you think we have it wrong, or you know more, please tell us."
         return _eq((lab("zrk"), lab("zok"), len(rcn(b, "zrn").find("a")), [a.cls for a in rcn(b, "zrk").find("a")],
                     [a.attrs["href"] for a in _card(b, "zrk").find("ul", "reactions")[0].find("a")], len(_dom(b.page).find("a", "reaction"))),
-                   ("This is Reader One's understanding, written on 2026-11-22." + tail,
-                    "This is Reader Two's understanding, written on 2026-11-23." + tail, 0, [["citation"]],
+                   (tail, tail, 0, [["citation"]],
                     ["https://example.invalid/react?card=zrk&kind=sense", "https://example.invalid/react?card=zrk&kind=wrong",
                      "https://example.invalid/react?card=zrk&kind=detail"], 66))
 
@@ -4574,7 +4729,7 @@ def _selftest_cases():
                     ["claim", "conditions", "premises", "recognition", "statement", "proof"]])
 
     @case("RE1", "A7: `established` of a named statement shows after the citations and before the label line: by -> `Where it is proved: the "
-                 "release proves this statement as A.B.foo (read by Reader Two on 2026-11-23).` (the name is module.name), not_traced -> "
+                 "release proves this statement as A.B.foo.` (the name is module.name; the reader and date are in Evidence), not_traced -> "
                  "the not-traced line; only znk and znv have one")
     def _():
         b = _zbase()
@@ -4582,7 +4737,7 @@ def _selftest_cases():
         ids = sorted(a.attrs["id"] for a in dom.find("article") if any(_direct(d_, "p", "recognition-established") for d_ in _direct(a, "div", "recognition")))
         est = lambda g: _raw(_direct(rcn(b, g), "p", "recognition-established")[0])
         return _eq((ids, est("znk"), est("znv"), lead(rcn(b, "znk")), lead(rcn(b, "znv"))),
-                   (["znk", "znv"], "Where it is proved: the release proves this statement as A.B.foo (read by Reader Two on 2026-11-23).",
+                   (["znk", "znv"], "Where it is proved: the release proves this statement as A.B.foo.",
                     "Where it is proved: we have not yet traced where in the release this statement is proved.",
                     [("p", "recognition-form"), ("ul", "recognition-citations"), ("p", "recognition-established"), ("p", "recognition-label")],
                     [("p", "recognition-form"), ("p", "recognition-difference"), ("ul", "recognition-citations"),
@@ -4631,16 +4786,17 @@ def _selftest_cases():
                      "is 4, not 3 groups with a claim"], 1, False, 0))
 
     @case("RS3", "the first screen and the closed card do not change with a recognition: the facts list and the first-screen text of the "
-                 "zoo build are those of the base build, and the evidence section of zrv holds no recognition text")
+                 "zoo build are those of the base build, and the evidence section of zrv holds no form line of the recognition (`Our reading: ...`) "
+                 "but, since F37, its reader and date (`Our reading of where this statement stands: written by ...`) and its citation's opener")
     def _():
         zf = [li.text() for li in _dom(_zbase().page).find("ul", "facts")[0].find("li")]
         bf = [li.text() for li in _dom(_base().page).find("ul", "facts")[0].find("li")]
         ev = _card(_zbase(), "zrv").find("details", "evidence")[0].text()
         return _eq((zf[:2], zf[2], bf[:2], [p_.text() for p_ in _dom(_zbase().page).find("header")[0].find("p")][:2],
-                    "Our reading" in ev, "Source Book" in ev),
+                    "Our reading:" in ev, "Our reading of where this statement stands: written by Reader One on 2026-11-22." in ev),
                    (["Statements read: 1 of 3 steps.", "Proofs read: 1 of 3 steps."], "Questions written down in these notes: 1.",
                     ["Statements read: 1 of 3 steps.", "Proofs read: 1 of 3 steps."],
-                    ["First screen paragraph one.", "First screen paragraph two."], False, False))
+                    ["First screen paragraph one.", "First screen paragraph two."], False, True))
 
     @case("P7e", "static_problems and the citation anchor (RULED: an <a class=citation> whose href starts https://, and nothing else): "
                  "controls (https citation anchor, an http reaction anchor): none; planted (an http citation anchor, an https anchor of "
@@ -4672,9 +4828,9 @@ def _selftest_cases():
 
     errs = lambda b_: [x for x in b_.out.splitlines() if x.startswith("BUILD-ERROR")]
 
-    @case("PHR5", "A9: each of the 16 new keys that must hold its placeholders (the recognition lines, the label line, the three citation "
-                  "lines, established_by_line, sketch_frame, sketch_basis_compiled, argument_frame_no_proof) that lacks one of them is "
-                  "refused as STRINGS-KEY naming the key and the placeholder (32 cases), exit 1, nothing written; the fixture builds")
+    @case("PHR5", "A9: each of the 21 keys that must hold their placeholders (the recognition lines, the three citation lines, "
+                  "established_by_line, sketch_frame and the eight Evidence keys) that lacks one of them is "
+                  "refused as STRINGS-KEY naming the key and the placeholder (36 cases), exit 1, nothing written; the fixture builds")
     def _():
         res = []
         for key, names in _REQ2:
@@ -4684,15 +4840,15 @@ def _selftest_cases():
                 b = _build(strings=st)
                 res.append((key, name, b.rc, errs(b), b.existed))
         want = [(k, n, 1, [f"BUILD-ERROR STRINGS-KEY {k} is missing the placeholder {{{n}}}"], False) for k, ns in _REQ2 for n in ns]
-        return _eq((res, len(res), _base().rc), (want, 32, 0))
+        return _eq((res, len(res), _base().rc), (want, 36, 0))
 
     @case("PHR6", "A9: a placeholder the key does not declare is refused naming key and token (`has an unknown placeholder {zzz}`): {zzz} "
-                  "added to each of the 26 new keys in turn; and each key declares only its own (a {source_date} on a known line, on an "
-                  "object line and on the dated citation line, {build} on the source basis, {result} on the label, {opened_by} on the "
-                  "undated citation line, {file} on a sketch frame)")
+                  "added to each of the new keys in turn (the eight Evidence keys too); and each key declares only its own (a {source_date} on "
+                  "a known line, on an object line and on the dated citation line, {build} on the source basis, {result} on the label, "
+                  "{opened_by} on the undated citation line, {file} on a sketch frame)")
     def _():
         res, want = [], []
-        for key in list(WORDING) + ["argument_frame_no_proof"]:
+        for key in list(WORDING) + ["argument_frame_no_proof"] + list(F37_EVIDENCE):
             st = _strings()
             st[key] = st[key] + " {zzz}"
             b = _build(strings=st)
@@ -4706,27 +4862,22 @@ def _selftest_cases():
             b = _build(strings=st)
             res.append((key, b.rc, errs(b), b.existed))
             want.append((key, 1, [f"BUILD-ERROR STRINGS-KEY {key} has an unknown placeholder {{{tok}}}"], False))
-        return _eq((res, len(res)), (want, 33))
+        return _eq((res, len(res)), (want, 41))
 
-    @case("PHR7", "D1: {file} is an OPTIONAL placeholder of argument_frame and of argument_frame_no_proof (as {lines} is): a value with it, "
-                  "without it and with none builds; argument_frame_no_proof must hold {reader} and {date} (a value lacking either is "
-                  "refused naming it; with none, both), and holds no other placeholder")
+    @case("PHR7", "D1, as F37 left it: argument_frame and argument_frame_no_proof declare NO placeholder: a value with {reader}, {date}, {file} "
+                  "or {lines} is refused naming key and token (8 cases); a value with none builds")
     def _():
-        ok_ = []
-        for key, v in (("argument_frame", "How: {reader} {date} {file} {lines}"), ("argument_frame", "How: {reader} {date} {lines}"),
-                       ("argument_frame", "How."), ("argument_frame_no_proof", "What: {reader} {date} {file} {lines}"),
-                       ("argument_frame_no_proof", "What: {reader} {date}")):
-            b = _build(strings=_set(_strings(), key, v))
+        bad, ok_ = [], []
+        for key in ("argument_frame", "argument_frame_no_proof"):
+            for tok in ("reader", "date", "file", "lines"):
+                b = _build(strings=_set(_strings(), key, "Frame {" + tok + "}:"))
+                bad.append((key, tok, b.rc, errs(b), b.existed))
+            b = _build(strings=_set(_strings(), key, "A frame."))
             ok_.append((key, b.rc, errs(b)))
-        bad = []
-        for v in ("What: {reader}", "What: {date}", "What.", "What: {reader} {date} {bogus}"):
-            b = _build(strings=_set(_strings(), "argument_frame_no_proof", v))
-            bad.append((b.rc, errs(b), b.existed))
-        m = "BUILD-ERROR STRINGS-KEY argument_frame_no_proof is missing the placeholder "
-        return _eq((ok_, bad),
-                   ([(k, 0, []) for k in ("argument_frame",) * 3 + ("argument_frame_no_proof",) * 2],
-                    [(1, [m + "{date}"], False), (1, [m + "{reader}"], False), (1, [m + "{reader}", m + "{date}"], False),
-                     (1, ["BUILD-ERROR STRINGS-KEY argument_frame_no_proof has an unknown placeholder {bogus}"], False)]))
+        return _eq((bad, ok_),
+                   ([(k, t, 1, [f"BUILD-ERROR STRINGS-KEY {k} has an unknown placeholder {{{t}}}"], False)
+                     for k in ("argument_frame", "argument_frame_no_proof") for t in ("reader", "date", "file", "lines")],
+                    [("argument_frame", 0, []), ("argument_frame_no_proof", 0, [])]))
 
     @case("MK1", "A9: with every strings value a distinct marker, a build that shows every new line (the zoo: every role and form, a "
                  "citation anchor, the named-statement line, the established lines; the notes with sketches, both bases, the unexpanded "
@@ -4741,27 +4892,26 @@ def _selftest_cases():
         text = re.sub(r"MARK-[A-Za-z0-9_.]*[A-Za-z0-9_]", " ", text)
         data = json.dumps(o) + DECLS + " ".join(notes.values())
         used = {m_ for m_ in re.findall(r"MARK-[A-Za-z0-9_.]*[A-Za-z0-9_]", b.page)}
-        keys = ["MARK-" + k for k in list(WORDING) + ["argument_frame_no_proof"]]
+        keys = ["MARK-" + k for k in list(WORDING) + ["argument_frame_no_proof"] + list(F37_EVIDENCE)]
         unused = sorted(k for k in keys if k not in used and k != "MARK-recognition_citation_line")
         return _eq((sorted(_words(text) - _words(data)), unused), ([], []))
 
     # ---- F24b: the argument of a definition
     @case("PB1", "B1: an argument block anchored only on roots that are not a theorem or a lemma is shown under argument_frame_no_proof "
-                 "(`What this definition contains, as ...`), never under argument_frame; a block that also anchors a theorem root keeps "
+                 "(`What this definition contains:`), never under argument_frame; a block that also anchors a theorem root keeps "
                  "argument_frame (g2 rests on QUUX and BAZ: 07.b01 anchors BAZ only, 07.b02 anchors both); the card's idea is the first "
-                 "block; the frame names the file by its base name (`TopPlug.lean, lines not given`, `C.lean, lines 5-9`)")
+                 "block; the file and the lines are in the Evidence section, see PV7")
     def _():
         b = _bbase()
         ev = lambda g: [p_.text() for p_ in _card(b, g).find("details", "evidence")[0].find("p", "argument")]
         idea = lambda g: _direct(_card(b, g), "p", "argument")[0].text()
-        what1 = "What this definition contains, as Reader One read it on 2026-11-23 (C.lean, lines 5-9): Def argument sentence."
-        what2 = "What this definition contains, as Reader Two read it on 2026-11-24 (TopPlug.lean, lines not given): Mixed argument sentence."
+        what1 = "What this definition contains: Def argument sentence."
+        what2 = "What this definition contains: Mixed argument sentence."
         return _eq((idea("g1a1"), ev("g1a1"), idea("g2"), ev("g2")),
                    (what1 + " Read the note", [what1 + " Second def sentence.", what2 + " Second mixed sentence."],
                     what1 + " Read the note",
                     [what1 + " Second def sentence.",
-                     "How this is proved, as Reader Two read it on 2026-11-24 (TopPlug.lean, lines not given): Mixed argument sentence. "
-                     "Second mixed sentence."]))
+                     "How this is proved: Mixed argument sentence. Second mixed sentence."]))
 
     @case("PB3", "B1, ruled per card (F34): a card speaks about its OWN root. The one block 07.b02 anchors a definition (BAZ) and a theorem "
                  "(QUUX): on g1a1, whose root is the definition, it is shown under argument_frame_no_proof, and on g2, which rests on both, "
@@ -4773,10 +4923,8 @@ def _selftest_cases():
         d_card = _card(b, "g1a1")
         own = [p_.text() for p_ in d_card.find("details", "evidence")[0].find("p", "argument")] + [_direct(d_card, "p", "argument")[0].text()]
         return _eq((mixed("g1a1"), mixed("g2"), any("How this is proved" in x for x in own)),
-                   (["What this definition contains, as Reader Two read it on 2026-11-24 (TopPlug.lean, lines not given): Mixed argument "
-                     "sentence. Second mixed sentence."],
-                    ["How this is proved, as Reader Two read it on 2026-11-24 (TopPlug.lean, lines not given): Mixed argument sentence. "
-                     "Second mixed sentence."], False))
+                   (["What this definition contains: Mixed argument sentence. Second mixed sentence."],
+                    ["How this is proved: Mixed argument sentence. Second mixed sentence."], False))
 
     @case("SK10", "C1/F25: a sketch belongs to the group named in its note's HEADER (the group notes_meta checks it against), never to another "
                   "group whose root is only among its further `decls`: the note headed g1 whose sketch lists FOO (the root of g1) and CORGE (the "
@@ -4805,46 +4953,50 @@ def _selftest_cases():
                     "Proofs read: 1 of 1 declarations."))
 
     # ---- F29: the frame of a block
-    @case("DF1", "D1: {lines} is the range only and {file} the file's BASE NAME: a block whose file is `A/Deep/Nest.lean` shows `(Nest.lean, lines "
-                 "15-18)` on the card and in the evidence and never the directory, while the JSON keeps the path as written; a block with "
-                 "a file and no lines shows `(TopPlug.lean, lines not given)` through lines_missing")
+    @case("DF1", "D1, as F37 left it: the file is shown by its BASE NAME and the lines as the range only, in the Evidence section and not in the "
+                 "frame: a block whose file is `A/Deep/Nest.lean` shows `Nest.lean` and `15-18` there and never the directory, the card and the "
+                 "frame show neither, while the JSON keeps the path as written; a block with a file and no lines shows `TopPlug.lean` and "
+                 "`not given` through lines_missing")
     def _():
         b = _build(notes=_notes() | {"01-one.md": _n01().replace("A/B.lean", "A/Deep/Nest.lean")})
         c = _card(b, "g1")
         idea = _direct(c, "p", "argument")[0].text()
         full = c.find("details", "evidence")[0].find("p", "argument")[0].text()
         g2 = _bbase()
-        pin = _card(g2, "g2").find("details", "evidence")[0].find("p", "argument")[1].text()
+        pin = pairs(blk(g2, "g2", "07.b02"))
         return _eq((idea, full, b.js("group/g1.json")["blocks"][1]["file"], b.js("group/g1.json")["blocks"][1]["lines"],
-                    "(TopPlug.lean, lines not given):" in pin),
-                   ("How this is proved, as Reader One read it on 2026-11-23 (Nest.lean, lines 15-18): First argument sentence. "
-                    "Read again by Reader Two on 2026-11-24. Read the note",
-                    "How this is proved, as Reader One read it on 2026-11-23 (Nest.lean, lines 15-18): First argument sentence. "
-                    "Second argument sentence. Read again by Reader Two on 2026-11-24.",
-                    "A/Deep/Nest.lean", [15, 18], True))
+                    pairs(blk(b, "g1", "01.b02")), "Deep" in surface(_dom(b.page)), pin),
+                   ("How this is proved: First argument sentence. Read the note",
+                    "How this is proved: First argument sentence. Second argument sentence.",
+                    "A/Deep/Nest.lean", [15, 18], [[("File", "Nest.lean"), ("Lines", "15-18")]], False,
+                    [[("File", "TopPlug.lean"), ("Lines", "not given")]]))
 
-    @case("DF3", "D2: the second-reader line comes AFTER the block's text (evidence: frame, both sentences, `Read again by Reader Two on "
-                 "2026-11-24.`; card: frame, the first sentence, the line, the link); a block without a second reader and without a file "
-                 "changes only by D1 (`(not given, lines not given)`); a block with no text (an argument on a list) still shows its "
-                 "second-reader line, after the frame")
+    @case("DF3", "D2, as F37 left it: the second-reader line is in the Evidence section only, AFTER the block's text and its file and lines "
+                 "(evidence: the paragraph frame + both sentences, then the file and lines, then `Read again by Reader Two on 2026-11-24.`; "
+                 "card: frame, the first sentence, the link, no second-reader line); a block without a second reader and without a file shows "
+                 "`not given` twice; a block with no text (an argument on a list) still shows its file, its lines and its second-reader "
+                 "line in Evidence, and on the card the frame and the link only")
     def _():
         c = _card(_base(), "g1")
-        full = c.find("details", "evidence")[0].find("p", "argument")[0].text()
-        g3 = _card(_sbase(), "g3").find("details", "evidence")[0].find("p", "argument")[0].text()
+        li = blk(_base(), "g1", "01.b02")
+        full = li.find("p", "argument")[0].text()
+        g3 = blk(_sbase(), "g3", "06.b01")
+        g3 = (g3.find("p", "argument")[0].text(), pairs(g3), [p_.text() for p_ in g3.find("p", "second-reader")])
         arg_list = ("- ListItemTextXYZ one\n- ListItemTextXYZ two\n"
                     + _b(id="02.b03", kind="argument", decls=[QUX], item=1, reader="Reader Two", date="2026-11-23",
                          file="A/Deep/TopPlug.lean", second_readers=[{"reader": "Reader Three", "date": "2026-11-25"}]) + "\n"
                     "\n## Files this note was written from\n\n| File | SHA-256 |\n|---|---|\n| `A/Deep/TopPlug.lean` | `x` |\n")
         b = _build(notes=_notes() | {"02-two.md": N02 + "\n" + arg_list})
         x = _card(b, "g1a1x")
-        return _eq((full.index("Second argument sentence.") < full.index("Read again by"), full, g3, b.rc,
-                    _direct(x, "p", "argument")[0].text(), len(x.find("details", "evidence")[0].find("p", "argument"))),
-                   (True, "How this is proved, as Reader One read it on 2026-11-23 (B.lean, lines 15-18): First argument sentence. "
-                          "Second argument sentence. Read again by Reader Two on 2026-11-24.",
-                    "How this is proved, as Reader One read it on 2026-11-23 (not given, lines not given): Corge argument sentence. "
-                    "Second corge sentence.", 0,
-                    "How this is proved, as Reader Two read it on 2026-11-23 (TopPlug.lean, lines not given): Read again by Reader Three "
-                    "on 2026-11-25. Read the note", 0))
+        xl = next(l_ for l_ in x.find("details", "evidence")[0].find("ul", "blocks")[0].elems() if "02.b03" in _raw(l_))
+        order = [(k.tag, k.cls[-1] if k.cls else "") for k in li.elems()][3:]
+        return _eq((order, full, g3, b.rc, _direct(x, "p", "argument")[0].text(), len(x.find("details", "evidence")[0].find("p", "argument")),
+                    pairs(xl), [p_.text() for p_ in xl.find("p", "second-reader")]),
+                   ([("p", "argument"), ("dl", "block-source"), ("p", "second-reader")],
+                    "How this is proved: First argument sentence. Second argument sentence.",
+                    ("How this is proved: Corge argument sentence. Second corge sentence.", [[("File", "not given"), ("Lines", "not given")]], []), 0,
+                    "How this is proved: Read the note", 0, [[("File", "TopPlug.lean"), ("Lines", "not given")]],
+                    ["Read again by Reader Three on 2026-11-25."]))
 
     # ---- F25b: the sketch
     skd = lambda c: [(k.tag, " ".join(k.cls), [_raw(li) for li in k.elems()] if k.tag in ("ul", "ol") else _raw(k))
@@ -4876,28 +5028,28 @@ def _selftest_cases():
                     {"block": "04.b01", "date": "2026-11-24", "kind": "sketch", "note": "04", "reader": "Reader Two",
                      "roots": [{"module": "A.B", "name": "foo"}]}, [False] * 3, []))
 
-    @case("SK2", "C2: the card shows the sketch after the argument: the frame (basis string filled first: `from the goals shown in a compiled "
-                 "part of the proof (lake build A.B)`, or `reading the Lean source`), the paragraphs as <p> and the lists as <ol> or <ul> with "
-                 "<li> (the span rule on every text, the link as its text), the unexpanded heading and list when there are entries, the "
-                 "sketch note; a build string that holds `{date}` is shown as written (two steps, one pass each)")
+    @case("SK2", "C2: the card shows the sketch after the argument: the frame (F37: the basis only, `from the goals Lean shows when this part of "
+                 "the release is compiled` or `from reading the Lean source`, no reader, no date, no build), the paragraphs as <p> and the lists "
+                 "as <ol> or <ul> with <li> (the span rule on every text, the link as its text), the unexpanded heading and list when there "
+                 "are entries, the sketch note; a build string that holds `{date}` is shown as written in the Evidence line (one pass)")
     def _():
         b = _sbase()
         c, a = _card(b, "g1"), _card(b, "g1a")
-        frame = "The proof in order, as Reader Two read it on 2026-11-24, "
+        frame = "The proof in order, "
         names = lead(c)
-        two = skd(_card(_build(notes=_notes_s(build="lake build {date}")), "g1"))[0]
+        two = blk(_build(notes=_notes_s(build="lake build {date}")), "g1", "04.b01").find("p", "sketch-build")[0].text()
         return _eq((skd(c), skd(a), [c_.text() for c_ in _direct(c, "div", "sketch")[0].find("code")],
                     names.index(("p", "argument")) < names.index(("div", "sketch")) < names.index(("ul", "reactions")), two),
-                   ([("p", "frame sketch-frame", frame + "from the goals Lean showed when we compiled the part of the release that holds it (lake build A.B):"),
+                   ([("p", "frame sketch-frame", frame + "from the goals Lean shows when this part of the release is compiled:"),
                      ("p", "", "First sketch paragraph with a span."), ("ol", "", ["Ordered item one.", "Ordered item two here."]),
                      ("p", "", "Last sketch paragraph, see note 6."),
                      ("p", "unexpanded-heading", "Places where Lean finishes the proof by automation we have not opened up:"),
                      ("ul", "unexpanded", ["Closed by omega automation.", "A last simp call."]), ("p", "sketch-note", note_line)],
-                    [("p", "frame sketch-frame", frame + "reading the Lean source:"),
+                    [("p", "frame sketch-frame", frame + "from reading the Lean source:"),
                      ("p", "", "Opening paragraph of the bar sketch."), ("ul", "", ["Bullet one.", "Bullet two."]),
                      ("p", "", "Closing paragraph of the bar sketch."), ("p", "sketch-note", note_line)],
                     ["a span", "two", "omega", "simp"], True,
-                    ("p", "frame sketch-frame", frame + "from the goals Lean showed when we compiled the part of the release that holds it (lake build {date}):")))
+                    "Proof sketch from a compiled part of the release: lake build {date}."))
 
     @case("SK3", "C2: with no sketch the card shows `Proof sketch: not written yet.` ONLY when its proof is read (base: g1; with the sketch "
                  "notes: g3, since g1 and g1a have sketches); a card whose proof is not read (g3, g2, g1a, g1a1x) or not applicable (g1a1, a "
@@ -4968,11 +5120,11 @@ def _selftest_cases():
                    ([], 0, ["code", "li", "ol", "p", "ul"], 18, True, 0))
 
     @case("SK8", "C6: the evidence list of a card names a sketch block by labels.kinds.sketch (`Proof sketch`) beside the other kinds, and "
-                 "shows no text for it (the sketch is on the card)")
+                 "shows no text of the sketch for it (the sketch is on the card; F37: only the build line, a paragraph of its own)")
     def _():
         items = _card(_sbase(), "g1").find("details", "evidence")[0].find("ul", "blocks")[0].elems()
-        return _eq(([li.find("span", "kind")[0].text() for li in items], len(items[-1].find("p")), len(items[-1].find("aside"))),
-                   (["Reading", "Argument", "Interpretation", "Correction", "Reading", "Proof sketch"], 0, 0))
+        return _eq(([li.find("span", "kind")[0].text() for li in items], [p_.cls for p_ in items[-1].find("p")], len(items[-1].find("aside"))),
+                   (["Reading", "Argument", "Interpretation", "Correction", "Reading", "Proof sketch"], [["sketch-build"]], 0))
 
     @case("FR5", "FORMULA-RAW covers the sketch: a `$`, `\\(` or `\\[` in a sketch paragraph or list item outside a code span lists the block, "
                  "once (`FORMULA-RAW 04.b01`), exit 0; the same inside a code span, and a plain `5`, do not; the default sketch does not")
@@ -5002,10 +5154,8 @@ def _selftest_cases():
         junk = lambda p_: [x for x in ("[", "]", "06-x.md", "example.org") if x in _raw(p_)]
         return _eq((b.rc, idea.text(), full.text(), junk(idea), junk(full), len(idea.find("a")), len(full.find("a")), "example.org" in b.page,
                     blk["text"], blk["first_sentence"], "See [note 6](06-x.md) now." in b.text("data.js"), lk(b)),
-                   (0, "How this is proved, as Reader One read it on 2026-11-23 (B.lean, lines 15-18): See note 6 now. Read again by "
-                       "Reader Two on 2026-11-24. Read the note",
-                    "How this is proved, as Reader One read it on 2026-11-23 (B.lean, lines 15-18): See note 6 now. Then site too. "
-                    "Read again by Reader Two on 2026-11-24.", [], [], 1, 0, False, text, "See [note 6](06-x.md) now.", True,
+                   (0, "How this is proved: See note 6 now. Read the note",
+                    "How this is proved: See note 6 now. Then site too.", [], [], 1, 0, False, text, "See [note 6](06-x.md) now.", True,
                     ["links in block text: 2 shown as text", "LINK-OUTSIDE 01.b02 https://example.org"]))
 
     @case("LK2", "E1 E2: what is a link, pinned: `[a](06-x.md#sec)` is a link to a note (the part before # is the file name, not listed), "
@@ -5019,8 +5169,7 @@ def _selftest_cases():
         c = _card(b, "g1")
         idea = _direct(c, "p", "argument")[0]
         return _eq((b.rc, idea.text(), [x.text() for x in idea.find("code")], len(idea.find("a")), lk(b)),
-                   (0, "How this is proved, as Reader One read it on 2026-11-23 (B.lean, lines 15-18): First a and b and [x] and "
-                       "[c](06-x.md) and d and e and ![img](06-x.md) end. Read again by Reader Two on 2026-11-24. Read the note",
+                   (0, "How this is proved: First a and b and [x] and [c](06-x.md) and d and e and ![img](06-x.md) end. Read the note",
                     ["[c](06-x.md)"], 1,
                     ["links in block text: 4 shown as text", "LINK-OUTSIDE 01.b02 99-missing.md",
                      "LINK-OUTSIDE 01.b02 https://example.org/p#f", "LINK-OUTSIDE 01.b02"]))
@@ -5037,7 +5186,7 @@ def _selftest_cases():
         c = _card(b, "g1")
         aside = c.find("aside")[0].find("p", "interpretation")[0]
         return _eq((b.rc, aside.text(), c.find("h3", "claim")[0].text(), [x[2] for x in skd(c) if x[0] == "ol"], lk(b)),
-                   (0, "Our interpretation, by Reader Two on 2026-11-24: We think n and o hold.", "Claim one [cl](06-x.md)",
+                   (0, "What we think it means: We think n and o hold.", "Claim one [cl](06-x.md)",
                     [["Ordered item one.", "Item with list link here."]],
                     ["links in block text: 4 shown as text", "LINK-OUTSIDE 01.b03 https://x.example"]))
 
@@ -5384,7 +5533,7 @@ def _selftest_cases():
     def _():
         b = _build(outline=_outline_r("where", "Section `3.1`"))
         li = _direct(rcn(b, "g1"), "ul", "recognition-citations")[0].elems()[0]
-        return _eq((b.rc, _raw(li), [c.text() for c in li.find("code")]), (0, "A source, Section 3.1 (as read by Reader One on 2026-11-22)", ["3.1"]))
+        return _eq((b.rc, _raw(li), [c.text() for c in li.find("code")]), (0, "A source, Section 3.1", ["3.1"]))
 
     @case("RD4", "A3: a year and a year-month of the same year, the LONGER first, are compared as the strings as written in either order "
                  "(2006-11 then 2006, and 2006 then 2006-11, both read `as of 2006-11`): the newest by the strings, never the last cited")
@@ -5410,14 +5559,326 @@ def _selftest_cases():
         controls = ['<a class="citation extra" href="https://x.invalid/">x</a>', '<a class="extra reaction" href="http://x.invalid/">x</a>']
         return _eq(([sp(h, "") for h, _w in planted], [sp(h, "") for h in controls]), ([w for _h, w in planted], [[], []]))
 
-    @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the frame (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
+    @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the Evidence section (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
                  "the JSON keeps the path as written")
     def _():
         n = _n01().replace('"file":"A/B.lean"', '"file":"A\\\\Deep\\\\Nest.lean"').replace("| `A/B.lean` |", "| `A\\Deep\\Nest.lean` |")
         b = _build(notes=_notes() | {"01-one.md": n})
-        idea = _direct(_card(b, "g1"), "p", "argument")[0].text()
-        return _eq((b.rc, "(Nest.lean, lines 15-18)" in idea, "Deep" in idea, b.js("group/g1.json")["blocks"][1]["file"]),
-                   (0, True, False, "A\\Deep\\Nest.lean"))
+        return _eq((b.rc, pairs(blk(b, "g1", "01.b02")), "Deep" in _raw(blk(b, "g1", "01.b02")), b.js("group/g1.json")["blocks"][1]["file"]),
+                   (0, [[("File", "Nest.lean"), ("Lines", "15-18")]], False, "A\\Deep\\Nest.lean"))
+
+    # ---- F37 (a) to (c): provenance (who read what, and when) is off the card and in the closed Evidence section
+    f37 = lambda **kw: _build(strings=_strings(), **kw)
+    _surface_bad = re.compile(r"Reader|2026-\d\d-\d\d|\.lean|[Rr]ead by|Read again|counted by|recorded by|understanding|lake build")
+
+    LABEL = "No mathematician has checked our reading yet. If you think we have it wrong, or you know more, please tell us."
+
+    @case("PV1", "F37 S1: site/strings.json takes the wording file's CARD value on each of its 15 keys, has the 8 EVIDENCE keys as written, "
+                 "keeps the 22 values the wording file says stay (UNCHANGED_ON_CARD) byte-equal, has no second_reader_frame, and holds "
+                 "frames.argument `How this is proved`; the file passes the builder's own strings check")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        diff = lambda want: [k for k in want if real.get(k) != want[k]]
+        return _eq((diff(F37_CARD), diff(F37_EVIDENCE), diff(F37_UNCHANGED), len(F37_CARD), len(F37_EVIDENCE), len(F37_UNCHANGED),
+                    "second_reader_frame" in real, real["frames"]["argument"], _strings_problems(real)),
+                   ([], [], [], 15, 8, 22, False, ["How this is proved"], []))
+
+    @case("PV2", "F37 S1: placeholders as the new values hold them: each of the 8 EVIDENCE keys that lacks one it requires is refused "
+                 "(`is missing the placeholder`, key and token named, 17 cases), a CARD key that holds a reader, date, file, lines, build or "
+                 "opened_by token it does not declare is refused (`has an unknown placeholder`), sketch_frame without {basis}, "
+                 "established_by_line without {name} and the citation lines without {source}, {where} or {source_date} are refused; the "
+                 "fixture (no second_reader_frame at all) builds, so that key is no longer required")
+    def _():
+        req = (("evidence_statement_read_line", ("reader", "date")), ("evidence_statement_census_line", ("reader", "date")),
+               ("evidence_proof_read_line", ("reader", "date")), ("evidence_second_reader_line", ("reader", "date")),
+               ("evidence_recognition_line", ("reader", "date")), ("evidence_citation_line", ("source", "opened_by", "opened_on")),
+               ("evidence_established_line", ("name", "reader", "date")), ("evidence_sketch_build_line", ("build",)),
+               ("sketch_frame", ("basis",)), ("established_by_line", ("name",)),
+               ("recognition_citation_dated_line", ("source", "where")), ("recognition_citation_open_line", ("source", "where", "source_date")))
+        extra = (("statement_read_line", "reader"), ("statement_census_line", "date"), ("proof_read_line", "reader"),
+                 ("argument_frame", "file"), ("argument_frame", "lines"), ("argument_frame", "reader"), ("argument_frame_no_proof", "date"),
+                 ("interpretation_frame", "reader"), ("sketch_frame", "reader"), ("sketch_basis_compiled", "build"),
+                 ("recognition_label_line", "reader"), ("recognition_citation_dated_line", "opened_by"),
+                 ("recognition_citation_open_line", "opened_on"), ("established_by_line", "reader"))
+        err = lambda b_: [x for x in b_.out.splitlines() if x.startswith("BUILD-ERROR")]
+        res, want = [], []
+        for key, names in req:
+            for name in names:
+                st = _strings()
+                st[key] = st[key].replace("{" + name + "}", "")
+                b = _build(strings=st)
+                res.append((key, name, b.rc, err(b), b.existed))
+                want.append((key, name, 1, [f"BUILD-ERROR STRINGS-KEY {key} is missing the placeholder {{{name}}}"], False))
+        for key, name in extra:
+            st = _strings()
+            st[key] = st[key] + " {" + name + "}"
+            b = _build(strings=st)
+            res.append((key, name, b.rc, err(b), b.existed))
+            want.append((key, name, 1, [f"BUILD-ERROR STRINGS-KEY {key} has an unknown placeholder {{{name}}}"], False))
+        return _eq((res, len(res), f37().rc), (want, 38, 0))
+
+    @case("PV3", "F37 S2: no card shows a reader, a date of ours, a file or lines, a build or `read by` outside its closed Evidence section (the "
+                 "corrections list is read too): the base, the sketch, the definition and the "
+                 "recognition pages; the status lines are the quiet ones (g1 read/read, g3 census/not read, g1a read/not read)")
+    def _():
+        pages = [f37(), f37(notes=_notes_s()), f37(outline=_outline_b(), notes=_notes_b()), f37(outline=_zoo())]
+        bad = [[m_.group(0) for m_ in _surface_bad.finditer(surface(_dom(b_.page)))] for b_ in pages]
+        b = pages[0]
+        st = lambda g: [p.text() for p in _card(b, g).find("p", "status")][:2]
+        return _eq((bad, [b_.rc for b_ in pages], st("g1"), st("g3"), st("g1a"), st("g1a1x")),
+                   ([[]] * 4, [0] * 4, ["We have read this statement.", "We have read this proof."],
+                    ["We have not read this statement: what it says here comes from a program's count of its parts.",
+                     "We have not read this proof yet."],
+                    ["We have read this statement.", "We have not read this proof yet."],
+                    ["We have read this statement.", "We have not read this proof yet."]))
+
+    @case("PV4", "F37 S2: the argument frame, the first sentence and the link on the closed card carry no name, date, file or lines (`How this is "
+                 "proved: First argument sentence. Read the note`), there is no second-reader span on any card, a step whose roots are no "
+                 "theorem or lemma is framed `What this definition contains:` and a mixed one `How this is proved:`; the sketch frame says its "
+                 "basis only (`from the goals Lean shows ...` for a compiled one, `from reading the Lean source`), the build string is not "
+                 "in the sketch")
+    def _():
+        b, bb, bs = f37(), f37(outline=_outline_b(), notes=_notes_b()), f37(notes=_notes_s())
+        arg = lambda b_, g: _direct(_card(b_, g), "p", "argument")[0]
+        frame = lambda b_, g: _direct(_card(b_, g), "div", "sketch")[0].find("p", "sketch-frame")[0].text()
+        return _eq((arg(b, "g1").text(), arg(b, "g1").elems()[0].cls, len(_dom(bb.page).find("span", "second")),
+                    arg(bb, "g1a1").text(), arg(bb, "g2").text(), blk(bb, "g2", "07.b02").find("p", "argument")[0].text(),
+                    frame(bs, "g1"), frame(bs, "g1a"), "lake build" in _direct(_card(bs, "g1"), "div", "sketch")[0].text()),
+                   ("How this is proved: First argument sentence. Read the note", ["frame"], 0,
+                    "What this definition contains: Def argument sentence. Read the note",
+                    "What this definition contains: Def argument sentence. Read the note",
+                    "How this is proved: Mixed argument sentence. Second mixed sentence.",
+                    "The proof in order, from the goals Lean shows when this part of the release is compiled:",
+                    "The proof in order, from reading the Lean source:", False))
+
+    @case("PV5", "F37 S2: the recognition block shows its citation lines with source and place only (`List D, Problem 7`, and `, dated 2007-01` "
+                 "for a source that says open on an open card), the established line with the name only, and the label line (no name, no date) "
+                 "ONCE at the end of the block of each of the 14 cards that show a recognition, never on the two that show the not-written line")
+    def _():
+        b = f37(outline=_zoo())
+        cits = lambda g: [_raw(li) for li in _direct(rcn(b, g), "ul", "recognition-citations")[0].elems()]
+        est = lambda g: _raw(_direct(rcn(b, g), "p", "recognition-established")[0])
+        has = [z[0] for z in _ZOO if z[3] is not None]
+        labels = {g: [p.text() for p in rcn(b, g).find("p", "recognition-label")] for g in has}
+        last = {g: lead(rcn(b, g))[-1] for g in has}
+        return _eq((cits("zrk"), cits("zrv"), cits("zro"), cits("zno"), cits("zov"), est("znk"), est("znv"), labels == {g: [LABEL] for g in has},
+                    len(has), set(last.values()), len(_dom(b.page).find("p", "recognition-label")),
+                    [len(rcn(b, g).find("p", "recognition-label")) for g in ("zw", "zwn")]),
+                   (["The Source Book, Theorem 2.1"], ["The Source Book, Theorem 2.1", "Other Paper, Section 3"],
+                    ["List A, Problem 7, dated 2007-01", "List B, Problem 7, dated 2004-05-17", "List C, Problem 7, dated 2010-03",
+                     "List D, Problem 7"], ["List E, Problem 7, dated 2006", "List F, Problem 7, dated 2006-11"],
+                    ["Other Paper, Section 3", "List G, Problem 7"], "Where it is proved: the release proves this statement as A.B.foo.",
+                    "Where it is proved: we have not yet traced where in the release this statement is proved.", True, 14,
+                    {("p", "recognition-label")}, 14, [0, 0]))
+
+    @case("PV6", "F37 S3: the Evidence section is a <details> closed by default on every card (no `open`), and holds, after the roots and before "
+                 "`What we wrote about it`, a list of the readings in a fixed order: statement, proof, the recognition, each citation, the "
+                 "established line (g1: statement and proof; g3, a census claim: the census line; zrv: statement, proof, recognition, two "
+                 "citations; znk: statement, recognition, citation, established; znv, not traced: no established line; zw, no recognition: "
+                 "statement and proof)")
+    def _():
+        b, bz = f37(), f37(outline=_zoo())
+        dets = _dom(bz.page).find("details", "evidence")
+        return _eq((all("open" not in d.attrs for d in dets), len(dets), bz.page.count('<details class="evidence">'),
+                    [(k.tag, k.cls[-1] if k.cls else "") for k in evd(b, "g1").elems()],
+                    prov(b, "g1"), prov(b, "g3"), prov(b, "g1a"), prov(b, "g2"), prov(bz, "zrv"), prov(bz, "znk"), prov(bz, "znv"),
+                    prov(bz, "zw"), prov(bz, "zok")),
+                   (True, 22, 22, [("summary", ""), ("div", "root"), ("ul", "provenance"), ("p", "label"), ("ul", "blocks")],
+                    ["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23."],
+                    ["Statement counted by a program, not read, recorded by Reader One on 2026-11-20."],
+                    ["Statement read by Reader One on 2026-11-23."], None,
+                    ["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23.",
+                     "Our reading of where this statement stands: written by Reader One on 2026-11-22.",
+                     "The Source Book: opened by Reader Two on 2026-11-21.", "Other Paper: opened by Reader One on 2026-11-22."],
+                    ["Statement read by Reader One on 2026-11-20.",
+                     "Our reading of where this statement stands: written by Reader One on 2026-11-22.",
+                     "Other Paper: opened by Reader One on 2026-11-22.",
+                     "Where it is proved: traced to A.B.foo by Reader Two on 2026-11-23."],
+                    ["Statement read by Reader One on 2026-11-20.",
+                     "Our reading of where this statement stands: written by Reader One on 2026-11-22.",
+                     "Other Paper: opened by Reader One on 2026-11-22."],
+                    ["Statement read by Reader One on 2026-11-20.", "Proof read by Reader One on 2026-11-23."],
+                    ["Statement read by Reader One on 2026-11-20.",
+                     "Our reading of where this statement stands: written by Reader Two on 2026-11-23.",
+                     "Other Paper: opened by Reader One on 2026-11-22."]))
+
+    @case("PV7", "F37 S3: in the blocks list of the Evidence section an argument block carries, after its text, its file (base name) and lines "
+                 "(the labels File and Lines, `not given` when it has none) and one line per second reader (g1, 01.b02: `B.lean`, `15-18`, "
+                 "`Read again by Reader Two on 2026-11-24.`; the frame in the text carries no name); a sketch block carries its file and "
+                 "lines and, when compiled, the build line (g1: `lake build A.B`; g1a, from the source: none); a block of another kind "
+                 "carries neither; the interpretation keeps its own aside and frame")
+    def _():
+        b, bs, bb = f37(), f37(notes=_notes_s()), f37(outline=_outline_b(), notes=_notes_b())
+        a = blk(b, "g1", "01.b02")
+        sk = blk(bs, "g1", "04.b01")
+        ska = blk(bs, "g1a", "05.b02")
+        return _eq(([(k.tag, k.cls[-1] if k.cls else "") for k in a.elems()][3:], a.find("p", "argument")[0].text(), pairs(a),
+                    [p.text() for p in a.find("p", "second-reader")],
+                    pairs(sk), [p.text() for p in sk.find("p", "sketch-build")], pairs(ska), [p.text() for p in ska.find("p", "sketch-build")],
+                    pairs(blk(b, "g1", "01.b01")), [p.text() for p in blk(b, "g1", "01.b03").find("p", "interpretation")],
+                    [p.text() for p in blk(bb, "g1a1", "07.b02").find("p", "argument")],
+                    pairs(blk(bb, "g1a1", "07.b01")), pairs(blk(bb, "g1a1", "07.b02"))),
+                   ([("p", "argument"), ("dl", "block-source"), ("p", "second-reader")],
+                    "How this is proved: First argument sentence. Second argument sentence.", [[("File", "B.lean"), ("Lines", "15-18")]],
+                    ["Read again by Reader Two on 2026-11-24."],
+                    [[("File", "not given"), ("Lines", "not given")]], ["Proof sketch from a compiled part of the release: lake build A.B."],
+                    [[("File", "not given"), ("Lines", "not given")]], [], [],
+                    ["What we think it means: We think this is the key step."],
+                    ["What this definition contains: Mixed argument sentence. Second mixed sentence."],
+                    [[("File", "C.lean"), ("Lines", "5-9")]], [[("File", "TopPlug.lean"), ("Lines", "not given")]]))
+
+    @case("PV8", "F37 S3: a card with nothing to say in Evidence keeps today's section: g2 (two roots, no claim, so no reading to name) has no "
+                 "provenance list, its children are the same summary, root divs, label, blocks list and open-items list as on the head of F35")
+    def _():
+        b = f37()
+        return _eq(([(k.tag, k.cls[-1] if k.cls else "") for k in evd(b, "g2").elems()], prov(b, "g2")),
+                   ([("summary", ""), ("div", "root"), ("div", "root"), ("p", "label"), ("ul", "blocks"), ("p", "label"), ("ul", "open")],
+                    None))
+
+    @case("PV9", "F37 S4: the group files, the level files and data.js are byte-equal to what the head of F35 wrote, on five fixture builds "
+                 "(base, recognition zoo, sketches, definition, zoo with sketches and the definition note): one digest over every file but "
+                 "index.html and manifest.json, pinned from that head; the same fields are in the JSON (the reader, date, second_readers, "
+                 "file and lines of 01.b02 and the recognition's reader, date and citations' opened_by and opened_on)")
+    def _():
+        def dig(b_):
+            h = hashlib.sha256()
+            for k in sorted(b_.files):
+                if k not in ("index.html", "manifest.json"):
+                    h.update(k.encode() + b"\0" + hashlib.sha256(b_.files[k]).digest())
+            return h.hexdigest()
+        outs = [f37(), f37(outline=_zoo()), f37(notes=_notes_s()), f37(outline=_outline_b(), notes=_notes_b()),
+                f37(outline=_zoo(), notes=_notes_s() | {"07-def.md": N07})]
+        g1, zrv = outs[0].js("group/g1.json"), outs[1].js("group/zrv.json")
+        arg = next(x for x in g1["blocks"] if x["block"] == "01.b02")
+        return _eq(([b_.rc for b_ in outs], [dig(b_) for b_ in outs],
+                    (arg["reader"], arg["date"], arg["second_readers"], arg["file"], arg["lines"]),
+                    (zrv["recognition"]["reader"], zrv["recognition"]["date"],
+                     [(c["opened_by"], c["opened_on"]) for c in zrv["recognition"]["citations"]])),
+                   ([0] * 5, ["be90b01739a84e20e61d6925401b6fa3e256e858c2aa0336d07eee6750649bc5",
+                              "94f4db15211979dd993fe33b7580510b73d0ae09fe2cf623656d3459050a5da7",
+                              "0d4bf044dfadbf07c8b1a24788b6b246437d2285759d1ba2449e19b952314baa",
+                              "9ff0b5317fcb3ae718a054f590ab6f1da16c4f86ac48c0784c4d96a2590a526b",
+                              "0019287171c05bb06a9c1e524d491c68506cc8f03d6fc739822d5a7716efe67c"],
+                    ("Reader One", "2026-11-23", [{"reader": "Reader Two", "date": "2026-11-24"}], "A/B.lean", [15, 18]),
+                    ("Reader One", "2026-11-22", [("Reader Two", "2026-11-21"), ("Reader One", "2026-11-22")])))
+
+    @case("PV10", "F37 S5: the builder's own rules for its sentences hold for the 8 new keys: a forbidden word, a percent sign or `of the proof` "
+                  "in any of them is refused as STRINGS-FORBIDDEN naming the key (24 cases); control: the fixture builds")
+    def _():
+        res = []
+        for key in F37_EVIDENCE:
+            for bad in (" This is verified.", " It is 50% done.", " It is a part of the proof."):
+                st = _strings()
+                st[key] = st[key] + bad
+                b = _build(strings=st)
+                res.append((key, b.rc, [x.split(" ")[1:3] for x in b.out.splitlines() if x.startswith("BUILD-ERROR")]))
+        return _eq((res, f37().rc), ([(k, 1, [["STRINGS-FORBIDDEN", k]]) for k in F37_EVIDENCE for _i in range(3)], 0))
+
+    @case("PV12", "F37 corrections: a correction on a card keeps its kind and its title on the card (`Correction` and the link to the note) "
+                  "and shows neither its reader nor its date there; its reader and date are in the Evidence section, in the block list "
+                  "beside the block's kind (the existing who-span, no new string). One correction (g1: 01.b06), two on one card (g1a1: "
+                  "08.b01 and 09.b01, a definition) and one on a theorem with a census claim (g3: 10.b01); a card with none has no list; the "
+                  "JSON is byte-equal to what the builder wrote before this change (pinned digest) and holds each reader and date")
+    def _():
+        b = f37(notes=_notes_corr())
+        lis = lambda g: [li.text() for li in _direct(_card(b, g), "ul", "corrections")[0].find("li")]
+        ev = lambda g, bid: blk(b, g, bid).text()
+        h = hashlib.sha256()
+        for k in sorted(b.files):
+            if k not in ("index.html", "manifest.json"):
+                h.update(k.encode() + b"\0" + hashlib.sha256(b.files[k]).digest())
+        js = lambda g, bid: next((x["reader"], x["date"]) for x in b.js(f"group/{g}.json")["blocks"] if x["block"] == bid)
+        return _eq((b.rc, lis("g1"), lis("g1a1"), lis("g3"), len(_direct(_card(b, "g1a"), "ul", "corrections")),
+                    _surface_bad.findall(surface(_dom(b.page))),
+                    ev("g1", "01.b06"), ev("g1a1", "08.b01"), ev("g1a1", "09.b01"), ev("g3", "10.b01"),
+                    h.hexdigest(), js("g1", "01.b06"), js("g1a1", "08.b01"), js("g1a1", "09.b01"), js("g3", "10.b01")),
+                   (0, ["Correction Note one"], ["Correction Note eight", "Correction Note nine"], ["Correction Note ten"], 0, [],
+                    "01 01.b06 Correction Reader Two 2026-11-22", "08 08.b01 Correction Reader Three 2026-11-26",
+                    "09 09.b01 Correction Reader Four 2026-11-27", "10 10.b01 Correction Reader Five 2026-11-28",
+                    "1bea6d12fa8779f32724591755e4fa62c663e37c4a4df0561b46c72def23734a",
+                    ("Reader Two", "2026-11-22"), ("Reader Three", "2026-11-26"), ("Reader Four", "2026-11-27"), ("Reader Five", "2026-11-28")))
+
+    @case("PV13", "F37 review P1: a second reader of a block that is NOT an argument is in the Evidence section too, one `Read again by ...` "
+                  "line after that block (a reading block 01.b01 and an interpretation block 01.b03 with a second reader each, the argument "
+                  "01.b02 as before); none of them is on the card")
+    def _():
+        n = (_n01().replace('"kind":"reading","lines":[12,14],"reader":"Reader One"}',
+                            '"kind":"reading","lines":[12,14],"reader":"Reader One","second_readers":[{"date":"2026-11-25","reader":"Reader Seven"}]}')
+                   .replace('"kind":"interpretation","reader":"Reader Two"}',
+                            '"kind":"interpretation","reader":"Reader Two","second_readers":[{"date":"2026-11-26","reader":"Reader Eight"}]}'))
+        b = f37(notes=_notes() | {"01-one.md": n})
+        sec = lambda bid: [p_.text() for p_ in blk(b, "g1", bid).find("p", "second-reader")]
+        return _eq((b.rc, sec("01.b01"), sec("01.b02"), sec("01.b03"), _surface_bad.findall(surface(_card(b, "g1")))),
+                   (0, ["Read again by Reader Seven on 2026-11-25."], ["Read again by Reader Two on 2026-11-24."],
+                    ["Read again by Reader Eight on 2026-11-26."], []))
+
+    @case("PV14", "F37 review P2: a card with several roots names nobody in Evidence either: g2 with two theorem roots (quux, qux) whose proofs are "
+                  "both read by Reader Six shows the counts on the card (`Proofs read: 2 of 2 declarations.`), no provenance list, and the name "
+                  "Reader Six only in the block list; control: a card of one root (g1) has its proof line")
+    def _():
+        o = _outline()
+        o["groups"][3]["roots"] = [QUUX, QUX]
+        n03 = (N03 + "\nArgues quux.\n" + _b(id="03.b01", kind="argument", decls=[QUUX], reader="Reader Six", date="2026-11-29")
+               + "\n\nArgues qux.\n" + _b(id="03.b02", kind="argument", decls=[QUX], reader="Reader Six", date="2026-11-29") + "\n")
+        b = f37(outline=o, notes=_notes() | {"03-three.md": n03})
+        c = _card(b, "g2")
+        return _eq((b.rc, c.find("p", "proof")[0].text(), prov(b, "g2"), "Reader Six" in surface(c), "Reader Six" in evd(b, "g2").text(),
+                    prov(b, "g1")[1]),
+                   (0, "Proofs read: 2 of 2 declarations.", None, False, True, "Proof read by Reader One on 2026-11-23."))
+
+    @case("PV15", "F37 review P3: hostile text (<b>, &, quotes, a backtick span, **bold**, $, `</details><script>`) in the recognition's reader, a "
+                  "citation's opened_by and the established reader is escaped in the Evidence lines: no <script> or <strong> on the page, the "
+                  "escaped form is there, a backtick span in opened_by stays literal text (no <code> from it) while the citation's source "
+                  "keeps its span")
+    def _():
+        h = "<b>&\"' `x` **bold** $ </details><script>alert(1)</script>"
+        o = _zoo()
+        g = next(g_ for g_ in o["groups"] if g_["id"] == "znk")
+        g["recognition"]["reader"] = h
+        g["recognition"]["citations"] = [dict(CITB, opened_by=h)]
+        g["recognition"]["established"] = dict(EST, reader=h)
+        b = f37(outline=o)
+        dom = _dom(b.page)
+        li = _direct(evd(b, "znk"), "ul", "provenance")[0].elems()
+        return _eq((b.rc, len(dom.find("script")), len(dom.find("strong")), "<script" in b.page, html.escape(h) in b.page,
+                    [_raw(x) for x in li][1:],
+                    [c_.text() for c_ in li[2].find("code")]),
+                   (0, 0, 0, False, True,
+                    [f"Our reading of where this statement stands: written by {h} on 2026-11-22.",
+                     f"Other Paper: opened by {h} on 2026-11-22.",
+                     f"Where it is proved: traced to A.B.foo by {h} on 2026-11-23."], ["Paper"]))
+
+    @case("PV16", "F37 review P4 (the rule of F29, as main had it): the lines are shown only with a file: a block with lines and NO file shows "
+                  "`not given` for the File and `not given` for the Lines; a file and no lines shows the base name and `not given`; both show "
+                  "the file and the range (the data keeps the lines as written)")
+    def _():
+        n = _n01().replace('"file":"A/B.lean","id":"01.b02"', '"id":"01.b02"')
+        b = f37(notes=_notes() | {"01-one.md": n})
+        arg = next(x for x in b.js("group/g1.json")["blocks"] if x["block"] == "01.b02")
+        return _eq((b.rc, pairs(blk(b, "g1", "01.b02")), arg["lines"], "file" in arg, pairs(blk(f37(), "g1", "01.b02")),
+                    pairs(blk(f37(outline=_outline_b(), notes=_notes_b()), "g1a1", "07.b02"))),
+                   (0, [[("File", "not given"), ("Lines", "not given")]], [15, 18], False, [[("File", "B.lean"), ("Lines", "15-18")]],
+                    [[("File", "TopPlug.lean"), ("Lines", "not given")]]))
+
+    @case("PV11", "F37 S1: the argument detector is `How this is proved` (no `, as`): an interpretation block whose text opens `How this is "
+                  "proved: ...` is listed as FRAME-NOTE with that detector, and not with the old `How this is proved, as`")
+    def _():
+        def listed(detector):
+            st = _strings()
+            st["frames"]["argument"] = detector
+            with tempfile.TemporaryDirectory() as d:
+                p = _plant(d, notes=_notes(interp_text="How this is proved: it holds by the first step."), strings=st)
+                o = io.StringIO()
+                with contextlib.redirect_stdout(o):
+                    rc = nm.run(p["notes"], p["outline"], p["decls"], strings=p["strings"])
+            return rc, [x for x in o.getvalue().splitlines() if x.startswith("FRAME-NOTE")]
+        return _eq((listed(["How this is proved"]), listed(["How this is proved, as"])),
+                   ((0, ["FRAME-NOTE 01-one.md:13 block '01.b03' (interpretation): the text opens with a frame of kind 'argument' "
+                         "('How this is proved')"]), (0, [])))
 
     return cases
 
