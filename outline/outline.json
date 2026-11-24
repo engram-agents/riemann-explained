@@ -38,7 +38,24 @@
      "module": "Formalism.GammaFactorNonvanishing.CritLine",
      "name": "Formalism.VW.rh_of_every"
     }
-   ]
+   ],
+   "root_role": "result",
+   "recognition": {
+    "form": "variant",
+    "result": "The Riemann Hypothesis follows once $\\zeta$ has no zero with real part above $1/2$: by the functional equation, the zeros in the critical strip are symmetric about the critical line.",
+    "citations": [
+     {
+      "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 10",
+      "where": "Section 10.1, p. 328 (if $\\rho$ is a zero of $\\xi(s)$ then so are $\\bar\\rho$, $1 - \\rho$ and $1 - \\bar\\rho$; the Riemann Hypothesis is stated on the same page)",
+      "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/14.0_pp_326_357_Analytic_properties_of_the_zeta_function_and_L-functions.pdf",
+      "opened_by": "Kepler",
+      "opened_on": "2026-11-24"
+     }
+    ],
+    "difference": "The book states the symmetry of the zeros and states the Riemann Hypothesis; it does not write this implication down as a separate result, it is immediate from the symmetry. The library takes its hypothesis for every Dirichlet character and uses it for the character of modulus 1 only. Its conclusion is Mathlib's `RiemannHypothesis`, which is about zeros of $\\zeta$ other than the trivial zeros $-2, -4, \\dots$ and other than the point $1$, and the proof works with Mathlib's functional equation for $\\zeta$ itself, not with $\\xi$; it treats every $s$ with $\\operatorname{Re} s < 1/2$ at once, the trivial zeros showing up as zeros of the cosine factor, where the book's symmetry is stated for the zeros of $\\xi$.",
+    "reader": "Kepler",
+    "date": "2026-11-24"
+   }
   },
   {
    "claim": {
@@ -66,7 +83,8 @@
      "module": "Formalism.GammaFactorNonvanishing.RhOfRight",
      "name": "Formalism.VW.rh_of_right"
     }
-   ]
+   ],
+   "root_role": "result"
   },
   {
    "claim": {
@@ -128,14 +146,119 @@
    "order": 2,
    "parent": "root",
    "premises": [
-    "three-inputs"
+    "three-inputs",
+    "zerofreeall"
    ],
    "roots": [
     {
      "module": "Development.AutomorphicArithmetic.CharacterBoxes.Imprimitive",
      "name": "UpperTheory.Top.imprimitive"
     }
-   ]
+   ],
+   "root_role": "result",
+   "recognition": {
+    "form": "variant",
+    "result": "The $L$-function of a Dirichlet character is the $L$-function of the primitive character that induces it, times a finite product of factors $1 - \\chi^*(p)\\,p^{-s}$ over the primes dividing the modulus; so the two have the same zeros off the imaginary axis.",
+    "citations": [
+     {
+      "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 10",
+      "where": "Section 10.1, p. 334, equation (10.20) and the lines after it (\"Thus $L(s, \\chi)$ has all the zeros of $L(s, \\chi^*)$\", with further zeros only on the imaginary axis)",
+      "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/14.0_pp_326_357_Analytic_properties_of_the_zeta_function_and_L-functions.pdf",
+      "opened_by": "Kepler",
+      "opened_on": "2026-11-24"
+     }
+    ],
+    "difference": "The book speaks of the zeros of the two functions. The library states non-vanishing: if no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then none of any character does, except that for the trivial character the point $s = 1$ is left out, where $\\zeta$ has its pole. The hypothesis itself leaves no point out (see this step's condition). The product runs over the primes dividing the modulus, as in the book; the library takes it from Mathlib's `LFunction_changeLevel`.",
+    "reader": "Kepler",
+    "date": "2026-11-24"
+   }
+  },
+  {
+   "claim": {
+    "basis": "read",
+    "conditions": [
+     "At modulus 1 the only character is the trivial one; it counts as primitive and its L-function is ζ. The half-plane then contains s = 1, where ζ has its pole and Lean gives ζ(1) the defined value (γ − log 4π)/2, which is not 0; so at that one point the statement asks for a nonzero value of a convention, not about a zero."
+    ],
+    "conventions_checked": [
+     "a",
+     "c",
+     "d",
+     "e"
+    ],
+    "date": "2026-11-24",
+    "defs_opened": [
+     {
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeAll",
+      "lines": [
+       18,
+       18
+      ]
+     },
+     {
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.ZeroFreeOn",
+      "lines": [
+       14,
+       14
+      ]
+     },
+     {
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+      "name": "Formalism.HC.PChar.ZeroFreeAbove",
+      "lines": [
+       11,
+       12
+      ]
+     },
+     {
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.PrimePairSizeCondition",
+      "name": "Formalism.HC.PChar",
+      "lines": [
+       7,
+       11
+      ]
+     }
+    ],
+    "mathlib_read": [
+     "DirichletCharacter.IsPrimitive (Mathlib/NumberTheory/DirichletCharacter/Basic.lean 292)",
+     "riemannZeta_one (Mathlib/NumberTheory/Harmonic/ZetaAsymp.lean 418)",
+     "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
+    ],
+    "reader": "Halley",
+    "text": "For every primitive Dirichlet character χ, of any modulus N ≥ 1, L(χ, s) ≠ 0 whenever Re s > 1/2"
+   },
+   "id": "zerofreeall",
+   "level": 2,
+   "order": 1,
+   "parent": "primitive-to-all",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.ExplicitFormulaErrorOfHostConditions",
+     "name": "Formalism.HC.ZeroFreeAll"
+    }
+   ],
+   "root_role": "named_statement",
+   "recognition": {
+    "form": "open_in_literature",
+    "result": "the Generalized Riemann Hypothesis for the $L$-functions of primitive Dirichlet characters",
+    "citations": [
+     {
+      "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 10",
+      "where": "Section 10.1, p. 333 (\"The conjecture that these latter zeros all lie on the critical line σ = 1/2 is the Generalized Riemann Hypothesis (GRH)\")",
+      "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/14.0_pp_326_357_Analytic_properties_of_the_zeta_function_and_L-functions.pdf",
+      "says_open": true,
+      "source_date": "2006",
+      "opened_by": "Halley",
+      "opened_on": "2026-11-24"
+     }
+    ],
+    "difference": "The textbook statement is about primitive characters of modulus $q > 1$ and says that every zero in the critical strip $0 \\le \\operatorname{Re} s \\le 1$ has real part $1/2$. The Lean statement says only that there is no zero with $\\operatorname{Re} s > 1/2$, and it includes modulus 1, that is $\\zeta$. With the functional equation, which the Lean statement does not contain, the two agree for $q > 1$ (a zero to the left of the line gives one to the right for $\\bar\\chi$, page 333 again), and modulus 1 is the Riemann Hypothesis.",
+    "established": "not_traced",
+    "reader": "Halley",
+    "date": "2026-11-24"
+   }
   },
   {
    "claim": {
@@ -225,7 +348,13 @@
      "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.TopPlug",
      "name": "UpperTheory.Top.zero_free_all_of_green_v_win"
     }
-   ]
+   ],
+   "root_role": "result",
+   "recognition": {
+    "form": "not_recognised",
+    "reader": "Halley",
+    "date": "2026-11-24"
+   }
   },
   {
    "claim": {
@@ -324,7 +453,8 @@
      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ZeroFreeAllOfTopG",
      "name": "UpperTheory.Top.zeroFreeAll_of_topG"
     }
-   ]
+   ],
+   "root_role": "result"
   },
   {
    "claim": null,
@@ -453,7 +583,8 @@
      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.TopWin",
      "name": "Formalism.HC.zeroFreeOn_of_tiedWin_cyc"
     }
-   ]
+   ],
+   "root_role": "result"
   },
   {
    "claim": {
@@ -532,7 +663,8 @@
      "module": "Development.AutomorphicArithmetic.PrimitiveCosets.CoreGm",
      "name": "UpperTheory.Comparison₂.core_gm"
     }
-   ]
+   ],
+   "root_role": "result"
   },
   {
    "claim": null,
@@ -625,7 +757,31 @@
      "module": "Development.AutomorphicArithmetic.DedekindLFunctions.LandauTheorems.ZeroFreeOfRpowWindow",
      "name": "Deduction.zeroFree_of_rpow_window"
     }
-   ]
+   ],
+   "root_role": "result",
+   "recognition": {
+    "form": "variant",
+    "result": "Landau's theorem on Dirichlet series with non-negative coefficients, in its error-term form: a one-sided bound $x^\\theta$ on an error term rules out zeros to the right of $\\theta$.",
+    "citations": [
+     {
+      "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 1",
+      "where": "Theorem 1.7 (Landau), p. 16",
+      "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/05.0_pp_1_34_Dirichlet_series_I.pdf",
+      "opened_by": "Halley",
+      "opened_on": "2026-11-24"
+     },
+     {
+      "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 15",
+      "where": "Section 15.1, Lemma 15.1 (p. 463) and Theorem 15.2 with its proof (p. 464)",
+      "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/19.0_pp_463_485_Oscillations_of_error_terms.pdf",
+      "opened_by": "Halley",
+      "opened_on": "2026-11-24"
+     }
+    ],
+    "difference": "The book states this as an oscillation result for $\\zeta$ alone: Theorem 15.2 says $\\psi(x) - x = \\Omega_\\pm(x^{\\Theta - \\varepsilon})$ for every $\\varepsilon > 0$, where $\\Theta$ is the supremum of the real parts of the zeros of $\\zeta$, and the library's form is the contrapositive of its $\\Omega_+$ half. The book assumes the bound for all large $x$ and takes the error term $\\psi(x) - x$ of one function; the library assumes it only on windows $[Y, Y^{1+\\delta}]$ for arbitrarily large $Y$, for a weighted sum over a family of characters of the smoothed sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with main terms removed. The textbook proof also expands at a fixed point, but it sums the whole Taylor series and rearranges it, which uses the sign for all large $x$; the library's proof uses one coefficient of high order at a time, whose weight lies in a single window up to a small tail. The book's proof of Lemma 15.1 is one sentence: the proof of Theorem 1.7 \"can be adapted\".",
+    "reader": "Halley",
+    "date": "2026-11-24"
+   }
   },
   {
    "claim": null,
@@ -696,7 +852,8 @@
      "module": "Development.AbelianVarietyTheory.Definitions.NonGaloisDescent.LabelDatum",
      "name": "GlobalTheory.GLq.Green"
     }
-   ]
+   ],
+   "root_role": "named_statement"
   },
   {
    "claim": null,
@@ -799,7 +956,8 @@
      "module": "Development.AutomorphicArithmetic.CharacterBoxes.SupplyChi",
      "name": "UpperTheory.Top.supplyChi"
     }
-   ]
+   ],
+   "root_role": "result"
   },
   {
    "claim": {
@@ -835,7 +993,8 @@
      "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.Hyps",
      "name": "GlobalTheory.Fc.HypsAlt"
     }
-   ]
+   ],
+   "root_role": "object"
   },
   {
    "claim": null,
@@ -882,7 +1041,8 @@
      "module": "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.EveryCharacterOfLiteratureOfVWin",
      "name": "UpperTheory.LiteratureTheorems.OpenLiteratureStatements"
     }
-   ]
+   ],
+   "root_role": "named_statement"
   },
   {
    "claim": {
@@ -989,7 +1149,8 @@
      "module": "Development.AutomorphicArithmetic.PrimitiveCosets.LevelGmLeOnFamilyScales",
      "name": "UpperTheory.Comparison₂.level_gm_le_on_family_scales"
     }
-   ]
+   ],
+   "root_role": "result"
   },
   {
    "claim": {
@@ -1103,7 +1264,8 @@
      "module": "Development.AutomorphicArithmetic.PrimitiveCosets.Imports",
      "name": "UpperTheory.Comparison₂.formB"
     }
-   ]
+   ],
+   "root_role": "result"
   }
  ],
  "release": "rh-2026-11-20"
