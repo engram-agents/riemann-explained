@@ -1593,6 +1593,7 @@ def _tex_tokens(body):
     return toks
 
 
+_ONE_MI = re.compile(r'(<mi(?: mathvariant="normal")?>)([^<]+)</mi>')
 _PRIME = '<mo stretchy="false">′</mo>'
 _BAR = "\x00bar"   # a `|` until its group is read and it is known whether it has a partner
 _BAR_FLAT = '<mo stretchy="false">|</mo>'
@@ -1678,7 +1679,10 @@ class _TexParser:
             else:
                 break
         self.fn = is_fn   # read by seq() once the scripts of the function are in
-        pr = [_PRIME] * primes   # a prime is flat, right after its base (an <msup> floats it high and detached)
+        pr = [_PRIME] * primes
+        mt = _ONE_MI.fullmatch(base) if pr else None
+        if mt:   # the prime goes INSIDE the token of a one-token <mi> base: it cannot detach (an <msup> floats it high and apart, a flat <mo> sits in the stroke)
+            base, pr = f"{mt.group(1)}{mt.group(2)}{'′' * primes}</mi>", []
         if sub is None and sup is None:
             return [base] + pr
         base = "<mrow>" + base + "".join(pr) + "</mrow>" if pr else base
