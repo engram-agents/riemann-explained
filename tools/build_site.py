@@ -6380,6 +6380,37 @@ def _selftest_cases():
                 M_('<mrow><mi>p</mi><mo stretchy="false">∣</mo><mi>N</mi></mrow>')]
         return _eq(got, want)
 
+    @case("CV14", "converter, the space after a function name (a choice, pinned: TeX's rule): after \\operatorname{..}, \\max, \\min, \\log or \\cos (the "
+                  "function-like commands of the subset; \\mathrm is upright text, not a function) and its scripts, a thin <mspace width=0.167em> "
+                  "when the NEXT token of the same group is an identifier, a number, a group, a Greek letter, \\infty, \\sum \\prod \\int, \\bar, another "
+                  "function or \\mathrm; none before a left fence, an operator, a relation, a closing fence, a prime, a script or an explicit "
+                  "space, none at the end of the group, none after \\mathrm")
+    def _():
+        sp = '<mspace width="0.167em"></mspace>'
+        fn = lambda n: f'<mi mathvariant="normal">{n}</mi>'
+        got = [cv(x) for x in ("\\operatorname{Re} s", "\\operatorname{Re}(s)", "\\operatorname{Re}^2 s", "\\max x", "\\log 2", "\\cos\\theta",
+                              "\\min{a}", "\\max", "\\max = 1", "\\max + x", "\\operatorname{Re} \\le s", "\\log\\log x", "\\max\\infty",
+                              "\\log \\lceil x", "\\mathrm{eD} x", "\\operatorname{Re} a_k(\\sigma)", "\\max\\,x", "\\max_x y", "\\max |x|",
+                              "\\max'", "{\\log} x", "\\max(a,b)", "\\cos \\bar x")]
+        want = [M_("<mrow>" + fn("Re") + sp + "<mi>s</mi></mrow>"),
+                M_('<mrow>' + fn("Re") + '<mo stretchy="false" form="prefix">(</mo><mi>s</mi><mo stretchy="false" form="postfix">)</mo></mrow>'),
+                M_("<mrow><msup>" + fn("Re") + "<mn>2</mn></msup>" + sp + "<mi>s</mi></mrow>"),
+                M_("<mrow>" + fn("max") + sp + "<mi>x</mi></mrow>"), M_("<mrow>" + fn("log") + sp + "<mn>2</mn></mrow>"),
+                M_("<mrow>" + fn("cos") + sp + "<mi>θ</mi></mrow>"), M_("<mrow>" + fn("min") + sp + "<mrow><mi>a</mi></mrow></mrow>"),
+                M_(fn("max")), M_("<mrow>" + fn("max") + "<mo>=</mo><mn>1</mn></mrow>"), M_("<mrow>" + fn("max") + "<mo>+</mo><mi>x</mi></mrow>"),
+                M_("<mrow>" + fn("Re") + "<mo>≤</mo><mi>s</mi></mrow>"), M_("<mrow>" + fn("log") + sp + fn("log") + sp + "<mi>x</mi></mrow>"),
+                M_("<mrow>" + fn("max") + sp + "<mo>∞</mo></mrow>"), M_('<mrow>' + fn("log") + '<mo stretchy="false" form="prefix">⌈</mo><mi>x</mi></mrow>'),
+                M_("<mrow>" + fn("eD") + "<mi>x</mi></mrow>"),
+                M_("<mrow>" + fn("Re") + sp + "<msub><mi>a</mi><mi>k</mi></msub>" + '<mo stretchy="false" form="prefix">(</mo><mi>σ</mi>'
+                   '<mo stretchy="false" form="postfix">)</mo></mrow>'),
+                M_("<mrow>" + fn("max") + '<mspace width="0.167em"></mspace>' + "<mi>x</mi></mrow>"),
+                M_("<mrow><msub>" + fn("max") + "<mi>x</mi></msub>" + sp + "<mi>y</mi></mrow>"),
+                M_("<mrow>" + fn("max") + '<mo stretchy="false">|</mo><mi>x</mi><mo stretchy="false">|</mo></mrow>'), M_("<msup>" + fn("max") + "<mo>′</mo></msup>"),
+                M_("<mrow><mrow>" + fn("log") + "</mrow><mi>x</mi></mrow>"),
+                M_("<mrow>" + fn("max") + '<mo stretchy="false" form="prefix">(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo stretchy="false" form="postfix">)</mo></mrow>'),
+                M_("<mrow>" + fn("cos") + sp + "<mover><mi>x</mi><mo>¯</mo></mover></mrow>")]
+        return _eq(got, want)
+
     @case("CV11", "converter, K2: a Greek letter typed directly is <mi> (`α`, `é`), a symbol or punctuation mark typed directly is <mo> (`≤`, `∑`, `→`, `·`), "
                   "anything else is unsupported: a combining mark (`a` + U+0301), a non-ASCII digit (U+0663), a no-break space, a private-use "
                   "character")
