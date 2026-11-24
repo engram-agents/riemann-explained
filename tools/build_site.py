@@ -3280,7 +3280,7 @@ FACES_DECLS = DECLS + ("A.H\tdefa\tdef\t1\t2\ttext-extent\n"
                        "A.H\tdefc\tdef\t5\t6\ttext-extent\n"
                        "A.H\tdefd\tdef\t7\t8\ttext-extent\n"
                        "A.H\tstru\tstructure\t9\t10\ttext-extent\n")
-FACES_TITLES = {"fr": "The reduction step", "fd": "The top condition", "fc": "The window set", "fs": "The bundle of statements"}
+FACES_TITLES = {"fr": "The reduction step", "fd": "The top condition", "fc": "The window set (Input 2)", "fs": "The statement bundle"}
 FACES_NOTES = {"00-whole.md": N00}
 
 
@@ -7592,20 +7592,22 @@ def _selftest_cases():
                     [("h3", "unread-claim"), ("p", "no-claim-label"), ("p", "statement"), ("p", "proof")],
                     "Definition. The top condition", True))
 
-    @case("TT4", "F48 face (c): a definition (fc) or a structure (fs) with a claim and a title: the heading is `Definition.`, the title, "
-                 "`is defined as:` (each in its own span) and then the claim text as a claim is shown without a title; the conditions list is "
-                 "directly under the heading; there is no no_claim_label line")
+    @case("TT4", "F48 face (c), F48 (i): a definition (fc) or a structure (fs) with a claim and a title: the HEADING is `Definition.` and the title and "
+                 "nothing else (the label and the title each in its own span); the statement is the FIRST PARAGRAPH under the heading, in "
+                 "<p class=\"definition-statement\">: the title, `is defined as:`, the claim text as a claim is rendered; the conditions list "
+                 "follows that paragraph, then the named-statement line; there is no no_claim_label line")
     def _():
         b = _faces()
         fc, fs = _card(b, "fc"), _card(b, "fs")
-        return _eq((b.rc, heading(b, "fc")[0], heading(b, "fs")[0],
-                    [(k.tag, k.cls[-1] if k.cls else "") for k in fc.elems()][:3], fc.find("ul", "conditions")[0].text(),
+        par = lambda g: re.search(r'(<p class="definition-statement">[^\n]*</p>)\n', b.page[b.page.index(f' id="{g}">'):]).group(1)
+        return _eq((b.rc, heading(b, "fc")[0], heading(b, "fs")[0], par("fc"), par("fs"),
+                    [(k.tag, k.cls[-1] if k.cls else "") for k in fc.elems()][:4], fc.find("ul", "conditions")[0].text(),
                     fc.find("p", "no-claim-label"), fs.find("p", "no-claim-label")),
-                   (0, '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">The window set</span> '
-                       '<span class="definition-join">is defined as:</span> Claim of the window set</h3>',
-                    '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">The bundle of statements</span> '
-                    '<span class="definition-join">is defined as:</span> Claim of the bundle</h3>',
-                    [("h3", "claim"), ("ul", "conditions"), ("p", "named-statement-use")],
+                   (0, '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">The window set (Input 2)</span></h3>',
+                    '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">The statement bundle</span></h3>',
+                    '<p class="definition-statement">The window set (Input 2) is defined as: Claim of the window set</p>',
+                    '<p class="definition-statement">The statement bundle is defined as: Claim of the bundle</p>',
+                    [("h3", "claim"), ("p", "definition-statement"), ("ul", "conditions"), ("p", "named-statement-use")],
                     "Condition of the window set holds.", [], []))
 
     @case("TT5", "F47 (d): a card with a claim and no title is unchanged: a result (fk) and a definition (fz) show the claim alone in the heading, "
@@ -7622,19 +7624,20 @@ def _selftest_cases():
 
     @case("TT6", "F47 title text: the title goes through the span rule and the formula rule and is escaped like every string: a title holding "
                  "a backtick span, a formula `$x$` and `& <b> \"q\"` shows <code>, MathML and the escaped characters in the heading of a no-claim "
-                 "card (a) and (b) and of a claim card (c), and in the premise rows (3 more); the run's formula count includes all six")
+                 "card (a) and (b) and of a claim card (c), in the first paragraph of that card (F48 i) and in the premise rows (3 more); the run's "
+                 "formula count includes all seven")
     def _():
         ttl = 'The set `S` of $x$ & <b> "q"'
         want = 'The set <code>S</code> of <math><mi>x</mi></math> &amp; &lt;b&gt; &quot;q&quot;'
         b = _faces(titles={"fr": ttl, "fd": ttl, "fc": ttl})
         return _eq((b.rc, [heading(b, g)[0] for g in ("fr", "fd", "fc")], "<b>" in b.page, b.page.count(want),
                     [x for x in b.out.splitlines() if x.startswith("formulas: ")][0].startswith(
-                        "formulas: 6 converted, 0 unsupported, 0 unpaired, of 6 marks")),
+                        "formulas: 7 converted, 0 unsupported, 0 unpaired, of 7 marks"),
+                    '<p class="definition-statement">' + want + ' is defined as: Claim of the window set</p>' in b.page),
                    (0, ['<h3 class="claim unread-claim"><span class="title-label">What this step is:</span> <span class="title-text">' + want + "</span></h3>",
                         '<h3 class="claim unread-claim"><span class="definition-label">Definition.</span> <span class="title-text">' + want + "</span></h3>",
-                        '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">' + want
-                        + '</span> <span class="definition-join">is defined as:</span> Claim of the window set</h3>'],
-                    False, 6, True))
+                        '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">' + want + "</span></h3>"],
+                    False, 7, True, True))
 
     @case("TT7", "F47 D1 (title_of): the premise rows of fk are shown by the term for a definition or structure with a title (fc, fs) and a "
                  "null-claim card with a title (fd, fr), by the claim for a definition with a claim and no title (fz), and by the root name "
@@ -7645,7 +7648,7 @@ def _selftest_cases():
         b = _faces()
         rows = lambda g: [(a.attrs["href"], _raw(a)) for a in _card(b, g).find(cls="premises")[0].find("a")]
         return _eq((b.rc, rows("fk"), rows("fp"), len(re.findall(r"title_of\(", inspect.getsource(_render_page)))),
-                   (0, [("#fd", "The top condition"), ("#fc", "The window set"), ("#fs", "The bundle of statements"),
+                   (0, [("#fd", "The top condition"), ("#fc", "The window set (Input 2)"), ("#fs", "The statement bundle"),
                         ("#fz", "Claim without a title"), ("#fr", "The reduction step"), ("#fn", "defc")],
                     [("#fk", "Claim of the result")], 3))
 
@@ -7666,7 +7669,7 @@ def _selftest_cases():
         return _eq((b.rc, {g: b.js(f"group/{g}.json")["title"] for g in ("fr", "fd", "fc", "fs", "fz", "fn", "fk", "fp")},
                     dj["groups"]["fr"]["title"], dj["groups"]["fk"]["title"], [x for x in steps if "title" in x],
                     b.js("manifest.json")["counts"]),
-                   (0, {"fr": "The reduction step", "fd": "The top condition", "fc": "The window set", "fs": "The bundle of statements",
+                   (0, {"fr": "The reduction step", "fd": "The top condition", "fc": "The window set (Input 2)", "fs": "The statement bundle",
                         "fz": None, "fn": None, "fk": None, "fp": None},
                     "The reduction step", None, [], {"blocks": 0, "groups": 8, "notes": 1}))
 
@@ -7749,7 +7752,7 @@ def _selftest_cases():
         ids = ("zqx1", "vlp2", "wnr3")
         o = {"release": "rel-1", "groups": [
             _g("zqx1", 1, "root", 1, [FOO], _claim("A claim"), ["vlp2"]),
-            dict(_g("vlp2", 1, "root", 2, [_d("A.H", "defa")]), title="The window set"),
+            dict(_g("vlp2", 1, "root", 2, [_d("A.H", "defa")]), title="The window set (Input 2)"),
             dict(_g("wnr3", 2, "vlp2", 1, [_d("A.H", "defb")]), title="The inner step")]}
         b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
         return _eq((b.rc, [f'id="{i}"' in b.page for i in ids], hits(b.page, ids), hits("<p>see zqx1 and wnr3.</p>", ids)),
@@ -7781,7 +7784,7 @@ def _selftest_cases():
               _g("kpc3", 1, "root", 3, [FOO, BAR]),
               _g("kpd4", 1, "root", 4, [_d("A.H", "defa")], _claim("Claim of the window set")),
               dict(_g("kpe5", 1, "root", 5, [_d("A.H", "defa"), _d("A.H", "defb")]), title="The combined step")]
-        gs[3]["title"] = "The window set"
+        gs[3]["title"] = "The window set (Input 2)"
         return {"release": "rel-1", "groups": gs}
 
     @case("SH2", "F48 (a) the note on cards that share a root, ids that are not words (kpa1 a result with a claim, kpb2 titled with no claim, "
@@ -7799,7 +7802,7 @@ def _selftest_cases():
                     [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpc3"><code>foo</code></a></p>'],
                     [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpb2">The reduction step</a></p>'],
                     [p + '<a href="#kpe5">The combined step</a></p>'],
-                    [p + '<a href="#kpd4">The window set</a></p>'], [], [True] * 5))
+                    [p + '<a href="#kpd4">The window set (Input 2)</a></p>'], [], [True] * 5))
 
     @case("SH3", "F48 (a) with the real strings file the note reads `This result is also part of: ` then the link (the template's own text is "
                  "escaped, the link is not); the group file still holds the ids (shared_with is data, not the reader's surface)")
@@ -7812,6 +7815,64 @@ def _selftest_cases():
         b = _build(strings=real)
         return _eq((b.rc, shared_lines(b, "g2"), b.js("group/g2.json")["roots"][1]["shared_with"]),
                    (0, ['<p class="shared">This result is also part of: <a href="#g1a1x"><code>qux</code></a></p>'], ["g1a1x"]))
+
+    # ---- F48 (i): a definition card's heading is the label and the title; the statement is the first paragraph under it
+    def stmt_outline(text):
+        o = _faces_outline()
+        next(g for g in o["groups"] if g["id"] == "fc")["claim"]["text"] = text
+        return o
+
+    @case("TT16", "F48 (i): the heading of a definition (fc) and of a structure (fs) with a claim and a title reads exactly `Definition. {Title}` as text and "
+                  "holds no part of the claim; the first paragraph under it begins with the title and `is defined as:` and then the claim")
+    def _():
+        b = _faces()
+        h = lambda g: _card(b, g).find("h3", "claim")[0].text()
+        p = lambda g: _card(b, g).find("p", "definition-statement")
+        return _eq((b.rc, h("fc"), h("fs"), "Claim" in h("fc") or "Claim" in h("fs"), [x.text() for x in p("fc")], [x.text() for x in p("fs")],
+                    len(_direct(_card(b, "fc"), "p", "definition-statement")) == 1),
+                   (0, "Definition. The window set (Input 2)", "Definition. The statement bundle", False,
+                    ["The window set (Input 2) is defined as: Claim of the window set"],
+                    ["The statement bundle is defined as: Claim of the bundle"], True))
+
+    @case("TT17", "F48 (i): the claim in the paragraph is rendered as a claim is: a formula `$x^2$` is MathML in the paragraph and in no heading, a "
+                  "backtick span is <code> there; the formula listing names the card id for an unsupported formula in that claim, as when the "
+                  "claim was in the heading; the formula count counts it once")
+    def _():
+        b = _build(outline=stmt_outline("Claim of $x^2$ with `code`"), decls=FACES_DECLS, notes=FACES_NOTES)
+        par = re.search(r'(<p class="definition-statement">The window set \(Input 2\)[^\n]*</p>)\n', b.page).group(1)
+        c = _card(b, "fc")
+        u = _build(outline=stmt_outline(r"Claim of $\frac{1}{2}$ here"), decls=FACES_DECLS, notes=FACES_NOTES)
+        return _eq((b.rc, par, len(c.find("h3", "claim")[0].find("math")), len(c.find("p", "definition-statement")[0].find("math")),
+                    [x.text() for x in c.find("p", "definition-statement")[0].find("code")],
+                    u.rc, [x for x in u.out.splitlines() if x.startswith("FORMULA-")]),
+                   (0, '<p class="definition-statement">The window set (Input 2) is defined as: Claim of '
+                       '<math><msup><mi>x</mi><mn>2</mn></msup></math> with <code>code</code></p>', 0, 1, ["code"],
+                    0, ["FORMULA-UNSUPPORTED fc $\\frac{1}{2}$"]))
+
+    @case("TT18", "F48 (i): a definition card with NO claim (fd) has the heading `Definition. {Title}`, then the no_claim_label line directly under it "
+                  "(TT8 pins the order with premises), and no `is defined as` and no definition-join anywhere in the card; the only places `is defined "
+                  "as:` is on the page are the two paragraphs of the definition cards with a claim")
+    def _():
+        b = _faces()
+        c = _card(b, "fd")
+        return _eq((b.rc, "is defined as" in c.text(), c.find("span", "definition-join"), c.find("p", "definition-statement"),
+                    c.find("h3", "claim")[0].text(), [(k.tag, k.cls[-1] if k.cls else "") for k in c.elems()][:2],
+                    b.page.count("is defined as:"), len(_dom(b.page).find("p", "definition-statement"))),
+                   (0, False, [], [], "Definition. The top condition", [("h3", "unread-claim"), ("p", "no-claim-label")], 2, 2))
+
+    @case("TT19", "F48 (i): what does not change: a result card with a claim is its claim alone in the heading and has no definition paragraph; a "
+                  "no-claim result card keeps `What this step is:`; a card with no title keeps its heading (no paragraph); the premise rows still "
+                  "name a titled definition by its title, and the shared-root note names a titled definition by its title")
+    def _():
+        b = _faces()
+        sb = _build(outline=_shared_outline(), decls=FACES_DECLS, notes=FACES_NOTES)
+        rows = [_raw(a) for a in _card(b, "fk").find(cls="premises")[0].find("a")]
+        return _eq((b.rc, heading(b, "fk")[0], _card(b, "fk").find("p", "definition-statement"), _card(b, "fz").find("p", "definition-statement"),
+                    heading(b, "fr")[0].startswith('<h3 class="claim unread-claim"><span class="title-label">What this step is:</span>'),
+                    heading(b, "fz")[0], rows, shared_lines(sb, "kpe5")),
+                   (0, '<h3 class="claim">Claim of the result</h3>', [], [], True, '<h3 class="claim">Claim without a title</h3>',
+                    ["The top condition", "The window set (Input 2)", "The statement bundle", "Claim without a title", "The reduction step", "defc"],
+                    ['<p class="shared">Also a root of: <a href="#kpd4">The window set (Input 2)</a></p>']))
 
     return cases
 
