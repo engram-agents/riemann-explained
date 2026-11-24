@@ -202,7 +202,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      and the recognition, a note id for a list title). THE CONVERTER `formula_to_mathml` is a pure function over a closed subset of TeX named by
      FORMULA_COMMANDS (69 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
      `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
-     formula, marks included>` when the place is inside the Evidence section of a card; on the reader's surface (everything outside Evidence) a formula the
+     formula, marks included>` when the place is inside the Evidence section of a card; on the reader's surface (every author-text place rendered through the span rule outside Evidence; the first screen and the key are strings of the
+     strings file, not author text: only FORMULA-CANDIDATE covers them) a formula the
      converter cannot convert (unsupported, `$$..$$`, an unpaired `$`) REFUSES the build: `FORMULA-RAW <where> <note file and the line of the block's anchor,
      the note file, or outline/outline.json and the group>: <the first 40 characters of the formula as written>`, exit 1 (cases FRW1 to FRW4).
      TWO LISTINGS over the built page, outside Evidence (cases SP1 to SP3 CND1 to CND4 CS1 to CS5), never an error unless CODE_ON_SURFACE_REFUSES is True:
@@ -7245,6 +7246,20 @@ def _selftest_cases():
     def _():
         got = [_frw(outline=_og(g, "Claim $\\foo$")) for g in ("g3", "g2", "g1a", "g1a1")]
         return _eq(got, [(1, [f"BUILD-ERROR FORMULA-RAW {g} outline/outline.json group {g}: $\\foo$"], False) for g in ("g3", "g2", "g1a", "g1a1")])
+
+    @case("FRW8", "S1 S2, what the refusal covers (review F4): a string of the strings file (here page_title) is not author text: it goes through the "
+                  "escape and not the span rule, so a formula in it is neither converted, nor refused, nor listed as FORMULA-UNSUPPORTED (exit 0); the "
+                  "candidate scan lists it (`$\\foo$ and x^2` is a caret and a backslash-command, card `page`); a text node holding `\\$` is not a "
+                  "candidate by that (`Price \\$5` gives none: the rules do not match `\\$`), one holding `\\$` AND a caret is (caret only)")
+    def _():
+        def run(title):
+            s = _strings()
+            s["page_title"] = title
+            b = _build(strings=s)
+            return b.rc, [ln for ln in b.out.splitlines() if ln.startswith(("FORMULA-UNSUPPORTED", "FORMULA-UNPAIRED", "FORMULA-CANDIDATE", "BUILD-ERROR"))]
+        return _eq([run("A $\\foo$ and x^2"), run("Price \\$5"), run("Price \\$5 and x^2")],
+                   [(0, ["FORMULA-CANDIDATE page caret A $\\foo$ and x^2", "FORMULA-CANDIDATE page backslash-command A $\\foo$ and x^2"]),
+                    (0, []), (0, ["FORMULA-CANDIDATE page caret Price \\$5 and x^2"])])
 
     @case("FRW7", "DOCUMENTED LIMIT, pinned as it is (review F3): the place of a FORMULA-RAW is found by looking the id up as a block id, then as a note id, "
                   "then as a group id, because the log records the id and not the kind of place. A group whose id is also a note id (a group `01` "
