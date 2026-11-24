@@ -86,10 +86,16 @@ CONTRACT (each line is a self-test case, written before the code)
   R4 Every group has at least one root; a null claim with no root, once accepted, is now a ROOT-COUNT error.
   R5 A strings file with no phrase at all is announced. R6 Without the git program a normal run is refused (exit 4).
  List items (cases ITEM1 ITEM2 CONST2 LSH1; rh_anchor L1a to L5):
-  I1 A block whose target is a list must carry `item` (ITEM-REQUIRED); `item` above the number of top-level items is
+  I1 A block whose target is a list must carry `item` (ITEM-REQUIRED), a sketch excepted (F33: it covers whole elements, and `item`
+  on it is a BLOCK-PROBLEM from rh_anchor.problems, with no NOT-A-LIST, ITEM-OUT-OF-RANGE or ITEM-REQUIRED beside it); `item` above the number of top-level items is
   ITEM-OUT-OF-RANGE; `item` that is not an integer of 1 or more is ITEM-BAD-VALUE; `item` on a target that is not a list is
   NOT-A-LIST. Nested items are not numbered. A heading, quote, HTML line or non-lean fence is still ORPHAN-BLOCK.
-  I2 A list target whose shape has every key of an entry of REFUSED_LIST_SHAPES (empty by default) is LIST-SHAPE-REFUSED.
+  I2 A list target whose shape has every key of an entry of REFUSED_LIST_SHAPES (empty by default) is LIST-SHAPE-REFUSED; for a
+  sketch it is every list in the run (rh_anchor.run_lists), the target included; cases F33a F33b F33c F33d.
+  A sketch with a bad span or an illegal run gets the span problem or SKETCH-RUN and no shape finding (the run is empty then): one
+  finding, not both. LIMIT: the shape keys last_nested and followed_by_paragraph describe an anchor adjoining a list; no anchor
+  follows a list in the middle of a run, yet the table is applied to every list as written, so whoever fills REFUSED_LIST_SHAPES
+  decides whether those two keys apply to a list that is not the target.
  Summary lines (cases N5a N5b N5c): `outline: G groups, C claimed, Z null, R roots resolved, D defs_opened resolved, P
  premise links` always, counted over the whole outline; `strings: F frame phrases loaded for K kinds` and `byte check:
  N notes equal to REV, M new` when those ran. Header group (cases HROOT1 to HROOT3): `root` only at level 0.
@@ -162,7 +168,7 @@ registered, so a second case can no longer run under another's name; ids are com
 `REC1 ` are three ids). The line `sketches: S of P steps with a proof read` is NOT printed
 here: what a step is belongs to the builder, so it counts there. note_cite.py is unchanged: its --kind takes its choices from
 rh_anchor.KINDS, and a sketch cannot be valid through it for want of a basis flag (BAD-BLOCK). A sketch anchored on a list
-is asked for `item` like any block on a list. Extra keys are UNKNOWN-KEY for the outline, a group and a
+is not asked for `item` (F33). Extra keys are UNKNOWN-KEY for the outline, a group and a
 claim only; a roots or defs_opened entry with extra keys is accepted, and a JSON key repeated in the outline keeps
 its last value. Notes are the files directly in NOTES_DIR that match the pattern, so docs/tools.md, which sits
 beside the notes, is not a note; a finding names a note by its name in NOTES_DIR and the outline and the table by
@@ -979,7 +985,7 @@ def _check_header(name, headers, ctx):
     return out, (d["id"] if _str(d.get("id")) else None)
 
 
-def _check_block(name, b, note_id, listed, lines, ctx, out):
+def _check_block(name, b, note_id, listed, lines, ctx, out, text):
     d = b.data
     bid = d.get("id")
     label = f"block {bid!r}" if isinstance(bid, str) else "block"
@@ -1037,21 +1043,33 @@ def _check_block(name, b, note_id, listed, lines, ctx, out):
             if _int(d.get("col")) and d["col"] > t["ncols"]:
                 out.append(_f("COL-OUT-OF-RANGE", name, b.line, f"{label} col {d['col']} but the table has {t['ncols']} columns"))
     ttype = (b.target or {}).get("type")   # list items: a list needs item, item needs a list
-    if "item" in d:
-        if ttype != "list":
-            out.append(_f("NOT-A-LIST", name, b.line, f"{label} carries item but its target is of type '{ttype}', not a list"))
-        elif _int(d["item"]) and d["item"] >= 1 and d["item"] > b.target["nitems"]:
-            out.append(_f("ITEM-OUT-OF-RANGE", name, b.line,
-                          f"{label} item {d['item']} but the list has {b.target['nitems']} top-level items"))
+    kind = d.get("kind")   # F12
+    # F33: a sketch covers whole elements, so it carries no item. rh_anchor.problems refuses `item` on a sketch (a BLOCK-PROBLEM), and the
+    # item checks below never see a sketch: no NOT-A-LIST, ITEM-OUT-OF-RANGE or ITEM-REQUIRED beside that one finding.
+    if kind != "sketch":
+        if "item" in d:
+            if ttype != "list":
+                out.append(_f("NOT-A-LIST", name, b.line, f"{label} carries item but its target is of type '{ttype}', not a list"))
+            elif _int(d["item"]) and d["item"] >= 1 and d["item"] > b.target["nitems"]:
+                out.append(_f("ITEM-OUT-OF-RANGE", name, b.line,
+                              f"{label} item {d['item']} but the list has {b.target['nitems']} top-level items"))
+        elif ttype == "list":
+            out.append(_f("ITEM-REQUIRED", name, b.line, f"{label}: a list needs 'item' (1-based, like 'row')"))
+    if kind == "sketch":   # F33: the renderer shows every whole list of the run, the target included; a list's shape is the one the parse reads
+        span = d.get("span", 1)
+        for first, _last, shape in (rh.run_lists(text, b.line, span) if _int(span) and span >= 1 else []):
+            on = {k for k, v in shape.items() if v}
+            for entry in REFUSED_LIST_SHAPES:
+                if entry and entry <= on:
+                    who = "anchors a list" if first == b.target["first_line"] else f"covers a list (first line {first})"
+                    out.append(_f("LIST-SHAPE-REFUSED", name, b.line,
+                                  f"{label} {who} whose shape the renderer shows differently: {', '.join(sorted(entry))}"))
     elif ttype == "list":
-        out.append(_f("ITEM-REQUIRED", name, b.line, f"{label}: a list needs 'item' (1-based, like 'row')"))
-    if ttype == "list":
         on = {k for k, v in b.target["shape"].items() if v}
         for entry in REFUSED_LIST_SHAPES:
             if entry and entry <= on:
                 out.append(_f("LIST-SHAPE-REFUSED", name, b.line,
                               f"{label} anchors a list whose shape the renderer shows differently: {', '.join(sorted(entry))}"))
-    kind = d.get("kind")   # F12
     if ctx.strings is not None and kind in FRAME_ONLY and (b.target or {}).get("type") == "paragraph":
         t = b.target
         hit = _frame_hit(" ".join(lines[t["first_line"] - 1:t["last_line"]]), ctx.strings, kind)
@@ -1071,7 +1089,7 @@ def _check_note(name, text, ctx):
     listed = clb.listed_files(text)
     counts, invalid = {k: 0 for k in rh.KINDS}, 0
     for b in blocks:
-        kind = _check_block(name, b, note_id, listed, lines, ctx, out)
+        kind = _check_block(name, b, note_id, listed, lines, ctx, out, text)
         if kind in counts:
             counts[kind] += 1
         else:
@@ -4014,6 +4032,90 @@ def _():
     r = go(notes={"01-a.md": head + "\nSketch.\n" + _SB("01.b01", span=2) + "\n",
                   "02-b.md": NOTE(nid="02", body="Idea.\n" + _AB("02.b01") + "\n")}, outline=OL(G("g1")), decls=DECLS_K)
     fe(r, ["SKETCH-RUN 01-a.md:3 block '01.b01': span 2 asks for more elements than the note has before this anchor (only 1)"], 1)
+
+
+def _sk_list_notes():
+    """F33 fixtures: the sketch's run ends in a numbered list; the same list under an argument."""
+    lst = "Idea.\n" + _AB() + "\n\nIntro.\n\n1. a\n2. b\n"   # the argument is on line 7, the list on lines 11-12, the next anchor on line 13
+    return lst + _SB(span=2) + "\n", lst + _AB("01.b02") + "\n", lst + _SB(span=1) + "\n"
+
+
+@case("F33a", "a sketch whose run ends in a list is not ITEM-REQUIRED, span 2 or span 1; the same block as an argument is; "
+              "an argument elsewhere keeps ITEM-REQUIRED while another list lies in a sketch's run")
+def _():
+    sk2, arg, sk1 = _sk_list_notes()
+    clean(_sx(sk2))
+    clean(_sx(sk1))
+    fe(_sx(arg), ["ITEM-REQUIRED 01-a.md:13 block '01.b02': a list needs 'item' (1-based, like 'row')"], 1)
+    both = ("Idea.\n" + _AB() + "\n\n- a\n- b\n" + _AB("01.b02") + "\n\nIntro.\n\n1. a\n2. b\n" + _SB("01.b03", span=2) + "\n")
+    fe(_sx(both), ["ITEM-REQUIRED 01-a.md:11 block '01.b02': a list needs 'item' (1-based, like 'row')"], 1)
+
+
+@case("F33b", "item on a sketch is the refusal naming the key and nothing else: on a list, on a paragraph, with a bad value; "
+              "an argument with item on a paragraph keeps NOT-A-LIST")
+def _():
+    sk2, _arg, _sk1 = _sk_list_notes()
+    msg = "BLOCK-PROBLEM 01-a.md:%d block '01.b02': item: a sketch covers whole elements and carries no item"
+    fe(_sx(sk2.replace(_SB(span=2), _SB(span=2, item=1))), [msg % 13], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item=1) + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item="x") + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item=9) + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + BL("01.b02", kind="argument", reader="R", date="2026-11-23", decls=[FOO], item=1) + "\n"),
+       ["NOT-A-LIST 01-a.md:7 block '01.b02' carries item but its target is of type 'paragraph', not a list"], 1)
+
+
+@case("F33c", "LIST-SHAPE-REFUSED on a sketch covers every list in its run: the target, and a list that is not the target (naming its first line); "
+              "the same shape in a paragraph-only run, or in a list before the run, is clean; an argument on a list is unchanged")
+def _():
+    sk2, _arg, _sk1 = _sk_list_notes()
+    tail = " whose shape the renderer shows differently: "
+    saved = globals()["REFUSED_LIST_SHAPES"]
+    target_loose = "Idea.\n" + _AB() + "\n\nIntro.\n\n- a\n\n- b\n" + _SB(span=2) + "\n"   # the list is on lines 11-13, the sketch on 14
+    inner_loose = "Idea.\n" + _AB() + "\n\n- a\n\n- b\n\nClosing.\n" + _SB(span=2) + "\n"   # the list on lines 9-11, the closing paragraph on 13
+    before = "- a\n\n- b\n\nIdea.\n" + _AB() + "\n\nSketch.\n" + _SB() + "\n"   # the list is above the argument, outside the run
+    para_only = "Idea.\n" + _AB() + "\n\nOne.\n\nTwo.\n" + _SB(span=2) + "\n"
+    try:
+        for t in (target_loose, inner_loose, before, para_only, sk2):
+            clean(_sx(t))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(_sx(target_loose), ["LIST-SHAPE-REFUSED 01-a.md:14 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(inner_loose), ["LIST-SHAPE-REFUSED 01-a.md:14 block '01.b02' covers a list (first line 9)" + tail + "loose"], 1)
+        clean(_sx(before))
+        clean(_sx(para_only))
+        clean(_sx(sk2))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"ordered"}),)
+        fe(_sx(sk2), ["LIST-SHAPE-REFUSED 01-a.md:13 block '01.b02' anchors a list" + tail + "ordered"], 1)
+        two = "Idea.\n" + _AB() + "\n\n- a\n- b\n\nOne.\n\n1. a\n2. b\n" + _SB(span=3) + "\n"   # a bullet list, a paragraph, a numbered list
+        fe(_sx(two), ["LIST-SHAPE-REFUSED 01-a.md:16 block '01.b02' anchors a list" + tail + "ordered"], 1)
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(go(notes={"01-a.md": NOTE(body="- a\n\n- b\n" + BL(item=1) + "\n")}),
+           ["LIST-SHAPE-REFUSED 01-a.md:9 block '01.b01' anchors a list" + tail + "loose"], 1)
+    finally:
+        globals()["REFUSED_LIST_SHAPES"] = saved
+    eq(REFUSED_LIST_SHAPES, (), "restored")
+
+
+@case("F33d", "LIST-SHAPE-REFUSED on a sketch with no span (or span 1) over a loose list; a refused list that is not the last of a run "
+              "(the first of loose, paragraph, ordered: the non-target finding), and one on the last list with the first clean; "
+              "a bad span or an illegal run is one finding, never that and a shape finding")
+def _():
+    tail = " whose shape the renderer shows differently: "
+    one = lambda **kw: "Idea.\n" + _AB() + "\n\n- a\n\n- b\n" + _SB(**kw) + "\n"   # the loose list is on lines 9-11, the sketch on 12
+    three = lambda a, b: "Idea.\n" + _AB() + "\n\n" + a + "\nMid.\n\n" + b + _SB(span=3) + "\n"   # a list, a paragraph, a list; the sketch on line 17
+    loose_first = three("- a\n\n- b\n", "1. x\n2. y\n")   # lists on lines 9-11 and 15-16
+    loose_last = three("- a\n- b\n", "1. x\n\n2. y\n")   # lists on lines 9-10 and 14-16
+    saved = globals()["REFUSED_LIST_SHAPES"]
+    try:
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(_sx(one()), ["LIST-SHAPE-REFUSED 01-a.md:12 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(one(span=1)), ["LIST-SHAPE-REFUSED 01-a.md:12 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(loose_first), ["LIST-SHAPE-REFUSED 01-a.md:17 block '01.b02' covers a list (first line 9)" + tail + "loose"], 1)
+        fe(_sx(loose_last), ["LIST-SHAPE-REFUSED 01-a.md:17 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(one(span=0)), ["BLOCK-PROBLEM 01-a.md:12 block '01.b02': span: must be an integer of 1 or more"], 1)
+        fe(_sx(one(span=2)), ["SKETCH-RUN 01-a.md:12 block '01.b02': the run holds another rh anchor line (line 7)"], 1)
+    finally:
+        globals()["REFUSED_LIST_SHAPES"] = saved
+    eq(REFUSED_LIST_SHAPES, (), "restored")
 
 
 @case("SKC7", "the format problems of a sketch and of span come through as BLOCK-PROBLEM: span on an argument, a bad basis, compiled "
