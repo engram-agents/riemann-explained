@@ -5680,6 +5680,18 @@ def _selftest_cases():
                    (html_tags, html_pairs, html_tags, html_pairs, mathml,
                     {"accent": ["mover"], "form": mathml, "mathvariant": mathml, "stretchy": mathml, "width": ["mspace"]}))
 
+    @case("EL5", "element_problems checks every attribute NAME of every tag, against that element's own list: `<a href onclick>` refuses the onclick and "
+                 "not the href, `<p data-x>` refuses the data-x (no `data-*` family is allowed), `<p onclick style>` reports BOTH attributes, not the first; "
+                 "controls: `<a class href>` and a `<p class>` are clean")
+    def _():
+        ep = element_problems
+        planted = [('<a href="#x" onclick="x">a</a>', ["attribute onclick on a"]), ('<p data-x="1">a</p>', ["attribute data-x on p"]),
+                   ('<p onclick="x" style="y">a</p>', ["attribute onclick on p", "attribute style on p"]),
+                   ('<a href="#x" onclick="x" onmouseover="y" data-z="1">a</a>',
+                    ["attribute data-z on a", "attribute onclick on a", "attribute onmouseover on a"])]
+        controls = ['<a class="citation" href="#x">a</a>', '<p class="mapped">a</p>']
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[], []]))
+
     @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the Evidence section (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
                  "the JSON keeps the path as written")
     def _():
