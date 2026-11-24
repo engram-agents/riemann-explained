@@ -180,13 +180,19 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      only CLOSES the run (it can add a refusal, never remove one). The real page's opening run is html, head, meta, title, style.
      LIMIT. This gate is a name check on the tags as html.parser sees them, not a browser-grade parse. It does not claim that every page it
      passes parses in a browser to the same tree. Differentials between html.parser and the HTML spec's parser are known to exist and are
-     NOT measured here beyond the one above: other places where foreign content changes how text is read (the MathML text integration points
-     and `annotation-xml`, `<![CDATA[`), the other raw-text and RCDATA elements (`textarea`, `xmp`, `iframe`, `noembed`, `noframes`, `script`,
-     none of which is allowed, so each is refused by name as an element), comments and bogus comments, attribute quoting, and how an unclosed
-     or misnested tag ends. Only the opening run may hold a raw-text element: a page that needs one elsewhere must change this rule, with
+     NOT measured here beyond the ones above: other places where foreign content changes how text is read (the MathML text integration
+     points and `annotation-xml`), the other raw-text and RCDATA elements (`textarea`, `xmp`, `iframe`, `noembed`, `noframes`, `script`, none
+     of which is allowed, so each is refused by name as an element), attribute quoting, and how a misnested tag ends. Comments and CDATA
+     are no longer on that list because they are refused by construction: every comment (an ordinary one too, and `<!x>`, which the parser
+     hands over as one), every processing instruction and every declaration but one `<!doctype html>` before the first start tag
+     (compared lower-cased, so the page's `<!DOCTYPE html>` is the same doctype) is `PAGE-STATIC comment`, `processing instruction` or
+     `declaration`, and any markup html.parser still holds back at the end of the page (an unterminated comment, CDATA section, tag or
+     style, which it never reports and a browser still reads) is `unterminated markup`. That is stricter than a browser needs: a
+     comment is harmless to a browser, and the page has none. Only the opening run may hold a raw-text element: a page that needs one elsewhere must change this rule, with
      its case. The search that found no page passed by the rule with a live <img> was bounded (html5lib standing in for a browser, a
-     hand-picked pool of the allowed start tags and five end tags, one to three tokens before the payload) and is not part of this repository.
-     Cases EL1 to EL7.
+     hand-picked pool of the allowed start tags and five end tags, one to three tokens before the payload; a second search put comment,
+     CDATA, processing-instruction and doctype tokens in front of an <img onerror> after the real <body>) and is not part of this
+     repository. Cases EL1 to EL9.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
   F29 The base name of the block's file and the range of its lines are shown in the Evidence section (F37 moved them out of the frame;
