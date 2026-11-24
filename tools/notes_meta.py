@@ -16,7 +16,7 @@ CONTRACT (each line is a self-test case, written before the code)
   X3 One line per finding, `CODE path:line message` (`CODE path message` when it has no line); path is the file's
      name (a note: its name in NOTES_DIR). Per note, after its findings: `note <id> header ok|FAILED, blocks N
      (kind=count ...)` (the breakdown is left out when N is 0). Then the run's lines: the FRAME-NOTE skip notice
-     when there is no --strings, `blocks by kind:` with all six kinds, what the in-file check (M5) and the byte
+     when there is no --strings, `blocks by kind:` with all seven kinds, what the in-file check (M5) and the byte
      check did or did not do, and `N notes, M findings, K warnings` (K = listings). Case SUM.
   X4 --selftest: exit 0 all pass, 1 any fails, 2 usage, 3 no case ran. A normal run does the self-test quietly first
      and refuses with exit 4 if it fails. Case RUNNER.
@@ -1002,6 +1002,104 @@ def _check_note(name, text, ctx):
     return out, not any(f[4] == ERROR for f in hdr), note_id or os.path.splitext(name)[0], counts, invalid, len(blocks)
 
 
+# ---- the sketch and argument cross-checks (F25a): a block belongs to the group of its note's header and ANCHORS a root of that group
+# when its decls include the root; the counts run over all the notes of the group
+def _group_map(data):
+    out = {}
+    groups = data.get("groups") if isinstance(data, dict) and isinstance(data.get("groups"), list) else []
+    for g in groups:
+        if isinstance(g, dict) and _str(g.get("id")) and g["id"] not in out:
+            out[g["id"]] = g
+    return out
+
+
+def _anchored_roots(d, g):
+    """The roots of the group g (module, name), each once, in the outline's order, that the decls of the block d include."""
+    roots = g.get("roots") if isinstance(g.get("roots"), list) else []
+    decls = d.get("decls") if isinstance(d.get("decls"), list) else []
+    have = {(e["module"], e["name"]) for e in decls if _decl_entry_ok(e)}
+    out = []
+    for e in roots:
+        r = (e["module"], e["name"]) if _decl_entry_ok(e) else None
+        if r is not None and r in have and r not in out:
+            out.append(r)
+    return out
+
+
+def _root_kind(ctx, root):
+    """The kind of the root's one row in the declaration table, None when it has no row or several."""
+    ks = ctx.kinds.get(root, [])
+    return ks[0] if len(ks) == 1 else None
+
+
+def _check_sketches(names, texts, odata, ctx):
+    """{note name: findings}: SKETCH-NO-ARGUMENT, SKETCH-DUPLICATE, SKETCH-ROLE, SKETCH-ROOT, SKETCH-RUN and the listing
+    ARGUMENT-NO-PROOF, in the order of the notes (by name) and of their blocks."""
+    groups = _group_map(odata)
+    found = {n: [] for n in names}
+    argued, by_root, sketches = set(), {}, []
+    args = []
+    for n in names:
+        headers, blocks, _probs = rh.parse_note(texts[n])
+        gid = headers[0].data.get("group") if headers else None
+        if not _str(gid):
+            continue
+        g = groups.get(gid)
+        for b in blocks:
+            kind = b.data.get("kind")
+            if kind not in ("argument", "sketch"):
+                continue
+            roots = _anchored_roots(b.data, g) if g is not None else []
+            if kind == "argument":
+                argued.update((gid, r) for r in roots)
+                args.append((n, b, roots))
+            else:
+                sketches.append((n, b, gid, g, roots))
+                for r in roots:
+                    by_root.setdefault((gid, r), []).append((n, b))
+    for n, b, roots in args:   # a root that is not a theorem or lemma: the reader says which proof inside it was read
+        bid = b.data.get("id")
+        label = f"block {bid!r}" if isinstance(bid, str) else "block"
+        for m, nm in roots:
+            kind = _root_kind(ctx, (m, nm))
+            if kind is not None and kind not in RESULT_KINDS:
+                found[n].append(_f("ARGUMENT-NO-PROOF", n, b.line, f"{label}: root {m} {nm} has kind {kind!r}, not a theorem or lemma: "
+                                   "say in the argument which proof inside it was read", LISTING))
+    for n, b, gid, g, roots in sketches:
+        d = b.data
+        bid = d.get("id")
+        label = f"block {bid!r}" if isinstance(bid, str) else "block"
+        if g is None:
+            found[n].append(_f("SKETCH-ROOT", n, b.line, f"{label}: group {gid!r} is not a group of the outline; "
+                               "a sketch needs a group root in its decls"))
+        elif not roots:
+            have = [(e["module"], e["name"]) for e in g.get("roots", []) if _decl_entry_ok(e)] if isinstance(g.get("roots"), list) else []
+            found[n].append(_f("SKETCH-ROOT", n, b.line, f"{label}: its decls include no root of group {gid!r} (roots: "
+                               + ", ".join(f"{m} {nm}" for m, nm in have) + ")"))
+        for m, nm in roots:
+            if (gid, (m, nm)) not in argued:
+                found[n].append(_f("SKETCH-NO-ARGUMENT", n, b.line, f"{label}: root {m} {nm} has no argument block in group {gid!r}"))
+            first_n, first_b = by_root[(gid, (m, nm))][0]
+            if first_b is not b:
+                found[n].append(_f("SKETCH-DUPLICATE", n, b.line, f"{label}: root {m} {nm} already has the sketch "
+                                   f"{first_b.data.get('id')!r} (at {first_n}:{first_b.line})"))
+            role = _role_of(g) if isinstance(g.get("claim"), dict) else None
+            if role is not None:
+                if role != "result":
+                    found[n].append(_f("SKETCH-ROLE", n, b.line, f"{label}: root {m} {nm}: root_role is {role!r}; a sketch is only for 'result'"))
+            else:
+                kind = _root_kind(ctx, (m, nm))
+                if kind is not None and kind not in RESULT_KINDS:
+                    found[n].append(_f("SKETCH-ROLE", n, b.line, f"{label}: root {m} {nm} has kind {kind!r}; "
+                                       "a sketch is only for a theorem or lemma"))
+        span = d.get("span", 1)
+        if _int(span) and span >= 1:   # a bad value is the format problem, not a second finding
+            why = rh.run_at(texts[n], b.line, span)
+            if isinstance(why, str):
+                found[n].append(_f("SKETCH-RUN", n, b.line, f"{label}: {why}"))
+    return found
+
+
 def _note_line(label, hdr_ok, counts, invalid, nblocks):
     parts = [f"{k}={counts[k]}" for k in rh.KINDS if counts[k]] + ([f"invalid={invalid}"] if invalid else [])
     return f"note {label} header {'ok' if hdr_ok else 'FAILED'}, blocks {nblocks}" + (f" ({' '.join(parts)})" if nblocks else "")
@@ -1150,10 +1248,13 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob):
         if len(files) > 1:
             dup_at[files[0]] = f"note id {nid!r} is used by {len(files)} notes: " + ", ".join(files)
     totals, invalid_total, n_equal, n_new = {k: 0 for k in rh.KINDS}, 0, 0, 0
+    cross = _check_sketches(names, texts, odata, ctx)
     for n in names:
         fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
         if n in dup_at:
             fs.append(_f("NOTE-ID-DUPLICATE", n, hline[n], dup_at[n]))
+        fs += cross[n]
+        if n in dup_at or cross[n]:
             fs.sort(key=lambda x: x[2] or 0)
         bf = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else None
         fs += [bf] if bf else []
@@ -1749,7 +1850,7 @@ def _():
     n = lambda b: {"01-a.md": NOTE(body="Some text.\n" + b + "\n")}  # noqa: E731
     fe(go(notes=n(BL("02.b01"))), ["BLOCK-PROBLEM 01-a.md:7 block '02.b01': id: '02.b01' is not <note id>.b<nn> for note '01'"], 1)
     fe(go(notes=n(rh.format_comment("rh-block", {"id": "01.b01"}))),
-       ["BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument"], 1)
+       ["BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument, sketch"], 1)
     fe(go(notes=n(BL(kind="not_read"))),
        ["BLOCK-PROBLEM 01-a.md:7 block '01.b01': needs: must be one of callers, route, enclosing, resolve, fields_read, uses, hand_read, full_build"], 1)
     fe(go(notes=n(BL(kind="machine_fact", check="text", tool_version="v", options=""))),
@@ -1795,7 +1896,7 @@ def _():
     first = NOTE(body="Some text.\n" + BL(kind="nope") + "\n")
     fe(go(notes={"01-a.md": first, "02-b.md": NOTE()}),
        ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 2 notes: 01-a.md, 02-b.md",
-        "BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument"], 1)
+        "BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument, sketch"], 1)
 
 
 @case("ID7", "ids compare as exact strings: a trailing space makes another id, and so do two Unicode forms of one accented letter")

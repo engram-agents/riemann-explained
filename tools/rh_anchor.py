@@ -19,6 +19,8 @@ API (the names are the contract)
   item_at(text, line)               the 1-based top-level list item that holds a line (nested lines: the parent item)
   target_at(text, line)             the element (paragraph, table, list, fence) that holds a 1-based line, or whose run of
                                     anchor lines holds it, else None
+  run_at(text, line, span)          the `span` elements ending at the target of the anchor on a 1-based line, as a list of
+                                    (kind, first_line, last_line) in text order, or a reason string when the run is illegal
   next_block_id(note_id, used)      the next unused id of a note, never reusing a hole
   insert_after_line(text, line, c)  insert a comment as its own line after a 1-based line, in that file's line ending
 `Item` has line (1-based), data (the parsed object), canonical (the line is byte-equal to format_comment of its own
@@ -66,6 +68,18 @@ CONTRACT (each line is a self-test case, written before the code)
     of "a".."e"; second_readers (if present, any kind) is a list of {reader, date}, both non-empty strings (the list
     may be empty); row and col (if present) are ints >= 1. Every problem string starts with the field name.
     header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f, SR1-SR3, LN1.
+ B2s A sketch (F25a) needs reader and date (non-empty strings), a non-empty decls list (each entry checked as an argument's),
+    basis `source` or `compiled`, and `build`, a non-empty string, required when basis is compiled and refused when it is
+    source; `unexpanded` (if present) is a list of non-empty strings, the list may be empty; `span` (if present) is an int >= 1,
+    a bool is not one. Only a sketch may carry `span`: any other kind with the key is a problem, span 1 too. No kind has a
+    whitelist of keys, and none is added. Cases SK1-SK4.
+ B3r run_at(text, line, span): the run is the `span` elements that end at the target of the anchor on `line` (target_at's
+    element). A run may hold paragraphs and lists (a display formula alone on its lines is a paragraph). A reason string, never
+    an exception, when: the line is not an anchor line, or no element lies before it; span is not an int >= 1; the run holds a
+    table, a fence, a heading, a quote, an HTML line or a rule line ("the run holds a <word> at line(s) ..."), the target too;
+    the run holds another rh anchor line, malformed ones included, between two of its elements (anchor lines after the target
+    are not in the run); span asks for more elements than the note has before the anchor. The nearest obstacle to the target is
+    the one named. Cases RN1-RN6.
  B3 target_at gives the element holding a line, None between elements; a line inside a table is held by the table, so
     the insertion line is the table's last line, never between rows. A line that is itself an anchor line directly
     after an element (any rh- line, malformed ones too) gets that element, so a caller can find append_after from any
@@ -74,7 +88,8 @@ CONTRACT (each line is a self-test case, written before the code)
  B5 insert_after_line uses that line's own ending, CRLF if it ended CRLF, else LF (a lone-CR file gets LF); on a last line with no line ending it adds one before
     the comment and none after, so strip_anchor_lines(insert_after_line(t, n, c)) == t. Cases B5a-B5d.
 
-LIMIT. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
+LIMIT. run_at reads the same approximation of Markdown as the rest of the module: a list at the end of a run is a list element,
+and whether the anchor of a sketch may sit on one (the checker asks a list for `item`) is not decided here. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
 row, column, declaration or file exists (a table's size is only reported), no date format, no order check on
 `defs_opened[].lines` (a block's own `lines` IS order-checked: first not after last, B2), no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
 `conventions_checked` (open; they are validated when present and never required). Markdown is approximated by the
@@ -117,7 +132,7 @@ import sys
 from dataclasses import dataclass
 
 NEEDS = ("callers", "route", "enclosing", "resolve", "fields_read", "uses", "hand_read", "full_build")
-KINDS = ("machine_fact", "reading", "interpretation", "correction", "not_read", "argument")
+KINDS = ("machine_fact", "reading", "interpretation", "correction", "not_read", "argument", "sketch")
 
 
 # ---------------------------------------------------------------- the module
@@ -465,6 +480,54 @@ def target_at(text, line):
     return None
 
 
+def _run_label(el, a):
+    """The word for an element a sketch's run may not hold (a table, a fence, a heading, a quote, an HTML line, a rule), else None."""
+    if el["type"] in ("paragraph", "list"):
+        return None
+    if el["type"] == "table":
+        return "table"
+    first = el["first_line"] - 1
+    if a.fence_of[first] != -1:
+        return "fence"
+    s = a.lines[first].strip()
+    return "heading" if _HEADING.match(s) else "quote" if s.startswith(">") else "HTML line" if s.startswith("<") else "rule line"
+
+
+def run_at(text, line, span):
+    """The `span` elements that end at the target of the anchor on 1-based `line`, as [(kind, first_line, last_line), ...] in text
+    order (kind is paragraph or list), or a reason string when the run is illegal. Never raises. See the module docstring (F25)."""
+    if not _int(line):
+        return "line must be an integer"
+    if not _int(span) or span < 1:
+        return "span must be an integer of 1 or more"
+    a = _Analysis(text)
+    if not 1 <= line <= a.nreal or not a.cand[line - 1]:
+        return f"line {line} is not an rh anchor line"
+    t = a.target_of[line - 1]
+    if t == -1:
+        return f"no element before the anchor on line {line}"
+    order = sorted(range(len(a.elements)), key=lambda k: a.elements[k]["first_line"])
+    pos = order.index(t)
+    run = []
+    for i in range(span):
+        el = a.elements[order[pos]]
+        label = _run_label(el, a)
+        if label is not None:
+            where = f"line {el['first_line']}" if el["first_line"] == el["last_line"] else f"lines {el['first_line']}-{el['last_line']}"
+            return f"the run holds a {label} at {where}"
+        run.append((el["type"], el["first_line"], el["last_line"]))
+        if i + 1 == span:
+            break
+        if pos == 0:
+            return f"span {span} asks for more elements than the note has before this anchor (only {i + 1})"
+        prev = a.elements[order[pos - 1]]
+        for x in range(prev["last_line"], el["first_line"] - 1):   # the 0-based lines strictly between the two elements
+            if a.cand[x]:
+                return f"the run holds another rh anchor line (line {x + 1})"
+        pos -= 1
+    return run[::-1]
+
+
 def item_at(text, line):
     """The 1-based top-level item of a list that holds a 1-based line (a nested line belongs to its parent item), else None."""
     a = _Analysis(text)
@@ -572,12 +635,34 @@ def problems(block, note_id=None):
     elif kind == "not_read":
         if block.get("needs") not in NEEDS:
             out.append(f"needs: must be one of {', '.join(NEEDS)}")
+    elif kind == "sketch":
+        for f in ("reader", "date"):
+            if not _str(block.get(f)):
+                out.append(f"{f}: a sketch needs a non-empty string")
+        if block.get("decls", []) == []:
+            out.append("decls: a sketch needs at least one declaration")
+        basis = block.get("basis")
+        if basis not in ("source", "compiled"):
+            out.append("basis: must be source or compiled")
+        elif basis == "compiled" and not _str(block.get("build")):
+            out.append("build: basis compiled needs a non-empty string")
+        elif basis == "source" and "build" in block:
+            out.append("build: not allowed when basis is source")
+        if "unexpanded" in block:
+            ue = block["unexpanded"]
+            if not (isinstance(ue, list) and all(_str(x) for x in ue)):
+                out.append("unexpanded: must be a list of non-empty strings")
     elif kind in ("argument", "interpretation"):
         for f in ("reader", "date"):
             if not _str(block.get(f)):
                 out.append(f"{f}: {'an argument' if kind == 'argument' else 'an interpretation'} needs a non-empty string")
         if kind == "argument" and block.get("decls", []) == []:
             out.append("decls: an argument needs at least one declaration")
+    if "span" in block and kind in KINDS:
+        if kind != "sketch":
+            out.append("span: only a sketch carries span")
+        elif not (_int(block["span"]) and block["span"] >= 1):
+            out.append("span: must be an integer of 1 or more")
     if "decls" in block:
         _decl_list("decls", block["decls"], out)
     if "defs_opened" in block:
