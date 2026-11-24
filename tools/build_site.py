@@ -229,7 +229,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      so a release line wrapped in `$..$`, or spelled out in a formula's letters, is a leak. The JSON keeps every text as written.
      LIMIT (review F2, case LIM-LINK): the link pass runs before the formulas, so text shaped like a link inside a formula (brackets, then
      parentheses: `$a [b](c) d$`, `$[a](b)$`) is read as a link first, the formula is converted from what is left and a spurious LINK-OUTSIDE is
-     listed; no formula of the real notes or of the corpus has the shape, and the order of the passes is not changed here. A formula that needs
+     listed (the log, the FORMULA-UNSUPPORTED listing and a FORMULA-RAW error show the formula after the links were taken out, not as written: case LIM-LINK2);
+     no formula of the real notes or of the corpus has the shape, and the order of the passes is not changed here. A formula that needs
      such text uses another notation. `tools/formula_oracle.py` compares the converter with pandoc's MathML on a list of formulas (a measurement, not a build step). Cases CV0 to
      CV13 LT1 to LT4 FM1 to FM5 PL1 to PL15 LS1 LS2 RL1 to RL4 JS1b LF1 to LF4, and the moved FR1 FR2 FR3 FR4 FR5 BD4 NS4.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
@@ -1601,7 +1602,7 @@ FORMULA_COMMANDS = dict(
 _FOPS = {"+": "+", "-": "−", "=": "=", "<": "<", ">": ">", "/": "/", "(": "(", ")": ")", "[": "[", "]": "]", ",": ",", ";": ";",
          ":": ":", "!": "!", "|": "|", ".": ".", "*": "∗"}
 _FSPACES = {",": "0.167em", ";": "0.278em", " ": "0.222em", "!": "-0.167em"}   # the spacing commands, with pandoc's widths
-_TEX_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_TEX_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?")   # ASCII digits only (K2): `\d` would take an Arabic-Indic digit after a first digit
 _TEX_NAME = re.compile(r"[A-Za-z]+")
 
 
@@ -7090,6 +7091,23 @@ def _selftest_cases():
         return _eq((b.rc, got, [ln for ln in b.out.splitlines() if ln.startswith("LINK-OUTSIDE")], _fline(b), _nmath(b)),
                    (0, (M_("<mrow><mi>a</mi><mi>b</mi><mi>d</mi></mrow>"), M_("<mi>a</mi>")), ["LINK-OUTSIDE 01.b02 c", "LINK-OUTSIDE 01.b02 b"],
                     (4, 0, 0, 4), 4))
+
+    @case("LIM-LINK2", "DOCUMENTED LIMIT, pinned (peer read of the converter): the log and the listing show the formula AFTER the link pass took the links out, "
+                       "not as the author wrote it: `$\\foo [b](c) d$` in Evidence is listed `FORMULA-UNSUPPORTED 01.b02 $\\foo b d$`, on the surface it "
+                       "refuses with `$\\foo b d$` (FORMULA-RAW), and the link target is still listed (`LINK-OUTSIDE 01.b02 c`); the order of the passes is not changed")
+    def _():
+        ev = _build(notes=_notes(arg_text=EV1 + "See $\\foo [b](c) d$ here"))
+        sf = _build(notes=_notes(arg_text="See $\\foo [b](c) d$ here"))
+        pick = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith(("FORMULA-UNSUPPORTED", "LINK-OUTSIDE", "BUILD-ERROR FORMULA-RAW"))]
+        return _eq((ev.rc, pick(ev), sf.rc, pick(sf)),
+                   (0, ["LINK-OUTSIDE 01.b02 c", "FORMULA-UNSUPPORTED 01.b02 $\\foo b d$"], 1,
+                    ["LINK-OUTSIDE 01.b02 c", "BUILD-ERROR FORMULA-RAW 01.b02 01-one.md line 10: $\\foo b d$"]))
+
+    @case("NUM1", "S5a, digits are ASCII (K2): `1٣` (a digit then the Arabic-Indic digit three) and `٣` alone are unsupported (None), `1.٣` and `12٣` too; "
+                  "`12.5`, `0` and `3.` are what they were (`12.5` is one <mn>)")
+    def _():
+        got = [cv(x) for x in ("1٣", "٣", "1.٣", "12٣", "12.5", "0", "3.")]
+        return _eq(got, [None, None, None, None, M_("<mn>12.5</mn>"), M_("<mn>0</mn>"), M_("<mrow><mn>3</mn><mo>.</mo></mrow>")])
 
     @case("LS1", "listing (moved by S1: a claim and a list title are on the surface, so there a formula the converter cannot convert refuses the build "
                  "where it was listed): in Evidence an unsupported formula is listed `FORMULA-UNSUPPORTED <block id> <the first 40 characters of the formula, marks included>` "
