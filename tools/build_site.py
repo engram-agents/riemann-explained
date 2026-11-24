@@ -304,6 +304,8 @@ parenthesis or white space; a link text that holds `. ` is cut by the first-sent
 in the `unexpanded` entries are not rewritten. The strings rule R3 refuses `of the proof` in any value, so a wording that holds it (a
 compiled part of the proof) is refused until the rule or the wording changes. A block's frame uses the roots of the card it is shown
 on: one block can be framed as a definition on one card and as a proof on another.
+The static check's exemption for an <a class=citation> (and for a reaction anchor) is by class TOKEN: `citation extra` passes, `citationx` does
+not, and the citation exemption holds for `href` alone.
 
 usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX]
                      [--notes-commit REV --repo DIR] [--force]
@@ -1164,8 +1166,10 @@ def _formula_raw(m):
 
 def recognition_counts(forms):
     """(K known, V variant, N not recognised, O open in literature, M not written, G) over the list of the forms of the groups with a
-    claim: a form is one of FORMS, or None for a group with no recognition (counted as not written); any other value is counted
-    nowhere, which is what the sum assertion catches. G is the length of the list."""
+    claim: a form is one of FORMS, or None for a group with no recognition (counted as not written). The function itself counts any
+    other value nowhere, so K + V + N + O + M would fall short of G; the sum assertion is a guard on this function (a case plants a
+    miscount through it). From the outline, `_count_lines` maps a form that is none of FORMS to None, so a bad form is counted as not
+    written and is the checker's to refuse (BAD-VALUE), not this assertion's. G is the length of the list."""
     c = [sum(1 for x in forms if x == f) for f in FORMS]
     return c[0], c[1], c[2], c[3], sum(1 for x in forms if x is None), len(forms)
 
@@ -1687,7 +1691,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     n_links, outside = _link_listing(m)   # a link in block text is shown as its text; a target that is no note of the build is listed
     print(f"links in block text: {n_links} shown as text")
     for bid, target in outside:
-        print(f"LINK-OUTSIDE {bid} {target}")
+        print(f"LINK-OUTSIDE {bid} {target}".rstrip())
     for n in m.notes:
         for b in n["blocks"]:
             for what in ("reader", "date"):
