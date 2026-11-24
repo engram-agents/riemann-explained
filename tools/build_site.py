@@ -2136,6 +2136,7 @@ def _strings():
                       {"label": "I can't follow yet: I need more detail",
                        "href": "https://example.invalid/react?card={card}&kind=detail"}],
         "roots_only_note": "Counts are for the named declarations only.",
+        "root_only_note_single": "The two lines above are about the named declaration only.",
         "dirty_note": "This page was built from changes not yet committed.",
         "shared_note": "Also a root of: {groups}",
         "note_href": "notes/{file}",
@@ -2571,7 +2572,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "frames",
                "argument_frame", "interpretation_frame", "evidence_label",
                "evidence_module_label", "evidence_name_label", "evidence_kind_label", "reactions",
-               "roots_only_note", "dirty_note", "shared_note", "note_href", "forbidden_words",
+               "roots_only_note", "root_only_note_single", "dirty_note", "shared_note", "note_href", "forbidden_words",
                "labels", "labels.chain", "labels.level0_notes", "labels.premises", "labels.notes", "labels.go_deeper",
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
@@ -2955,7 +2956,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 86 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 87 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -2968,7 +2969,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 86))
+        return _eq((bad, len(STRING_KEYS)), ([], 87))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -3000,7 +3001,7 @@ def _selftest_cases():
                  "and a premise is a link to the premise's card: g3 rests on `Claim one` (#g1) and `quux` (#g2, null claim)")
     def _():
         b = _base()
-        prem = _card(b, "g3").find("p", "premises")[0]
+        prem = _card(b, "g3").find(cls="premises")[0]   # F40: g3 has two premises, so the container is a div with a list
         links = [(a.attrs["href"], a.text()) for a in prem.find("a")]
         return _eq((_card(b, "g1a1").find("h3", "claim")[0].text(), "Claim three &amp; &lt;more&gt;" in b.page, links),
                    ("Claim three & <more>", True, [("#g1", "Claim one"), ("#g2", "quux")]))
@@ -3159,16 +3160,144 @@ def _selftest_cases():
         return _eq(([("unread" in _card(b, g).cls) for g in ("g3", "g1", "g1a1", "g2")], steps),
                    ([True, False, False, False], {"g1": False, "g3": True, "g2": False}))
 
-    @case("R5", "every card carries the roots_only_note; qux is a root of g2 and of g1a1x: each card marks it shared with the other "
+    @case("R5", "every card carries exactly one of roots_only_note (a card that shows counts: g2, two roots) and root_only_note_single (every other "
+                "card, F39); qux is a root of g2 and of g1a1x: each card marks it shared with the other "
                 "group, the JSON says shared_with, and the totals count it once (6 distinct roots)")
     def _():
         b = _base()
         dom = _dom(b.page)
-        notes = [c.find("p", "roots-only")[0].text() == "Counts are for the named declarations only." for c in dom.find("article")]
+        notes = {c.attrs["id"]: [p.text() for p in c.find("p", "roots-only")] for c in dom.find("article")}
+        one, many = "The two lines above are about the named declaration only.", "Counts are for the named declarations only."
         sh = lambda g: [p.text() for p in _card(b, g).find("details", "evidence")[0].find("p", "shared")]
-        return _eq((all(notes), len(notes), sh("g2"), sh("g1a1x"), sh("g1"),
+        return _eq((notes, sh("g2"), sh("g1a1x"), sh("g1"),
                     b.js("group/g1a1x.json")["roots"][0]["shared_with"], b.js("level0.json")["totals"]["roots"]),
-                   (True, 6, ["Also a root of: g1a1x"], ["Also a root of: g2"], [], ["g2"], 6))
+                   ({"g1": [one], "g1a": [one], "g1a1": [one], "g1a1x": [one], "g2": [many], "g3": [one]},
+                    ["Also a root of: g1a1x"], ["Also a root of: g2"], [], ["g2"], 6))
+
+    # ---- F39: the roots-only sentence follows what the card shows
+    def _roots_only(page):
+        """{card id: the texts of its roots-only paragraphs} for every card of the page."""
+        return {c.attrs["id"]: [p.text() for p in c.find("p", "roots-only")] for c in _dom(page).find("article")}
+
+    @case("RO1", "F39: with every strings value a marker, a card with ONE root shows MARK-root_only_note_single and nothing else of the two, a card "
+                 "with several roots shows MARK-roots_only_note and nothing else of the two: g1 (a theorem), g1a (null claim, one root), g1a1 "
+                 "(a definition), g1a1x (null claim, one root) and g3 (a definition with a census claim) show the single key, g2 (null claim, two "
+                 "roots) the counts key; never both and never neither")
+    def _():
+        b = _build(strings=_marked(_strings()))
+        if b.rc != 0:
+            return False, b.out + b.err
+        return _eq(_roots_only(b.page),
+                   {"g1": ["MARK-root_only_note_single"], "g1a": ["MARK-root_only_note_single"],
+                    "g1a1": ["MARK-root_only_note_single"], "g1a1x": ["MARK-root_only_note_single"],
+                    "g2": ["MARK-roots_only_note"], "g3": ["MARK-root_only_note_single"]})
+
+    @case("RO2", "F39: the choice follows the counts and nothing else: g2 with two roots that include a definition (quux, baz) and g2 with three "
+                 "roots (quux, qux, corge) show the counts key, the other cards the single key; a card with NO root (the model called directly, as "
+                 "the checker refuses a group with no root first) shows the single key, once")
+    def _():
+        marked = _marked(_strings())
+        two = _build(outline=_outline_b(), notes=_notes_b(), strings=marked)
+        o3 = _outline()
+        o3["groups"][3]["roots"] = [QUUX, QUX, CORGE]
+        three = _build(outline=o3, strings=marked)
+        if two.rc != 0 or three.rc != 0:
+            return False, two.out + three.out
+        o0 = _outline()
+        o0["groups"].append(_g("gz", 1, "root", 9, []))
+        zero = _roots_only(_direct_build(o0).page)
+        many, one = ["MARK-roots_only_note"], ["MARK-root_only_note_single"]
+        return _eq((_roots_only(two.page)["g2"], _roots_only(three.page)["g2"],
+                    sorted(g for g, v in _roots_only(three.page).items() if v == one), zero["gz"]),
+                   (many, many, ["g1", "g1a", "g1a1", "g1a1x", "g3"], ["The two lines above are about the named declaration only."]))
+
+    @case("RO3", "F39: site/strings.json holds root_only_note_single as the wording file gave it (one key, no placeholder) and roots_only_note as it "
+                 "was; the file passes the builder's own strings check; the key is required (missing, empty, a placeholder or a forbidden word "
+                 "are each refused naming it)")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        res = []
+        for v in ("A {n} line.", "", "This was verified."):
+            st = _strings()
+            st["root_only_note_single"] = v
+            b = _build(strings=st)
+            res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+        st = _strings()
+        del st["root_only_note_single"]
+        miss = _build(strings=st)
+        return _eq((real.get("root_only_note_single"), real.get("roots_only_note"), _strings_problems(real), res,
+                    (miss.rc, [x for x in miss.out.splitlines() if x.startswith("BUILD-ERROR")], miss.existed)),
+                   ("These two lines are about this step's named Lean result only, not about the results it uses.",
+                    "These counts are for the step's named Lean results only, not for everything they use.", [],
+                    [(1, ["BUILD-ERROR STRINGS-KEY root_only_note_single has an unknown placeholder {n}"], False),
+                     (1, ["BUILD-ERROR STRINGS-KEY root_only_note_single must be a non-empty string"], False),
+                     (1, ["BUILD-ERROR STRINGS-FORBIDDEN root_only_note_single holds the word 'verified', which the page never says"], False)],
+                    (1, ["BUILD-ERROR STRINGS-KEY root_only_note_single missing"], False)))
+
+    # ---- F40: a card with two or more premises shows them as a list
+    def _premises_of(b_, gid):
+        """The premises elements of a card (any tag): [(tag, child tags, texts of the child paragraphs, item texts, (href, text) links)]."""
+        return [(k.tag, [c.tag for c in k.elems()], [c.text() for c in k.elems() if c.tag == "p"], [li.text() for li in k.find("li")],
+                 [(a.attrs["href"], a.text()) for a in k.find("a")]) for k in _card(b_, gid).elems() if "premises" in k.cls]
+
+    def _outline_prem(n):
+        """The outline with g3 resting on n premises, in this order (g1a1, g2, g1a, g1: four distinct cards)."""
+        o = _outline()
+        next(g for g in o["groups"] if g["id"] == "g3")["premises"] = ["g1a1", "g2", "g1a", "g1"][:n]
+        return o
+
+    @case("PL1", "F40: ONE premise keeps today's sentence line (`<p class=premises>Rests on <a>..</a></p>`: g1 rests on g1a; g3 on g1a1); TWO "
+                 "premises show a div of class premises holding the paragraph `Rests on` and a list with one item per premise, each item one "
+                 "in-page link with the title as before, in the given order; THREE premises likewise, in the order given, not sorted "
+                 "(g1a1, g2, g1a)")
+    def _():
+        b1, b2, b3 = _build(outline=_outline_prem(1)), _build(outline=_outline_prem(2)), _build(outline=_outline_prem(3))
+        if (b1.rc, b2.rc, b3.rc) != (0, 0, 0):
+            return False, b1.out + b2.out + b3.out
+        Q = "Claim three & <more>"
+        return _eq((_premises_of(b1, "g1"), _premises_of(b1, "g3"), [k.text() for k in _card(b1, "g3").elems() if "premises" in k.cls],
+                    _premises_of(b2, "g3"), _premises_of(b3, "g3")),
+                   ([("p", ["a"], [], [], [("#g1a", "bar")])], [("p", ["a"], [], [], [("#g1a1", Q)])], ["Rests on " + Q],
+                    [("div", ["p", "ul"], ["Rests on"], [Q, "quux"], [("#g1a1", Q), ("#g2", "quux")])],
+                    [("div", ["p", "ul"], ["Rests on"], [Q, "quux", "bar"], [("#g1a1", Q), ("#g2", "quux"), ("#g1a", "bar")])]))
+
+    @case("PL2", "F40: a null-claim step with one premise keeps the line (g2 with premises [g1a]: the label is the strings file's labels.premises, "
+                 "a marker here, then the link), a four-premise card lists all four, none left out, the label once before the list")
+    def _():
+        o = _outline()
+        o["groups"][3]["premises"] = ["g1a"]
+        one = _build(outline=o, strings=_marked(_strings()))
+        four = _build(outline=_outline_prem(4), strings=_marked(_strings()))
+        if one.rc != 0 or four.rc != 0:
+            return False, one.out + four.out
+        Q = "Claim three & <more>"
+        return _eq((_premises_of(one, "g2"), [k.text() for k in _card(one, "g2").elems() if "premises" in k.cls], _premises_of(four, "g3"),
+                    _raw(_card(four, "g3").find(cls="premises")[0]).count("MARK-labels.premises")),
+                   ([("p", ["a"], [], [], [("#g1a", "bar")])], ["MARK-labels.premises bar"],
+                    [("div", ["p", "ul"], ["MARK-labels.premises"], [Q, "quux", "bar", "Claim one"],
+                      [("#g1a1", Q), ("#g2", "quux"), ("#g1a", "bar"), ("#g1", "Claim one")])], 1))
+
+    @case("PL3", "F40: no data change: for one to four premises the premises field of the group file is the list of ids as given, the links of "
+                 "the list are those ids in the same order, each resolves to a card of the page, and the container and its elements carry no "
+                 "attribute but the class premises and the href of each link")
+    def _():
+        res = []
+        for n in (1, 2, 3, 4):
+            b = _build(outline=_outline_prem(n))
+            if b.rc != 0:
+                return False, b.out
+            g3 = b.js("group/g3.json")["premises"]
+            ids = {a.attrs["id"] for a in _dom(b.page).find("article")}
+            box = _card(b, "g3").find(cls="premises")[0]
+            hrefs = [a.attrs["href"][1:] for a in box.find("a")]
+            res.append((g3, hrefs == g3, all(h in ids for h in hrefs), link_problems(b.page),
+                        sorted({(n_.tag, k) for n_ in [box] + list(box.nodes()) for k in n_.attrs})))
+        return _eq(res, [(["g1a1", "g2", "g1a", "g1"][:n], True, True, [],
+                          [("a", "href")] + ([("div", "class")] if n > 1 else [("p", "class")])) for n in (1, 2, 3, 4)])
 
     @case("R6", "the correction block on foo is shown on g1's card, outside the closed sections, with its kind and its title and (F37) no reader "
                 "and no date, see PV12; "
@@ -3454,7 +3583,7 @@ def _selftest_cases():
         o = _outline()
         o["groups"][0]["premises"] = ["g2", "g1"]
         b = _build(outline=o)
-        return _eq((b.rc, [a.attrs["href"] for a in _card(b, "g3").find("p", "premises")[0].find("a")]), (0, ["#g2", "#g1"]))
+        return _eq((b.rc, [a.attrs["href"] for a in _card(b, "g3").find(cls="premises")[0].find("a")]), (0, ["#g2", "#g1"]))
 
     # ---- F20: premises belong to the group; F21: open items, evidence labels, code spans; the required placeholders
     def _outline_g2_premises():
@@ -3476,17 +3605,21 @@ def _selftest_cases():
                     {"g1": ["g1a"], "g1a": [], "g2": ["g1a", "g1"], "g3": ["g1", "g2"]},
                     ["basis", "conditions", "date", "reader", "text"], ["basis", "conditions", "date", "reader", "text"], None))
 
-    @case("PRM2", "the premises heading and links show on a null-claim step too: g2 (premises [g1a, g1]) has the `Rests on` paragraph "
-                  "right after its heading, with links #g1a (`bar`, a null claim) and #g1 (`Claim one`) in outline order; a card with "
-                  "no premises has no premises paragraph, heading included (g2 in the base build, a claimed card g1a1)")
+    @case("PRM2", "the premises heading and links show on a null-claim step too (F40: two premises, so a list): g2 (premises [g1a, g1]) has the "
+                  "`Rests on` container right after its heading (a div with the paragraph `Rests on` and a list), with links #g1a (`bar`, a null claim) and "
+                  "#g1 (`Claim one`) in outline order, one per item; a card with "
+                  "no premises has no premises container, heading included (g2 in the base build, a claimed card g1a1)")
     def _():
         b = _build(outline=_outline_g2_premises())
         c = _card(b, "g2")
-        prem = _direct(c, "p", "premises")[0]
+        prem = [k for k in c.elems() if "premises" in k.cls]
         base = _base()
-        return _eq(([k.cls[0] for k in c.elems()][:3], _raw(prem), [(a.attrs["href"], a.text()) for a in prem.find("a")],
-                    _direct(_card(base, "g2"), "p", "premises"), _direct(_card(base, "g1a1"), "p", "premises")),
-                   (["claim", "premises", "status"], "Rests on bar, Claim one", [("#g1a", "bar"), ("#g1", "Claim one")], [], []))
+        none_ = lambda g: [k for k in _card(base, g).elems() if "premises" in k.cls]
+        p0 = prem[0]
+        return _eq(([k.cls[0] for k in c.elems()][:3], len(prem), p0.tag, [k.tag for k in p0.elems()], p0.elems()[0].text(),
+                    [li.text() for li in p0.find("li")], [(a.attrs["href"], a.text()) for a in p0.find("a")], none_("g2"), none_("g1a1")),
+                   (["claim", "premises", "status"], 1, "div", ["p", "ul"], "Rests on", ["bar", "Claim one"],
+                    [("#g1a", "bar"), ("#g1", "Claim one")], [], []))
 
     @case("PRM3", "every premise link of every card, null-claim steps included, resolves to a card of the page; a premise link to an id "
                   "that has no card is a link problem")
@@ -3494,7 +3627,7 @@ def _selftest_cases():
         b = _build(outline=_outline_g2_premises())
         dom = _dom(b.page)
         ids = {a.attrs["id"] for a in dom.find("article")}
-        hrefs = [a.attrs["href"][1:] for p in dom.find("p", "premises") for a in p.find("a")]
+        hrefs = [a.attrs["href"][1:] for p in dom.find(cls="premises") for a in p.find("a")]
         return _eq((b.rc, sorted(hrefs), all(h in ids for h in hrefs), link_problems(b.page),
                     link_problems(b.page.replace('<a href="#g1a">', '<a href="#zzz">', 1))),
                    (0, ["g1", "g1", "g1a", "g1a", "g2"], True, [], ["#zzz"]))
@@ -3744,7 +3877,7 @@ def _selftest_cases():
             return False, b.out + b.err
         dom = _dom(b.page)
         g1, g3 = _card(b, "g1"), _card(b, "g3")
-        prem = [(a.attrs["href"], _raw(a)) for a in g3.find("p", "premises")[0].find("a")]
+        prem = [(a.attrs["href"], _raw(a)) for a in g3.find(cls="premises")[0].find("a")]
         ev_ = g1.find("details", "evidence")[0]
         full = next(li for li in ev_.find("ul", "blocks")[0].elems() if "01.b02" in _raw(li))   # F37: the reader, date and second reader moved here
         corr = _direct(g1, "ul", "corrections")[0].find("li")[0]
