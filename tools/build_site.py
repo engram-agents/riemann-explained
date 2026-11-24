@@ -6333,19 +6333,24 @@ def _selftest_cases():
                 M_("<msup><mi>x</mi><mn>2</mn></msup>"), M_("<msup><mi>x</mi><mi>α</mi></msup>")] + [None] * 10
         return _eq(got, want)
 
-    @case("CV3", "converter, primes (a choice, pinned): a prime is FLAT right after its base, `<mo stretchy=\"false\">′</mo>` (U+2032), as a sibling "
-                 "(`L'` is <mrow><mi>L</mi><mo>′</mo></mrow>, `f''` two primes); a prime then a superscript or a subscript make the base and its primes an "
-                 "<mrow> that takes the script (`r'^{-k}` is <msup> of <mrow>r ′</mrow> and the script group); a prime after a superscript "
-                 "(`x^2'`) and a prime with no base are unsupported")
+    @case("CV3", "converter, primes (a choice, pinned; a headless Chromium look at 1x and 2.2x for every primed formula of the corpus): a prime is U+2032 "
+                 "INSIDE the token of a one-token <mi> base (`L'` is <mi>L′</mi>, `\\zeta'` <mi>ζ′</mi>, `f''` <mi>f′′</mi>, a capital Greek letter and a "
+                 "function name keep their normal variant: <mi mathvariant=\"normal\">Γ′</mi>, `\\operatorname{Re}'` Re′), so it cannot detach (an <msup> floated "
+                 "it high and apart, a separate <mo> sat inside the top stroke of a zeta); a script then takes the whole <mi> (`r'^{-k}` is <msup> of "
+                 "<mi>r′</mi>); a base that is not a one-token <mi> (a number, a fence, a group) keeps a flat <mo stretchy=\"false\">′</mo> after it; "
+                 "a prime after a superscript and a prime with no base are unsupported")
     def _():
-        pr, mo = '<mo stretchy="false">′</mo>', '<mo stretchy="false">/</mo>'
-        got = [cv(x) for x in ("L'", "f''", "r'^{-k}", "L'_s", "x'^2", "x^2'", "'", "\\zeta'", "L'/L")]
-        want = [M_("<mrow><mi>L</mi>" + pr + "</mrow>"), M_("<mrow><mi>f</mi>" + pr + pr + "</mrow>"),
-                M_("<msup><mrow><mi>r</mi>" + pr + "</mrow><mrow><mo>−</mo><mi>k</mi></mrow></msup>"),
-                M_("<msub><mrow><mi>L</mi>" + pr + "</mrow><mi>s</mi></msub>"), M_("<msup><mrow><mi>x</mi>" + pr + "</mrow><mn>2</mn></msup>"), None, None,
-                M_("<mrow><mi>ζ</mi>" + pr + "</mrow>"), M_("<mrow><mi>L</mi>" + pr + mo + "<mi>L</mi></mrow>")]
+        pr = '<mo stretchy="false">′</mo>'
+        lp, rp = '<mo stretchy="false" form="prefix">(</mo>', '<mo stretchy="false" form="postfix">)</mo>'
+        got = [cv(x) for x in ("L'", "\\zeta'(s)", "f''", "\\Gamma'", "\\operatorname{Re}'", "r'^{-k}", "L'_s", "x'^2", "L'/L", "(a)'", "2'", "{ab}'",
+                               "x^2'", "'", "\\max'")]
+        want = [M_("<mi>L′</mi>"), M_("<mrow><mi>ζ′</mi>" + lp + "<mi>s</mi>" + rp + "</mrow>"), M_("<mi>f′′</mi>"),
+                M_('<mi mathvariant="normal">Γ′</mi>'), M_('<mi mathvariant="normal">Re′</mi>'),
+                M_("<msup><mi>r′</mi><mrow><mo>−</mo><mi>k</mi></mrow></msup>"), M_("<msub><mi>L′</mi><mi>s</mi></msub>"),
+                M_("<msup><mi>x′</mi><mn>2</mn></msup>"), M_("<mrow><mi>L′</mi>" + '<mo stretchy="false">/</mo>' + "<mi>L</mi></mrow>"),
+                M_("<mrow>" + lp + "<mi>a</mi>" + rp + pr + "</mrow>"), M_("<mrow><mn>2</mn>" + pr + "</mrow>"),
+                M_("<mrow><mrow><mi>a</mi><mi>b</mi></mrow>" + pr + "</mrow>"), None, None, M_('<mi mathvariant="normal">max′</mi>')]
         return _eq(got, want)
-
     @case("CV4", "converter, Greek: each of the 37 Greek letter commands is one <mi> of its Unicode letter (U+03F5 for `\\epsilon`, U+03B5 for "
                  "`\\varepsilon`, U+03D5 for `\\phi`, U+03C6 for `\\varphi`); the 11 capitals (Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi "
                  "Omega) carry mathvariant=\"normal\" (TeX sets capital Greek upright, MathML would slant a lone <mi>), the 26 lower-case letters "
@@ -6447,7 +6452,7 @@ def _selftest_cases():
                 M_("<mrow>" + fn("max") + '<mspace width="0.167em"></mspace>' + "<mi>x</mi></mrow>"),
                 M_("<mrow><msub>" + fn("max") + "<mi>x</mi></msub>" + sp + "<mi>y</mi></mrow>"),
                 M_("<mrow>" + fn("max") + '<mo form="prefix" stretchy="false">|</mo><mi>x</mi><mo form="postfix" stretchy="false">|</mo></mrow>'),
-                M_("<mrow>" + fn("max") + '<mo stretchy="false">′</mo></mrow>'),
+                M_('<mi mathvariant="normal">max′</mi>'),
                 M_("<mrow><mrow>" + fn("log") + "</mrow><mi>x</mi></mrow>"),
                 M_("<mrow>" + fn("max") + '<mo stretchy="false" form="prefix">(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo stretchy="false" form="postfix">)</mo></mrow>'),
                 M_("<mrow>" + fn("cos") + sp + '<mover accent="true"><mi>x</mi><mo stretchy="true">―</mo></mover></mrow>')]
