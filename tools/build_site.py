@@ -334,21 +334,62 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "steps_proof_not_applicable_line", "statement_count_line",
              "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
              "second_reader_frame", "interpretation_frame", "evidence_label", "evidence_module_label", "evidence_name_label", "evidence_kind_label",
-             "roots_only_note", "dirty_note", "shared_note", "note_href")
+             "roots_only_note", "dirty_note", "shared_note", "note_href",
+             "recognition_result_known_line", "recognition_result_variant_line", "recognition_result_not_recognised_line",
+             "recognition_result_open_line", "recognition_named_statement_known_line",
+             "recognition_named_statement_variant_line", "recognition_named_statement_not_recognised_line",
+             "recognition_named_statement_open_line", "recognition_object_known_line", "recognition_object_variant_line",
+             "recognition_object_not_recognised_line", "recognition_not_written_line", "recognition_label_line",
+             "recognition_citation_line", "recognition_citation_dated_line", "recognition_citation_open_line",
+             "named_statement_use_line", "established_by_line", "established_not_traced_line", "sketch_frame",
+             "sketch_basis_source", "sketch_basis_compiled", "sketch_note", "sketch_missing_line", "unexpanded_heading",
+             "argument_frame_no_proof")
 PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_line": {"reader", "date"},
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
-                "argument_frame": {"reader", "date", "lines"}, "second_reader_frame": {"reader", "date"},
+                "argument_frame": {"reader", "date", "lines", "file"}, "second_reader_frame": {"reader", "date"},
                 "interpretation_frame": {"reader", "date"}, "shared_note": {"groups"}, "note_href": {"file"},
                 "proof_read_line": {"reader", "date"},
                 # a value nested in a list or object is declared under its path without the list indexes
                 "frames.argument": {"reader", "date", "lines"}, "frames.interpretation": {"reader", "date"},
+                "recognition_result_known_line": {"result"},
+                "recognition_result_variant_line": {"result"},
+                "recognition_result_open_line": {"result", "source_date"},
+                "recognition_named_statement_known_line": {"result"},
+                "recognition_named_statement_variant_line": {"result"},
+                "recognition_named_statement_open_line": {"result", "source_date"},
+                "recognition_object_known_line": {"result"},
+                "recognition_object_variant_line": {"result"},
+                "recognition_label_line": {"date", "reader"},
+                "recognition_citation_line": {"source", "where"},
+                "recognition_citation_dated_line": {"opened_by", "opened_on", "source", "where"},
+                "recognition_citation_open_line": {"opened_by", "opened_on", "source", "source_date", "where"},
+                "established_by_line": {"date", "name", "reader"},
+                "sketch_frame": {"basis", "date", "reader"},
+                "sketch_basis_compiled": {"build"},
+                "argument_frame_no_proof": {"reader", "date", "lines", "file"},
                 "reactions.href": {"card"}}
 # the keys whose value must hold EVERY placeholder it declares (the frames, the notes' hrefs and the reaction hrefs may omit theirs)
 REQUIRED_PLACEHOLDERS = {"statement_read_line": ("reader", "date"), "statement_census_line": ("reader", "date"),
                          "proof_read_line": ("reader", "date"), "statement_count_line": ("n", "m"), "proof_count_line": ("n", "m"),
                          "steps_statement_line": ("n", "m"), "steps_proof_line": ("n", "m"), "open_items_line": ("n",),
-                         "steps_open_items_line": ("n",)}
+                         "steps_open_items_line": ("n",),
+                         "recognition_result_known_line": ("result",),
+                         "recognition_result_variant_line": ("result",),
+                         "recognition_result_open_line": ("result", "source_date"),
+                         "recognition_named_statement_known_line": ("result",),
+                         "recognition_named_statement_variant_line": ("result",),
+                         "recognition_named_statement_open_line": ("result", "source_date"),
+                         "recognition_object_known_line": ("result",),
+                         "recognition_object_variant_line": ("result",),
+                         "recognition_label_line": ("reader", "date"),
+                         "recognition_citation_line": ("source", "where"),
+                         "recognition_citation_dated_line": ("source", "where", "opened_by", "opened_on"),
+                         "recognition_citation_open_line": ("source", "where", "source_date", "opened_by", "opened_on"),
+                         "established_by_line": ("name", "reader", "date"),
+                         "sketch_frame": ("reader", "date", "basis"),
+                         "sketch_basis_compiled": ("build",),
+                         "argument_frame_no_proof": ("reader", "date")}
 PROOF_KINDS = frozenset(["theorem", "lemma"])   # the table kinds that HAVE a proof; any other kind has none (F22)
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
@@ -4564,6 +4605,55 @@ def _selftest_cases():
         return _eq((got, _rich("[a](b)"), _link_targets("see [a](b.md) and `[c](d)` and [e](f#g) and ![i](j)")),
                    (["note 6", "x a <code>b</code> c y", "<code>[a](b)</code>", "[a <code>b](c)</code> d", "[x]", "[a](b", "![a](b)",
                      "[a](b c)", "[](x)", "a(c)", "[a [b] c](d)", "&lt;i&gt;", "a &amp; b"], "[a](b)", ["b.md", "f#g"]))
+
+    # ---- F31: the note of a recognition that is not recognised
+    def _noted(form="not_recognised", note="We looked in `Foo.bar` and found [nothing](x.md)."):
+        o = _outline()
+        g = next(g for g in o["groups"] if g["id"] == "g1")
+        g["root_role"] = "result"
+        g["recognition"] = _rec(form, note=note, **({"result": "R", "citations": [CITB]} if form == "known" else {}))
+        return o
+
+    @case("FN1", "F2: a not_recognised recognition with a `note` shows the form line, THEN the note as one paragraph through the span rule "
+                 "(`Foo.bar` is <code>) and NOT through the link rule (the link stays as written, no anchor), THEN the label line; the "
+                 "JSON carries the note inside recognition and nothing in counts; a not_recognised card without a note (zrn) is the form "
+                 "line and the label line only")
+    def _():
+        b = _build(outline=_noted())
+        rc = rcn(b, "g1")
+        note = _direct(rc, "p", "recognition-note")[0]
+        return _eq((b.rc, lead(rc), _raw(note), [c.text() for c in note.find("code")], len(rc.find("a")),
+                    b.js("group/g1.json")["recognition"]["note"], sorted(b.js("level0.json")["steps"][0]["counts"]), lead(rcn(_zbase(), "zrn"))),
+                   (0, [("p", "recognition-form"), ("p", "recognition-note"), ("p", "recognition-label")],
+                    "We looked in Foo.bar and found [nothing](x.md).", ["Foo.bar"], 0,
+                    "We looked in `Foo.bar` and found [nothing](x.md).",
+                    ["open_items", "roots", "roots_open_items", "roots_proof_applicable", "roots_proof_read", "roots_statement_read"],
+                    [("p", "recognition-form"), ("p", "recognition-label")]))
+
+    @case("FN2", "F2: a note on any other form is not printed (the checker refuses it; the builder ignores the key): a known recognition with a "
+                 "note shows no note paragraph")
+    def _():
+        b = _build(outline=_noted("known"))
+        return _eq((b.rc, [k[1] for k in lead(rcn(b, "g1"))]), (0, ["recognition-form", "recognition-citations", "recognition-label"]))
+
+    @case("FN3", "F3: the source check compares the note as written and with its span backticks removed: a release line inside single "
+                 "backticks as the note is SOURCE-LEAK (data.js, group/g1.json, level0.json, level1.json), exit 1, OUT_DIR absent; "
+                 "doubled backticks and an unrelated note build")
+    def _():
+        src = {"A/B.lean": "x\n" + LEAK + "\n"}
+        res = []
+        for v in ("`" + LEAK + "`", "``" + LEAK + "``", "An unrelated note of ours."):
+            b = _build(outline=_noted(note=v), src=src)
+            res.append((b.rc, sorted(ln.split(" ")[2] for ln in b.out.splitlines()
+                                     if ln.startswith("BUILD-ERROR SOURCE-LEAK ") and not ln.startswith("BUILD-ERROR SOURCE-LEAK note ")),
+                        b.existed))
+        return _eq(res, [(1, ["data.js", "group/g1.json", "level0.json", "level1.json"], False), (0, [], True), (0, [], True)])
+
+    @case("FN4", "F4: a note changes no count: the run line of a build with one noted not_recognised group counts it as not recognised only")
+    def _():
+        b = _build(outline=_noted())
+        return _eq("recognition: 0 known, 0 variant, 1 not recognised, 0 open in literature, 2 not written, of 3 groups with a claim"
+                   in b.out.splitlines(), True)
 
     return cases
 
