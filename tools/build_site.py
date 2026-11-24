@@ -2022,6 +2022,8 @@ def formula_run_line(c):
 
 
 CODE_ON_SURFACE_REFUSES = False   # S3: True makes any <code> span outside Evidence refuse the build (CODE-ON-SURFACE); False lists them only
+_SELFTEST_RUNNING = False
+_CODE_FLAG_AT_START = False   # the value CODE_ON_SURFACE_REFUSES had when the self-test began (the self-test pins it to False for every case); CS1 reads it
 _VOID_TAGS = frozenset(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"])
 
 
@@ -3447,6 +3449,7 @@ def _child(args_file, out, seed):
     code = ("import importlib.util, json, sys\n"
             "s = importlib.util.spec_from_file_location('bs', sys.argv[1]); m = importlib.util.module_from_spec(s)\n"
             "s.loader.exec_module(m)\n"
+            "m.CODE_ON_SURFACE_REFUSES = False\n"   # the fixtures carry spans: the child, like every case, does not depend on the constant of the file
             "a = json.load(open(sys.argv[2]))\n"
             "sys.exit(m.run(a['notes'], a['outline'], a['decls'], a['strings'], sys.argv[3], tools_state=('tools0', False)))\n")
     r = subprocess.run([sys.executable, "-c", code, os.path.abspath(__file__), args_file, out], capture_output=True, text=True,
@@ -7371,10 +7374,17 @@ def _selftest_cases():
         return [ln for ln in b_.out.splitlines() if ln.startswith("code on surface: ")]
 
     @case("CS1", "S3: the base build lists the five spans of its surface in page order, one line per card and text, `CODE-ON-SURFACE <card> <text> x<n>`, "
-                 "exit 0, and its run line is `code on surface: 5 spans (3 distinct) in 5 cards`; the constant CODE_ON_SURFACE_REFUSES is False")
+                 "exit 0, and its run line is `code on surface: 5 spans (3 distinct) in 5 cards`. THIS IS THE ONE CASE THE FLIP PR EDITS: it pins the value "
+                 "the constant CODE_ON_SURFACE_REFUSES has in the file (`_CODE_FLAG_AT_START`, read before the self-test pins it to False for every case), "
+                 "and the last literal below is that value")
     def _():
-        return _eq((_base().rc, _code(_base()), _crun2(_base()), CODE_ON_SURFACE_REFUSES),
-                   (0, CS0, ["code on surface: 5 spans (3 distinct) in 5 cards"], False))
+        return _eq((_base().rc, _code(_base()), _crun2(_base()), _CODE_FLAG_AT_START),
+                   (0, CS0, ["code on surface: 5 spans (3 distinct) in 5 cards"], False))   # the flip PR changes this False to True
+
+    @case("CS6", "S3, the self-test does not depend on the constant: while any case runs, CODE_ON_SURFACE_REFUSES is False whatever the file says (the "
+                 "self-test pins it, the way `_patched` pins other constants), so flipping it in the file changes CS1 and nothing else; CS5 sets it True on purpose")
+    def _():
+        return _eq((CODE_ON_SURFACE_REFUSES, _CODE_FLAG_AT_START in (True, False)), (False, True))
 
     @case("CS2", "S3: a span in a claim (shown again as a premise: a line for each card), in a condition, in a sketch paragraph and in the title of a note "
                  "about the whole (card `page`) is listed; with the five base spans that is 10 spans (7 distinct) in 6 cards")
@@ -8470,9 +8480,15 @@ def selftest(verbose=True, only=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
+    global _CODE_FLAG_AT_START, _SELFTEST_RUNNING
+    was_running = _SELFTEST_RUNNING
+    if not _SELFTEST_RUNNING:   # a case that calls selftest() (SEL1) must not overwrite the value read by the outermost run
+        _CODE_FLAG_AT_START = CODE_ON_SURFACE_REFUSES
+    _SELFTEST_RUNNING = True
     for cid, desc, fn in cases:
         try:
-            good, detail = fn()
+            with _patched("CODE_ON_SURFACE_REFUSES", False):   # the cases do not depend on the constant of the file; CS5 sets it True on purpose
+                good, detail = fn()
         except _SkipCase as e:
             good, detail = None, str(e)
         except Exception as e:  # a crash is a failed case, not a skipped one
@@ -8489,6 +8505,7 @@ def selftest(verbose=True, only=None):
                 print(f"  detail: {detail}")
     if verbose:
         print("SELFTEST " + ("PASS" if ok else "FAIL") + (f" ({skipped} skipped)" if ok and skipped else ""))
+    _SELFTEST_RUNNING = was_running
     return 0 if ok else 4
 
 
