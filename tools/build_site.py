@@ -244,8 +244,13 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      shows its lines with its file name (`lines_missing` for a block with no file or no lines). Cases SHA1 B7a B7f.
   R4 No CSS animation or transition keyword in the page; an unread card (neither fact on any root) is present, full size, outlined and labelled, never
      hidden or faded. Cases R4a R4b.
-  R5 Every card says its counts are for the roots only (`roots_only_note`); a declaration that is a root of two groups is
-     marked shared with the other group's id and counted once in totals. Case R5.
+  R5 Every card carries exactly one roots-only sentence (F39), chosen by whether the card shows counts, which it does when it has
+     more than one root: `roots_only_note` on such a card, `root_only_note_single` (no placeholder) on every other card (one root, or
+     none), never both and never neither; a declaration that is a root of two groups is
+     marked shared with the other group's id and counted once in totals. Cases R5 RO1 RO2 RO3.
+  PL The premises of a card (F40): one premise is the sentence line `<p class="premises">label link</p>`; two or more are
+     `<div class="premises"><p>label</p><ul><li>link</li>...</ul></div>`, one item per premise in the outline's order. Each link is
+     the in-page `#<id>` link with the premise's title, as before; the data is unchanged. Cases PL1 PL2 PL3 (PRM2 moved).
   R6 A `correction` block anchored to a root is shown on that root's card with kind, reader and date, outside the closed
      section. Case R6.
   B7 Every argument block is shown in ONE element with its frame first, drawn from strings.json plus the block's reader,
@@ -342,6 +347,12 @@ on, by ruling (F34): a card speaks about its own root, so one block can be frame
 The static check's exemption for an <a class=citation> (and for a reaction anchor) is by class TOKEN: `citation extra` passes, `citationx` does
 not, and the citation exemption holds for `href` alone.
 
+LIMIT (F39, F40). The roots-only sentence is chosen by the number of roots alone: a card with several roots shows `roots_only_note`, any
+other card `root_only_note_single`, so the single sentence ("these two lines") is also shown on a card with no root, which the checker
+refuses before the page is built. The premises of a card are a list from two premises on, so a card's premises container is a `div` for
+two or more and a `p` for one: a reader of the page's markup (the graph view) finds the container by its class `premises`, never by its
+tag. The links are in-page anchors in both forms; the page adds no wording and no data for the list.
+
 LIMIT (F37). The card names nobody, but two places still can: the author's own text (a sketch or an argument that says who read what,
 or a seat's name) and the first screen. A correction stays on the card with its kind and its title (what was wrong: a doubt a reader should
 see); its reader and date are in the Evidence block list, in the who-span beside the block's kind (the existing line, no key of its own). The Evidence section is closed, not hidden: it is in the page and in the JSON for whoever opens it. The
@@ -411,7 +422,7 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "steps_proof_not_applicable_line", "statement_count_line",
              "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
              "interpretation_frame", "evidence_label", "evidence_module_label", "evidence_name_label", "evidence_kind_label",
-             "roots_only_note", "dirty_note", "shared_note", "note_href",
+             "roots_only_note", "root_only_note_single", "dirty_note", "shared_note", "note_href",
              "recognition_result_known_line", "recognition_result_variant_line", "recognition_result_not_recognised_line",
              "recognition_result_open_line", "recognition_named_statement_known_line",
              "recognition_named_statement_variant_line", "recognition_named_statement_not_recognised_line",
@@ -1502,8 +1513,12 @@ def _render_page(m, s, facts, dirty):
         if role == "named_statement":   # F36: what kind of step this is, directly after the claim and its conditions
             o.append(f'<p class="named-statement-use">{_e(s["named_statement_use_line"])}</p>')
         if sm["premises"]:   # a step with a null claim rests on premises as well
-            links = ", ".join(f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>' for p in sm["premises"])
-            o.append(f'<p class="premises">{_e(lab["premises"])} {links}</p>')
+            links = [f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>' for p in sm["premises"]]
+            if len(links) == 1:   # one premise: the sentence line, as it was
+                o.append(f'<p class="premises">{_e(lab["premises"])} {links[0]}</p>')
+            else:   # F40: two or more: the label, then a list with one premise per item, in the outline's order
+                o.append(f'<div class="premises"><p>{_e(lab["premises"])}</p><ul>'
+                         + "".join(f"<li>{x}</li>" for x in links) + "</ul></div>")
         if sm["claim"]:   # the recognition of the statement: after the premises line, before the two status lines (F24)
             o += recognition(sm, role)
         c, by = sm["counts"], sm["statement_by"]
@@ -1511,7 +1526,8 @@ def _render_page(m, s, facts, dirty):
         none_line = (s["proof_none_other_line"] if any(r["kind"] not in KNOWN_KINDS for r in fl["roots"])
                      else s["proof_not_applicable_line"])
         args = [b for b in fl["blocks"] if b["kind"] == "argument"]   # blocks are in note id, then block number, order
-        if c["roots"] > 1:   # several roots (a null claim): counts with their denominators
+        counts = c["roots"] > 1   # F39: a card shows counts when it has several roots; the roots-only sentence follows this
+        if counts:   # several roots (a null claim): counts with their denominators
             st = _fill(s["statement_count_line"], n=c["roots_statement_read"], m=c["roots"])
             pf = (_fill(s["proof_count_line"], n=c["roots_proof_read"], m=c["roots_proof_applicable"])
                   if c["roots_proof_applicable"] else none_line)   # counted over the roots that HAVE a proof
@@ -1530,7 +1546,7 @@ def _render_page(m, s, facts, dirty):
         if c["open_items"] > 0:   # a zero is not said on a card (the first screen always says it)
             o.append(f'<p class="open-items">{_e(_fill(s["open_items_line"], n=c["open_items"]))}</p>')
         if sm["roots_only"]:
-            o.append(f'<p class="roots-only">{_e(s["roots_only_note"])}</p>')
+            o.append(f'<p class="roots-only">{_e(s["roots_only_note" if counts else "root_only_note_single"])}</p>')
         if args:
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
@@ -3166,7 +3182,7 @@ def _selftest_cases():
     def _():
         b = _base()
         dom = _dom(b.page)
-        notes = {c.attrs["id"]: [p.text() for p in c.find("p", "roots-only")] for c in dom.find("article")}
+        notes = {c.attrs["id"]: [p.text() for p in _direct(c, "p", "roots-only")] for c in dom.find("article")}
         one, many = "The two lines above are about the named declaration only.", "Counts are for the named declarations only."
         sh = lambda g: [p.text() for p in _card(b, g).find("details", "evidence")[0].find("p", "shared")]
         return _eq((notes, sh("g2"), sh("g1a1x"), sh("g1"),
@@ -3177,7 +3193,7 @@ def _selftest_cases():
     # ---- F39: the roots-only sentence follows what the card shows
     def _roots_only(page):
         """{card id: the texts of its roots-only paragraphs} for every card of the page."""
-        return {c.attrs["id"]: [p.text() for p in c.find("p", "roots-only")] for c in _dom(page).find("article")}
+        return {c.attrs["id"]: [p.text() for p in _direct(c, "p", "roots-only")] for c in _dom(page).find("article")}
 
     @case("RO1", "F39: with every strings value a marker, a card with ONE root shows MARK-root_only_note_single and nothing else of the two, a card "
                  "with several roots shows MARK-roots_only_note and nothing else of the two: g1 (a theorem), g1a (null claim, one root), g1a1 "

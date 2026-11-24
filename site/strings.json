@@ -52,6 +52,7 @@
   }
  ],
  "roots_only_note": "These counts are for the step's named Lean results only, not for everything they use.",
+ "root_only_note_single": "These two lines are about this step's named Lean result only, not about the results it uses.",
  "dirty_note": "This page was built from changes that are not yet committed, so it may not match the published notes.",
  "shared_note": "This result is also part of: {groups}",
  "note_href": "notes/{file}",
