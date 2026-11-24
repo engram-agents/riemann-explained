@@ -4980,6 +4980,184 @@ def _selftest_cases():
                    (["note 6", "x a <code>b</code> c y", "<code>[a](b)</code>", "[a <code>b](c)</code> d", "[x]", "[a](b", "![a](b)",
                      "[a](b c)", "[](x)", "a(c)", "[a [b] c](d)", "&lt;i&gt;", "a &amp; b"], "[a](b)", ["b.md", "f#g"]))
 
+    # ---- F35: bold and nested items in block text, and the code wrap rule
+    def _bn(arg="First argument sentence. Second argument sentence.", interp="We think this is the key step.", **sk):
+        return _notes(arg_text=arg, interp_text=interp) | {"04-sketch.md": _n04(**sk), "05-bar.md": N05, "06-x.md": N06}
+
+    def _skn(body, span=3):
+        n = ("# Note four\n" + _h(id="04", group="g1", list_title="Note four") + "\n\n## Body\n\n" + body
+             + _b(id="04.b01", kind="sketch", decls=[FOO], reader="Reader Two", date="2026-11-24", basis="source", span=span) + "\n")
+        return _notes() | {"04-sketch.md": n}
+
+    own = lambda li: "".join(k for k in li.kids if isinstance(k, str)).strip()
+    listing = lambda b_: [ln for ln in b_.out.splitlines() if ln.split(" ")[0] in ("FORMULA-RAW", "BOLD-UNPAIRED", "NEST-DEPTH")]
+
+    @case("BD1", "F35 B1: `_rich(text, links=True)` shows a pair of double asterisks on one line around text as <strong>, its content through "
+                 "the span rule (`**a `b` c**` is <strong>a <code>b</code> c</strong>); an asterisk in a code span is code; an empty pair, a "
+                 "run of three or more asterisks, a pair of blanks and a pair over a line break stay literal; single asterisks and underscores "
+                 "stay text; two pairs are two <strong>; a link is shown first (`[**a**](x)` and `**see [a](b)**` are <strong>); the text of "
+                 "a claim or a title (no links=True) keeps its asterisks")
+    def _():
+        got = [_rich(t, links=True) for t in ("a **b** c", "**a `b` c**", "`**x**`", "****", "a **** b", "**a\nb**", "**a\rb**", "*a* _b_ a * b",
+                                              "**a** and **b**", "**x", "x**", "**a** **b", "[**a**](x.md)", "**see [a](b.md)**", "**a & b**",
+                                              "****a****", "***a***", "** **", "**a*b**")]
+        return _eq((got, _rich("**a**"), _rich("a **b**")),
+                   (["a <strong>b</strong> c", "<strong>a <code>b</code> c</strong>", "<code>**x**</code>", "****", "a **** b", "**a\nb**",
+                     "**a\rb**", "*a* _b_ a * b", "<strong>a</strong> and <strong>b</strong>", "**x", "x**", "<strong>a</strong> **b",
+                     "<strong>a</strong>", "<strong>see a</strong>", "<strong>a &amp; b</strong>", "****a****", "***a***", "** **",
+                     "<strong>a*b</strong>"], "**a**", "a **b**"))
+
+    @case("BD2", "F35 B2: `_bold_unpaired(text)` is True when a `**` is left over once the code spans, the links and the bold pairs are taken "
+                 "out (`**x`, `x **`, `**a** **b`, `****`), False for a text with only pairs, one with single asterisks, and one whose `**` is "
+                 "inside a code span")
+    def _():
+        t = ("**x", "x **", "**a** **b", "****", "**a** b", "*a* b", "`**` ok", "a `**x` b", "[**a**](x.md)", "no marks")
+        return _eq([_bold_unpaired(x) for x in t], [True, True, True, True, False, False, False, False, False, False])
+
+    @case("BD3", "F35 B1: bold is <strong> on the page in every place block text is shown: the first sentence on the closed card, the full text "
+                 "of an argument and of an interpretation (evidence list), a sketch paragraph, a sketch item, a sub-item; a sketch's "
+                 "`unexpanded` entry keeps its asterisks; the JSON and data.js keep the text as written")
+    def _():
+        arg = "First **argument** sentence. Second **one** sentence."
+        b = _build(notes=_bn(arg=arg, interp="We **think** so.", para="First **bold** para.", item="Item **two** here.\n   - sub **s**",
+                             last="Last **end**.", unexpanded=("Closed by **omega** automation.",)))
+        c = _card(b, "g1")
+        st = lambda node: [s.text() for s in node.find("strong")]
+        ev = c.find("details", "evidence")[0]
+        sk = _direct(c, "div", "sketch")[0]
+        return _eq((b.rc, st(_direct(c, "p", "argument")[0]), st(ev.find("p", "argument")[0]), st(ev.find("p", "interpretation")[0]),
+                    [st(p) for p in sk.find("p") if "frame" not in p.cls and "sketch-note" not in p.cls and "unexpanded-heading" not in p.cls],
+                    st(sk.find("ol")[0]), st(sk.find("ul", "unexpanded")[0]), [li.text() for li in sk.find("ul", "unexpanded")[0].find("li")],
+                    "First **bold** para." in b.text("data.js"), b.js("group/g1.json")["sketches"][0]["blocks"][0]["text"]),
+                   (0, ["argument"], ["argument", "one"], ["think"], [["bold"], ["end"]], ["two", "s"], [], ["Closed by **omega** automation."],
+                    True, "First **bold** para."))
+
+    @case("BD4", "F35 B2: an unpaired `**` stays literal on the page and is listed, once per block, `BOLD-UNPAIRED <block id>`, after the "
+                 "FORMULA-RAW lines (note order), exit 0, nothing refused; a `**` inside a code span, a pair and single asterisks are not "
+                 "listed; a first sentence cut inside a pair (`**one. Two**`) shows a literal `**` and lists the block")
+    def _():
+        res = []
+        for kw in ({"arg": "Cost $5 and **x and **y."}, {"para": "Also **y here."}, {"last": "A `**` code and *one* and **two**."},
+                   {"arg": "Take **one. Two** steps."}, {}):
+            b = _build(notes=_bn(**kw))
+            res.append((b.rc, listing(b), b.existed))
+        lit = _build(notes=_bn(para="Also **y here."))
+        return _eq((res, "Also **y here." in [p.text() for p in _direct(_card(lit, "g1"), "div", "sketch")[0].find("p")]),
+                   ([(0, ["FORMULA-RAW 01.b02", "BOLD-UNPAIRED 01.b02"], True), (0, ["BOLD-UNPAIRED 04.b01"], True), (0, [], True),
+                     (0, ["BOLD-UNPAIRED 01.b02"], True), (0, [], True)], True))
+
+    @case("BD5", "F35 B1/B2: bold inside a link text (the link text is shown first, then the bold) is <strong> and the link target is "
+                 "not bold; the same in a sketch item")
+    def _():
+        b = _build(notes=_bn(para="See [**note**](06-x.md) and **[note](06-x.md)** now."))
+        p = [x for x in _direct(_card(b, "g1"), "div", "sketch")[0].find("p") if x.text().startswith("See")][0]
+        return _eq((b.rc, [s.text() for s in p.find("strong")], p.text(), [ln for ln in b.out.splitlines() if ln.startswith("LINK-OUTSIDE")]),
+                   (0, ["note", "note"], "See note and note now.", []))
+
+    @case("BD6", "F35 E1: <strong> and the nested <ul> are the only elements a sketch holds beyond p, ol, ul, li and code (SK7's list plus strong "
+                 "on a fixture with bold and sub-items); static_problems is empty on the page and data.js, there is no <script>, the only "
+                 "addresses are the reaction anchors; static_problems still refuses a planted `<script>fetch(`")
+    def _():
+        b = _build(notes=_bn(para="First **bold** para.", item="Item two.\n   - sub one\n   - sub `two`"))
+        sk = _direct(_card(b, "g1"), "div", "sketch")[0]
+        hrefs = ext(b)
+        return _eq((static_problems(b.page, b.text("data.js")), len(_dom(b.page).find("script")), sorted({n.tag for n in sk.nodes()}),
+                    all(h.startswith("https://example.invalid/react?") for h in hrefs), b.rc,
+                    static_problems("<script>fetch('a')</script><strong>x</strong><ul><li>a<ul><li>b</li></ul></li></ul>", "")),
+                   ([], 0, ["code", "li", "ol", "p", "strong", "ul"], True, 0, ["fetch("]))
+
+    @case("BD7", "F35: <strong> is emitted only where a bold pair is: the page of a sketch with `**bold**` is, once its <strong> tags are "
+                 "taken out, byte-equal to the page of the same sketch with the asterisks removed; a bold-free page (the sketch base) holds "
+                 "no <strong> and no <ul> inside an <li>")
+    def _():
+        a = _build(notes=_bn(para="First **bold** para.", arg="First **argument** sentence."))
+        z = _build(notes=_bn(para="First bold para.", arg="First argument sentence."))
+        strip = lambda p: p.replace("<strong>", "").replace("</strong>", "")
+        base = _dom(_sbase().page)
+        return _eq((strip(a.page) == z.page, "<strong>" in a.page, "<strong>" in _sbase().page, "<strong>" in z.page,
+                    len([u for u in base.find("ul") if u.parent is not None and u.parent.tag == "li"])),
+                   (True, True, False, False, 0))
+
+    @case("NS1", "F35 N1: in a sketch run the indented `- ` or `* ` lines of a list item are its sub-items: the JSON item is {text, items} "
+                 "(items without sub-items stay plain strings, no `items` key), the text before the first sub-item is the item's own, a "
+                 "continuation line joins the item or the sub-item it follows, an indented numbered line is not special (a continuation, as "
+                 "today); the page shows ONE nested <ul> inside that item's <li>, after its own text, each sub-item through the span rule and "
+                 "the bold rule; the other item has no <ul>")
+    def _():
+        body = ("Opening paragraph.\n\n- Step one\n  continues here\n  - sub a **bold** with `c`\n  * sub b\n    cont b\n  1) numbered line\n"
+                "- Step two\n\nClosing paragraph.\n")
+        b = _build(notes=_skn(body))
+        blocks = b.js("group/g1.json")["sketches"][0]["blocks"]
+        ul = _direct(_direct(_card(b, "g1"), "div", "sketch")[0], "ul")[0]
+        lis = ul.elems()
+        subs = lis[0].find("ul")
+        return _eq((b.rc, blocks[1], [own(li) for li in lis], len(subs), [li.text() for li in subs[0].elems()], [s.text() for s in lis[0].find("strong")],
+                    [c.text() for c in lis[0].find("code")], len(lis[1].find("ul")), [k.tag for k in lis[0].elems()]),
+                   (0, {"type": "list", "ordered": False,
+                        "items": [{"text": "Step one continues here", "items": ["sub a **bold** with `c`", "sub b cont b 1) numbered line"]},
+                                  "Step two"]},
+                    ["Step one continues here", "Step two"], 1, ["sub a bold with c", "sub b cont b 1) numbered line"], ["bold"], ["c"], 0,
+                    ["ul"]))
+
+    @case("NS2", "F35 N1: a sub-item of a numbered item is nested too (`   - ` under `2)`); a list whose items have no sub-items has the same JSON "
+                 "and page as before: plain string items, no nested <ul> (the base sketch)")
+    def _():
+        b = _build(notes=_bn(item="Item two here.\n   - sub one\n   - sub two"))
+        blocks = b.js("group/g1.json")["sketches"][0]["blocks"]
+        ol = _direct(_direct(_card(b, "g1"), "div", "sketch")[0], "ol")[0]
+        base = _sbase().js("group/g1.json")["sketches"][0]["blocks"][1]
+        return _eq((blocks[1], [len(li.find("ul")) for li in ol.elems()], base,
+                    [type(x).__name__ for x in base["items"]]),
+                   ({"type": "list", "ordered": True, "items": ["Ordered item one.", {"text": "Item two here.", "items": ["sub one", "sub two"]}]},
+                    [0, 1], {"type": "list", "ordered": True, "items": ["Ordered item one.", "Ordered item `two` here."]}, ["str", "str"]))
+
+    @case("NS3", "F35 N1: a deeper level (a line indented further than the first sub-item and starting with a marker) is shown flat, joined into "
+                 "its parent sub-item, and LISTED `NEST-DEPTH <block id>` once per block (two deep lines in two items: one line); no nested "
+                 "<ul> at depth 2; exit 0; a list with one level only is not listed")
+    def _():
+        deep = ("Opening.\n\n- Step one\n  - a\n    - deep one\n    - deep two\n  - b\n- Step two\n  - c\n    - deeper\n\nClosing.\n")
+        flat = "Opening.\n\n- Step one\n  - a\n  - b\n\nClosing.\n"
+        d, f = _build(notes=_skn(deep)), _build(notes=_skn(flat))
+        ul = _direct(_direct(_card(d, "g1"), "div", "sketch")[0], "ul")[0]
+        return _eq((d.rc, listing(d), d.js("group/g1.json")["sketches"][0]["blocks"][1]["items"],
+                    len(_direct(_card(d, "g1"), "div", "sketch")[0].find("ul")), [len(li.find("ul")) for li in ul.elems()], f.rc, listing(f)),
+                   (0, ["NEST-DEPTH 04.b01"],
+                    [{"text": "Step one", "items": ["a - deep one - deep two", "b"]}, {"text": "Step two", "items": ["c - deeper"]}],
+                    3, [1, 1], 0, []))
+
+    @case("NS4", "F35 N1: the lines of a sketch and S, P are unchanged: a sketch with sub-items still counts as one sketch of the step "
+                 "(`sketches: 1 of 2 steps with a proof read`), and the formula mark in a sub-item is listed (`FORMULA-RAW 04.b01`)")
+    def _():
+        b = _build(notes=_bn(item="Item two here.\n   - sub costs $5"))
+        return _eq((b.rc, "sketches: 1 of 2 steps with a proof read" in b.out.splitlines(), listing(b)), (0, True, ["FORMULA-RAW 04.b01"]))
+
+    @case("LB1", "F35 L1: the source check compares what a reader sees, the asterisks removed as backticks are: a release line inside `**...**` "
+                 "as a sketch paragraph, as the text of an argument block, and as a sub-item, and the line plain as a sub-item "
+                 "is SOURCE-LEAK, exit 1, OUT_DIR absent; `****` + the line + `****` (compared as written) and an unrelated bold text "
+                 "(and an id in bold) build, exit 0")
+    def _():
+        src = {"A/B.lean": "x\n" + LEAK + "\n"}
+        three = ["data.js", "group/g1.json", "index.html"]
+        files = lambda b_: sorted(ln.split(" ")[2] for ln in b_.out.splitlines()
+                                  if ln.startswith("BUILD-ERROR SOURCE-LEAK ") and not ln.startswith("BUILD-ERROR SOURCE-LEAK note "))
+        res, want = [], []
+        vals = (("wrapped", "**" + LEAK + "**"), ("doubled", "****" + LEAK + "****"), ("plain", "Take **three** steps."),
+                ("id", "See **01.b02** now."))
+        for where, mk, extra in (("para", lambda v: _bn(para=v), ()), ("arg", lambda v: _bn(arg=v), ()),
+                                 ("sub", lambda v: _bn(item="Item two.\n   - " + v), (("bare", LEAK),))):
+            for name, v in vals + extra:
+                b = _build(notes=mk(v), src=src)
+                res.append((where, name, b.rc, files(b), b.existed))
+                want.append((where, name, *((1, three, False) if name in ("wrapped", "bare") else (0, [], True))))
+        return _eq(res, want)
+
+    @case("CW1", "F35 P1: the page CSS holds `code { overflow-wrap: anywhere; }`, so long code in the evidence list wraps on a narrow screen "
+                 "(the browser read of the page is the check that it does); the page still passes the static check, with no url( and no @import")
+    def _():
+        b = _sbase()
+        return _eq(("code { overflow-wrap: anywhere; }" in CSS, "code { overflow-wrap: anywhere; }" in b.page, static_problems(b.page, b.text("data.js")),
+                    "url(" in CSS, "@import" in CSS, CSS.startswith("body { max-width: 50rem;")), (True, True, [], False, False, True))
+
     # ---- F31: the note of a recognition that is not recognised (the checker of the notes does not know the key yet, so these cases
     # call the model and the page directly, as the builder reads the outline object as written)
     def _noted(form="not_recognised", note="We looked in `Foo.bar` and found [nothing](x.md)."):
