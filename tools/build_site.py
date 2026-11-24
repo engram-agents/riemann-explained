@@ -3602,11 +3602,11 @@ def _selftest_cases():
                     "See `a\\u003cb` here" in b.text("data.js"), "We `think` so" in b.text("data.js")),
                    ({"01.b02": ("See `a<b` here", "See `a<b` here"), "01.b03": ("We `think` so", "We `think` so")}, True, True))
 
-    CARD_TEXTS = ["See `a<b` here. More `x` text.", "a ` b. c", "a ``x`` b. c", "a `` b. c", "Plain only. More."]
-    CARD_WANT = ["See <code>a&lt;b</code> here.", "a ` b.", "a ``x`` b.", "a `` b.", "Plain only."]
+    CARD_TEXTS = ["See `a<b` here. More `x` text.", "a ` b. c", "a ``x`` b. c", "a `` b. c", "Plain only. More.", "A `x` and `y<z` end. More."]
+    CARD_WANT = ["See <code>a&lt;b</code> here.", "a ` b.", "a ``x`` b.", "a `` b.", "Plain only.", "A <code>x</code> and <code>y&lt;z</code> end."]
 
     @case("BT5", "the first sentence of an argument block on the CARD is rendered by the span rule too (a span is <code>, content "
-                 "escaped; an unpaired backtick, doubled backticks and an empty pair stay literal; no backtick as before)")
+                 "escaped; two spans are both code; an unpaired backtick, doubled backticks and an empty pair stay literal; no backtick as before)")
     def _():
         got = []
         for t in CARD_TEXTS:
@@ -3616,24 +3616,26 @@ def _selftest_cases():
 
     R1 = "Zq release text one sentence here. And the second sentence of it."   # leaks through the block `text` only when wrapped whole
     R2 = "Zq release first sentence words here."   # leaks through the `first_sentence` only when its span is unwrapped
-    srcs2 = {"A/B.lean": "x = 1\n" + LEAK + "\n" + R1 + "\n" + R2 + "\n"}
+    R4 = "Zq release text two spans one sentence here. And more words follow here."   # two spans; the first sentence cannot carry it
+    srcs2 = {"A/B.lean": "x = 1\n" + LEAK + "\n" + R1 + "\n" + R2 + "\n" + R4 + "\n"}
     LEAKFILES = [leak_line(w) for w in ("data.js", "group/g1.json")]
     BT4_PLANTS = [("`" + LEAK + "`", "text and first sentence"), ("`" + R1 + "`", "text only"),
-                  ("`" + R2[:-1] + "`. More text after it.", "first sentence only")]
+                  ("`" + R2[:-1] + "`. More text after it.", "first sentence only"),
+                  ("`Zq release text` two `spans one` sentence here. And more words follow here.", "two spans, text only")]
 
     @case("BT4", "the source check compares block text and first sentence as a reader sees them: a release line inside single backticks "
                  "as an ARGUMENT block is refused (SOURCE-LEAK naming data.js and group/g1.json), as an INTERPRETATION block too; "
-                 "three plants: the whole text and first sentence, the text only (a two-sentence release line), the first sentence "
-                 "only; exit 1, OUT_DIR absent")
+                 "four plants: the whole text and first sentence, the text only (a two-sentence release line), the first sentence "
+                 "only, the text only with TWO spans (every span is removed, not the first); exit 1, OUT_DIR absent")
     def _():
         res = []
         for field in ("arg_text", "interp_text"):
             for plant, _what in BT4_PLANTS:
                 b = _build(notes=_notes(**{field: plant}), src=srcs2)
                 res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
-        return _eq(res, [(1, LEAKFILES, False)] * 6)
+        return _eq(res, [(1, LEAKFILES, False)] * 8)
 
-    @case("BT6", "what is NOT a span is compared as written: the same three plants in DOUBLED backticks build (exit 0) as argument and "
+    @case("BT6", "what is NOT a span is compared as written: the same four plants in DOUBLED backticks (two doubled pairs in the last) build (exit 0) as argument and "
                  "as interpretation; a wrapped line that is no release line builds; the ids-only base build stays green")
     def _():
         res = []
@@ -3643,7 +3645,39 @@ def _selftest_cases():
                 b = _build(notes=_notes(**{field: dbl}), src=srcs2)
                 res.append((b.rc, b.existed))
         ok = _build(notes=_notes(arg_text="`" + other + "`", interp_text="`" + other + "`"), src=srcs2)
-        return _eq((res, ok.rc, _base_src().rc), ([(0, True)] * 6, 0, 0))
+        return _eq((res, ok.rc, _base_src().rc), ([(0, True)] * 8, 0, 0))
+
+    R3 = "const t : `bar` = 1 holds true."   # a release line that itself holds a span
+    srcs3 = {"A/B.lean": "x = 1\n" + R3 + "\n"}
+
+    @case("BT7", "a release line that itself holds a single-backtick span, as the FIRST SENTENCE of an argument block and of an "
+                 "interpretation block, is refused (SOURCE-LEAK naming data.js and group/g1.json: the raw first sentence is compared as "
+                 "well as the unspanned one); exit 1, OUT_DIR absent. The same text as a claim keeps its behaviour: it builds (a claim is "
+                 "compared unspanned only)")
+    def _():
+        res = []
+        for field in ("arg_text", "interp_text"):
+            b = _build(notes=_notes(**{field: R3 + " More words after it here."}), src=srcs3)
+            res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
+        o = _outline()
+        o["groups"][0]["claim"]["text"] = R3
+        claim = _build(outline=o, src=srcs3)
+        return _eq((res, claim.rc), ([(1, LEAKFILES, False)] * 2, 0))
+
+    @case("BT8", "KNOWN LIMIT, pinned: the first sentence is cut at the first `.`, `!` or `?` followed by white space even inside a span: "
+                 "`We apply `f. g` here. More.` has the first sentence `We apply `f.` (JSON and card, the backtick left literal), while "
+                 "the evidence list shows the whole text with its span as code")
+    def _():
+        b = _build(notes=_notes(arg_text="We apply `f. g` here. More."))
+        card = re.findall(r'<p class="argument">(.*?)</p>', b.page, re.S)[0].rsplit("</span> ", 1)[1].split(' <a href=')[0]
+        first = [x for x in b.js("group/g1.json")["blocks"] if x["block"] == "01.b02"][0]["first_sentence"]
+        return _eq((first, card, _para(b.page, "argument")), ("We apply `f.", "We apply `f.", "We apply <code>f. g</code> here. More."))
+
+    @case("FR4", "FORMULA-RAW: the span is taken out as ONE SPACE, so characters on either side are not joined into a mark: a backslash, "
+                 "a span, then an open parenthesis is not listed; a backslash and a parenthesis with no span between them is")
+    def _():
+        return _eq([_fr(arg_text="Take \\`x`(y) here"), _fr(arg_text="Take \\(y) here")],
+                   [(0, []), (0, ["FORMULA-RAW 01.b02"])])
 
     def _fr(**kw):
         b = _build(notes=_notes(**kw))
