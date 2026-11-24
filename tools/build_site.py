@@ -6519,6 +6519,16 @@ def _selftest_cases():
            lambda: _build(notes=_bn(unexpanded=("Auto $x$ closes", "Plain"))), "<li>Auto " + X_ + " closes</li>")
     _place("PL10", "place: the recognition's result, in the form line, is converted",
            lambda: _build(outline=_ol(_rec_f("result", "res $x$"))), "(res " + X_ + "), changed")
+    def _open_o(g):
+        g["root_role"] = "result"
+        g["recognition"] = _rec("open_in_literature", result="the $x$ problem", citations=[_oc("List A", "2007-01")])
+
+    _place("PL10b", "place: the recognition's result, in the form line of an open statement, is converted",
+           lambda: _build(outline=_ol(_open_o)), "statement is the " + X_ + " problem, an open problem")
+    _place("PL8b", "place: the text of a sketch list item that HAS sub-items is converted (F35)",
+           lambda: _build(notes=_bn(item="Item $x$ two.\n   - sub one")), "<li>Item " + X_ + " two.<ul>")
+    _place("PL16", "place: the title of a note about the whole (the level-0 list of the first screen) is converted",
+           lambda: _build(notes=_notes() | {"00-whole.md": N00.replace('"list_title":"Whole one"', '"list_title":"Whole $x$"')}), "Whole " + X_ + "</a></li>")
     _place("PL11", "place: the recognition's difference is converted",
            lambda: _build(outline=_ol(_rec_f("difference", "Diff $x$."))), '<p class="recognition-difference">Diff ' + X_ + ".</p>")
     _place("PL12", "place: the note of a reading that found nothing is converted",
