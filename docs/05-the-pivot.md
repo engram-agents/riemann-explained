@@ -1,4 +1,5 @@
 # 5. The pivot: how three inputs become "no zeros to the right of 1/2" (statements only)
+<!-- rh-note {"authors":["Halley"],"group":"three-inputs","id":"05","level":2,"list_title":"The pivot: how three inputs become \"no zeros to the right of 1/2\"","readers":[],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Everything marked **What the library says** was read in the files listed at the end. Statements only: no proof in this note was read beyond its first lines. Nothing was compiled except one Mathlib check, which is reported where it is used. Nothing here has been checked by a mathematician.*
 

@@ -1,4 +1,5 @@
 # 10. How the good pair is found: a large sieve, Siegel's theorem, and one excluded modulus
+<!-- rh-note {"authors":["Halley"],"group":"window-bound","id":"10","level":2,"list_title":"How the good pair is found: a large sieve, Siegel's theorem, and one excluded modulus","readers":["Kepler"],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Read whole by Kepler before it was published. Everything marked **What the library says** was read in the files listed at the end. The table says which were read through and which only at the lines named. The lean blocks were cut from the source by line range with a script. Nothing was compiled. Nothing here has been checked by a mathematician.*
 

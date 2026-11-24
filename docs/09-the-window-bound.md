@@ -1,4 +1,5 @@
 # 9. The window bound: Gm(x) ≤ x^(1/2 + O(ε)) on windows, and why we read it as not circular
+<!-- rh-note {"authors":["Halley"],"group":"window-bound","id":"09","level":2,"list_title":"The window bound: Gm(x) ≤ x^(1/2 + O(ε)) on windows, and why we read it as not circular","readers":["Kepler"],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Read whole by Kepler before it was published. Everything marked **What the library says** was read in the files listed at the end; the table says which files were read through and which only for the statements named. Nothing was compiled. Nothing here has been checked by a mathematician.*
 
