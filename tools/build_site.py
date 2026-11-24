@@ -5774,6 +5774,29 @@ def _selftest_cases():
                     "style" in hp.CDATA_CONTENT_ELEMENTS, "script" in ALLOWED_ELEMENTS),
                    (["style", "title"] if rc else ["style"], ["style", "title"] if rc else ["style"], True, False))
 
+    @case("EL8", "no comment, processing instruction or declaration but ONE `<!doctype html>` before the first start tag: `<!-->` and `<!--->` "
+                 "(html.parser reads a comment open until the next `-->`, a browser closes it at once, so a tag behind them is live) are `comment`, "
+                 "`<![CDATA[>` (a bogus comment in HTML content, to the first `>`) is `declaration`, an ordinary `<!-- x -->` and `<!x>` (the parser "
+                 "hands both to handle_comment) are `comment` (stricter than a browser needs), `<?xml ...?>` is `processing instruction`, a second "
+                 "doctype, a doctype after a start tag and `<!doctype html public \"x\">` are `declaration`; controls: the real page's `<!DOCTYPE html>` "
+                 "(upper case is the same doctype: the check compares the declaration lower-cased and stripped), `<!doctype html>`, `<!doctype html >`, "
+                 "and a fragment with no doctype")
+    def _():
+        ep = element_problems
+        pre = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
+        img = "<img src=x onerror=alert(1)>"
+        planted = [(pre + "<!-->" + img + "-->", ["comment"]), (pre + "<!--->" + img + "-->", ["comment"]),
+                   (pre + "<![CDATA[>" + img + "]]>", ["declaration"]),
+                   (pre + "<!-- x -->", ["comment"]), (pre + "<!x>", ["comment"]), (pre + '<?xml version="1.0"?>', ["processing instruction"]),
+                   ("<!doctype html>" + pre, ["declaration"]), (pre + "<!doctype html>", ["declaration"]),
+                   ('<!doctype html><html><!doctype html><head></head>', ["declaration"]),
+                   ('<!doctype html public "x"><html></html>', ["declaration"]), ('<!doctype html system "about:legacy-compat"><html></html>', ["declaration"]),
+                   ("<!doctype><html></html>", ["declaration"]),
+                   (pre + "<!-- a --><?x>", ["comment", "processing instruction"]), (pre + "<!-- a --><!-- b -->", ["comment"])]
+        controls = [pre + "<p>a</p></body></html>", "<!doctype html>" + pre[len("<!DOCTYPE html>"):], "<!doctype html >" + pre[len("<!DOCTYPE html>"):],
+                    "<p>a</p>", "<!DocType HTML><html></html>"]
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 5))
+
     @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the Evidence section (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
                  "the JSON keeps the path as written")
     def _():
