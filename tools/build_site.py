@@ -124,7 +124,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      line `recognition_<role>_<form>_line` (role: root_role, else the class of the root's kind), the difference, a line per citation
      (an `<a class=citation>` with an https url, the one external anchor besides a reaction anchor), `established_by_line` or
      `established_not_traced_line` (a named statement only), and `recognition_label_line`; no recognition shows the not-written line;
-     a named statement also shows `named_statement_use_line`. An open form prints the newest source_date of the says_open citations
+     a named statement also shows `named_statement_use_line` directly after its claim and conditions, before the premises line and the recognition block (F36). An open form prints the newest source_date of the says_open citations
      (compared as written). The run prints `recognition: K known, V variant, N not recognised, O open in literature, M not written,
      of G groups with a claim` over every group with a claim at every depth (SUM-RECOGNITION). Cases RJ1 RC1 RF1 RD1 RD2 RL1 RU1 RE1
      RE2 RS1 RS2 RS3 P7e PHR5 PHR6 MK1. F31: a `note` of a not_recognised recognition follows its form line (span rule only). Cases
@@ -1383,14 +1383,14 @@ def _render_page(m, s, facts, dirty):
         else:
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
+        role = sm["root_role"] or ("result" if sm["root_kind"] in PROOF_KINDS else "named_statement") if sm["claim"] else None   # no role: the class of the kind
+        if role == "named_statement":   # F36: what kind of step this is, directly after the claim and its conditions
+            o.append(f'<p class="named-statement-use">{_e(s["named_statement_use_line"])}</p>')
         if sm["premises"]:   # a step with a null claim rests on premises as well
             links = ", ".join(f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>' for p in sm["premises"])
             o.append(f'<p class="premises">{_e(lab["premises"])} {links}</p>')
         if sm["claim"]:   # the recognition of the statement: after the premises line, before the two status lines (F24)
-            role = sm["root_role"] or ("result" if sm["root_kind"] in PROOF_KINDS else "named_statement")   # no role: the class of the kind
             o += recognition(sm, role)
-            if role == "named_statement":
-                o.append(f'<p class="named-statement-use">{_e(s["named_statement_use_line"])}</p>')
         c, by = sm["counts"], sm["statement_by"]
         # the line of a card with no proof: the builder does not know what a declaration of an unknown kind is
         none_line = (s["proof_none_other_line"] if any(r["kind"] not in KNOWN_KINDS for r in fl["roots"])
