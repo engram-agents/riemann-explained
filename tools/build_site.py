@@ -5816,6 +5816,20 @@ def _selftest_cases():
                     "<p>a</p>", "<!DocType HTML><html></html>"]
         return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 5))
 
+    @case("EL9", "markup html.parser holds back at the end of the page is `unterminated markup`, because it never reports it while a browser still reads the "
+                 "tag behind it: `<![CDATA[<!-->` then an <img onerror> (a live img in a browser, nothing from the parser), an unterminated `<![CDATA[`, "
+                 "`<!--`, a start tag with no `>`, and a <style> never closed; controls: a complete page, text with a trailing `&`, a fragment")
+    def _():
+        ep = element_problems
+        pre = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
+        img = "<img src=x onerror=1>"
+        planted = [(pre + "<![CDATA[<!-->" + img, ["unterminated markup"]), (pre + "<![CDATA[" + img, ["unterminated markup"]),
+                   (pre + "<!-- x" + img, ["unterminated markup"]), (pre + "<img src=x onerror=1", ["unterminated markup"]),
+                   (pre + "<p", ["unterminated markup"]), ('<!DOCTYPE html><html><head><style>' + img, ["unterminated markup"]),
+                   (pre + "<p>a</p><!--", ["unterminated markup"])]
+        controls = [pre + "<p>a</p></body></html>\n", pre + "<p>AT&T</p> and AT&T", pre + "<p>a &amp; b</p> x & y", "<p>a</p>"]
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 4))
+
     @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the Evidence section (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
                  "the JSON keeps the path as written")
     def _():
