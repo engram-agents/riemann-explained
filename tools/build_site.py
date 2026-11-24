@@ -2674,10 +2674,13 @@ F37_EVIDENCE = {
     "evidence_established_line": "Where it is proved: traced to {name} by {reader} on {date}.",
     "evidence_sketch_build_line": "Proof sketch from a compiled part of the release: {build}.",
 }
+# F41: the two proof lines in the voice of the lines above them (the wording file's values); they name no kind
+F41_PROOF_LINES = {
+    "proof_not_applicable_line": "There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) and does not claim that the statement is true.",
+    "proof_none_other_line": "There is no proof to read here: our table of the release's declarations does not list this step as a theorem or a lemma.",
+}
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
-    "proof_not_applicable_line": "Proof: none needed. This step is a definition, not a theorem: it gives a name to a statement (or to a kind of object) and does not claim that the statement is true, so there is no proof to read.",
-    "proof_none_other_line": "Proof: none to read. Our table of the release's declarations does not list this step as a theorem or a lemma, so the page shows no proof for it.",
     "established_not_traced_line": "Where it is proved: we have not yet traced where in the release this statement is proved.",
     "recognition_citation_line": "{source}, {where}",
     "recognition_result_known_line": "Our reading: this is a well-known result in mathematics ({result}).",
@@ -6977,7 +6980,7 @@ def _selftest_cases():
     LABEL = "No mathematician has checked our reading yet. If you think we have it wrong, or you know more, please tell us."
 
     @case("PV1", "F37 S1: site/strings.json takes the wording file's CARD value on each of its 15 keys, has the 8 EVIDENCE keys as written, "
-                 "keeps the 22 values the wording file says stay (UNCHANGED_ON_CARD) byte-equal, has no second_reader_frame, and holds "
+                 "keeps the 20 values the wording file says stay (UNCHANGED_ON_CARD) byte-equal (F41 moved the two proof lines out: F41a), has no second_reader_frame, and holds "
                  "frames.argument `How this is proved`; the file passes the builder's own strings check")
     def _():
         path = os.path.join(_HERE, os.pardir, "site", "strings.json")
@@ -6988,7 +6991,32 @@ def _selftest_cases():
         diff = lambda want: [k for k in want if real.get(k) != want[k]]
         return _eq((diff(F37_CARD), diff(F37_EVIDENCE), diff(F37_UNCHANGED), len(F37_CARD), len(F37_EVIDENCE), len(F37_UNCHANGED),
                     "second_reader_frame" in real, real["frames"]["argument"], _strings_problems(real)),
-                   ([], [], [], 15, 8, 22, False, ["How this is proved"], []))
+                   ([], [], [], 15, 8, 20, False, ["How this is proved"], []))
+
+    @case("F41a", "F41: site/strings.json holds the two proof lines byte-equal to the wording file's values: proof_not_applicable_line (a step that is not a "
+                  "theorem: it names no kind, so it is true of a definition and of a structure alike) and proof_none_other_line, in the voice of the "
+                  "lines above them (`There is no proof to read ...`), and the old `Proof: none needed. This step is a definition` text is gone")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        return _eq(([k for k in F41_PROOF_LINES if real.get(k) != F41_PROOF_LINES[k]], len(F41_PROOF_LINES),
+                    any("This step is a definition" in str(v) for v in real.values()), _strings_problems(real)), ([], 2, False, []))
+
+    @case("F41b", "F41 on a build with the real strings file: a card with no proof shows `proof_not_applicable_line` (a def, g3) and a card whose root "
+                  "has a kind outside the eight (an axiom) shows `proof_none_other_line`, each byte-equal to the value of the file; a step with a "
+                  "proof shows neither (NONE1 pins the choice between the two with the fixture wording)")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        line = lambda kinds, g: _card(_build(decls=_decls_kinds(kinds), strings=real), g).find("p", "proof")[0].text()
+        return _eq((line({"corge": "def"}, "g3"), line({"corge": "axiom"}, "g3")),
+                   (F41_PROOF_LINES["proof_not_applicable_line"], F41_PROOF_LINES["proof_none_other_line"]))
 
     @case("PV2", "F37 S1: placeholders as the new values hold them: each of the 8 EVIDENCE keys that lacks one it requires is refused "
                  "(`is missing the placeholder`, key and token named, 17 cases), a CARD key that holds a reader, date, file, lines, build or "
