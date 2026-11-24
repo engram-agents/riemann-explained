@@ -7224,6 +7224,42 @@ def _selftest_cases():
         twice = _frw(notes=_notes(arg_text="Take $\\foo$ here. Again $\\foo$ here."))
         return _eq((ok, twice), ([(0, [], True)] * 3, (1, ["BUILD-ERROR FORMULA-RAW 01.b02 01-one.md line 10: $\\foo$"], False)))
 
+    def _og(gid, text):
+        """The outline with the claim of group `gid` set to `text` (a group with no claim gets one, and its first root only)."""
+        o = _outline()
+        g = next(g_ for g_ in o["groups"] if g_["id"] == gid)
+        if g["claim"] is None:
+            g["claim"], g["roots"] = _claim(text), g["roots"][:1]   # a claim needs exactly one root
+        g["claim"]["text"] = text
+        return o
+
+    @case("FRW5", "S1, the Evidence flag is RESET at the end of every card's Evidence section: the same unsupported formula in the claim of the second "
+                  "fixture card (g3), the third (g2, given a claim), a child card (g1a) and a grandchild (g1a1), each built alone, refuses the build "
+                  "(FORMULA-RAW naming that group, exit 1, OUT_DIR absent) - not only in the first card, where the flag is still at its start value. "
+                  "(Nothing is rendered in a parent after its child cards, so the flag cannot leak into a parent's later text; the siblings and children "
+                  "that follow an Evidence section are what a flag left set would hide.)")
+    def _():
+        got = [_frw(outline=_og(g, "Claim $\\foo$")) for g in ("g3", "g2", "g1a", "g1a1")]
+        return _eq(got, [(1, [f"BUILD-ERROR FORMULA-RAW {g} outline/outline.json group {g}: $\\foo$"], False) for g in ("g3", "g2", "g1a", "g1a1")])
+
+    @case("FRW6", "S1, the flag does not survive a failed render: a render that raises inside an Evidence section leaves `_IN_EVIDENCE` False and "
+                  "`_FORMULA_LOG` None, and the next build refuses a surface formula as before")
+    def _():
+        real = _rich
+
+        def boom(text, links=False, where=None):
+            if _IN_EVIDENCE:
+                raise RuntimeError("inside Evidence")
+            return real(text, links, where)
+        with _patched("_rich", boom):
+            try:
+                _build()
+                raised = False
+            except RuntimeError:
+                raised = True
+        return _eq((raised, _IN_EVIDENCE, _FORMULA_LOG, _frw(outline=_og("g3", "Claim $\\foo$"))),
+                   (True, False, None, (1, ["BUILD-ERROR FORMULA-RAW g3 outline/outline.json group g3: $\\foo$"], False)))
+
     @case("FRW4", "S1, the pure function: `formula_raw_errors(log, locate)` over a log of four-element entries (kind, place, formula, in Evidence) gives "
                   "one FORMULA-RAW per place and formula for each unsupported or unpaired entry NOT in Evidence, in order, the formula cut at 40 "
                   "characters, `<where>: ` before it only when `locate` knows the place; converted entries, marks and entries in Evidence give "
