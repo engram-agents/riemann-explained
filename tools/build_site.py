@@ -627,7 +627,9 @@ def element_problems(page):
     one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one). Every comment is `comment`
     (an ordinary one too: stricter than a browser needs, because html.parser and a browser disagree where `<!-->` ends), every processing
     instruction is `processing instruction`, and every declaration but ONE `<!doctype html>` before the first start tag (compared lower-cased and
-    stripped) and every unknown declaration (`<![CDATA[`) is `declaration`. It is a name check on the tags as html.parser sees them, not a
+    stripped) and every unknown declaration (`<![CDATA[`) is `declaration`. Markup html.parser still holds back at the end of the page (an
+    unterminated comment, CDATA section, start tag or style: it reports none of it, a browser still reads the tag behind it) is
+    `unterminated markup`. It is a name check on the tags as html.parser sees them, not a
     browser-grade parse."""
     found = set()
     run = [True]   # the page is still in its opening run
@@ -663,7 +665,11 @@ def element_problems(page):
             if tag == "head":
                 run[0] = False
 
-    P(convert_charrefs=True).feed(page)
+    parser = P(convert_charrefs=True)
+    parser.feed(page)
+    if "<" in parser.rawdata:   # what html.parser still holds back (an unterminated comment, CDATA, tag or style): it reports none of it
+        found.add("unterminated markup")
+    parser.close()
     return sorted(found)
 
 
