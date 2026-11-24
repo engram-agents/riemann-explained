@@ -62,6 +62,19 @@ that is empty until the renderer control is in, for the anchored list of any blo
 byte check when they ran); a header's group may be `root` only at level 0.
 `python3 tools/notes_meta.py NOTES_DIR outline.json decls.tsv [--src SRC_ROOT] [--strings strings.json] [--base REV] [--today YYYY-MM-DD]`
 
+**Editions (F44).** A published text is rewritten in place only in a change that raises a group's `edition` from 1 to 2 and gives it an
+`edition_date`; `notes_meta.py` with `--base REV` reads `outline.json` as it was at REV and compares each group's reader-facing text
+(the fields in `EDITION_TEXT_FIELDS`: the claim text and conditions, the recognition's result, difference and note, each citation's
+`where`, `source` and `source_date`, `established`, and the group's `title`, which is reader-facing text and is compared as text). Every field whose own text the page prints outside its Evidence section is in that list. The fields that only choose which sentence the page prints (`recognition.form`, `root_role`, `claim.basis`, a citation's `says_open`) and `premises` (what a step rests on) are not text: a change to one is a change of substance, not a rewrite for readers, so the check lists it, with or without a bump, as `SELECTOR-CHANGED <id> <path> <old> -> <new>` (exit code unchanged; the summary says `selector changes: K`) and never compares it as text. The compare is strict on purpose: text byte for byte (a space, a newline, NFC against NFD is a change), lists in order (a reorder or a duplicate is a change); an empty list and no value are equal. A change with the bump prints one `EDITION` line (none beside a bad `edition_date`) and does not fail the run; a change
+with no bump, a bump with no change, a second rewrite, an edition 3, a lowered edition and edition 2 on a new group are errors; a group
+that left the outline is a `GROUP-GONE` listing; an outline that cannot be read at REV (missing, not JSON, no groups list, or a groups list holding a non-object) is one `OUTLINE-BASE` listing and the rule does not run; `groups: []` at REV is legal and compares nothing.
+`build_site.py` writes `edition` into each group file and into `data.js` (`null` at edition 1, else `{"number": 2, "date": "..."}`), counts
+the groups at edition 2 in `manifest.json`, says it once on the first screen (the latest date, and a link to the tree of the first edition)
+and once in each rewritten card's Evidence section (that card's date, and a link to `outline/outline.json` of the first edition). The
+wording and the two addresses are the strings keys `edition_note_first_screen`, `edition_note_card`, `edition_link_label`, `edition_href_tree`
+and `edition_href_blob`; the addresses must be https and are not sentences. The static check lets an `<a class="edition-link">` with an
+https `href` through, by class token, as it does a citation anchor. A page with no group at edition 2 is byte-equal to a page built before.
+
 **`tools/note_cite.py NOTE DECLS_TSV --at LINE --decl FULL.NAME --kind KIND`** writes one block anchor, so nobody
 types the JSON. It finds the declaration's module in `decls.tsv` (`--module` picks one when the name is in several),
 takes the element of the note that holds line `--at` (a paragraph, table, list or lean block, or the anchor lines just
