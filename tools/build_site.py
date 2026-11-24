@@ -132,6 +132,13 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   F25 THE SKETCH (F25b). group/<id>.json has `sketches`; the card shows the sketch after the argument, or the missing-sketch line
      when its proof is read and it has none; a sketch never sets proof_read; the run prints `sketches: S of P steps with a proof read`
      (level-1 steps; SUM-SKETCH). FORMULA-RAW covers sketch text. Cases SK1 to SK8 FR3 FR5.
+  F35 BOLD AND NESTED ITEMS IN BLOCK TEXT. Where block text is rendered with links (argument, interpretation, the first sentence, sketch
+     paragraphs, items and sub-items; not claims, conditions, titles or `unexpanded`), a pair of `**` on one line around text is
+     <strong>, its content through the span rule; a span wins, links are taken out first; empty pairs, runs of three or more
+     asterisks and pairs over a line break stay literal. A leftover `**` is listed `BOLD-UNPAIRED <block id>` (once per block, after
+     FORMULA-RAW; exit unchanged). In a sketch list the indented `- ` or `* ` lines of an item are one nested <ul> in its <li>; the
+     JSON item is {text, items}; a deeper level is flat and listed `NEST-DEPTH <block id>`. The source check removes the asterisks
+     of a pair. CSS `code { overflow-wrap: anywhere; }`. Cases BD1 to BD8 NS1 to NS4 LB1 CW1.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
   F29 `{file}` (optional) is the base name of the block's file and `{lines}` the range only; the second readers follow the text. Cases
@@ -284,7 +291,7 @@ is cut at the first `.`, `!` or `?` followed by white space even inside a span (
 backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). FORMULA-RAW ranges over argument, interpretation and sketch text (not a sketch's `unexpanded` entries). It is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
 span, is listed too, and a formula inside a code span is not; F26 will convert formulas. A K1 source line is compared as it
 stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
-claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
+claim or condition text into markup (F35 adds <strong> and a nested <ul> for block text; the static check has no list of allowed elements), and the only new element for those is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
 seen in the JSON and not on the page. The nine keys of PHR must hold their placeholders, so a value that says the fact without
 the reader or the count is refused rather than printed without it. The sum assertions of F4 guard a MISSING flag, not a
