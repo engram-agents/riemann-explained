@@ -5802,6 +5802,68 @@ def _selftest_cases():
                     "1bea6d12fa8779f32724591755e4fa62c663e37c4a4df0561b46c72def23734a",
                     ("Reader Two", "2026-11-22"), ("Reader Three", "2026-11-26"), ("Reader Four", "2026-11-27"), ("Reader Five", "2026-11-28")))
 
+    @case("PV13", "F37 review P1: a second reader of a block that is NOT an argument is in the Evidence section too, one `Read again by ...` "
+                  "line after that block (a reading block 01.b01 and an interpretation block 01.b03 with a second reader each, the argument "
+                  "01.b02 as before); none of them is on the card")
+    def _():
+        n = (_n01().replace('"kind":"reading","lines":[12,14],"reader":"Reader One"}',
+                            '"kind":"reading","lines":[12,14],"reader":"Reader One","second_readers":[{"date":"2026-11-25","reader":"Reader Seven"}]}')
+                   .replace('"kind":"interpretation","reader":"Reader Two"}',
+                            '"kind":"interpretation","reader":"Reader Two","second_readers":[{"date":"2026-11-26","reader":"Reader Eight"}]}'))
+        b = f37(notes=_notes() | {"01-one.md": n})
+        sec = lambda bid: [p_.text() for p_ in blk(b, "g1", bid).find("p", "second-reader")]
+        return _eq((b.rc, sec("01.b01"), sec("01.b02"), sec("01.b03"), _surface_bad.findall(surface(_card(b, "g1")))),
+                   (0, ["Read again by Reader Seven on 2026-11-25."], ["Read again by Reader Two on 2026-11-24."],
+                    ["Read again by Reader Eight on 2026-11-26."], []))
+
+    @case("PV14", "F37 review P2: a card with several roots names nobody in Evidence either: g2 with two theorem roots (quux, qux) whose proofs are "
+                  "both read by Reader Six shows the counts on the card (`Proofs read: 2 of 2 declarations.`), no provenance list, and the name "
+                  "Reader Six only in the block list; control: a card of one root (g1) has its proof line")
+    def _():
+        o = _outline()
+        o["groups"][3]["roots"] = [QUUX, QUX]
+        n03 = (N03 + "\nArgues quux.\n" + _b(id="03.b01", kind="argument", decls=[QUUX], reader="Reader Six", date="2026-11-29")
+               + "\n\nArgues qux.\n" + _b(id="03.b02", kind="argument", decls=[QUX], reader="Reader Six", date="2026-11-29") + "\n")
+        b = f37(outline=o, notes=_notes() | {"03-three.md": n03})
+        c = _card(b, "g2")
+        return _eq((b.rc, c.find("p", "proof")[0].text(), prov(b, "g2"), "Reader Six" in surface(c), "Reader Six" in evd(b, "g2").text(),
+                    prov(b, "g1")[1]),
+                   (0, "Proofs read: 2 of 2 declarations.", None, False, True, "Proof read by Reader One on 2026-11-23."))
+
+    @case("PV15", "F37 review P3: hostile text (<b>, &, quotes, a backtick span, **bold**, $, `</details><script>`) in the recognition's reader, a "
+                  "citation's opened_by and the established reader is escaped in the Evidence lines: no <script> or <strong> on the page, the "
+                  "escaped form is there, a backtick span in opened_by stays literal text (no <code> from it) while the citation's source "
+                  "keeps its span")
+    def _():
+        h = "<b>&\"' `x` **bold** $ </details><script>alert(1)</script>"
+        o = _zoo()
+        g = next(g_ for g_ in o["groups"] if g_["id"] == "znk")
+        g["recognition"]["reader"] = h
+        g["recognition"]["citations"] = [dict(CITB, opened_by=h)]
+        g["recognition"]["established"] = dict(EST, reader=h)
+        b = f37(outline=o)
+        dom = _dom(b.page)
+        li = _direct(evd(b, "znk"), "ul", "provenance")[0].elems()
+        return _eq((b.rc, len(dom.find("script")), len(dom.find("strong")), "<script" in b.page, html.escape(h) in b.page,
+                    [_raw(x) for x in li][1:],
+                    [c_.text() for c_ in li[2].find("code")]),
+                   (0, 0, 0, False, True,
+                    [f"Our reading of where this statement stands: written by {h} on 2026-11-22.",
+                     f"Other Paper: opened by {h} on 2026-11-22.",
+                     f"Where it is proved: traced to A.B.foo by {h} on 2026-11-23."], ["Paper"]))
+
+    @case("PV16", "F37 review P4 (the rule of F29, as main had it): the lines are shown only with a file: a block with lines and NO file shows "
+                  "`not given` for the File and `not given` for the Lines; a file and no lines shows the base name and `not given`; both show "
+                  "the file and the range (the data keeps the lines as written)")
+    def _():
+        n = _n01().replace('"file":"A/B.lean","id":"01.b02"', '"id":"01.b02"')
+        b = f37(notes=_notes() | {"01-one.md": n})
+        arg = next(x for x in b.js("group/g1.json")["blocks"] if x["block"] == "01.b02")
+        return _eq((b.rc, pairs(blk(b, "g1", "01.b02")), arg["lines"], "file" in arg, pairs(blk(f37(), "g1", "01.b02")),
+                    pairs(blk(f37(outline=_outline_b(), notes=_notes_b()), "g1a1", "07.b02"))),
+                   (0, [[("File", "not given"), ("Lines", "not given")]], [15, 18], False, [[("File", "B.lean"), ("Lines", "15-18")]],
+                    [[("File", "TopPlug.lean"), ("Lines", "not given")]]))
+
     @case("PV11", "F37 S1: the argument detector is `How this is proved` (no `, as`): an interpretation block whose text opens `How this is "
                   "proved: ...` is listed as FRAME-NOTE with that detector, and not with the old `How this is proved, as`")
     def _():
