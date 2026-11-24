@@ -221,6 +221,37 @@ def selftest():
           (body[:2], "named function" in body[2] and "fences" in body[2] and body[2].startswith("  why:    ")),
           (["UNSUPPORTED $\\foo$", "DIFF $\\max(a)$"], True))
     check("a formula with no known cause says so", diagnose("$x$"), "structures differ, no known cause: look")
+    # the exit codes of --run, on a copy of this tool run in a child process; no real pandoc is needed (an empty PATH, or a recorded fake)
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        empty = os.path.join(d, "empty")
+        os.mkdir(empty)
+        fakebin = os.path.join(d, "fakebin")
+        os.mkdir(fakebin)
+        fake = os.path.join(fakebin, "pandoc")
+        with open(fake, "w", encoding="utf-8") as fh:   # shell builtins only: a version line, else one recorded math element
+            fh.write('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pandoc 3.1.3 (recorded fake)"; exit 0; fi\n'
+                     'printf \'%s\' \'<p><math><semantics><mi>x</mi><annotation encoding="application/x-tex">q</annotation></semantics></math></p>\'\n')
+        os.chmod(fake, 0o755)
+        forms = os.path.join(d, "forms.txt")
+        with open(forms, "w", encoding="utf-8") as fh:
+            fh.write("$x$\n$a + b$\n")
+        me = os.path.abspath(__file__)
+
+        def child(args, path):
+            r = subprocess.run([sys.executable, "-I", me] + args, capture_output=True, text=True, env=dict(os.environ, PATH=path))
+            return r.returncode, r.stdout, r.stderr
+
+        rc, out_, err_ = child(["--run", forms], empty)
+        check("--run with pandoc absent from the PATH: exit 2, nothing on stdout, ONE line on stderr that names pandoc, no traceback",
+              (rc, out_, len(err_.strip().splitlines()), "pandoc" in err_, "Traceback" in err_), (2, "", 1, True, False))
+        missing = os.path.join(d, "no-such-file.txt")
+        rc, out_, err_ = child(["--run", missing], fakebin)
+        check("--run with a formulas file that does not exist: exit 2, nothing on stdout, ONE line on stderr that names the file, no traceback",
+              (rc, out_, len(err_.strip().splitlines()), missing in err_, "Traceback" in err_), (2, "", 1, True, False))
+        rc, out_, err_ = child(["--run", forms], fakebin)
+        check("a completed --run exits 0 whatever the number of differences (here 1 of 2 differs, on a recorded fake pandoc), table on stdout",
+              (rc, err_, "agree 1 of 2" in out_, "DIFF $a + b$" in out_), (0, "", True, True))
     print("SELFTEST " + ("PASS" if ok else "FAIL"))
     return 0 if ok else 4
 
