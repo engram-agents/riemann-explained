@@ -668,8 +668,7 @@ def element_problems(page):
     parser = P(convert_charrefs=True)
     parser.feed(page)
     if "<" in parser.rawdata:   # what html.parser still holds back (an unterminated comment, CDATA, tag or style): it reports none of it
-        found.add("unterminated markup")
-    parser.close()
+        found.add("unterminated markup")   # no close(): it would flush the held text and report it a second way
     return sorted(found)
 
 
