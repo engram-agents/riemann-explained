@@ -5110,6 +5110,13 @@ def _selftest_cases():
                    (0, ["argument"], ["argument", "one"], ["think"], [["bold"], ["end"]], ["two", "s"], [], ["Closed by **omega** automation."],
                     True, "First **bold** para."))
 
+    @case("BD8", "F35 B1: bold is <strong> in a plain sketch item, in the own text of an item with sub-items and in a sub-item, each in its "
+                 "own <li>")
+    def _():
+        body = "Opening.\n\n- Plain **one** item\n- Step **two**\n  - sub **s** and `c`\n- Plain three\n\nClosing.\n"
+        ul = _direct(_direct(_card(_build(notes=_skn(body)), "g1"), "div", "sketch")[0], "ul")[0]
+        return _eq([[x.text() for x in li.find("strong")] for li in ul.find("li")], [["one"], ["two", "s"], ["s"], []])
+
     @case("BD4", "F35 B2: an unpaired `**` stays literal on the page and is listed, once per block, `BOLD-UNPAIRED <block id>`, after the "
                  "FORMULA-RAW lines (note order), exit 0, nothing refused; a `**` inside a code span, a pair and single asterisks are not "
                  "listed; a first sentence cut inside a pair (`**one. Two**`) shows a literal `**` and lists the block")
