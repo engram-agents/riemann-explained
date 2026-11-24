@@ -106,10 +106,19 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      single backticks on one line is <code>, escaped; nothing else is markup) wherever a title is shown: the level-0 list, the
      notes list and the corrections list of a card. The JSON keeps the title as written. The source check compares what a
      reader sees: before the whole-line compare the backticks of a span are removed (each span replaced by its content) from
-     the text of a claim, the conditions and the list titles, on the JSON and data.js side and on the copied title lines; the
+     the text of a claim, the conditions, the list titles, the text of a block and a block's first sentence, on the JSON and data.js side and on the copied title lines; the
      page is not compared inside <code>, so a wrapped release line is found in the JSON files, not on the page. Doubled
      backticks, an unpaired backtick and a pair over a line break are not spans and are compared as written. Cases TITLE1
      TITLE2 SPAN1 SPAN2 SPAN3 SPAN4.
+  F28 BLOCK TEXT GOES THROUGH THE SAME RULE. The text of an argument or interpretation block (the evidence list) and the first
+     sentence of an argument block (the card) are rendered by the span rule, the frame staying escaped text. The block text is
+     ONE paragraph, its source lines joined by spaces before the rule is applied, so a span that runs over a source line break
+     is a span to the reader (an unpaired backtick, doubled backticks and an empty pair stay literal). The JSON and data.js keep
+     the text and the first sentence as written. The source check removes span backticks from the `text` of a block and from a
+     `first_sentence` on the JSON and data.js side, as for a claim (doubled backticks compare as written). A block whose text,
+     once the content of its single-backtick spans is taken out, holds `$`, `\\(`, `\\[` or `\\begin{` is LISTED, one line
+     `FORMULA-RAW <block id>` per block in note order, on stdout after KIND-NOTE; exit unchanged, nothing written. Formulas
+     are not converted here (F26 will). Cases BT1 BT2 BT3 BT4 BT5 BT6 BT7 BT8 FR1 FR2 FR3 FR4.
   F9 The run prints the builder's own line `claim basis: R read, C census, M without (treated as read)` (without the
      parenthesis when M is 0), counted over the non-null claims of the outline, beside the checker's line of the same
      counts. Case BAS1.
@@ -249,8 +258,13 @@ has such a kind (a step with several roots too), and proof_not_applicable_line o
 distinguish: it shows steps_proof_not_applicable_line whenever no step has a proof, and a root of an unknown kind among the
 top-level steps is not reachable on a real table (the table holds the eight kinds only). The source check ranges over what a reader sees: the text of claims, conditions and note titles
 with the backticks of a span removed (on the JSON and data.js side, and on the copied title lines; the page skips <code>), the
-other values as written; a release line that is inside a longer sentence, or that is split by a span in its middle, is still not
-seen. A code span (CODE) is the one place the page turns
+other values as written, except the text of a block and a block's first sentence, which are compared BOTH as written and with the
+backticks removed (so a release line that itself holds a span is still seen there); a release line that is inside a longer sentence
+(of a claim, of block text or of a first sentence), or that is split by a span in its middle, is still not seen. The first sentence
+is cut at the first `.`, `!` or `?` followed by white space even inside a span (`We apply `f. g` here.` gives `We apply `f.`, the
+backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). FORMULA-RAW ranges over argument and interpretation blocks only (the `sketch` kind joins in the F24b change). It is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
+span, is listed too, and a formula inside a code span is not; F26 will convert formulas. A K1 source line is compared as it
+stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
 claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
 seen in the JSON and not on the page. The nine keys of PHR must hold their placeholders, so a value that says the fact without
@@ -281,6 +295,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import urllib.parse
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -503,8 +518,11 @@ def _unspan(text):
 def _value_lines(obj, seen=False, key=None):
     """Every line of every string value of a parsed JSON, except the values under a key of NAME_KEYS (names and ids). The values a
     reader sees through the span rule (the text of a claim, a condition, a note's list_title) are compared with the backticks
-    of their spans removed (`seen`); the JSON itself keeps them."""
+    of their spans removed (`seen` is True); the text of a block and a first sentence are compared BOTH as written and with the
+    backticks removed (`seen` is "both"), because a release line may itself hold a span; the JSON itself keeps them."""
     if isinstance(obj, str):
+        if seen == "both":
+            yield from obj.split("\n")
         yield from (_unspan(obj) if seen else obj).split("\n")
     elif isinstance(obj, list):
         for x in obj:
@@ -512,7 +530,8 @@ def _value_lines(obj, seen=False, key=None):
     elif isinstance(obj, dict):
         for k, v in obj.items():
             if k not in NAME_KEYS:
-                yield from _value_lines(v, k in ("conditions", "list_title") or (k == "text" and key == "claim"), k)
+                yield from _value_lines(v, "both" if k == "first_sentence" or (k == "text" and key == "blocks")
+                                        else k in ("conditions", "list_title") or (k == "text" and key == "claim"), k)
 
 
 def _output_lines(rel, data):
@@ -950,6 +969,16 @@ def _word_notes(m, s):
     return found
 
 
+_FORMULA_MARK = re.compile(r"\$|\\\(|\\\[|\\begin\{")
+
+
+def _formula_raw(m):
+    """[block id]: the argument and interpretation blocks, in note order, whose text outside its single-backtick spans holds a formula
+    mark (`$`, `\\(`, `\\[` or `\\begin{`), once per block, for the kinds `argument` and `interpretation` only (the `sketch` kind joins in the F24b change). A mark detector, not a formula parser. Only a listing."""
+    return [b["block"] for n in m.notes for b in n["blocks"]
+            if b["kind"] in ("argument", "interpretation") and b.get("text") and _FORMULA_MARK.search(nm._BACKTICK_SPAN.sub(" ", b["text"]))]
+
+
 def _nest(m, gid):
     out = dict(m.summary[gid])
     out["children"] = [_nest(m, c) for c in m.children.get(gid, [])]
@@ -1053,7 +1082,7 @@ def _render_page(m, s, facts, dirty):
         if args:
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
-            sent = f" {_e(b['first_sentence'])}" if b.get("first_sentence") else ""
+            sent = f" {_rich(b['first_sentence'])}" if b.get("first_sentence") else ""
             o.append(f'<p class="argument">{frames(b)}{sent} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
         corr = [b for b in fl["blocks"] if b["kind"] == "correction"]
         if corr:
@@ -1091,10 +1120,10 @@ def _render_page(m, s, facts, dirty):
                 o.append(f'<li><a href="{_e(n["link"])}"><code>{_e(b["note"])}</code></a> <code>{_e(b["block"])}</code> '
                          f'<span class="kind">{_e(kinds[b["kind"]])}</span> {who}')
                 if b["kind"] == "argument" and b.get("text"):
-                    o.append(f'<p class="argument">{frames(b)} {_e(b["text"])}</p>')
+                    o.append(f'<p class="argument">{frames(b)} {_rich(b["text"])}</p>')
                 if b["kind"] == "interpretation" and b.get("text"):
                     fr = _fill(s["interpretation_frame"], reader=b["reader"], date=b["date"])
-                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_e(b["text"])}</p></aside>')
+                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_rich(b["text"])}</p></aside>')
                 o.append("</li>")
             o.append("</ul>")
         if fl["open_items"]:
@@ -1319,6 +1348,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         print(f"WORD-NOTE {where} {word}")
     for gid, name, kind in m.kind_notes:   # a kind outside the eight: no proof (null), and listed, never refused
         print(f"KIND-NOTE {gid} {name} kind {kind!r}")
+    for bid in _formula_raw(m):   # a formula mark outside a code span: no conversion yet (F26), and listed, never refused
+        print(f"FORMULA-RAW {bid}")
     for n in m.notes:
         for b in n["blocks"]:
             for what in ("reader", "date"):
@@ -3547,6 +3578,145 @@ def _selftest_cases():
         return _eq((dbl.rc, dbl.existed, wrapped.rc, s3, wrapped.js("level0.json")["steps"][0]["claim"]["conditions"],
                     [n["list_title"] for n in wrapped.js("level0.json")["steps"][0]["notes"]], inside.rc, _base_src().rc),
                    (0, True, 0, "`" + other + "`", ["`" + other + "`"], ["Note one", "Note two\n`" + other + "`"], 0, 0))
+
+    # ---- F28: the text of an argument or interpretation block goes through the one span rule
+    def _para(page, cls):
+        """The text after the frame of the last `<p class=cls>` of the page (the evidence list's paragraph, not the card's)."""
+        return re.findall(r'<p class="' + cls + r'">(.*?)</p>', page, re.S)[-1].rsplit("</span> ", 1)[1]
+
+    BT_TEXTS = ["See `a<b` here", "`one` and `two` end", "a ` b", "a ``x`` b", "a `` b", "a `x\ny` b", "Plain text only"]
+    BT_WANT = ["See <code>a&lt;b</code> here", "<code>one</code> and <code>two</code> end", "a ` b", "a ``x`` b", "a `` b",
+               "a <code>x y</code> b", "Plain text only"]
+
+    @case("BT1", "an ARGUMENT block's text is rendered by the span rule on the evidence list: a span between single backticks is <code> "
+                 "with its content escaped (`a<b` gives a&lt;b); two spans in one block; an unpaired backtick, doubled backticks, an "
+                 "empty pair stay literal; a span over a SOURCE line break is a span (the paragraph is joined by spaces first: `a `x` + `y` b` gives "
+                 "<code>x y</code>); a block with no backtick is as before")
+    def _():
+        got = [_para(_build(notes=_notes(arg_text=t)).page, "argument") for t in BT_TEXTS]
+        return _eq(got, BT_WANT)
+
+    @case("BT2", "the same for an INTERPRETATION block (the frame stays escaped text)")
+    def _():
+        got = [_para(_build(notes=_notes(interp_text=t)).page, "interpretation") for t in BT_TEXTS]
+        frame = '<span class="frame">Our interpretation, by Reader Two on 2026-11-24:</span> '
+        whole = re.findall(r'<p class="interpretation">(.*?)</p>', _build(notes=_notes(interp_text="Plain text only")).page, re.S)
+        return _eq((got, whole), (BT_WANT, [frame + "Plain text only"]))
+
+    @case("BT3", "the JSON and data.js keep the block text and the first sentence as written, backticks included")
+    def _():
+        b = _build(notes=_notes(arg_text="See `a<b` here", interp_text="We `think` so"))
+        blk = {x["block"]: x for x in b.js("group/g1.json")["blocks"] if x["kind"] in ("argument", "interpretation")}
+        return _eq(({k: (v["text"], v["first_sentence"]) for k, v in blk.items()},
+                    "See `a\\u003cb` here" in b.text("data.js"), "We `think` so" in b.text("data.js")),
+                   ({"01.b02": ("See `a<b` here", "See `a<b` here"), "01.b03": ("We `think` so", "We `think` so")}, True, True))
+
+    CARD_TEXTS = ["See `a<b` here. More `x` text.", "a ` b. c", "a ``x`` b. c", "a `` b. c", "Plain only. More.", "A `x` and `y<z` end. More."]
+    CARD_WANT = ["See <code>a&lt;b</code> here.", "a ` b.", "a ``x`` b.", "a `` b.", "Plain only.", "A <code>x</code> and <code>y&lt;z</code> end."]
+
+    @case("BT5", "the first sentence of an argument block on the CARD is rendered by the span rule too (a span is <code>, content "
+                 "escaped; two spans are both code; an unpaired backtick, doubled backticks and an empty pair stay literal; no backtick as before)")
+    def _():
+        got = []
+        for t in CARD_TEXTS:
+            card = re.findall(r'<p class="argument">(.*?)</p>', _build(notes=_notes(arg_text=t)).page, re.S)[0]
+            got.append(card.rsplit("</span> ", 1)[1].split(' <a href=')[0])
+        return _eq(got, CARD_WANT)
+
+    R1 = "Zq release text one sentence here. And the second sentence of it."   # leaks through the block `text` only when wrapped whole
+    R2 = "Zq release first sentence words here."   # leaks through the `first_sentence` only when its span is unwrapped
+    R4 = "Zq release text two spans one sentence here. And more words follow here."   # two spans; the first sentence cannot carry it
+    srcs2 = {"A/B.lean": "x = 1\n" + LEAK + "\n" + R1 + "\n" + R2 + "\n" + R4 + "\n"}
+    LEAKFILES = [leak_line(w) for w in ("data.js", "group/g1.json")]
+    BT4_PLANTS = [("`" + LEAK + "`", "text and first sentence"), ("`" + R1 + "`", "text only"),
+                  ("`" + R2[:-1] + "`. More text after it.", "first sentence only"),
+                  ("`Zq release text` two `spans one` sentence here. And more words follow here.", "two spans, text only")]
+
+    @case("BT4", "the source check compares block text and first sentence as a reader sees them: a release line inside single backticks "
+                 "as an ARGUMENT block is refused (SOURCE-LEAK naming data.js and group/g1.json), as an INTERPRETATION block too; "
+                 "four plants: the whole text and first sentence, the text only (a two-sentence release line), the first sentence "
+                 "only, the text only with TWO spans (every span is removed, not the first); exit 1, OUT_DIR absent")
+    def _():
+        res = []
+        for field in ("arg_text", "interp_text"):
+            for plant, _what in BT4_PLANTS:
+                b = _build(notes=_notes(**{field: plant}), src=srcs2)
+                res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
+        return _eq(res, [(1, LEAKFILES, False)] * 8)
+
+    @case("BT6", "what is NOT a span is compared as written: the same four plants in DOUBLED backticks (two doubled pairs in the last) build (exit 0) as argument and "
+                 "as interpretation; a wrapped line that is no release line builds; the ids-only base build stays green")
+    def _():
+        res = []
+        for field in ("arg_text", "interp_text"):
+            for plant, _what in BT4_PLANTS:
+                dbl = plant.replace("`", "``")
+                b = _build(notes=_notes(**{field: dbl}), src=srcs2)
+                res.append((b.rc, b.existed))
+        ok = _build(notes=_notes(arg_text="`" + other + "`", interp_text="`" + other + "`"), src=srcs2)
+        return _eq((res, ok.rc, _base_src().rc), ([(0, True)] * 8, 0, 0))
+
+    R3 = "const t : `bar` = 1 holds true."   # a release line that itself holds a span
+    srcs3 = {"A/B.lean": "x = 1\n" + R3 + "\n"}
+
+    @case("BT7", "a release line that itself holds a single-backtick span, as the FIRST SENTENCE of an argument block and of an "
+                 "interpretation block, is refused (SOURCE-LEAK naming data.js and group/g1.json: the raw first sentence is compared as "
+                 "well as the unspanned one); exit 1, OUT_DIR absent. The same text as a claim keeps its behaviour: it builds (a claim is "
+                 "compared unspanned only)")
+    def _():
+        res = []
+        for field in ("arg_text", "interp_text"):
+            b = _build(notes=_notes(**{field: R3 + " More words after it here."}), src=srcs3)
+            res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
+        o = _outline()
+        o["groups"][0]["claim"]["text"] = R3
+        claim = _build(outline=o, src=srcs3)
+        return _eq((res, claim.rc), ([(1, LEAKFILES, False)] * 2, 0))
+
+    @case("BT8", "KNOWN LIMIT, pinned: the first sentence is cut at the first `.`, `!` or `?` followed by white space even inside a span: "
+                 "`We apply `f. g` here. More.` has the first sentence `We apply `f.` (JSON and card, the backtick left literal), while "
+                 "the evidence list shows the whole text with its span as code")
+    def _():
+        b = _build(notes=_notes(arg_text="We apply `f. g` here. More."))
+        card = re.findall(r'<p class="argument">(.*?)</p>', b.page, re.S)[0].rsplit("</span> ", 1)[1].split(' <a href=')[0]
+        first = [x for x in b.js("group/g1.json")["blocks"] if x["block"] == "01.b02"][0]["first_sentence"]
+        return _eq((first, card, _para(b.page, "argument")), ("We apply `f.", "We apply `f.", "We apply <code>f. g</code> here. More."))
+
+    @case("FR4", "FORMULA-RAW: the span is taken out as ONE SPACE, so characters on either side are not joined into a mark: a backslash, "
+                 "a span, then an open parenthesis is not listed; a backslash and a parenthesis with no span between them is")
+    def _():
+        return _eq([_fr(arg_text="Take \\`x`(y) here"), _fr(arg_text="Take \\(y) here")],
+                   [(0, []), (0, ["FORMULA-RAW 01.b02"])])
+
+    def _fr(**kw):
+        b = _build(notes=_notes(**kw))
+        return b.rc, [ln for ln in b.out.splitlines() if ln.startswith("FORMULA-RAW")]
+
+    @case("FR1", "a block whose text, outside its single-backtick spans, holds `$`, `\\(`, `\\[` or `\\begin{` is LISTED as one line "
+                 "`FORMULA-RAW <block id>` and the build exits 0; the same mark inside a span is not listed; a plain `5` is not; "
+                 "a block with two marks is listed once")
+    def _():
+        res = [_fr(arg_text=t) for t in ("Take $x$ here", "Take `$x$` here", "Take \\(x\\) here", "Take \\[x\\] here",
+                                         "Take \\begin{align} x", "Take 5 here", "Cost $5 and $6", "A `$x$` and then $y$")]
+        return _eq(res, [(0, ["FORMULA-RAW 01.b02"]), (0, []), (0, ["FORMULA-RAW 01.b02"]), (0, ["FORMULA-RAW 01.b02"]),
+                         (0, ["FORMULA-RAW 01.b02"]), (0, []), (0, ["FORMULA-RAW 01.b02"]), (0, ["FORMULA-RAW 01.b02"])])
+
+    @case("FR2", "an INTERPRETATION block is listed the same way; two blocks of one note give one line each in output order, one "
+                 "block listed alone gives one line; the base build lists none")
+    def _():
+        res = [_fr(interp_text="We think $x$ here"), _fr(arg_text="Take $x$", interp_text="We \\(y\\) too"),
+               _fr(arg_text="Take $x$"), _fr(interp_text="We `$y$` too")]
+        return _eq((res, [ln for ln in _base().out.splitlines() if ln.startswith("FORMULA-RAW")]),
+                   ([(0, ["FORMULA-RAW 01.b03"]), (0, ["FORMULA-RAW 01.b02", "FORMULA-RAW 01.b03"]), (0, ["FORMULA-RAW 01.b02"]),
+                     (0, [])], []))
+
+    @case("FR3", "FORMULA-RAW ranges over argument and interpretation blocks only: `_formula_raw` on a model whose blocks of every other "
+                 "kind carry a `$x$` text lists none of them, and lists the argument and the interpretation block that hold the same text")
+    def _():
+        kinds = ("reading", "correction", "not_read", "machine_fact", "sketch", "argument", "interpretation")
+        note = {"id": "n", "blocks": [{"block": "n.b" + k, "kind": k, "text": "Take $x$ here"} for k in kinds]}
+        got = _formula_raw(types.SimpleNamespace(notes=[note]))
+        return _eq(got, ["n.bargument", "n.binterpretation"])
 
     # ---- B1: no release text
     @case("B1a", "leak_check: a planted shard whose `text` value is a line of the release (>= 20 non-space characters) is named "
