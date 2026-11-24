@@ -129,6 +129,7 @@ checker that reads the notes, not to this module.
 from __future__ import annotations
 
 import contextlib
+import datetime
 import io
 import json
 import random
@@ -734,7 +735,40 @@ def header_problems(data):
     for f in ("authors", "readers"):
         if not isinstance(data.get(f), list):
             out.append(f"{f}: missing or not a list")
+    ed = 1   # F44B: `edition` is optional (absent is 1), the integer 1 or 2; `edition_date` dates an edition 2
+    if "edition" in data:
+        e = data["edition"]
+        if not _int(e):
+            out.append("edition: must be the integer 1 or 2")
+            ed = None
+        elif e >= 3:
+            out.append(f"edition: edition {e} needs a ruling")
+            ed = None
+        elif e < 1:
+            out.append(f"edition: must be 1 or 2, not {e}")
+            ed = None
+        else:
+            ed = e
+    if "edition_date" in data:
+        d = data["edition_date"]
+        if not _real_ymd(d):
+            out.append("edition_date: must be a date YYYY-MM-DD")
+        elif ed == 1:
+            out.append("edition_date: refused when edition is 1 or absent (it dates an edition 2)")
+    elif ed == 2:
+        out.append("edition_date: required when edition is 2")
     return out
+
+
+def _real_ymd(v):
+    """True for a string of the form YYYY-MM-DD (ASCII digits) that is a real calendar date."""
+    if not (isinstance(v, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", v)):
+        return False
+    try:
+        datetime.date(int(v[:4]), int(v[5:7]), int(v[8:]))
+    except ValueError:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------- self-test
