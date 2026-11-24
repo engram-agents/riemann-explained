@@ -160,7 +160,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   F26B-E THE ELEMENTS OF THE PAGE. One module-level list, ALLOWED_ELEMENTS (40 elements, 53 element-attribute pairs), names every element
      and attribute NAME the built page may hold, and no other element or attribute name is allowed: the 28 elements and 15 pairs the builder
      emits (measured over the five self-test fixture pages, which EL4 pins; an entry no path emits is not kept, as `<time>` went with F37) and the
-     MathML set, reserved for the converter and emitted by no path yet (12 elements: math mrow mi mn mo msub msup msubsup mover munder
+     MathML set the formula converter writes (F26B; 12 elements: math mrow mi mn mo msub msup msubsup mover munder
      munderover mspace; attributes mathvariant, stretchy and form on those only, width on mspace alone and accent on mover alone).
      `element_problems(page)` reads the start tags of the BUILT page, after it is rendered and before anything is written, with html.parser
      (not the CSS, not data.js): it looks at element names and attribute NAMES only. Attribute values and the text inside <style> are not
@@ -649,7 +649,7 @@ _MATHML_ELEMENTS = ("math", "mrow", "mi", "mn", "mo", "msub", "msup", "msubsup",
 _MATHML_ATTRIBUTES = ("mathvariant", "stretchy", "form")
 # Every element and attribute NAME the built page may hold (values and <style> text are not checked), and no other: the 28 elements and
 # 15 pairs the builder emits (measured over the five self-test fixture pages, pinned by EL4, not guessed; an entry no path emits is
-# removed, EL4) and the 12 of MathML Core RESERVED FOR THE CONVERTER (no path emits them yet), with mathvariant, stretchy and form on
+# removed, EL4) and the 12 of MathML Core the formula converter writes (a page with a formula holds them; the fixture pages do not), with mathvariant, stretchy and form on
 # the MathML elements only, width on <mspace> alone and accent on <mover> alone. 40 elements, 53 element-attribute pairs.
 ALLOWED_ELEMENTS = dict(_HTML_ELEMENTS, **{t: _MATHML_ATTRIBUTES for t in _MATHML_ELEMENTS})
 ALLOWED_ELEMENTS["mover"] = _MATHML_ATTRIBUTES + ("accent",)   # the overline of \\bar
@@ -6819,7 +6819,7 @@ def _selftest_cases():
                     '<msub><mi>a</mi><mi>b</mi></msub><msup><mi>a</mi><mi>b</mi></msup><mspace></mspace><mspace width="0.167em"></mspace></mrow></math>']
         return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 5))
 
-    @case("EL2", "the allow-list: 40 elements (the 28 the builder emits and the 12 of MathML reserved for the converter) and 53 element-attribute pairs "
+    @case("EL2", "the allow-list: 40 elements (the 28 the builder emits and the 12 of MathML the formula converter writes) and 53 element-attribute pairs "
                  "(15 of the page, 36 of mathvariant, stretchy and form on the 12 MathML elements, `width` on <mspace> and `accent` on <mover>); the built page of "
                  "the base fixture, the zoo, the sketch fixture, the definition fixture and one with bold and a nested sub-item is clean under it")
     def _():
@@ -6843,7 +6843,7 @@ def _selftest_cases():
                          (1, ["BUILD-ERROR PAGE-STATIC attribute onclick on p found in index.html"], False), (0, [], True)])
 
     @case("EL4", "nothing else: the elements and attributes the five fixture pages of EL2 hold are exactly the 28 elements and 15 pairs of the list outside "
-                 "MathML (no entry nobody emits: `time` went with F37); what the list holds besides is the MathML set reserved for the converter, 12 elements, "
+                 "MathML (no entry nobody emits: `time` went with F37); what the list holds besides is the MathML set the formula converter writes, 12 elements, "
                  "mathvariant, stretchy and form on all 12, `width` on <mspace> alone and `accent` on <mover> alone")
     def _():
         bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
