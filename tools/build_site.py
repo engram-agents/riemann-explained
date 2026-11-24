@@ -19,11 +19,11 @@ Every JSON file carries `commits`: {notes, release, tools} (B5). A group id is u
 The group objects inside level0.json and level1.json (the steps and, in level1.json, their `children`) have: `claim`, which
 is {text, reader, date, basis (read or census), conditions} or null; `premises`, the group ids the group rests on, in the order
 of the outline (a field of the GROUP, null-claim groups included; [] when none); `lean_name`, the name of the first root; `claim_label`, the strings file's `no_claim_label` when the claim is null; `statement_read` and `proof_read`, true when
-EVERY root of the group has the fact; `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
-roots_proof_read, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
+EVERY root of the group has the fact (the proof_read of a group whose roots have no proof is null, F22); `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
+roots_proof_read, roots_proof_applicable, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
 `claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `premises`, `roots`, `blocks`,
 `open_items`, `notes` and `commits`, and each root of it has the booleans `statement_read` and `proof_read`. level0.json has `facts` ({steps,
-statement_read, statement_not_read, proof_read, proof_not_read}, counted over the level-1 steps) and `totals`, which holds
+statement_read, statement_not_read, proof_read, proof_not_read, proof_not_applicable, proof_applicable}, counted over the level-1 steps) and `totals`, which holds
 `open_items`, the number of distinct open not_read blocks of the whole outline.
 
 CONTRACT (each line is a self-test case, written before the code; an expected value in a case is a literal)
@@ -73,20 +73,42 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      B5b B5c B5d.
   B5x Per root TWO FACTS (F19): statement_read = the group carries a claim whose basis is `read` (a claim with no basis key
      counts as `read` until the checker requires one) or a reading block anchors the root; proof_read = an argument block
-     anchors the root. Nothing else sets either: an interpretation, a correction, a not_read and a machine_fact block
+     anchors a root that has a proof (F22; null for a root that has none). Nothing else sets either: an interpretation, a correction, a not_read and a machine_fact block
      set neither, a claim with basis `census` does not set statement_read. Cases F1a F1b S1.
   F2 JSON: group/<id>.json per root `statement_read` and `proof_read` (booleans); level files per group `counts` {roots,
      roots_statement_read, roots_proof_read, roots_open_items, open_items} (no key of it holds `not_read`) and `claim.basis`
-     (the effective value); `unread` = neither fact on any root; there is no `coverage` key. Case F2a.
+     (the effective value); `unread` = neither fact on any root; there is no `coverage` key; the proof_read of a root without a
+     proof is null (F22). Case F2a.
   F3 There is no coverage word: a strings file that carries a `coverage` key, or a key whose name holds `not_read` other
      than statement_not_read_line and proof_not_read_line (not_read_yet, roots_not_read, roots_not_read_note), is refused
      naming the key (a stale file cannot ship a word scale); a value holding `Read by us`, `Partly read` or `Not read yet` is
      STRINGS-FORBIDDEN; the built page has none of the three. A stale `no_argument` is ignored and never printed.
      Cases F3a F3b.
-  F4 The build asserts for each fact read + not read = total over the level-1 steps and over the roots of each group (a pure
-     function, fact_pairs, counts them) and prints `facts check: statements read A + not read B = N steps; proofs read C +
-     not read D = N steps`; a mismatch planted through the function's input is SUM-STATEMENT or SUM-PROOF, nothing written;
-     a group with no root has no fact claim and is an error (FACTS-NO-ROOT), never counted as read. Cases R1a R1b.
+  F4 The build asserts for the statement read + not read = total, and for the proof read + not read + not applicable = total,
+     over the level-1 steps and over the roots of each group (the pure functions fact_pairs and fact_triples count them) and
+     prints `facts check: statements read A + not read B = N steps; proofs read C + not read D + not applicable E = N steps`;
+     a mismatch planted through the function's input is SUM-STATEMENT or SUM-PROOF, nothing written; a null on a proof flag is
+     not a mismatch; a group with no root has no fact claim and is an error (FACTS-NO-ROOT), never counted as read. Cases R1a
+     R1b.
+  F22 A DEFINITION HAS NO PROOF TO READ. The kind column of the declaration table decides, for the row of the root: `theorem`
+     and `lemma` have a proof, any other kind (def, structure, instance, abbrev, class, inductive) has none, and a kind that is
+     none of those eight, or is empty, is treated as having none AND is listed (`KIND-NOTE <group> <module>.<name> kind '<kind>'`
+     on stdout, exit unchanged). For a root without a proof proof_read is null (written `null`, never `false`). A step or group
+     has proof_read true when every root that HAS a proof has it read (the roots without a proof are left out of that test),
+     null when no root has a proof, false otherwise; counts.roots_proof_applicable is the number of roots that have a proof. A
+     card that has no proof to read shows the strings key proof_not_applicable_line (no placeholders; also for a several-root
+     card none of whose roots has a proof); a several-root card counts proof_count_line over the roots that have a proof. A
+     card is `unread` when its statement is not read and its proof is not read or not applicable. level0 `facts` carry
+     proof_applicable (the steps that have a proof) and proof_not_applicable; the first-screen steps_proof_line counts over
+     the steps that have a proof. Cases PRK1 PRK2 DEF1 DEF2 DEF3 NAL1.
+  F23 ONE SPAN RULE FOR EVERY AUTHOR-WRITTEN LINE. A note's list_title is rendered by the same rule as a claim (a span between
+     single backticks on one line is <code>, escaped; nothing else is markup) wherever a title is shown: the level-0 list, the
+     notes list and the corrections list of a card. The JSON keeps the title as written. The source check compares what a
+     reader sees: before the whole-line compare the backticks of a span are removed (each span replaced by its content) from
+     the text of a claim, the conditions and the list titles, on the JSON and data.js side and on the copied title lines; the
+     page is not compared inside <code>, so a wrapped release line is found in the JSON files, not on the page. Doubled
+     backticks, an unpaired backtick and a pair over a line break are not spans and are compared as written. Cases TITLE1
+     TITLE2 SPAN1 SPAN2 SPAN3 SPAN4.
   F9 The run prints the builder's own line `claim basis: R read, C census, M without (treated as read)` (without the
      parenthesis when M is 0), counted over the non-null claims of the outline, beside the checker's line of the same
      counts. Case BAS1.
@@ -141,7 +163,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   P7 index.html and data.js hold none of fetch(, XMLHttpRequest, WebSocket, sendBeacon, import(, `src=`/`href=` to http(s)
      except in a reaction anchor, url(; the builder refuses (PAGE-STATIC) when one does. static_problems. Cases P7a P7b.
   R2 The first screen counts steps per fact with steps_statement_line and steps_proof_line ({n} {m}: a step is read for a fact
-     when EVERY root of it has it; m is the number of level-1 steps) and the open blocks with steps_open_items_line ({n});
+     when EVERY root of it has it; m is the number of level-1 steps, for the proof the number of those that have a proof, F22) and the open blocks with steps_open_items_line ({n});
      a card of a group with several roots counts declarations with statement_count_line and proof_count_line; the page has
      no percent sign and no "of the proof". Case R2.
   R3 The builder's own sentences never contain a word of `forbidden_words` (and verified, explained, understood always),
@@ -215,7 +237,15 @@ date in the statement line; for a null claim with a reading block the first read
 rule as the statement reader, not by date). Placeholders are checked in every value of the strings file at any depth from the
 declared sets: a key that is not in the table declares none, so a new key is covered by default, and an `{name}` outside a value
 that declares it, or a brace in a value that declares none, refuses the build. A claimed
-group has one root, so the count lines appear only for null-claim groups. A code span (CODE) is the one place the page turns
+group has one root, so the count lines appear only for null-claim groups. THE KIND decides whether a root has a proof: an
+instance, or a def whose value is a proof term, does not count as having a proof for the page, whatever its body is; the builder
+reads the kind from the table row of the root and does not look at the Lean text. A step with some roots that are theorems and
+some that are definitions is read for the proof when every theorem root is: the definition roots are left out of the every-root
+test, and the card counts over the theorem roots. A kind outside the eight the table holds is treated as no proof and listed as
+KIND-NOTE; it is never refused. The source check ranges over what a reader sees: the text of claims, conditions and note titles
+with the backticks of a span removed (on the JSON and data.js side, and on the copied title lines; the page skips <code>), the
+other values as written; a release line that is inside a longer sentence, or that is split by a span in its middle, is still not
+seen. A code span (CODE) is the one place the page turns
 claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
 seen in the JSON and not on the page. The nine keys of PHR must hold their placeholders, so a value that says the fact without
