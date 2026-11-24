@@ -119,7 +119,26 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      once the content of its single-backtick spans is taken out, holds `$`, `\\(`, `\\[` or `\\begin{` is LISTED, one line
      `FORMULA-RAW <block id>` per block in note order, on stdout after KIND-NOTE; exit unchanged, nothing written. Formulas
      are not converted here (F26 will). Cases BT1 BT2 BT3 BT4 BT5 BT6 BT7 BT8 FR1 FR2 FR3 FR4.
-  F9 The run prints the builder's own line `claim basis: R read, C census, M without (treated as read)` (without the
+  F24 THE RECOGNITION (F24b). group/<id>.json and the step summaries carry `root_role`, `root_kind`, `recognition` (null for a
+     group with no claim; never in `counts`). A card with a claim shows, between its premises line and its status lines, the form
+     line `recognition_<role>_<form>_line` (role: root_role, else the class of the root's kind), the difference, a line per citation
+     (an `<a class=citation>` with an https url, the one external anchor besides a reaction anchor), `established_by_line` or
+     `established_not_traced_line` (a named statement only), and `recognition_label_line`; no recognition shows the not-written line;
+     a named statement also shows `named_statement_use_line`. An open form prints the newest source_date of the says_open citations
+     (compared as written). The run prints `recognition: K known, V variant, N not recognised, O open in literature, M not written,
+     of G groups with a claim` over every group with a claim at every depth (SUM-RECOGNITION). Cases RJ1 RC1 RF1 RD1 RD2 RL1 RU1 RE1
+     RE2 RS1 RS2 RS3 P7e PHR5 PHR6 MK1. F31: a `note` of a not_recognised recognition follows its form line (span rule only). Cases
+     FN1 FN2 FN3 FN4.
+  F25 THE SKETCH (F25b). group/<id>.json has `sketches`; the card shows the sketch after the argument, or the missing-sketch line
+     when its proof is read and it has none; a sketch never sets proof_read; the run prints `sketches: S of P steps with a proof read`
+     (level-1 steps; SUM-SKETCH). FORMULA-RAW covers sketch text. Cases SK1 to SK8 FR3 FR5.
+  F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
+     stays and proof_read stays null. Cases PB1 PB2.
+  F29 `{file}` (optional) is the base name of the block's file and `{lines}` the range only; the second readers follow the text. Cases
+     DF1 DF3 PHR7.
+  F30 A link `[text](target)` in block text is shown as its text, no anchor; the run prints `links in block text: N shown as text`
+     and `LINK-OUTSIDE <block id> <target>` (a listing). Cases LK1 to LK5.
+ F9 The run prints the builder's own line `claim basis: R read, C census, M without (treated as read)` (without the
      parenthesis when M is 0), counted over the non-null claims of the outline, beside the checker's line of the same
      counts. Case BAS1.
  Page
@@ -262,7 +281,7 @@ other values as written, except the text of a block and a block's first sentence
 backticks removed (so a release line that itself holds a span is still seen there); a release line that is inside a longer sentence
 (of a claim, of block text or of a first sentence), or that is split by a span in its middle, is still not seen. The first sentence
 is cut at the first `.`, `!` or `?` followed by white space even inside a span (`We apply `f. g` here.` gives `We apply `f.`, the
-backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). FORMULA-RAW ranges over argument and interpretation blocks only (the `sketch` kind joins in the F24b change). It is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
+backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). FORMULA-RAW ranges over argument, interpretation and sketch text (not a sketch's `unexpanded` entries). It is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
 span, is listed too, and a formula inside a code span is not; F26 will convert formulas. A K1 source line is compared as it
 stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
 claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
@@ -275,6 +294,16 @@ claim, the conditions, the note titles and the text of argument and interpretati
 hrefs; it lists, it does not judge. The block of an argument is framed with its lines and file name together; a block with
 lines and no file shows `lines_missing`, because the lines name no file. The notes are the files NOTES_DIR matches by notes_meta's default pattern. The page's
 note links are the strings file's `note_href` with the note's file name filled in.
+
+LIMIT (F24b). The page trusts the checker's rules on roles and forms: a model that breaks them (open_in_literature on an object, an
+established on a result) is not guarded and may raise. A group with no root_role takes the class of its root's kind for the page.
+The source check ranges, besides what is stated above, over the recognition's result, difference, note, citation source and where, a
+sketch's paragraphs, list items and unexpanded entries (as written, span backticks removed and, for sketch text, each link as its text
+and each link target as a line); WORD-NOTE does not read them. A link is `[text](target)` with a text of no bracket and a target of no
+parenthesis or white space; a link text that holds `. ` is cut by the first-sentence rule (a known limit). Links in the recognition and
+in the `unexpanded` entries are not rewritten. The strings rule R3 refuses `of the proof` in any value, so a wording that holds it (a
+compiled part of the proof) is refused until the rule or the wording changes. A block's frame uses the roots of the card it is shown
+on: one block can be framed as a definition on one card and as a proof on another.
 
 usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX]
                      [--notes-commit REV --repo DIR] [--force]
