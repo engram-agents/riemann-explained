@@ -2611,6 +2611,24 @@ def _():
     ok("byte check: did not run, no --base given" in r.lines, r.out)
 
 
+@case("ADD23", "a published note whose text BEGINS with a fenced block: a dated insertion right after the opening line (the base line "
+               "before the run is the first line of the note) is inside the fence, so a BYTE-DIFF; control: the same insertion after "
+               "the closing fence is an ADDITION")
+def _():
+    base = "```text\nline a\nline b\n```\n"
+    hdr = rh.format_comment("rh-note", {"authors": ["H"], "group": "g1", "id": "01", "level": 2, "list_title": "A title",
+                                        "readers": ["K"], "release": "rel-1"}) + "\n"
+    r = go(notes={"01-a.md": hdr + "```text\n## 2026-11-22 Added\nline a\nline b\n```\n"}, committed={"01-a.md": base},
+           base="HEAD", today=TODAY)
+    ok("BYTE-DIFF 01-a.md:3 line 3 differs (line 2 of the text without anchors): at HEAD (without anchors) 'line a\\n', "
+       "now (without anchors) '## 2026-11-22 Added\\n'" in r.lines, r.out)
+    ok(not any(x.startswith("ADDITION") for x in r.lines), "no ADDITION inside the fence: " + r.out)
+    eq(r.rc, 1, "exit code")
+    r = go(notes={"01-a.md": hdr + "```text\nline a\nline b\n```\n\n## 2026-11-22 Added\nX.\n"}, committed={"01-a.md": base},
+           base="HEAD", today=TODAY)
+    ok("ADDITION 01-a.md:6 3 lines, heading 2026-11-22 Added" in r.lines, "after the fence: " + r.out)
+
+
 @case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "
                "in line order")
 def _():
