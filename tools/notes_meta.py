@@ -2276,6 +2276,339 @@ def _():
     fe(_clw("The GröbnerBasis bound."), [_clw_line("claim text", "bnerBasis")], 0)
 
 
+# ---- root_role and recognition (F24): the role is compared with the kind class here; the builder reads the role
+DECLS_K = DECLS + ("A.E\tstru\tstructure\t1\t2\ttext-extent\n"
+                   "A.E\tind\tinductive\t3\t4\ttext-extent\n"
+                   "A.E\tlem\tlemma\t5\t6\ttext-extent\n"
+                   "A.E\tabb\tabbrev\t7\t8\ttext-extent\n"
+                   "A.E\tmys\t\t9\t10\ttext-extent\n")
+CIT = {"source": "S", "where": "W", "opened_by": "R", "opened_on": "2026-11-23"}
+REC = {"form": "known", "result": "Prime number theorem", "citations": [CIT], "reader": "R", "date": "2026-11-23"}
+OPENCIT = dict(CIT, says_open=True, source_date="2020-01-31")
+
+
+def _rg(role="result", rec=None, root=("A.B", "foo"), claim=CLAIM, gid="g1", order=1, **extra):
+    g = G(gid, order=order, roots=[R(*root)], claim=claim)
+    if role is not None:
+        g["root_role"] = role
+    if rec is not None:
+        g["recognition"] = rec
+    g.update(extra)
+    return g
+
+
+def _ro(*groups, decls=DECLS_K):
+    return go(outline=OL(*groups), decls=decls)
+
+
+def _fl(code, text, gid="g1"):
+    return f"{code} outline.json group {gid!r}{text}"
+
+
+@case("RR1", "root_role is one of result, named_statement, object; any other value or a non-string is ROOT-ROLE naming the group; "
+             "a group without the key is unchanged; any other group key is still UNKNOWN-KEY")
+def _():
+    clean(_ro(_rg("result")))
+    clean(_ro(_rg("named_statement", root=("A.C", "baz"))))
+    clean(_ro(_rg("object", root=("A.C", "baz"))))
+    msg = ": root_role must be one of 'result', 'named_statement', 'object', not "
+    fe(_ro(_rg("theorem")), [_fl("ROOT-ROLE", msg + "'theorem'")], 1)
+    fe(_ro(_rg(3)), [_fl("ROOT-ROLE", msg + "3")], 1)
+    fe(_ro(_rg(["result"])), [_fl("ROOT-ROLE", msg + "['result']")], 1)
+    fe(_ro(_rg(True)), [_fl("ROOT-ROLE", msg + "True")], 1)
+    fe(_ro(_rg("result", roleish=1)), [_fl("UNKNOWN-KEY", ": unknown key 'roleish'")], 1)
+    clean(_ro(G("g1")))
+
+
+@case("RR2", "root_role on a group whose claim is null is ROOT-ROLE; control: the same role with a claim is clean")
+def _():
+    fe(_ro(_rg("result", claim=None)), [_fl("ROOT-ROLE", ": root_role on a group with a null claim (a role belongs to a claim)")], 1)
+    clean(_ro(_rg("result")))
+
+
+@case("RR3", "the role is compared with the kind of the group's root in the CHECKER: result iff theorem or lemma; every other kind "
+             "(def, structure, abbrev, inductive, empty) takes named_statement or object and is refused with result; a mismatch "
+             "either way names group, role, root and kind")
+def _():
+    res = ": root_role 'result' but root {} {} has kind {!r} (only a theorem or lemma is a result)"
+    for root, kind in ((("A.C", "baz"), "def"), (("A.E", "stru"), "structure"), (("A.E", "abb"), "abbrev"),
+                       (("A.E", "ind"), "inductive"), (("A.E", "mys"), "")):
+        fe(_ro(_rg("result", root=root)), [_fl("ROOT-ROLE", res.format(root[0], root[1], kind))], 1)
+        clean(_ro(_rg("named_statement", root=root)))
+        clean(_ro(_rg("object", root=root)))
+    for root, kind in ((("A.B", "foo"), "theorem"), (("A.E", "lem"), "lemma")):
+        clean(_ro(_rg("result", root=root)))
+        for role in ("named_statement", "object"):
+            fe(_ro(_rg(role, root=root)), [_fl("ROOT-ROLE", f": root_role {role!r} but root {root[0]} {root[1]} has kind {kind!r} "
+                                                          "(a theorem or lemma takes 'result')")], 1)
+
+
+@case("RR4", "a claim with no root_role is a ROOT-ROLE-MISSING listing (exit 0) while REQUIRE_ROOT_ROLE is False, an ERROR when it "
+             "is True; a null claim needs no role; control: with the role it is clean")
+def _():
+    miss = _fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")
+    r = _ro(_rg(None))
+    fe(r, [miss], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "a listing is a warning")
+    eq(REQUIRE_ROOT_ROLE, False, "default")
+    saved = REQUIRE_ROOT_ROLE
+    try:
+        globals()["REQUIRE_ROOT_ROLE"] = True
+        r = _ro(_rg(None))
+        fe(r, [miss], 1)
+        eq(r.lines[-1], "1 notes, 1 findings, 0 warnings", "an error")
+        clean(_ro(_rg("result")))
+        clean(_ro(G("g1")))
+    finally:
+        globals()["REQUIRE_ROOT_ROLE"] = saved
+    eq(REQUIRE_ROOT_ROLE, False, "restored")
+
+
+@case("REC1", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
+def _():
+    fe(_ro(_rg("result", rec=REC, claim=None, root=("A.B", "foo"))),
+       [_fl("ROOT-ROLE", ": root_role on a group with a null claim (a role belongs to a claim)"),
+        _fl("RECOGNITION-NULL-CLAIM", ": recognition on a group with a null claim")], 1)
+    fe(_ro(_rg(None, rec=REC, claim=None)), [_fl("RECOGNITION-NULL-CLAIM", ": recognition on a group with a null claim")], 1)
+    clean(_ro(_rg("result", rec=REC)))
+
+
+@case("REC2", "recognition keys: an unknown key, an unknown form, a non-object, a missing form, reader or date, and an empty reader "
+              "are each refused naming the group and the key")
+def _():
+    p = ": recognition: "
+    fe(_ro(_rg(rec="known")), [_fl("BAD-VALUE", p + "must be an object")], 1)
+    fe(_ro(_rg(rec=dict(REC, extra=1))), [_fl("UNKNOWN-KEY", p + "unknown key 'extra'")], 1)
+    fe(_ro(_rg(rec=dict(REC, form="novel_form"))),
+       [_fl("BAD-VALUE", p + "form must be one of 'known', 'variant', 'not_recognised', 'open_in_literature', not 'novel_form'")], 1)
+    for k in ("form", "reader", "date"):
+        fe(_ro(_rg(rec=drop(REC, k))), [_fl("MISSING-KEY", p + f"missing key {k!r}")] if k != "form" else
+           [_fl("MISSING-KEY", p + "missing key 'form'")], 1)
+    fe(_ro(_rg(rec=dict(REC, reader=""))), [_fl("BAD-VALUE", p + "reader must be a non-empty string")], 1)
+    fe(_ro(_rg(rec=dict(REC, date=5))), [_fl("BAD-VALUE", p + "date must be a non-empty string")], 1)
+
+
+@case("REC3", "per form: known and variant need result and a citation (variant also difference; known may carry one); "
+              "not_recognised forbids result, citations and difference; control per form")
+def _():
+    p = ": recognition: "
+    clean(_ro(_rg(rec=REC)))
+    clean(_ro(_rg(rec=dict(REC, difference="It differs in the hypothesis."))))
+    var = dict(REC, form="variant", difference="It differs in the hypothesis.")
+    clean(_ro(_rg(rec=var)))
+    for k in ("result", "citations"):
+        fe(_ro(_rg(rec=drop(REC, k))), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'known')")], 1)
+        fe(_ro(_rg(rec=drop(var, k))), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'variant')")], 1)
+    fe(_ro(_rg(rec=drop(var, "difference"))), [_fl("MISSING-KEY", p + "missing key 'difference' (form 'variant')")], 1)
+    fe(_ro(_rg(rec=dict(REC, citations=[]))), [_fl("BAD-VALUE", p + "citations must hold at least one citation (form 'known')")], 1)
+    fe(_ro(_rg(rec=dict(REC, citations="x"))), [_fl("BAD-VALUE", p + "citations must be a list")], 1)
+    fe(_ro(_rg(rec=dict(REC, result=""))), [_fl("BAD-VALUE", p + "result must be a non-empty string")], 1)
+    fe(_ro(_rg(rec=dict(var, difference=""))), [_fl("BAD-VALUE", p + "difference must be a non-empty string")], 1)
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    clean(_ro(_rg(rec=nr)))
+    for k, v in (("result", "x"), ("citations", [CIT]), ("difference", "d")):
+        fe(_ro(_rg(rec=dict(nr, **{k: v}))), [_fl("RECOGNITION-FORBIDDEN", p + f"key {k!r} is not allowed with form 'not_recognised'")], 1)
+
+
+@case("REC4", "open_in_literature: needs result, a citation and a citation that says open; difference is optional; only for a "
+              "named_statement (refused on result, object and when root_role is absent, which says the role is needed)")
+def _():
+    p = ": recognition: "
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    root = ("A.C", "baz")
+    clean(_ro(_rg("named_statement", rec=op, root=root)))
+    clean(_ro(_rg("named_statement", rec=dict(op, difference="Stated as a problem."), root=root)))
+    for role, root_ in (("result", ("A.B", "foo")), ("object", root)):
+        fe(_ro(_rg(role, rec=op, root=root_)),
+           [_fl("OPEN-ROLE", p + f"form 'open_in_literature' needs root_role 'named_statement' (root_role is {role!r})")], 1)
+    fe(_ro(_rg(None, rec=op, root=root)),
+       [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"),
+        _fl("OPEN-ROLE", p + "form 'open_in_literature' needs root_role 'named_statement' (this group has no root_role: the role is needed)")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(op, citations=[CIT]), root=root)),
+       [_fl("OPEN-NO-SAYS-OPEN", p + "form 'open_in_literature' needs a citation with says_open true")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(op, citations=[dict(CIT, says_open=False, source_date="2020-01-31")]), root=root)),
+       [_fl("OPEN-NO-SAYS-OPEN", p + "form 'open_in_literature' needs a citation with says_open true")], 1)
+    for k in ("result", "citations"):
+        fe(_ro(_rg("named_statement", rec=drop(op, k), root=root)), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'open_in_literature')")], 1)
+
+
+@case("CIT1", "a citation: source, where, opened_by, opened_on are required non-empty strings; opened_on and source_date are real "
+              "YYYY-MM-DD dates; says_open exactly true or false; url starts https://; an unknown key is refused; each names the "
+              "group, the citation index and the key")
+def _():
+    c = ": recognition citations[1]: "
+
+    def two(cit):
+        return _ro(_rg(rec=dict(REC, citations=[CIT, cit])))
+    clean(two(dict(CIT, url="https://example.org/x", source_date="2019-12-31", says_open=False)))
+    fe(two("x"), [_fl("BAD-VALUE", ": recognition citations[1]: must be an object")], 1)
+    fe(two(dict(CIT, extra=1)), [_fl("UNKNOWN-KEY", c + "unknown key 'extra'")], 1)
+    for k in ("source", "where", "opened_by", "opened_on"):
+        fe(two(drop(CIT, k)), [_fl("MISSING-KEY", c + f"missing key {k!r}")], 1)
+        fe(two(dict(CIT, **{k: ""})), [_fl("BAD-VALUE", c + f"{k} must be a non-empty string")], 1)
+        fe(two(dict(CIT, **{k: 4})), [_fl("BAD-VALUE", c + f"{k} must be a non-empty string")], 1)
+    for bad in ("2026-02-30", "2026-2-3", "26-11-23", "2026/11/23", "2026-13-01", "2026-11-23 ", "٢026-11-23"):
+        fe(two(dict(CIT, opened_on=bad)), [_fl("BAD-VALUE", c + "opened_on must be a date YYYY-MM-DD")], 1)
+        fe(two(dict(CIT, source_date=bad)), [_fl("BAD-VALUE", c + "source_date must be a date YYYY-MM-DD")], 1)
+    clean(two(dict(CIT, opened_on="2024-02-29")))
+    for bad in (1, "true", None, "yes"):
+        fe(two(dict(CIT, says_open=bad)), [_fl("BAD-VALUE", c + "says_open must be true or false")], 1)
+    for bad in ("http://example.org", "example.org", "", 5):
+        fe(two(dict(CIT, url=bad)), [_fl("BAD-VALUE", c + "url must be a string starting https://")], 1)
+    fe(two(dict(CIT, says_open=True)), [_fl("MISSING-KEY", c + "missing key 'source_date' (says_open is true)")], 1)
+    clean(two(dict(CIT, says_open=False)))
+
+
+@case("WORD1", "novel and unprecedented, whole words in any case, in result or difference, are refused naming group, field and word; "
+               "once per word per field")
+def _():
+    def line(field, w):
+        return _fl("RECOGNITION-WORD-REFUSED", f": recognition {field}: {w!r} is never said of a statement")
+    var = dict(REC, form="variant", difference="d")
+    for w in ("novel", "unprecedented"):
+        fe(_ro(_rg(rec=dict(REC, result=f"A {w} result"))), [line("result", w)], 1)
+        fe(_ro(_rg(rec=dict(var, difference=f"It is {w.upper()}."))), [line("difference", w)], 1)
+        fe(_ro(_rg(rec=dict(REC, result=f"{w.capitalize()}, and {w} again"))), [line("result", w)], 1)
+    fe(_ro(_rg(rec=dict(var, result="Novel", difference="Unprecedented"))), [line("result", "novel"), line("difference", "unprecedented")], 1)
+
+
+@case("WORD2", "near misses are not refused: novelty, novels, unprecedentedly, and a word joined to others by an underscore or digit")
+def _():
+    for t in ("The novelty of it", "Novels", "unprecedentedly", "a_novel", "novel2", "2novel", "x_unprecedented"):
+        clean(_ro(_rg(rec=dict(REC, result=t))))
+
+
+@case("WORD3", "new, original, first, assume, assumes, assumed (whole words, any case) in result or difference are RECOGNITION-WORD "
+               "listings: exit 0, counted as warnings, naming group, field and word, once per word per field")
+def _():
+    def line(field, w):
+        return _fl("RECOGNITION-WORD", f": recognition {field}: {w!r} (a prompt to the signer and the reviewer, not a verdict)")
+    var = dict(REC, form="variant", difference="d")
+    for w in ("new", "original", "first", "assume", "assumes", "assumed"):
+        r = _ro(_rg(rec=dict(REC, result=f"The {w} statement")))
+        fe(r, [line("result", w)], 0)
+        eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", w)
+        fe(_ro(_rg(rec=dict(var, difference=f"{w.upper()} here, {w} again"))), [line("difference", w)], 0)
+    fe(_ro(_rg(rec=dict(var, result="New and first", difference="First, then new"))),
+       [line("result", "new"), line("result", "first"), line("difference", "first"), line("difference", "new")], 0)
+    fe(_ro(_rg(rec=dict(REC, result="Assumes, assume and assumed"))),
+       [line("result", "assumes"), line("result", "assume"), line("result", "assumed")], 0)
+
+
+@case("WORD4", "near misses are not listed: Newton, renewal, news, firstly, originality, original_x, assumption, reassumes, unassumed, "
+               "newer; a hyphen or an apostrophe is a word boundary")
+def _():
+    for t in ("Newton", "renewal", "news", "firstly", "originality", "original_x", "assumption", "reassumes", "unassumed", "newer",
+              "3new", "first2"):
+        clean(_ro(_rg(rec=dict(REC, result=t))))
+    fe(_ro(_rg(rec=dict(REC, result="a non-new thing"))), [_fl("RECOGNITION-WORD", ": recognition result: 'new' (a prompt to the signer and the reviewer, not a verdict)")], 0)
+    fe(_ro(_rg(rec=dict(REC, result="Hardy's first"))), [_fl("RECOGNITION-WORD", ": recognition result: 'first' (a prompt to the signer and the reviewer, not a verdict)")], 0)
+
+
+@case("WORD5", "a word inside a single-backtick span IS checked (a span is code, but a person reads the word): `new` lists, `novel` "
+               "refuses; the words are looked for only in result and difference, not in source, where or reader")
+def _():
+    fe(_ro(_rg(rec=dict(REC, result="The `new` lemma"))),
+       [_fl("RECOGNITION-WORD", ": recognition result: 'new' (a prompt to the signer and the reviewer, not a verdict)")], 0)
+    fe(_ro(_rg(rec=dict(REC, result="The `novel` lemma"))),
+       [_fl("RECOGNITION-WORD-REFUSED", ": recognition result: 'novel' is never said of a statement")], 1)
+    clean(_ro(_rg(rec=dict(REC, citations=[dict(CIT, source="New novel original", where="First, assumed")], reader="New", date="2026-11-23"))))
+
+
+@case("EST1", "established is 'not_traced' or an object {by, reader, date}; by resolves to exactly one row whose kind is theorem or "
+              "lemma; an unknown key, a missing key, a bad by, an unresolved or ambiguous by and a wrong kind are refused; it is "
+              "allowed under any form, for a named_statement only")
+def _():
+    root = ("A.C", "baz")
+    p = ": recognition established: "
+    est = {"by": R("A.B", "foo"), "reader": "R", "date": "2026-11-23"}
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    clean(_ro(_rg("named_statement", rec=dict(REC, established="not_traced"), root=root)))
+    clean(_ro(_rg("named_statement", rec=dict(REC, established=est), root=root)))
+    clean(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by=R("A.E", "lem"))), root=root)))
+    for form_rec in (dict(nr, established="not_traced"), dict(nr, established=est),
+                     dict(REC, form="variant", difference="d", established=est)):
+        clean(_ro(_rg("named_statement", rec=form_rec, root=root)))
+    fe(_ro(_rg("named_statement", rec=dict(REC, established="traced"), root=root)),
+       [_fl("BAD-VALUE", p + "must be the string 'not_traced' or an object")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=3), root=root)),
+       [_fl("BAD-VALUE", p + "must be the string 'not_traced' or an object")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, extra=1)), root=root)),
+       [_fl("UNKNOWN-KEY", p + "unknown key 'extra'")], 1)
+    for k in ("by", "reader", "date"):
+        fe(_ro(_rg("named_statement", rec=dict(REC, established=drop(est, k)), root=root)), [_fl("MISSING-KEY", p + f"missing key {k!r}")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, reader="")), root=root)),
+       [_fl("BAD-VALUE", p + "reader must be a non-empty string")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by="A.B.foo")), root=root)),
+       [_fl("BAD-VALUE", ": recognition established by: must be an object with non-empty string module and name")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by=R("A.B", "nope"))), root=root)),
+       [_fl("UNRESOLVED", " recognition established by A.B nope: no row in decls.tsv")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by=R("A.D", "dup"))), root=root)),
+       [_fl("AMBIGUOUS", " recognition established by A.D dup: 2 rows; candidates (first_line, last_line): (1, 3), (7, 9)")], 1)
+    for by, kind in ((R("A.C", "baz"), "def"), (R("A.E", "stru"), "structure"), (R("A.E", "ind"), "inductive"), (R("A.E", "mys"), "")):
+        fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by=by)), root=root)),
+           [_fl("ESTABLISHED-KIND", f": recognition established by {by['module']} {by['name']} has kind {kind!r} (a theorem or lemma is needed)")], 1)
+
+
+@case("EST2", "established on a group whose root_role is not named_statement is refused (result, object, or absent: the role is needed)")
+def _():
+    p = ": recognition: established is only for root_role 'named_statement' ("
+    est = {"by": R("A.B", "foo"), "reader": "R", "date": "2026-11-23"}
+    fe(_ro(_rg("result", rec=dict(REC, established="not_traced"))), [_fl("ESTABLISHED-ROLE", p + "root_role is 'result')")], 1)
+    fe(_ro(_rg("object", rec=dict(REC, established=est), root=("A.C", "baz"))), [_fl("ESTABLISHED-ROLE", p + "root_role is 'object')")], 1)
+    fe(_ro(_rg(None, rec=dict(REC, established="not_traced"))),
+       [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"),
+        _fl("ESTABLISHED-ROLE", p + "this group has no root_role: the role is needed)")], 1)
+
+
+def _rl(k, v, n, o, m, g):
+    return f"recognition: {k} known, {v} variant, {n} not recognised, {o} open in literature, {m} not written, of {g} groups with a claim"
+
+
+@case("RUN1", "the run prints `recognition: K known, V variant, N not recognised, O open in literature, M not written, of G groups "
+              "with a claim`, counted by the tool, right after the `claim basis:` line; a claim with no recognition counts M; "
+              "a null claim counts in none")
+def _():
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    var = dict(REC, form="variant", difference="d")
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    r = _ro(_rg(rec=REC), _rg(rec=var, gid="g2", order=2), _rg("named_statement", rec=nr, gid="g3", order=3, root=("A.C", "baz")),
+            _rg("named_statement", rec=op, gid="g4", order=4, root=("A.C", "baz")), _rg(gid="g5", order=5), _rg(rec=REC, gid="g6", order=6),
+            G("g7", order=7))
+    fe(r, [], 0)
+    ok(_rl(2, 1, 1, 1, 1, 6) in r.lines, r.out)
+    i = r.lines.index(_rl(2, 1, 1, 1, 1, 6))
+    ok(r.lines[i - 1].startswith("claim basis: "), r.out)
+    r = _ro(G("g1"))
+    ok(_rl(0, 0, 0, 0, 0, 0) in r.lines, r.out)
+    r = _ro(_rg(None))
+    ok(_rl(0, 0, 0, 0, 1, 1) in r.lines, r.out)
+    r = _ro(_rg(rec=dict(REC, form="nonsense")))
+    ok(_rl(0, 0, 0, 0, 1, 1) in r.lines, "an unusable form counts as not written: " + r.out)
+
+
+@case("RUN2", "the sum K + V + N + O + M = G is asserted: a count that does not add up is SUM-RECOGNITION, exit 1, planted through the "
+              "counting function's input; the counting function counts each of the five forms")
+def _():
+    eq(_recognition_counts(["known", "variant", "not_recognised", "open_in_literature", None, None]), (1, 1, 1, 1, 2, 6), "counts")
+    eq(_recognition_sum_finding(["known", "open_in_literature", None]), None, "an honest list")
+    f = _recognition_sum_finding(["known", "bogus", None])
+    eq(f and (f[0], f[4]), ("SUM-RECOGNITION", ERROR), "planted")
+    eq(f and f[3], "1 known + 0 variant + 0 not recognised + 0 open in literature + 1 not written is 2, not 3 groups with a claim", "text")
+    eq(_recognition_sum_finding([]), None, "empty")
+
+
+@case("LIST1", "a listing (ROOT-ROLE-MISSING, RECOGNITION-WORD) never changes the exit code and an error beside it still exits 1; "
+               "the note-level and per-note lines are unchanged")
+def _():
+    r = _ro(_rg(None, rec=dict(REC, result="The new thing")))
+    eq((r.rc, [x.split(" ")[0] for x in r.f]), (0, ["ROOT-ROLE-MISSING", "RECOGNITION-WORD"]), "listings")
+    eq(r.lines[-1], "1 notes, 0 findings, 2 warnings", "count")
+    ok("note 01 header ok, blocks 0" in r.lines, r.out)
+    r = _ro(_rg("result", rec=dict(REC, result="The new thing"), root=("A.B", "nope")))
+    eq((r.rc, [x.split(" ")[0] for x in r.f]), (1, ["UNRESOLVED", "RECOGNITION-WORD"]), "an error beside a listing")
+
+
 @case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "
                "in line order")
 def _():
