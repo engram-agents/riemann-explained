@@ -13,6 +13,7 @@ usage: formula_oracle.py --run FORMULAS_FILE [FORMULAS_FILE ...]   (needs pandoc
 import html.parser
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 
@@ -134,11 +135,18 @@ def compare(formulas, pandoc_of):
     return rows, agree, both, agree_ns, unsup
 
 
+def _has_capital_greek(formula):
+    return any(n in bs.FORMULA_COMMANDS for n in re.findall(r"\\([A-Z][a-z]*)", formula))
+
+
 def report(formulas, pandoc_of, version):
     rows, agree, both, agree_ns, unsup = compare(formulas, pandoc_of)
     out = [f"oracle: {version}; converter own-subset-{bs.FORMULA_VERSION} ({len(bs.FORMULA_COMMANDS)} commands); corpus {len(formulas)} formulas",
            f"converted by ours: {both} of {len(formulas)}; unsupported by ours: {len(unsup)}",
            f"agree {agree} of {both} (structure: tags only, attributes and text dropped); agree {agree_ns} of {both} with <mspace> ignored on both sides"]
+    caps = [f for f in formulas if _has_capital_greek(f)]
+    out.append(f"attribute difference, not a structure difference (so not counted above): {len(caps)} formulas hold a capital Greek letter; ours writes "
+               "<mi mathvariant=normal>, pandoc a plain <mi>: ours right (TeX sets capital Greek upright, MathML would slant a lone <mi>)")
     for f in unsup:
         out.append(f"UNSUPPORTED {f}")
     for f, ours, theirs, ok in rows:
@@ -170,6 +178,7 @@ def _fake(formula):
         "$a + b$": wrap("<mrow><mi>a</mi><mo>+</mo><mi>b</mi></mrow>", "a + b"),
         "$\\max(a)$": wrap('<mrow><mo>max</mo><mrow><mo stretchy="true" form="prefix">(</mo><mi>a</mi><mo stretchy="true" form="postfix">)</mo></mrow></mrow>',
                            "\\max(a)"),
+        "$\\Gamma$": wrap("<mi>Γ</mi>", "\\Gamma"),
         "$\\foo$": None,
     }
     return rec[formula]
@@ -194,12 +203,14 @@ def selftest():
     check("attributes do not count: <mi> and <mi mathvariant> are the same structure",
           flat(normalise(tree('<math><mi mathvariant="normal">x</mi></math>'))), "math(mi)")
     check("ours: x^2", flat(ours_structure("x^2")), "math(msup(mi,mn))")
-    fs = ["$x$", "$x^2$", "$a + b$", "$\\max(a)$", "$\\foo$"]
+    fs = ["$x$", "$x^2$", "$a + b$", "$\\max(a)$", "$\\Gamma$", "$\\foo$"]
     out = report(fs, _fake, "recorded pandoc output")
-    check("summary: 4 converted of 5, agree 3 of 4", out[1:3], [
-        "converted by ours: 4 of 5; unsupported by ours: 1",
-        "agree 3 of 4 (structure: tags only, attributes and text dropped); agree 3 of 4 with <mspace> ignored on both sides"])
-    body = [ln for ln in out[3:] if not ln.startswith("  ours") and not ln.startswith("  pandoc")]
+    check("summary: 5 converted of 6, agree 4 of 5", out[1:3], [
+        "converted by ours: 5 of 6; unsupported by ours: 1",
+        "agree 4 of 5 (structure: tags only, attributes and text dropped); agree 4 of 5 with <mspace> ignored on both sides"])
+    check("the capital Greek line counts the formulas that hold one", out[3].split(":")[0] + out[3].split(";")[0][-40:],
+          "attribute difference, not a structure difference (so not counted above): 1 formulas hold a capital Greek letter")
+    body = [ln for ln in out[4:] if not ln.startswith("  ours") and not ln.startswith("  pandoc")]
     check("the unsupported formula and the differing one are listed, each with a reason (a named function and fences)",
           (body[:2], "named function" in body[2] and "fences" in body[2] and body[2].startswith("  why:    ")),
           (["UNSUPPORTED $\\foo$", "DIFF $\\max(a)$"], True))

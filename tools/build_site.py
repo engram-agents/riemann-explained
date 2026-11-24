@@ -203,7 +203,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      FORMULA_COMMANDS (67 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
      `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
      formula, marks included>`; nothing is refused. Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
-     minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command, \\max \\min \\log \\cos
+     minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command (the 11 capitals with mathvariant="normal", upright as TeX sets them; the page CSS gives a lone <mi> `text-transform: none; font-style: italic` and the normal variant upright), \\max \\min \\log \\cos
      <mi mathvariant="normal">, \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
      brace group (`x^10` is x^1 then 0), a prime is the msup of <mo>U+2032</mo>, a prime then a superscript are ONE msup (`r'^{-k}`), `\\bar`
      takes one token or one group (a mover over U+00AF), \\mathrm{..} and \\operatorname{..} give one <mi mathvariant="normal"> per word,
@@ -1493,7 +1493,9 @@ CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family
        ".frame { font-style: italic; }\n"
        "ul.chain, ul.children { list-style: none; padding-left: 0; }\n"
        "aside { border-left: 4px double; padding-left: 0.5rem; }\n"
-       "code { overflow-wrap: anywhere; }")
+       "code { overflow-wrap: anywhere; }\n"
+       "mi { text-transform: none; font-style: italic; }\n"   # a lone <mi> must not be mapped to the math-italic block, which no common font has
+       'mi[mathvariant="normal"] { font-style: normal; }')
 
 
 def _e(x):
@@ -1677,8 +1679,8 @@ class _TexParser:
 
     def command(self, name):
         kind, val = FORMULA_COMMANDS[name]
-        if kind == "mi":
-            return f"<mi>{val}</mi>"
+        if kind == "mi":   # TeX sets a capital Greek letter upright; MathML would slant a lone <mi>
+            return f'<mi mathvariant="normal">{val}</mi>' if name[0].isupper() else f"<mi>{val}</mi>"
         if kind == "mo":
             return _mo(val)
         if kind == "fn":
