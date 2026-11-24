@@ -205,8 +205,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      formula, marks included>`; nothing is refused. Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
      minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command (the 11 capitals with mathvariant="normal", upright as TeX sets them; the page CSS gives a lone <mi> `text-transform: none; font-style: italic` and the normal variant upright), \\max \\min \\log \\cos
      <mi mathvariant="normal"> (after \\operatorname and these, and their scripts, a thin <mspace> when an identifier, number, group, Greek letter or another function follows in the group: TeX's rule), \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
-     brace group (`x^10` is x^1 then 0), a prime is FLAT right after its base (<mo stretchy="false">U+2032</mo>; with a script, the base and its primes are an <mrow>
-     that takes it: `r'^{-k}`), the `|` signs of one group pair in order (prefix, postfix; an odd one stays flat), `\\bar`
+     brace group (`x^10` is x^1 then 0), a prime is U+2032 INSIDE the token of a one-token <mi> base (`L'` is <mi>L′</mi>; a flat <mo>
+     sat in the top stroke of a zeta and an <msup> floated it away, as a browser look showed), a base that is no one-token <mi> keeps a flat
+     <mo stretchy="false">, and a script after a primed base starts with a thin <mspace> (`r'^{-k}`), the `|` signs of one group pair in order (prefix, postfix; an odd one stays flat), `\\bar`
      takes one token or one group (<mover accent="true"> over a stretchy U+2015, which renders a full-width overline), \\mathrm{..} and \\operatorname{..} give one <mi mathvariant="normal"> per word,
      \\bigl \\bigr \\big give the delimiter alone, `\\,` `\\;` `\\ ` `\\!` are an <mspace> of width 0.167em, 0.278em, 0.222em, -0.167em
      and a plain space is nothing, a `{}` is an empty <mrow>, a literal non-ASCII letter is <mi>, a symbol or punctuation mark <mo>, any

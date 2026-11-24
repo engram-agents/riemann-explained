@@ -96,8 +96,9 @@ RULES = (
     ("\\log", "named function: pandoc <mo>, ours <mi mathvariant=normal>: ours right"),
     ("\\cos", "named function: pandoc <mo>, ours <mi mathvariant=normal>: ours right"),
     ("\\mathrm", "\\mathrm: pandoc one <mi> per letter, ours one <mi mathvariant=normal> per word (F26B choice): ours right"),
-    ("'", "prime: pandoc writes the prime as a sibling <mi>, ours as a flat sibling <mo stretchy=false> (a symbol, not an identifier), and with a script as an <mrow> "
-          "that takes it (pandoc puts a script on the prime alone): ours right"),
+    ("'", "prime: pandoc writes the prime as a sibling <mi>′</mi> (and, before a script, puts the script on the prime alone); ours puts U+2032 inside the "
+          "token of its base (<mi>ζ′</mi>), so the tag tree has one element fewer per prime: ours right (a browser look showed a sibling prime lost in "
+          "the stroke of a zeta); a script after a primed base starts with a thin <mspace> in ours"),
     ("\\infty", "\\infty: pandoc <mi>, F26B says <mo>; MathML practice is <mi>: pandoc right, F26B text to be revisited"),
     ("(", "fences: pandoc groups `( .. )` in an <mrow>, so a script after `)` sits on the whole group; ours is flat (the script sits on `)`, as TeX "
           "sets it, and our brackets are not stretchy): same rendering, pandoc's tree richer, ours chosen"),
