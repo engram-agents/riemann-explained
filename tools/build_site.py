@@ -110,6 +110,13 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      page is not compared inside <code>, so a wrapped release line is found in the JSON files, not on the page. Doubled
      backticks, an unpaired backtick and a pair over a line break are not spans and are compared as written. Cases TITLE1
      TITLE2 SPAN1 SPAN2 SPAN3 SPAN4.
+  F44 EDITION. A group at edition 2 (outline `edition` 2 with `edition_date`, checked by notes_meta) is shown as such: group/<id>.json and
+     data.js carry `edition` (null, or {number: 2, date}), manifest counts gain `editions`, the first screen gets ONE paragraph after the
+     first_screen ones (`edition_note_first_screen`, {date} the LATEST edition_date, {link} an `<a class="edition-link">` to
+     `edition_href_tree`), and each such card gets ONE paragraph in its Evidence section, after the summary (`edition_note_card`, its own
+     date, {link} to `edition_href_blob` with {file} = outline/outline.json). The two addresses must be https and are no sentences. The static
+     check exempts `<a class=edition-link href=https://...>` by class token. A page with no group at edition 2 is byte-equal to before. Cases
+     ED1 to ED11 (ED10 and ED11: the marker case that ties notes_meta's EDITION_TEXT_FIELDS to what the page prints).
   F28 BLOCK TEXT GOES THROUGH THE SAME RULE. The text of an argument or interpretation block (the evidence list) and the first
      sentence of an argument block (the card) are rendered by the span rule, the frame staying escaped text. The block text is
      ONE paragraph, its source lines joined by spaces before the rule is applied, so a span that runs over a source line break

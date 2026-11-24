@@ -113,6 +113,23 @@ CONTRACT (each line is a self-test case, written before the code)
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
+ Edition of a rewritten text (F44, Q6; cases E21a to E21c, E22, E23a to E23t). A group may carry `edition` (the integer 1 or 2; absent is 1)
+ and `edition_date`. `edition` of 0, a negative, a boolean, a string or a float is BAD-VALUE naming the group and the key, and 3 or more is
+ BAD-VALUE `edition 3 needs a ruling`. `edition_date` is a real date YYYY-MM-DD not later than the day of the run (--today, else the clock's
+ UTC date), required at edition 2 and refused at edition 1 or absent. EDITION_TEXT_FIELDS is the one definition of the reader-facing text of
+ a group: claim.text, claim.conditions, recognition.result, .difference, .note, each citation's where, source and source_date, and
+ `recognition.established` (the string not_traced, or the root it names). The page prints exactly these outside its Evidence section (the
+ builder's marker case, ED10 and ED11, ties the list to the page); what only Evidence prints (reader, date, who opened a source, the
+ established line's reader and date) and what orders or wires the groups (premises, roots, order, parent, level) are not text. With --base
+ REV the outline at REV is read with `git cat-file blob REV:<path of the outline in the repository>` and each group is compared with its
+ own at REV, edition absent = 1: text changed with edition 2 and a date is the listing `EDITION <id> fields <paths sorted, comma-separated>,
+ edition 1 to 2, <date>`; text changed with no bump is OUTLINE-CHANGED; edition 2 and nothing changed is EDITION-EMPTY; a group at edition 2 at
+ REV may not change text (OUTLINE-CHANGED), date (EDITION-DATE-CHANGED) or edition (EDITION-DOWN; 3 is BAD-VALUE); edition 2 on a group not in
+ the outline at REV is EDITION-NEW-GROUP; a group at REV and not now is the listing GROUP-GONE. An outline at REV that is missing, not JSON or
+ has no groups list, and an outline outside the repository, are one OUTLINE-BASE listing and the rule does not run. Listings never change
+ the exit code; the refusals do. The summary has `edition check: N groups compared to REV` (or `did not run`) and `editions: J of M groups at
+ edition 2` (counted from the current outline, with or without --base).
+
  Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
   F1 root_role is `result`, `named_statement` or `object` (any other value, or a non-string, is ROOT-ROLE) and belongs to a claim (on
