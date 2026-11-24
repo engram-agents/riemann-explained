@@ -8372,8 +8372,8 @@ def _selftest_cases():
                     ["The statement bundle is defined as: Claim of the bundle"], True))
 
     @case("TT17", "F48 (i): the claim in the paragraph is rendered as a claim is: a formula `$x^2$` is MathML in the paragraph and in no heading, a "
-                  "backtick span is <code> there; the formula listing names the card id for an unsupported formula in that claim, as when the "
-                  "claim was in the heading; the formula count counts it once")
+                  "backtick span is <code> there; an unsupported formula in that claim is on the reader's surface, so it refuses the build (FORMULA-RAW, "
+                  "naming the card id, exit 1), as when the claim was in the heading; the formula count counts it once")
     def _():
         b = _build(outline=stmt_outline("Claim of $x^2$ with `code`"), decls=FACES_DECLS, notes=FACES_NOTES)
         par = re.search(r'(<p class="definition-statement">The window set \(Input 2\)[^\n]*</p>)\n', b.page).group(1)
@@ -8381,10 +8381,10 @@ def _selftest_cases():
         u = _build(outline=stmt_outline(r"Claim of $\frac{1}{2}$ here"), decls=FACES_DECLS, notes=FACES_NOTES)
         return _eq((b.rc, par, len(c.find("h3", "claim")[0].find("math")), len(c.find("p", "definition-statement")[0].find("math")),
                     [x.text() for x in c.find("p", "definition-statement")[0].find("code")],
-                    u.rc, [x for x in u.out.splitlines() if x.startswith("FORMULA-")]),
+                    u.rc, [x for x in u.out.splitlines() if x.startswith(("FORMULA-", "BUILD-ERROR FORMULA-RAW"))]),
                    (0, '<p class="definition-statement">The window set (Input 2) is defined as: Claim of '
                        '<math><msup><mi>x</mi><mn>2</mn></msup></math> with <code>code</code></p>', 0, 1, ["code"],
-                    0, ["FORMULA-UNSUPPORTED fc $\\frac{1}{2}$"]))
+                    1, ["BUILD-ERROR FORMULA-RAW fc outline/outline.json group fc: $\\frac{1}{2}$"]))
 
     @case("TT18", "F48 (i): a definition card with NO claim (fd) has the heading `Definition. {Title}`, then the no_claim_label line directly under it "
                   "(TT8 pins the order with premises), and no `is defined as` and no definition-join anywhere in the card; the only places `is defined "
