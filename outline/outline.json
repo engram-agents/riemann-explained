@@ -42,7 +42,7 @@
    "root_role": "result",
    "recognition": {
     "form": "variant",
-    "result": "The Riemann Hypothesis follows once $\\zeta$ has no zero with real part above $1/2$: by the functional equation, the zeros in the critical strip are symmetric about the critical line.",
+    "result": "the symmetry of the zeros of $\\zeta$ about the critical line, from the functional equation",
     "citations": [
      {
       "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 10",
@@ -52,7 +52,7 @@
       "opened_on": "2026-11-24"
      }
     ],
-    "difference": "The book states the symmetry of the zeros and states the Riemann Hypothesis; it does not write this implication down as a separate result, it is immediate from the symmetry. The library takes its hypothesis for every Dirichlet character and uses it for the character of modulus 1 only. Its conclusion is Mathlib's `RiemannHypothesis`, which is about zeros of $\\zeta$ other than the trivial zeros $-2, -4, \\dots$ and other than the point $1$, and the proof works with Mathlib's functional equation for $\\zeta$ itself, not with $\\xi$; it treats every $s$ with $\\operatorname{Re} s < 1/2$ at once, the trivial zeros showing up as zeros of the cosine factor, where the book's symmetry is stated for the zeros of $\\xi$.",
+    "difference": "The Riemann Hypothesis follows once $\\zeta$ has no zero with real part above $1/2$: by the functional equation, the zeros in the critical strip are symmetric about the critical line. The book states the symmetry of the zeros and states the Riemann Hypothesis; it does not write this implication down as a separate result, it is immediate from the symmetry. The library takes its hypothesis for every Dirichlet character and uses it for the character of modulus 1 only. Its conclusion is Mathlib's `RiemannHypothesis`, which is about zeros of $\\zeta$ other than the trivial zeros $-2, -4, \\dots$ and other than the point $1$, and the proof works with Mathlib's functional equation for $\\zeta$ itself, not with $\\xi$; it treats every $s$ with $\\operatorname{Re} s < 1/2$ at once, the trivial zeros showing up as zeros of the cosine factor, where the book's symmetry is stated for the zeros of $\\xi$.",
     "reader": "Kepler",
     "date": "2026-11-24"
    }
@@ -158,7 +158,7 @@
    "root_role": "result",
    "recognition": {
     "form": "variant",
-    "result": "The $L$-function of a Dirichlet character is the $L$-function of the primitive character that induces it, times a finite product of factors $1 - \\chi^*(p)\\,p^{-s}$ over the primes dividing the modulus; so the two have the same zeros off the imaginary axis.",
+    "result": "the factorisation of a Dirichlet $L$-function through the primitive character that induces it",
     "citations": [
      {
       "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 10",
@@ -168,7 +168,7 @@
       "opened_on": "2026-11-24"
      }
     ],
-    "difference": "The book speaks of the zeros of the two functions. The library states non-vanishing: if no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then none of any character does, except that for the trivial character the point $s = 1$ is left out, where $\\zeta$ has its pole. The hypothesis itself leaves no point out (see this step's condition). The product runs over the primes dividing the modulus, as in the book; the library takes it from Mathlib's `LFunction_changeLevel`.",
+    "difference": "The $L$-function of a Dirichlet character is the $L$-function of the primitive character that induces it, times a finite product of factors $1 - \\chi^*(p)\\,p^{-s}$ over the primes dividing the modulus; so the two have the same zeros off the imaginary axis. The book speaks of the zeros of the two functions. The library states non-vanishing: if no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then none of any character does, except that for the trivial character the point $s = 1$ is left out, where $\\zeta$ has its pole. The hypothesis itself leaves no point out (see this step's condition). The product runs over the primes dividing the modulus, as in the book; the library takes it from Mathlib's `LFunction_changeLevel`.",
     "reader": "Kepler",
     "date": "2026-11-24"
    }
@@ -761,7 +761,7 @@
    "root_role": "result",
    "recognition": {
     "form": "variant",
-    "result": "Landau's theorem on Dirichlet series with non-negative coefficients, in its error-term form: a one-sided bound $x^\\theta$ on an error term rules out zeros to the right of $\\theta$.",
+    "result": "Landau's theorem on Dirichlet series with non-negative coefficients, in its error-term form",
     "citations": [
      {
       "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 1",
@@ -778,7 +778,7 @@
       "opened_on": "2026-11-24"
      }
     ],
-    "difference": "The book states this as an oscillation result for $\\zeta$ alone: Theorem 15.2 says $\\psi(x) - x = \\Omega_\\pm(x^{\\Theta - \\varepsilon})$ for every $\\varepsilon > 0$, where $\\Theta$ is the supremum of the real parts of the zeros of $\\zeta$, and the library's form is the contrapositive of its $\\Omega_+$ half. The book assumes the bound for all large $x$ and takes the error term $\\psi(x) - x$ of one function; the library assumes it only on windows $[Y, Y^{1+\\delta}]$ for arbitrarily large $Y$, for a weighted sum over a family of characters of the smoothed sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with main terms removed. The textbook proof also expands at a fixed point, but it sums the whole Taylor series and rearranges it, which uses the sign for all large $x$; the library's proof uses one coefficient of high order at a time, whose weight lies in a single window up to a small tail. The book's proof of Lemma 15.1 is one sentence: the proof of Theorem 1.7 \"can be adapted\".",
+    "difference": "In that form, a one-sided bound $x^\\theta$ on an error term rules out zeros to the right of $\\theta$. The book states this as an oscillation result for $\\zeta$ alone: Theorem 15.2 says $\\psi(x) - x = \\Omega_\\pm(x^{\\Theta - \\varepsilon})$ for every $\\varepsilon > 0$, where $\\Theta$ is the supremum of the real parts of the zeros of $\\zeta$, and the library's form is the contrapositive of its $\\Omega_+$ half. The book assumes the bound for all large $x$ and takes the error term $\\psi(x) - x$ of one function; the library assumes it only on windows $[Y, Y^{1+\\delta}]$ for arbitrarily large $Y$, for a weighted sum over a family of characters of the smoothed sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with main terms removed. The textbook proof also expands at a fixed point, but it sums the whole Taylor series and rearranges it, which uses the sign for all large $x$; the library's proof uses one coefficient of high order at a time, whose weight lies in a single window up to a small tail. The book's proof of Lemma 15.1 is one sentence: the proof of Theorem 1.7 \"can be adapted\".",
     "reader": "Halley",
     "date": "2026-11-24"
    }
@@ -963,7 +963,8 @@
    "claim": {
     "basis": "census",
     "conditions": [
-     "Counted by a regex over the structure's field lines, not by a parse: 46 field lines, 16 of them containing `Closed`."
+     "Counted by a regex over the structure's field lines, not by a parse: 46 field lines, 16 of them containing `Closed`.",
+     "`HypsAlt` is a structure that holds data (a family class, a selection, the functions `cT` and `c30`, and the number `cIc`) together with conditions on that data; that the structure holds means that such data exist, and a step that uses it takes those conditions as hypotheses."
     ],
     "conventions_checked": [
      "e"
@@ -994,7 +995,7 @@
      "name": "GlobalTheory.Fc.HypsAlt"
     }
    ],
-   "root_role": "object"
+   "root_role": "named_statement"
   },
   {
    "claim": null,
