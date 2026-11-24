@@ -13,6 +13,7 @@
  "statement_not_read_line": "Statement: not read yet.",
  "proof_read_line": "Proof read by {reader} on {date}.",
  "proof_not_read_line": "Proof: not read yet.",
+ "proof_not_applicable_line": "Proof: none needed. This step is a definition, not a theorem: it gives a name to a statement (or to a kind of object) and does not claim that the statement is true, so there is no proof to read.",
  "statement_count_line": "Statements read: {n} of {m} named Lean results.",
  "proof_count_line": "Proofs read: {n} of {m} named Lean results.",
  "open_items_line": "Open questions written down in our notes for this step: {n}.",
