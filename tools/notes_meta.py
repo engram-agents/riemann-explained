@@ -100,7 +100,8 @@ CONTRACT (each line is a self-test case, written before the code)
      and root_role `result` or `named_statement` (OPEN-ROLE on `object`, also when the role is absent). An unknown key, an unknown form and a missing key
      are UNKNOWN-KEY, BAD-VALUE and MISSING-KEY naming the group and the key.
   F3 A citation has source, where, opened_by, opened_on (non-empty strings) and optionally url (starts https://), source_date and
-     says_open (exactly true or false); opened_on and source_date are real YYYY-MM-DD dates; says_open true needs source_date.
+     says_open (exactly true or false); opened_on is a real YYYY-MM-DD date; source_date is a real YYYY, YYYY-MM or YYYY-MM-DD (year 0 refused, no padding: a year stays
+     a year); says_open true needs source_date.
   F4 Words of `result` and `difference`, whole words in any case: novel and unprecedented are RECOGNITION-WORD-REFUSED (an error);
      new, original, first, assume, assumes, assumed are RECOGNITION-WORD listings, once per word per field.
   F5 `established` is the string `not_traced` or {by: {module, name}, reader, date}; by resolves to exactly one row (UNRESOLVED,
@@ -199,8 +200,8 @@ Root role and recognition: the checker compares the role with the kind class and
 read it. REQUIRE_ROOT_ROLE is False because the real outline carries no root_role yet: until it does, a claim without one is a listing,
 and the constant is set to True in the step that adds the roles. RECOGNITION-WORD is a prompt to the signer and the reviewer, not a
 proof, and real names hold "first" and "original"; the words are looked for in `result` and `difference` only, and a word inside a
-single-backtick span IS checked (a span is code, but a person reads the words in it). A citation's `opened_on` and `source_date` are
-checked as calendar dates; whether the source says what the citation says it says, and `says_open`, are the reader's claim. `established`
+single-backtick span IS checked (a span is code, but a person reads the words in it). A citation's `opened_on` (a full date) and `source_date` (a year, a year and month, or a full date;
+year 0 is refused because the calendar the check uses starts at year 1) are checked as calendar dates; whether the source says what the citation says it says, and `says_open`, are the reader's claim. `established`
 is allowed under any form, for a named statement only; the checker verifies that the declaration `by` exists and is a theorem or lemma,
 and that its conclusion is the named statement is the reader's claim. A recognition whose form is missing or unknown counts as not
 written in the run line (it is also its own finding). `reader`, `date`, `result`, `difference`, `source` and `where` need only be
@@ -278,6 +279,7 @@ REFUSED_WORDS = ("novel", "unprecedented")
 LISTED_WORDS = ("new", "original", "first", "assume", "assumes", "assumed")
 _REC_WORDS = re.compile(r"(?<![A-Za-z0-9_])(" + "|".join(REFUSED_WORDS + LISTED_WORDS) + r")(?![A-Za-z0-9_])", re.I)
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_SOURCE_DATE = re.compile(r"[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?")   # YYYY, YYYY-MM or YYYY-MM-DD (F24: a book's only date is its year)
 CLAIM_REQUIRED = ("text", "reader", "date", "defs_opened", "conventions_checked")
 CLAIM_OPTIONAL = ("conditions", "mathlib_read", "basis")
 CLAIM_BASIS = ("read", "census")
@@ -498,6 +500,18 @@ def _is_date(v):
     return True
 
 
+def _is_source_date(v):
+    """A source_date: YYYY, YYYY-MM or YYYY-MM-DD, each a real date. Year 0 is refused (the calendar here starts at year 1)."""
+    if not (isinstance(v, str) and _SOURCE_DATE.fullmatch(v)):
+        return False
+    y, m, d = int(v[:4]), int(v[5:7] or 1), int(v[8:10] or 1)
+    try:
+        datetime.date(y, m, d)
+    except ValueError:
+        return False
+    return True
+
+
 def _check_citation(c, where, path, out):
     if not isinstance(c, dict):
         out.append(_f("BAD-VALUE", path, None, f"{where}: must be an object"))
@@ -510,9 +524,10 @@ def _check_citation(c, where, path, out):
             out.append(_f("MISSING-KEY", path, None, f"{where}: missing key {k!r}"))
         elif not _str(c[k]):
             out.append(_f("BAD-VALUE", path, None, f"{where}: {k} must be a non-empty string"))
-    for k in ("opened_on", "source_date"):
-        if k in c and (k == "source_date" or _str(c[k])) and not _is_date(c[k]):
-            out.append(_f("BAD-VALUE", path, None, f"{where}: {k} must be a date YYYY-MM-DD"))
+    if "opened_on" in c and _str(c["opened_on"]) and not _is_date(c["opened_on"]):
+        out.append(_f("BAD-VALUE", path, None, f"{where}: opened_on must be a date YYYY-MM-DD"))
+    if "source_date" in c and not _is_source_date(c["source_date"]):
+        out.append(_f("BAD-VALUE", path, None, f"{where}: source_date must be a date YYYY, YYYY-MM or YYYY-MM-DD"))
     if "says_open" in c and not isinstance(c["says_open"], bool):
         out.append(_f("BAD-VALUE", path, None, f"{where}: says_open must be true or false"))
     if "url" in c and not (isinstance(c["url"], str) and c["url"].startswith("https://")):
@@ -2842,6 +2857,34 @@ def _():
        [_fl("ESTABLISHED-ROLE", p + "established is only for root_role 'named_statement' (root_role is 'result')")], 1)
 
 
+SD_MSG = "source_date must be a date YYYY, YYYY-MM or YYYY-MM-DD"
+
+
+@case("CIT1b", "source_date accepts YYYY, YYYY-MM and YYYY-MM-DD, each a real date (month 01-12, a day that exists, year 0 refused: "
+               "Python's calendar starts at year 1, and the spec does not say otherwise); 2006-13, 2006-02-30, 06, 20061124, an empty "
+               "string and non-strings are refused naming the key; 2024-02-29 is accepted and 2023-02-29 refused; opened_on stays a "
+               "full date, a year or a year-month there is refused; says_open true needs a source_date and a year is enough")
+def _():
+    c = " recognition citations[1]: "
+
+    def two(cit):
+        return _ro(_rg(rec=dict(REC, citations=[CIT, cit])))
+    for good in ("2006", "2006-11", "2006-11-24", "2024-02-29", "0001", "0001-01", "9999-12"):
+        clean(two(dict(CIT, source_date=good)))
+        clean(two(dict(CIT, source_date=good, says_open=True)))
+    for bad in ("2006-13", "2006-00", "2006-02-30", "2023-02-29", "2006-11-00", "06", "20061124", "200611", "", "0000", "0000-01",
+                "0000-01-01", "2006-1", "2006-11-2", " 2006", "2006 ", "2006-", "2006/11", 2006, None, True):
+        fe(two(dict(CIT, source_date=bad)), [_fl("BAD-VALUE", c + SD_MSG)], 1)
+    for bad in ("2006", "2006-11", "06", "0000-01-01"):
+        fe(two(dict(CIT, opened_on=bad)), [_fl("BAD-VALUE", c + "opened_on must be a date YYYY-MM-DD")], 1)
+    fe(two(dict(CIT, says_open=True)), [_fl("MISSING-KEY", c + "missing key 'source_date' (says_open is true)")], 1)
+    op = dict(REC, form="open_in_literature")
+    for sd in ("2006", "2006-11", "2006-11-24"):
+        clean(_ro(_rg("named_statement", rec=dict(op, citations=[dict(OPENCIT, source_date=sd)]), root=("A.C", "baz"))))
+    fe(_ro(_rg("named_statement", rec=dict(op, citations=[drop(OPENCIT, "source_date")]), root=("A.C", "baz"))),
+       [_fl("MISSING-KEY", " recognition citations[0]: missing key 'source_date' (says_open is true)")], 1)
+
+
 @case("CIT1", "a citation: source, where, opened_by, opened_on are required non-empty strings; opened_on and source_date are real "
               "YYYY-MM-DD dates; says_open exactly true or false; url starts https://; an unknown key is refused; each names the "
               "group, the citation index and the key")
@@ -2859,7 +2902,7 @@ def _():
         fe(two(dict(CIT, **{k: 4})), [_fl("BAD-VALUE", c + f"{k} must be a non-empty string")], 1)
     for bad in ("2026-02-30", "2026-2-3", "26-11-23", "2026/11/23", "2026-13-01", "2026-11-23 ", "٢026-11-23"):
         fe(two(dict(CIT, opened_on=bad)), [_fl("BAD-VALUE", c + "opened_on must be a date YYYY-MM-DD")], 1)
-        fe(two(dict(CIT, source_date=bad)), [_fl("BAD-VALUE", c + "source_date must be a date YYYY-MM-DD")], 1)
+        fe(two(dict(CIT, source_date=bad)), [_fl("BAD-VALUE", c + SD_MSG)], 1)
     clean(two(dict(CIT, opened_on="2024-02-29")))
     for bad in (1, "true", None, "yes"):
         fe(two(dict(CIT, says_open=bad)), [_fl("BAD-VALUE", c + "says_open must be true or false")], 1)
