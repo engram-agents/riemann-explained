@@ -163,7 +163,7 @@ theorem zeroFreeOn_of_tiedWin_cyc {Q : PChar → Prop} {la : ℝ} (hla : 1 < la)
 
 ### Added 2026-11-24: two proofs read since
 
-Since this note was written I have read more of two proofs that the list above gives as not read. On 2026-11-22 I read `windowInequality_of_artinInputs` (`Development/AutomorphicArithmetic/PrimitiveCosets/WindowInequalityOfArtinInputs.lean`, lines 17-25): it unpacks its hypotheses and applies the window bound `core_gm` ([note 9](09-the-window-bound.md)). On 2026-11-23 I read the whole proof of `formB` (`Imports.lean`, lines 8-19): it takes the level's family from `UpperTheory.Comparison₂.level_family`, rewrites with the two equations that come with it, and applies `Deduction.zeroFree_of_rpow_window` with δ = la − 1 and C = 1. Still not read: the proofs of `tiedCore_of_chainTied`, `level_family` and `zeroFree_of_rpow_window`.
+Since this note was written I have read more of two proofs that the list above gives as not read. On 2026-11-22 I read `windowInequality_of_artinInputs` (`Development/AutomorphicArithmetic/PrimitiveCosets/WindowInequalityOfArtinInputs.lean`, lines 17-25): it unpacks its hypotheses and applies the window bound `core_gm` ([note 9](09-the-window-bound.md)). On 2026-11-23 I read the whole proof of `formB` (`Imports.lean`, lines 8-19): it takes the level's family from `UpperTheory.Comparison₂.level_family`, rewrites with the two equations that come with it, and applies `Deduction.zeroFree_of_rpow_window` with $\delta = \mathrm{la} - 1$ and $C = 1$. Still not read: the proofs of `tiedCore_of_chainTied`, `level_family` and `zeroFree_of_rpow_window`.
 
 ## Files this note was written from
 
