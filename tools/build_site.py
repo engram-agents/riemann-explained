@@ -116,9 +116,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      is a span to the reader (an unpaired backtick, doubled backticks and an empty pair stay literal). The JSON and data.js keep
      the text and the first sentence as written. The source check removes span backticks from the `text` of a block and from a
      `first_sentence` on the JSON and data.js side, as for a claim (doubled backticks compare as written). A block whose text,
-     once the content of its single-backtick spans is taken out, holds `$`, `\\(`, `\\[` or `\\begin{` is LISTED, one line
-     `FORMULA-RAW <block id>` per block in note order, on stdout after KIND-NOTE; exit unchanged, nothing written. Formulas
-     are not converted here (F26 will). Cases BT1 BT2 BT3 BT4 BT5 BT6 BT7 BT8 FR1 FR2 FR3 FR4.
+     once the content of its single-backtick spans is taken out, holds a formula is converted or listed as F26B says (FORMULA-RAW is
+     retired: its cases FR1 to FR5 moved to the listings of F26B). Cases BT1 BT2 BT3 BT4 BT5 BT6 BT7 BT8 FR1 FR2 FR3 FR4.
   F24 THE RECOGNITION (F24b). group/<id>.json and the step summaries carry `root_role`, `root_kind`, `recognition` (null for a
      group with no claim; never in `counts`). A card with a claim shows, between its premises (a line, or a list) and its status lines, the form
      line `recognition_<role>_<form>_line` (role: root_role, else the class of the root's kind), the difference, a line per citation
@@ -131,13 +130,13 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      FN1 FN2 FN3 FN4.
   F25 THE SKETCH (F25b). group/<id>.json has `sketches`; the card shows the sketch after the argument, or the missing-sketch line
      when its proof is read and it has none; a sketch never sets proof_read; the run prints `sketches: S of P steps with a proof read`
-     (level-1 steps; SUM-SKETCH). FORMULA-RAW covers sketch text. Cases SK1 to SK8 FR3 FR5.
+     (level-1 steps; SUM-SKETCH). The formula listing covers sketch text. Cases SK1 to SK8 FR3 FR5.
   F35 BOLD AND NESTED ITEMS IN BLOCK TEXT. Where block text is rendered with links (argument, interpretation, the first sentence, sketch
      paragraphs, items and sub-items; not claims, conditions, titles or `unexpanded`), a pair of `**` on one line around text is
      <strong>, its content through the span rule; a span wins, links are taken out first; empty pairs, runs of three or more
      asterisks and pairs over a line break that remains after the paragraph join (source lines are joined by spaces first, as for
-     spans, F28) stay literal. A leftover `**` is listed `BOLD-UNPAIRED <block id>` (once per block, after
-     FORMULA-RAW; exit unchanged). In a sketch list the indented `- ` or `* ` lines of an item are one nested <ul> in its <li>; the
+     spans, F28) stay literal. A leftover `**` is listed `BOLD-UNPAIRED <block id>` (once per block, before
+     the FORMULA lines; exit unchanged). In a sketch list the indented `- ` or `* ` lines of an item are one nested <ul> in its <li>; the
      JSON item is {text, items}; a deeper level is flat and listed `NEST-DEPTH <block id>`. The source check removes the asterisks
      of a pair. CSS `code { overflow-wrap: anywhere; }`. Cases BD1 to BD8 NS1 to NS4 LB1 CW1.
   F37 PROVENANCE OFF THE READER'S SURFACE (a to c). No sentence of the card names a reader, a date of ours, a file, lines or a build:
@@ -193,6 +192,30 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      hand-picked pool of the allowed start tags and five end tags, one to three tokens before the payload; a second search put comment,
      CDATA, processing-instruction and doctype tokens in front of an <img onerror> after the real <body>) and is not part of this
      repository. Cases EL1 to EL9.
+  F26B FORMULAS. A formula `$...$` on ONE line (after the code spans are masked and the link targets taken out; a `$` in a span or a target is
+     no mark) is MathML, inline, in every place `_rich` renders author text: claim, conditions, list titles (card, notes, level-0 and
+     corrections lists), the first sentence and the text of an argument or interpretation block, a sketch's paragraphs, items, sub-items and
+     `unexpanded` entries, the recognition's result, difference and note, a citation's source and where. ONE function, called from `_rich`, so a place
+     cannot be missed. The formulas are taken out BEFORE the bold pass (a `**` inside a formula is no bold mark, a bold pair around or beside a
+     formula works). `\\$` is a literal dollar sign; an unescaped `$` with no partner on its line stays literal and is listed `FORMULA-UNPAIRED
+     <where>`; `$$...$$` is not converted (stays as written, listed as unsupported). `<where>` is the block id (a group id for a claim, its conditions
+     and the recognition, a note id for a list title). THE CONVERTER `formula_to_mathml` is a pure function over a closed subset of TeX named by
+     FORMULA_COMMANDS (67 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
+     `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
+     formula, marks included>`; nothing is refused. Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
+     minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command, \\max \\min \\log \\cos
+     <mi mathvariant="normal">, \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
+     brace group (`x^10` is x^1 then 0), a prime is the msup of <mo>U+2032</mo>, a prime then a superscript are ONE msup (`r'^{-k}`), `\\bar`
+     takes one token or one group (a mover over U+00AF), \\mathrm{..} and \\operatorname{..} give one <mi mathvariant="normal"> per word,
+     \\bigl \\bigr \\big give the delimiter alone, `\\,` `\\;` `\\ ` `\\!` are an <mspace> of width 0.167em, 0.278em, 0.222em, -0.167em
+     and a plain space is nothing, a `{}` is an empty <mrow>, a literal non-ASCII letter is <mi>, a symbol or punctuation mark <mo>, any
+     other non-ASCII character makes the formula unsupported (K2). The first sentence is not cut at a stop inside a formula. The run prints
+     `formulas: N converted, U unsupported, P unpaired, of T marks, converter own-subset-V (K commands)` after the sketches line (counts of
+     renderings: the card's first sentence and the evidence text both count), and N + U = T is asserted (FORMULA-SUM), T counted from the
+     marks the scanner finds. The source check also compares each text with its formula marks removed and with the text of its MathML,
+     so a release line wrapped in `$..$`, or spelled out in a formula's letters, is a leak. The JSON keeps every text as written.
+     `tools/formula_oracle.py` compares the converter with pandoc's MathML on a list of formulas (a measurement, not a build step). Cases CV0 to
+     CV13 FM1 to FM5 PL1 to PL15 LS1 LS2 RL1 to RL4 JS1b LF1 to LF4, and the moved FR1 FR2 FR3 FR4 FR5 BD4 NS4.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
   F29 The base name of the block's file and the range of its lines are shown in the Evidence section (F37 moved them out of the frame;
@@ -353,8 +376,7 @@ other values as written, except the text of a block and a block's first sentence
 backticks removed (so a release line that itself holds a span is still seen there); a release line that is inside a longer sentence
 (of a claim, of block text or of a first sentence), or that is split by a span in its middle, is still not seen. The first sentence
 is cut at the first `.`, `!` or `?` followed by white space even inside a span (`We apply `f. g` here.` gives `We apply `f.`, the
-backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). FORMULA-RAW ranges over argument, interpretation and sketch text (not a sketch's `unexpanded` entries). It is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
-span, is listed too, and a formula inside a code span is not; F26 will convert formulas. A K1 source line is compared as it
+backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). Formulas are converted by F26B (below). A K1 source line is compared as it
 stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
 claim or condition text into markup (F35 adds <strong> and a nested <ul> for block text; the static check has no list of allowed elements), and the only new element for those is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
