@@ -2577,13 +2577,13 @@ def _():
 
 @case("ADD15", "alignment (F2): the LEFT-greedy alignment (a repeated base line takes its EARLIEST match) is tried first, so an addition whose "
                "last line repeats a base line is a legal run when the repeat comes after the original; the same words before the original "
-               "leave it unmatched as a second run without a heading on the left, and the RIGHT-greedy alignment, which takes the LATEST "
-               "match, reads the same note as one legal run, so it is now an ADDITION (it was a BYTE-DIFF before F2)")
+               "leave it unmatched as a second run without a heading on the left; the RIGHT-greedy alignment, which takes the LATEST "
+               "match, reads one run whose last line touches the published line after it (F5), so both fail and the LEFT message is shown")
 def _():
     r = _add("Some text.\nMore text.\n\n## 2026-11-22 Extra\nMore text.\n")
     eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Extra"], 0), r.out)
     r = _add("Some text.\n\n## 2026-11-22 Extra\nMore text.\nMore text.\n")
-    eq((r.f, r.rc), (["ADDITION 01-a.md:7 3 lines, heading 2026-11-22 Extra"], 0), r.out)
+    eq((r.f, r.rc), ([_bd(7, 6, "'More text.\\n'", "'\\n'") + "; the inserted run at line 7 has no blank line after it"], 1), r.out)
 
 
 @case("ADD16", "one bad run makes the whole note BYTE-DIFF even beside a legal one, and no ADDITION line is printed for that note; "
@@ -2717,17 +2717,21 @@ def _():
     eq(r.rc, 1, "exit code at the end")
 
 
-@case("ADD26", "F2: any order-preserving alignment of the base into the current may make every run legal. Probe 1: an inserted heading, then the "
-               "blank line the left-greedy match takes from the base, leaves `body, blank` as a headingless run on the left; the right-greedy "
-               "alignment reads one legal run. Probe 3: the base ends in a blank line and the addition has no blank before its heading. "
+@case("ADD26", "F2: any order-preserving alignment of the base into the current may make every run legal. Two published blank lines with the run "
+               "inserted between them: the left-greedy match gives the second blank to the blank that ends the run and leaves a lone blank "
+               "line as a headingless run; the right-greedy alignment reads one legal run (a blank, the heading, a line). The first two probes "
+               "(an inserted heading directly after `A`, then the blank the left match takes from the base; the same at the end of a base "
+               "that ends in a blank line) have no blank line before the heading, so F5 refuses them on both alignments. "
                "When both alignments are legal the LEFT one is listed")
 def _():
     b1 = "# Note\n\n## Body\n\nA\n\nB\n"
     r = _add("A\n## 2026-11-10 add\n\nbody\n\nB\n", base=b1)
-    eq((r.f, r.rc), (["ADDITION 01-a.md:7 3 lines, heading 2026-11-10 add"], 0), "probe 1: " + r.out)
-    ok("byte check: 0 notes equal to HEAD, 0 new, 1 additions" in r.lines, r.out)
+    eq((r.f, r.rc), ([_bd(7, 6, "'\\n'", "'## 2026-11-10 add\\n'") + "; the inserted run at line 7 has no blank line before it"], 1), "probe 1: " + r.out)
     r = _add("A\n\nB\n## 2026-11-10 add\n\nbody\n\n", base="# Note\n\n## Body\n\nA\n\nB\n\n")
-    eq((r.f, r.rc), (["ADDITION 01-a.md:9 3 lines, heading 2026-11-10 add"], 0), "probe 3: " + r.out)
+    eq((r.f, r.rc), ([_bd(9, 8, "'\\n'", "'## 2026-11-10 add\\n'") + "; the inserted run at line 9 has no blank line before it"], 1), "probe 3: " + r.out)
+    r = _add("A\n\n## 2026-11-10 d\nx\n\n\nB\n", base="# Note\n\n## Body\n\nA\n\n\nB\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 3 lines, heading 2026-11-10 d"], 0), "two blanks, right alignment: " + r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 1 additions" in r.lines, r.out)
     r = _add("A\n\n## 2026-11-10 d\n\nx\n\nB\n", base=b1)
     eq((r.f, r.rc), (["ADDITION 01-a.md:8 4 lines, heading 2026-11-10 d"], 0), "both legal, left listed: " + r.out)
 
@@ -2776,6 +2780,73 @@ def _():
     for h in ("2026-13-45 then 2026-11-10", "2026-11-10 then 2026-13-45"):
         r = _add("Some text.\nMore text.\n\n## " + h + "\nX.\n")
         eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading " + h], 0), h + " " + r.out)
+
+
+F5BODY = ("| File | SHA |\n|---|---|\n| a | 1 |\n| b | 2 |\n\n- item one\n  continued\n- item two\n\nPara one\nPara two\n")
+F5BASE = "# Note\n\n## Body\n\n" + F5BODY   # a table (lines 6 to 9 on disk), a list with an indented continuation, a paragraph
+
+
+def _f5(after_line, crlf=False):
+    """The current note: F5BODY with a dated run (heading and one line) inserted after its `after_line`-th line, against F5BASE."""
+    lines = F5BODY.splitlines(True)
+    cur, base = NOTE(body="".join(lines[:after_line]) + "## 2026-11-10 x\nbody\n" + "".join(lines[after_line:])), F5BASE
+    if crlf:
+        cur, base = cur.replace("\n", "\r\n"), base.replace("\n", "\r\n")
+    return go(notes={"01-a.md": cur}, committed={"01-a.md": base}, base="HEAD", today=TODAY)
+
+
+@case("ADD30", "F5: a dated run may not touch published text: the line before its first non-blank line and the line after its last one must "
+               "each be blank or the edge of the text. Probes: a run between two table rows, a run between a list item and its indented "
+               "continuation (no blank line BEFORE), a run with no blank line after it right before a published paragraph")
+def _():
+    r = _f5(3)
+    eq((r.f, r.rc), ([_bd(9, 8, "'| b | 2 |\\n'", "'## 2026-11-10 x\\n'") + "; the inserted run at line 9 has no blank line before it"], 1), "table: " + r.out)
+    r = _f5(6)
+    eq((r.f, r.rc), ([_bd(12, 11, "'  continued\\n'", "'## 2026-11-10 x\\n'") + "; the inserted run at line 12 has no blank line before it"], 1),
+       "list: " + r.out)
+    r = _f5(9)
+    eq((r.f, r.rc), ([_bd(15, 14, "'Para one\\n'", "'## 2026-11-10 x\\n'") + "; the inserted run at line 15 has no blank line after it"], 1),
+       "paragraph: " + r.out)
+
+
+@case("ADD31", "F5: the same probes with CRLF line endings are refused the same way (the blank test reads the line without its ending)")
+def _():
+    r = _f5(3, crlf=True)
+    eq((r.f, r.rc), ([_bd(9, 8, "'| b | 2 |\\r\\n'", "'## 2026-11-10 x\\r\\n'") + "; the inserted run at line 9 has no blank line before it"], 1),
+       "table: " + r.out)
+    r = _f5(9, crlf=True)
+    eq((r.f, r.rc), ([_bd(15, 14, "'Para one\\r\\n'", "'## 2026-11-10 x\\r\\n'") + "; the inserted run at line 15 has no blank line after it"], 1),
+       "paragraph: " + r.out)
+
+
+@case("ADD32", "F5 controls: a run with a blank line on both sides between two paragraphs, a run at the end of the note, a run whose own last line "
+               "is blank (the next published line follows a blank) are ADDITIONs; a run right after the last published line with no blank "
+               "before it is a BYTE-DIFF; an anchor line between a run and a published line does not count as the blank line between them")
+def _():
+    r = _add("First.\n\n## 2026-11-22 Added\nExtra.\n\nSecond.\n", base=T2)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), "between paragraphs: " + r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), "at the end: " + r.out)
+    r = _add("Some text.\n\n## 2026-11-22 d\nX.\n\nMore text.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 4 lines, heading 2026-11-22 d"], 0), "own last line blank: " + r.out)
+    r = _add("Some text.\nMore text.\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'## 2026-11-22 Added\\n'") + "; the inserted run at line 8 has no blank line before it"], 1),
+       "no blank before: " + r.out)
+    tail = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n" + BL() + "\nTail.\n")},
+              committed={"01-a.md": "# Note\n\n## Body\n\nSome text.\nMore text.\nTail.\n"}, base="HEAD", today=TODAY)
+    ok(_bd(8, 7, "'Tail.\\n'", "'\\n'") + "; the inserted run at line 8 has no blank line after it" in tail.f, "anchor between: " + tail.out)
+    ok(not any(x.startswith("ADDITION") for x in tail.f), "no ADDITION: " + tail.out)
+
+
+@case("ADD33", "F6: a run that begins above the first published non-blank line (above the H1 title) is a BYTE-DIFF whose message names it")
+def _():
+    r = go(notes={"01-a.md": "## 2026-11-10 x\nbody\n\n" + NOTE(body="Some text.\nMore text.\n")}, committed={"01-a.md": T0},
+           base="HEAD", today=TODAY)
+    ok(_bd(1, 1, "'# Note\\n'", "'## 2026-11-10 x\\n'") + "; the inserted run at line 1 begins above the first published non-blank line" in r.f, r.out)
+    ok(not any(x.startswith("ADDITION") for x in r.f), "no ADDITION: " + r.out)
+    eq(r.rc, 1, "exit code")
+    r = go(notes={"01-a.md": "\n" + NOTE(body="Some text.\nMore text.\n")}, committed={"01-a.md": T0}, base="HEAD", today=TODAY)
+    eq(r.rc, 1, "a lone blank line above the title is not a dated run: " + r.out)
 
 
 @case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "
