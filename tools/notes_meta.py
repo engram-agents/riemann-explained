@@ -113,6 +113,12 @@ CONTRACT (each line is a self-test case, written before the code)
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
+ Title (cases TTL1 to TTL3). A group may carry the optional key `title`: a plain string, not empty, with no blank at either end and no
+ line break (any other value, an object or a list included, is BAD-VALUE naming the group). The page prints it on a card with no claim and
+ on a definition or structure card; a group with a claim whose root is a result and a title is TITLE-WITH-CLAIM (an error), because the page
+ would ignore a title there and the author must choose. The role decides when the group has a usable root_role, else the kind of the one
+ root in decls.tsv decides, as SKETCH-ROLE does; a root with no row, or with several, is not judged. A bad title is BAD-VALUE alone.
+
  Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
   F1 root_role is `result`, `named_statement` or `object` (any other value, or a non-string, is ROOT-ROLE) and belongs to a claim (on
@@ -307,7 +313,7 @@ ERROR, LISTING = "error", "listing"
 NOCODE = "CHECKED NOTHING"
 TOP_KEYS = ("groups", "release")
 GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
-GROUP_OPTIONAL = ("recognition", "root_role")
+GROUP_OPTIONAL = ("recognition", "root_role", "title")
 ROOT_ROLES = ("result", "named_statement", "object")
 RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that take the role `result`; every other kind does not
 # While False a group with a claim need not carry root_role (ROOT-ROLE-MISSING is then a listing). The real outline has no roles
@@ -529,12 +535,42 @@ def _check_group_shape(g, label, path, out):
             _check_claim(g["claim"], label, path, out)
         else:
             bad("claim must be an object or null")
+    if "title" in g and not _title_ok(g["title"]):
+        bad("title must be a non-empty string with no blank at either end and no line break")
+
+
+def _title_ok(v):
+    """A title is a plain string: not empty, no blank at either end, one line (any line break `str.splitlines` knows is one)."""
+    return isinstance(v, str) and v != "" and v == v.strip() and len(v.splitlines()) == 1
 
 
 # ---- root_role and recognition (F24): the role is compared with the kind class here, and the builder reads it
 def _role_of(g):
     r = g.get("root_role")
     return r if isinstance(r, str) and r in ROOT_ROLES else None
+
+
+def _check_titles(data, path, index, kinds):
+    """TITLE-WITH-CLAIM for each group with a claim, a well-formed title and a root that is a result, in the order of the outline
+    (a bad title is the shape finding and is not judged twice). The role decides when the group has a usable root_role, else the kind of
+    the one root in the declaration table, as SKETCH-ROLE decides; a root with no row, several rows or several roots is not judged here."""
+    out = []
+    groups = data.get("groups") if isinstance(data, dict) and isinstance(data.get("groups"), list) else []
+    for i, g in enumerate(groups):
+        if not (isinstance(g, dict) and isinstance(g.get("claim"), dict) and "title" in g and _title_ok(g["title"])):
+            continue
+        label = f"group {g.get('id')!r}" if _str(g.get("id")) else f"groups[{i}]"
+        role = _role_of(g)
+        result = role == "result"
+        if role is None:
+            roots = g.get("roots")
+            if isinstance(roots, list) and len(roots) == 1 and _decl_entry_ok(roots[0]) \
+                    and len(index.get((roots[0]["module"], roots[0]["name"]), [])) == 1:
+                result = kinds[(roots[0]["module"], roots[0]["name"])][0] in RESULT_KINDS
+        if result:
+            out.append(_f("TITLE-WITH-CLAIM", path, None, f"{label}: title on a group with a claim whose root is a result; "
+                          "the page prints no title there (take the title out)"))
+    return out
 
 
 def _is_date(v):
@@ -1454,6 +1490,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     rec_counts = _recognition_counts(rec_forms)
     sum_f = _recognition_sum_finding(rec_forms)
     rec_found += [sum_f] if sum_f else []
+    rec_found += _check_titles(odata, os.path.basename(outline), ctx.index, ctx.kinds)
     found = found + rec_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions
     lines = [_render(f) for f in found + words]
     errors = sum(1 for f in found if f[4] == ERROR)
@@ -3030,7 +3067,7 @@ def _():
 def _():
     fe(_ro(dict(_tg(), titel="x")), [_fl("UNKNOWN-KEY", ": unknown key 'titel'")], 1)
     fe(_ro(dict(_tg(), reader="R")), [_fl("UNKNOWN-KEY", ": unknown key 'reader'")], 1)
-    want = "outline: 2 groups, 0 claimed, 2 null, 1 roots resolved, 0 defs_opened resolved, 0 premise links"
+    want = "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 0 premise links"
     plain = _ro(G("g1"), G("g2", order=2))
     titled = _ro(_tg(), dict(G("g2", order=2), title="the second"))
     eq(([want in x.lines for x in (plain, titled)], plain.f, titled.f), ([True, True], [], []), "count line")
