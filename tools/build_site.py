@@ -7799,7 +7799,12 @@ def _selftest_cases():
                                                     "date": put("recognition.established.date", gid, "2026-04-12")}}
             else:
                 g["recognition"] = {"form": "not_recognised", "note": put("recognition.note", gid, "MK3note"), "reader": rd, "date": dt}
+            if gid == "mko":   # a definition card with a claim prints its title (capitalised, as the checker asks)
+                g["title"] = put("title", gid, "MK2title")
             o["groups"].append(g)
+        nc = _g("mkx", 2, "g1", 24, [CORGE])   # a card with no claim prints its title as its heading
+        nc["title"] = put("title", "mkx", "MK4title")
+        o["groups"].append(nc)
         return _build(outline=o, decls=decls), mk
 
     def _marker_classes():
@@ -7826,7 +7831,7 @@ def _selftest_cases():
         return (sorted(outside - set(fields)) + ["unshown:" + p for p in sorted(set(fields) - (outside | inside))]
                 + ["inside-only:" + p for p in sorted(set(fields) & (inside - outside))])
 
-    @case("ED10", "F44 (Q6) E2.5: ONE page with a distinct marker in every author field of three fixture groups (every claim key, every recognition "
+    @case("ED10", "F44 (Q6) E2.5: ONE page with a distinct marker in every author field of four fixture groups (title on a definition card and on a no-claim card, every claim key, every recognition "
                   "key, every citation key, established): every marker printed as words OUTSIDE Evidence is a path of EDITION_TEXT_FIELDS, every "
                   "path of EDITION_TEXT_FIELDS shows its marker on the page, and the markers that show only inside Evidence, only in an attribute, "
                   "or nowhere are the literal sets below (the case is red against a T that lacks a printed field or holds an unprinted one)")
@@ -7839,13 +7844,13 @@ def _selftest_cases():
         return _eq((sorted(outside), inside_only, sorted(attr_), nowhere, _marker_violations(T, classes)),
                    (["claim.conditions", "claim.text", "recognition.citations[].source", "recognition.citations[].source_date",
                      "recognition.citations[].where", "recognition.difference", "recognition.established", "recognition.note",
-                     "recognition.result"],
+                     "recognition.result", "title"],
                     ["claim.date", "claim.reader", "recognition.citations[].opened_by", "recognition.citations[].opened_on",
                      "recognition.date", "recognition.established.date", "recognition.established.reader", "recognition.reader"],
                     ["recognition.citations[].url"], ["claim.defs_opened", "claim.mathlib_read"], []))
 
     @case("ED11", "F44 (Q6) E2.5 control: the marker case discriminates. Against a T that lacks recognition.note, claim.conditions, "
-                  "recognition.citations[].source_date or recognition.established it reports exactly that path; against a T that adds a field the "
+                  "recognition.citations[].source_date, recognition.established or title it reports exactly that path; against a T that adds a field the "
                   "page never prints (claim.mathlib_read) it reports it as unshown, and against one that adds a field that shows only inside "
                   "Evidence (claim.reader) it reports that, so a T that drifts from the page either way is red")
     def _():
@@ -7853,9 +7858,9 @@ def _selftest_cases():
         T = list(nm.EDITION_TEXT_FIELDS)
         less = lambda p: _marker_violations([x for x in T if x != p], classes)
         return _eq((less("recognition.note"), less("claim.conditions"), less("recognition.citations[].source_date"),
-                    less("recognition.established"), _marker_violations(T + ["claim.mathlib_read"], classes),
+                    less("recognition.established"), less("title"), _marker_violations(T + ["claim.mathlib_read"], classes),
                     _marker_violations(T + ["claim.reader"], classes), _marker_violations(T, classes)),
-                   (["recognition.note"], ["claim.conditions"], ["recognition.citations[].source_date"], ["recognition.established"],
+                   (["recognition.note"], ["claim.conditions"], ["recognition.citations[].source_date"], ["recognition.established"], ["title"],
                     ["unshown:claim.mathlib_read"], ["inside-only:claim.reader"], []))
 
     # ---- F47, F48: the title of a card and the faces of the no-claim and the definition cards

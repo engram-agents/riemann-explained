@@ -4851,7 +4851,7 @@ def _():
 def _():
     eq(EDITION_TEXT_FIELDS, ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
                              "recognition.citations[].where", "recognition.citations[].source", "recognition.citations[].source_date",
-                             "recognition.established"), "the fields")
+                             "recognition.established", "title"), "the fields")
 
 
 def _named(est):
@@ -5050,6 +5050,47 @@ def _():
        ["EDITION-NEW-GROUP outline.json group 'g1': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)"], 1)
     for bad in ('{"groups": [1, "x"]}', '{"groups": [{"id": "g1"}, 3]}'):
         fe(_edb(_epair(), bad), ["OUTLINE-BASE outline.json at HEAD has no usable groups, so the edition check did not run"], 0)
+
+
+# ---- the title of a group is printed author text (the heading of a card with no claim, of a definition card, the premise rows)
+def _tg3(title, text="T3", ed=None):
+    """A third group, a definition with a claim (so a title is legal), with `title` (None: no key) and, with `ed`, edition 2 at that date."""
+    def f(o):
+        g = _rg("named_statement", root=("A.C", "baz"), gid="g3", order=3, claim=dict(CLAIM, text=text))
+        if title is not None:
+            g["title"] = title
+        if ed:
+            g["edition"], g["edition_date"] = 2, ed
+        o["groups"].append(g)
+    return f
+
+
+@case("E25a", "a title changed alone, with no bump, is OUTLINE-CHANGED naming `title`; a first title on a group that had none is a change too; "
+              "the same title is nothing; a change of case is a change")
+def _():
+    fe(_edc(_tg3("New title"), _tg3("Old title")), [_chg("g3", "title")], 1)
+    fe(_edc(_tg3("New title"), _tg3(None)), [_chg("g3", "title")], 1)
+    fe(_edc(_tg3("Old title"), _tg3("Old title")), [], 0)
+    fe(_edc(_tg3("Old Title"), _tg3("Old title")), [_chg("g3", "title")], 1)
+
+
+@case("E25b", "a title changed with a bump is one EDITION listing naming `title`; a title is not a selector: no SELECTOR-CHANGED line beside it")
+def _():
+    fe(_edc(_tg3("New title", ed="2026-11-23"), _tg3("Old title")), ["EDITION outline.json g3 fields title, edition 1 to 2, 2026-11-23"], 0)
+
+
+@case("E25c", "a title added AND the edition bumped in the same change, with the claim text changed too: the EDITION line names claim.text and title")
+def _():
+    fe(_edc(_tg3("New title", text="T3b", ed="2026-11-23"), _tg3(None)),
+       ["EDITION outline.json g3 fields claim.text, title, edition 1 to 2, 2026-11-23"], 0)
+    fe(_edc(_tg3("New title", ed="2026-11-23"), _tg3(None)), ["EDITION outline.json g3 fields title, edition 1 to 2, 2026-11-23"], 0)
+
+
+@case("E25d", "a title changed on a group at edition 2 at REV is OUTLINE-CHANGED (a third edition needs a ruling); unchanged is clean")
+def _():
+    fe(_edc(_tg3("New title", ed="2026-11-20"), _tg3("Old title", ed="2026-11-20")),
+       ["OUTLINE-CHANGED outline.json group 'g3': title changed after edition 2 was set at HEAD (a third edition needs a ruling)"], 1)
+    fe(_edc(_tg3("Old title", ed="2026-11-20"), _tg3("Old title", ed="2026-11-20")), [], 0)
 
 
 def _run_cases(cases, write):
