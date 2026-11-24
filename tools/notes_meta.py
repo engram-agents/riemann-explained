@@ -91,7 +91,11 @@ CONTRACT (each line is a self-test case, written before the code)
   ITEM-OUT-OF-RANGE; `item` that is not an integer of 1 or more is ITEM-BAD-VALUE; `item` on a target that is not a list is
   NOT-A-LIST. Nested items are not numbered. A heading, quote, HTML line or non-lean fence is still ORPHAN-BLOCK.
   I2 A list target whose shape has every key of an entry of REFUSED_LIST_SHAPES (empty by default) is LIST-SHAPE-REFUSED; for a
-  sketch it is every list in the run (rh_anchor.run_lists), the target included; cases F33a F33b F33c.
+  sketch it is every list in the run (rh_anchor.run_lists), the target included; cases F33a F33b F33c F33d.
+  A sketch with a bad span or an illegal run gets the span problem or SKETCH-RUN and no shape finding (the run is empty then): one
+  finding, not both. LIMIT: the shape keys last_nested and followed_by_paragraph describe an anchor adjoining a list; no anchor
+  follows a list in the middle of a run, yet the table is applied to every list as written, so whoever fills REFUSED_LIST_SHAPES
+  decides whether those two keys apply to a list that is not the target.
  Summary lines (cases N5a N5b N5c): `outline: G groups, C claimed, Z null, R roots resolved, D defs_opened resolved, P
  premise links` always, counted over the whole outline; `strings: F frame phrases loaded for K kinds` and `byte check:
  N notes equal to REV, M new` when those ran. Header group (cases HROOT1 to HROOT3): `root` only at level 0.
@@ -1029,7 +1033,7 @@ def _check_block(name, b, note_id, listed, lines, ctx, out, text):
             if _int(d.get("col")) and d["col"] > t["ncols"]:
                 out.append(_f("COL-OUT-OF-RANGE", name, b.line, f"{label} col {d['col']} but the table has {t['ncols']} columns"))
     ttype = (b.target or {}).get("type")   # list items: a list needs item, item needs a list
-    kind = d.get("kind")
+    kind = d.get("kind")   # F12
     # F33: a sketch covers whole elements, so it carries no item. rh_anchor.problems refuses `item` on a sketch (a BLOCK-PROBLEM), and the
     # item checks below never see a sketch: no NOT-A-LIST, ITEM-OUT-OF-RANGE or ITEM-REQUIRED beside that one finding.
     if kind != "sketch":
@@ -1056,7 +1060,6 @@ def _check_block(name, b, note_id, listed, lines, ctx, out, text):
             if entry and entry <= on:
                 out.append(_f("LIST-SHAPE-REFUSED", name, b.line,
                               f"{label} anchors a list whose shape the renderer shows differently: {', '.join(sorted(entry))}"))
-    # F12
     if ctx.strings is not None and kind in FRAME_ONLY and (b.target or {}).get("type") == "paragraph":
         t = b.target
         hit = _frame_hit(" ".join(lines[t["first_line"] - 1:t["last_line"]]), ctx.strings, kind)
