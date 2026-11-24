@@ -2789,6 +2789,9 @@ F41_PROOF_LINES = {
 # F47, F48: the three strings of the card title and the definition heading (no placeholder). definition_label and definition_join are the
 # wording file's values (F48WORD1 compares them when that file is given); title_label is the spec's own.
 F48_STRINGS = {"title_label": "What this step is:", "definition_label": "Definition.", "definition_join": "is defined as:"}
+# F49: the no-proof line of a card that also prints named_statement_use_line (the fixture's value, then the real file's literal, pinned)
+F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this step does not claim its statement is true."}
+F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
     "established_not_traced_line": "Where it is proved: we have not yet traced where in the release this statement is proved.",
@@ -2860,6 +2863,7 @@ def _strings():
     s["argument_frame_no_proof"] = NO_PROOF_FRAME
     s.update(F37_EVIDENCE)
     s.update(F48_STRINGS)
+    s.update(F49_STRINGS)
     return s
 
 
@@ -3318,7 +3322,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS)
 
 
 def _real_strings_facts(path):
@@ -3697,7 +3701,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 90 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 91 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -3710,7 +3714,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 90))
+        return _eq((bad, len(STRING_KEYS)), ([], 91))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -7568,6 +7572,84 @@ def _selftest_cases():
             real = json.load(f)
         return _eq([(k, real.get(k)) for k in ("definition_label", "definition_join")],
                    [(k, word[k]) for k in ("definition_label", "definition_join")])
+
+    @case("F49a", "F49: the key proof_not_applicable_named_line is required (P1a), is in STRING_KEYS and TEXT_KEYS, holds no placeholder (a placeholder "
+                  "or a lone brace is refused) and is under the forbidden-words check, and site/strings.json holds the literal `There is no proof to "
+                  "read: this step is not a theorem, and it does not claim that the statement is true.`")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        key = "proof_not_applicable_named_line"
+        res, want = [], []
+        for v, msg in (("has {n} here", f"BUILD-ERROR STRINGS-KEY {key} has an unknown placeholder {{n}}"),
+                       ("a { brace", f"BUILD-ERROR STRINGS-KEY {key} holds a brace, and this key declares no placeholder"),
+                       ("holds the word verified", f"BUILD-ERROR STRINGS-FORBIDDEN {key} holds the word 'verified', which the page never says"),
+                       ("", f"BUILD-ERROR STRINGS-KEY {key} must be a non-empty string")):
+            st = _strings()
+            st[key] = v
+            b = _build(strings=st)
+            res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+            want.append((1, [msg], False))
+        return _eq((res, real.get(key), key in STRING_KEYS and key in TEXT_KEYS, _strings_problems(real)),
+                   (want, "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true.", True, []))
+
+    @case("F49WORD1", "F49: proof_not_applicable_named_line of site/strings.json is byte-equal to the value the wording file proposes; the file is named "
+                      "by the environment variable RH_F49_WORDING (SKIPPED, with that reason, when it is not set or not readable: the repository's "
+                      "own cases pass without it)")
+    def _():
+        wf = os.environ.get("RH_F49_WORDING")
+        if not wf or not os.path.isfile(wf):
+            raise _SkipCase("RH_F49_WORDING is not set to a readable wording file")
+        with open(wf, encoding="utf-8") as f:
+            found = re.findall(r"`proof_not_applicable_named_line` = \"([^\"\n]*)\"", f.read())
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        return _eq((found, [real.get("proof_not_applicable_named_line")]), ([F49_NAMED_LINE], [F49_NAMED_LINE]))
+
+    @case("F49b", "F49: a card that prints the named-statement line (a definition with a claim fc, fz; a structure with a claim fs) shows "
+                  "proof_not_applicable_named_line as its proof line and not proof_not_applicable_line; a no-claim definition with a proof-less root "
+                  "(fd, fn) shows proof_not_applicable_line and not the new one; a result card (fk, fp) shows neither; a root whose kind is outside "
+                  "the eight (axiom, g3) shows proof_none_other_line, unchanged")
+    def _():
+        mk = _marked(_strings())
+        bf = _faces(strings=mk)
+        proof = lambda b, g: _card(b, g).find("p", "proof")[0].text()
+        use = lambda b, g: len(_direct(_card(b, g), "p", "named-statement-use"))
+        ba = _build(decls=_decls_kinds({"corge": "axiom"}), strings=mk)
+        N, B = "MARK-proof_not_applicable_named_line", "MARK-proof_not_applicable_line"
+        return _eq(([(g, use(bf, g), proof(bf, g)) for g in ("fc", "fs", "fz", "fd", "fn")],
+                    [(g, proof(bf, g) in (N, B)) for g in ("fk", "fp")], proof(ba, "g3")),
+                   ([("fc", 1, N), ("fs", 1, N), ("fz", 1, N), ("fd", 0, B), ("fn", 0, B)],
+                    [("fk", False), ("fp", False)], "MARK-proof_none_other_line"))
+
+    @case("F49c", "F49: no card prints both the named-statement line and proof_not_applicable_line: on every card of the faces page, the zoo, the "
+                  "base page and an axiom page (markers for every strings value) and of the faces page with the real strings file, a card with "
+                  "the named-statement line never shows proof_not_applicable_line, a card with proof_not_applicable_named_line has the "
+                  "named-statement line and not proof_not_applicable_line (control: the pages hold cards of each kind)")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        mk = _marked(_strings())
+        ks = ("named_statement_use_line", "proof_not_applicable_named_line", "proof_not_applicable_line")
+        pages = [(_faces(strings=mk), tuple("MARK-" + k for k in ks)), (_build(outline=_zoo(), strings=mk), tuple("MARK-" + k for k in ks)),
+                 (_build(strings=mk), tuple("MARK-" + k for k in ks)),
+                 (_build(decls=_decls_kinds({"corge": "axiom"}), strings=mk), tuple("MARK-" + k for k in ks)),
+                 (_faces(strings=real), tuple(real[k] for k in ks))]
+        bad, seen = [], [0, 0, 0]
+        for b, (A, N, B) in pages:
+            for art in _dom(b.page).find("article"):
+                ps = [k.text() for k in _direct(art, "p")]
+                a, n, bb = A in ps, N in ps, B in ps
+                seen = [seen[0] + a, seen[1] + n, seen[2] + bb]
+                if (a and bb) or (n and bb) or (n and not a):
+                    bad.append((art.attrs.get("id"), a, n, bb))
+        return _eq((bad, [x > 0 for x in seen]), ([], [True, True, True]))
 
     @case("TT2", "F47 face (a): a card with a null claim, a title and a RESULT root (fr, a theorem): the heading is the label `What this step "
                  "is:` in its own span, then the title in its own span, in the same <h3> as before; directly under it the no_claim_label line, "
