@@ -2765,6 +2765,22 @@ def _strings():
     return s
 
 
+# F44: the wording of the edition sentences (the wording seat's file, taken by script) and the two addresses (ours, not wording)
+EDITION_WORDING = {
+    "edition_note_first_screen": "These notes were rewritten for readers, most recently on {date}: where they showed names used inside the Lean code, or formulas as raw code, they now use plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
+    "edition_note_card": "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
+    "edition_link_label": "first edition",
+    "edition_href_tree": "https://github.com/engram-agents/riemann-explained/tree/notes-edition-1",
+    "edition_href_blob": "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}",
+}
+
+
+def _estrings():
+    """The strings fixture with the five edition keys."""
+    return dict(_strings(), **EDITION_WORDING)
+
+
+
 N06 = ("# Note six\n" + _h(id="06", group="g3", list_title="Note six") + "\n\n## Body\n\n"
        "Corge argument sentence. Second corge sentence.\n"
        + _b(id="06.b01", kind="argument", decls=[CORGE], reader="Reader One", date="2026-11-23") + "\n")
@@ -3188,7 +3204,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(EDITION_WORDING)
 
 
 def _real_strings_facts(path):
@@ -3394,7 +3410,7 @@ def _selftest_cases():
         arg = g1["blocks"][1]
         got = (sorted(g1), g1["roots"], [b["block"] for b in g1["blocks"]], arg,
                g2["open_items"], g2["roots"][1], g1a["blocks"], sorted(_base().files))
-        want = (["blocks", "commits", "id", "level", "notes", "open_items", "parent", "premises", "recognition", "root_kind", "root_role",
+        want = (["blocks", "commits", "edition", "id", "level", "notes", "open_items", "parent", "premises", "recognition", "root_kind", "root_role",
                  "roots", "sketches"],
                 [{"file": "A/B.lean", "kind": "theorem", "lines": [10, 20], "module": "A.B", "name": "foo", "sha256": None,
                   "shared_with": [], "statement_read": True, "proof_read": True}],
@@ -3427,7 +3443,7 @@ def _selftest_cases():
         want_files = {k: hashlib.sha256(v).hexdigest() for k, v in b.files.items() if k != "manifest.json"}
         return _eq((m["files"] == want_files, m["counts"], m["release_id"], m["release_archive_sha"],
                     _base().js("manifest.json")["release_archive_sha"]),
-                   (True, {"blocks": 8, "groups": 6, "notes": 4}, "rel-1", "ab" * 32, None))
+                   (True, {"blocks": 8, "editions": 0, "groups": 6, "notes": 4}, "rel-1", "ab" * 32, None))
 
     @case("FMT1", "every .json file is sorted keys, 1-space indent, LF only, UTF-8 with the non-ASCII character kept, one final newline")
     def _():
@@ -3567,7 +3583,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 87 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 92 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -3580,7 +3596,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 87))
+        return _eq((bad, len(STRING_KEYS)), ([], 92))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -7391,6 +7407,274 @@ def _selftest_cases():
         return _eq((listed(["How this is proved"]), listed(["How this is proved, as"])),
                    ((0, ["FRAME-NOTE 01-one.md:13 block '01.b03' (interpretation): the text opens with a frame of kind 'argument' "
                          "('How this is proved')"]), (0, [])))
+
+    # ---- F44 (Q6): the edition of a group on the page, in the JSON and in the checks
+    EDITION_TREE = "https://github.com/engram-agents/riemann-explained/tree/notes-edition-1"
+    EDITION_BLOB = "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/outline/outline.json"
+    ED_FIRST = ('<p class="edition-note">These notes were rewritten for readers, most recently on 2026-11-23: where they showed names used '
+                'inside the Lean code, or formulas as raw code, they now use plain words and typeset formulas; we meant to change no claim, '
+                'and the earlier text is kept here: <a class="edition-link" href="' + EDITION_TREE + '">first edition</a>.</p>')
+    ED_CARD = ('<p class="edition-note">On 2026-11-21 the text of this card was rewritten for readers: where it showed names used inside the '
+               'Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the '
+               'earlier text is kept here: <a class="edition-link" href="' + EDITION_BLOB + '">first edition</a>.</p>')
+    ED_SUMMARY = "<summary>Evidence: where this sits in the Lean code, and who read what</summary>\n"
+
+    def _eo(*pairs, **others):
+        """The base outline with each (group id, date) at edition 2; `others` maps a group id to an edition value written as it is."""
+        o = _outline()
+        for gid, date in pairs:
+            g = next(x for x in o["groups"] if x["id"] == gid)
+            g["edition"], g["edition_date"] = 2, date
+        for gid, v in others.items():
+            next(x for x in o["groups"] if x["id"] == gid)["edition"] = v
+        return o
+
+    def _eb(*pairs, **others):
+        return _build(outline=_eo(*pairs, **others), strings=_estrings())
+
+    @case("ED1", "F44: group/<id>.json and data.js carry `edition`: null at edition 1 (absent or 1), else {number: 2, date: the edition_date}; the "
+                 "level0 and level1 summaries carry none; manifest.json counts `editions` (the groups at edition 2): 0 for the base, 2 here")
+    def _():
+        b = _eb(("g1", "2026-11-21"), ("g3", "2026-11-22"), g2=1)
+        data = json.loads(b.text("data.js")[len("window.RH_DATA = "):-2])
+        l0, l1 = b.js("level0.json")["steps"], b.js("level1.json")["steps"]
+        got = (b.js("group/g1.json")["edition"], b.js("group/g3.json")["edition"], b.js("group/g2.json")["edition"],
+               b.js("group/g1a.json")["edition"], data["groups"]["g1"]["edition"], data["groups"]["g2"]["edition"],
+               any("edition" in x for x in l0), any("edition" in x for x in l1), b.js("manifest.json")["counts"],
+               _base().js("group/g1.json")["edition"], _base().js("manifest.json")["counts"])
+        return _eq(got, ({"date": "2026-11-21", "number": 2}, {"date": "2026-11-22", "number": 2}, None, None,
+                         {"date": "2026-11-21", "number": 2}, None, False, False,
+                         {"blocks": 8, "editions": 2, "groups": 6, "notes": 4}, None,
+                         {"blocks": 8, "editions": 0, "groups": 6, "notes": 4}))
+
+    @case("ED2", "F44: with a group at edition 2 the first screen gets ONE extra paragraph, `edition_note_first_screen`, right after the "
+                 "first_screen paragraphs: {date} is the LATEST edition_date over the groups at edition 2 (not the first, not the last in "
+                 "the outline), {link} is an `edition-link` anchor to the tree of the first edition; with no group at edition 2 there is none")
+    def _():
+        b = _eb(("g1", "2026-11-21"), ("g1a", "2026-11-23"), ("g3", "2026-11-22"))
+        one = _eb(("g3", "2026-11-22"))
+        o = ('<p>First screen paragraph two.</p>\n<p class="edition-note">These notes were rewritten for readers, most recently on '
+             '2026-11-22: where they showed')
+        return _eq((b.rc, b.page.count(ED_FIRST), b.page.count('<p class="edition-note">These notes were rewritten'),
+                    ('<p>First screen paragraph two.</p>\n' + ED_FIRST + '\n<ul class="facts">') in b.page,
+                    o in one.page, 'edition-note' in _base().page),
+                   (0, 1, 1, True, True, False))
+
+    @case("ED3", "F44: each card whose group is at edition 2 gets ONE paragraph `edition_note_card` INSIDE its Evidence section (right after the "
+                 "summary), with that group's own edition_date and an `edition-link` anchor to outline/outline.json of the first edition; nothing "
+                 "of it above Evidence, none on a card at edition 1 (absent or written 1)")
+    def _():
+        b = _eb(("g1", "2026-11-21"), ("g3", "2026-11-22"), g2=1)
+        own = lambda gid: _direct(_card(b, gid), "details", "evidence")[0]
+        count = lambda gid: len(own(gid).find("p", "edition-note"))
+        outside = lambda gid: "rewritten for readers" in surface(_card(b, gid))
+        return _eq((b.rc, b.page.count(ED_SUMMARY + ED_CARD), [count(g) for g in ("g1", "g3", "g2", "g1a", "g1a1", "g1a1x")],
+                    [outside(g) for g in ("g1", "g3", "g2", "g1a")], b.page.count('<p class="edition-note">On '),
+                    "On 2026-11-22 the text of this card" in own("g3").text(), "On 2026-11-21 the text of this card" in own("g1").text()),
+                   (0, 1, [1, 1, 0, 0, 0, 0], [False, False, False, False], 2, True, True))
+
+    @case("ED4", "F44: a page with no group at edition 2 is byte-equal to the page before this change (sha256 of index.html of the four fixture "
+                 "pages, literal, taken from the tree before it), and equal to a build with `edition: 1` written on every group")
+    def _():
+        import hashlib
+        one = _outline()
+        for g in one["groups"]:
+            g["edition"] = 1
+        e1 = _build(outline=one, strings=_estrings())
+        h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
+        return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
+                   (["4e424c9b532f7a275f1255363b837599afb1f2cb0b46700be345004ad9102496",
+                     "b968044883a54420a01fb47be1685918bf9035ef6a7e9c3df29f4cb53bf14733",
+                     "4a6581dd04f6a3c2e38e96d555100050d45ecf05d470dab0536f2b0566e113cd",
+                     "74a1a08eaa05f11c7f9917344c6c9f6144525868250ee37113e8a1ac97c17307"], 0, True))
+
+    @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (three keys, pinned here as "
+                 "literals) and the two addresses; a case that compares with the wording file itself runs when RH_EDITION_WORDING_FILE names it "
+                 "(SKIPPED otherwise: the file lives outside this checkout)")
+    def _():
+        want = {"edition_note_first_screen": EDITION_WORDING["edition_note_first_screen"],
+                "edition_note_card": EDITION_WORDING["edition_note_card"], "edition_link_label": "first edition"}
+        lit = ("These notes were rewritten for readers, most recently on {date}: where they showed names used inside the Lean code, or formulas "
+               "as raw code, they now use plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
+               "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw "
+               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.")
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        got = (EDITION_WORDING["edition_note_first_screen"], EDITION_WORDING["edition_note_card"], real["edition_note_first_screen"],
+               real["edition_note_card"], real["edition_link_label"], real["edition_href_tree"], real["edition_href_blob"])
+        ok_ = _eq(got, (lit[0], lit[1], lit[0], lit[1], "first edition", EDITION_TREE,
+                        "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}"))
+        env = os.environ.get("RH_EDITION_WORDING_FILE")
+        if not env:
+            if not ok_[0]:
+                return ok_
+            raise _SkipCase("RH_EDITION_WORDING_FILE is not set: the literals above were checked, the comparison with the wording file was not")
+        with open(env, encoding="utf-8") as f:
+            theirs = json.load(f)
+        return _eq({k: theirs.get(k) for k in want}, want) if ok_[0] else ok_
+
+    @case("ED6", "F44: the strings checks for the edition keys: each of the five is required (P1a); the two addresses must be https (STRINGS-KEY "
+                 "`must be an https URL`); {date} and {link} are required in the two sentences, {file} in the blob address, and no other "
+                 "placeholder is allowed (a `{file}` in the tree address, `{x}` anywhere is refused); a forbidden word in a sentence is refused")
+    def _():
+        def one(key, value):
+            s = _estrings()
+            s[key] = value
+            return [(c, p, m) for c, p, m in _strings_problems(s)]
+        got = [one("edition_href_tree", "http://example.invalid/tree"), one("edition_href_blob", "http://example.invalid/{file}"),
+               one("edition_href_tree", "https://example.invalid/{file}"), one("edition_href_blob", "https://example.invalid/{x}"),
+               one("edition_note_card", "On {date} it was rewritten."), one("edition_note_first_screen", "Rewritten {link}."),
+               one("edition_note_card", "On {date} {link} {x}."), one("edition_note_first_screen", "Clearly rewritten on {date}: {link}."),
+               one("edition_href_blob", "https://example.invalid/blob"), _strings_problems(_estrings())]
+        return _eq(got, [[("STRINGS-KEY", "edition_href_tree", "must be an https URL")],
+                         [("STRINGS-KEY", "edition_href_blob", "must be an https URL")],
+                         [("STRINGS-KEY", "edition_href_tree", "has an unknown placeholder {file}")],
+                         [("STRINGS-KEY", "edition_href_blob", "has an unknown placeholder {x}"),
+                          ("STRINGS-KEY", "edition_href_blob", "is missing the placeholder {file}")],
+                         [("STRINGS-KEY", "edition_note_card", "is missing the placeholder {link}")],
+                         [("STRINGS-KEY", "edition_note_first_screen", "is missing the placeholder {date}")],
+                         [("STRINGS-KEY", "edition_note_card", "has an unknown placeholder {x}")],
+                         [("STRINGS-FORBIDDEN", "edition_note_first_screen", "holds the word 'clearly', which the page never says")],
+                         [("STRINGS-KEY", "edition_href_blob", "is missing the placeholder {file}")], []])
+
+    @case("ED7", "F44: the static check exempts a THIRD external anchor, by class TOKEN: `<a class=edition-link href=https://...>` (also among other "
+                 "tokens) passes; `edition-linkx` and `xedition-link`, an http address with the class, an element that is not <a>, and an "
+                 "`xlink:href`, `action` or `formaction` with the class are each refused")
+    def _():
+        sp = static_problems
+        planted = [('<a class="edition-linkx" href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="xedition-link" href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="edition-link" href="http://x.invalid/">x</a>', ["href=http"]),
+                   ('<div class="edition-link" href="https://x.invalid/">x</div>', ["href=http"]),
+                   ('<a class="edition-link" xlink:href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="edition-link" action="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="edition-link" formaction="https://x.invalid/">x</a>', ["href=http"])]
+        controls = ['<a class="edition-link" href="https://x.invalid/">x</a>', '<a class="extra edition-link more" href="https://x.invalid/">x</a>']
+        return _eq(([sp(h, "") for h, _w in planted], [sp(h, "") for h in controls]), ([w for _h, w in planted], [[], []]))
+
+    @case("ED8", "F44: the page with editions is clean under both checks and nothing of the allow-list changed: no PAGE-STATIC finding, "
+                 "element_problems is [] (a `p` with a class and an `a` with class and href were allowed already), ALLOWED_ELEMENTS still has "
+                 "40 elements and 53 pairs, and `p` and `a` allow exactly the attributes they did")
+    def _():
+        b = _eb(("g1", "2026-11-21"), ("g3", "2026-11-22"))
+        pairs = sum(len(v) for v in ALLOWED_ELEMENTS.values())
+        return _eq((b.rc, static_problems(b.page, b.text("data.js")), element_problems(b.page), len(ALLOWED_ELEMENTS), pairs,
+                    ALLOWED_ELEMENTS["p"], ALLOWED_ELEMENTS["a"], b.page.count('<a class="edition-link" href="https://')),
+                   (0, [], [], 40, 53, ("class",), ("class", "href"), 3))
+
+    @case("ED9", "F44: the origin of a PAGE-STATIC `href=http` finding names the string that holds the offending address, not an edition address "
+                 "(like the reaction templates, the two edition addresses are legal holders): note_href `http://...` is blamed with the edition "
+                 "keys placed first in the strings file")
+    def _():
+        s = {k: v for k, v in EDITION_WORDING.items()}
+        s.update(_strings())
+        s["note_href"] = "http://x.invalid/{file}"
+        b = _build(strings=s)
+        return _eq((b.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in b.out.splitlines()), (1, True))
+
+    # ---- F44 (Q6) E2.5, Kepler's condition: every field of a group the page prints as words outside Evidence is in EDITION_TEXT_FIELDS
+    def _marker_build():
+        """(the build, [(path, group id, marker)], the decls): three groups under g1 (the forms exclude one another, so one group cannot hold
+        every field), each with a DISTINCT marker in every author field it can carry; dates are distinct valid dates."""
+        decls = DECLS + "A.H\tmkdefs\ttheorem\t1\t2\ttext-extent\nA.H\tmkest\ttheorem\t3\t4\ttext-extent\n"
+        o, mk = _outline(), []
+
+        def put(path, gid, val):
+            mk.append((path, gid, val))
+            return val
+
+        def claim(gid, n):
+            return {"text": put("claim.text", gid, f"MK{n}ctext"), "reader": put("claim.reader", gid, f"MK{n}creader"),
+                    "date": put("claim.date", gid, f"2026-01-1{n}"),
+                    "defs_opened": [{"module": "A.H", "name": put("claim.defs_opened", gid, "mkdefs"), "lines": [1, 2]}],
+                    "conventions_checked": ["a", "b", "c", "d", "e"], "basis": "census",
+                    "conditions": [put("claim.conditions", gid, f"MK{n}cond1"), put("claim.conditions", gid, f"MK{n}cond2")],
+                    "mathlib_read": [put("claim.mathlib_read", gid, f"MK{n}mathlib")]}
+
+        def cit(gid, n, **kw):
+            c = {"source": put("recognition.citations[].source", gid, f"MK{n}csource"),
+                 "where": put("recognition.citations[].where", gid, f"MK{n}cwhere"),
+                 "opened_by": put("recognition.citations[].opened_by", gid, f"MK{n}copener"),
+                 "opened_on": put("recognition.citations[].opened_on", gid, f"2026-03-1{n}"),
+                 "url": put("recognition.citations[].url", gid, f"https://mk.invalid/url{n}"),
+                 "source_date": put("recognition.citations[].source_date", gid, f"200{n}-0{n}"), "says_open": True}
+            c.update(kw)
+            return c
+        specs = (("mka", BAR, "result", 1), ("mko", BAZ, "named_statement", 2), ("mkn", QUX, "result", 3))
+        for gid, root, role, n in specs:
+            g = _g(gid, 2, "g1", 20 + n, [root], claim(gid, n))
+            g["root_role"] = role
+            rd, dt = put("recognition.reader", gid, f"MK{n}rreader"), put("recognition.date", gid, f"2026-02-1{n}")
+            if gid == "mka":
+                g["recognition"] = {"form": "variant", "result": put("recognition.result", gid, "MK1result"),
+                                    "difference": put("recognition.difference", gid, "MK1difference"), "citations": [cit(gid, 1)],
+                                    "reader": rd, "date": dt}
+            elif gid == "mko":
+                g["recognition"] = {"form": "open_in_literature", "result": put("recognition.result", gid, "MK2result"),
+                                    "citations": [cit(gid, 2)], "reader": rd, "date": dt,
+                                    "established": {"by": {"module": "A.H", "name": put("recognition.established", gid, "mkest")},
+                                                    "reader": put("recognition.established.reader", gid, "MK2ereader"),
+                                                    "date": put("recognition.established.date", gid, "2026-04-12")}}
+            else:
+                g["recognition"] = {"form": "not_recognised", "note": put("recognition.note", gid, "MK3note"), "reader": rd, "date": dt}
+            o["groups"].append(g)
+        return _build(outline=o, decls=decls), mk
+
+    def _marker_classes():
+        b, mk = _marker_build()
+        if b.rc != 0:
+            raise AssertionError(b.out + b.err)
+        outside, inside, attr_, all_ = set(), set(), set(), set()
+        for path, gid, val in mk:
+            card = _card(b, gid)
+            o_txt, i_txt = surface(card), _direct(card, "details", "evidence")[0].text()
+            all_.add(path)
+            if val in o_txt:
+                outside.add(path)
+            if val in i_txt:
+                inside.add(path)
+            if val not in o_txt and val not in i_txt and val in b.page:
+                attr_.add(path)
+        return outside, inside, attr_, all_
+
+    def _marker_violations(fields, classes):
+        """What the marker case reports for a T of `fields`: a path printed outside Evidence that T lacks, a path of T that shows nowhere,
+        and a path of T that shows only inside Evidence (the provenance lines: reader, date, who opened a source)."""
+        outside, inside, _attr, _all = classes
+        return (sorted(outside - set(fields)) + ["unshown:" + p for p in sorted(set(fields) - (outside | inside))]
+                + ["inside-only:" + p for p in sorted(set(fields) & (inside - outside))])
+
+    @case("ED10", "F44 (Q6) E2.5: ONE page with a distinct marker in every author field of three fixture groups (every claim key, every recognition "
+                  "key, every citation key, established): every marker printed as words OUTSIDE Evidence is a path of EDITION_TEXT_FIELDS, every "
+                  "path of EDITION_TEXT_FIELDS shows its marker on the page, and the markers that show only inside Evidence, only in an attribute, "
+                  "or nowhere are the literal sets below (the case is red against a T that lacks a printed field or holds an unprinted one)")
+    def _():
+        classes = _marker_classes()
+        outside, inside, attr_, all_ = classes
+        T = nm.EDITION_TEXT_FIELDS
+        inside_only = sorted(inside - outside)
+        nowhere = sorted(all_ - outside - inside - attr_)
+        return _eq((sorted(outside), inside_only, sorted(attr_), nowhere, _marker_violations(T, classes)),
+                   (["claim.conditions", "claim.text", "recognition.citations[].source", "recognition.citations[].source_date",
+                     "recognition.citations[].where", "recognition.difference", "recognition.established", "recognition.note",
+                     "recognition.result"],
+                    ["claim.date", "claim.reader", "recognition.citations[].opened_by", "recognition.citations[].opened_on",
+                     "recognition.date", "recognition.established.date", "recognition.established.reader", "recognition.reader"],
+                    ["recognition.citations[].url"], ["claim.defs_opened", "claim.mathlib_read"], []))
+
+    @case("ED11", "F44 (Q6) E2.5 control: the marker case discriminates. Against a T that lacks recognition.note, claim.conditions, "
+                  "recognition.citations[].source_date or recognition.established it reports exactly that path; against a T that adds a field the "
+                  "page never prints (claim.mathlib_read) it reports it as unshown, and against one that adds a field that shows only inside "
+                  "Evidence (claim.reader) it reports that, so a T that drifts from the page either way is red")
+    def _():
+        classes = _marker_classes()
+        T = list(nm.EDITION_TEXT_FIELDS)
+        less = lambda p: _marker_violations([x for x in T if x != p], classes)
+        return _eq((less("recognition.note"), less("claim.conditions"), less("recognition.citations[].source_date"),
+                    less("recognition.established"), _marker_violations(T + ["claim.mathlib_read"], classes),
+                    _marker_violations(T + ["claim.reader"], classes), _marker_violations(T, classes)),
+                   (["recognition.note"], ["claim.conditions"], ["recognition.citations[].source_date"], ["recognition.established"],
+                    ["unshown:claim.mathlib_read"], ["inside-only:claim.reader"], []))
 
     return cases
 
