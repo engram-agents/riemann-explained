@@ -419,6 +419,7 @@ import subprocess
 import sys
 import tempfile
 import types
+import unicodedata
 import urllib.parse
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -555,8 +556,13 @@ def _fill(template, **kw):
 
 
 def _first_sentence(text):
-    m = re.match(r"(.+?[.!?])(?=\s|$)", text, re.S)
-    return m.group(1) if m else text
+    """The text up to the first `.`, `!` or `?` followed by white space or the end, a stop that sits inside a formula mark (`$...$`, outside
+    code spans) never counting: `Let $a. b$ be. More.` gives `Let $a. b$ be.` (F26B). A span is not looked at (a known limit, BT8)."""
+    marks = _formula_ranges(text) if "$" in text else []
+    for m in re.finditer(r"[.!?](?=\s|$)", text):
+        if m.start() >= 1 and not any(a <= m.start() < b for a, b in marks):
+            return text[:m.end()]
+    return text
 
 
 def _nonspace(s):
@@ -822,14 +828,16 @@ def _bold_unpaired(text):
     """True when a `**` is left in the block text once its code spans, its links and its bold pairs are taken out (the text a reader
     sees with a literal `**` in it)."""
     masked, _spans, tok = _masked(text)
-    return any("**" in t for bold, t in _bold_pieces(_delink(masked, tok)[0]) if not bold)
+    return any("**" in t for bold, t in _bold_pieces(_formula_mask(_delink(masked, tok)[0], tok)[0]) if not bold)
 
 
 def _shown(text):
     """The block text as a reader sees it: each link as its text, each bold pair as its content (no asterisks) and each span as its
     content (no backticks)."""
     masked, spans, tok = _masked(text)
-    shown = "".join(t for _bold, t in _bold_pieces(_delink(masked, tok)[0]))
+    masked, forms, ftok, _unpaired = _formula_mask(_delink(masked, tok)[0], tok)
+    shown = "".join(t for _bold, t in _bold_pieces(masked))
+    shown = re.sub(re.escape(ftok) + r"(\d+)" + re.escape(ftok), lambda mt: forms[int(mt.group(1))][1], shown)   # a formula as written, marks and all
     return re.sub(re.escape(tok) + r"(\d+)" + re.escape(tok), lambda mt: spans[int(mt.group(1))], shown)
 
 
@@ -842,11 +850,13 @@ def _value_lines(obj, seen=False, key=None):
     where, a sketch's unexpanded entries) as written and with the backticks removed (`seen` is "both"), because a release line may
     itself hold a span; the JSON itself keeps them."""
     if isinstance(obj, str):
-        if seen in ("both", "block"):
-            yield from obj.split("\n")
-        yield from (_unspan(obj) if seen else obj).split("\n")
+        variants = ([obj] if seen in ("both", "block") else []) + [_unspan(obj) if seen else obj] + ([_shown(obj)] if seen == "block" else [])
+        for v in variants:
+            yield from v.split("\n")
+            if seen and "$" in v:   # F26B: what a reader sees of a formula: its marks removed, and the text of its MathML
+                for w in _formula_views(v):
+                    yield from w.split("\n")
         if seen == "block":
-            yield from _shown(obj).split("\n")
             yield from _link_targets(obj)
     elif isinstance(obj, list):
         for x in obj:
@@ -890,8 +900,10 @@ def leak_check(files, src_root, copied=None):
             t = ln.strip()
             if t:
                 n_copied += 1
-                if _nonspace(t) >= 20:
-                    copied_cand.setdefault(t, set()).add((note, what))
+                for v in [t] + (_formula_views(t) if "$" in t else []):   # F26B: and with its formula marks removed
+                    v = v.strip()
+                    if _nonspace(v) >= 20:
+                        copied_cand.setdefault(v, set()).add((note, what))
     for rel in sorted(files):
         for ln in _output_lines(rel, files[rel]):
             s = ln.strip()
@@ -1358,9 +1370,6 @@ def _word_notes(m, s):
     return found
 
 
-_FORMULA_MARK = re.compile(r"\$|\\\(|\\\[|\\begin\{")
-
-
 def _sketch_texts(sk):
     """The texts of a sketch (its `_sk` record): each paragraph, each list item and each sub-item."""
     out = []
@@ -1378,14 +1387,6 @@ def _block_texts(b):
     if b["kind"] in ("argument", "interpretation"):
         return [b["text"]] if b.get("text") else []
     return _sketch_texts(b.get("_sk") or {}) if b["kind"] == "sketch" else []
-
-
-def _formula_raw(m):
-    """[block id]: the argument, interpretation and sketch blocks, in note order, whose text (a sketch's paragraphs and list items)
-    outside its single-backtick spans holds a formula mark (`$`, `\\(`, `\\[` or `\\begin{`), once per block. A mark detector, not a
-    formula parser. Only a listing."""
-    return [b["block"] for n in m.notes for b in n["blocks"]
-            if any(_FORMULA_MARK.search(nm._BACKTICK_SPAN.sub(" ", x)) for x in _block_texts(b))]
 
 
 def _bold_unpaired_blocks(m):
@@ -1477,40 +1478,415 @@ def _e(x):
     return html.escape(str(x), quote=True)
 
 
-def _rich(text, links=False):
+# ---- F26B: formulas to MathML at build time. A closed subset of TeX; anything else stays raw text and is LISTED (never refused).
+
+FORMULA_VERSION = "1"   # named in the run line; bumped when the subset changes (F26 (f))
+_GREEK = (("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("epsilon", "ϵ"), ("varepsilon", "ε"), ("zeta", "ζ"),
+          ("eta", "η"), ("theta", "θ"), ("vartheta", "ϑ"), ("iota", "ι"), ("kappa", "κ"), ("lambda", "λ"), ("mu", "μ"), ("nu", "ν"),
+          ("xi", "ξ"), ("pi", "π"), ("rho", "ρ"), ("sigma", "σ"), ("tau", "τ"), ("upsilon", "υ"), ("phi", "ϕ"), ("varphi", "φ"),
+          ("chi", "χ"), ("psi", "ψ"), ("omega", "ω"), ("Gamma", "Γ"), ("Delta", "Δ"), ("Theta", "Θ"), ("Lambda", "Λ"), ("Xi", "Ξ"),
+          ("Pi", "Π"), ("Sigma", "Σ"), ("Upsilon", "Υ"), ("Phi", "Φ"), ("Psi", "Ψ"), ("Omega", "Ω"))
+_FSYMBOLS = (("le", "≤"), ("ge", "≥"), ("leq", "≤"), ("geq", "≥"), ("ne", "≠"), ("neq", "≠"), ("pm", "±"), ("cdot", "⋅"), ("infty", "∞"),
+             ("dots", "…"), ("mid", "∣"), ("lceil", "⌈"), ("rceil", "⌉"), ("sum", "∑"), ("prod", "∏"), ("int", "∫"))
+# The subset: every command the converter knows, as name -> (kind, value). 67 commands: 37 Greek letters, 16 symbols and large operators,
+# 4 named functions, bar, mathrm, operatorname, bigl, bigr, big, and the four spacing commands (`\,` `\;` `\!` and the backslash-space).
+FORMULA_COMMANDS = dict(
+    [(n, ("mi", c)) for n, c in _GREEK] + [(n, ("mo", c)) for n, c in _FSYMBOLS] + [(n, ("fn", n)) for n in ("max", "min", "log", "cos")]
+    + [("bar", ("bar", "¯")), ("mathrm", ("font", "")), ("operatorname", ("font", "")), ("bigl", ("big", "")), ("bigr", ("big", "")),
+       ("big", ("big", ""))] + [(c, ("space", "")) for c in (",", ";", "!", " ")])
+_FOPS = {"+": "+", "-": "−", "=": "=", "<": "<", ">": ">", "/": "/", "(": "(", ")": ")", "[": "[", "]": "]", ",": ",", ";": ";",
+         ":": ":", "!": "!", "|": "|", ".": ".", "*": "∗"}
+_TEX_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_TEX_NAME = re.compile(r"[A-Za-z]+")
+
+
+class _Unsupported(Exception):
+    """The formula is outside the subset."""
+
+
+def _tex_tokens(body):
+    """The tokens of a formula body, or _Unsupported: ("sp",), ("cmd", name), ("{",), ("}",), ("^",), ("_",), ("prime",), ("mi", letter),
+    ("mn", digits), ("mo", character). A letter is ASCII or, typed directly, any Unicode letter (L*); a symbol or punctuation (S*, P*) typed
+    directly is an operator; every other non-ASCII character, and every ASCII character not listed, is unsupported (K2)."""
+    toks, i, n = [], 0, len(body)
+    while i < n:
+        c = body[i]
+        if c in " \t":
+            toks.append(("sp",))
+            i += 1
+        elif c == "\\":
+            mt = _TEX_NAME.match(body, i + 1)
+            if mt:
+                if mt.group() not in FORMULA_COMMANDS or FORMULA_COMMANDS[mt.group()][0] == "space":
+                    raise _Unsupported
+                toks.append(("cmd", mt.group()))
+                i = mt.end()
+            elif i + 1 < n and body[i + 1] in ",;! ":
+                toks.append(("sp",))
+                i += 2
+            else:
+                raise _Unsupported
+        elif c in "{}^_":
+            toks.append((c,))
+            i += 1
+        elif c == "'":
+            toks.append(("prime",))
+            i += 1
+        elif c in "0123456789":
+            mt = _TEX_NUMBER.match(body, i)
+            toks.append(("mn", mt.group()))
+            i = mt.end()
+        elif c in _FOPS:
+            toks.append(("mo", _FOPS[c]))
+            i += 1
+        elif c.isascii():
+            if not c.isalpha():
+                raise _Unsupported
+            toks.append(("mi", c))
+            i += 1
+        else:
+            cat = unicodedata.category(c)
+            if cat.startswith("L"):
+                toks.append(("mi", c))
+            elif cat[0] in "SP":
+                toks.append(("mo", c))
+            else:
+                raise _Unsupported
+            i += 1
+    return toks
+
+
+class _TexParser:
+    """Recursive descent over the tokens; every method returns MathML text or raises _Unsupported."""
+
+    def __init__(self, toks):
+        self.t, self.i = toks, 0
+
+    def peek(self):
+        while self.i < len(self.t) and self.t[self.i][0] == "sp":
+            self.i += 1
+        return self.t[self.i] if self.i < len(self.t) else None
+
+    def take(self):
+        t = self.peek()
+        if t is None:
+            raise _Unsupported
+        self.i += 1
+        return t
+
+    def seq(self, closing):
+        out = []
+        while True:
+            t = self.peek()
+            if t is None:
+                if closing:
+                    raise _Unsupported
+                return out
+            if t[0] == "}":
+                if closing:
+                    self.i += 1
+                    return out
+                raise _Unsupported
+            out.append(self.item())
+
+    def item(self):
+        base, sub, sup, primes = self.atom(), None, None, 0
+        while True:
+            t = self.peek()
+            if t is None:
+                break
+            if t[0] == "prime" and sup is None:
+                self.i += 1
+                primes += 1
+            elif t[0] == "^" and sup is None:
+                self.i += 1
+                sup = self.script()
+            elif t[0] == "_" and sub is None:
+                self.i += 1
+                sub = self.script()
+            elif t[0] in ("prime", "^", "_"):
+                raise _Unsupported   # a second superscript or subscript, or a prime after a superscript
+            else:
+                break
+        parts = ["<mo>′</mo>"] * primes + ([sup] if sup is not None else [])
+        top = None if not parts else parts[0] if len(parts) == 1 else "<mrow>" + "".join(parts) + "</mrow>"
+        if sub is not None and top is not None:
+            return f"<msubsup>{base}{sub}{top}</msubsup>"
+        if sub is not None:
+            return f"<msub>{base}{sub}</msub>"
+        return f"<msup>{base}{top}</msup>" if top is not None else base
+
+    def script(self):
+        """The argument of ^ _ and \\bar: ONE token or one brace group (a number is cut to its first digit, as TeX reads it)."""
+        t = self.peek()
+        if t is not None and t[0] == "mn" and len(t[1]) > 1:
+            self.t[self.i] = ("mn", t[1][1:])
+            return f"<mn>{t[1][0]}</mn>"
+        return self.atom()
+
+    def atom(self):
+        t = self.take()
+        k = t[0]
+        if k == "mi":
+            return f"<mi>{html.escape(t[1])}</mi>"
+        if k == "mn":
+            return f"<mn>{t[1]}</mn>"
+        if k == "mo":
+            return f"<mo>{html.escape(t[1])}</mo>"
+        if k == "{":
+            return "<mrow>" + "".join(self.seq(True)) + "</mrow>"
+        if k == "cmd":
+            return self.command(t[1])
+        raise _Unsupported
+
+    def command(self, name):
+        kind, val = FORMULA_COMMANDS[name]
+        if kind == "mi":
+            return f"<mi>{val}</mi>"
+        if kind == "mo":
+            return f"<mo>{val}</mo>"
+        if kind == "fn":
+            return f'<mi mathvariant="normal">{val}</mi>'
+        if kind == "bar":
+            return f"<mover>{self.script()}<mo>{val}</mo></mover>"
+        if kind == "big":   # the delimiter alone
+            t = self.peek()
+            if t is not None and t[0] == "mo" and t[1] in "()[]|":
+                self.i += 1
+                return f"<mo>{t[1]}</mo>"
+            if t is not None and t[0] == "cmd" and t[1] in ("lceil", "rceil", "mid"):
+                self.i += 1
+                return f"<mo>{FORMULA_COMMANDS[t[1]][1]}</mo>"
+            raise _Unsupported
+        if self.peek() is None or self.peek()[0] != "{":   # a font command: a group of letters, one <mi> per word
+            raise _Unsupported
+        self.i += 1
+        words, cur = [], ""
+        while True:
+            if self.i >= len(self.t):
+                raise _Unsupported
+            t = self.t[self.i]
+            self.i += 1
+            if t[0] == "mi":
+                cur += t[1]
+                continue
+            if cur:
+                words.append(cur)
+                cur = ""
+            if t[0] == "}":
+                break
+            if t[0] != "sp":
+                raise _Unsupported
+        if not words:
+            raise _Unsupported
+        mis = [f'<mi mathvariant="normal">{html.escape(w)}</mi>' for w in words]
+        return mis[0] if len(mis) == 1 else "<mrow>" + "".join(mis) + "</mrow>"
+
+
+def formula_to_mathml(body):
+    """The MathML (`<math>..</math>`, MathML Core, no annotation, no attribute but mathvariant) of a formula body, or None when the body is
+    outside the closed subset FORMULA_COMMANDS names (an unknown command, an environment, \\frac, an unbalanced brace, a backtick, a dollar
+    sign, a character not listed, nothing at all). Pure and deterministic: no I/O, no clock, no set order."""
+    try:
+        nodes = _TexParser(_tex_tokens(body)).seq(False)
+    except (_Unsupported, RecursionError):
+        return None
+    if not nodes:
+        return None
+    return "<math>" + (nodes[0] if len(nodes) == 1 else "<mrow>" + "".join(nodes) + "</mrow>") + "</math>"
+
+
+def _mathml_text(markup):
+    """The text a reader of the MathML gets: its tokens' characters, joined."""
+    return html.unescape(re.sub(r"<[^>]*>", "", markup))
+
+
+_LINE = re.compile(r"[^\r\n]+")
+
+
+def _mark_positions(text):
+    """[(kind, start, end)] of the formula marks of a text, in order, each on ONE line: kind `formula` for `$...$` (the next unescaped `$`;
+    a `\\$` is skipped), `display` for `$$...$$` (never converted), `unpaired` for each unescaped `$` with no partner on its line. A `\\$` is
+    a literal dollar sign. The text is not looked at for code spans: the caller masks them."""
+    out = []
+    for lm in _LINE.finditer(text):
+        line, off = lm.group(), lm.start()
+        i, n = 0, len(line)
+        while i < n:
+            if line.startswith("\\$", i):
+                i += 2
+            elif line[i] != "$":
+                i += 1
+            elif line.startswith("$$", i):
+                j = line.find("$$", i + 2)
+                if j >= 0:
+                    out.append(("display", off + i, off + j + 2))
+                    i = j + 2
+                else:
+                    out += [("unpaired", off + i, off + i + 1), ("unpaired", off + i + 1, off + i + 2)]
+                    i += 2
+            else:
+                j = i + 1
+                while j < n and line[j] != "$":
+                    j += 2 if line.startswith("\\$", j) else 1
+                if j < n:
+                    out.append(("formula", off + i, off + j + 1))
+                    i = j + 1
+                else:
+                    out.append(("unpaired", off + i, off + i + 1))
+                    i += 1
+    return out
+
+
+def _formula_scan(text):
+    """[(kind, raw, body)] over a text: `text` (a stretch with each `\\$` shown as `$`), `formula` (raw with its marks, the body between them),
+    `display` (raw, no body) and `unpaired` (the dollar sign)."""
+    out, pos = [], 0
+    for kind, a, b in _mark_positions(text):
+        if a > pos:
+            out.append(("text", text[pos:a].replace("\\$", "$"), None))
+        out.append((kind, text[a:b], text[a + 1:b - 1] if kind == "formula" else None))
+        pos = b
+    if pos < len(text):
+        out.append(("text", text[pos:].replace("\\$", "$"), None))
+    return out
+
+
+def _formula_ranges(text):
+    """[(start, end)] of the formula and display marks of a text outside its single-backtick spans."""
+    blank = nm._BACKTICK_SPAN.sub(lambda mt: "\x00" * len(mt.group(0)), text)
+    return [(a, b) for kind, a, b in _mark_positions(blank) if kind in ("formula", "display")]
+
+
+def _formula_mask(masked, tok):
+    """(the text with each formula or display mark replaced by a private-use placeholder `F<index>F` and each `\\$` by `$`; the marks as
+    (kind, raw, body); the placeholder character; the number of unpaired dollar signs). Run on text whose spans and links are already
+    taken out and BEFORE the bold pass, so a `**` inside a formula is no bold mark."""
+    ftok = next(chr(c) for c in range(0xE000, 0xF900) if chr(c) not in masked and chr(c) != tok)
+    forms, out, unpaired = [], [], 0
+    for kind, raw, body in _formula_scan(masked):
+        if kind in ("formula", "display"):
+            forms.append((kind, raw, body))
+            out.append(f"{ftok}{len(forms) - 1}{ftok}")
+        else:
+            out.append(raw)
+            unpaired += kind == "unpaired"
+    return "".join(out), forms, ftok, unpaired
+
+
+def _formula_views(text):
+    """[the text with the formula marks removed (the body in place of each mark pair), the text with each formula as the text of its MathML]
+    for a text that holds a mark: what a reader could see of it besides the text as written (the leak check compares both)."""
+    plain, shown = [], []
+    for kind, raw, body in _formula_scan(text):
+        if kind == "formula":
+            ml = formula_to_mathml(body)
+            plain.append(body)
+            shown.append(_mathml_text(ml) if ml else body)
+        elif kind == "display":
+            plain.append(raw[2:-2])
+            shown.append(raw[2:-2])
+        else:
+            plain.append(raw)
+            shown.append(raw)
+    return ["".join(plain), "".join(shown)]
+
+
+_FORMULA_LOG = None   # a list while the page is rendered: (kind, where, formula) with kind mark, converted, unsupported or unpaired
+
+
+def formula_counts(log):
+    """{N, U, P, T} of a render's log: N converted, U unsupported, P unpaired dollar signs, T the marks the scanner found. T is counted from
+    the marks, never from N and U, so N + U = T is a check and not a tautology."""
+    kinds = [k for k, _w, _f in log]
+    return {"N": kinds.count("converted"), "U": kinds.count("unsupported"), "P": kinds.count("unpaired"), "T": kinds.count("mark")}
+
+
+def formula_sum_errors(c):
+    """[(FORMULA-SUM, page, message)] when converted + unsupported is not the number of marks."""
+    if c["N"] + c["U"] == c["T"]:
+        return []
+    return [("FORMULA-SUM", "page", f"converted {c['N']} + unsupported {c['U']} = {c['N'] + c['U']}, but there are {c['T']} marks")]
+
+
+def formula_listing(log):
+    """The listing lines of a render, in order of first occurrence, each once: `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
+    formula as written, marks included>` and `FORMULA-UNPAIRED <where>`."""
+    out = []
+    for kind, where, f in log:
+        ln = (f"FORMULA-UNSUPPORTED {where} {f[:40]}" if kind == "unsupported" else f"FORMULA-UNPAIRED {where}" if kind == "unpaired" else None)
+        if ln and ln not in out:
+            out.append(ln)
+    return out
+
+
+def formula_run_line(c):
+    return (f"formulas: {c['N']} converted, {c['U']} unsupported, {c['P']} unpaired, of {c['T']} marks, "
+            f"converter own-subset-{FORMULA_VERSION} ({len(FORMULA_COMMANDS)} commands)")
+
+
+def _rich(text, links=False, where=None):
     """Escaped text in which a span between single backticks on one line is a <code> element (its content escaped too). The span is
-    notes_meta's _BACKTICK_SPAN, the one definition the checker uses too. Nothing else is markup: an unpaired backtick, an empty
-    pair, doubled backticks and a pair over a line break (LF or CR) stay literal. With `links` (the text of a block and its first
-    sentence, F30) a markdown link `[text](target)` outside a span is shown as its text, escaped, and no anchor is made: neither bracket,
-    parenthesis nor target is shown; an image `![a](b)`, a bare bracket pair, a link with no closing parenthesis, one with a space
-    in its target and one with no text stay as written. `links` also turns on the bold rule (F35), since both belong to the Markdown of a
-    note's block text: a pair of double asterisks on one line around text is <strong>, its content through the span rule (the links
-    are taken out first, so a link text may be bold); see `_bold_pieces` for what stays literal."""
+    notes_meta's _BACKTICK_SPAN, the one definition the checker uses too. Nothing else is markup but the formulas (F26B) and, with `links`,
+    the links and bold pairs below: an unpaired backtick, an empty pair, doubled backticks and a pair over a line break (LF or CR) stay
+    literal. With `links` (the text of a block and its first sentence, F30) a markdown link `[text](target)` outside a span is shown as its
+    text, escaped, and no anchor is made: neither bracket, parenthesis nor target is shown; an image `![a](b)`, a bare bracket pair, a link
+    with no closing parenthesis, one with a space in its target and one with no text stay as written. `links` also turns on the bold rule
+    (F35), since both belong to the Markdown of a note's block text: a pair of double asterisks on one line around text is <strong>, its
+    content through the span rule (the links are taken out first, so a link text may be bold); see `_bold_pieces` for what stays literal.
+    F26B, in every place: a formula `$...$` on one line (outside spans and link targets) is MathML when it is in the closed subset, and
+    stays as written, escaped, when it is not; `\\$` is a literal dollar sign, an unpaired `$` stays literal and `$$...$$` stays raw. The
+    formulas are taken out BEFORE the bold pass, as the spans are, so a `**` inside a formula is no bold mark. `where` names the place (a
+    block id, a group id or a note id) for the listing: when it is given and a page render is running, every mark and every unpaired
+    dollar sign is recorded in `_FORMULA_LOG`."""
     masked, spans, tok = _masked(text)
-    pieces = [(False, masked)]
     if links:
-        pieces = _bold_pieces(_delink(masked, tok)[0])
+        masked = _delink(masked, tok)[0]
+    masked, forms, ftok, unpaired = _formula_mask(masked, tok)
+    pieces = _bold_pieces(masked) if links else [(False, masked)]
+    log = _FORMULA_LOG if where is not None else None
+    code = re.escape(tok) + r"(\d+)" + re.escape(tok)
+    both = re.compile(code + "|" + re.escape(ftok) + r"(\d+)" + re.escape(ftok))
+
+    def plain(t):   # escaped text with its spans as <code>
+        o, pos = [], 0
+        for mt in re.finditer(code, t):
+            o.append(_e(t[pos:mt.start()]))
+            o.append("<code>" + _e(spans[int(mt.group(1))]) + "</code>")
+            pos = mt.end()
+        return "".join(o) + _e(t[pos:])
+
     out = []
     for bold, piece in pieces:
         pos = 0
         out.append("<strong>" if bold else "")
-        for mt in re.finditer(re.escape(tok) + r"(\d+)" + re.escape(tok), piece):
-            out.append(_e(piece[pos:mt.start()]))
-            out.append("<code>" + _e(spans[int(mt.group(1))]) + "</code>")
+        for mt in both.finditer(piece):
+            out.append(plain(piece[pos:mt.start()]))
+            if mt.group(1) is not None:
+                out.append("<code>" + _e(spans[int(mt.group(1))]) + "</code>")
+            else:
+                kind, raw, body = forms[int(mt.group(2))]
+                ml = formula_to_mathml(body) if kind == "formula" and tok not in body else None
+                if log is not None:
+                    written = re.sub(code, lambda m2: "`" + spans[int(m2.group(1))] + "`", raw)
+                    log += [("mark", where, written), ("converted" if ml else "unsupported", where, written)]
+                out.append(ml if ml else plain(raw))
             pos = mt.end()
-        out.append(_e(piece[pos:]))
+        out.append(plain(piece[pos:]))
         out.append("</strong>" if bold else "")
+    if log is not None:
+        log += [("unpaired", where, "$")] * unpaired
     return "".join(out)
 
 
-def _fillh(template, rich=(), **kw):
+def _fillh(template, rich=(), formula_at=None, **kw):
     """The HTML of a template of the strings file with each known {name} replaced in one pass by its value, escaped (through the span
-    rule for the names in `rich`); a name that is not given stays as written. The template's own text is escaped."""
+    rule, and the formulas, for the names in `rich`; `formula_at` names the place for the listing); a name that is not given stays as written. The template's own text is escaped."""
     out, pos = [], 0
     for mt in _PLACEHOLDER.finditer(template):
         out.append(_e(template[pos:mt.start()]))
         name = mt.group(1)
-        out.append((_rich(str(kw[name])) if name in rich else _e(kw[name])) if name in kw else _e(mt.group(0)))
+        out.append((_rich(str(kw[name]), where=formula_at) if name in rich else _e(kw[name])) if name in kw else _e(mt.group(0)))
         pos = mt.end()
     out.append(_e(template[pos:]))
     return "".join(out)
@@ -1531,7 +1907,7 @@ def _render_page(m, s, facts, dirty):
             f'<p class="mapped">{_e(s["mapped_line"])}</p>']
     if m.header_notes:
         out += ['<section class="whole">', f"<h2>{_e(lab['level0_notes'])}</h2>", "<ul>"]
-        out += [f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>' for n in m.header_notes]
+        out += [f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"], where=n["note"])}</a></li>' for n in m.header_notes]
         out += ["</ul>", "</section>"]
     out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
 
@@ -1559,21 +1935,21 @@ def _render_page(m, s, facts, dirty):
             return ['<div class="recognition">', f'<p class="recognition-form">{_e(s["recognition_not_written_line"])}</p>', "</div>"]
         cits = rec.get("citations") or []
         if rec["form"] == "open_in_literature":
-            line = _fillh(s[f"recognition_{role}_open_line"], ("result",), result=rec["result"],
+            line = _fillh(s[f"recognition_{role}_open_line"], ("result",), sm["id"], result=rec["result"],
                           source_date=max(c["source_date"] for c in cits if c.get("says_open") is True))
         else:
-            line = _fillh(s[f"recognition_{role}_{rec['form']}_line"], ("result",), result=rec.get("result", ""))
+            line = _fillh(s[f"recognition_{role}_{rec['form']}_line"], ("result",), sm["id"], result=rec.get("result", ""))
         o = ['<div class="recognition">', f'<p class="recognition-form">{line}</p>']
         if rec.get("difference"):
-            o.append(f'<p class="recognition-difference">{_rich(rec["difference"])}</p>')
+            o.append(f'<p class="recognition-difference">{_rich(rec["difference"], where=sm["id"])}</p>')
         if rec["form"] == "not_recognised" and rec.get("note"):   # F31: the note of a reading that found nothing (span rule only)
-            o.append(f'<p class="recognition-note">{_rich(rec["note"])}</p>')
+            o.append(f'<p class="recognition-note">{_rich(rec["note"], where=sm["id"])}</p>')
         if cits:
             o.append('<ul class="recognition-citations">')
             for c in cits:
                 key = "recognition_citation_open_line" if rec["form"] == "open_in_literature" and c.get("says_open") is True \
                     else "recognition_citation_dated_line"
-                text = _fillh(s[key], ("source", "where"), source=c["source"], where=c["where"], source_date=c.get("source_date", ""))
+                text = _fillh(s[key], ("source", "where"), sm["id"], source=c["source"], where=c["where"], source_date=c.get("source_date", ""))
                 if c.get("url"):
                     text = f'<a class="citation" href="{_e(c["url"])}">{text}</a>'
                 o.append(f"<li>{text}</li>")
@@ -1593,32 +1969,32 @@ def _render_page(m, s, facts, dirty):
         basis = s["sketch_basis_compiled"] if sk["basis"] == "compiled" else s["sketch_basis_source"]   # F37: the build string is in Evidence
         frame = _fill(s["sketch_frame"], basis=basis)
         o = ['<div class="sketch">', f'<p class="frame sketch-frame">{_e(frame)}</p>']
-        item = lambda x: (f"<li>{_rich(x, links=True)}</li>" if isinstance(x, str) else
-                          f"<li>{_rich(x['text'], links=True)}<ul>" + "".join(f"<li>{_rich(y, links=True)}</li>" for y in x["items"]) + "</ul></li>")
+        item = lambda x: (f"<li>{_rich(x, True, sk['block'])}</li>" if isinstance(x, str) else
+                          f"<li>{_rich(x['text'], True, sk['block'])}<ul>" + "".join(f"<li>{_rich(y, True, sk['block'])}</li>" for y in x["items"]) + "</ul></li>")
         for blk in sk["blocks"]:
             if blk["type"] == "paragraph":
-                o.append(f'<p>{_rich(blk["text"], links=True)}</p>')
+                o.append(f'<p>{_rich(blk["text"], True, sk["block"])}</p>')
             else:
                 tag = "ol" if blk["ordered"] else "ul"
                 o.append(f"<{tag}>" + "".join(item(x) for x in blk["items"]) + f"</{tag}>")
         if sk["unexpanded"]:
             o.append(f'<p class="unexpanded-heading">{_e(s["unexpanded_heading"])}</p><ul class="unexpanded">'
-                     + "".join(f"<li>{_rich(x)}</li>" for x in sk["unexpanded"]) + "</ul>")
+                     + "".join(f"<li>{_rich(x, where=sk['block'])}</li>" for x in sk["unexpanded"]) + "</ul>")
         o.append(f'<p class="sketch-note">{_e(s["sketch_note"])}</p>')
         o.append("</div>")
         return o
 
     def title_of(gid):
         sm = m.summary[gid]
-        return _rich(sm["claim"]["text"]) if sm["claim"] else f"<code>{_e(sm['lean_name'])}</code>"
+        return _rich(sm["claim"]["text"], where=gid) if sm["claim"] else f"<code>{_e(sm['lean_name'])}</code>"
 
     def card(gid):
         sm, fl = m.summary[gid], files[gid]
         o = [f'<article class="card{" unread" if sm["unread"] else ""}" id="{_e(gid)}">']
         if sm["claim"]:
-            o.append(f'<h3 class="claim">{_rich(sm["claim"]["text"])}</h3>')
+            o.append(f'<h3 class="claim">{_rich(sm["claim"]["text"], where=gid)}</h3>')
             if sm["claim"]["conditions"]:
-                o.append('<ul class="conditions">' + "".join(f"<li>{_rich(c)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
+                o.append('<ul class="conditions">' + "".join(f"<li>{_rich(c, where=gid)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
         else:
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
@@ -1663,7 +2039,7 @@ def _render_page(m, s, facts, dirty):
         if args:
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
-            sent = f" {_rich(b['first_sentence'], links=True)}" if b.get("first_sentence") else ""
+            sent = f" {_rich(b['first_sentence'], True, b['block'])}" if b.get("first_sentence") else ""
             o.append(f'<p class="argument">{frames(b, fl["roots"])}{sent} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
         for sk in fl["sketches"]:
             o += sketch(sk)
@@ -1675,11 +2051,11 @@ def _render_page(m, s, facts, dirty):
             for b in corr:
                 n = next(n for n in sm["notes"] if n["note"] == b["note"])
                 # F37: the kind and the title (what was wrong) stay; the reader and the date are in the Evidence block list
-                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>')
+                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <a href="{_e(n["link"])}">{_rich(n["list_title"], where=n["note"])}</a></li>')
             o.append("</ul>")
         if sm["notes"]:
             o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
-                     + "".join(f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>' for n in sm["notes"]) + "</ul>")
+                     + "".join(f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"], where=n["note"])}</a></li>' for n in sm["notes"]) + "</ul>")
         o.append('<ul class="reactions">')
         for r in s["reactions"]:
             href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
@@ -1727,7 +2103,7 @@ def _render_page(m, s, facts, dirty):
                 o.append(f'<li><a href="{_e(n["link"])}"><code>{_e(b["note"])}</code></a> <code>{_e(b["block"])}</code> '
                          f'<span class="kind">{_e(kinds[b["kind"]])}</span> {who}')
                 if b["kind"] == "argument" and b.get("text"):
-                    o.append(f'<p class="argument">{frames(b, fl["roots"])} {_rich(b["text"], links=True)}</p>')
+                    o.append(f'<p class="argument">{frames(b, fl["roots"])} {_rich(b["text"], True, b["block"])}</p>')
                 if b["kind"] in ("argument", "sketch"):   # F37: the file and the lines left the frame of the block
                     fname, lines = where(b)
                     o.append(f'<dl class="block-source"><dt>{_e(lab["file"])}</dt><dd><code>{_e(fname)}</code></dd>'
@@ -1740,7 +2116,7 @@ def _render_page(m, s, facts, dirty):
                         o.append(f'<p class="sketch-build">{_e(_fill(s["evidence_sketch_build_line"], build=sk["build"]))}</p>')
                 if b["kind"] == "interpretation" and b.get("text"):
                     fr = s["interpretation_frame"]
-                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_rich(b["text"], links=True)}</p></aside>')
+                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_rich(b["text"], True, b["block"])}</p></aside>')
                 o.append("</li>")
             o.append("</ul>")
         if fl["open_items"]:
@@ -1965,8 +2341,6 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         print(f"WORD-NOTE {where} {word}")
     for gid, name, kind in m.kind_notes:   # a kind outside the eight: no proof (null), and listed, never refused
         print(f"KIND-NOTE {gid} {name} kind {kind!r}")
-    for bid in _formula_raw(m):   # a formula mark outside a code span: no conversion yet (F26), and listed, never refused
-        print(f"FORMULA-RAW {bid}")
     for bid in _bold_unpaired_blocks(m):   # a `**` that is no pair stays literal on the page, and is listed, never refused (F35)
         print(f"BOLD-UNPAIRED {bid}")
     for bid in _nest_depth_blocks(m):   # a sub-item nested deeper than one level is shown flat, and is listed, never refused (F35)
@@ -1986,7 +2360,15 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     errors += e2 + e3
     if errors:
         return _refuse(errors)
-    page = _render_page(m, sj, facts, dirty)
+    global _FORMULA_LOG
+    _FORMULA_LOG = []
+    try:
+        page = _render_page(m, sj, facts, dirty)
+        flog = _FORMULA_LOG
+    finally:
+        _FORMULA_LOG = None
+    fcounts = formula_counts(flog)
+    errors += formula_sum_errors(fcounts)
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
@@ -2001,6 +2383,9 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     print("facts check: " + check_line)
     for ln in count_lines:
         print(ln)
+    for ln in formula_listing(flog):   # a formula outside the subset stays as written, an unpaired dollar sign stays literal: listed, never refused
+        print(ln)
+    print(formula_run_line(fcounts))
     if source_check is not None:
         if not sg.walk_lean(source_check):
             print("CHECKED NOTHING: no .lean file under SRC_ROOT")
@@ -4747,46 +5132,50 @@ def _selftest_cases():
         first = [x for x in b.js("group/g1.json")["blocks"] if x["block"] == "01.b02"][0]["first_sentence"]
         return _eq((first, card, _para(b.page, "argument")), ("We apply `f.", "We apply `f.", "We apply <code>f. g</code> here. More."))
 
-    @case("FR4", "FORMULA-RAW: the span is taken out as ONE SPACE, so characters on either side are not joined into a mark: a backslash, "
-                 "a span, then an open parenthesis is not listed; a backslash and a parenthesis with no span between them is")
+    @case("FR4", "moved (was: FORMULA-RAW, the span taken out as one space): a code span inside a formula keeps the formula raw and the span code; the "
+                 "listing shows the formula as written, with its backticks (`$a `b` c$`); the span alone and a `$` in it are not listed")
     def _():
-        return _eq([_fr(arg_text="Take \\`x`(y) here"), _fr(arg_text="Take \\(y) here")],
-                   [(0, []), (0, ["FORMULA-RAW 01.b02"])])
+        b = _build(notes=_notes(arg_text="Take $a `b` c$ here"))
+        c = _build(notes=_notes(arg_text="Take `$a` and `b$` here"))
+        return _eq((b.rc, _fr_lines(b), "Take $a <code>b</code> c$ here" in b.page, c.rc, _fr_lines(c)),
+                   (0, ["FORMULA-UNSUPPORTED 01.b02 $a `b` c$"], True, 0, []))
+
+    def _fr_lines(b_):
+        return [ln for ln in b_.out.splitlines() if ln.startswith(("FORMULA-UNSUPPORTED", "FORMULA-UNPAIRED"))]
 
     def _fr(**kw):
         b = _build(notes=_notes(**kw))
         return b.rc, [ln for ln in b.out.splitlines() if ln.startswith("FORMULA-RAW")]
 
-    @case("FR1", "a block whose text, outside its single-backtick spans, holds `$`, `\\(`, `\\[` or `\\begin{` is LISTED as one line "
-                 "`FORMULA-RAW <block id>` and the build exits 0; the same mark inside a span is not listed; a plain `5` is not; "
-                 "a block with two marks is listed once")
+    @case("FR1", "moved (was: a mark is listed as FORMULA-RAW): a block whose text holds a formula outside the subset is LISTED `FORMULA-UNSUPPORTED <block id> "
+                 "<formula>`, one with an unpaired `$` `FORMULA-UNPAIRED <block id>`, and the build exits 0; a converted formula, a mark inside a span, "
+                 "`\\(x\\)` (no mark any more) and a plain `5` are not listed; `Cost $5 and $6` is one converted formula (`5 and `); "
+                 "`Cost $5 and $6 and $7` leaves the last `$` unpaired")
     def _():
-        res = [_fr(arg_text=t) for t in ("Take $x$ here", "Take `$x$` here", "Take \\(x\\) here", "Take \\[x\\] here",
-                                         "Take \\begin{align} x", "Take 5 here", "Cost $5 and $6", "A `$x$` and then $y$")]
-        return _eq(res, [(0, ["FORMULA-RAW 01.b02"]), (0, []), (0, ["FORMULA-RAW 01.b02"]), (0, ["FORMULA-RAW 01.b02"]),
-                         (0, ["FORMULA-RAW 01.b02"]), (0, []), (0, ["FORMULA-RAW 01.b02"]), (0, ["FORMULA-RAW 01.b02"])])
+        res = [_fr(arg_text=t) for t in ("Take $x$ here", "Take `$x$` here", "Take $\\foo$ here", "Take \\(x\\) here", "Take 5 here", "Cost $5 and $6",
+                                          "Cost $5 and $6 and $7", "A `$x$` and then $y$", "Take $x here")]
+        return _eq(res, [(0, []), (0, []), (0, ["FORMULA-UNSUPPORTED 01.b02 $\\foo$"]), (0, []), (0, []), (0, []), (0, ["FORMULA-UNPAIRED 01.b02"]),
+                         (0, []), (0, ["FORMULA-UNPAIRED 01.b02"])])
 
-    @case("FR2", "an INTERPRETATION block is listed the same way; two blocks of one note give one line each in output order, one "
-                 "block listed alone gives one line; the base build lists none")
-    def _():
-        res = [_fr(interp_text="We think $x$ here"), _fr(arg_text="Take $x$", interp_text="We \\(y\\) too"),
-               _fr(arg_text="Take $x$"), _fr(interp_text="We `$y$` too")]
-        return _eq((res, [ln for ln in _base().out.splitlines() if ln.startswith("FORMULA-RAW")]),
-                   ([(0, ["FORMULA-RAW 01.b03"]), (0, ["FORMULA-RAW 01.b02", "FORMULA-RAW 01.b03"]), (0, ["FORMULA-RAW 01.b02"]),
-                     (0, [])], []))
+    def _fr(**kw):
+        b = _build(notes=_notes(**kw))
+        return b.rc, _fr_lines(b)
 
-    @case("FR3", "FORMULA-RAW ranges over argument, interpretation and sketch blocks only: `_formula_raw` on a model whose blocks of every other "
-                 "kind (reading, correction, not_read, machine_fact) carry a text with a mark lists none of them; the sketch is read from its "
-                 "paragraphs and list items (a block of the kind with no sketch elements is not listed)")
+    @case("FR2", "moved: an INTERPRETATION block is listed the same way; two blocks of one note give lines in output order (the argument's, then the "
+                 "interpretation's), one block listed alone gives one line; the base build lists none")
     def _():
-        kinds = ("reading", "correction", "not_read", "machine_fact", "sketch", "argument", "interpretation")
-        note = {"id": "n", "blocks": [{"block": "n.b" + k, "kind": k, "text": "Take $x$ here"} for k in kinds]}
-        for b_ in note["blocks"]:
-            if b_["kind"] == "sketch":
-                b_["_sk"] = {"blocks": [{"type": "paragraph", "text": "No mark."}, {"type": "list", "ordered": False, "items": ["Take $x$ here"]}]}
-        bare = {"id": "n", "blocks": [{"block": "n.bsketch", "kind": "sketch", "_sk": {"blocks": []}}]}
-        got = _formula_raw(types.SimpleNamespace(notes=[note]))
-        return _eq((got, _formula_raw(types.SimpleNamespace(notes=[bare]))), (["n.bsketch", "n.bargument", "n.binterpretation"], []))
+        res = [_fr(interp_text="We think $\\foo$ here"), _fr(arg_text="Take $\\foo$", interp_text="We $\\bar$ too"),
+               _fr(arg_text="Take $\\foo$"), _fr(interp_text="We `$\\foo$` too")]
+        return _eq((res, _fr_lines(_base())),
+                   ([(0, ["FORMULA-UNSUPPORTED 01.b03 $\\foo$"]), (0, ["FORMULA-UNSUPPORTED 01.b02 $\\foo$", "FORMULA-UNSUPPORTED 01.b03 $\\bar$"]),
+                     (0, ["FORMULA-UNSUPPORTED 01.b02 $\\foo$"]), (0, [])], []))
+
+    @case("FR3", "moved (was: FORMULA-RAW ranges over argument, interpretation and sketch only): a formula outside the subset in a block of another kind "
+                 "(reading, correction), which the page does not show, is neither converted nor listed")
+    def _():
+        n = _n01().replace("Reading paragraph.", "Reading $\\foo$ paragraph.").replace("Correction paragraph.", "Correction $\\foo$ here.")
+        b = _build(notes=_notes() | {"01-one.md": n})
+        return _eq((b.rc, _fr_lines(b), "<math" in b.page), (0, [], False))
 
     # ---- B1: no release text
     @case("B1a", "leak_check: a planted shard whose `text` value is a line of the release (>= 20 non-space characters) is named "
@@ -5390,15 +5779,17 @@ def _selftest_cases():
         return _eq(([li.find("span", "kind")[0].text() for li in items], [p_.cls for p_ in items[-1].find("p")], len(items[-1].find("aside"))),
                    (["Reading", "Argument", "Interpretation", "Correction", "Reading", "Proof sketch"], [["sketch-build"]], 0))
 
-    @case("FR5", "FORMULA-RAW covers the sketch: a `$`, `\\(` or `\\[` in a sketch paragraph or list item outside a code span lists the block, "
-                 "once (`FORMULA-RAW 04.b01`), exit 0; the same inside a code span, and a plain `5`, do not; the default sketch does not")
+    @case("FR5", "moved (was: FORMULA-RAW covers the sketch): the listing covers a sketch: an unpaired `$` in a paragraph (`FORMULA-UNPAIRED 04.b01`), a formula "
+                 "outside the subset in a list item or in the last paragraph (`FORMULA-UNSUPPORTED 04.b01 $...$`), once per line, exit 0; the same "
+                 "inside a code span, and a plain `5`, do not; the default sketch does not")
     def _():
         res = []
-        for kw in ({"para": "Cost is $5 here."}, {"item": "It uses \\(x\\) here."}, {"para": "`$5` and 5 only."},
-                   {"last": "Ends with \\[y\\] and $z$."}, {}):
+        for kw in ({"para": "Cost is $5 here."}, {"item": "It uses $\\foo$ here."}, {"para": "`$5` and 5 only."},
+                   {"last": "Ends with $\\foo$ and $z$."}, {}):
             b = _build(notes=_notes_s(**kw))
-            res.append((b.rc, [ln for ln in b.out.splitlines() if ln.startswith("FORMULA-RAW")]))
-        return _eq(res, [(0, ["FORMULA-RAW 04.b01"]), (0, ["FORMULA-RAW 04.b01"]), (0, []), (0, ["FORMULA-RAW 04.b01"]), (0, [])])
+            res.append((b.rc, _fr_lines(b)))
+        return _eq(res, [(0, ["FORMULA-UNPAIRED 04.b01"]), (0, ["FORMULA-UNSUPPORTED 04.b01 $\\foo$"]), (0, []),
+                         (0, ["FORMULA-UNSUPPORTED 04.b01 $\\foo$"]), (0, [])])
 
     # ---- F30: a link inside block text is shown as its text
     lk = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith("links in block text") or ln.startswith("LINK-OUTSIDE")]
@@ -5489,7 +5880,7 @@ def _selftest_cases():
         return _notes() | {"04-sketch.md": n}
 
     own = lambda li: "".join(k for k in li.kids if isinstance(k, str)).strip()
-    listing = lambda b_: [ln for ln in b_.out.splitlines() if ln.split(" ")[0] in ("FORMULA-RAW", "BOLD-UNPAIRED", "NEST-DEPTH")]
+    listing = lambda b_: [ln for ln in b_.out.splitlines() if ln.split(" ")[0] in ("FORMULA-UNPAIRED", "FORMULA-UNSUPPORTED", "BOLD-UNPAIRED", "NEST-DEPTH")]
 
     @case("BD1", "F35 B1: `_rich(text, links=True)` shows a pair of double asterisks on one line around text as <strong>, its content through "
                  "the span rule (`**a `b` c**` is <strong>a <code>b</code> c</strong>); an asterisk in a code span is code; an empty pair, a "
@@ -5538,8 +5929,8 @@ def _selftest_cases():
         ul = _direct(_direct(_card(_build(notes=_skn(body)), "g1"), "div", "sketch")[0], "ul")[0]
         return _eq([[x.text() for x in li.find("strong")] for li in ul.find("li")], [["one"], ["two", "s"], ["s"], []])
 
-    @case("BD4", "F35 B2: an unpaired `**` stays literal on the page and is listed, once per block, `BOLD-UNPAIRED <block id>`, after the "
-                 "FORMULA-RAW lines (note order), exit 0, nothing refused; a `**` inside a code span, a pair and single asterisks are not "
+    @case("BD4", "F35 B2: an unpaired `**` stays literal on the page and is listed, once per block, `BOLD-UNPAIRED <block id>`, before the "
+                 "FORMULA lines (note order), exit 0, nothing refused; a `**` inside a code span, a pair and single asterisks are not "
                  "listed; a first sentence cut inside a pair (`**one. Two**`) shows a literal `**` and lists the block")
     def _():
         res = []
@@ -5549,7 +5940,7 @@ def _selftest_cases():
             res.append((b.rc, listing(b), b.existed))
         lit = _build(notes=_bn(para="Also **y here."))
         return _eq((res, "Also **y here." in [p.text() for p in _direct(_card(lit, "g1"), "div", "sketch")[0].find("p")]),
-                   ([(0, ["FORMULA-RAW 01.b02", "BOLD-UNPAIRED 01.b02"], True), (0, ["BOLD-UNPAIRED 04.b01"], True), (0, [], True),
+                   ([(0, ["BOLD-UNPAIRED 01.b02", "FORMULA-UNPAIRED 01.b02"], True), (0, ["BOLD-UNPAIRED 04.b01"], True), (0, [], True),
                      (0, ["BOLD-UNPAIRED 01.b02"], True), (0, [], True)], True))
 
     @case("BD5", "F35 B1/B2: bold inside a link text (the link text is shown first, then the bold) is <strong> and the link target is "
@@ -5632,10 +6023,10 @@ def _selftest_cases():
                     3, [1, 1], 0, []))
 
     @case("NS4", "F35 N1: the lines of a sketch and S, P are unchanged: a sketch with sub-items still counts as one sketch of the step "
-                 "(`sketches: 1 of 2 steps with a proof read`), and the formula mark in a sub-item is listed (`FORMULA-RAW 04.b01`)")
+                 "(`sketches: 1 of 2 steps with a proof read`), and the unpaired `$` in a sub-item is listed (`FORMULA-UNPAIRED 04.b01`)")
     def _():
         b = _build(notes=_bn(item="Item two here.\n   - sub costs $5"))
-        return _eq((b.rc, "sketches: 1 of 2 steps with a proof read" in b.out.splitlines(), listing(b)), (0, True, ["FORMULA-RAW 04.b01"]))
+        return _eq((b.rc, "sketches: 1 of 2 steps with a proof read" in b.out.splitlines(), listing(b)), (0, True, ["FORMULA-UNPAIRED 04.b01"]))
 
     @case("LB1", "F35 L1: the source check compares what a reader sees, the asterisks removed as backticks are: a release line inside `**...**` "
                  "as a sketch paragraph, as the text of an argument block, and as a sub-item, and the line plain as a sub-item "
@@ -5836,13 +6227,13 @@ def _selftest_cases():
     OPS = [("+", "+"), ("-", "−"), ("=", "="), ("<", "&lt;"), (">", "&gt;"), ("/", "/"), ("(", "("), (")", ")"), ("[", "["), ("]", "]"),
            (",", ","), (";", ";"), (":", ":"), ("!", "!"), ("|", "|"), (".", "."), ("*", "∗")]
 
-    @case("CV0", "the subset is a named constant: FORMULA_COMMANDS holds 66 commands (36 Greek letters, 13 symbols, sum prod int, max min log cos, "
+    @case("CV0", "the subset is a named constant: FORMULA_COMMANDS holds 67 commands (37 Greek letters, 13 symbols, sum prod int, max min log cos, "
                  "bar mathrm operatorname bigl bigr big, and the four spacing commands `,` `;` `!` and the space), FORMULA_VERSION is `1`, and "
                  "every name of the tables of these cases is in it")
     def _():
         tabled = {n for n, _c in GREEK} | {n for n, _c in SYMBOLS} | {"max", "min", "log", "cos", "bar", "mathrm", "operatorname", "bigl", "bigr",
                                                                        "big", ",", ";", "!", " "}
-        return _eq((len(FORMULA_COMMANDS), FORMULA_VERSION, tabled == set(FORMULA_COMMANDS)), (66, "1", True))
+        return _eq((len(FORMULA_COMMANDS), FORMULA_VERSION, tabled == set(FORMULA_COMMANDS)), (67, "1", True))
 
     @case("CV1", "converter, tokens: a letter is <mi>, a run of digits (with one decimal point between digits) one <mn>, `3.` is <mn>3</mn> then "
                  "<mo>.</mo>, each of the operators and punctuation `+ - = < > / ( ) [ ] , ; : ! | . *` is <mo> (the minus is U+2212, `<` is "
@@ -5877,11 +6268,11 @@ def _selftest_cases():
                 M_("<msubsup><mi>L</mi><mi>s</mi><mo>′</mo></msubsup>"), M_("<msup><mi>x</mi><mrow><mo>′</mo><mn>2</mn></mrow></msup>"), None, None]
         return _eq(got, want)
 
-    @case("CV4", "converter, Greek: each of the 36 Greek letter commands is one <mi> of its Unicode letter (U+03F5 for `\\epsilon`, U+03B5 for "
+    @case("CV4", "converter, Greek: each of the 37 Greek letter commands is one <mi> of its Unicode letter (U+03F5 for `\\epsilon`, U+03B5 for "
                  "`\\varepsilon`, U+03D5 for `\\phi`, U+03C6 for `\\varphi`); a command run into a letter (`\\alphax`) is an unknown command")
     def _():
         bad = [(n, cv("\\" + n)) for n, c in GREEK if cv("\\" + n) != M_(f"<mi>{c}</mi>")]
-        return _eq((bad, len(GREEK), cv("\\alphax")), ([], 36, None))
+        return _eq((bad, len(GREEK), cv("\\alphax")), ([], 37, None))
 
     @case("CV5", "converter, symbols and large operators: each of le ge leq geq ne neq pm cdot infty dots mid lceil rceil sum prod int is one <mo> "
                  "(`\\infty` too, as F26B says), and `\\sum`, `\\prod`, `\\int` take limits as <msub>, <msup> or <msubsup> in line")
@@ -6061,7 +6452,7 @@ def _selftest_cases():
            lambda: _build(notes=_notes() | {"01-one.md": _n01().replace('"list_title":"Note one"', '"list_title":"Note $x$"')}), "Note " + X_ + "</a>")
     _place("PL4", "place: the first sentence of an argument on the closed card is converted, and the evidence list shows the whole text converted",
            lambda: _build(notes=_notes(arg_text="First $x$ sentence. Second $x$ sentence.")),
-           'sentence. Second ' + X_ + ' sentence.</p>')
+           'sentence. Second ' + X_ + ' sentence.')
 
     @case("PL4b", "place: the card's first sentence is `First <math>` ... `sentence.` and the evidence list's paragraph is the whole text, both converted")
     def _():
@@ -6085,12 +6476,12 @@ def _selftest_cases():
     _place("PL12", "place: the note of a reading that found nothing is converted",
            lambda: _build(outline=_ol(_note_o)), '<p class="recognition-note">Note ' + X_ + " here</p>")
     _place("PL13", "place: a citation's source is converted", lambda: _build(outline=_ol(_rec_f("source", "Src $x$"))), "Src " + X_ + ", A place")
-    _place("PL14", "place: a citation's where is converted", lambda: _build(outline=_ol(_rec_f("where", "Pl $x$"))), "A source, Pl " + X_ + " (as read")
+    _place("PL14", "place: a citation's where is converted", lambda: _build(outline=_ol(_rec_f("where", "Pl $x$"))), "A source, Pl " + X_ + "</li>")
 
     @case("PL15", "place: the claim of a premise, shown in the premises line of a card, is converted (the title of a premise group)")
     def _():
         b = _build(outline=_ol(_claim_o))
-        prem = re.findall(r'<p class="premises">(.*?)</p>', b.page, re.S)
+        prem = b.page.split('class="premises"')[1:]   # F40: a `p` for one premise, a `div` holding a list for two or more
         return _eq((b.rc, any(">Claim " + X_ + "</a>" in p_ for p_ in prem)), (0, True))
 
     @case("LS1", "listing: an unsupported formula is listed `FORMULA-UNSUPPORTED <block id> <the first 40 characters of the formula, marks included>` "
@@ -6113,7 +6504,7 @@ def _selftest_cases():
         return _eq((b.rc, pick(b), pick(_base())), (0, [], []))
 
     @case("RL1", "the run line, in the output after `sketches:`: `formulas: N converted, U unsupported, P unpaired, of T marks, converter "
-                 "own-subset-1 (66 commands)`; the base build is `0 converted, 0 unsupported, 0 unpaired, of 0 marks`; the counts are of renderings "
+                 "own-subset-1 (67 commands)`; the base build is `0 converted, 0 unsupported, 0 unpaired, of 0 marks`; the counts are of renderings "
                  "(the card's first sentence and the evidence text both count): `A $x$ and $\\frac{1}{2}$ and \\$ and a $ here` is 2 converted, 2 "
                  "unsupported, 2 unpaired, of 4")
     def _():
@@ -6121,8 +6512,8 @@ def _selftest_cases():
         b = _build(notes=_notes(arg_text="A $x$ and $\\frac{1}{2}$ and \\$ and a $ here"))
         idx = b.out.splitlines()
         return _eq((line(_base()), line(b), idx.index(line(b)[0]) > next(i for i, x in enumerate(idx) if x.startswith("sketches: "))),
-                   (["formulas: 0 converted, 0 unsupported, 0 unpaired, of 0 marks, converter own-subset-1 (66 commands)"],
-                    ["formulas: 2 converted, 2 unsupported, 2 unpaired, of 4 marks, converter own-subset-1 (66 commands)"], True))
+                   (["formulas: 0 converted, 0 unsupported, 0 unpaired, of 0 marks, converter own-subset-1 (67 commands)"],
+                    ["formulas: 2 converted, 2 unsupported, 2 unpaired, of 4 marks, converter own-subset-1 (67 commands)"], True))
 
     @case("RL2", "the sum N + U = T (code FORMULA-SUM) is asserted on the pure counting function: `formula_counts` of a log with a mark that has no "
                  "result is (0, 0, 0, 1) and `formula_sum_errors` of it is FORMULA-SUM; a log that adds up gives none; a build whose counting "
