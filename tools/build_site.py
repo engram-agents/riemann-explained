@@ -967,9 +967,9 @@ _FORMULA_MARK = re.compile(r"\$|\\\(|\\\[|\\begin\{")
 
 def _formula_raw(m):
     """[block id]: the argument and interpretation blocks, in note order, whose text outside its single-backtick spans holds a formula
-    mark (`$`, `\\(`, `\\[` or `\\begin{`), once per block. A mark detector, not a formula parser. Only a listing."""
+    mark (`$`, `\\(`, `\\[` or `\\begin{`), once per block, for the kinds `argument` and `interpretation` only (the `sketch` kind joins in the F24b change). A mark detector, not a formula parser. Only a listing."""
     return [b["block"] for n in m.notes for b in n["blocks"]
-            if b.get("text") and _FORMULA_MARK.search(nm._BACKTICK_SPAN.sub("", b["text"]))]
+            if b["kind"] in ("argument", "interpretation") and b.get("text") and _FORMULA_MARK.search(nm._BACKTICK_SPAN.sub("", b["text"]))]
 
 
 def _nest(m, gid):
