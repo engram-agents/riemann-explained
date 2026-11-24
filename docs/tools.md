@@ -91,7 +91,7 @@ nested under it to any depth), one `group/<id>.json` per group (its `premises`, 
 (the hash of every other file, the three commit ids, the release id and archive hash, the counts), `data.js` (the
 same data as one assignment) and `index.html`. The page is one static file of plain HTML: each step is a card (claim,
 conditions, premises as links (for a step with a null claim too), two status lines, a line counting the open questions (on a card only above zero; the first screen always says it), the first sentence of the argument inside
-its frame, three reaction links; a span between single backticks on one line in a claim, a condition or a note's title is shown as code, by the same span rule `notes_meta.py` uses, and nothing else in them is markup), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
+its frame (rendered by the span rule below), three reaction links; a span between single backticks on one line in a claim, a condition, a note's title or the text of an argument or interpretation block is shown as code, by the same span rule `notes_meta.py` uses, and nothing else in them is markup; block text is one paragraph joined by spaces first, so a span over a source line break is a span, and formulas in it are not converted), evidence is a closed `<details>`, child groups open in place, and nothing on it needs JavaScript or
 makes a request. Every FIXED sentence on the page comes from the strings file, whose shape is provisional (the fixtures of the self-test carry their own wording, not the real one; the keys for the status
 lines are provisional names, the owner of the wording may rename them: `statement_read_line`, `statement_census_line`,
 `statement_not_read_line`, `proof_read_line`, `proof_not_read_line`, `proof_not_applicable_line`, `proof_none_other_line`, `steps_proof_not_applicable_line` (no placeholders in these three), `statement_count_line`, `proof_count_line`,
@@ -118,17 +118,17 @@ interpretation or correction block with no reader or no date; a fact whose read 
 the total (SUM-STATEMENT, SUM-PROOF); a reaction target that is not an https URL (the hrefs may hold any word, a label
 may not); a link on the page with no target; a number
 on the page that is in no JSON file; a group id that is not safe as a file name. `--source-check SRC_ROOT` compares
-the text lines of every output (what a reader sees: the backticks of a span are removed from claim text, conditions and note titles first, on the JSON side; the page itself is not compared inside `<code>`), and the source lines of every copied note text (an argument or interpretation
+the text lines of every output (what a reader sees: the backticks of a span are removed from claim text, conditions, note titles, block text and a block's first sentence first, on the JSON side; the page itself is not compared inside `<code>`), and the source lines of every copied note text (an argument or interpretation
 paragraph, a note title) before they are joined, with the lines of the release (at least 20 non-space characters), and
 says what it ranged over; names and ids are left out by construction. What it shows is narrow: no output line equals a
-release line and no line of copied note text equals one; a release line quoted inside a longer sentence is not
-detected. `--notes-commit REV --repo DIR` stamps the notes commit; a
+release line and no line of copied note text equals one; a release line quoted inside a longer sentence (of a claim, of block text or of a first sentence) is not
+detected. Block text and a block's first sentence are compared both as written and with span backticks removed, so a release line that itself holds a span is still seen there. The first sentence of an argument block is cut at the first `.`, `!` or `?` followed by white space even inside a span (a span holding `f. g` gives the sentence ending in `f.`, its backtick left literal on the card): a known limit, not changed. `--notes-commit REV --repo DIR` stamps the notes commit; a
 tree whose notes, outline or strings differ from it, or whose tools differ from their commit, stamps `dirty` in every
 commit id and on the page. A fresh run into a non-empty OUT_DIR refuses unless `--force`, which removes only what a
 build writes. The site is written into a temporary directory beside OUT_DIR and renamed into place, so a failure
 leaves OUT_DIR absent or the old build as it was; a failure to write is exit 2 with one line. Text from the notes and
 the outline (claims, conditions, note titles, argument and interpretation text) is not refused for those words: each
-hit is listed as `WORD-NOTE <where> <word>` on stdout, the exit code is unchanged and the text is never edited. For
+hit is listed as `WORD-NOTE <where> <word>` on stdout, the exit code is unchanged and the text is never edited. A block whose argument or interpretation text, outside its single-backtick spans, holds `$`, `\(`, `\[` or `\begin{` is listed as `FORMULA-RAW <block id>` (once per block, in note order, after any KIND-NOTE lines): exit unchanged, nothing written. Blocks of other kinds are not scanned (the `sketch` kind joins with F24b). It is a mark detector, not a formula parser (a dollar amount is listed too), and a formula inside a code span is not; formulas are not converted yet (F26 will). For
 `of the proof` the listing is narrower than the refusal in the strings file (which takes any occurrence): in the notes'
 text only a number, a percent sign or a quantity word (half, third, quarter, most, part, fraction, portion, share,
 majority, all; the list is provisional) immediately before it is listed, so a title like `the top of the proof` is not. A `not_read` block in a level-0 note is anchored to no group: it is not counted in the number of open questions and is shown on no
