@@ -353,7 +353,8 @@
    "recognition": {
     "form": "not_recognised",
     "reader": "Halley",
-    "date": "2026-11-24"
+    "date": "2026-11-24",
+    "note": "This step is the release's own composition of three inputs, `Green`, `VWin` and the `HypsAlt` structure, into `ZeroFreeAll`; we found no textbook result that draws this conclusion from these hypotheses."
    }
   },
   {
