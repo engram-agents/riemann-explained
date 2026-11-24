@@ -6726,6 +6726,17 @@ def _selftest_cases():
                    ([("FORMULA-PAGE", "page", "the page holds 3 <math> elements, but the run counted 2 converted formulas")], [], 1,
                     ["BUILD-ERROR FORMULA-PAGE page the page holds 2 <math> elements, but the run counted 3 converted formulas"], False))
 
+    @case("LIM-LINK", "DOCUMENTED LIMIT (review F2), pinned as it is, not as it should be: the link pass runs before the formulas, so text shaped like a "
+                      "link inside a formula, brackets then parentheses, is read as a link first: `$a [b](c) d$` becomes the formula `a b d` and "
+                      "`$[a](b)$` the formula `a`, each with a spurious `LINK-OUTSIDE <block id> <target>` (c and b); the run counts them "
+                      "as converted. No formula of the real notes or of the 199-formula corpus has the shape. A different notation avoids it")
+    def _():
+        b = _build(notes=_notes(arg_text="See $a [b](c) d$ and $[a](b)$ here."))
+        got = _rich("$a [b](c) d$", links=True), _rich("$[a](b)$", links=True)
+        return _eq((b.rc, got, [ln for ln in b.out.splitlines() if ln.startswith("LINK-OUTSIDE")], _fline(b), _nmath(b)),
+                   (0, (M_("<mrow><mi>a</mi><mi>b</mi><mi>d</mi></mrow>"), M_("<mi>a</mi>")), ["LINK-OUTSIDE 01.b02 c", "LINK-OUTSIDE 01.b02 b"],
+                    (4, 0, 0, 4), 4))
+
     @case("LS1", "listing: an unsupported formula is listed `FORMULA-UNSUPPORTED <block id> <the first 40 characters of the formula, marks included>` "
                  "(once per block and text, in page order), an unpaired dollar `FORMULA-UNPAIRED <block id>` (once per block), the build exits 0, "
                  "the page shows the raw text; a claim is named by its group id, a list title by its note id")
