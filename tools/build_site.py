@@ -592,18 +592,38 @@ ALLOWED_ELEMENTS["mover"] = _MATHML_ATTRIBUTES + ("accent",)   # the overline of
 ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element that may carry a width: the spacing commands of a formula
 
 
+# The elements html.parser reads as TEXT (raw text, RCDATA) wherever they stand, among the allowed ones: today `style` and `title`, taken from the
+# parser's own lists so a Python that has more (or fewer) of them is followed, and EL7 fails when the set changes. A browser reads their content as text
+# only in HTML content; directly inside <math>, <mrow> and the other MathML elements they are MathML elements and their content is MARKUP, so a tag
+# behind them is one the parser never reports. The page has them in <head> only, so any other place is refused (`element <name> outside head`).
+HIDING_ELEMENTS = frozenset(set(html.parser.HTMLParser.CDATA_CONTENT_ELEMENTS)
+                            | set(getattr(html.parser.HTMLParser, "RCDATA_CONTENT_ELEMENTS", ()))) & frozenset(ALLOWED_ELEMENTS)
+_VOID_ELEMENTS = frozenset({"meta"})   # the allowed elements written with no end tag
+
+
 def element_problems(page):
-    """What the BUILT page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list
-    and `attribute <name> on <element>` for each attribute an allowed element may not carry. The BUILT page is read with html.parser;
-    an end tag, a comment and the doctype are not looked at."""
+    """What the BUILT page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list,
+    `attribute <name> on <element>` for each attribute an allowed element may not carry, and `element <name> outside head` for an element of
+    HIDING_ELEMENTS (style, title) that is not directly inside <head> of <html>. The BUILT page is read with html.parser: start tags and attribute
+    NAMES (end tags only to keep the stack of open elements); a comment and the doctype are not looked at. It is a name check on the tags as
+    html.parser sees them, not a browser-grade parse."""
     found = set()
+    stack = []
 
     class P(html.parser.HTMLParser):
         def handle_starttag(self, tag, attrs):
+            if tag in HIDING_ELEMENTS and stack != ["html", "head"]:
+                found.add(f"element {tag} outside head")
             if tag not in ALLOWED_ELEMENTS:
                 found.add("element " + tag)
-                return
-            found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in ALLOWED_ELEMENTS[tag])
+            else:
+                found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in ALLOWED_ELEMENTS[tag])
+            if tag not in _VOID_ELEMENTS:
+                stack.append(tag)
+
+        def handle_endtag(self, tag):
+            if tag in stack:
+                del stack[len(stack) - 1 - stack[::-1].index(tag):]
 
     P(convert_charrefs=True).feed(page)
     return sorted(found)
