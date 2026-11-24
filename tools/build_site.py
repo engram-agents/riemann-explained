@@ -6660,6 +6660,63 @@ def _selftest_cases():
         prem = b.page.split('class="premises"')[1:]   # F40: a `p` for one premise, a `div` holding a list for two or more
         return _eq((b.rc, any(">Claim " + X_ + "</a>" in p_ for p_ in prem)), (0, True))
 
+    def _fline(b_):
+        mt = re.search(r"^formulas: (\d+) converted, (\d+) unsupported, (\d+) unpaired, of (\d+) marks", b_.out, re.M)
+        return tuple(int(x) for x in mt.groups()) if mt else None
+
+    def _nmath(b_):
+        return len(re.findall(r"<math[ >]", b_.page))
+
+    @case("FP1", "F1 (review): a formula in the SOURCE of a citation is counted: the evidence list renders it too, so with `Src $x$` the run line says "
+                 "`2 converted ... of 2 marks` (the card's citation and the evidence line), the page holds 2 <math>, and N equals the <math> count; "
+                 "an unsupported one (`$\\foo$`) is listed once under the group (`FORMULA-UNSUPPORTED g1 $\\foo$`), counted twice as unsupported, and "
+                 "the page holds no <math>")
+    def _():
+        a = _build(outline=_ol(_rec_f("source", "Src $x$")))
+        u = _build(outline=_ol(_rec_f("source", "Src $\\foo$")))
+        return _eq((a.rc, _fline(a), _nmath(a), u.rc, _fline(u), _nmath(u),
+                    [ln for ln in u.out.splitlines() if ln.startswith("FORMULA-UNSUPPORTED")]),
+                   (0, (2, 0, 0, 2), 2, 0, (0, 2, 0, 2), 0, ["FORMULA-UNSUPPORTED g1 $\\foo$"]))
+
+    def _everywhere():
+        """A build with a formula `$x$` in EVERY author-text field the page renders through the span rule."""
+        o = _outline()
+        g1 = next(g for g in o["groups"] if g["id"] == "g1")
+        g1["claim"]["text"], g1["claim"]["conditions"], g1["root_role"] = "Claim $x$", ["Cond $x$ holds."], "result"
+        g1["recognition"] = _rec("variant", result="res $x$", difference="Diff $x$.",
+                                 citations=[{"source": "Src $x$", "where": "Pl $x$", "opened_by": "Reader One", "opened_on": "2026-11-22"}])
+        g3 = next(g for g in o["groups"] if g["id"] == "g3")
+        g3["root_role"], g3["recognition"] = "result", _rec("not_recognised", note="Note $x$ here")
+        notes = _notes_s(para="P $x$ here.", item="I $x$ item\n   - sub $x$ here", unexpanded=("U $x$ entry",))
+        notes["01-one.md"] = _n01(arg_text="First $x$ sentence. Second $x$ sentence.", interp_text="We $x$ think.").replace(
+            '"list_title":"Note one"', '"list_title":"Note $x$"')
+        notes["00-whole.md"] = N00.replace('"list_title":"Whole one"', '"list_title":"Whole $x$"')
+        return _build(outline=o, notes=notes)
+
+    @case("FP2", "F1 (review), a check that cannot be true by construction: on every fixture page (base, zoo, sketch, definition, bold) and on a page "
+                 "with a formula in EVERY author-text field (claim, condition, both list titles, argument and its first sentence, interpretation, "
+                 "sketch paragraph, item, sub-item and unexpanded entry, recognition result, difference and note, citation source and where) the number "
+                 "of <math> elements on the page is the N of the run line, and nothing is unsupported or unpaired")
+    def _():
+        bold = _build(notes=_bn(para="A **bold** word $x$.", item="Item two.\n   - a sub item"))
+        e = _everywhere()
+        pages = [_base(), _zbase(), _sbase(), _bbase(), bold, e]
+        return _eq(([(b_.rc, _fline(b_)[0] == _nmath(b_), _fline(b_)[1:3]) for b_ in pages], _nmath(e) > 20),
+                   ([(0, True, (0, 0))] * 6, True))
+
+    @case("RL5", "F1 (review): the page is counted, not only the log: `formula_page_errors` of N converted and the number of <math> elements is "
+                 "FORMULA-PAGE when they differ (`the page holds 3 <math> elements, but the run counted 2 converted formulas`) and nothing when they "
+                 "agree; a build whose counting function claims one more converted formula than the page holds is refused (BUILD-ERROR "
+                 "FORMULA-PAGE, exit 1, OUT_DIR absent)")
+    def _():
+        real = formula_counts
+        with _patched("formula_counts", lambda log: dict(real(log), N=real(log)["N"] + 1, T=real(log)["T"] + 1)):
+            b = _build(notes=_notes(arg_text="A $x$ here"))
+        return _eq((formula_page_errors({"N": 2}, 3), formula_page_errors({"N": 2}, 2), b.rc,
+                    [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR FORMULA-PAGE")], b.existed),
+                   ([("FORMULA-PAGE", "page", "the page holds 3 <math> elements, but the run counted 2 converted formulas")], [], 1,
+                    ["BUILD-ERROR FORMULA-PAGE page the page holds 2 <math> elements, but the run counted 3 converted formulas"], False))
+
     @case("LS1", "listing: an unsupported formula is listed `FORMULA-UNSUPPORTED <block id> <the first 40 characters of the formula, marks included>` "
                  "(once per block and text, in page order), an unpaired dollar `FORMULA-UNPAIRED <block id>` (once per block), the build exits 0, "
                  "the page shows the raw text; a claim is named by its group id, a list title by its note id")
