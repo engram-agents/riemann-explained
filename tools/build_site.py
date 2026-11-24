@@ -97,7 +97,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      has proof_read true when every root that HAS a proof has it read (the roots without a proof are left out of that test),
      null when no root has a proof, false otherwise; counts.roots_proof_applicable is the number of roots that have a proof. A
      card that has no proof to read shows the strings key proof_not_applicable_line, or proof_none_other_line when any of its roots has a kind outside the
-     eight (no placeholders in either; also for a several-root card none of whose roots has a proof); F41: the two lines name no kind (`There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) ...`, true of a definition and of a structure alike) and are in the voice of the statement line above them (cases F41a F41b); F41: the two lines name no kind (`There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) ...`, true of a definition and of a structure alike) and are in the voice of the statement line above them (cases F41a F41b); a several-root card counts proof_count_line over the roots that have a proof. A
+     eight, or, F49, proof_not_applicable_named_line in place of proof_not_applicable_line when the card also shows named_statement_use_line (ONE boolean, the
+     role named_statement, computed once, decides both: no card shows the use line and proof_not_applicable_line, whose first sentence it would repeat; cases F49a to F49d)
+     (no placeholders in any of the three; also for a several-root card none of whose roots has a proof); F41: the two lines name no kind (`There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) ...`, true of a definition and of a structure alike) and are in the voice of the statement line above them (cases F41a F41b); F41: the two lines name no kind (`There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) ...`, true of a definition and of a structure alike) and are in the voice of the statement line above them (cases F41a F41b); a several-root card counts proof_count_line over the roots that have a proof. A
      card is `unread` when its statement is not read and its proof is not read or not applicable. level0 `facts` carry
      proof_applicable (the steps that have a proof) and proof_not_applicable; the first-screen steps_proof_line counts over
      the steps that have a proof, and when no step has one the first screen shows steps_proof_not_applicable_line (no placeholders) in its place
@@ -268,7 +270,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   C1 The two status lines come from the strings keys, and since F37 name nobody: statement_read_line (the claim is read, or a reading
      block anchors the root; the Evidence line names the reader and date of the claim, or of the first reading block of the root
      when the claim is null, or when its basis is census), statement_census_line (a census claim; it does not count; the Evidence
-     line names the claim's reader and date), statement_not_read_line; proof_read_line, proof_not_read_line, proof_not_applicable_line and proof_none_other_line (a root that has no proof,
+     line names the claim's reader and date), statement_not_read_line; proof_read_line, proof_not_read_line, proof_not_applicable_line, proof_not_applicable_named_line (F49: the no-proof line of a card that shows named_statement_use_line) and proof_none_other_line (a root that has no proof,
      no placeholders). A group with several
      roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is shown on a
      card only when n is above zero (a zero is not said there); the first-screen line steps_open_items_line is ALWAYS shown, zero
@@ -358,9 +360,9 @@ of the JSON (its hash fields left out) or the strings file: it cannot say the nu
 the outline and the strings file against the notes commit, and for tracked files of this folder against the tools
 commit; an untracked file of the tools folder is not seen, and without --notes-commit the notes commit is `unknown` and
 the notes are not judged. The sha256 of a root's file needs --source-check; a hash table in a note is not read. There is no
-coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the fourteen
+coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the fifteen
 of them: statement_read_line, statement_census_line, statement_not_read_line, proof_read_line, proof_not_read_line,
-proof_not_applicable_line, proof_none_other_line, steps_proof_not_applicable_line, statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
+proof_not_applicable_line, proof_not_applicable_named_line, proof_none_other_line, steps_proof_not_applicable_line, statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
 (and the three labels of the evidence block, evidence_module_label, evidence_name_label, evidence_kind_label);
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
 missing is read as `read` until the checker requires it (the run line says how many). The Evidence section shows the claim's reader and
@@ -374,7 +376,7 @@ reads the kind from the table row of the root and does not look at the Lean text
 some that are definitions is read for the proof when every theorem root is: the definition roots are left out of the every-root
 test, and the card counts over the theorem roots. A kind outside the eight the table holds is treated as no proof and listed as
 KIND-NOTE; it is never refused. A card that shows a no-proof line uses proof_none_other_line when ANY of its proof-less roots
-has such a kind (a step with several roots too), and proof_not_applicable_line otherwise; the first screen does not
+has such a kind (a step with several roots too), and otherwise proof_not_applicable_named_line when the card shows named_statement_use_line (F49: the same boolean as the use line, the role named_statement), else proof_not_applicable_line; the first screen does not
 distinguish: it shows steps_proof_not_applicable_line whenever no step has a proof, and a root of an unknown kind among the
 top-level steps is not reachable on a real table (the table holds the eight kinds only). The source check ranges over what a reader sees: the text of claims, conditions and note titles
 with the backticks of a span removed (on the JSON and data.js side, and on the copied title lines; the page skips <code>), the
