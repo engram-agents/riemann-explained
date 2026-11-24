@@ -310,10 +310,13 @@ GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
 GROUP_OPTIONAL = ("recognition", "root_role", "edition", "edition_date")
 EDITIONS = (1, 2)   # F44: a published text is rewritten in place once, as edition 2; a third needs a ruling
 # F44 (Q6): the ONE definition of the reader-facing author text of a group: dotted paths into the group, `[]` meaning each element of a
-# list (the value of such a path is the list of that key over the elements). The edition check compares exactly these between the
-# outline at --base and the outline now. Pinned against the page by the builder's marker case: a field the page prints as words is here.
+# list (the value of such a path is the list of that key over the elements; `recognition.established` is the string `not_traced` or the
+# `by` of the object, since its reader and date are provenance). The edition check compares exactly these between the outline at --base
+# and the outline now. Pinned against the page by the builder's marker case: every field the page prints as words OUTSIDE its Evidence
+# section is here; what only the Evidence section prints (who read, when, who opened a source) is deliberately not.
 EDITION_TEXT_FIELDS = ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
-                       "recognition.citations[].where", "recognition.citations[].source")
+                       "recognition.citations[].where", "recognition.citations[].source", "recognition.citations[].source_date",
+                       "recognition.established")
 ROOT_ROLES = ("result", "named_statement", "object")
 RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that take the role `result`; every other kind does not
 # While False a group with a claim need not carry root_role (ROOT-ROLE-MISSING is then a listing). The real outline has no roles
@@ -1405,6 +1408,9 @@ def _text_value(g, path):
         head, leaf = path.split("[].", 1)
         lst = _walk(g, head.split("."))
         return [(x.get(leaf) if isinstance(x, dict) else None) for x in lst] if isinstance(lst, list) else None
+    if path == "recognition.established":
+        e = _walk(g, ["recognition", "established"])
+        return e.get("by") if isinstance(e, dict) else e
     return _walk(g, path.split("."))
 
 
@@ -4598,7 +4604,42 @@ def _():
 @case("E22", "EDITION_TEXT_FIELDS is the one definition of the reader-facing author text of a group, a literal list in a fixed order")
 def _():
     eq(EDITION_TEXT_FIELDS, ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
-                             "recognition.citations[].where", "recognition.citations[].source"), "the fields")
+                             "recognition.citations[].where", "recognition.citations[].source", "recognition.citations[].source_date",
+                             "recognition.established"), "the fields")
+
+
+def _named(est):
+    """A third group, a named statement whose recognition carries `established`."""
+    def f(o):
+        o["groups"].append(_rg("named_statement", root=("A.C", "baz"), gid="g3", order=3, claim=dict(CLAIM, text="T3"),
+                               rec={"form": "known", "result": "R3", "reader": "R", "date": "2026-11-23", "citations": [CIT],
+                                    "established": est}))
+    return f
+
+
+_BY_FOO = {"by": R("A.B", "foo"), "reader": "R", "date": "2026-11-23"}
+
+
+@case("E23s", "E2.5: a citation's source_date, printed on an open card, is text: a first source_date, or a changed one, with no bump is OUTLINE-CHANGED "
+              "naming recognition.citations[].source_date")
+def _():
+    sd = _set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1", source_date="2007-01")])
+    fe(_edc(sd), [_chg("g1", "recognition.citations[].source_date")], 1)
+    base = _both(_set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1", source_date="2007-01")]))
+    fe(_edc(_set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1", source_date="2008-01")]), base),
+       [_chg("g1", "recognition.citations[].source_date")], 1)
+
+
+@case("E23t", "E2.5: `established`, printed outside Evidence on a named statement, is text: not_traced to a root, a root to not_traced and a changed root "
+              "with no bump are OUTLINE-CHANGED naming recognition.established; a changed reader or date of the established line is not")
+def _():
+    fe(_edc(_named("not_traced"), _named(_BY_FOO)), [_chg("g3", "recognition.established")], 1)
+    fe(_edc(_named(_BY_FOO), _named("not_traced")), [_chg("g3", "recognition.established")], 1)
+    fe(_edc(_named(dict(_BY_FOO, by=R("A.B", "bar"))), _named(_BY_FOO)), [_chg("g3", "recognition.established")], 1)
+    r = _edc(_named(dict(_BY_FOO, reader="R2", date="2026-11-20")), _named(_BY_FOO))
+    eq((r.f, r.rc), ([], 0), r.out)
+    r = _edc(_named("not_traced"), _named("not_traced"))
+    eq((r.f, r.rc), ([], 0), r.out)
 
 
 def _run_cases(cases, write):
