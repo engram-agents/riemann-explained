@@ -5559,6 +5559,44 @@ def _selftest_cases():
         controls = ['<a class="citation extra" href="https://x.invalid/">x</a>', '<a class="extra reaction" href="http://x.invalid/">x</a>']
         return _eq(([sp(h, "") for h, _w in planted], [sp(h, "") for h in controls]), ([w for _h, w in planted], [[], []]))
 
+    @case("EL1", "element_problems, planted: `<script>`, `<annotation>`, `<iframe>` and an unknown element are `element <name>`; an `onclick` on a "
+                 "<p>, a `style` on a <p> (the builder has none), an `href` on a <mi> and a `mathvariant` on a <p> are `attribute <name> on <element>`; "
+                 "controls: <strong>, a nested <ul>/<li>, and a MathML tree with mathvariant, stretchy and form on its elements are clean")
+    def _():
+        ep = element_problems
+        planted = [("<script>x</script>", ["element script"]), ("<math><annotation>x</annotation></math>", ["element annotation"]),
+                   ("<iframe></iframe>", ["element iframe"]), ("<p onclick=\"x\">a</p>", ["attribute onclick on p"]),
+                   ("<p style=\"color:red\">a</p>", ["attribute style on p"]), ("<math><mi href=\"#a\">x</mi></math>", ["attribute href on mi"]),
+                   ("<p mathvariant=\"normal\">a</p>", ["attribute mathvariant on p"]), ("<blink>a</blink>", ["element blink"]),
+                   ("<p>a</p><script></script><iframe></iframe>", ["element iframe", "element script"])]
+        controls = ["<p>a <strong>b</strong></p>", "<ul><li>a<ul><li>b</li></ul></li></ul>",
+                    '<math><mrow><mi mathvariant="normal">f</mi><mo stretchy="false" form="prefix">(</mo><msubsup><mi>x</mi><mn>1</mn><mn>2</mn></msubsup>'
+                    '<mover><mi>x</mi><mo>&#175;</mo></mover><munder><mi>a</mi><mi>b</mi></munder><munderover><mo>&#8721;</mo><mi>a</mi><mi>b</mi></munderover>'
+                    '<msub><mi>a</mi><mi>b</mi></msub><msup><mi>a</mi><mi>b</mi></msup><mspace></mspace></mrow></math>']
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 3))
+
+    @case("EL2", "the allow-list: 41 elements (the 29 the builder emits today and the 12 of MathML) and 49 element-attribute pairs; the built page of "
+                 "the base fixture, the zoo, the sketch fixture, the definition fixture and one with bold and a nested sub-item is clean under it")
+    def _():
+        bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
+        pages = [_base().page, _zbase().page, _sbase().page, _bbase().page, bold.page]
+        return _eq(([element_problems(x) for x in pages], len(ALLOWED_ELEMENTS), sum(len(v) for v in ALLOWED_ELEMENTS.values()),
+                     "<strong>" in bold.page, "<ul><li>" in bold.page.replace("\n", "")),
+                   ([[]] * 5, 41, 49, True, True))
+
+    @case("EL3", "the check runs on the BUILT page and refuses like the other static findings: a page with an <iframe> added is "
+                 "`BUILD-ERROR PAGE-STATIC element iframe found in index.html`, one with an `onclick` on a <p> is `attribute onclick on p`; "
+                 "exit 1, OUT_DIR absent; the same build without the addition passes")
+    def _():
+        real = _render_page
+        res = []
+        for old, new in (("</main>", "<iframe></iframe></main>"), ('<p class="mapped">', '<p onclick="x" class="mapped">'), ("</main>", "</main>")):
+            with _patched("_render_page", lambda *a, _o=old, _n=new: real(*a).replace(_o, _n, 1)):
+                b = _build()
+            res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR PAGE-STATIC")), b.existed))
+        return _eq(res, [(1, ["BUILD-ERROR PAGE-STATIC element iframe found in index.html"], False),
+                         (1, ["BUILD-ERROR PAGE-STATIC attribute onclick on p found in index.html"], False), (0, [], True)])
+
     @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the Evidence section (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
                  "the JSON keeps the path as written")
     def _():
