@@ -19,11 +19,11 @@ Every JSON file carries `commits`: {notes, release, tools} (B5). A group id is u
 The group objects inside level0.json and level1.json (the steps and, in level1.json, their `children`) have: `claim`, which
 is {text, reader, date, basis (read or census), conditions} or null; `premises`, the group ids the group rests on, in the order
 of the outline (a field of the GROUP, null-claim groups included; [] when none); `lean_name`, the name of the first root; `claim_label`, the strings file's `no_claim_label` when the claim is null; `statement_read` and `proof_read`, true when
-EVERY root of the group has the fact; `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
-roots_proof_read, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
+EVERY root of the group has the fact (the proof_read of a group whose roots have no proof is null, F22); `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
+roots_proof_read, roots_proof_applicable, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
 `claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `premises`, `roots`, `blocks`,
-`open_items`, `notes` and `commits`, and each root of it has the booleans `statement_read` and `proof_read`. level0.json has `facts` ({steps,
-statement_read, statement_not_read, proof_read, proof_not_read}, counted over the level-1 steps) and `totals`, which holds
+`open_items`, `notes` and `commits`, and each root of it has `statement_read` (a boolean) and `proof_read` (a boolean, or null for a root without a proof). level0.json has `facts` ({steps,
+statement_read, statement_not_read, proof_read, proof_not_read, proof_not_applicable, proof_applicable}, counted over the level-1 steps) and `totals`, which holds
 `open_items`, the number of distinct open not_read blocks of the whole outline.
 
 CONTRACT (each line is a self-test case, written before the code; an expected value in a case is a literal)
@@ -73,20 +73,43 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      B5b B5c B5d.
   B5x Per root TWO FACTS (F19): statement_read = the group carries a claim whose basis is `read` (a claim with no basis key
      counts as `read` until the checker requires one) or a reading block anchors the root; proof_read = an argument block
-     anchors the root. Nothing else sets either: an interpretation, a correction, a not_read and a machine_fact block
+     anchors a root that has a proof (F22; null for a root that has none). Nothing else sets either: an interpretation, a correction, a not_read and a machine_fact block
      set neither, a claim with basis `census` does not set statement_read. Cases F1a F1b S1.
-  F2 JSON: group/<id>.json per root `statement_read` and `proof_read` (booleans); level files per group `counts` {roots,
-     roots_statement_read, roots_proof_read, roots_open_items, open_items} (no key of it holds `not_read`) and `claim.basis`
-     (the effective value); `unread` = neither fact on any root; there is no `coverage` key. Case F2a.
+  F2 JSON: group/<id>.json per root `statement_read` and `proof_read` (boolean, or null for a root without a proof); level files per group `counts` {roots,
+     roots_statement_read, roots_proof_read, roots_proof_applicable, roots_open_items, open_items} (no key of it holds `not_read`) and `claim.basis`
+     (the effective value); `unread` = neither fact on any root; there is no `coverage` key; the proof_read of a root without a
+     proof is null (F22). Case F2a.
   F3 There is no coverage word: a strings file that carries a `coverage` key, or a key whose name holds `not_read` other
      than statement_not_read_line and proof_not_read_line (not_read_yet, roots_not_read, roots_not_read_note), is refused
      naming the key (a stale file cannot ship a word scale); a value holding `Read by us`, `Partly read` or `Not read yet` is
      STRINGS-FORBIDDEN; the built page has none of the three. A stale `no_argument` is ignored and never printed.
      Cases F3a F3b.
-  F4 The build asserts for each fact read + not read = total over the level-1 steps and over the roots of each group (a pure
-     function, fact_pairs, counts them) and prints `facts check: statements read A + not read B = N steps; proofs read C +
-     not read D = N steps`; a mismatch planted through the function's input is SUM-STATEMENT or SUM-PROOF, nothing written;
-     a group with no root has no fact claim and is an error (FACTS-NO-ROOT), never counted as read. Cases R1a R1b.
+  F4 The build asserts for the statement read + not read = total, and for the proof read + not read + not applicable = total,
+     over the level-1 steps and over the roots of each group (the pure functions fact_pairs and fact_triples count them) and
+     prints `facts check: statements read A + not read B = N steps; proofs read C + not read D + not applicable E = N steps`;
+     a mismatch planted through the function's input is SUM-STATEMENT or SUM-PROOF, nothing written; a null on a proof flag is
+     not a mismatch; a group with no root has no fact claim and is an error (FACTS-NO-ROOT), never counted as read. Cases R1a
+     R1b.
+  F22 A DEFINITION HAS NO PROOF TO READ. The kind column of the declaration table decides, for the row of the root: `theorem`
+     and `lemma` have a proof, any other kind (def, structure, instance, abbrev, class, inductive) has none, and a kind that is
+     none of those eight, or is empty, is treated as having none AND is listed (`KIND-NOTE <group> <module>.<name> kind '<kind>'`
+     on stdout, exit unchanged). For a root without a proof proof_read is null (written `null`, never `false`). A step or group
+     has proof_read true when every root that HAS a proof has it read (the roots without a proof are left out of that test),
+     null when no root has a proof, false otherwise; counts.roots_proof_applicable is the number of roots that have a proof. A
+     card that has no proof to read shows the strings key proof_not_applicable_line, or proof_none_other_line when any of its roots has a kind outside the
+     eight (no placeholders in either; also for a several-root card none of whose roots has a proof); a several-root card counts proof_count_line over the roots that have a proof. A
+     card is `unread` when its statement is not read and its proof is not read or not applicable. level0 `facts` carry
+     proof_applicable (the steps that have a proof) and proof_not_applicable; the first-screen steps_proof_line counts over
+     the steps that have a proof, and when no step has one the first screen shows steps_proof_not_applicable_line (no placeholders) in its place
+     (as a card does; never `of 0 steps`). Cases PRK1 PRK2 DEF1 DEF2 DEF3 DEF4 NAL1 NAL2 NAL3 NONE1 (NAL2 reads the strings file of the checkout).
+  F23 ONE SPAN RULE FOR EVERY AUTHOR-WRITTEN LINE. A note's list_title is rendered by the same rule as a claim (a span between
+     single backticks on one line is <code>, escaped; nothing else is markup) wherever a title is shown: the level-0 list, the
+     notes list and the corrections list of a card. The JSON keeps the title as written. The source check compares what a
+     reader sees: before the whole-line compare the backticks of a span are removed (each span replaced by its content) from
+     the text of a claim, the conditions and the list titles, on the JSON and data.js side and on the copied title lines; the
+     page is not compared inside <code>, so a wrapped release line is found in the JSON files, not on the page. Doubled
+     backticks, an unpaired backtick and a pair over a line break are not spans and are compared as written. Cases TITLE1
+     TITLE2 SPAN1 SPAN2 SPAN3 SPAN4.
   F9 The run prints the builder's own line `claim basis: R read, C census, M without (treated as read)` (without the
      parenthesis when M is 0), counted over the non-null claims of the outline, beside the checker's line of the same
      counts. Case BAS1.
@@ -121,7 +144,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      CODE3 CODE4 AGR1.
   C1 The two status lines come from the strings keys: statement_read_line ({reader} {date} of the claim, or of the first
      reading block of the root when the claim is null, or when its basis is census), statement_census_line ({reader} {date}
-     of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line. A group with several
+     of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line, proof_not_applicable_line and proof_none_other_line (a root that has no proof,
+     no placeholders). A group with several
      roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is shown on a
      card only when n is above zero (a zero is not said there); the first-screen line steps_open_items_line is ALWAYS shown, zero
      included. The JSON counts are unchanged. Cases C1 C2 B7c OPN1 OPN2.
@@ -141,7 +165,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   P7 index.html and data.js hold none of fetch(, XMLHttpRequest, WebSocket, sendBeacon, import(, `src=`/`href=` to http(s)
      except in a reaction anchor, url(; the builder refuses (PAGE-STATIC) when one does. static_problems. Cases P7a P7b.
   R2 The first screen counts steps per fact with steps_statement_line and steps_proof_line ({n} {m}: a step is read for a fact
-     when EVERY root of it has it; m is the number of level-1 steps) and the open blocks with steps_open_items_line ({n});
+     when EVERY root of it has it; m is the number of level-1 steps, for the proof the number of those that have a proof, F22) and the open blocks with steps_open_items_line ({n});
      a card of a group with several roots counts declarations with statement_count_line and proof_count_line; the page has
      no percent sign and no "of the proof". Case R2.
   R3 The builder's own sentences never contain a word of `forbidden_words` (and verified, explained, understood always),
@@ -205,9 +229,9 @@ of the JSON (its hash fields left out) or the strings file: it cannot say the nu
 the outline and the strings file against the notes commit, and for tracked files of this folder against the tools
 commit; an untracked file of the tools folder is not seen, and without --notes-commit the notes commit is `unknown` and
 the notes are not judged. The sha256 of a root's file needs --source-check; a hash table in a note is not read. There is no
-coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the eleven
+coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the fourteen
 of them: statement_read_line, statement_census_line, statement_not_read_line, proof_read_line, proof_not_read_line,
-statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
+proof_not_applicable_line, proof_none_other_line, steps_proof_not_applicable_line, statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
 (and the three labels of the evidence block, evidence_module_label, evidence_name_label, evidence_kind_label);
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
 missing is read as `read` until the checker requires it (the run line says how many). The page shows the claim's reader and
@@ -215,7 +239,18 @@ date in the statement line; for a null claim with a reading block the first read
 rule as the statement reader, not by date). Placeholders are checked in every value of the strings file at any depth from the
 declared sets: a key that is not in the table declares none, so a new key is covered by default, and an `{name}` outside a value
 that declares it, or a brace in a value that declares none, refuses the build. A claimed
-group has one root, so the count lines appear only for null-claim groups. A code span (CODE) is the one place the page turns
+group has one root, so the count lines appear only for null-claim groups. THE KIND decides whether a root has a proof: an
+instance, or a def whose value is a proof term, does not count as having a proof for the page, whatever its body is; the builder
+reads the kind from the table row of the root and does not look at the Lean text. A step with some roots that are theorems and
+some that are definitions is read for the proof when every theorem root is: the definition roots are left out of the every-root
+test, and the card counts over the theorem roots. A kind outside the eight the table holds is treated as no proof and listed as
+KIND-NOTE; it is never refused. A card that shows a no-proof line uses proof_none_other_line when ANY of its proof-less roots
+has such a kind (a step with several roots too), and proof_not_applicable_line otherwise; the first screen does not
+distinguish: it shows steps_proof_not_applicable_line whenever no step has a proof, and a root of an unknown kind among the
+top-level steps is not reachable on a real table (the table holds the eight kinds only). The source check ranges over what a reader sees: the text of claims, conditions and note titles
+with the backticks of a span removed (on the JSON and data.js side, and on the copied title lines; the page skips <code>), the
+other values as written; a release line that is inside a longer sentence, or that is split by a span in its middle, is still not
+seen. A code span (CODE) is the one place the page turns
 claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
 seen in the JSON and not on the page. The nine keys of PHR must hold their placeholders, so a value that says the fact without
@@ -280,8 +315,9 @@ NAME_KEYS = frozenset(["id", "module", "name", "lean_name", "file", "note", "blo
 # ---------------------------------------------------------------- the tool
 
 TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
-             "statement_not_read_line", "proof_read_line", "proof_not_read_line", "statement_count_line", "proof_count_line",
-             "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
+             "statement_not_read_line", "proof_read_line", "proof_not_read_line", "proof_not_applicable_line", "proof_none_other_line",
+             "steps_proof_not_applicable_line", "statement_count_line",
+             "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
              "second_reader_frame", "interpretation_frame", "evidence_label", "evidence_module_label", "evidence_name_label", "evidence_kind_label",
              "roots_only_note", "dirty_note", "shared_note", "note_href")
 PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_line": {"reader", "date"},
@@ -298,6 +334,8 @@ REQUIRED_PLACEHOLDERS = {"statement_read_line": ("reader", "date"), "statement_c
                          "proof_read_line": ("reader", "date"), "statement_count_line": ("n", "m"), "proof_count_line": ("n", "m"),
                          "steps_statement_line": ("n", "m"), "steps_proof_line": ("n", "m"), "open_items_line": ("n",),
                          "steps_open_items_line": ("n",)}
+PROOF_KINDS = frozenset(["theorem", "lemma"])   # the table kinds that HAVE a proof; any other kind has none (F22)
+KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
 RETIRED_WORDS = ("Read by us", "Partly read", "Not read yet")        # the coverage scale F19 removed
 LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
@@ -350,6 +388,12 @@ def fact_pairs(flags):
     """(how many flags are True, how many are False): anything else (None) is counted in neither, so a sum that does not add up
     to the total is visible."""
     return sum(1 for f in flags if f is True), sum(1 for f in flags if f is False)
+
+
+def fact_triples(flags):
+    """(how many flags are True, how many are False, how many are None = not applicable): anything else is counted in none of the
+    three, so a sum that does not add up to the total is visible."""
+    return (sum(1 for f in flags if f is True), sum(1 for f in flags if f is False), sum(1 for f in flags if f is None))
 
 
 def _fact_flags(items, key):
@@ -450,17 +494,25 @@ def number_problems(page, json_text, strings_text):
 
 # ---- B1: no release text
 
-def _value_lines(obj):
-    """Every line of every string value of a parsed JSON, except the values under a key of NAME_KEYS (names and ids)."""
+def _unspan(text):
+    """The text as a reader sees it: each span between single backticks (notes_meta's _BACKTICK_SPAN, the one definition) replaced by
+    its content. Doubled backticks, an unpaired one and a pair over a line break are not spans and stay as written."""
+    return nm._BACKTICK_SPAN.sub(lambda mt: mt.group(1), text)
+
+
+def _value_lines(obj, seen=False, key=None):
+    """Every line of every string value of a parsed JSON, except the values under a key of NAME_KEYS (names and ids). The values a
+    reader sees through the span rule (the text of a claim, a condition, a note's list_title) are compared with the backticks
+    of their spans removed (`seen`); the JSON itself keeps them."""
     if isinstance(obj, str):
-        yield from obj.split("\n")
+        yield from (_unspan(obj) if seen else obj).split("\n")
     elif isinstance(obj, list):
         for x in obj:
-            yield from _value_lines(x)
+            yield from _value_lines(x, seen, key)
     elif isinstance(obj, dict):
         for k, v in obj.items():
             if k not in NAME_KEYS:
-                yield from _value_lines(v)
+                yield from _value_lines(v, k in ("conditions", "list_title") or (k == "text" and key == "claim"), k)
 
 
 def _output_lines(rel, data):
@@ -783,6 +835,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
             owners.setdefault((r["module"], r["name"]), []).append(gid)
     by_note = {n["id"]: n for n in m.notes}
     m.files, m.summary, m.copied, seen_blocks, open_blocks = {}, {}, [], set(), set()
+    m.kind_notes = []
     for gid, g in groups.items():
         roots = [(r["module"], r["name"]) for r in g["roots"]]
         blocks = {}
@@ -812,7 +865,13 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         for row, r in zip(root_rows, roots):
             kinds = {x["kind"] for x in anchored.get(r, [])}
             row["statement_read"] = claim_read or "reading" in kinds
-            row["proof_read"] = "argument" in kinds
+            if row["kind"] in PROOF_KINDS:
+                row["proof_read"] = "argument" in kinds
+            else:   # a definition, a structure, an instance ...: no proof to read, so the fact is not applicable (null)
+                row["proof_read"] = None
+                if row["kind"] not in KNOWN_KINDS:
+                    m.kind_notes.append((gid, f"{row['module']}.{row['name']}", row["kind"]))
+        applicable = [r["proof_read"] for r in root_rows if r["proof_read"] is not None]
         by = None
         if len(roots) == 1:   # one root: who read the statement (the claim, else the first reading block of the root)
             first = sorted((x for x in anchored.get(roots[0], []) if x["kind"] == "reading"), key=_block_key)
@@ -837,11 +896,14 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
             "lean_name": g["roots"][0]["name"] if roots else None,
             "claim_label": strings["no_claim_label"] if claim is None else None,
             "statement_read": bool(roots) and all(r["statement_read"] for r in root_rows),
-            "proof_read": bool(roots) and all(r["proof_read"] for r in root_rows),
+            # true when every root that HAS a proof has it read (a root without a proof is left out of the test), null when no
+            # root has a proof, false otherwise (and for a group with no root: never counted as read)
+            "proof_read": False if not roots else (all(applicable) if applicable else None),
             "statement_by": by,
-            "unread": not any(r["statement_read"] or r["proof_read"] for r in root_rows),
+            "unread": not any(r["statement_read"] is True or r["proof_read"] is True for r in root_rows),
             "counts": {"roots": len(roots), "roots_statement_read": sum(1 for r in root_rows if r["statement_read"]),
-                       "roots_proof_read": sum(1 for r in root_rows if r["proof_read"]), "roots_open_items": roots_open,
+                       "roots_proof_read": sum(1 for r in root_rows if r["proof_read"] is True),
+                       "roots_proof_applicable": len(applicable), "roots_open_items": roots_open,
                        "open_items": len(open_here)},
             "notes": notes, "roots_only": True}
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "premises": list(g["premises"]), "roots": root_rows,
@@ -931,12 +993,12 @@ def _render_page(m, s, facts, dirty):
         out.append(f'<p class="dirty">{_e(s["dirty_note"])}</p>')
     out += ['<ul class="facts">',
             f"<li>{_e(_fill(s['steps_statement_line'], n=facts['statement_read'], m=facts['steps']))}</li>",
-            f"<li>{_e(_fill(s['steps_proof_line'], n=facts['proof_read'], m=facts['steps']))}</li>",
+            f"<li>{_e(_fill(s['steps_proof_line'], n=facts['proof_read'], m=facts['proof_applicable']) if facts['proof_applicable'] else s['steps_proof_not_applicable_line'])}</li>",
             f"<li>{_e(_fill(s['steps_open_items_line'], n=m.totals['open_items']))}</li>", "</ul>",
             f'<p class="mapped">{_e(s["mapped_line"])}</p>']
     if m.header_notes:
         out += ['<section class="whole">', f"<h2>{_e(lab['level0_notes'])}</h2>", "<ul>"]
-        out += [f'<li><a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>' for n in m.header_notes]
+        out += [f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>' for n in m.header_notes]
         out += ["</ul>", "</section>"]
     out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
 
@@ -964,10 +1026,14 @@ def _render_page(m, s, facts, dirty):
             links = ", ".join(f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>' for p in sm["premises"])
             o.append(f'<p class="premises">{_e(lab["premises"])} {links}</p>')
         c, by = sm["counts"], sm["statement_by"]
+        # the line of a card with no proof: the builder does not know what a declaration of an unknown kind is
+        none_line = (s["proof_none_other_line"] if any(r["kind"] not in KNOWN_KINDS for r in fl["roots"])
+                     else s["proof_not_applicable_line"])
         args = [b for b in fl["blocks"] if b["kind"] == "argument"]   # blocks are in note id, then block number, order
         if c["roots"] > 1:   # several roots (a null claim): counts with their denominators
             st = _fill(s["statement_count_line"], n=c["roots_statement_read"], m=c["roots"])
-            pf = _fill(s["proof_count_line"], n=c["roots_proof_read"], m=c["roots"])
+            pf = (_fill(s["proof_count_line"], n=c["roots_proof_read"], m=c["roots_proof_applicable"])
+                  if c["roots_proof_applicable"] else none_line)   # counted over the roots that HAVE a proof
         else:
             if sm["statement_read"]:
                 st = _fill(s["statement_read_line"], reader=by["reader"], date=by["date"])
@@ -975,7 +1041,8 @@ def _render_page(m, s, facts, dirty):
                 st = _fill(s["statement_census_line"], reader=by["reader"], date=by["date"])
             else:
                 st = s["statement_not_read_line"]
-            pf = (_fill(s["proof_read_line"], reader=args[0]["reader"], date=args[0]["date"]) if sm["proof_read"]
+            pf = (none_line if sm["proof_read"] is None
+                  else _fill(s["proof_read_line"], reader=args[0]["reader"], date=args[0]["date"]) if sm["proof_read"]
                   else s["proof_not_read_line"])
         o.append(f'<p class="status statement">{_e(st)}</p>')
         o.append(f'<p class="status proof">{_e(pf)}</p>')
@@ -994,11 +1061,11 @@ def _render_page(m, s, facts, dirty):
             for b in corr:
                 n = next(n for n in sm["notes"] if n["note"] == b["note"])
                 o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <span class="reader">{_e(b["reader"])}</span> '
-                         f'<time>{_e(b["date"])}</time> <a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>')
+                         f'<time>{_e(b["date"])}</time> <a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>')
             o.append("</ul>")
         if sm["notes"]:
             o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
-                     + "".join(f'<li><a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>' for n in sm["notes"]) + "</ul>")
+                     + "".join(f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>' for n in sm["notes"]) + "</ul>")
         o.append('<ul class="reactions">')
         for r in s["reactions"]:
             href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
@@ -1105,21 +1172,25 @@ def _assemble(m, s, commits):
     """(errors, the facts check line, level0, level1, the group files, the facts over the steps)."""
     errors = []
     steps = [m.summary[i] for i in m.steps]
-    pairs = {}
-    for fact, code in (("statement_read", "SUM-STATEMENT"), ("proof_read", "SUM-PROOF")):
-        a, b = fact_pairs(_fact_flags(steps, fact))
-        pairs[fact] = (a, b)
-        if a + b != len(steps):
-            errors.append((code, "steps:", f"read {a} + not read {b} = {a + b}, but there are {len(steps)} steps"))
+    def check(items, where, noun):
+        """The two sums over `items` (steps or the root rows of a group): read + not read = total for the statement, read + not
+        read + not applicable = total for the proof."""
+        a, b = fact_pairs(_fact_flags(items, "statement_read"))
+        if a + b != len(items):
+            errors.append(("SUM-STATEMENT", where, f"read {a} + not read {b} = {a + b}, but there are {len(items)} {noun}"))
+        c, d, e = fact_triples(_fact_flags(items, "proof_read"))
+        if c + d + e != len(items):
+            errors.append(("SUM-PROOF", where, f"read {c} + not read {d} + not applicable {e} = {c + d + e}, but there are "
+                                               f"{len(items)} {noun}"))
+        return (a, b), (c, d, e)
+
+    (sa, sb), (pa, pb, pn) = check(steps, "steps:", "steps")
     for gid in sorted(m.groups):
-        rows = m.files[gid]["roots"]
-        for fact, code in (("statement_read", "SUM-STATEMENT"), ("proof_read", "SUM-PROOF")):
-            a, b = fact_pairs(_fact_flags(rows, fact))
-            if a + b != len(rows):
-                errors.append((code, f"group {gid} roots:", f"read {a} + not read {b} = {a + b}, but there are {len(rows)} roots"))
-    (sa, sb), (pa, pb) = pairs["statement_read"], pairs["proof_read"]
-    line = f"statements read {sa} + not read {sb} = {sa + sb} steps; proofs read {pa} + not read {pb} = {pa + pb} steps"
-    facts = {"steps": len(steps), "statement_read": sa, "statement_not_read": sb, "proof_read": pa, "proof_not_read": pb}
+        check(m.files[gid]["roots"], f"group {gid} roots:", "roots")
+    line = (f"statements read {sa} + not read {sb} = {sa + sb} steps; "
+            f"proofs read {pa} + not read {pb} + not applicable {pn} = {pa + pb + pn} steps")
+    facts = {"steps": len(steps), "statement_read": sa, "statement_not_read": sb, "proof_read": pa, "proof_not_read": pb,
+             "proof_not_applicable": pn, "proof_applicable": pa + pb}
     level0 = {"commits": commits, "header_notes": m.header_notes, "level": 0, "facts": facts, "steps": steps,
               "totals": m.totals}
     level1 = {"commits": commits, "level": 1, "steps": [_nest(m, i) for i in m.steps]}
@@ -1246,6 +1317,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     word_notes = _word_notes(m, sj)
     for where, word in word_notes:
         print(f"WORD-NOTE {where} {word}")
+    for gid, name, kind in m.kind_notes:   # a kind outside the eight: no proof (null), and listed, never refused
+        print(f"KIND-NOTE {gid} {name} kind {kind!r}")
     for n in m.notes:
         for b in n["blocks"]:
             for what in ("reader", "date"):
@@ -1271,7 +1344,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         if not sg.walk_lean(source_check):
             print("CHECKED NOTHING: no .lean file under SRC_ROOT")
             return 3
-        copied = m.copied + [(n["id"], "field list_title", n["title"].split("\n")) for n in m.notes]
+        copied = m.copied + [(n["id"], "field list_title", _unspan(n["title"]).split("\n")) for n in m.notes]
         try:
             leaks, st = leak_check(files, source_check, copied)
         except ValueError as ex:
@@ -1341,6 +1414,19 @@ DECLS = ("# decls fixture\n"
          "A.E\tqux\ttheorem\t1\t4\ttext-extent\n"
          "A.F\tquux\ttheorem\t1\t3\ttext-extent\n"
          "A.G\tcorge\ttheorem\t1\t2\ttext-extent\n")
+
+
+def _decls_kinds(kinds):
+    """DECLS with the kind column of the named declarations changed (name -> kind)."""
+    out = []
+    for ln in DECLS.splitlines(True):
+        c = ln.split("\t")
+        if len(c) == 6 and c[1] in kinds:
+            c[2] = kinds[c[1]]
+        out.append("\t".join(c))
+    return "".join(out)
+
+
 FILES = "\n## Files this note was written from\n\n| File | SHA-256 |\n|---|---|\n| `A/B.lean` | `x` |\n"
 ARG_TEXT = "First argument sentence. Second argument sentence."
 LEAK = "theorem leak_example_long_name : 1 + 1 = 2 := rfl"
@@ -1416,6 +1502,9 @@ def _strings():
         "statement_not_read_line": "Statement: not read yet.",
         "proof_read_line": "Proof read by {reader} on {date}.",
         "proof_not_read_line": "Proof: not read yet.",
+        "proof_not_applicable_line": "Proof: none to read, this is not a theorem.",
+        "proof_none_other_line": "Proof: none to read, and this declaration is of a kind we do not know.",
+        "steps_proof_not_applicable_line": "No step here has a proof to read.",
         "statement_count_line": "Statements read: {n} of {m} declarations.",
         "proof_count_line": "Proofs read: {n} of {m} declarations.",
         "open_items_line": "Questions written down: {n}.",
@@ -1682,8 +1771,9 @@ def _child(args_file, out, seed):
 
 
 STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
-               "statement_not_read_line", "proof_read_line", "proof_not_read_line", "statement_count_line", "proof_count_line",
-               "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "frames",
+               "statement_not_read_line", "proof_read_line", "proof_not_read_line", "proof_not_applicable_line", "proof_none_other_line",
+               "steps_proof_not_applicable_line", "statement_count_line",
+               "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "frames",
                "argument_frame", "second_reader_frame", "interpretation_frame", "evidence_label",
                "evidence_module_label", "evidence_name_label", "evidence_kind_label", "reactions",
                "roots_only_note", "dirty_note", "shared_note", "note_href", "forbidden_words",
@@ -1691,6 +1781,15 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument"]
+
+
+def _real_strings_facts(path):
+    """(the problems `_strings_problems` finds in the strings file at `path`, whether it carries the key proof_not_applicable_line,
+    whether that value is free of braces)."""
+    with open(path, encoding="utf-8") as f:
+        real = json.load(f)
+    v = real.get("proof_not_applicable_line") if isinstance(real, dict) else None
+    return _strings_problems(real), isinstance(v, str), isinstance(v, str) and "{" not in v and "}" not in v
 
 
 def _selftest_cases():
@@ -1845,7 +1944,8 @@ def _selftest_cases():
                 {"basis": "read", "conditions": ["Condition one holds."], "date": "2026-11-20",
                  "reader": "Reader One", "text": "Claim one"},
                 ["01", "02"], {"link": "notes/01-one.md", "list_title": "Note one", "note": "01"},
-                {"proof_not_read": 2, "proof_read": 1, "statement_not_read": 2, "statement_read": 1, "steps": 3},
+                {"proof_applicable": 3, "proof_not_applicable": 0, "proof_not_read": 2, "proof_read": 1, "statement_not_read": 2,
+                 "statement_read": 1, "steps": 3},
                 [{"link": "notes/00-whole.md", "list_title": "Whole one", "note": "00"}],
                 {"blocks": 8, "groups": 6, "notes": 4, "open_items": 1, "roots": 6}, 0, [["g1a"], ["g1", "g2"], []])
         return _eq(got, want)
@@ -1999,34 +2099,47 @@ def _selftest_cases():
             return _eq(res, [(0, {"notes": head, "release": "rel-1", "tools": "tools0"}, False),
                              (0, {"notes": "dirty", "release": "dirty", "tools": "dirty"}, True)])
 
-    @case("R1a", "F4 planted: a flag that is neither true nor false is fed to the fact function for the steps: SUM-STATEMENT (or "
-                 "SUM-PROOF) `steps: read 0 + not read 2 = 2, but there are 3 steps`, exit 1, nothing written; planted on the roots "
-                 "of g2: `group g2 roots: read 1 + not read 0 = 1, but there are 2 roots` (statement) and `read 0 + not read 1 = 1, ...` "
-                 "(proof); the sums guard a MISSING flag, not a wrong one; fact_pairs counts only true and false")
+    @case("R1a", "F4 planted: a flag that is not a true, a false or (for the proof) a null is fed to the fact function for the steps: "
+                 "SUM-STATEMENT `steps: read 0 + not read 2 = 2, but there are 3 steps`, SUM-PROOF `steps: read 0 + not read 2 + not "
+                 "applicable 0 = 2, but there are 3 steps`, exit 1, nothing written; planted on the roots of g2: `group g2 roots: read 1 "
+                 "+ not read 0 = 1, but there are 2 roots` (statement) and `read 0 + not read 1 + not applicable 0 = 1, ...` (proof); "
+                 "a null on a proof flag is NOT a mismatch (not applicable: the build passes and the line counts it); the sums guard a "
+                 "MISSING flag, not a wrong one; fact_pairs counts only true and false, fact_triples true, false and null")
     def _():
         real = globals()["_fact_flags"]
         res = []
         for key, n_items in (("statement_read", 3), ("proof_read", 3), ("statement_read", 2), ("proof_read", 2)):
             def plant(items, k, key=key, n_items=n_items, real=real):
                 flags = real(items, k)
-                return [None] + flags[1:] if k == key and len(items) == n_items else flags
+                return [("?" if k == "proof_read" else None)] + flags[1:] if k == key and len(items) == n_items else flags
             with _patched("_fact_flags", plant):
                 b = _build()
             res.append((b.rc, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SUM-")], b.existed))
-        err = "read 0 + not read 2 = 2, but there are 3 steps"
-        return _eq((res, fact_pairs([True, False, None, True]), fact_pairs([])),
-                   ([(1, ["BUILD-ERROR SUM-STATEMENT steps: " + err], False), (1, ["BUILD-ERROR SUM-PROOF steps: " + err], False),
-                     (1, ["BUILD-ERROR SUM-STATEMENT group g2 roots: read 1 + not read 0 = 1, but there are 2 roots"], False),
-                     (1, ["BUILD-ERROR SUM-PROOF group g2 roots: read 0 + not read 1 = 1, but there are 2 roots"], False)],
-                    (2, 1), (0, 0)))
 
-    @case("R1b", "a good build prints `facts check: statements read 1 + not read 2 = 3 steps; proofs read 1 + not read 2 = 3 steps`")
+        def plant_none(items, k, real=real):
+            flags = real(items, k)
+            return [None] + flags[1:] if k == "proof_read" and len(items) == 3 else flags
+        with _patched("_fact_flags", plant_none):
+            ok_ = _build()
+        err = "read 0 + not read 2 = 2, but there are 3 steps"
+        err_p = "read 0 + not read 2 + not applicable 0 = 2, but there are 3 steps"
+        return _eq((res, fact_pairs([True, False, None, True]), fact_pairs([]), fact_triples([True, False, None, "?", None]),
+                    fact_triples([]), ok_.rc, [ln for ln in ok_.out.splitlines() if ln.startswith("facts check: ")]),
+                   ([(1, ["BUILD-ERROR SUM-STATEMENT steps: " + err], False), (1, ["BUILD-ERROR SUM-PROOF steps: " + err_p], False),
+                     (1, ["BUILD-ERROR SUM-STATEMENT group g2 roots: read 1 + not read 0 = 1, but there are 2 roots"], False),
+                     (1, ["BUILD-ERROR SUM-PROOF group g2 roots: read 0 + not read 1 + not applicable 0 = 1, but there are 2 roots"],
+                      False)],
+                    (2, 1), (0, 0), (1, 1, 2), (0, 0, 0), 0,
+                    ["facts check: statements read 1 + not read 2 = 3 steps; proofs read 0 + not read 2 + not applicable 1 = 3 steps"]))
+
+    @case("R1b", "a good build prints `facts check: statements read 1 + not read 2 = 3 steps; proofs read 1 + not read 2 + not applicable 0 "
+                 "= 3 steps`")
     def _():
-        return _eq("facts check: statements read 1 + not read 2 = 3 steps; proofs read 1 + not read 2 = 3 steps"
+        return _eq("facts check: statements read 1 + not read 2 = 3 steps; proofs read 1 + not read 2 + not applicable 0 = 3 steps"
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 49 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 52 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -2039,7 +2152,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 49))
+        return _eq((bad, len(STRING_KEYS)), ([], 52))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -2351,13 +2464,13 @@ def _selftest_cases():
                    ("The constant 1.5 is used.", "See e.g.x and 3.2 now", "Is it so?", "Done.", "Stop!", "The constant 1.5 is used."))
 
     @case("F1a", "the two facts per root in the base build: g1 (claim read + reading + argument) both; g1a (null claim, reading block) "
-                 "statement only; g1a1 (claim without basis, read by default) statement only; g1a1x (null claim, reading block "
+                 "statement only; g1a1 (claim without basis, read by default; its root baz is a def, so no proof: None) statement only; g1a1x (null claim, reading block "
                  "on qux) statement only; g2 roots [quux, qux] = [neither, statement only]; g3 (claim census, no block) neither")
     def _():
         b = _base()
         st = lambda g: [(r["statement_read"], r["proof_read"]) for r in b.js(f"group/{g}.json")["roots"]]
         return _eq([st(g) for g in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")],
-                   [[(True, True)], [(True, False)], [(True, False)], [(True, False)], [(False, False), (True, False)],
+                   [[(True, True)], [(True, False)], [(True, None)], [(True, False)], [(False, False), (True, False)],
                     [(False, False)]])
 
     @case("F1b", "a census claim with an argument block on its root: proof only; a census claim plus a reading block on its root: "
@@ -2834,8 +2947,8 @@ def _selftest_cases():
         return _eq(got, want)
 
     # ---- F19: the two facts
-    @case("F2a", "level0.json per step: counts {roots, roots_statement_read, roots_proof_read, roots_open_items, open_items} (g1: 1, 1, 1, "
-                 "0, 0; g3: 1, 0, 0, 0, 0; g2: 2, 1, 0, 1, 1) with no key that holds `not_read`; claim.basis is the effective value "
+    @case("F2a", "level0.json per step: counts {roots, roots_statement_read, roots_proof_read, roots_proof_applicable, roots_open_items, "
+                 "open_items} (g1: 1, 1, 1, 1, 0, 0; g3: 1, 0, 0, 1, 0, 0; g2: 2, 1, 0, 2, 1, 1) with no key that holds `not_read`; claim.basis is the effective value "
                  "(g1 `read` as written, g3 `census`, g1a1 `read` although the file has none); no `coverage` key; level0 `facts`")
     def _():
         b = _base()
@@ -2845,11 +2958,15 @@ def _selftest_cases():
         return _eq(([steps[g]["counts"] for g in ("g1", "g3", "g2")], [k for x in steps.values() for k in x["counts"] if "not_read" in k],
                     [steps["g1"]["claim"]["basis"], steps["g3"]["claim"]["basis"], g1a1["claim"]["basis"]],
                     ["coverage" in x for x in steps.values()], l0["facts"], "route" in l0),
-                   ([{"roots": 1, "roots_statement_read": 1, "roots_proof_read": 1, "roots_open_items": 0, "open_items": 0},
-                     {"roots": 1, "roots_statement_read": 0, "roots_proof_read": 0, "roots_open_items": 0, "open_items": 0},
-                     {"roots": 2, "roots_statement_read": 1, "roots_proof_read": 0, "roots_open_items": 1, "open_items": 1}],
+                   ([{"roots": 1, "roots_statement_read": 1, "roots_proof_read": 1, "roots_proof_applicable": 1, "roots_open_items": 0,
+                      "open_items": 0},
+                     {"roots": 1, "roots_statement_read": 0, "roots_proof_read": 0, "roots_proof_applicable": 1, "roots_open_items": 0,
+                      "open_items": 0},
+                     {"roots": 2, "roots_statement_read": 1, "roots_proof_read": 0, "roots_proof_applicable": 2, "roots_open_items": 1,
+                      "open_items": 1}],
                     [], ["read", "census", "read"], [False] * 3,
-                    {"proof_not_read": 2, "proof_read": 1, "statement_not_read": 2, "statement_read": 1, "steps": 3}, False))
+                    {"proof_applicable": 3, "proof_not_applicable": 0, "proof_not_read": 2, "proof_read": 1, "statement_not_read": 2,
+                     "statement_read": 1, "steps": 3}, False))
 
     @case("F3a", "a stale strings file is refused naming the key: `coverage`, `not_read_yet`, `roots_not_read`, `roots_not_read_note`; the "
                  "two status keys (statement_not_read_line, proof_not_read_line) are allowed (the base builds)")
@@ -3167,6 +3284,267 @@ def _selftest_cases():
         return _eq((b.rc, [ln for ln in b.out.splitlines() if ln.startswith("WORD-NOTE")], refused.rc,
                     "BUILD-ERROR STRINGS-FORBIDDEN mapped_line" in refused.out),
                    (0, ["WORD-NOTE g1.conditions[0] of the proof", "WORD-NOTE g3.claim of the proof"], 1, True))
+
+    # ---- F22: a definition has no proof to read (a proof needs a theorem or a lemma)
+    NA_LINE = "Proof: none to read, this is not a theorem."
+    ARG_QUX = N03 + "\nArgues qux.\n" + _b(id="03.b01", kind="argument", decls=[QUX], reader="Reader Two", date="2026-11-23") + "\n"
+    ARG_CORGE = N03 + "\nArgues corge.\n" + _b(id="03.b01", kind="argument", decls=[CORGE], reader="Reader Two", date="2026-11-23") + "\n"
+    facts_line = lambda b_: [li.text() for li in _dom(b_.page).find("ul", "facts")[0].find("li")]
+    step_of = lambda b_, g: [x for x in b_.js("level0.json")["steps"] if x["id"] == g][0]
+
+    @case("PRK1", "the kind of the root decides whether there is a proof: a root whose table kind is `theorem` or `lemma` has one, any "
+                  "other kind (def, structure, instance, abbrev, class, inductive) has none; with an argument block on the root (which "
+                  "would read the proof if there were one) the root's proof_read and the step's are true for theorem and lemma and NULL "
+                  "(not false) for the six others; the build passes and lists nothing for a known kind")
+    def _():
+        res = []
+        for kind in ("theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"):
+            b = _build(decls=_decls_kinds({"corge": kind}), notes=_notes() | {"03-three.md": ARG_CORGE})
+            r = b.js("group/g3.json")["roots"][0]
+            res.append((kind, b.rc, r["kind"], r["proof_read"], step_of(b, "g3")["proof_read"],
+                        [ln for ln in b.out.splitlines() if ln.startswith("KIND-NOTE")]))
+        return _eq(res, [(k, 0, k, v, v, []) for k, v in (("theorem", True), ("lemma", True), ("def", None), ("structure", None),
+                                                          ("instance", None), ("abbrev", None), ("class", None), ("inductive", None))])
+
+    @case("PRK2", "a root whose kind is not one of the eight the table holds (`axiom`) or is empty has no proof (null) AND is listed: one "
+                  "`KIND-NOTE g3 A.G.corge kind 'axiom'` (or `kind ''`) line on stdout, exit unchanged, nothing refused; the group "
+                  "and the step carry null")
+    def _():
+        res = []
+        for kind in ("axiom", ""):
+            b = _build(decls=_decls_kinds({"corge": kind}), notes=_notes() | {"03-three.md": ARG_CORGE})
+            res.append((kind, b.rc, b.js("group/g3.json")["roots"][0]["proof_read"], step_of(b, "g3")["proof_read"],
+                        [ln for ln in b.out.splitlines() if ln.startswith("KIND-NOTE")]))
+        return _eq(res, [("axiom", 0, None, None, ["KIND-NOTE g3 A.G.corge kind 'axiom'"]),
+                         ("", 0, None, None, ["KIND-NOTE g3 A.G.corge kind ''"])])
+
+    @case("DEF1", "a top-level step that is a definition (corge, g3) has no proof: its proof_read is null in level0.json, level1.json and "
+                  "group/g3.json (written `null`, never `false`), its counts say roots_proof_applicable 0, its card shows the not-applicable "
+                  "line, the card is still `unread` (statement not read AND proof not applicable); the facts count it apart (proof read 1 + "
+                  "not read 1 + not applicable 1 = 3, applicable 2), the run prints the three-term check line, and the first screen counts "
+                  "over the steps that have a proof: `Proofs read: 1 of 2 steps.`; in the base build g1a1 (baz, a def) shows the "
+                  "not-applicable line too")
+    def _():
+        b = _build(decls=_decls_kinds({"corge": "def"}))
+        l0, g3 = b.js("level0.json"), step_of(b, "g3")
+        l1 = {x["id"]: x for x in b.js("level1.json")["steps"]}
+        return _eq((b.rc, [step_of(b, g)["proof_read"] for g in ("g1", "g3", "g2")], [step_of(b, g)["unread"] for g in ("g1", "g3", "g2")],
+                    g3["counts"], l0["facts"], "facts check: statements read 1 + not read 2 = 3 steps; proofs read 1 + not read 1 + not "
+                    "applicable 1 = 3 steps" in b.out.splitlines(), facts_line(b), _card(b, "g3").find("p", "proof")[0].text(),
+                    "unread" in _card(b, "g3").cls, b.js("group/g3.json")["roots"][0]["proof_read"], l1["g3"]["proof_read"],
+                    '"proof_read": null' in b.text("group/g3.json"), '"proof_read": false' in b.text("group/g3.json"),
+                    _card(_base(), "g1a1").find("p", "proof")[0].text()),
+                   (0, [True, None, False], [False, True, False],
+                    {"roots": 1, "roots_statement_read": 0, "roots_proof_read": 0, "roots_proof_applicable": 0, "roots_open_items": 0,
+                     "open_items": 0},
+                    {"proof_applicable": 2, "proof_not_applicable": 1, "proof_not_read": 1, "proof_read": 1, "statement_not_read": 2,
+                     "statement_read": 1, "steps": 3}, True,
+                    ["Statements read: 1 of 3 steps.", "Proofs read: 1 of 2 steps.", "Questions written down in these notes: 1."],
+                    NA_LINE, True, None, None, True, False, NA_LINE))
+
+    @case("DEF2", "a step with some roots that are theorems and some that are defs (g2: quux a def, qux a theorem): the roots without a proof "
+                  "are left out of the `every root` test, so with an argument block on qux the step's proof_read is TRUE (rows null, true), "
+                  "the card counts over the roots that have a proof (`Proofs read: 1 of 1 declarations.`), roots_proof_applicable is 1 "
+                  "and the facts and the first screen count it read (2 of 3 steps); without that block it is false (`Proofs read: 0 of "
+                  "1 declarations.`, 1 of 3 steps)")
+    def _():
+        k = _decls_kinds({"quux": "def"})
+        a, c = _build(decls=k, notes=_notes() | {"03-three.md": ARG_QUX}), _build(decls=k)
+
+        def show(b):
+            return (b.rc, step_of(b, "g2")["proof_read"], [r["proof_read"] for r in b.js("group/g2.json")["roots"]],
+                    step_of(b, "g2")["counts"]["roots_proof_read"], step_of(b, "g2")["counts"]["roots_proof_applicable"],
+                    _card(b, "g2").find("p", "proof")[0].text(), b.js("level0.json")["facts"]["proof_read"],
+                    b.js("level0.json")["facts"]["proof_not_applicable"], facts_line(b)[1], "unread" in _card(b, "g2").cls)
+        return _eq((show(a), show(c), "facts check: statements read 1 + not read 2 = 3 steps; proofs read 2 + not read 1 + not applicable "
+                    "0 = 3 steps" in a.out.splitlines()),
+                   ((0, True, [None, True], 1, 1, "Proofs read: 1 of 1 declarations.", 2, 0, "Proofs read: 2 of 3 steps.", False),
+                    (0, False, [None, False], 0, 1, "Proofs read: 0 of 1 declarations.", 1, 0, "Proofs read: 1 of 3 steps.", False),
+                    True))
+
+    @case("DEF3", "a step whose every root is a def (g2: quux and qux) has no proof: proof_read null, roots_proof_applicable 0, and the card "
+                  "shows the not-applicable line instead of the count line (never `Proofs read: 0 of 0 declarations.`); g1a1x (qux alone) "
+                  "shows it too; the facts count the step apart (1 + 1 + 1 = 3)")
+    def _():
+        b = _build(decls=_decls_kinds({"quux": "def", "qux": "def"}))
+        g2 = step_of(b, "g2")
+        return _eq((b.rc, g2["proof_read"], g2["counts"]["roots_proof_applicable"], g2["counts"]["roots_proof_read"],
+                    [r["proof_read"] for r in b.js("group/g2.json")["roots"]], _card(b, "g2").find("p", "proof")[0].text(),
+                    _card(b, "g1a1x").find("p", "proof")[0].text(), "0 of 0" in b.page,
+                    "facts check: statements read 1 + not read 2 = 3 steps; proofs read 1 + not read 1 + not applicable 1 = 3 steps"
+                    in b.out.splitlines(), facts_line(b)[1]),
+                   (0, None, 0, 0, [None, None], NA_LINE, NA_LINE, False, True, "Proofs read: 1 of 2 steps."))
+
+    @case("DEF4", "when NO top-level step has a proof (every root of the table a def) the first screen shows steps_proof_not_applicable_line "
+                  "in place of steps_proof_line (never `of 0 steps`): the second line of the facts list is that line, `of 0` is "
+                  "nowhere on the page, the facts count 0 + 0 + 3 and the run prints the three-term check line; with every strings value a "
+                  "marker the line is `MARK-steps_proof_not_applicable_line`; control: one step with a proof keeps steps_proof_line")
+    def _():
+        alld = _decls_kinds({ln.split("\t")[1]: "def" for ln in DECLS.splitlines() if len(ln.split("\t")) == 6 and
+                             not ln.startswith("#") and ln.split("\t")[2] != "kind"})
+        b = _build(decls=alld)
+        m = _build(decls=alld, strings=_marked(_strings()))
+        one = _build(decls=_decls_kinds({"corge": "def", "quux": "def", "qux": "def"}))
+        return _eq((b.rc, facts_line(b), "of 0" in b.page, b.js("level0.json")["facts"]["proof_applicable"],
+                    "facts check: statements read 1 + not read 2 = 3 steps; proofs read 0 + not read 0 + not applicable 3 = 3 steps"
+                    in b.out.splitlines(), facts_line(m)[1], one.rc, facts_line(one)[1]),
+                   (0, ["Statements read: 1 of 3 steps.", "No step here has a proof to read.", "Questions written down in these notes: 1."],
+                    False, 0, True, "MARK-steps_proof_not_applicable_line", 0, "Proofs read: 1 of 1 steps."))
+
+    @case("NAL1", "the strings key proof_not_applicable_line is required and holds no placeholder: a value with `{n}` is refused as an unknown "
+                  "placeholder, a value with `{ x }` as a brace, an empty value as `must be a non-empty string`, a value with a forbidden "
+                  "word as STRINGS-FORBIDDEN, each naming the key, exit 1, nothing written; with every strings value a marker the not-"
+                  "applicable card shows `MARK-proof_not_applicable_line` and the first screen `MARK-steps_proof_line 1 2`")
+    def _():
+        res = []
+        for v in ("None {n}", "A set { x } line.", "", "This was verified."):
+            st = _strings()
+            st["proof_not_applicable_line"] = v
+            b = _build(strings=st)
+            res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+        m = _build(decls=_decls_kinds({"corge": "def"}), strings=_marked(_strings()))
+        return _eq((res, m.rc, _card(m, "g3").find("p", "proof")[0].text(), facts_line(m)[1]),
+                   ([(1, ["BUILD-ERROR STRINGS-KEY proof_not_applicable_line has an unknown placeholder {n}"], False),
+                     (1, ["BUILD-ERROR STRINGS-KEY proof_not_applicable_line holds a brace, and this key declares no placeholder"], False),
+                     (1, ["BUILD-ERROR STRINGS-KEY proof_not_applicable_line must be a non-empty string"], False),
+                     (1, ["BUILD-ERROR STRINGS-FORBIDDEN proof_not_applicable_line holds the word 'verified', which the page never says"],
+                      False)], 0, "MARK-proof_not_applicable_line", "MARK-steps_proof_line 1 2"))
+
+    @case("NAL3", "the two strings keys proof_none_other_line and steps_proof_not_applicable_line are required and hold no placeholder: a "
+                  "value with `{n}` is an unknown placeholder, a value with `{ x }` a brace, an empty value `must be a non-empty string`, a "
+                  "forbidden word STRINGS-FORBIDDEN, each naming the key, exit 1, nothing written")
+    def _():
+        res = []
+        for key in ("proof_none_other_line", "steps_proof_not_applicable_line"):
+            for v in ("None {n}", "A set { x } line.", "", "This was verified."):
+                st = _strings()
+                st[key] = v
+                b = _build(strings=st)
+                res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+        want = []
+        for key in ("proof_none_other_line", "steps_proof_not_applicable_line"):
+            want += [(1, [f"BUILD-ERROR STRINGS-KEY {key} has an unknown placeholder {{n}}"], False),
+                     (1, [f"BUILD-ERROR STRINGS-KEY {key} holds a brace, and this key declares no placeholder"], False),
+                     (1, [f"BUILD-ERROR STRINGS-KEY {key} must be a non-empty string"], False),
+                     (1, [f"BUILD-ERROR STRINGS-FORBIDDEN {key} holds the word 'verified', which the page never says"], False)]
+        return _eq(res, want)
+
+    @case("NONE1", "a card with no proof says what it can: a root whose kind is outside the eight (`axiom`) shows proof_none_other_line "
+                   "(`MARK-proof_none_other_line`, not the not-applicable one), a def keeps proof_not_applicable_line, a step with several "
+                   "roots (g2, null claim) shows proof_none_other_line when ANY of its proof-less roots has an unknown kind (def + axiom, "
+                   "either order) and proof_not_applicable_line when all are known (def + def); with the fixture wording an axiom card "
+                   "shows `Proof: none to read, and this declaration is of a kind we do not know.`")
+    def _():
+        mk = _marked(_strings())
+        line = lambda kinds, g, strings=mk: _card(_build(decls=_decls_kinds(kinds), strings=strings), g).find("p", "proof")[0].text()
+        return _eq((line({"corge": "axiom"}, "g3"), line({"corge": "def"}, "g3"), line({"quux": "def", "qux": "axiom"}, "g2"),
+                    line({"quux": "axiom", "qux": "def"}, "g2"), line({"quux": "def", "qux": "def"}, "g2"),
+                    line({"corge": "axiom"}, "g3", _strings())),
+                   ("MARK-proof_none_other_line", "MARK-proof_not_applicable_line", "MARK-proof_none_other_line",
+                    "MARK-proof_none_other_line", "MARK-proof_not_applicable_line",
+                    "Proof: none to read, and this declaration is of a kind we do not know."))
+
+    @case("NAL2", "the strings file of this checkout (site/strings.json) passes the builder's own check (`_strings_problems` returns []), "
+                  "carries the key proof_not_applicable_line, and that value holds no brace")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        return _eq(_real_strings_facts(path), ([], True, True))
+
+    # ---- F23: a note title is rendered like a claim, and the source check compares what a reader sees
+    def _titled(t00, t01, t02):
+        n = _notes()
+        n["00-whole.md"] = N00.replace('"list_title":"Whole one"', '"list_title":' + _js_safe(json.dumps(t00)))
+        n["01-one.md"] = _n01().replace('"list_title":"Note one"', '"list_title":' + _js_safe(json.dumps(t01)))
+        n["02-two.md"] = N02.replace('"list_title":"Note two"', '"list_title":' + _js_safe(json.dumps(t02)))
+        return n
+
+    show_links = lambda node: [(a.text(), [c.text() for c in a.find("code")]) for a in node.find("a")]
+
+    @case("TITLE1", "a note title is rendered by the same span rule as a claim: a span between single backticks on one line is <code> (its "
+                    "content escaped) in the level-0 list (`Whole `one``), in the notes list of a card (g1: `Note `one``, `Note `x < y` two``) "
+                    "and in the corrections list of g1 (`Note `one``), and no literal backtick is left on the page; the JSON and data.js "
+                    "keep the title as written")
+    def _():
+        b = _build(notes=_titled("Whole `one`", "Note `one`", "Note `x < y` two"))
+        g1 = _card(b, "g1")
+        l0 = b.js("level0.json")
+        return _eq((b.rc, show_links(_dom(b.page).find("header")[0]), show_links(_direct(g1, "ul", "notes")[0]),
+                    show_links(_direct(g1, "ul", "corrections")[0]), "`" in b.page, "Note <code>x &lt; y</code> two</a>" in b.page,
+                    l0["header_notes"][0]["list_title"], [n["list_title"] for n in l0["steps"][0]["notes"]],
+                    "Note `x \\u003c y` two" in b.text("data.js")),
+                   (0, [("Whole one", ["one"])], [("Note one", ["one"]), ("Note x < y two", ["x < y"])], [("Note one", ["one"])],
+                    False, True, "Whole `one`", ["Note `one`", "Note `x < y` two"], True))
+
+    @case("TITLE2", "in a title doubled backticks, an unpaired backtick and an empty pair stay literal text, with no <code> (the level-0 `Whole "
+                    "``one``` and `Note `one` in g1's list); control: a real span in the same build is code (`Note `ok` two`)")
+    def _():
+        b = _build(notes=_titled("Whole ``one``", "Note `one", "Note `ok` two"))
+        g1 = _card(b, "g1")
+        return _eq((b.rc, show_links(_dom(b.page).find("header")[0]), show_links(_direct(g1, "ul", "notes")[0]),
+                    ">Whole ``one``</a>" in b.page, ">Note `one</a>" in b.page),
+                   (0, [("Whole ``one``", [])], [("Note `one", []), ("Note ok two", ["ok"])], True, True))
+
+    @case("SPAN1", "the source check compares what a reader sees: a claim that is a release line inside single backticks is refused "
+                   "(SOURCE-LEAK naming data.js, level0.json and level1.json: the text of the JSON with the backticks of the span removed; "
+                   "the page skips <code>), exit 1, OUT_DIR absent; the same line unwrapped is refused as before (those three and "
+                   "index.html)")
+    def _():
+        res = []
+        for text in ("`" + LEAK + "`", LEAK):
+            o = _outline()
+            o["groups"][0]["claim"]["text"] = text
+            b = _build(outline=o, src=srcs)
+            res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
+        return _eq(res, [(1, [leak_line(w) for w in ("data.js", "level0.json", "level1.json")], False),
+                         (1, [leak_line(w) for w in ("data.js", "index.html", "level0.json", "level1.json")], False)])
+
+    @case("SPAN2", "the same for a condition: a condition that is a release line inside single backticks is refused (data.js, level0.json, "
+                   "level1.json), exit 1, OUT_DIR absent; unwrapped, also index.html")
+    def _():
+        res = []
+        for text in ("`" + LEAK + "`", LEAK):
+            o = _outline()
+            o["groups"][2]["claim"]["conditions"] = [text]
+            b = _build(outline=o, src=srcs)
+            res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
+        return _eq(res, [(1, [leak_line(w) for w in ("data.js", "level0.json", "level1.json")], False),
+                         (1, [leak_line(w) for w in ("data.js", "index.html", "level0.json", "level1.json")], False)])
+
+    @case("SPAN3", "the same for a note title: a title that is a release line inside single backticks is refused, naming the note and the "
+                   "field (`note 02 field list_title`, the source line with the span removed) and the JSON files that list the note "
+                   "(data.js, group/g1.json, group/g1a1x.json, group/g2.json, level0.json, level1.json), exit 1, OUT_DIR absent; unwrapped, "
+                   "also index.html")
+    def _():
+        res = []
+        files = ("data.js", "group/g1.json", "group/g1a1x.json", "group/g2.json", "level0.json", "level1.json")
+        for text in ("`" + LEAK + "`", LEAK):
+            b = _build(notes=_titled("Whole one", "Note one", "Note two\n" + text), src=srcs)
+            res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
+        return _eq(res, [(1, sorted(leak_line(w) for w in files + ("note 02 field list_title",)), False),
+                         (1, sorted(leak_line(w) for w in files + ("index.html", "note 02 field list_title")), False)])
+
+    @case("SPAN4", "what is NOT a span is compared as written: a release line inside DOUBLED backticks in a claim, a condition and a title "
+                   "builds (exit 0); a wrapped line that is not a release line builds and the JSON keeps it as written (backticks "
+                   "included); a release line inside a longer sentence (a span in the middle of it) is not seen (the narrow claim); the "
+                   "ids-only control (the base build under --source-check) stays green")
+    def _():
+        o1 = _outline()
+        o1["groups"][0]["claim"]["text"] = "``" + LEAK + "``"
+        o1["groups"][2]["claim"]["conditions"] = ["``" + LEAK + "``"]
+        dbl = _build(outline=o1, notes=_titled("Whole one", "Note one", "Note two\n``" + LEAK + "``"), src=srcs)
+        o2 = _outline()
+        o2["groups"][0]["claim"]["text"] = "`" + other + "`"
+        o2["groups"][2]["claim"]["conditions"] = ["`" + other + "`"]
+        wrapped = _build(outline=o2, notes=_titled("Whole one", "Note one", "Note two\n`" + other + "`"), src=srcs)
+        o3 = _outline()
+        o3["groups"][0]["claim"]["text"] = "See `" + LEAK + "` here"
+        inside = _build(outline=o3, src=srcs)
+        s3 = [x for x in wrapped.js("level0.json")["steps"] if x["id"] == "g3"][0]["claim"]["text"]
+        return _eq((dbl.rc, dbl.existed, wrapped.rc, s3, wrapped.js("level0.json")["steps"][0]["claim"]["conditions"],
+                    [n["list_title"] for n in wrapped.js("level0.json")["steps"][0]["notes"]], inside.rc, _base_src().rc),
+                   (0, True, 0, "`" + other + "`", ["`" + other + "`"], ["Note one", "Note two\n`" + other + "`"], 0, 0))
 
     # ---- B1: no release text
     @case("B1a", "leak_check: a planted shard whose `text` value is a line of the release (>= 20 non-space characters) is named "
