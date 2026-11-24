@@ -154,8 +154,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      block `<li>` of the block list, after its text: for an argument or sketch block a `<dl class="block-source">` with the File
      (base name) and Lines labels (`not given` when it has none), then one `<p class="second-reader">` per second reader of the block
      (any kind) and, for a sketch built from a compiled part, `<p class="sketch-build">`. The data (group files, level files,
-     data.js) is unchanged: every reader, date, second reader, file and line range stays. Cases PV1 to PV11, and the cases that
-     moved with it (B7a B7c B7f F1b H1 C1 C1b RDR1 PRF1 PRF2 PH1 PHR1 PHR2 PHR4 PHR5 PHR6 PHR7 BT2 RD1 RD2 RD3 RL1 RE1 RS3 PB1 PB3 DF1
+     data.js) is unchanged: every reader, date, second reader, file and line range stays. A correction on a card shows its kind and its
+     title only; its reader and date are in the Evidence block list (the who-span of its block). Cases PV1 to PV12, and the cases that
+     moved with it (R6 B7a B7c B7f F1b H1 C1 C1b RDR1 PRF1 PRF2 PH1 PHR1 PHR2 PHR4 PHR5 PHR6 PHR7 BT2 RD1 RD2 RD3 RL1 RE1 RS3 PB1 PB3 DF1
      DF3 DF4 SK2 SK8 LK1 LK2 LK3 ESC1 MK1).
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
@@ -341,9 +342,9 @@ on, by ruling (F34): a card speaks about its own root, so one block can be frame
 The static check's exemption for an <a class=citation> (and for a reaction anchor) is by class TOKEN: `citation extra` passes, `citationx` does
 not, and the citation exemption holds for `href` alone.
 
-LIMIT (F37). The card names nobody, but three places still can: a correction block (its list on the card shows kind, reader and date; the
-ruling does not name it, so it is as it was), the author's own text (a sketch or an argument that says who read what, or a seat's
-name) and the first screen. The Evidence section is closed, not hidden: it is in the page and in the JSON for whoever opens it. The
+LIMIT (F37). The card names nobody, but two places still can: the author's own text (a sketch or an argument that says who read what,
+or a seat's name) and the first screen. A correction stays on the card with its kind and its title (what was wrong: a doubt a reader should
+see); its reader and date are in the Evidence block list, in the who-span beside the block's kind (the existing line, no key of its own). The Evidence section is closed, not hidden: it is in the page and in the JSON for whoever opens it. The
 order and the markup of the Evidence lines are stated above (F37); the card of several roots has no statement or proof line there, as
 none on the card. The recognition's citations are listed with their opener for every citation (not only the ones with a url), the
 source through the span rule like on the card. The wording of the Evidence keys is the wording seat's; this tool checks only the
@@ -1544,8 +1545,8 @@ def _render_page(m, s, facts, dirty):
             o.append('<ul class="corrections">')
             for b in corr:
                 n = next(n for n in sm["notes"] if n["note"] == b["note"])
-                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <span class="reader">{_e(b["reader"])}</span> '
-                         f'<time>{_e(b["date"])}</time> <a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>')
+                # F37: the kind and the title (what was wrong) stay; the reader and the date are in the Evidence block list
+                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>')
             o.append("</ul>")
         if sm["notes"]:
             o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
@@ -3169,13 +3170,14 @@ def _selftest_cases():
                     b.js("group/g1a1x.json")["roots"][0]["shared_with"], b.js("level0.json")["totals"]["roots"]),
                    (True, 6, ["Also a root of: g1a1x"], ["Also a root of: g2"], [], ["g2"], 6))
 
-    @case("R6", "the correction block on foo is shown on g1's card, outside the closed sections, with its kind, reader and date; "
+    @case("R6", "the correction block on foo is shown on g1's card, outside the closed sections, with its kind and its title and (F37) no reader "
+                "and no date, see PV12; "
                 "a card with none has no corrections list")
     def _():
         c = _card(_base(), "g1")
         li = _direct(c, "ul", "corrections")
         return _eq(([x.text() for x in li[0].find("li")], len(_direct(_card(_base(), "g3"), "ul", "corrections"))),
-                   (["Correction Reader Two 2026-11-22 Note one"], 0))
+                   (["Correction Note one"], 0))
 
     @case("B7a", "an argument is shown in ONE element, frame first: `How this is proved:` (F37: no reader, no date, no file, no lines) "
                  "then the first sentence and the link, no second reader's line; the full text with the frame is in the evidence (the second "
@@ -3756,11 +3758,12 @@ def _selftest_cases():
                react, _raw(dom.find("header")[0].find("p")[0]), _raw(_card(b, "g2").find("h3", "claim")[0]).count("quux" + HOST),
                [c in js for c in "<>&\u2028\u2029"],
                json.loads(js[len("window.RH_DATA = "):-2])["groups"]["g1"] == b.js("group/g1.json"),
-               _raw(ev_.find("ul", "provenance")[0]).count(HOST))
+               _raw(ev_.find("ul", "provenance")[0]).count(HOST),
+               _raw(next(li for li in ev_.find("ul", "blocks")[0].elems() if "01.b06" in _raw(li))).count(HOST))
         want = ([], [], [False, False, False], True, True, "Claim " + HOST, [HOST],
-                [("#g1", "Claim " + HOST), ("#g2", "quux" + HOST)], ["T " + HOST, "Note two"], 5, 3,
+                [("#g1", "Claim " + HOST), ("#g2", "quux" + HOST)], ["T " + HOST, "Note two"], 5, 1,
                 "https://example.invalid/react?card=g1&kind=sense" + HOST, "First screen paragraph one. " + HOST_S, 1,
-                [False] * 5, True, 2)
+                [False] * 5, True, 2, 2)
         return _eq(got, want)
 
     # ---- F19: the two facts
