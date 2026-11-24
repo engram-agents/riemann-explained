@@ -204,7 +204,13 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
      formula, marks included>` when the place is inside the Evidence section of a card; on the reader's surface (everything outside Evidence) a formula the
      converter cannot convert (unsupported, `$$..$$`, an unpaired `$`) REFUSES the build: `FORMULA-RAW <where> <note file and the line of the block's anchor,
-     the note file, or outline/outline.json and the group>: <the first 40 characters of the formula as written>`, exit 1 (cases FRW1 to FRW4). Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
+     the note file, or outline/outline.json and the group>: <the first 40 characters of the formula as written>`, exit 1 (cases FRW1 to FRW4).
+     TWO LISTINGS over the built page, outside Evidence (cases SP1 to SP3 CND1 to CND4 CS1 to CS5), never an error unless CODE_ON_SURFACE_REFUSES is True:
+     `FORMULA-CANDIDATE <card id> <rule> <the first 40 characters of the text node>` for a text node (outside <code>, <math>, <style>, <script>) that holds
+     a caret (`caret`), `_{` (`underscore-brace`), a backslash and a letter (`backslash-command`), `\\(` (`paren-form`), `\\[` (`bracket-form`) or `\\begin{`
+     (`begin-form`); and `CODE-ON-SURFACE <card id> <text, first 60 characters> x<n>` for each <code> span (once per card and text, n occurrences); the
+     card id is the nearest enclosing <article>, `page` for the first screen; the run prints `formula candidates: C in K cards` and `code on surface:
+     N spans (D distinct) in K cards`. Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
      minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command (the 11 capitals with mathvariant="normal", upright as TeX sets them; the page CSS gives a lone <mi> `text-transform: none; font-style: italic` and the normal variant upright), \\max \\min \\log \\cos
      <mi mathvariant="normal"> (after \\operatorname and these, and their scripts, a thin <mspace> when an identifier, number, group, Greek letter or another function follows in the group: TeX's rule), \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
      brace group (`x^10` is x^1 then 0), a prime is U+2032 INSIDE the token of a one-token <mi> base (`L'` is <mi>L′</mi>; a flat <mo>
@@ -1993,6 +1999,108 @@ def formula_run_line(c):
             f"converter own-subset-{FORMULA_VERSION} ({len(FORMULA_COMMANDS)} commands)")
 
 
+CODE_ON_SURFACE_REFUSES = False   # S3: True makes any <code> span outside Evidence refuse the build (CODE-ON-SURFACE); False lists them only
+_VOID_TAGS = frozenset(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"])
+
+
+def surface_scan(page):
+    """(texts, codes) over the BUILT page, each a list of (card id, string) in page order: the text nodes outside every Evidence section
+    (`<details class="evidence">`), outside <math>, outside <code>, <style> and <script> (blank nodes left out), and the text of every <code>
+    element outside Evidence and outside <math>. The card id is the id of the nearest enclosing <article> (a child card is its own; the text
+    after a child card is the parent's again), `page` outside every article (the head, the first screen). Read with html.parser."""
+    texts, codes, stack, cards = [], [], [], ["page"]
+    n = {"ev": 0, "math": 0, "hide": 0, "code": 0}
+    buf = []
+
+    class P(html.parser.HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            if tag in _VOID_TAGS:
+                return
+            a = dict(attrs)
+            kind = ("ev" if tag == "details" and "evidence" in (a.get("class") or "").split() else
+                    "math" if tag == "math" else "hide" if tag in ("style", "script") else "code" if tag == "code" else "article" if tag == "article" else None)
+            stack.append((tag, kind))
+            if kind == "article":
+                cards.append(a.get("id") or "page")
+            elif kind == "code":
+                if not (n["ev"] or n["math"] or n["code"]):
+                    buf.clear()
+                n["code"] += 1
+            elif kind:
+                n[kind] += 1
+
+        def handle_endtag(self, tag):
+            if tag in _VOID_TAGS or not any(t == tag for t, _k in stack):
+                return
+            while stack:
+                t, kind = stack.pop()
+                if kind == "article":
+                    cards.pop()
+                elif kind == "code":
+                    n["code"] -= 1
+                    if not n["code"] and not (n["ev"] or n["math"]):
+                        codes.append((cards[-1], "".join(buf)))
+                elif kind:
+                    n[kind] -= 1
+                if t == tag:
+                    break
+
+        def handle_data(self, data):
+            if n["ev"] or n["math"] or n["hide"]:
+                return
+            if n["code"]:
+                buf.append(data)
+            elif data.strip():
+                texts.append((cards[-1], data))
+
+    P(convert_charrefs=True).feed(page)
+    return texts, codes
+
+
+# The rules of a text that may hold an UNMARKED formula, in listing order: name, pattern.
+_CANDIDATE_RULES = (("caret", re.compile(r"\^")), ("underscore-brace", re.compile(r"_\{")), ("backslash-command", re.compile(r"\\[A-Za-z]")),
+                    ("paren-form", re.compile(r"\\\(")), ("bracket-form", re.compile(r"\\\[")), ("begin-form", re.compile(r"\\begin\{")))
+
+
+def formula_candidates(texts):
+    """[(card id, rule name, snippet)] over (card id, text node) pairs: a text node that holds a caret, an underscore then `{`, a backslash then
+    a letter, `\\(`, `\\[` or `\\begin{` is a candidate for a formula that was not marked with `$` (the converter takes none of the last three
+    marks). The snippet is the first 40 characters of the text node with its white space collapsed; one entry per card, rule and snippet, in
+    order of first appearance. A listing, never an error."""
+    out = []
+    for card, text in texts:
+        snippet = " ".join(text.split())[:40]
+        for name, pat in _CANDIDATE_RULES:
+            if pat.search(text) and (card, name, snippet) not in out:
+                out.append((card, name, snippet))
+    return out
+
+
+def candidate_lines(cands):
+    return [f"FORMULA-CANDIDATE {card} {name} {snippet}" for card, name, snippet in cands]
+
+
+def candidate_run_line(cands):
+    return f"formula candidates: {len(cands)} in {len({c[0] for c in cands})} cards"
+
+
+def code_spans(codes):
+    """[(card id, text, n)] over (card id, <code> text) pairs: one entry per card and text, in order of first appearance, n the number of
+    occurrences in the card."""
+    out = {}
+    for card, text in codes:
+        out[(card, text)] = out.get((card, text), 0) + 1
+    return [(card, text, k) for (card, text), k in out.items()]
+
+
+def code_lines(spans):
+    return [f"CODE-ON-SURFACE {card} {text[:60]} x{k}" for card, text, k in spans]
+
+
+def code_run_line(spans):
+    return f"code on surface: {sum(k for _c, _t, k in spans)} spans ({len(spans)} distinct) in {len({s[0] for s in spans})} cards"
+
+
 def _rich(text, links=False, where=None):
     """Escaped text in which a span between single backticks on one line is a <code> element (its content escaped too). The span is
     notes_meta's _BACKTICK_SPAN, the one definition the checker uses too. Nothing else is markup but the formulas (F26B) and, with `links`,
@@ -2604,6 +2712,10 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         errors.append(("PAGE-LINK", pb, "does not resolve on the page"))
     for pb in number_problems(page, number_pool([level0, level1] + list(groups.values())), json.dumps(sj, ensure_ascii=False)):
         errors.append(("PAGE-NUMBER", pb, "is on the page and in no JSON file or strings file"))
+    surf_texts, surf_codes = surface_scan(page)
+    cands, spans = formula_candidates(surf_texts), code_spans(surf_codes)
+    if CODE_ON_SURFACE_REFUSES:
+        errors += [("CODE-ON-SURFACE", card, f"{text[:60]} x{k}") for card, text, k in spans]
     if errors:
         return _refuse(errors)
     print("facts check: " + check_line)
@@ -2612,7 +2724,11 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     print(f"titles: {sum(1 for _g_, has in census if has)} of {len(census)} cards that need one")
     for ln in formula_listing(flog):   # a formula outside the subset stays as written, an unpaired dollar sign stays literal: listed, never refused
         print(ln)
+    for ln in candidate_lines(cands) + code_lines(spans):   # S2, S3: what the surface still holds that looks like a formula, and its code spans: listed
+        print(ln)
     print(formula_run_line(fcounts))
+    print(candidate_run_line(cands))
+    print(code_run_line(spans))
     if source_check is not None:
         if not sg.walk_lean(source_check):
             print("CHECKED NOTHING: no .lean file under SRC_ROOT")
@@ -6970,11 +7086,13 @@ def _selftest_cases():
                     ["BUILD-ERROR FORMULA-SUM page converted 2 + unsupported 0 = 2, but there are 3 marks"], False))
 
     @case("RL3", "FORMULA-RAW is gone: no build line starts with it (a formula is converted or it is FORMULA-UNSUPPORTED), `_formula_raw` and "
-                 "`_FORMULA_MARK` are not defined, and a mark `\\(` or `\\begin{` alone in text is no mark at all (plain text)")
+                 "`_FORMULA_MARK` are not defined, and a mark `\\(` or `\\begin{` alone in text is no mark at all (plain text; S2 only LISTS it as a "
+                 "FORMULA-CANDIDATE, which this case now leaves out of the lines it counts)")
     def _():
         b = _build(notes=_notes(arg_text="Take \\(x\\) and \\[y\\] and \\begin{a} here"))
-        return _eq(([ln for ln in b.out.splitlines() if ln.startswith("FORMULA")], "_formula_raw" in globals(), "_FORMULA_MARK" in globals(), b.rc),
-                   ([], False, False, 0))
+        return _eq(([ln for ln in b.out.splitlines() if ln.startswith("FORMULA") and not ln.startswith("FORMULA-CANDIDATE")],
+                    "_formula_raw" in globals(), "_FORMULA_MARK" in globals(), b.rc, "<math" in b.page, "Take \\(x\\) and \\[y\\] and \\begin{a} here" in b.page),
+                   ([], False, False, 0, False, True))
 
     @case("RL4", "a listing in Evidence never changes the exit code and never refuses (moved by S1: on the surface the same formulas refuse, FRW1 FRW2): "
                  "a build with a converted formula, an unsupported one, an unpaired dollar "
@@ -7045,6 +7163,143 @@ def _selftest_cases():
                     ["FORMULA-UNSUPPORTED w $\\foo$", "FORMULA-UNPAIRED w", "FORMULA-UNSUPPORTED e $\\bar$", "FORMULA-UNPAIRED e",
                      "FORMULA-UNSUPPORTED n " + long[:40]],
                     {"N": 1, "U": 4, "P": 2, "T": 3}))
+
+    # ---- S2, S3: what the reader's surface still holds that looks like an unmarked formula, and the code spans on it
+    SURF = ('<html><head><title>T ^t</title><style>.a{x:^}</style></head><body><header><p>H ^h</p><code>hc</code></header>'
+            '<article id="a1"><p>A ^a</p><code>ac</code><math><mi>m ^</mi><code>mc</code></math>'
+            '<details class="evidence"><p>E ^e</p><code>ec</code></details>'
+            '<details class="children"><article id="a2"><p>C ^c</p><code>cc</code></article></details><p>back ^b</p></article>'
+            '<script>var a="^";</script></body></html>')
+
+    @case("SP1", "S2 S3, the pure scan: `surface_scan(page)` gives the text nodes and the <code> elements of the page that are outside every Evidence "
+                 "section, outside <math>, and (for the text nodes) outside <code>, <style> and <script>, each with the id of the nearest enclosing "
+                 "<article> (`page` outside every article: the head, the first screen); a <code> inside <math> or Evidence is not listed, a <code> "
+                 "of a child card is the child's, text after a child card is the parent's again")
+    def _():
+        texts, codes = surface_scan(SURF)
+        return _eq((texts, codes), ([("page", "T ^t"), ("page", "H ^h"), ("a1", "A ^a"), ("a2", "C ^c"), ("a1", "back ^b")],
+                                    [("page", "hc"), ("a1", "ac"), ("a2", "cc")]))
+
+    @case("SP2", "S2, the pure rules: `formula_candidates(texts)` lists (card, rule, snippet) once per card, rule and snippet, in order, the snippet the first "
+                 "40 characters of the text node with its white space collapsed: a caret is `caret`, an underscore then `{` `underscore-brace`, a backslash "
+                 "then a letter `backslash-command`, `\\(` `paren-form`, `\\[` `bracket-form`, `\\begin{` `begin-form` (which is also a backslash-command); "
+                 "controls: an underscore alone, a hyphen, a dollar sign, a backslash then a digit or a space, a backslash at the end, give none")
+    def _():
+        texts = [("c", "a^b"), ("c", "a^b"), ("d", "a^b"), ("c", "x_{i}"), ("c", "\\theta"), ("c", "\\(x\\)"), ("c", "\\[y\\]"), ("c", "\\begin{a}"),
+                 ("c", "a_b well-known \\$ \\1 \\ x\\"), ("c", "  q^  " + "a" * 60)]
+        return _eq(formula_candidates(texts),
+                   [("c", "caret", "a^b"), ("d", "caret", "a^b"), ("c", "underscore-brace", "x_{i}"), ("c", "backslash-command", "\\theta"),
+                    ("c", "paren-form", "\\(x\\)"), ("c", "bracket-form", "\\[y\\]"), ("c", "backslash-command", "\\begin{a}"),
+                    ("c", "begin-form", "\\begin{a}"), ("c", "caret", "q^ " + "a" * 37)])
+
+    @case("SP3", "S3, the pure count: `code_spans(codes)` gives (card, text, n) once per card and text, in order of first appearance, n the number of "
+                 "occurrences in the card; the same text in two cards is two entries; the run line counts N spans (all occurrences), D distinct (the entries) "
+                 "in K cards: `code on surface: 4 spans (3 distinct) in 2 cards`")
+    def _():
+        codes = [("a", "x"), ("a", "y"), ("a", "x"), ("b", "x")]
+        sp = code_spans(codes)
+        return _eq((sp, code_run_line(sp), code_run_line([]), code_lines([("a", "z" * 70, 2)])),
+                   ([("a", "x", 2), ("a", "y", 1), ("b", "x", 1)], "code on surface: 4 spans (3 distinct) in 2 cards",
+                    "code on surface: 0 spans (0 distinct) in 0 cards", ["CODE-ON-SURFACE a " + "z" * 60 + " x2"]))
+
+    def _cand(b_):
+        return [ln for ln in b_.out.splitlines() if ln.startswith("FORMULA-CANDIDATE")]
+
+    def _crun(b_):
+        return [ln for ln in b_.out.splitlines() if ln.startswith("formula candidates: ")]
+
+    def _cond(*cs):
+        return _ol(lambda g: g["claim"].update(conditions=list(cs)))
+
+    @case("CND1", "S2: on a built page the six rules fire on text outside Evidence: conditions `a^b holds` (caret), `x_{i} holds` (underscore-brace), "
+                  "`\\theta holds` (backslash-command) are listed `FORMULA-CANDIDATE g1 <rule> <text>`, exit 0; the base build lists none "
+                  "and its run line is `formula candidates: 0 in 0 cards`")
+    def _():
+        b = _build(outline=_cond("a^b holds", "x_{i} holds", "\\theta holds"))
+        return _eq((b.rc, _cand(b), _crun(b), _cand(_base()), _crun(_base())),
+                   (0, ["FORMULA-CANDIDATE g1 caret a^b holds", "FORMULA-CANDIDATE g1 underscore-brace x_{i} holds",
+                        "FORMULA-CANDIDATE g1 backslash-command \\theta holds"], ["formula candidates: 3 in 1 cards"], [], ["formula candidates: 0 in 0 cards"]))
+
+    @case("CND2", "S2: the three marks the converter does not take, `\\(x^2\\)`, `\\[y\\]` and `\\begin{aligned}`, are listed although the converter leaves them "
+                  "as plain text (RL3 pins that and stays green): `\\(x^2\\)` is a caret and a paren-form, `\\[y\\]` a bracket-form, `\\begin{aligned}` "
+                  "a backslash-command and a begin-form")
+    def _():
+        b = _build(outline=_cond("\\(x^2\\)", "\\[y\\]", "\\begin{aligned}"))
+        return _eq((b.rc, _cand(b), _crun(b)),
+                   (0, ["FORMULA-CANDIDATE g1 caret \\(x^2\\)", "FORMULA-CANDIDATE g1 paren-form \\(x^2\\)", "FORMULA-CANDIDATE g1 bracket-form \\[y\\]",
+                        "FORMULA-CANDIDATE g1 backslash-command \\begin{aligned}", "FORMULA-CANDIDATE g1 begin-form \\begin{aligned}"],
+                    ["formula candidates: 5 in 1 cards"]))
+
+    @case("CND3", "S2 controls that must NOT fire: a caret inside a code span, a caret and a `_{` and a backslash command inside Evidence (the second "
+                  "sentence of an argument), inside a converted formula (`$a^b$ $x_{i}$ $\\theta$`), an escaped dollar sign, a plain underscore, a "
+                  "hyphenated word: no FORMULA-CANDIDATE line, `formula candidates: 0 in 0 cards`")
+    def _():
+        o = _cond("see `a^b` here", "Cost \\$5 and \\$6 here", "a_b and well-known", "$a^b$ and $x_{i}$ and $\\theta$ here")
+        b = _build(outline=o, notes=_notes(arg_text=EV1 + "x^2 and x_{i} and \\theta and \\(a\\) here"))
+        return _eq((b.rc, _cand(b), _crun(b), "<math>" in b.page), (0, [], ["formula candidates: 0 in 0 cards"], True))
+
+    @case("CND4", "S2: the card id is the nearest enclosing article (a claim shown again as a premise is listed for the premise's card), `page` for "
+                  "the first screen (here a level-0 note's title); the same snippet twice in one card is one line; a snippet is cut at 40 characters; "
+                  "the run line counts the lines and the cards (`page` counts as one): `formula candidates: 5 in 3 cards`")
+    def _():
+        o = _ol(lambda g: g["claim"].update(text="Claim x^2 holds", conditions=["same^1", "same^1", "q^" + "a" * 60]))
+        b = _build(outline=o, notes=_notes() | {"00-whole.md": N00.replace('"list_title":"Whole one"', '"list_title":"Whole y^2 here"')})
+        return _eq((b.rc, _cand(b), _crun(b)),
+                   (0, ["FORMULA-CANDIDATE page caret Whole y^2 here", "FORMULA-CANDIDATE g1 caret Claim x^2 holds", "FORMULA-CANDIDATE g1 caret same^1",
+                        "FORMULA-CANDIDATE g1 caret q^" + "a" * 38, "FORMULA-CANDIDATE g3 caret Claim x^2 holds"], ["formula candidates: 5 in 3 cards"]))
+
+    CS0 = ["CODE-ON-SURFACE g1 bar x1", "CODE-ON-SURFACE g1a bar x1", "CODE-ON-SURFACE g1a1x qux x1", "CODE-ON-SURFACE g3 quux x1",
+           "CODE-ON-SURFACE g2 quux x1"]   # the five spans the base fixture shows on its surface: the name of a step with no claim, here and as a premise
+
+    def _code(b_):
+        return [ln for ln in b_.out.splitlines() if ln.startswith("CODE-ON-SURFACE")]
+
+    def _crun2(b_):
+        return [ln for ln in b_.out.splitlines() if ln.startswith("code on surface: ")]
+
+    @case("CS1", "S3: the base build lists the five spans of its surface in page order, one line per card and text, `CODE-ON-SURFACE <card> <text> x<n>`, "
+                 "exit 0, and its run line is `code on surface: 5 spans (5 distinct) in 5 cards`; the constant CODE_ON_SURFACE_REFUSES is False")
+    def _():
+        return _eq((_base().rc, _code(_base()), _crun2(_base()), CODE_ON_SURFACE_REFUSES),
+                   (0, CS0, ["code on surface: 5 spans (5 distinct) in 5 cards"], False))
+
+    @case("CS2", "S3: a span in a claim (shown again as a premise: a line for each card), in a condition, in a sketch paragraph and in the title of a note "
+                 "about the whole (card `page`) is listed; with the five base spans that is 10 spans (10 distinct) in 6 cards")
+    def _():
+        o = _ol(lambda g: g["claim"].update(text="Claim `s1` here", conditions=["Cond `s2` here"]))
+        n = _notes_s(para="P `s3` here.", item="plain item", last="plain last", unexpanded=()) | {
+            "00-whole.md": N00.replace('"list_title":"Whole one"', '"list_title":"Whole `s4`"')}
+        b = _build(outline=o, notes=n)
+        return _eq((b.rc, sorted(_code(b)), _crun2(b)),
+                   (0, sorted(CS0 + ["CODE-ON-SURFACE g1 s1 x1", "CODE-ON-SURFACE g3 s1 x1", "CODE-ON-SURFACE g1 s2 x1", "CODE-ON-SURFACE g1 s3 x1",
+                                     "CODE-ON-SURFACE page s4 x1"]), ["code on surface: 10 spans (10 distinct) in 6 cards"]))
+
+    @case("CS3", "S3: two equal spans in one card are one line `x2` (the run line counts 2 spans, 1 distinct): `CODE-ON-SURFACE g1 dup x2`, "
+                 "`code on surface: 7 spans (6 distinct) in 5 cards`")
+    def _():
+        b = _build(outline=_cond("Cond `dup` a", "Cond `dup` b"))
+        return _eq((b.rc, [ln for ln in _code(b) if "dup" in ln], _crun2(b)),
+                   (0, ["CODE-ON-SURFACE g1 dup x2"], ["code on surface: 7 spans (6 distinct) in 5 cards"]))
+
+    @case("CS4", "S3 controls: a span inside Evidence (the second sentence of an argument and an interpretation) is not counted: the build lists the five "
+                 "base spans only; a formula that holds a span on the surface is refused by S1 (FORMULA-RAW) and lists no span")
+    def _():
+        b = _build(notes=_notes(arg_text=EV1 + "see `ev` here", interp_text="We think `ev2` here"))
+        f = _build(outline=_cond("Cond $a `b` c$ here"))
+        return _eq((b.rc, _code(b), _crun2(b), f.rc, _code(f), [ln for ln in f.out.splitlines() if ln.startswith("BUILD-ERROR")]),
+                   (0, CS0, ["code on surface: 5 spans (5 distinct) in 5 cards"], 1, [],
+                    ["BUILD-ERROR FORMULA-RAW g1 outline/outline.json group g1: $a `b` c$"]))
+
+    @case("CS5", "S3, the flag: with CODE_ON_SURFACE_REFUSES True a build with a span on its surface is refused, one line per card and text "
+                 "(`BUILD-ERROR CODE-ON-SURFACE g1 bar x1` ...), exit 1, OUT_DIR absent; with it False the same build is exit 0 and lists the spans")
+    def _():
+        with _patched("CODE_ON_SURFACE_REFUSES", True):
+            t = _build()
+        refused = [ln for ln in t.out.splitlines() if ln.startswith("BUILD-ERROR CODE-ON-SURFACE")]
+        return _eq((t.rc, t.existed, refused, _build().rc),
+                   (1, False, ["BUILD-ERROR CODE-ON-SURFACE g1 bar x1", "BUILD-ERROR CODE-ON-SURFACE g1a bar x1",
+                               "BUILD-ERROR CODE-ON-SURFACE g1a1x qux x1", "BUILD-ERROR CODE-ON-SURFACE g3 quux x1",
+                               "BUILD-ERROR CODE-ON-SURFACE g2 quux x1"], 0))
 
     @case("JS1b", "the JSON keeps the text as written: a block text, a claim, a condition and a list title with formulas are in group/g1.json "
                   "(and in data.js) with their `$`, the first sentence is as written (and cut outside a formula); and the JSON files of the "
