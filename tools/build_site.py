@@ -169,7 +169,17 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      protocol-relative addresses and the request APIs. An element or an attribute outside the list is `PAGE-STATIC element <name>` or `PAGE-STATIC attribute <name> on <element>`
      (exit 1, nothing written), the same code as the request-making findings; every bad attribute of a tag is reported, each against its
      own element's list. `<script>`, `<annotation>`, an event attribute, a `data-*` attribute and an `href` on a MathML element are each
-     refused. Cases EL1 to EL5.
+     refused. `style` and `title`, the allowed elements html.parser reads as text (HIDING_ELEMENTS, from the parser's own lists; EL7 pins
+     them), are refused anywhere but directly inside <head> as `PAGE-STATIC element <name> outside head`: inside MathML a browser reads their
+     content as markup, html.parser does not report it (EL6; measured with html5lib 1.1, which builds an <img onerror> from
+     `<math><style><img src=x onerror=alert(1)></style></math>` where element_problems alone returned nothing).
+     LIMIT. This gate is a name check on the tags as html.parser sees them, not a browser-grade parse. It does not claim that every page it
+     passes parses in a browser to the same tree. Differentials between html.parser and the HTML spec's parser are known to exist and are
+     NOT measured here beyond the one above: other places where foreign content changes how text is read (the MathML text integration points
+     and `annotation-xml`, `<![CDATA[`), the other raw-text and RCDATA elements (`textarea`, `xmp`, `iframe`, `noembed`, `noframes`, `script`,
+     none of which is allowed, so each is refused by name as an element), comments and bogus comments, attribute quoting, and how an unclosed
+     or misnested tag ends. The stack of open elements built from end tags is an approximation (omitted end tags only make it refuse more).
+     Cases EL1 to EL7.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
   F29 The base name of the block's file and the range of its lines are shown in the Evidence section (F37 moved them out of the frame;
