@@ -130,12 +130,26 @@ CONTRACT (each line is a self-test case, written before the code)
  REV may not change text (OUTLINE-CHANGED), date (EDITION-DATE-CHANGED) or edition (EDITION-DOWN; 3 is BAD-VALUE); edition 2 on a group not in
  the outline at REV is EDITION-NEW-GROUP; a group at REV and not now is the listing GROUP-GONE. An outline at REV that is missing, not JSON or
  has no groups list, and an outline outside the repository, are one OUTLINE-BASE listing and the rule does not run. Listings never change
- the exit code; the refusals do. The summary has `edition check: N groups compared to REV` (or `did not run`) and `editions: J of M groups at
- edition 2` (counted from the current outline, with or without --base). For a group in both outlines, each changed selector or premises
+ the exit code; the refusals do. The summary has `edition check: N groups compared to REV; K notes compared to REV` (or `did not run`; the notes part is added
+ whenever --base is given) and `editions: K of N notes and J of M groups at edition 2` (counted from the current headers and the current outline,
+ with or without --base). For a group in both outlines, each changed selector or premises
  list is one listing `SELECTOR-CHANGED <id> <path> <old> -> <new>` (values as short JSON, a missing value `none`; paths recognition.form,
  root_role, claim.basis, recognition.citations[<i>].says_open, premises, in that order), with or without a bump, exit code unchanged; the
  summary has `selector changes: K` (or `did not run`). A base outline with `groups: []` compares nothing and says so; a groups list holding a
  non-object is OUTLINE-BASE `has no usable groups`. A bad edition_date prints its BAD-VALUE and no EDITION line.
+
+ Edition of a note (F44B; cases NE1a to NE10, B2g of rh_anchor). A note header may carry `edition` and `edition_date` under the rules of a group's
+ (rh_anchor.header_problems; each problem is a BAD-VALUE on the header line, and `edition_date` later than the day of the run is one too).
+ With --base REV, the edition of the note at REV (no header, or no `edition`, is 1) and the current one decide, before the ADDITION rule:
+ base 1 and now 2 with a valid date and the texts without anchor lines different is the listing `EDITION <note> +A -R lines, edition 1 to 2,
+ <date>` (difflib.SequenceMatcher over the lines, autojunk off; A and R sum the lines of every opcode that is not equal, a replaced run counts
+ on both sides) and no BYTE-DIFF and no ADDITION for the note; with the texts equal it is EDITION-EMPTY (refused). At edition 2 at REV the
+ ordinary rules hold (ADDITION legal, any other change BYTE-DIFF); edition 1 or none now is EDITION-DOWN, a changed date is
+ EDITION-DATE-CHANGED, edition 3 is BAD-VALUE. A note not at REV is NEW-NOTE, and edition 2 on it is EDITION-NEW-NOTE. A base whose edition is
+ not usable is the listing EDITION-BASE and the rule does not run for that note. For a note at edition 2 each block is matched by id with the
+ block of the note at REV; `EDITION-BLOCK <note> <id> element <n> <kind> -> <n> <kind>` lists one whose target element differs in its
+ ordinal (the n-th element of the note, headings counted) or kind, and `EDITION-BLOCK <note> <id> gone` one that is no longer there (a block
+ that is only new is not listed); all listings, exit code unchanged.
 
  Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
@@ -292,6 +306,7 @@ usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--st
 """
 import contextlib
 import datetime
+import difflib
 import fnmatch
 import importlib.util
 import io
@@ -1038,7 +1053,9 @@ def _check_header(name, headers, ctx):
     elif not h.before_first_h2:
         out.append(_f("HEADER-AFTER-H2", name, h.line, "the rh-note header comes after the first '## ' heading"))
     d = h.data
-    out += [_f("HEADER-PROBLEM", name, h.line, p) for p in rh.header_problems(d)]
+    out += [_f("BAD-VALUE" if p.startswith(("edition:", "edition_date:")) else "HEADER-PROBLEM", name, h.line, p) for p in rh.header_problems(d)]
+    if "edition_date" in d and _is_date(d["edition_date"]) and _real_date(d["edition_date"]) > ctx.today:   # F44B: not later than the day of the run
+        out.append(_f("BAD-VALUE", name, h.line, f"edition_date {d['edition_date']} is later than the day of the run, {ctx.today.isoformat()}"))
     if not h.canonical:
         out.append(_f("NONCANONICAL", name, h.line, "not the canonical form; canonical: " + _canon("rh-note", d)))
     g, lv = d.get("group"), d.get("level")
@@ -1326,12 +1343,92 @@ def _insertion_runs(a, b, right=False):
     return runs
 
 
+def _note_edition(headers):
+    """(edition, edition_date) of the first rh-note header: edition 1 when there is no header or no `edition`; edition None when the value
+    is not the integer 1 or 2 (the header check says so for the current note)."""
+    if not headers:
+        return 1, None
+    d = headers[0].data
+    e = d.get("edition", 1)
+    return (e if _int(e) and e in EDITIONS else None), d.get("edition_date")
+
+
+def _block_targets(text):
+    """[(block id, ordinal, kind)] in file order: the target element of each block of the note, as its n-th element (1-based, headings and every
+    other element counted; 0 when the block has no element before it) and its type. Blocks without a string id are left out."""
+    a = rh._Analysis(text)
+    ordinal = {el["first_line"]: k + 1 for k, el in enumerate(sorted(a.elements, key=lambda el: el["first_line"]))}
+    out = []
+    for b in rh.parse_note(text)[1]:
+        if isinstance(b.data.get("id"), str):
+            t = b.target or {"type": "none"}
+            out.append((b.data["id"], ordinal.get(t.get("first_line"), 0), t.get("type", "none")))
+    return out
+
+
+def _edition_blocks(name, base_text, text):
+    """F44B E5: the EDITION-BLOCK listings of a rewritten note. Blocks are matched by id; a block of the base that is not now is `gone`, a block
+    that is only now is not listed, one whose target element differs in ordinal or kind shows both."""
+    now = {}
+    for bid, o, k in _block_targets(text):
+        now.setdefault(bid, (o, k))
+    out, seen = [], set()
+    for bid, o, k in _block_targets(base_text):
+        if bid in seen:
+            continue
+        seen.add(bid)
+        if bid not in now:
+            out.append(_f("EDITION-BLOCK", name, None, f"{bid} gone", LISTING))
+        elif now[bid] != (o, k):
+            out.append(_f("EDITION-BLOCK", name, None, f"{bid} element {o} {k} -> {now[bid][0]} {now[bid][1]}", LISTING))
+    return out
+
+
+def _edition_note_check(name, text, base_text, old_text, new_text, ctx):
+    """F44B: (findings, done) of the edition rule for one note that is at REV. `done` is True when the rule has settled the note (the ordinary
+    byte rules do not run for it). The rule does not run when the base note's edition is not usable (said as a listing)."""
+    be, bd = _note_edition(rh.parse_note(base_text)[0])
+    if be is None:
+        return [_f("EDITION-BASE", name, None, f"the note at {ctx.base} has an edition that is not usable, so the edition check did not run for it", LISTING)], False
+    ctx.ed_notes_compared += 1
+    ce, cd = _note_edition(rh.parse_note(text)[0])
+    if ce is None:   # the header check has said so
+        return [], False
+    out = []
+
+    def err(code, msg):
+        out.append(_f(code, name, None, msg))
+    if be == 1 and ce == 2:
+        if not (_is_date(cd) and _real_date(cd) <= ctx.today):   # a missing or bad date is already a BAD-VALUE: nothing more is said
+            return [], True
+        if old_text == new_text:
+            err("EDITION-EMPTY", f"edition 2 with edition_date, but the text without its anchor lines is the same as at {ctx.base} "
+                                 "(an edition names a rewrite and there is none)")
+            return out + _edition_blocks(name, base_text, text), True
+        ops = difflib.SequenceMatcher(None, old_text.splitlines(True), new_text.splitlines(True), autojunk=False).get_opcodes()
+        added = sum(j2 - j1 for tag, i1, i2, j1, j2 in ops if tag != "equal")
+        removed = sum(i2 - i1 for tag, i1, i2, j1, j2 in ops if tag != "equal")
+        out.append(_f("EDITION", name, None, f"+{added} -{removed} lines, edition 1 to 2, {cd}", LISTING))
+        return out + _edition_blocks(name, base_text, text), True
+    if be == 2:
+        if ce == 1:
+            err("EDITION-DOWN", f"edition is 1, but it was 2 at {ctx.base} (an edition is not lowered)")
+        elif cd != bd:
+            err("EDITION-DATE-CHANGED", f"edition_date {cd} differs from {bd} at {ctx.base}")
+        if ce == 2:
+            out += _edition_blocks(name, base_text, text)
+    return out, False
+
+
 def _bytes_check(name, text, rel, ctx):
     """The findings of the byte check for one note: [] when equal, [NEW-NOTE], one BYTE-DIFF, or one ADDITION listing per run
-    when the note only gained dated additions (F27)."""
+    when the note only gained dated additions (F27); before those, the edition rule of the note (F44B)."""
     show = _vcs(ctx.top, "cat-file", "blob", f"{ctx.rev}:{rel}")
     if show.returncode != 0:
-        return [_f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)]
+        out = [_f("NEW-NOTE", name, None, f"is not present at {ctx.base}", LISTING)]
+        if _note_edition(rh.parse_note(text)[0])[0] == 2:
+            out.append(_f("EDITION-NEW-NOTE", name, None, f"edition 2, but the note is not present at {ctx.base} (there is no edition 1 to rewrite)"))
+        return out
     try:   # both sides without their anchor lines (header and blocks), decoded the same way
         base_text = show.stdout.decode("utf-8")
         old_text = rh.strip_anchor_lines(base_text)
@@ -1339,6 +1436,13 @@ def _bytes_check(name, text, rel, ctx):
     except UnicodeDecodeError:
         return [_f("BYTE-DIFF", name, None, f"the note at {ctx.base} is not valid UTF-8 and cannot be compared")]
     new_text = rh.strip_anchor_lines(text)
+    ed_found, done = _edition_note_check(name, text, base_text, old_text, new_text, ctx)
+    if done:
+        return ed_found
+    return ed_found + _ordinary_bytes_check(name, text, base_text, old_text, new_text, old, ctx)
+
+
+def _ordinary_bytes_check(name, text, base_text, old_text, new_text, old, ctx):
     new = new_text.encode("utf-8")
     if old == new:
         return []
@@ -1657,6 +1761,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     errors = sum(1 for f in found if f[4] == ERROR)
     warnings = len(words) + sum(1 for f in found if f[4] == LISTING)
     ctx.ids = {}
+    ctx.ed_notes_compared = 0
     hid, hline = {}, {}   # note ids: which notes carry each header id (a note with no header carries none)
     for n in names:
         hs = rh.parse_note(texts[n])[0]
@@ -1704,9 +1809,10 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
     lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new, {n_add} additions" if base is not None else "byte check: did not run, no --base given")
-    lines.append(ed_line)
+    lines.append(ed_line + (f"; {ctx.ed_notes_compared} notes compared to {base}" if base is not None else ""))
     n_ed2 = sum(1 for g in odata["groups"] if isinstance(g, dict) and _int(g.get("edition")) and g["edition"] == 2) if isinstance(odata, dict) and isinstance(odata.get("groups"), list) else 0
-    lines.append(f"editions: {n_ed2} of {st['groups']} groups at edition 2")
+    n_note_ed2 = sum(1 for n in names if _note_edition(rh.parse_note(texts[n])[0])[0] == 2)
+    lines.append(f"editions: {n_note_ed2} of {len(names)} notes and {n_ed2} of {st['groups']} groups at edition 2")
     lines.append(sel_line)
     lines.append(f"{len(names)} notes, {errors} findings, {warnings} warnings")
     return (1 if errors else 0), lines
@@ -5035,7 +5141,7 @@ def _():
 @case("NE8b", "EDITION-BLOCK lists a block whose target keeps its ordinal but changes its KIND (paragraph to list)")
 def _():
     base = _enb(("Para one.", []), ("Para two.", ["01.b01"]))
-    cur = _enb(("Para one.", []), ("- item one\n- item two", ["01.b01"]))
+    cur = _enb(("Para one.", [])) + "- item one\n- item two\n" + BL("01.b01", decls=[R("A.B", "foo")], item=1) + "\n\n"
     r = _en(base, cur, cur_hdr=EN_HDR)
     eq((r.f, r.rc), ([EN_NEW.format(a=2, r=1), "EDITION-BLOCK 01-a.md 01.b01 element 4 paragraph -> 4 list"], 0), r.out)
 
