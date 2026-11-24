@@ -7624,7 +7624,7 @@ def _selftest_cases():
         b = _build(strings=s)
         return _eq((b.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in b.out.splitlines()), (1, True))
 
-    # ---- F44 (Q6) E2.5, Kepler's condition: every field of a group the page prints as words outside Evidence is in EDITION_TEXT_FIELDS
+    # ---- F44 (Q6) the marker case: every field of a group the page prints as words outside Evidence is in EDITION_TEXT_FIELDS
     def _marker_build():
         """(the build, [(path, group id, marker)], the decls): three groups under g1 (the forms exclude one another, so one group cannot hold
         every field), each with a DISTINCT marker in every author field it can carry; dates are distinct valid dates."""
