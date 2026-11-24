@@ -21,6 +21,7 @@ API (the names are the contract)
                                     anchor lines holds it, else None
   run_at(text, line, span)          the `span` elements ending at the target of the anchor on a 1-based line, as a list of
                                     (kind, first_line, last_line) in text order, or a reason string when the run is illegal
+  run_lists(text, line, span)       the lists in that run, as (first_line, last_line, shape), in text order; [] for none or an illegal run
   next_block_id(note_id, used)      the next unused id of a note, never reusing a hole
   insert_after_line(text, line, c)  insert a comment as its own line after a 1-based line, in that file's line ending
 `Item` has line (1-based), data (the parsed object), canonical (the line is byte-equal to format_comment of its own
@@ -528,6 +529,17 @@ def run_at(text, line, span):
     return run[::-1]
 
 
+def run_lists(text, line, span):
+    """[(first_line, last_line, shape), ...] for each list in the run run_at gives for this anchor, in text order; shape is a copy of the
+    shape the parse reads for that list (the same one parse_note puts in a block's target). [] when the run has no list or is illegal."""
+    run = run_at(text, line, span)
+    if isinstance(run, str):
+        return []
+    a = _Analysis(text)
+    shapes = {el["first_line"]: el["shape"] for el in a.elements if el["type"] == "list"}
+    return [(f, l, dict(shapes[f])) for kind, f, l in run if kind == "list"]
+
+
 def item_at(text, line):
     """The 1-based top-level item of a list that holds a 1-based line (a nested line belongs to its parent item), else None."""
     a = _Analysis(text)
@@ -683,7 +695,9 @@ def problems(block, note_id=None):
                 for f in ("reader", "date"):
                     if not _str(e.get(f)):
                         out.append(f"second_readers[{k}].{f}: must be a non-empty string")
-    if "item" in block:
+    if "item" in block and kind == "sketch":   # F33: a sketch covers whole elements, a list included as a whole
+        out.append("item: a sketch covers whole elements and carries no item")
+    elif "item" in block:
         it = block["item"]
         if not (_int(it) and it >= 1):
             out.append("item: must be an integer of 1 or more")

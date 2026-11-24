@@ -969,7 +969,7 @@ def _check_header(name, headers, ctx):
     return out, (d["id"] if _str(d.get("id")) else None)
 
 
-def _check_block(name, b, note_id, listed, lines, ctx, out):
+def _check_block(name, b, note_id, listed, lines, ctx, out, text):
     d = b.data
     bid = d.get("id")
     label = f"block {bid!r}" if isinstance(bid, str) else "block"
@@ -1027,21 +1027,34 @@ def _check_block(name, b, note_id, listed, lines, ctx, out):
             if _int(d.get("col")) and d["col"] > t["ncols"]:
                 out.append(_f("COL-OUT-OF-RANGE", name, b.line, f"{label} col {d['col']} but the table has {t['ncols']} columns"))
     ttype = (b.target or {}).get("type")   # list items: a list needs item, item needs a list
-    if "item" in d:
-        if ttype != "list":
-            out.append(_f("NOT-A-LIST", name, b.line, f"{label} carries item but its target is of type '{ttype}', not a list"))
-        elif _int(d["item"]) and d["item"] >= 1 and d["item"] > b.target["nitems"]:
-            out.append(_f("ITEM-OUT-OF-RANGE", name, b.line,
-                          f"{label} item {d['item']} but the list has {b.target['nitems']} top-level items"))
+    kind = d.get("kind")
+    # F33: a sketch covers whole elements, so it carries no item. rh_anchor.problems refuses `item` on a sketch (a BLOCK-PROBLEM), and the
+    # item checks below never see a sketch: no NOT-A-LIST, ITEM-OUT-OF-RANGE or ITEM-REQUIRED beside that one finding.
+    if kind != "sketch":
+        if "item" in d:
+            if ttype != "list":
+                out.append(_f("NOT-A-LIST", name, b.line, f"{label} carries item but its target is of type '{ttype}', not a list"))
+            elif _int(d["item"]) and d["item"] >= 1 and d["item"] > b.target["nitems"]:
+                out.append(_f("ITEM-OUT-OF-RANGE", name, b.line,
+                              f"{label} item {d['item']} but the list has {b.target['nitems']} top-level items"))
+        elif ttype == "list":
+            out.append(_f("ITEM-REQUIRED", name, b.line, f"{label}: a list needs 'item' (1-based, like 'row')"))
+    if kind == "sketch":   # F33: the renderer shows every whole list of the run, the target included; a list's shape is the one the parse reads
+        span = d.get("span", 1)
+        for first, _last, shape in (rh.run_lists(text, b.line, span) if _int(span) and span >= 1 else []):
+            on = {k for k, v in shape.items() if v}
+            for entry in REFUSED_LIST_SHAPES:
+                if entry and entry <= on:
+                    who = "anchors a list" if first == b.target["first_line"] else f"covers a list (first line {first})"
+                    out.append(_f("LIST-SHAPE-REFUSED", name, b.line,
+                                  f"{label} {who} whose shape the renderer shows differently: {', '.join(sorted(entry))}"))
     elif ttype == "list":
-        out.append(_f("ITEM-REQUIRED", name, b.line, f"{label}: a list needs 'item' (1-based, like 'row')"))
-    if ttype == "list":
         on = {k for k, v in b.target["shape"].items() if v}
         for entry in REFUSED_LIST_SHAPES:
             if entry and entry <= on:
                 out.append(_f("LIST-SHAPE-REFUSED", name, b.line,
                               f"{label} anchors a list whose shape the renderer shows differently: {', '.join(sorted(entry))}"))
-    kind = d.get("kind")   # F12
+    # F12
     if ctx.strings is not None and kind in FRAME_ONLY and (b.target or {}).get("type") == "paragraph":
         t = b.target
         hit = _frame_hit(" ".join(lines[t["first_line"] - 1:t["last_line"]]), ctx.strings, kind)
@@ -1061,7 +1074,7 @@ def _check_note(name, text, ctx):
     listed = clb.listed_files(text)
     counts, invalid = {k: 0 for k in rh.KINDS}, 0
     for b in blocks:
-        kind = _check_block(name, b, note_id, listed, lines, ctx, out)
+        kind = _check_block(name, b, note_id, listed, lines, ctx, out, text)
         if kind in counts:
             counts[kind] += 1
         else:
@@ -3914,7 +3927,7 @@ def _():
         globals()["REFUSED_LIST_SHAPES"] = (frozenset({"ordered"}),)
         fe(_sx(sk2), ["LIST-SHAPE-REFUSED 01-a.md:13 block '01.b02' anchors a list" + tail + "ordered"], 1)
         two = "Idea.\n" + _AB() + "\n\n- a\n- b\n\nOne.\n\n1. a\n2. b\n" + _SB(span=3) + "\n"   # a bullet list, a paragraph, a numbered list
-        fe(_sx(two), ["LIST-SHAPE-REFUSED 01-a.md:15 block '01.b02' anchors a list" + tail + "ordered"], 1)
+        fe(_sx(two), ["LIST-SHAPE-REFUSED 01-a.md:16 block '01.b02' anchors a list" + tail + "ordered"], 1)
         globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
         fe(go(notes={"01-a.md": NOTE(body="- a\n\n- b\n" + BL(item=1) + "\n")}),
            ["LIST-SHAPE-REFUSED 01-a.md:9 block '01.b01' anchors a list" + tail + "loose"], 1)
