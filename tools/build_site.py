@@ -303,7 +303,7 @@ and each link target as a line); WORD-NOTE does not read them. A link is `[text]
 parenthesis or white space; a link text that holds `. ` is cut by the first-sentence rule (a known limit). Links in the recognition and
 in the `unexpanded` entries are not rewritten. The strings rule R3 refuses `of the proof` in any value, so a wording that holds it (a
 compiled part of the proof) is refused until the rule or the wording changes. A block's frame uses the roots of the card it is shown
-on: one block can be framed as a definition on one card and as a proof on another.
+on, by ruling (F34): a card speaks about its own root, so one block can be framed as a definition on one card and as a proof on another.
 The static check's exemption for an <a class=citation> (and for a reaction anchor) is by class TOKEN: `citation extra` passes, `citationx` does
 not, and the citation exemption holds for `href` alone.
 
@@ -4656,6 +4656,21 @@ def _selftest_cases():
                      "How this is proved, as Reader Two read it on 2026-11-24 (TopPlug.lean, lines not given): Mixed argument sentence. "
                      "Second mixed sentence."]))
 
+    @case("PB3", "B1, ruled per card (F34): a card speaks about its OWN root. The one block 07.b02 anchors a definition (BAZ) and a theorem "
+                 "(QUUX): on g1a1, whose root is the definition, it is shown under argument_frame_no_proof, and on g2, which rests on both, "
+                 "under argument_frame, in the same build; the definition's card never says `How this is proved`")
+    def _():
+        b = _bbase()
+        mixed = lambda g: [p_.text() for p_ in _card(b, g).find("details", "evidence")[0].find("p", "argument")
+                           if "Mixed argument sentence." in p_.text()]
+        d_card = _card(b, "g1a1")
+        own = [p_.text() for p_ in d_card.find("details", "evidence")[0].find("p", "argument")] + [_direct(d_card, "p", "argument")[0].text()]
+        return _eq((mixed("g1a1"), mixed("g2"), any("How this is proved" in x for x in own)),
+                   (["What this definition contains, as Reader Two read it on 2026-11-24 (TopPlug.lean, lines not given): Mixed argument "
+                     "sentence. Second mixed sentence."],
+                    ["How this is proved, as Reader Two read it on 2026-11-24 (TopPlug.lean, lines not given): Mixed argument sentence. "
+                     "Second mixed sentence."], False))
+
     @case("PB2", "B2: the not-applicable line STAYS on a card whose root is a definition with an argument block (`Proof: none to read, this is "
                  "not a theorem.`), and proof_read stays null for it (the root, the group summary, the counts: 0 read of 0 that have a "
                  "proof): an argument block there sets nothing; the theorem root of g2 is read by the block that anchors it")
@@ -4987,6 +5002,16 @@ def _selftest_cases():
     def _():
         return _eq(_count_lines(_direct_build(_noted()).m)[1][0],
                    "recognition: 0 known, 0 variant, 1 not recognised, 0 open in literature, 2 not written, of 3 groups with a claim")
+
+    @case("FN5", "F2 end to end: the checker of the notes accepts a `note` on a not_recognised recognition, so a full run (the checker included, "
+                 "exit 0) shows it after the form line and before the label line and keeps it as written in group/g1.json; a note on a known "
+                 "recognition is refused by the checker (exit 1, nothing written)")
+    def _():
+        b = _build(outline=_noted())
+        bad = _build(outline=_noted("known"))
+        return _eq((b.rc, [k[1] for k in lead(rcn(b, "g1"))], b.js("group/g1.json")["recognition"]["note"], bad.rc, bad.existed),
+                   (0, ["recognition-form", "recognition-note", "recognition-label"],
+                    "We looked in `Foo.bar` and found [nothing](x.md).", 1, False))
 
     @case("FB1", "A3: the role of a claimed group with NO root_role is the class of its root's kind, pinned through the model and the page with "
                  "no checker run (a claim with no role is ROOT-ROLE-MISSING, an error once REQUIRE_ROOT_ROLE is True, so a run cannot carry "
