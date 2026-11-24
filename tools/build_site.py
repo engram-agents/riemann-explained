@@ -202,7 +202,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      and the recognition, a note id for a list title). THE CONVERTER `formula_to_mathml` is a pure function over a closed subset of TeX named by
      FORMULA_COMMANDS (67 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
      `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
-     formula, marks included>`; nothing is refused. Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
+     formula, marks included>` when the place is inside the Evidence section of a card; on the reader's surface (everything outside Evidence) a formula the
+     converter cannot convert (unsupported, `$$..$$`, an unpaired `$`) REFUSES the build: `FORMULA-RAW <where> <note file and the line of the block's anchor,
+     the note file, or outline/outline.json and the group>: <the first 40 characters of the formula as written>`, exit 1 (cases FRW1 to FRW4). Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
      minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command (the 11 capitals with mathvariant="normal", upright as TeX sets them; the page CSS gives a lone <mi> `text-transform: none; font-style: italic` and the normal variant upright), \\max \\min \\log \\cos
      <mi mathvariant="normal"> (after \\operatorname and these, and their scripts, a thin <mspace> when an identifier, number, group, Greek letter or another function follows in the group: TeX's rule), \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
      brace group (`x^10` is x^1 then 0), a prime is U+2032 INSIDE the token of a one-token <mi> base (`L'` is <mi>L′</mi>; a flat <mo>
@@ -1268,7 +1270,8 @@ def _load_notes(notes_dir, strings):
         h = headers[0].data
         lines = _LINE_SPLIT.split(text)
         note = {"name": name, "id": h["id"], "title": h["list_title"], "level": h["level"], "group": h["group"],
-                "link": _fill(strings["note_href"], file=urllib.parse.quote(name, safe="")), "blocks": []}
+                "link": _fill(strings["note_href"], file=urllib.parse.quote(name, safe="")), "blocks": [],
+                "_anchors": {b.data["id"]: b.line for b in blocks}}   # the line of each block's anchor, for an error that names it
         for b in blocks:
             d, t = b.data, b.target or {}
             rec = {"block": d["id"], "kind": d["kind"], "note": h["id"], "reader": d.get("reader"), "date": d.get("date")}
@@ -1933,13 +1936,14 @@ def _formula_views(text):
     return ["".join(plain), "".join(shown)]
 
 
-_FORMULA_LOG = None   # a list while the page is rendered: (kind, where, formula) with kind mark, converted, unsupported or unpaired
+_FORMULA_LOG = None   # a list while the page is rendered: (kind, where, formula, in Evidence) with kind mark, converted, unsupported or unpaired
+_IN_EVIDENCE = False   # True while the Evidence section of a card is rendered: the log entries made then carry it; a place never rendered there is on the surface
 
 
 def formula_counts(log):
     """{N, U, P, T} of a render's log: N converted, U unsupported, P unpaired dollar signs, T the marks the scanner found. T is counted from
     the marks, never from N and U, so N + U = T is a check and not a tautology."""
-    kinds = [k for k, _w, _f in log]
+    kinds = [x[0] for x in log]
     return {"N": kinds.count("converted"), "U": kinds.count("unsupported"), "P": kinds.count("unpaired"), "T": kinds.count("mark")}
 
 
@@ -1962,10 +1966,25 @@ def formula_listing(log):
     """The listing lines of a render, in order of first occurrence, each once: `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
     formula as written, marks included>` and `FORMULA-UNPAIRED <where>`."""
     out = []
-    for kind, where, f in log:
+    for kind, where, f, _ev in log:
         ln = (f"FORMULA-UNSUPPORTED {where} {f[:40]}" if kind == "unsupported" else f"FORMULA-UNPAIRED {where}" if kind == "unpaired" else None)
         if ln and ln not in out:
             out.append(ln)
+    return out
+
+
+def formula_raw_errors(log, locate=None):
+    """[(FORMULA-RAW, where, message)] for every unsupported or unpaired entry of the log that is NOT in Evidence (a `$$..$$` is unsupported): a
+    formula the converter cannot convert, on the reader's surface, refuses the build. One error per place and formula, in order of first
+    occurrence. The message is `<where of the source>: <the first 40 characters of the formula as written>` with `locate(where)` (a string, or
+    None when the builder does not know the place) in front; an unpaired dollar sign is shown as `$`. Entries in Evidence are the listing
+    (`formula_listing`), never an error."""
+    out, seen = [], set()
+    for kind, where, f, in_ev in log:
+        if kind in ("unsupported", "unpaired") and not in_ev and (where, f) not in seen:
+            seen.add((where, f))
+            loc = locate(where) if locate else None
+            out.append(("FORMULA-RAW", where, (f"{loc}: " if loc else "") + f[:40]))
     return out
 
 
@@ -2018,13 +2037,13 @@ def _rich(text, links=False, where=None):
                 ml = formula_to_mathml(body) if kind == "formula" and tok not in body else None
                 if log is not None:
                     written = re.sub(code, lambda m2: "`" + spans[int(m2.group(1))] + "`", raw)
-                    log += [("mark", where, written), ("converted" if ml else "unsupported", where, written)]
+                    log += [("mark", where, written, _IN_EVIDENCE), ("converted" if ml else "unsupported", where, written, _IN_EVIDENCE)]
                 out.append(ml if ml else plain(raw))
             pos = mt.end()
         out.append(plain(piece[pos:]))
         out.append("</strong>" if bold else "")
     if log is not None:
-        log += [("unpaired", where, "$")] * unpaired
+        log += [("unpaired", where, "$", _IN_EVIDENCE)] * unpaired
     return "".join(out)
 
 
@@ -2238,6 +2257,8 @@ def _render_page(m, s, facts, dirty):
             href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
             o.append(f'<li><a class="reaction" href="{_e(href)}">{_e(r["label"])}</a></li>')
         o.append("</ul>")
+        global _IN_EVIDENCE
+        _IN_EVIDENCE = True   # everything up to the closing tag below is Evidence: a formula logged now is listed, never refused (FORMULA-RAW)
         o += ['<details class="evidence">', f"<summary>{_e(s['evidence_label'])}</summary>"]
         for r in fl["roots"]:
             o.append('<div class="root">')
@@ -2302,6 +2323,7 @@ def _render_page(m, s, facts, dirty):
                 o.append(f'<li><code>{_e(it["note"])}</code> <code>{_e(it["block"])}</code> <code>{_e(it["needs"])}</code></li>')
             o.append("</ul>")
         o.append("</details>")
+        _IN_EVIDENCE = False
         kids = m.children.get(gid, [])
         if kids:
             o += ['<details class="children">', f"<summary>{_e(lab['go_deeper'])}</summary>", '<ul class="children">']
@@ -2358,6 +2380,23 @@ def _origin(token, sj, level0, level1, groups):
             if hit(v):
                 return f"{name} field {path}"
     return "index.html or data.js"
+
+
+def _formula_locator(m):
+    """The function `where -> where the author wrote it` for FORMULA-RAW: a block id gives the note file and the line of the block's anchor,
+    a note id (a list title) the note file, a group id `outline/outline.json group <id>`; a place the model does not know gives None. A block
+    id is looked at first, then a note id, then a group id (the three do not share a shape in the notes and outlines of this project)."""
+    def locate(where):
+        for n in m.notes:
+            if where in n["_anchors"]:
+                return f"{n['name']} line {n['_anchors'][where]}"
+        for n in m.notes:
+            if where == n["id"]:
+                return n["name"]
+        if where in m.groups:
+            return f"outline/outline.json group {where}"
+        return None
+    return locate
 
 
 def _refuse(lines, code=1):
@@ -2545,14 +2584,16 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     if errors:
         return _refuse(errors)
     global _FORMULA_LOG
-    _FORMULA_LOG = []
+    global _IN_EVIDENCE
+    _FORMULA_LOG, _IN_EVIDENCE = [], False
     try:
         page = _render_page(m, sj, facts, dirty)
         flog = _FORMULA_LOG
     finally:
-        _FORMULA_LOG = None
+        _FORMULA_LOG, _IN_EVIDENCE = None, False
     fcounts = formula_counts(flog)
     errors += formula_sum_errors(fcounts)
+    errors += formula_raw_errors(flog, _formula_locator(m))
     errors += formula_page_errors(fcounts, len(re.findall(r"<math[ >]", page)))
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
@@ -5357,11 +5398,13 @@ def _selftest_cases():
         first = [x for x in b.js("group/g1.json")["blocks"] if x["block"] == "01.b02"][0]["first_sentence"]
         return _eq((first, card, _para(b.page, "argument")), ("We apply `f.", "We apply `f.", "We apply <code>f. g</code> here. More."))
 
-    @case("FR4", "moved (was: FORMULA-RAW, the span taken out as one space): a code span inside a formula keeps the formula raw and the span code; the "
+    EV1 = "First sentence. "   # an argument text that starts with it keeps what follows OUT of the card's first sentence: in Evidence only (S1 moved the cases below)
+
+    @case("FR4", "moved (was: FORMULA-RAW, the span taken out as one space; moved again by S1: the formula is in the second sentence, in Evidence, where it is listed): a code span inside a formula keeps the formula raw and the span code; the "
                  "listing shows the formula as written, with its backticks (`$a `b` c$`); the span alone and a `$` in it are not listed")
     def _():
-        b = _build(notes=_notes(arg_text="Take $a `b` c$ here"))
-        c = _build(notes=_notes(arg_text="Take `$a` and `b$` here"))
+        b = _build(notes=_notes(arg_text=EV1 + "Take $a `b` c$ here"))
+        c = _build(notes=_notes(arg_text=EV1 + "Take `$a` and `b$` here"))
         return _eq((b.rc, _fr_lines(b), "Take $a <code>b</code> c$ here" in b.page, c.rc, _fr_lines(c)),
                    (0, ["FORMULA-UNSUPPORTED 01.b02 $a `b` c$"], True, 0, []))
 
@@ -5372,12 +5415,12 @@ def _selftest_cases():
         b = _build(notes=_notes(**kw))
         return b.rc, [ln for ln in b.out.splitlines() if ln.startswith("FORMULA-RAW")]
 
-    @case("FR1", "moved (was: a mark is listed as FORMULA-RAW): a block whose text holds a formula outside the subset is LISTED `FORMULA-UNSUPPORTED <block id> "
+    @case("FR1", "moved (was: a mark is listed as FORMULA-RAW; moved again by S1: the texts follow the first sentence, so they are in Evidence only): a block whose text holds a formula outside the subset is LISTED `FORMULA-UNSUPPORTED <block id> "
                  "<formula>`, one with an unpaired `$` `FORMULA-UNPAIRED <block id>`, and the build exits 0; a converted formula, a mark inside a span, "
                  "`\\(x\\)` (no mark any more) and a plain `5` are not listed; `Cost $5 and $6` is one converted formula (`5 and `); "
                  "`Cost $5 and $6 and $7` leaves the last `$` unpaired")
     def _():
-        res = [_fr(arg_text=t) for t in ("Take $x$ here", "Take `$x$` here", "Take $\\foo$ here", "Take \\(x\\) here", "Take 5 here", "Cost $5 and $6",
+        res = [_fr(arg_text=EV1 + t) for t in ("Take $x$ here", "Take `$x$` here", "Take $\\foo$ here", "Take \\(x\\) here", "Take 5 here", "Cost $5 and $6",
                                           "Cost $5 and $6 and $7", "A `$x$` and then $y$", "Take $x here")]
         return _eq(res, [(0, []), (0, []), (0, ["FORMULA-UNSUPPORTED 01.b02 $\\foo$"]), (0, []), (0, []), (0, []), (0, ["FORMULA-UNPAIRED 01.b02"]),
                          (0, []), (0, ["FORMULA-UNPAIRED 01.b02"])])
@@ -5386,11 +5429,12 @@ def _selftest_cases():
         b = _build(notes=_notes(**kw))
         return b.rc, _fr_lines(b)
 
-    @case("FR2", "moved: an INTERPRETATION block is listed the same way; two blocks of one note give lines in output order (the argument's, then the "
+    @case("FR2", "moved (and again by S1: the argument's formula is in the second sentence, in Evidence): an INTERPRETATION block is listed the same way; "
+                 "two blocks of one note give lines in output order (the argument's, then the "
                  "interpretation's), one block listed alone gives one line; the base build lists none")
     def _():
-        res = [_fr(interp_text="We think $\\foo$ here"), _fr(arg_text="Take $\\foo$", interp_text="We $\\bar$ too"),
-               _fr(arg_text="Take $\\foo$"), _fr(interp_text="We `$\\foo$` too")]
+        res = [_fr(interp_text="We think $\\foo$ here"), _fr(arg_text=EV1 + "Take $\\foo$", interp_text="We $\\bar$ too"),
+               _fr(arg_text=EV1 + "Take $\\foo$"), _fr(interp_text="We `$\\foo$` too")]
         return _eq((res, _fr_lines(_base())),
                    ([(0, ["FORMULA-UNSUPPORTED 01.b03 $\\foo$"]), (0, ["FORMULA-UNSUPPORTED 01.b02 $\\foo$", "FORMULA-UNSUPPORTED 01.b03 $\\bar$"]),
                      (0, ["FORMULA-UNSUPPORTED 01.b02 $\\foo$"]), (0, [])], []))
@@ -6004,17 +6048,18 @@ def _selftest_cases():
         return _eq(([li.find("span", "kind")[0].text() for li in items], [p_.cls for p_ in items[-1].find("p")], len(items[-1].find("aside"))),
                    (["Reading", "Argument", "Interpretation", "Correction", "Reading", "Proof sketch"], [["sketch-build"]], 0))
 
-    @case("FR5", "moved (was: FORMULA-RAW covers the sketch): the listing covers a sketch: an unpaired `$` in a paragraph (`FORMULA-UNPAIRED 04.b01`), a formula "
-                 "outside the subset in a list item or in the last paragraph (`FORMULA-UNSUPPORTED 04.b01 $...$`), once per line, exit 0; the same "
+    @case("FR5", "moved (was: FORMULA-RAW covers the sketch; moved again by S1: a sketch is on the reader's surface, so the listing became a refusal): an "
+                 "unpaired `$` in a paragraph, a formula outside the subset in a list item or in the last paragraph, refuse the build (BUILD-ERROR "
+                 "FORMULA-RAW 04.b01 04-sketch.md line 12: ..., once per line, exit 1, no FORMULA-UNSUPPORTED or FORMULA-UNPAIRED line); the same "
                  "inside a code span, and a plain `5`, do not; the default sketch does not")
     def _():
         res = []
         for kw in ({"para": "Cost is $5 here."}, {"item": "It uses $\\foo$ here."}, {"para": "`$5` and 5 only."},
                    {"last": "Ends with $\\foo$ and $z$."}, {}):
             b = _build(notes=_notes_s(**kw))
-            res.append((b.rc, _fr_lines(b)))
-        return _eq(res, [(0, ["FORMULA-UNPAIRED 04.b01"]), (0, ["FORMULA-UNSUPPORTED 04.b01 $\\foo$"]), (0, []),
-                         (0, ["FORMULA-UNSUPPORTED 04.b01 $\\foo$"]), (0, [])])
+            res.append((b.rc, _fr_lines(b), [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR FORMULA-RAW")]))
+        raw = "BUILD-ERROR FORMULA-RAW 04.b01 04-sketch.md line 12: "
+        return _eq(res, [(1, [], [raw + "$"]), (1, [], [raw + "$\\foo$"]), (0, [], []), (1, [], [raw + "$\\foo$"]), (0, [], [])])
 
     # ---- F30: a link inside block text is shown as its text
     lk = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith("links in block text") or ln.startswith("LINK-OUTSIDE")]
@@ -6159,7 +6204,7 @@ def _selftest_cases():
                  "listed; a first sentence cut inside a pair (`**one. Two**`) shows a literal `**` and lists the block")
     def _():
         res = []
-        for kw in ({"arg": "Cost $5 and **x and y."}, {"para": "Also **y here."}, {"last": "A `**` code and *one* and **two**."},
+        for kw in ({"arg": EV1 + "Cost $5 and **x and y."}, {"para": "Also **y here."}, {"last": "A `**` code and *one* and **two**."},
                    {"arg": "Take **one. Two** steps."}, {}):
             b = _build(notes=_bn(**kw))
             res.append((b.rc, listing(b), b.existed))
@@ -6247,11 +6292,15 @@ def _selftest_cases():
                     [{"text": "Step one", "items": ["a - deep one - deep two", "b"]}, {"text": "Step two", "items": ["c - deeper"]}],
                     3, [1, 1], 0, []))
 
-    @case("NS4", "F35 N1: the lines of a sketch and S, P are unchanged: a sketch with sub-items still counts as one sketch of the step "
-                 "(`sketches: 1 of 2 steps with a proof read`), and the unpaired `$` in a sub-item is listed (`FORMULA-UNPAIRED 04.b01`)")
+    @case("NS4", "F35 N1 (moved by S1): the lines of a sketch and S, P are unchanged: a sketch with sub-items still counts as one sketch of the step "
+                 "(`sketches: 1 of 2 steps with a proof read`); the unpaired `$` in a sub-item, on the surface, now refuses the build "
+                 "(BUILD-ERROR FORMULA-RAW 04.b01 04-sketch.md line 13: $, exit 1), where it was listed")
     def _():
-        b = _build(notes=_bn(item="Item two here.\n   - sub costs $5"))
-        return _eq((b.rc, "sketches: 1 of 2 steps with a proof read" in b.out.splitlines(), listing(b)), (0, True, ["FORMULA-UNPAIRED 04.b01"]))
+        b = _build(notes=_bn(item="Item two here.\n   - sub costs 5"))
+        r = _build(notes=_bn(item="Item two here.\n   - sub costs $5"))
+        return _eq((b.rc, "sketches: 1 of 2 steps with a proof read" in b.out.splitlines(), listing(b), r.rc,
+                    [ln for ln in r.out.splitlines() if ln.startswith("BUILD-ERROR FORMULA-RAW")]),
+                   (0, True, [], 1, ["BUILD-ERROR FORMULA-RAW 04.b01 04-sketch.md line 13: $"]))   # the sub-item is one more line, so the anchor is at 13
 
     @case("LB1", "F35 L1: the source check compares what a reader sees, the asterisks removed as backticks are: a release line inside `**...**` "
                  "as a sketch paragraph, as the text of an argument block, and as a sub-item, and the line plain as a sub-item "
@@ -6810,16 +6859,15 @@ def _selftest_cases():
     def _nmath(b_):
         return len(re.findall(r"<math[ >]", b_.page))
 
-    @case("FP1", "F1 (review): a formula in the SOURCE of a citation is counted: the evidence list renders it too, so with `Src $x$` the run line says "
+    @case("FP1", "F1 (review; moved by S1): a formula in the SOURCE of a citation is counted: the evidence list renders it too, so with `Src $x$` the run line says "
                  "`2 converted ... of 2 marks` (the card's citation and the evidence line), the page holds 2 <math>, and N equals the <math> count; "
-                 "an unsupported one (`$\\foo$`) is listed once under the group (`FORMULA-UNSUPPORTED g1 $\\foo$`), counted twice as unsupported, and "
-                 "the page holds no <math>")
+                 "an unsupported one (`$\\foo$`) is on the surface (the card's citation), so it refuses the build once under the group "
+                 "(`BUILD-ERROR FORMULA-RAW g1 outline/outline.json group g1: $\\foo$`), exit 1, OUT_DIR absent; where it was listed")
     def _():
         a = _build(outline=_ol(_rec_f("source", "Src $x$")))
         u = _build(outline=_ol(_rec_f("source", "Src $\\foo$")))
-        return _eq((a.rc, _fline(a), _nmath(a), u.rc, _fline(u), _nmath(u),
-                    [ln for ln in u.out.splitlines() if ln.startswith("FORMULA-UNSUPPORTED")]),
-                   (0, (2, 0, 0, 2), 2, 0, (0, 2, 0, 2), 0, ["FORMULA-UNSUPPORTED g1 $\\foo$"]))
+        return _eq((a.rc, _fline(a), _nmath(a), u.rc, u.existed, [ln for ln in u.out.splitlines() if ln.startswith("BUILD-ERROR FORMULA-RAW")]),
+                   (0, (2, 0, 0, 2), 2, 1, False, ["BUILD-ERROR FORMULA-RAW g1 outline/outline.json group g1: $\\foo$"]))
 
     def _everywhere():
         """A build with a formula `$x$` in EVERY author-text field the page renders through the span rule."""
@@ -6871,18 +6919,21 @@ def _selftest_cases():
                    (0, (M_("<mrow><mi>a</mi><mi>b</mi><mi>d</mi></mrow>"), M_("<mi>a</mi>")), ["LINK-OUTSIDE 01.b02 c", "LINK-OUTSIDE 01.b02 b"],
                     (4, 0, 0, 4), 4))
 
-    @case("LS1", "listing: an unsupported formula is listed `FORMULA-UNSUPPORTED <block id> <the first 40 characters of the formula, marks included>` "
+    @case("LS1", "listing (moved by S1: a claim and a list title are on the surface, so there a formula the converter cannot convert refuses the build "
+                 "where it was listed): in Evidence an unsupported formula is listed `FORMULA-UNSUPPORTED <block id> <the first 40 characters of the formula, marks included>` "
                  "(once per block and text, in page order), an unpaired dollar `FORMULA-UNPAIRED <block id>` (once per block), the build exits 0, "
-                 "the page shows the raw text; a claim is named by its group id, a list title by its note id")
+                 "the page shows the raw text; a claim with `$\\foo$` refuses (FORMULA-RAW named by its group id), a list title with `$\\bar$` and a "
+                 "lone `$` refuses (two FORMULA-RAW lines named by its note id)")
     def _():
         long = "$\\frac{" + "a" * 50 + "}{b}$"
-        b = _build(notes=_notes(arg_text="Take $\\frac{1}{2}$ and " + long + " and $x$ and a $ here"))
+        b = _build(notes=_notes(arg_text=EV1 + "Take $\\frac{1}{2}$ and " + long + " and $x$ and a $ here"))
         c = _build(outline=_ol(lambda g: g["claim"].update(text="Claim $\\foo$")))
         t = _build(notes=_notes() | {"01-one.md": _n01().replace('"list_title":"Note one"', '"list_title":"Note $\\\\bar$ $"')})
-        pick = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith(("FORMULA-UNSUPPORTED", "FORMULA-UNPAIRED"))]
-        return _eq((b.rc, pick(b), "Take $\\frac{1}{2}$ and " in b.page, c.rc, pick(c), pick(t)),
-                   (0, ["FORMULA-UNSUPPORTED 01.b02 $\\frac{1}{2}$", "FORMULA-UNSUPPORTED 01.b02 $\\frac{" + "a" * 33, "FORMULA-UNPAIRED 01.b02"], True, 0,
-                       ["FORMULA-UNSUPPORTED g1 $\\foo$"], ["FORMULA-UNSUPPORTED 01 $\\bar$", "FORMULA-UNPAIRED 01"]))
+        pick = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith(("FORMULA-UNSUPPORTED", "FORMULA-UNPAIRED", "BUILD-ERROR FORMULA-RAW"))]
+        return _eq((b.rc, pick(b), "Take $\\frac{1}{2}$ and " in b.page, c.rc, pick(c), t.rc, pick(t)),
+                   (0, ["FORMULA-UNSUPPORTED 01.b02 $\\frac{1}{2}$", "FORMULA-UNSUPPORTED 01.b02 $\\frac{" + "a" * 33, "FORMULA-UNPAIRED 01.b02"], True, 1,
+                       ["BUILD-ERROR FORMULA-RAW g1 outline/outline.json group g1: $\\foo$"], 1,
+                       ["BUILD-ERROR FORMULA-RAW 01 01-one.md: $\\bar$", "BUILD-ERROR FORMULA-RAW 01 01-one.md: $"]))
 
     @case("LS2", "listing: a formula that is converted, a `\\$`, a dollar sign in a code span and a link target are NOT listed; the base build lists none")
     def _():
@@ -6892,15 +6943,16 @@ def _selftest_cases():
 
     @case("RL1", "the run line, in the output after `sketches:`: `formulas: N converted, U unsupported, P unpaired, of T marks, converter "
                  "own-subset-1 (67 commands)`; the base build is `0 converted, 0 unsupported, 0 unpaired, of 0 marks`; the counts are of renderings "
-                 "(the card's first sentence and the evidence text both count): `A $x$ and $\\frac{1}{2}$ and \\$ and a $ here` is 2 converted, 2 "
-                 "unsupported, 2 unpaired, of 4")
+                 "(the card's first sentence and the evidence text both count; moved by S1, since a formula the converter cannot convert may not be in "
+                 "the first sentence, which is on the surface): `A $x$ and \\$ here. Then $\\frac{1}{2}$ and a $ here` is 2 converted (the first "
+                 "sentence and Evidence), 1 unsupported, 1 unpaired, of 3")
     def _():
         line = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith("formulas: ")]
-        b = _build(notes=_notes(arg_text="A $x$ and $\\frac{1}{2}$ and \\$ and a $ here"))
+        b = _build(notes=_notes(arg_text="A $x$ and \\$ here. Then $\\frac{1}{2}$ and a $ here"))
         idx = b.out.splitlines()
         return _eq((line(_base()), line(b), idx.index(line(b)[0]) > next(i for i, x in enumerate(idx) if x.startswith("sketches: "))),
                    (["formulas: 0 converted, 0 unsupported, 0 unpaired, of 0 marks, converter own-subset-1 (67 commands)"],
-                    ["formulas: 2 converted, 2 unsupported, 2 unpaired, of 4 marks, converter own-subset-1 (67 commands)"], True))
+                    ["formulas: 2 converted, 1 unsupported, 1 unpaired, of 3 marks, converter own-subset-1 (67 commands)"], True))
 
     @case("RL2", "the sum N + U = T (code FORMULA-SUM) is asserted on the pure counting function: `formula_counts` of a log with a mark that has no "
                  "result is (0, 0, 0, 1) and `formula_sum_errors` of it is FORMULA-SUM; a log that adds up gives none; a build whose counting "
@@ -6924,11 +6976,75 @@ def _selftest_cases():
         return _eq(([ln for ln in b.out.splitlines() if ln.startswith("FORMULA")], "_formula_raw" in globals(), "_FORMULA_MARK" in globals(), b.rc),
                    ([], False, False, 0))
 
-    @case("RL4", "a listing never changes the exit code and never refuses: a build with a converted formula, an unsupported one, an unpaired dollar "
-                 "and a display formula is exit 0 with its files written; the same build with no listing is exit 0 as well")
+    @case("RL4", "a listing in Evidence never changes the exit code and never refuses (moved by S1: on the surface the same formulas refuse, FRW1 FRW2): "
+                 "a build with a converted formula, an unsupported one, an unpaired dollar "
+                 "and a display formula in Evidence is exit 0 with its files written; the same build with no listing is exit 0 as well")
     def _():
-        b = _build(notes=_notes(arg_text="Take $\\frac{1}{2}$, $x$, $$y$$ and a $ here"))
+        b = _build(notes=_notes(arg_text=EV1 + "Take $\\frac{1}{2}$, $x$, $$y$$ and a $ here"))
         return _eq((b.rc, b.existed, len(b.files)), (0, True, len(_base().files)))
+
+    def _frw(**kw):
+        b = _build(**kw)
+        return b.rc, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR FORMULA-RAW")], b.existed
+
+    @case("FRW1", "S1: a formula the converter cannot convert, at a place OUTSIDE Evidence, refuses the build: BUILD-ERROR FORMULA-RAW naming the place, "
+                  "the note file and the line of the block's anchor (a block), the note file (a note's list title), or outline/outline.json and the "
+                  "group (a claim, a condition, the recognition), then the formula as written; exit 1, OUT_DIR absent. Places: a claim, a condition, "
+                  "the first sentence of an argument, a sketch paragraph, a note's list title, the title of a note about the whole, the "
+                  "recognition's difference")
+    def _():
+        want = lambda where, loc, f: [(1, [f"BUILD-ERROR FORMULA-RAW {where} {loc}: {f}"], False)]
+        got = [_frw(outline=_ol(lambda g: g["claim"].update(text="Claim $\\foo$"))),
+               _frw(outline=_ol(lambda g: g["claim"].update(conditions=["Cond $\\foo$ holds."]))),
+               _frw(notes=_notes(arg_text="Take $\\foo$ here")),
+               _frw(notes=_notes_s(para="P $\\foo$ here.")),
+               _frw(notes=_notes() | {"01-one.md": _n01().replace('"list_title":"Note one"', '"list_title":"Note $\\\\foo$"')}),
+               _frw(notes=_notes() | {"00-whole.md": N00.replace('"list_title":"Whole one"', '"list_title":"Whole $\\\\foo$"')}),
+               _frw(outline=_ol(_rec_f("difference", "Diff $\\foo$.")))]
+        return _eq(got, want("g1", "outline/outline.json group g1", "$\\foo$") * 2 + want("01.b02", "01-one.md line 10", "$\\foo$")
+                   + want("04.b01", "04-sketch.md line 12", "$\\foo$") + want("01", "01-one.md", "$\\foo$") + want("00", "00-whole.md", "$\\foo$")
+                   + want("g1", "outline/outline.json group g1", "$\\foo$"))
+
+    @case("FRW2", "S1: an unpaired dollar sign and a `$$..$$` (which stays raw) at a place outside Evidence refuse the build the same way (the unpaired "
+                  "one shows `$`); the same three kinds INSIDE Evidence (the second sentence of an argument, an interpretation) stay the listing, "
+                  "FORMULA-UNSUPPORTED and FORMULA-UNPAIRED, exit 0, the run line unchanged in form")
+    def _():
+        raw = [_frw(notes=_notes(arg_text="Take $x here")), _frw(notes=_notes(arg_text="Take $$y$$ here"))]
+        b = _build(notes=_notes(arg_text="First sentence. Take $\\foo$ and $$y$$ and a $ here.", interp_text="We think $\\bar$ here."))
+        lst = [ln for ln in b.out.splitlines() if ln.startswith(("FORMULA-UNSUPPORTED", "FORMULA-UNPAIRED", "BUILD-ERROR"))]
+        run_line = [ln for ln in b.out.splitlines() if ln.startswith("formulas: ")]
+        return _eq((raw, b.rc, b.existed, lst, run_line),
+                   ([(1, ["BUILD-ERROR FORMULA-RAW 01.b02 01-one.md line 10: $"], False),
+                     (1, ["BUILD-ERROR FORMULA-RAW 01.b02 01-one.md line 10: $$y$$"], False)], 0, True,
+                    ["FORMULA-UNSUPPORTED 01.b02 $\\foo$", "FORMULA-UNSUPPORTED 01.b02 $$y$$", "FORMULA-UNPAIRED 01.b02",
+                     "FORMULA-UNSUPPORTED 01.b03 $\\bar$"],
+                    ["formulas: 0 converted, 3 unsupported, 1 unpaired, of 3 marks, converter own-subset-1 (67 commands)"]))
+
+    @case("FRW3", "S1: a literal dollar sign written `\\$` is no formula and is never refused (a claim, a first sentence); a formula inside a code "
+                  "span is no formula either; the same formula both on the surface (the first sentence) and in Evidence (the whole text) is one "
+                  "refusal line, not two")
+    def _():
+        ok = [_frw(outline=_ol(lambda g: g["claim"].update(text="Cost \\$5 and \\$6 here"))), _frw(notes=_notes(arg_text="Cost \\$5 here")),
+              _frw(notes=_notes(arg_text="Take `$\\foo$` here"))]
+        twice = _frw(notes=_notes(arg_text="Take $\\foo$ here. Again $\\foo$ here."))
+        return _eq((ok, twice), ([(0, [], True)] * 3, (1, ["BUILD-ERROR FORMULA-RAW 01.b02 01-one.md line 10: $\\foo$"], False)))
+
+    @case("FRW4", "S1, the pure function: `formula_raw_errors(log, locate)` over a log of four-element entries (kind, place, formula, in Evidence) gives "
+                  "one FORMULA-RAW per place and formula for each unsupported or unpaired entry NOT in Evidence, in order, the formula cut at 40 "
+                  "characters, `<where>: ` before it only when `locate` knows the place; converted entries, marks and entries in Evidence give "
+                  "none; `formula_listing` and `formula_counts` read the four-element entries")
+    def _():
+        long = "$\\foo{" + "a" * 60 + "}$"
+        log = [("mark", "w", "$\\foo$", False), ("unsupported", "w", "$\\foo$", False), ("unpaired", "w", "$", False),
+               ("mark", "e", "$\\bar$", True), ("unsupported", "e", "$\\bar$", True), ("unpaired", "e", "$", True),
+               ("mark", "w", "$x$", False), ("converted", "w", "$x$", False), ("unsupported", "w", "$\\foo$", False),
+               ("unsupported", "n", long, False)]
+        errs = formula_raw_errors(log, lambda w: "LOC" if w == "w" else None)
+        return _eq((errs, formula_listing(log), formula_counts(log)),
+                   ([("FORMULA-RAW", "w", "LOC: $\\foo$"), ("FORMULA-RAW", "w", "LOC: $"), ("FORMULA-RAW", "n", long[:40])],
+                    ["FORMULA-UNSUPPORTED w $\\foo$", "FORMULA-UNPAIRED w", "FORMULA-UNSUPPORTED e $\\bar$", "FORMULA-UNPAIRED e",
+                     "FORMULA-UNSUPPORTED n " + long[:40]],
+                    {"N": 1, "U": 4, "P": 2, "T": 3}))
 
     @case("JS1b", "the JSON keeps the text as written: a block text, a claim, a condition and a list title with formulas are in group/g1.json "
                   "(and in data.js) with their `$`, the first sentence is as written (and cut outside a formula); and the JSON files of the "
