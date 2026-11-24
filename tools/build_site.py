@@ -3249,12 +3249,14 @@ def _no_edition(rel, data):
     if rel.startswith("group/") and rel.endswith(".json"):
         d = json.loads(data.decode("utf-8"))
         d.pop("edition", None)
+        d.pop("editions", None)
         return (_dump(d) + "\n").encode("utf-8")
     if rel == "data.js":
         pre = "window.RH_DATA = "
         d = json.loads(data.decode("utf-8")[len(pre):-2])
         for g in d["groups"].values():
             g.pop("edition", None)
+            g.pop("editions", None)
         return (pre + _js_safe(_dump(d)) + ";\n").encode("utf-8")
     return data
 
@@ -3462,7 +3464,7 @@ def _selftest_cases():
         arg = g1["blocks"][1]
         got = (sorted(g1), g1["roots"], [b["block"] for b in g1["blocks"]], arg,
                g2["open_items"], g2["roots"][1], g1a["blocks"], sorted(_base().files))
-        want = (["blocks", "commits", "edition", "id", "level", "notes", "open_items", "parent", "premises", "recognition", "root_kind", "root_role",
+        want = (["blocks", "commits", "edition", "editions", "id", "level", "notes", "open_items", "parent", "premises", "recognition", "root_kind", "root_role",
                  "roots", "sketches"],
                 [{"file": "A/B.lean", "kind": "theorem", "lines": [10, 20], "module": "A.B", "name": "foo", "sha256": None,
                   "shared_with": [], "statement_read": True, "proof_read": True}],
@@ -3495,7 +3497,7 @@ def _selftest_cases():
         want_files = {k: hashlib.sha256(v).hexdigest() for k, v in b.files.items() if k != "manifest.json"}
         return _eq((m["files"] == want_files, m["counts"], m["release_id"], m["release_archive_sha"],
                     _base().js("manifest.json")["release_archive_sha"]),
-                   (True, {"blocks": 8, "editions": 0, "groups": 6, "notes": 4}, "rel-1", "ab" * 32, None))
+                   (True, {"blocks": 8, "editions": 0, "groups": 6, "note_editions": 0, "notes": 4}, "rel-1", "ab" * 32, None))
 
     @case("FMT1", "every .json file is sorted keys, 1-space indent, LF only, UTF-8 with the non-ASCII character kept, one final newline")
     def _():
@@ -7496,8 +7498,8 @@ def _selftest_cases():
                _base().js("group/g1.json")["edition"], _base().js("manifest.json")["counts"])
         return _eq(got, ({"date": "2026-11-21", "number": 2}, {"date": "2026-11-22", "number": 2}, None, None,
                          {"date": "2026-11-21", "number": 2}, None, False, False,
-                         {"blocks": 8, "editions": 2, "groups": 6, "notes": 4}, None,
-                         {"blocks": 8, "editions": 0, "groups": 6, "notes": 4}))
+                         {"blocks": 8, "editions": 2, "groups": 6, "note_editions": 0, "notes": 4}, None,
+                         {"blocks": 8, "editions": 0, "groups": 6, "note_editions": 0, "notes": 4}))
 
     @case("ED2", "F44: with a group at edition 2 the first screen gets ONE extra paragraph, `edition_note_first_screen`, right after the "
                  "first_screen paragraphs: {date} is the LATEST edition_date over the groups at edition 2 (not the first, not the last in "
@@ -7623,6 +7625,131 @@ def _selftest_cases():
         s["note_href"] = "http://x.invalid/{file}"
         b = _build(strings=s)
         return _eq((b.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in b.out.splitlines()), (1, True))
+
+    # ---- F44B: the edition of a note on the page, in the JSON and in the checks
+    NE_CARD = ('<p class="edition-note">On @D the text of this card was rewritten for readers: where it showed names used inside the '
+               'Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the '
+               'earlier text is kept here: <a class="edition-link" href="https://github.com/engram-agents/riemann-explained/blob/'
+               'notes-edition-1/@F">first edition</a>.</p>')
+    NE_FIRST = ED_FIRST.replace("2026-11-23", "@D")
+    nd_card = lambda date, file: NE_CARD.replace("@D", date).replace("@F", file)
+    nd_first = lambda date: NE_FIRST.replace("@D", date)
+    nd_group = lambda date: ED_CARD.replace("2026-11-21", date)
+
+    def _nset(text, edition, date):
+        """The note text with `edition` (and `edition_date` when a date is given) set in its header."""
+        h = rh.parse_note(text)[0][0].data
+        new = dict(h, edition=edition)
+        if date:
+            new["edition_date"] = date
+        return text.replace(rh.format_comment("rh-note", h), rh.format_comment("rh-note", new), 1)
+
+    def _nnotes(notes=None, new=None, ones=()):
+        """The fixture notes with the named files at edition 2 (file -> date), the files in `ones` at edition 1, and the extra notes
+        `new` (file -> (note id, group, date or None for no edition))."""
+        n = _notes()
+        for f, d in (notes or {}).items():
+            n[f] = _nset(n[f], 2, d)
+        for f in ones:
+            n[f] = _nset(n[f], 1, None)
+        for f, (nid, gid, d) in (new or {}).items():
+            n[f] = "# Note " + nid + "\n" + _h(id=nid, group=gid, list_title="Note " + nid, **({"edition": 2, "edition_date": d} if d else {})) \
+                   + "\n\n## Body\n\nText " + nid + ".\n"
+        return n
+
+    def _nb(groups=(), notes=None, new=None, ones=(), strings=None):
+        return _build(outline=_eo(*groups), notes=_nnotes(notes, new, ones), strings=_strings() if strings is None else strings)
+
+    @case("ND1", "F44B: group/<id>.json and data.js carry `editions` per card: a list of {note: file, edition: 2, date: edition_date} of the notes of that "
+                 "card (the header group) at edition 2 in note order, [] when none (a note written edition 1 included); level0 and level1 carry none; "
+                 "manifest.json keeps `editions` as the groups at 2 and adds `note_editions`, the notes at 2")
+    def _():
+        b = _nb(notes={"01-one.md": "2026-11-21", "03-three.md": "2026-11-22"},
+                new={"04-four.md": ("04", "g1a1x", "2026-11-23"), "05-five.md": ("05", "g1", "2026-11-20")}, ones=("02-two.md",))
+        data = json.loads(b.text("data.js")[len("window.RH_DATA = "):-2])
+        e = lambda f, d: {"date": d, "edition": 2, "note": f}
+        want = {"g1": [e("01-one.md", "2026-11-21"), e("05-five.md", "2026-11-20")], "g3": [e("03-three.md", "2026-11-22")], "g2": [],
+                "g1a": [], "g1a1": [], "g1a1x": [e("04-four.md", "2026-11-23")]}
+        got = {g: b.js(f"group/{g}.json")["editions"] for g in want}
+        return _eq((got, {g: data["groups"][g]["editions"] for g in want}, b.js("manifest.json")["counts"],
+                    any("editions" in x for x in b.js("level0.json")["steps"] + b.js("level1.json")["steps"]),
+                    _base().js("group/g1.json")["editions"], _base().js("manifest.json")["counts"]),
+                   (want, want, {"blocks": 8, "editions": 0, "groups": 6, "note_editions": 4, "notes": 6}, False, [],
+                    {"blocks": 8, "editions": 0, "groups": 6, "note_editions": 0, "notes": 4}))
+
+    @case("ND2", "F44B: the first-screen sentence appears when ANY group or note is at edition 2, with {date} the LATEST edition_date over the groups "
+                 "AND the notes (the later of a group and a note, either way round), right after the first_screen paragraphs; with none at 2 there is "
+                 "none; a level-0 note alone also says it (no card carries a paragraph for it)")
+    def _():
+        only = _nb(notes={"03-three.md": "2026-11-22"})
+        note_later = _nb(groups=[("g1", "2026-11-21")], notes={"03-three.md": "2026-11-23"})
+        group_later = _nb(groups=[("g1", "2026-11-23")], notes={"03-three.md": "2026-11-21"})
+        whole = _nb(notes={"00-whole.md": "2026-11-20"})
+        none = _nb(ones=("01-one.md", "02-two.md"))
+        say = lambda b_, d: (b_.page.count(nd_first(d)), b_.page.count('<p class="edition-note">These notes were rewritten'))
+        return _eq((say(only, "2026-11-22"), say(note_later, "2026-11-23"), say(group_later, "2026-11-23"), say(whole, "2026-11-20"),
+                    ('<p>First screen paragraph two.</p>\n' + nd_first("2026-11-22") + '\n<ul class="facts">') in only.page,
+                    whole.page.count('<p class="edition-note">On '), 'edition-note' in none.page, none.page == _base().page,
+                    [x.rc for x in (only, note_later, group_later, whole, none)], whole.js("manifest.json")["counts"]["note_editions"]),
+                   ((1, 1), (1, 1), (1, 1), (1, 1), True, 0, False, True, [0, 0, 0, 0, 0], 1))
+
+    @case("ND3", "F44B: each card's Evidence gets, after the group's own paragraph, one `edition_note_card` paragraph per edition-2 note of the card whose "
+                 "date DIFFERS from the group's date at edition 2 (the same date: only the group's paragraph); a card whose group is at 1 gets one per "
+                 "edition-2 note, in note order; a nested card gets its own; nothing above Evidence; the page is clean under both checks")
+    def _():
+        own = lambda b_, g: _direct(_card(b_, g), "details", "evidence")[0]
+        count = lambda b_, g: len(own(b_, g).find("p", "edition-note"))
+        same = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21"}, new={"05-five.md": ("05", "g1", "2026-11-20")})
+        diff = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-22"})
+        two = _nb(notes={"03-three.md": "2026-11-22"}, new={"06-six.md": ("06", "g3", "2026-11-19")})
+        nest = _nb(new={"04-four.md": ("04", "g1a1x", "2026-11-23")})
+        outside = lambda b_: ["rewritten for readers" in surface(_card(b_, g)) for g in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")]
+        ev = lambda b_: static_problems(b_.page, b_.text("data.js")) + element_problems(b_.page)
+        return _eq(([count(same, g) for g in ("g1", "g1a", "g3")], same.page.count(ED_SUMMARY + nd_group("2026-11-21") + nd_card("2026-11-20", "docs/05-five.md")),
+                    "docs/01-one.md" in same.page,
+                    [count(diff, g) for g in ("g1", "g3")],
+                    diff.page.count(ED_SUMMARY + nd_group("2026-11-21") + nd_card("2026-11-22", "docs/01-one.md")),
+                    [count(two, g) for g in ("g1", "g3", "g2")],
+                    two.page.count(ED_SUMMARY + nd_card("2026-11-22", "docs/03-three.md") + nd_card("2026-11-19", "docs/06-six.md")),
+                    two.page.count(nd_group("2026-11-21")),
+                    [count(nest, g) for g in ("g1", "g1a", "g1a1", "g1a1x")],
+                    nest.page.count(ED_SUMMARY + nd_card("2026-11-23", "docs/04-four.md")),
+                    outside(same), outside(diff), outside(two), outside(nest), [ev(x) for x in (same, diff, two, nest)],
+                    [x.rc for x in (same, diff, two, nest)]),
+                   ([2, 0, 0], 1, False, [2, 0], 1, [0, 2, 0], 1, 0, [0, 0, 0, 1], 1,
+                    [False] * 6, [False] * 6, [False] * 6, [False] * 6, [[], [], [], []], [0, 0, 0, 0]))
+
+    @case("ND4", "F44B: the card link of a note is the edition_href_blob key with {file} = docs/<note file> (the tag name lives in the strings, not in "
+                 "the code), the first-screen link stays edition_href_tree; the link text is edition_link_label")
+    def _():
+        two = _nb(notes={"03-three.md": "2026-11-22"}, new={"06-six.md": ("06", "g3", "2026-11-19")})
+        hrefs = re.findall(r'<a class="edition-link" href="([^"]+)">first edition</a>', two.page)
+        s = _strings()
+        s["edition_href_blob"] = "https://example.invalid/e1/{file}"
+        s["edition_link_label"] = "the earlier text"
+        other = _nb(notes={"03-three.md": "2026-11-22"}, strings=s)
+        return _eq((hrefs, re.findall(r'<a class="edition-link" href="([^"]+)">the earlier text</a>', other.page), "notes-edition-1" in other.page.replace(EDITION_TREE, "")),
+                   ([EDITION_TREE, "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/docs/03-three.md",
+                     "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/docs/06-six.md"],
+                    [EDITION_TREE, "https://example.invalid/e1/docs/03-three.md"], False))
+
+    @case("ND5", "F44B: with no group and no note at edition 2 the page is byte-equal to the page before (also when edition 1 is written on every note), "
+                 "and every card's `editions` is []")
+    def _():
+        ones = _nb(ones=("00-whole.md", "01-one.md", "02-two.md", "03-three.md"))
+        return _eq((ones.rc, ones.page == _base().page, ones.files["index.html"] == _base().files["index.html"],
+                    [ones.js(f"group/{g}.json")["editions"] for g in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")]),
+                   (0, True, True, [[]] * 6))
+
+    @case("ND6", "F44B: a build with notes at edition 2 is byte-identical under PYTHONHASHSEED 0 and 3, every file")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d, notes=_nnotes({"01-one.md": "2026-11-21"}, {"06-six.md": ("06", "g3", "2026-11-19")}), outline=_eo(("g1", "2026-11-22")))
+            _put(os.path.join(d, "args.json"), json.dumps({k: p[k] for k in ("notes", "outline", "decls", "strings")}))
+            r1 = _child(os.path.join(d, "args.json"), os.path.join(d, "o1"), 0)
+            r2 = _child(os.path.join(d, "args.json"), os.path.join(d, "o2"), 3)
+            t1, t2 = _tree(os.path.join(d, "o1")), _tree(os.path.join(d, "o2"))
+            return _eq((r1[0], r2[0], len(t1), t1 == t2, t1["index.html"].decode().count('<p class="edition-note">')), (0, 0, 11, True, 4))
 
     # ---- F44 (Q6) the marker case: every field of a group the page prints as words outside Evidence is in EDITION_TEXT_FIELDS
     def _marker_build():
