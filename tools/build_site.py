@@ -7656,6 +7656,21 @@ def _selftest_cases():
                     bad.append((art.attrs.get("id"), a, n, bb))
         return _eq((bad, [x > 0 for x in seen]), ([], [True, True, True]))
 
+    @case("F49d", "F49: the choice follows the SAME condition as the use line, also where that condition is not the plain role: with no root_role on "
+                  "zkn and g1a1 (a definition class read from the kind, the fallback of the use line) both show the use line and "
+                  "proof_not_applicable_named_line; an object card (zok, a claim, a definition root, root_role `object`) shows no use line and "
+                  "proof_not_applicable_line; a result card (zkr, no root_role, a theorem) shows neither")
+    def _():
+        o = _zoo()
+        for g in o["groups"]:
+            if g["id"] in ("zkr", "zkn", "g1a1"):
+                g.pop("root_role", None)
+        b = _direct_build(o, roles=False)
+        both = lambda g: (len(_direct(_card(b, g), "p", "named-statement-use")), _card(b, g).find("p", "proof")[0].text())
+        named, plain = F49_STRINGS["proof_not_applicable_named_line"], "Proof: none to read, this is not a theorem."
+        return _eq((both("zkn"), both("g1a1"), both("zok"), both("zkr")),
+                   ((1, named), (1, named), (0, plain), (0, "We have read this proof.")))
+
     @case("TT2", "F47 face (a): a card with a null claim, a title and a RESULT root (fr, a theorem): the heading is the label `What this step "
                  "is:` in its own span, then the title in its own span, in the same <h3> as before; directly under it the no_claim_label line, "
                  "then the two status lines; the root name is no longer in the heading and stays in Evidence")
