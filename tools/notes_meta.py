@@ -107,7 +107,7 @@ CONTRACT (each line is a self-test case, written before the code)
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
- Root role and recognition (cases RR1 to RR4, REC1 to REC4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
+ Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
   F1 root_role is `result`, `named_statement` or `object` (any other value, or a non-string, is ROOT-ROLE) and belongs to a claim (on
      a null claim it is ROOT-ROLE). The role is compared with the kind of the group's one root in decls.tsv HERE (the builder only
@@ -117,13 +117,14 @@ CONTRACT (each line is a self-test case, written before the code)
   F2 recognition (an object; BRIEF 18e: none on a null claim, RECOGNITION-NULL-CLAIM) has `form` (known, variant, not_recognised,
      open_in_literature), `reader`, `date` (required) and `result`, `citations`, `difference`, `established`. known and variant need
      `result` and a citation, variant also `difference`; not_recognised forbids result, citations and difference
-     (RECOGNITION-FORBIDDEN); open_in_literature needs `result`, a citation, a citation with says_open true (OPEN-NO-SAYS-OPEN)
+     (RECOGNITION-FORBIDDEN) but may carry one optional `note` (a non-empty string; refused on every other form with
+     RECOGNITION-FORBIDDEN; the sentences are not counted); open_in_literature needs `result`, a citation, a citation with says_open true (OPEN-NO-SAYS-OPEN)
      and root_role `result` or `named_statement` (OPEN-ROLE on `object`, also when the role is absent). An unknown key, an unknown form and a missing key
      are UNKNOWN-KEY, BAD-VALUE and MISSING-KEY naming the group and the key.
   F3 A citation has source, where, opened_by, opened_on (non-empty strings) and optionally url (starts https://), source_date and
      says_open (exactly true or false); opened_on is a real YYYY-MM-DD date; source_date is a real YYYY, YYYY-MM or YYYY-MM-DD (year 0 refused, no padding: a year stays
      a year); says_open true needs source_date.
-  F4 Words of `result` and `difference`, whole words in any case: novel and unprecedented are RECOGNITION-WORD-REFUSED (an error);
+  F4 Words of `result`, `difference` and `note`, whole words in any case: novel and unprecedented are RECOGNITION-WORD-REFUSED (an error);
      new, original, first, assume, assumes, assumed are RECOGNITION-WORD listings, once per word per field.
   F5 `established` is the string `not_traced` or {by: {module, name}, reader, date}; by resolves to exactly one row (UNRESOLVED,
      AMBIGUOUS) whose kind is theorem or lemma (ESTABLISHED-KIND); on a group whose root_role is not `named_statement` it is
@@ -303,7 +304,8 @@ RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that 
 # yet; once it carries one on every claim this constant is set to True and a claim without a role becomes an error.
 REQUIRE_ROOT_ROLE = False
 FORMS = ("known", "variant", "not_recognised", "open_in_literature")
-REC_KEYS = ("form", "result", "citations", "difference", "reader", "date", "established")
+REC_KEYS = ("form", "result", "citations", "difference", "reader", "date", "established", "note")
+NOTE_FORM = "not_recognised"   # the one form that may carry `note`
 FORM_REQUIRES = {"known": ("result", "citations"), "variant": ("result", "citations", "difference"), "not_recognised": (),
                  "open_in_literature": ("result", "citations")}
 FORM_FORBIDS = {"not_recognised": ("result", "citations", "difference")}
@@ -634,9 +636,13 @@ def _check_recognition_object(rec, g, role, label, path, index, kinds, out):
     for k in FORM_FORBIDS.get(form, ()):
         if k in rec:
             out.append(_f("RECOGNITION-FORBIDDEN", path, None, f"{pre}: key {k!r} is not allowed with form {form!r}"))
+    if "note" in rec and form in FORMS and form != NOTE_FORM:
+        out.append(_f("RECOGNITION-FORBIDDEN", path, None, f"{pre}: key 'note' is not allowed with form {form!r}"))
     for k in ("result", "difference"):
         if k in rec and not _str(rec[k]):
             out.append(_f("BAD-VALUE", path, None, f"{pre}: {k} must be a non-empty string"))
+    if "note" in rec and form == NOTE_FORM and not (_str(rec["note"]) and rec["note"].strip()):   # a note of spaces says nothing
+        out.append(_f("BAD-VALUE", path, None, f"{pre}: note must be a non-empty string"))
     cits = rec.get("citations")
     if "citations" in rec:
         if not isinstance(cits, list):
@@ -654,7 +660,7 @@ def _check_recognition_object(rec, g, role, label, path, index, kinds, out):
             out.append(_f("OPEN-NO-SAYS-OPEN", path, None, f"{pre}: form 'open_in_literature' needs a citation with says_open true"))
     if "established" in rec:
         _check_established(rec["established"], g, role, label, path, index, kinds, out)
-    for k in ("result", "difference"):
+    for k in ("result", "difference", "note"):
         if _str(rec.get(k)):
             for w in _words_of(rec[k]):
                 if w in REFUSED_WORDS:
@@ -1497,9 +1503,18 @@ def run(notes_dir, outline, decls, base=None, repo=None, strings=None, src=None,
 _CASES = []
 
 
+def _register_case(registry, cid, what, fn):
+    """Add (cid, what, fn) to the registry; an id already there is a ValueError naming the id and both descriptions, whatever the
+    descriptions are and whatever the id looks like."""
+    for old_id, old_what, _fn in registry:
+        if old_id == cid:
+            raise ValueError(f"self-test case id {cid!r} is registered twice: {old_what!r} and {what!r}")
+    registry.append((cid, what, fn))
+
+
 def case(cid, what):
     def deco(fn):
-        _CASES.append((cid, what, fn))
+        _register_case(_CASES, cid, what, fn)
         return fn
     return deco
 
@@ -2944,7 +2959,7 @@ def _():
     eq(REQUIRE_ROOT_ROLE, False, "restored")
 
 
-@case("REC1", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
+@case("REC1b", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
 def _():
     fe(_ro(_rg("result", rec=REC, claim=None, root=("A.B", "foo"))),
        [_fl("ROOT-ROLE", ": root_role on a group with a null claim (a role belongs to a claim)"),
