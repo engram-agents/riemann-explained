@@ -3074,10 +3074,15 @@ def _():
     clean(_ro(_rg("object", root=("A.E", "stru"), title="The bundle")))                  # a structure with a claim
     fe(_ro(_rg("result", title="The top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
     fe(_ro(_rg("result", root=("A.E", "lem"), title="The top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
-    fe(_ro(_rg(None, root=("A.E", "lem"), title="The top result")),                      # no role: the kind decides, as SKETCH-ROLE does
-       [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
-    fe(_ro(_rg(None, root=("A.C", "baz"), title="The top condition")),                   # no role, a def root: allowed
-       [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")], 0)
+    saved = REQUIRE_ROOT_ROLE   # the two cases below are about a group with no role: the flag that makes that an error is set False for them
+    try:
+        globals()["REQUIRE_ROOT_ROLE"] = False
+        fe(_ro(_rg(None, root=("A.E", "lem"), title="The top result")),                  # no role: the kind decides, as SKETCH-ROLE does
+           [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+        fe(_ro(_rg(None, root=("A.C", "baz"), title="The top condition")),               # no role, a def root: allowed
+           [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")], 0)
+    finally:
+        globals()["REQUIRE_ROOT_ROLE"] = saved
     clean(_ro(_rg("result")))
     clean(_ro(G("g1")))
     r = _ro(_rg("result", title="The top result"))
