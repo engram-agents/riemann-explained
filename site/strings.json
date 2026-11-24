@@ -84,7 +84,8 @@
    "interpretation": "Our interpretation",
    "correction": "Correction",
    "not_read": "Open question",
-   "argument": "How it is proved"
+   "argument": "How it is proved",
+   "sketch": "Proof sketch"
   }
  },
  "evidence_module_label": "Lean module",
