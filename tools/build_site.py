@@ -1562,7 +1562,8 @@ def _strings():
                    "open_items": "Open items", "file": "File", "lines": "Lines", "sha256": "SHA-256",
                    "read_more": "Read the note", "lines_missing": "not given",
                    "kinds": {"machine_fact": "Machine fact", "reading": "Reading", "interpretation": "Interpretation",
-                             "correction": "Correction", "not_read": "Not read", "argument": "Argument"}}}
+                             "correction": "Correction", "not_read": "Not read", "argument": "Argument",
+                             "sketch": "Proof sketch"}}}
 
 
 def _marked(v, path=""):
@@ -1811,7 +1812,8 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels", "labels.chain", "labels.level0_notes", "labels.premises", "labels.notes", "labels.go_deeper",
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
-               "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument"]
+               "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
+               "labels.kinds.sketch"]
 
 
 def _real_strings_facts(path):
@@ -2170,7 +2172,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 52 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 53 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -2183,7 +2185,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 52))
+        return _eq((bad, len(STRING_KEYS)), ([], 53))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")

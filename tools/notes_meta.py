@@ -16,7 +16,7 @@ CONTRACT (each line is a self-test case, written before the code)
   X3 One line per finding, `CODE path:line message` (`CODE path message` when it has no line); path is the file's
      name (a note: its name in NOTES_DIR). Per note, after its findings: `note <id> header ok|FAILED, blocks N
      (kind=count ...)` (the breakdown is left out when N is 0). Then the run's lines: the FRAME-NOTE skip notice
-     when there is no --strings, `blocks by kind:` with all six kinds, what the in-file check (M5) and the byte
+     when there is no --strings, `blocks by kind:` with all seven kinds, what the in-file check (M5) and the byte
      check did or did not do, and `N notes, M findings, K warnings` (K = listings). Case SUM.
   X4 --selftest: exit 0 all pass, 1 any fails, 2 usage, 3 no case ran. A normal run does the self-test quietly first
      and refuses with exit 4 if it fails. Case RUNNER.
@@ -107,6 +107,44 @@ CONTRACT (each line is a self-test case, written before the code)
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
+ Root role and recognition (cases RR1 to RR4, REC1 to REC4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
+ optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
+  F1 root_role is `result`, `named_statement` or `object` (any other value, or a non-string, is ROOT-ROLE) and belongs to a claim (on
+     a null claim it is ROOT-ROLE). The role is compared with the kind of the group's one root in decls.tsv HERE (the builder only
+     reads it): `result` if and only if the kind is theorem or lemma; every other kind, `inductive` and the empty kind included,
+     takes `named_statement` or `object`; a mismatch either way is ROOT-ROLE naming the group, the role, the root and the kind.
+     A group with a claim and no root_role is ROOT-ROLE-MISSING: a listing while REQUIRE_ROOT_ROLE is False, an error when True.
+  F2 recognition (an object; BRIEF 18e: none on a null claim, RECOGNITION-NULL-CLAIM) has `form` (known, variant, not_recognised,
+     open_in_literature), `reader`, `date` (required) and `result`, `citations`, `difference`, `established`. known and variant need
+     `result` and a citation, variant also `difference`; not_recognised forbids result, citations and difference
+     (RECOGNITION-FORBIDDEN); open_in_literature needs `result`, a citation, a citation with says_open true (OPEN-NO-SAYS-OPEN)
+     and root_role `result` or `named_statement` (OPEN-ROLE on `object`, also when the role is absent). An unknown key, an unknown form and a missing key
+     are UNKNOWN-KEY, BAD-VALUE and MISSING-KEY naming the group and the key.
+  F3 A citation has source, where, opened_by, opened_on (non-empty strings) and optionally url (starts https://), source_date and
+     says_open (exactly true or false); opened_on is a real YYYY-MM-DD date; source_date is a real YYYY, YYYY-MM or YYYY-MM-DD (year 0 refused, no padding: a year stays
+     a year); says_open true needs source_date.
+  F4 Words of `result` and `difference`, whole words in any case: novel and unprecedented are RECOGNITION-WORD-REFUSED (an error);
+     new, original, first, assume, assumes, assumed are RECOGNITION-WORD listings, once per word per field.
+  F5 `established` is the string `not_traced` or {by: {module, name}, reader, date}; by resolves to exactly one row (UNRESOLVED,
+     AMBIGUOUS) whose kind is theorem or lemma (ESTABLISHED-KIND); on a group whose root_role is not `named_statement` it is
+     ESTABLISHED-ROLE.
+  F6 The run prints `recognition: K known, V variant, N not recognised, O open in literature, M not written, of G groups with a
+     claim` after the `claim basis:` line; a group with a claim and no usable recognition counts M, a null claim counts in none;
+     K + V + N + O + M = G is asserted from the counts (SUM-RECOGNITION).
+ Sketches (F25a). A block belongs to the group named in its note's header and ANCHORS a root of that group when its decls
+  include the root (matched by module and name); counts run over ALL the notes of the group. Cases SKC1 to SKC8, ARGNP.
+  S1 SKETCH-NO-ARGUMENT: each root a sketch anchors needs an argument block that anchors it, by any reader, in any note of the group.
+  S2 SKETCH-DUPLICATE: at most one sketch per group root; a later one is refused naming both block ids.
+  S3 SKETCH-ROLE: each anchored root is judged by its own role: the group's root_role when it has a claim and a usable role (only
+     `result`), else the kind of the root's one row (only theorem or lemma). A root with no row or several is not judged here
+     (UNRESOLVED and AMBIGUOUS are the findings already coded).
+  S4 SKETCH-ROOT: the decls of a sketch must include at least one root of its group, and need not list every root; a note whose
+     group is not in the outline (or is `root`) anchors none.
+  S5 SKETCH-RUN: the reason rh_anchor.run_at gives for the block's span (default 1), when span is a valid integer.
+  S6 ARGUMENT-NO-PROOF (a listing, exit unchanged): an argument anchored on a root of its group whose kind is not theorem or
+     lemma; a prompt to the reader, since a definition can carry small proofs inside.
+  The note line and `blocks by kind:` count seven kinds.
+
 LIMIT. The tool checks the SHAPE of the metadata and that every name resolves to a row; it does not read a claim or a
 block and cannot say that it is right. Not checked: whether a claim follows the translation rules (whether a definition
 was really opened, whether a convention was really checked: the peer reader's judgement); whether `date` is a date;
@@ -114,7 +152,12 @@ whether a note's header id matches its file name or is used by another note (onl
 notes); the SHA-256 values of the file table, and whether a quoted lean block is verbatim (check_lean_blocks.py
 does that). Title rules: only the two a script can check are checked, that a list_title is not only code spans
 and does not end in a parenthetical `(...)`; every other rule on titles (plain words, saying what the note is
-about, length, no status in the words) needs a reader. Extra keys are UNKNOWN-KEY for the outline, a group and a
+about, length, no status in the words) needs a reader. A group with no root_role and the form open_in_literature is OPEN-ROLE, because the role decides whether the form is
+allowed (the spec is silent on that case; this is our reading, and a role added later clears it). `established` is for
+a named statement only, also under open_in_literature. The line `sketches: S of P steps with a proof read` is NOT printed
+here: what a step is belongs to the builder, so it counts there. note_cite.py is unchanged: its --kind takes its choices from
+rh_anchor.KINDS, and a sketch cannot be valid through it for want of a basis flag (BAD-BLOCK). A sketch anchored on a list
+is asked for `item` like any block on a list. Extra keys are UNKNOWN-KEY for the outline, a group and a
 claim only; a roots or defs_opened entry with extra keys is accepted, and a JSON key repeated in the outline keeps
 its last value. Notes are the files directly in NOTES_DIR that match the pattern, so docs/tools.md, which sits
 beside the notes, is not a note; a finding names a note by its name in NOTES_DIR and the outline and the table by
@@ -188,6 +231,17 @@ as a dotted token); a CamelCase word is a run of ASCII letters, digits and `_` (
 directly followed by a capital (so `RH`, `Riemann` and `LEAN` are not listed and `McDonald` is). ASCII letters only: a name with a
 non-ASCII letter may be listed as a fragment, because the word is cut at the letter (naïveThing is listed as 'veThing', GröbnerBasis as
 'bnerBasis'). The outline has no line numbers, so a finding names the file, the group and the place, no line.
+Root role and recognition: the checker compares the role with the kind class and checks the shape of the recognition; it does not
+read it. REQUIRE_ROOT_ROLE is False because the real outline carries no root_role yet: until it does, a claim without one is a listing,
+and the constant is set to True in the step that adds the roles. RECOGNITION-WORD is a prompt to the signer and the reviewer, not a
+proof, and real names hold "first" and "original"; the words are looked for in `result` and `difference` only, and a word inside a
+single-backtick span IS checked (a span is code, but a person reads the words in it). A citation's `opened_on` (a full date) and `source_date` (a year, a year and month, or a full date;
+year 0 is refused because the calendar the check uses starts at year 1) are checked as calendar dates; whether the source says what the citation says it says, and `says_open`, are the reader's claim. `established`
+is allowed under any form, for a named statement only; the checker verifies that the declaration `by` exists and is a theorem or lemma,
+and that its conclusion is the named statement is the reader's claim. A recognition whose form is missing or unknown counts as not
+written in the run line (it is also its own finding). `reader`, `date`, `result`, `difference`, `source` and `where` need only be
+non-empty strings here: the span rule, the source-leak check and the formula rule over these fields belong to the builder, which
+reaches them through its output files (this tool compares no release line).
 Title rules in the script are heuristics. A trailing parenthetical is allowed when it holds only code spans, commas and
 `and`, or only a one-letter or number argument (so a function argument like `(s)` or `(12)` passes and `(draft)` fails);
 a math argument longer than that is called a status. TITLE-NOTE listings (a math symbol or `Re s` outside code; `proved`
@@ -242,6 +296,25 @@ ERROR, LISTING = "error", "listing"
 NOCODE = "CHECKED NOTHING"
 TOP_KEYS = ("groups", "release")
 GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
+GROUP_OPTIONAL = ("recognition", "root_role")
+ROOT_ROLES = ("result", "named_statement", "object")
+RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that take the role `result`; every other kind does not
+# While False a group with a claim need not carry root_role (ROOT-ROLE-MISSING is then a listing). The real outline has no roles
+# yet; once it carries one on every claim this constant is set to True and a claim without a role becomes an error.
+REQUIRE_ROOT_ROLE = False
+FORMS = ("known", "variant", "not_recognised", "open_in_literature")
+REC_KEYS = ("form", "result", "citations", "difference", "reader", "date", "established")
+FORM_REQUIRES = {"known": ("result", "citations"), "variant": ("result", "citations", "difference"), "not_recognised": (),
+                 "open_in_literature": ("result", "citations")}
+FORM_FORBIDS = {"not_recognised": ("result", "citations", "difference")}
+CIT_REQUIRED = ("source", "where", "opened_by", "opened_on")
+CIT_OPTIONAL = ("url", "source_date", "says_open")
+EST_KEYS = ("by", "reader", "date")
+REFUSED_WORDS = ("novel", "unprecedented")
+LISTED_WORDS = ("new", "original", "first", "assume", "assumes", "assumed")
+_REC_WORDS = re.compile(r"(?<![A-Za-z0-9_])(" + "|".join(REFUSED_WORDS + LISTED_WORDS) + r")(?![A-Za-z0-9_])", re.I)
+_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_SOURCE_DATE = re.compile(r"[0-9]{4}(-[0-9]{2}(-[0-9]{2})?)?")   # YYYY, YYYY-MM or YYYY-MM-DD (F24: a book's only date is its year)
 CLAIM_REQUIRED = ("text", "reader", "date", "defs_opened", "conventions_checked")
 CLAIM_OPTIONAL = ("conditions", "mathlib_read", "basis")
 CLAIM_BASIS = ("read", "census")
@@ -286,13 +359,14 @@ def _render(f):
 
 
 def _read_decls(path):
-    """({(module, name): [(first, last), ...]}, number of rows); every row of a repeated pair is kept."""
+    """({(module, name): [(first, last), ...]}, number of rows, {(module, name): [kind, ...]}); every row of a repeated pair is
+    kept, and a pair's kinds are in the order of its (first, last) rows as read (an empty kind stays the empty string)."""
     try:
         with open(path, "rb") as fh:
             text = fh.read().decode("utf-8")
     except (OSError, UnicodeDecodeError) as e:
         raise _Unreadable(f"cannot read the decls table: {e}")
-    index, n = {}, 0
+    index, kinds, n = {}, {}, 0
     for k, raw in enumerate(text.split("\n"), 1):
         raw = raw.rstrip("\r")
         if raw == "" or raw.startswith("#"):
@@ -309,8 +383,9 @@ def _read_decls(path):
         if not good:
             raise _Unreadable(f"cannot read the decls table: line {k} is not a row of six columns with numeric lines")
         index.setdefault((cells[0], cells[1]), []).append((first, last))
+        kinds.setdefault((cells[0], cells[1]), []).append(cells[2])
         n += 1
-    return index, n
+    return index, n, kinds
 
 
 def _resolve(index, where, path, line, module, name):
@@ -410,7 +485,7 @@ def _check_group_shape(g, label, path, out):
     def bad(what):
         out.append(_f("BAD-VALUE", path, None, f"{label}: {what}"))
     for k in sorted(g):
-        if k not in GROUP_KEYS:
+        if k not in GROUP_KEYS and k not in GROUP_OPTIONAL:
             out.append(_f("UNKNOWN-KEY", path, None, f"{label}: unknown key {k!r}"))
     for k in GROUP_KEYS:
         if k not in g:
@@ -442,6 +517,222 @@ def _check_group_shape(g, label, path, out):
             _check_claim(g["claim"], label, path, out)
         else:
             bad("claim must be an object or null")
+
+
+# ---- root_role and recognition (F24): the role is compared with the kind class here, and the builder reads it
+def _role_of(g):
+    r = g.get("root_role")
+    return r if isinstance(r, str) and r in ROOT_ROLES else None
+
+
+def _is_date(v):
+    if not (isinstance(v, str) and _DATE.fullmatch(v)):
+        return False
+    try:
+        datetime.date(int(v[:4]), int(v[5:7]), int(v[8:]))
+    except ValueError:
+        return False
+    return True
+
+
+def _is_source_date(v):
+    """A source_date: YYYY, YYYY-MM or YYYY-MM-DD, each a real date. Year 0 is refused (the calendar here starts at year 1)."""
+    if not (isinstance(v, str) and _SOURCE_DATE.fullmatch(v)):
+        return False
+    y, m, d = int(v[:4]), int(v[5:7] or 1), int(v[8:10] or 1)
+    try:
+        datetime.date(y, m, d)
+    except ValueError:
+        return False
+    return True
+
+
+def _check_citation(c, where, path, out):
+    if not isinstance(c, dict):
+        out.append(_f("BAD-VALUE", path, None, f"{where}: must be an object"))
+        return
+    for k in sorted(c):
+        if k not in CIT_REQUIRED and k not in CIT_OPTIONAL:
+            out.append(_f("UNKNOWN-KEY", path, None, f"{where}: unknown key {k!r}"))
+    for k in CIT_REQUIRED:
+        if k not in c:
+            out.append(_f("MISSING-KEY", path, None, f"{where}: missing key {k!r}"))
+        elif not _str(c[k]):
+            out.append(_f("BAD-VALUE", path, None, f"{where}: {k} must be a non-empty string"))
+    if "opened_on" in c and _str(c["opened_on"]) and not _is_date(c["opened_on"]):
+        out.append(_f("BAD-VALUE", path, None, f"{where}: opened_on must be a date YYYY-MM-DD"))
+    if "source_date" in c and not _is_source_date(c["source_date"]):
+        out.append(_f("BAD-VALUE", path, None, f"{where}: source_date must be a date YYYY, YYYY-MM or YYYY-MM-DD"))
+    if "says_open" in c and not isinstance(c["says_open"], bool):
+        out.append(_f("BAD-VALUE", path, None, f"{where}: says_open must be true or false"))
+    if "url" in c and not (isinstance(c["url"], str) and c["url"].startswith("https://")):
+        out.append(_f("BAD-VALUE", path, None, f"{where}: url must be a string starting https://"))
+    if c.get("says_open") is True and "source_date" not in c:
+        out.append(_f("MISSING-KEY", path, None, f"{where}: missing key 'source_date' (says_open is true)"))
+
+
+def _words_of(text):
+    """The refused and listed words of a text, each once, in the order of the text, lower-cased. Single-backtick spans are NOT
+    skipped: a span is code, but a person reads the words in it."""
+    return list(dict.fromkeys(m.group(1).lower() for m in _REC_WORDS.finditer(text)))
+
+
+def _check_established(est, g, role, label, path, index, kinds, out):
+    pre = f"{label} recognition established"
+    if role != "named_statement":
+        why = f"root_role is {role!r}" if role else "this group has no root_role: the role is needed"
+        out.append(_f("ESTABLISHED-ROLE", path, None, f"{label} recognition: established is only for root_role 'named_statement' ({why})"))
+    if est == "not_traced":
+        return
+    if not isinstance(est, dict):
+        out.append(_f("BAD-VALUE", path, None, f"{pre}: must be the string 'not_traced' or an object"))
+        return
+    for k in sorted(est):
+        if k not in EST_KEYS:
+            out.append(_f("UNKNOWN-KEY", path, None, f"{pre}: unknown key {k!r}"))
+    for k in EST_KEYS:
+        if k not in est:
+            out.append(_f("MISSING-KEY", path, None, f"{pre}: missing key {k!r}"))
+    for k in ("reader", "date"):
+        if k in est and not _str(est[k]):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: {k} must be a non-empty string"))
+    if "by" not in est:
+        return
+    if not _decl_entry_ok(est["by"]):
+        out.append(_f("BAD-VALUE", path, None, f"{pre} by: must be an object with non-empty string module and name"))
+        return
+    m, n = est["by"]["module"], est["by"]["name"]
+    fnd, _row = _resolve(index, f"{pre} by", path, None, m, n)
+    if fnd:
+        out.append(fnd)
+        return
+    kind = kinds[(m, n)][0]
+    if kind not in RESULT_KINDS:
+        out.append(_f("ESTABLISHED-KIND", path, None, f"{pre} by {m} {n} has kind {kind!r} (a theorem or lemma is needed)"))
+
+
+def _check_recognition_object(rec, g, role, label, path, index, kinds, out):
+    pre = f"{label} recognition"
+    form = rec.get("form")
+    for k in sorted(rec):
+        if k not in REC_KEYS:
+            out.append(_f("UNKNOWN-KEY", path, None, f"{pre}: unknown key {k!r}"))
+    if "form" not in rec:
+        out.append(_f("MISSING-KEY", path, None, f"{pre}: missing key 'form'"))
+    elif not (isinstance(form, str) and form in FORMS):
+        out.append(_f("BAD-VALUE", path, None, f"{pre}: form must be one of " + ", ".join(repr(x) for x in FORMS) + f", not {form!r}"))
+        form = None
+    for k in ("reader", "date"):
+        if k not in rec:
+            out.append(_f("MISSING-KEY", path, None, f"{pre}: missing key {k!r}"))
+        elif not _str(rec[k]):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: {k} must be a non-empty string"))
+    suffix = f" (form {form!r})"
+    for k in FORM_REQUIRES.get(form, ()):
+        if k not in rec:
+            out.append(_f("MISSING-KEY", path, None, f"{pre}: missing key {k!r}{suffix}"))
+    for k in FORM_FORBIDS.get(form, ()):
+        if k in rec:
+            out.append(_f("RECOGNITION-FORBIDDEN", path, None, f"{pre}: key {k!r} is not allowed with form {form!r}"))
+    for k in ("result", "difference"):
+        if k in rec and not _str(rec[k]):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: {k} must be a non-empty string"))
+    cits = rec.get("citations")
+    if "citations" in rec:
+        if not isinstance(cits, list):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: citations must be a list"))
+        elif not cits and form in ("known", "variant", "open_in_literature"):
+            out.append(_f("BAD-VALUE", path, None, f"{pre}: citations must hold at least one citation{suffix}"))
+        else:
+            for i, c in enumerate(cits):
+                _check_citation(c, f"{pre} citations[{i}]", path, out)
+    if form == "open_in_literature":
+        if role not in ("result", "named_statement"):
+            why = f"root_role is {role!r}" if role else "this group has no root_role: the role is needed"
+            out.append(_f("OPEN-ROLE", path, None, f"{pre}: form 'open_in_literature' needs root_role 'result' or 'named_statement' ({why})"))
+        if isinstance(cits, list) and cits and not any(isinstance(c, dict) and c.get("says_open") is True for c in cits):
+            out.append(_f("OPEN-NO-SAYS-OPEN", path, None, f"{pre}: form 'open_in_literature' needs a citation with says_open true"))
+    if "established" in rec:
+        _check_established(rec["established"], g, role, label, path, index, kinds, out)
+    for k in ("result", "difference"):
+        if _str(rec.get(k)):
+            for w in _words_of(rec[k]):
+                if w in REFUSED_WORDS:
+                    out.append(_f("RECOGNITION-WORD-REFUSED", path, None, f"{pre} {k}: {w!r} is never said of a statement"))
+                else:
+                    out.append(_f("RECOGNITION-WORD", path, None, f"{pre} {k}: {w!r} (a prompt to the signer and the reviewer, not a verdict)",
+                                  LISTING))
+
+
+def _check_recognition(data, path, index, kinds):
+    """(findings of both classes, the form of each group with a claim: one of FORMS, or None when it has no usable recognition),
+    for the root_role and the recognition of every group, in the order of the outline."""
+    out, forms = [], []
+    groups = data.get("groups") if isinstance(data, dict) and isinstance(data.get("groups"), list) else []
+    for i, g in enumerate(groups):
+        if not isinstance(g, dict):
+            continue
+        label = f"group {g.get('id')!r}" if _str(g.get("id")) else f"groups[{i}]"
+        claim_null = "claim" in g and g["claim"] is None
+        has_claim = isinstance(g.get("claim"), dict)
+        role = _role_of(g)
+        if "root_role" in g:
+            if role is None:
+                out.append(_f("ROOT-ROLE", path, None, f"{label}: root_role must be one of "
+                              + ", ".join(repr(x) for x in ROOT_ROLES) + f", not {g['root_role']!r}"))
+            elif claim_null:
+                out.append(_f("ROOT-ROLE", path, None, f"{label}: root_role on a group with a null claim (a role belongs to a claim)"))
+            elif has_claim:
+                roots = g.get("roots")
+                if isinstance(roots, list) and len(roots) == 1 and _decl_entry_ok(roots[0]) \
+                        and len(index.get((roots[0]["module"], roots[0]["name"]), [])) == 1:
+                    m, n = roots[0]["module"], roots[0]["name"]
+                    kind = kinds[(m, n)][0]
+                    if role == "result" and kind not in RESULT_KINDS:
+                        out.append(_f("ROOT-ROLE", path, None, f"{label}: root_role 'result' but root {m} {n} has kind {kind!r} "
+                                      "(only a theorem or lemma is a result)"))
+                    elif role != "result" and kind in RESULT_KINDS:
+                        out.append(_f("ROOT-ROLE", path, None, f"{label}: root_role {role!r} but root {m} {n} has kind {kind!r} "
+                                      "(a theorem or lemma takes 'result')"))
+        elif has_claim:
+            out.append(_f("ROOT-ROLE-MISSING", path, None, f"{label}: no root_role (result, named_statement or object)",
+                          ERROR if REQUIRE_ROOT_ROLE else LISTING))
+        rec = g.get("recognition")
+        usable = None
+        if "recognition" in g:
+            if claim_null:
+                out.append(_f("RECOGNITION-NULL-CLAIM", path, None, f"{label}: recognition on a group with a null claim"))
+            elif not isinstance(rec, dict):
+                out.append(_f("BAD-VALUE", path, None, f"{label} recognition: must be an object"))
+            else:
+                _check_recognition_object(rec, g, role, label, path, index, kinds, out)
+                usable = rec.get("form") if rec.get("form") in FORMS else None
+        if has_claim:
+            forms.append(usable)
+    return out, forms
+
+
+def _recognition_counts(forms):
+    """(K known, V variant, N not recognised, O open in literature, M not written, G) over the list of forms of the groups with a
+    claim: a form is one of FORMS or None (no usable recognition, counted as not written); any other value is counted
+    nowhere, which is what SUM-RECOGNITION catches. G is the length of the list."""
+    c = [sum(1 for x in forms if x == f) for f in FORMS]
+    return c[0], c[1], c[2], c[3], sum(1 for x in forms if x is None), len(forms)
+
+
+def _recognition_sum_finding(forms):
+    """SUM-RECOGNITION when K + V + N + O + M is not G, counted from the forms given; else None."""
+    k, v, n, o, m, g = _recognition_counts(forms)
+    if k + v + n + o + m != g:
+        return _f("SUM-RECOGNITION", "outline.json", None, f"{k} known + {v} variant + {n} not recognised + {o} open in literature "
+                  f"+ {m} not written is {k + v + n + o + m}, not {g} groups with a claim")
+    return None
+
+
+def _recognition_line(c):
+    k, v, n, o, m, g = c
+    return (f"recognition: {k} known, {v} variant, {n} not recognised, {o} open in literature, {m} not written, "
+            f"of {g} groups with a claim")
 
 
 def _premise_cycles(graph, path, out):
@@ -779,6 +1070,104 @@ def _check_note(name, text, ctx):
     return out, not any(f[4] == ERROR for f in hdr), note_id or os.path.splitext(name)[0], counts, invalid, len(blocks)
 
 
+# ---- the sketch and argument cross-checks (F25a): a block belongs to the group of its note's header and ANCHORS a root of that group
+# when its decls include the root; the counts run over all the notes of the group
+def _group_map(data):
+    out = {}
+    groups = data.get("groups") if isinstance(data, dict) and isinstance(data.get("groups"), list) else []
+    for g in groups:
+        if isinstance(g, dict) and _str(g.get("id")) and g["id"] not in out:
+            out[g["id"]] = g
+    return out
+
+
+def _anchored_roots(d, g):
+    """The roots of the group g (module, name), each once, in the outline's order, that the decls of the block d include."""
+    roots = g.get("roots") if isinstance(g.get("roots"), list) else []
+    decls = d.get("decls") if isinstance(d.get("decls"), list) else []
+    have = {(e["module"], e["name"]) for e in decls if _decl_entry_ok(e)}
+    out = []
+    for e in roots:
+        r = (e["module"], e["name"]) if _decl_entry_ok(e) else None
+        if r is not None and r in have and r not in out:
+            out.append(r)
+    return out
+
+
+def _root_kind(ctx, root):
+    """The kind of the root's one row in the declaration table, None when it has no row or several."""
+    ks = ctx.kinds.get(root, [])
+    return ks[0] if len(ks) == 1 else None
+
+
+def _check_sketches(names, texts, odata, ctx):
+    """{note name: findings}: SKETCH-NO-ARGUMENT, SKETCH-DUPLICATE, SKETCH-ROLE, SKETCH-ROOT, SKETCH-RUN and the listing
+    ARGUMENT-NO-PROOF, in the order of the notes (by name) and of their blocks."""
+    groups = _group_map(odata)
+    found = {n: [] for n in names}
+    argued, by_root, sketches = set(), {}, []
+    args = []
+    for n in names:
+        headers, blocks, _probs = rh.parse_note(texts[n])
+        gid = headers[0].data.get("group") if headers else None
+        if not _str(gid):
+            continue
+        g = groups.get(gid)
+        for b in blocks:
+            kind = b.data.get("kind")
+            if kind not in ("argument", "sketch"):
+                continue
+            roots = _anchored_roots(b.data, g) if g is not None else []
+            if kind == "argument":
+                argued.update((gid, r) for r in roots)
+                args.append((n, b, roots))
+            else:
+                sketches.append((n, b, gid, g, roots))
+                for r in roots:
+                    by_root.setdefault((gid, r), []).append((n, b))
+    for n, b, roots in args:   # a root that is not a theorem or lemma: the reader says which proof inside it was read
+        bid = b.data.get("id")
+        label = f"block {bid!r}" if isinstance(bid, str) else "block"
+        for m, nm in roots:
+            kind = _root_kind(ctx, (m, nm))
+            if kind is not None and kind not in RESULT_KINDS:
+                found[n].append(_f("ARGUMENT-NO-PROOF", n, b.line, f"{label}: root {m} {nm} has kind {kind!r}, not a theorem or lemma: "
+                                   "say in the argument which proof inside it was read", LISTING))
+    for n, b, gid, g, roots in sketches:
+        d = b.data
+        bid = d.get("id")
+        label = f"block {bid!r}" if isinstance(bid, str) else "block"
+        if g is None:
+            found[n].append(_f("SKETCH-ROOT", n, b.line, f"{label}: group {gid!r} is not a group of the outline; "
+                               "a sketch needs a group root in its decls"))
+        elif not roots:
+            have = [(e["module"], e["name"]) for e in g.get("roots", []) if _decl_entry_ok(e)] if isinstance(g.get("roots"), list) else []
+            found[n].append(_f("SKETCH-ROOT", n, b.line, f"{label}: its decls include no root of group {gid!r} (roots: "
+                               + ", ".join(f"{m} {nm}" for m, nm in have) + ")"))
+        for m, nm in roots:
+            if (gid, (m, nm)) not in argued:
+                found[n].append(_f("SKETCH-NO-ARGUMENT", n, b.line, f"{label}: root {m} {nm} has no argument block in group {gid!r}"))
+            first_n, first_b = by_root[(gid, (m, nm))][0]
+            if first_b is not b:
+                found[n].append(_f("SKETCH-DUPLICATE", n, b.line, f"{label}: root {m} {nm} already has the sketch "
+                                   f"{first_b.data.get('id')!r} (at {first_n}:{first_b.line})"))
+            role = _role_of(g) if isinstance(g.get("claim"), dict) else None
+            if role is not None:
+                if role != "result":
+                    found[n].append(_f("SKETCH-ROLE", n, b.line, f"{label}: root {m} {nm}: root_role is {role!r}; a sketch is only for 'result'"))
+            else:
+                kind = _root_kind(ctx, (m, nm))
+                if kind is not None and kind not in RESULT_KINDS:
+                    found[n].append(_f("SKETCH-ROLE", n, b.line, f"{label}: root {m} {nm} has kind {kind!r}; "
+                                       "a sketch is only for a theorem or lemma"))
+        span = d.get("span", 1)
+        if _int(span) and span >= 1:   # a bad value is the format problem, not a second finding
+            why = rh.run_at(texts[n], b.line, span)
+            if isinstance(why, str):
+                found[n].append(_f("SKETCH-RUN", n, b.line, f"{label}: {why}"))
+    return found
+
+
 def _note_line(label, hdr_ok, counts, invalid, nblocks):
     parts = [f"{k}={counts[k]}" for k in rh.KINDS if counts[k]] + ([f"invalid={invalid}"] if invalid else [])
     return f"note {label} header {'ok' if hdr_ok else 'FAILED'}, blocks {nblocks}" + (f" ({' '.join(parts)})" if nblocks else "")
@@ -1006,7 +1395,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     if not os.path.isdir(notes_dir):
         raise _Unreadable(f"NOTES_DIR is not a directory: {notes_dir}")
     odata = _read_json(outline, "outline")
-    ctx.index, nrows = _read_decls(decls)
+    ctx.index, nrows, ctx.kinds = _read_decls(decls)
     ctx.strings = _read_frames(strings) if strings is not None else None
     ctx.src = src
     if src is not None:
@@ -1033,7 +1422,14 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
         return 3, stop
     found, ctx.groups, st = _check_outline(odata, os.path.basename(outline), ctx.index)
     words = _claim_word_listings(odata, os.path.basename(outline))
-    lines, errors, warnings = [_render(f) for f in found + words], len(found), len(words)
+    rec_found, rec_forms = _check_recognition(odata, os.path.basename(outline), ctx.index, ctx.kinds)
+    rec_counts = _recognition_counts(rec_forms)
+    sum_f = _recognition_sum_finding(rec_forms)
+    rec_found += [sum_f] if sum_f else []
+    found = found + rec_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions
+    lines = [_render(f) for f in found + words]
+    errors = sum(1 for f in found if f[4] == ERROR)
+    warnings = len(words) + sum(1 for f in found if f[4] == LISTING)
     ctx.ids = {}
     hid, hline = {}, {}   # note ids: which notes carry each header id (a note with no header carries none)
     for n in names:
@@ -1047,10 +1443,13 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
         if len(files) > 1:
             dup_at[files[0]] = f"note id {nid!r} is used by {len(files)} notes: " + ", ".join(files)
     totals, invalid_total, n_equal, n_new, n_add = {k: 0 for k in rh.KINDS}, 0, 0, 0, 0
+    cross = _check_sketches(names, texts, odata, ctx)
     for n in names:
         fs, hdr_ok, label, counts, invalid, nblocks = _check_note(n, texts[n], ctx)
         if n in dup_at:
             fs.append(_f("NOTE-ID-DUPLICATE", n, hline[n], dup_at[n]))
+        fs += cross[n]
+        if n in dup_at or cross[n]:
             fs.sort(key=lambda x: x[2] or 0)
         bfs = _bytes_check(n, texts[n], rels[n], ctx) if base is not None else []
         fs += bfs
@@ -1075,6 +1474,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     lines.append(f"outline: {st['groups']} groups, {st['claimed']} claimed, {st['null']} null, {st['roots']} roots resolved, "
                  f"{st['defs']} defs_opened resolved, {st['premises']} premise links")
     lines.append(f"claim basis: {st['read']} read, {st['census']} census, {st['without']} without")
+    lines.append(_recognition_line(rec_counts))
     lines.append("blocks by kind: " + " ".join(f"{k}={totals[k]}" for k in rh.KINDS) + (f" invalid={invalid_total}" if invalid_total else ""))
     lines.append("in-file check (M5): ran" if src is not None else "in-file check (M5): table membership ran; existence and line count skipped, no --src given")
     lines.append(f"byte check: {n_equal} notes equal to {base}, {n_new} new, {n_add} additions" if base is not None else "byte check: did not run, no --base given")
@@ -1127,9 +1527,17 @@ FILES = "\n## Files this note was written from\n\n| File | SHA-256 |\n|---|---|\
 SRC40 = "".join(f"line {i}\n" for i in range(1, 41))
 
 
+_FIXTURE_ROLE = {("A.C", "baz"): "named_statement"}   # the kind of the fixture's roots decides the role a claim carries by default
+
+
 def G(i, level=1, parent="root", order=1, roots=None, claim=None, premises=None):
-    return {"id": i, "level": level, "parent": parent, "order": order, "roots": [R("A.B", "foo")] if roots is None else roots,
-            "claim": claim, "premises": [] if premises is None else premises}
+    roots = [R("A.B", "foo")] if roots is None else roots
+    g = {"id": i, "level": level, "parent": parent, "order": order, "roots": roots,
+         "claim": claim, "premises": [] if premises is None else premises}
+    if claim is not None:   # a claim carries a role, so the older cases stay about their own subject
+        one = roots[0] if len(roots) == 1 and _decl_entry_ok(roots[0]) else {}
+        g["root_role"] = _FIXTURE_ROLE.get((one.get("module"), one.get("name")), "result")
+    return g
 
 
 def R(module, name):
@@ -1353,7 +1761,8 @@ def _():
                  "FRAME-NOTE skipped: no strings file",
                  "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 1 premise links",
                  "claim basis: 0 read, 0 census, 0 without",
-                 "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0",
+                 "recognition: 0 known, 0 variant, 0 not recognised, 0 open in literature, 0 not written, of 0 groups with a claim",
+                 "blocks by kind: machine_fact=0 reading=1 interpretation=0 correction=0 not_read=1 argument=0 sketch=0",
                  "in-file check (M5): table membership ran; existence and line count skipped, no --src given",
                  "byte check: did not run, no --base given",
                  "3 notes, 1 findings, 0 warnings"], "output")
@@ -1639,7 +2048,7 @@ def _():
     n = lambda b: {"01-a.md": NOTE(body="Some text.\n" + b + "\n")}  # noqa: E731
     fe(go(notes=n(BL("02.b01"))), ["BLOCK-PROBLEM 01-a.md:7 block '02.b01': id: '02.b01' is not <note id>.b<nn> for note '01'"], 1)
     fe(go(notes=n(rh.format_comment("rh-block", {"id": "01.b01"}))),
-       ["BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument"], 1)
+       ["BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument, sketch"], 1)
     fe(go(notes=n(BL(kind="not_read"))),
        ["BLOCK-PROBLEM 01-a.md:7 block '01.b01': needs: must be one of callers, route, enclosing, resolve, fields_read, uses, hand_read, full_build"], 1)
     fe(go(notes=n(BL(kind="machine_fact", check="text", tool_version="v", options=""))),
@@ -1685,7 +2094,7 @@ def _():
     first = NOTE(body="Some text.\n" + BL(kind="nope") + "\n")
     fe(go(notes={"01-a.md": first, "02-b.md": NOTE()}),
        ["NOTE-ID-DUPLICATE 01-a.md:2 note id '01' is used by 2 notes: 01-a.md, 02-b.md",
-        "BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument"], 1)
+        "BLOCK-PROBLEM 01-a.md:7 block '01.b01': kind: must be one of machine_fact, reading, interpretation, correction, not_read, argument, sketch"], 1)
 
 
 @case("ID7", "ids compare as exact strings: a trailing space makes another id, and so do two Unicode forms of one accented letter")
@@ -2442,6 +2851,459 @@ def _():
     fe(_clw("The GröbnerBasis bound."), [_clw_line("claim text", "bnerBasis")], 0)
 
 
+# ---- root_role and recognition (F24): the role is compared with the kind class here; the builder reads the role
+DECLS_K = DECLS + ("A.E\tstru\tstructure\t1\t2\ttext-extent\n"
+                   "A.E\tind\tinductive\t3\t4\ttext-extent\n"
+                   "A.E\tlem\tlemma\t5\t6\ttext-extent\n"
+                   "A.E\tabb\tabbrev\t7\t8\ttext-extent\n"
+                   "A.E\tmys\t\t9\t10\ttext-extent\n")
+CIT = {"source": "S", "where": "W", "opened_by": "R", "opened_on": "2026-11-23"}
+REC = {"form": "known", "result": "Prime number theorem", "citations": [CIT], "reader": "R", "date": "2026-11-23"}
+OPENCIT = dict(CIT, says_open=True, source_date="2020-01-31")
+
+
+def _rg(role="result", rec=None, root=("A.B", "foo"), claim=CLAIM, gid="g1", order=1, **extra):
+    g = drop(G(gid, order=order, roots=[R(*root)], claim=claim), "root_role")
+    if role is not None:
+        g["root_role"] = role
+    if rec is not None:
+        g["recognition"] = rec
+    g.update(extra)
+    return g
+
+
+def _ro(*groups, decls=DECLS_K):
+    return go(outline=OL(*groups), decls=decls)
+
+
+def _fl(code, text, gid="g1"):
+    return f"{code} outline.json group {gid!r}{text}"
+
+
+@case("RR1", "root_role is one of result, named_statement, object; any other value or a non-string is ROOT-ROLE naming the group; "
+             "a group without the key is unchanged; any other group key is still UNKNOWN-KEY")
+def _():
+    clean(_ro(_rg("result")))
+    clean(_ro(_rg("named_statement", root=("A.C", "baz"))))
+    clean(_ro(_rg("object", root=("A.C", "baz"))))
+    msg = ": root_role must be one of 'result', 'named_statement', 'object', not "
+    fe(_ro(_rg("theorem")), [_fl("ROOT-ROLE", msg + "'theorem'")], 1)
+    fe(_ro(_rg(3)), [_fl("ROOT-ROLE", msg + "3")], 1)
+    fe(_ro(_rg(["result"])), [_fl("ROOT-ROLE", msg + "['result']")], 1)
+    fe(_ro(_rg(True)), [_fl("ROOT-ROLE", msg + "True")], 1)
+    fe(_ro(_rg("result", roleish=1)), [_fl("UNKNOWN-KEY", ": unknown key 'roleish'")], 1)
+    clean(_ro(G("g1")))
+
+
+@case("RR2", "root_role on a group whose claim is null is ROOT-ROLE; control: the same role with a claim is clean")
+def _():
+    fe(_ro(_rg("result", claim=None)), [_fl("ROOT-ROLE", ": root_role on a group with a null claim (a role belongs to a claim)")], 1)
+    clean(_ro(_rg("result")))
+
+
+@case("RR3", "the role is compared with the kind of the group's root in the CHECKER: result iff theorem or lemma; every other kind "
+             "(def, structure, abbrev, inductive, empty) takes named_statement or object and is refused with result; a mismatch "
+             "either way names group, role, root and kind")
+def _():
+    res = ": root_role 'result' but root {} {} has kind {!r} (only a theorem or lemma is a result)"
+    for root, kind in ((("A.C", "baz"), "def"), (("A.E", "stru"), "structure"), (("A.E", "abb"), "abbrev"),
+                       (("A.E", "ind"), "inductive"), (("A.E", "mys"), "")):
+        fe(_ro(_rg("result", root=root)), [_fl("ROOT-ROLE", res.format(root[0], root[1], kind))], 1)
+        clean(_ro(_rg("named_statement", root=root)))
+        clean(_ro(_rg("object", root=root)))
+    for root, kind in ((("A.E", "cls"), "class"), (("A.E", "inst"), "instance")):   # the two kinds of the table the list above left out
+        d = _ro(_rg("result", root=root), decls=DECLS_K + f"{root[0]}\t{root[1]}\t{kind}\t11\t12\ttext-extent\n")
+        fe(d, [_fl("ROOT-ROLE", res.format(root[0], root[1], kind))], 1)
+        for role in ("named_statement", "object"):
+            clean(_ro(_rg(role, root=root), decls=DECLS_K + f"{root[0]}\t{root[1]}\t{kind}\t11\t12\ttext-extent\n"))
+    for root, kind in ((("A.B", "foo"), "theorem"), (("A.E", "lem"), "lemma")):
+        clean(_ro(_rg("result", root=root)))
+        for role in ("named_statement", "object"):
+            fe(_ro(_rg(role, root=root)), [_fl("ROOT-ROLE", f": root_role {role!r} but root {root[0]} {root[1]} has kind {kind!r} "
+                                                          "(a theorem or lemma takes 'result')")], 1)
+
+
+@case("RR4", "a claim with no root_role is a ROOT-ROLE-MISSING listing (exit 0) while REQUIRE_ROOT_ROLE is False, an ERROR when it "
+             "is True; a null claim needs no role; control: with the role it is clean")
+def _():
+    miss = _fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")
+    r = _ro(_rg(None))
+    fe(r, [miss], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "a listing is a warning")
+    eq(REQUIRE_ROOT_ROLE, False, "default")
+    saved = REQUIRE_ROOT_ROLE
+    try:
+        globals()["REQUIRE_ROOT_ROLE"] = True
+        r = _ro(_rg(None))
+        fe(r, [miss], 1)
+        eq(r.lines[-1], "1 notes, 1 findings, 0 warnings", "an error")
+        clean(_ro(_rg("result")))
+        clean(_ro(G("g1")))
+    finally:
+        globals()["REQUIRE_ROOT_ROLE"] = saved
+    eq(REQUIRE_ROOT_ROLE, False, "restored")
+
+
+@case("REC1", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
+def _():
+    fe(_ro(_rg("result", rec=REC, claim=None, root=("A.B", "foo"))),
+       [_fl("ROOT-ROLE", ": root_role on a group with a null claim (a role belongs to a claim)"),
+        _fl("RECOGNITION-NULL-CLAIM", ": recognition on a group with a null claim")], 1)
+    fe(_ro(_rg(None, rec=REC, claim=None)), [_fl("RECOGNITION-NULL-CLAIM", ": recognition on a group with a null claim")], 1)
+    clean(_ro(_rg("result", rec=REC)))
+
+
+@case("REC2", "recognition keys: an unknown key, an unknown form, a non-object, a missing form, reader or date, and an empty reader "
+              "are each refused naming the group and the key")
+def _():
+    p = " recognition: "
+    fe(_ro(_rg(rec="known")), [_fl("BAD-VALUE", p + "must be an object")], 1)
+    fe(_ro(_rg(rec=dict(REC, extra=1))), [_fl("UNKNOWN-KEY", p + "unknown key 'extra'")], 1)
+    fe(_ro(_rg(rec=dict(REC, form="novel_form"))),
+       [_fl("BAD-VALUE", p + "form must be one of 'known', 'variant', 'not_recognised', 'open_in_literature', not 'novel_form'")], 1)
+    for k in ("form", "reader", "date"):
+        fe(_ro(_rg(rec=drop(REC, k))), [_fl("MISSING-KEY", p + f"missing key {k!r}")] if k != "form" else
+           [_fl("MISSING-KEY", p + "missing key 'form'")], 1)
+    fe(_ro(_rg(rec=dict(REC, reader=""))), [_fl("BAD-VALUE", p + "reader must be a non-empty string")], 1)
+    fe(_ro(_rg(rec=dict(REC, date=5))), [_fl("BAD-VALUE", p + "date must be a non-empty string")], 1)
+
+
+@case("REC3", "per form: known and variant need result and a citation (variant also difference; known may carry one); "
+              "not_recognised forbids result, citations and difference; control per form")
+def _():
+    p = " recognition: "
+    clean(_ro(_rg(rec=REC)))
+    clean(_ro(_rg(rec=dict(REC, difference="It differs in the hypothesis."))))
+    var = dict(REC, form="variant", difference="It differs in the hypothesis.")
+    clean(_ro(_rg(rec=var)))
+    for k in ("result", "citations"):
+        fe(_ro(_rg(rec=drop(REC, k))), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'known')")], 1)
+        fe(_ro(_rg(rec=drop(var, k))), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'variant')")], 1)
+    fe(_ro(_rg(rec=drop(var, "difference"))), [_fl("MISSING-KEY", p + "missing key 'difference' (form 'variant')")], 1)
+    fe(_ro(_rg(rec=dict(REC, citations=[]))), [_fl("BAD-VALUE", p + "citations must hold at least one citation (form 'known')")], 1)
+    fe(_ro(_rg(rec=dict(REC, citations="x"))), [_fl("BAD-VALUE", p + "citations must be a list")], 1)
+    fe(_ro(_rg(rec=dict(REC, result=""))), [_fl("BAD-VALUE", p + "result must be a non-empty string")], 1)
+    fe(_ro(_rg(rec=dict(var, difference=""))), [_fl("BAD-VALUE", p + "difference must be a non-empty string")], 1)
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    clean(_ro(_rg(rec=nr)))
+    for k, v in (("result", "x"), ("citations", [CIT]), ("difference", "d")):
+        fe(_ro(_rg(rec=dict(nr, **{k: v}))), [_fl("RECOGNITION-FORBIDDEN", p + f"key {k!r} is not allowed with form 'not_recognised'")], 1)
+
+
+@case("REC4", "open_in_literature: needs result, a citation and a citation that says open; difference is optional; only for a "
+              "result or named_statement (refused on object and when root_role is absent, which says the role is needed)")
+def _():
+    p = " recognition: "
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    root = ("A.C", "baz")
+    clean(_ro(_rg("named_statement", rec=op, root=root)))
+    clean(_ro(_rg("named_statement", rec=dict(op, difference="Stated as a problem."), root=root)))
+    clean(_ro(_rg("result", rec=op, root=("A.B", "foo"))))
+    clean(_ro(_rg("result", rec=dict(op, difference="Stated as a problem."), root=("A.B", "foo"))))
+    fe(_ro(_rg("object", rec=op, root=root)),
+       [_fl("OPEN-ROLE", p + "form 'open_in_literature' needs root_role 'result' or 'named_statement' (root_role is 'object')")], 1)
+    fe(_ro(_rg(None, rec=op, root=root)),
+       [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"),
+        _fl("OPEN-ROLE", p + "form 'open_in_literature' needs root_role 'result' or 'named_statement' (this group has no root_role: the role is needed)")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(op, citations=[CIT]), root=root)),
+       [_fl("OPEN-NO-SAYS-OPEN", p + "form 'open_in_literature' needs a citation with says_open true")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(op, citations=[dict(CIT, says_open=False, source_date="2020-01-31")]), root=root)),
+       [_fl("OPEN-NO-SAYS-OPEN", p + "form 'open_in_literature' needs a citation with says_open true")], 1)
+    for k in ("result", "citations"):
+        fe(_ro(_rg("named_statement", rec=drop(op, k), root=root)), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'open_in_literature')")], 1)
+
+
+@case("REC4b", "open_in_literature on a result keeps the other rules: a citation that says open is still needed, result and citations are "
+               "still needed, and `established` stays for a named statement only (a result carrying it is ESTABLISHED-ROLE)")
+def _():
+    p = " recognition: "
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    root = ("A.B", "foo")
+    fe(_ro(_rg("result", rec=dict(op, citations=[CIT]), root=root)),
+       [_fl("OPEN-NO-SAYS-OPEN", p + "form 'open_in_literature' needs a citation with says_open true")], 1)
+    for k in ("result", "citations"):
+        fe(_ro(_rg("result", rec=drop(op, k), root=root)), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'open_in_literature')")], 1)
+    fe(_ro(_rg("result", rec=dict(op, established="not_traced"), root=root)),
+       [_fl("ESTABLISHED-ROLE", p + "established is only for root_role 'named_statement' (root_role is 'result')")], 1)
+
+
+SD_MSG = "source_date must be a date YYYY, YYYY-MM or YYYY-MM-DD"
+
+
+@case("NUL1", "a null result or difference is refused like an empty one, on every form that takes the key; on not_recognised the key's "
+              "presence is the offence (RECOGNITION-FORBIDDEN) whatever the value, null, empty string or empty list; for a null or empty "
+              "result or difference the BAD-VALUE finding co-fires and is pinned, in that order")
+def _():
+    p = " recognition: "
+    bad = lambda k: [_fl("BAD-VALUE", p + f"{k} must be a non-empty string")]
+    var = dict(REC, form="variant", difference="d")
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    for form_rec, role, root in ((REC, "result", ("A.B", "foo")), (var, "result", ("A.B", "foo")),
+                                 (op, "named_statement", ("A.C", "baz")), (op, "result", ("A.B", "foo"))):
+        fe(_ro(_rg(role, rec=dict(form_rec, result=None), root=root)), bad("result"), 1)
+        fe(_ro(_rg(role, rec=dict(form_rec, result=""), root=root)), bad("result"), 1)
+    for form_rec, role, root in ((REC, "result", ("A.B", "foo")), (var, "result", ("A.B", "foo")),
+                                 (op, "named_statement", ("A.C", "baz"))):
+        fe(_ro(_rg(role, rec=dict(form_rec, difference=None), root=root)), bad("difference"), 1)
+        fe(_ro(_rg(role, rec=dict(form_rec, difference=""), root=root)), bad("difference"), 1)
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    for k, vals in (("result", (None, "")), ("citations", ([],)), ("difference", (None, ""))):
+        for v in vals:
+            forb = _fl("RECOGNITION-FORBIDDEN", p + f"key {k!r} is not allowed with form 'not_recognised'")
+            bv = _fl("BAD-VALUE", p + f"{k} must be a non-empty string")
+            # BAD-VALUE co-fires with the FORBIDDEN finding when the value is null or empty (result, difference); a list has no such check
+            fe(_ro(_rg(rec=dict(nr, **{k: v}))), [forb] if k == "citations" else [forb, bv], 1)
+
+
+@case("NUL2", "a null in a citation: source, where, opened_by and opened_on are refused as BAD-VALUE (a non-empty string is needed), "
+              "and so are a null url, source_date and says_open (the key is present, so its value is checked, not skipped)")
+def _():
+    c = " recognition citations[1]: "
+
+    def two(cit):
+        return _ro(_rg(rec=dict(REC, citations=[CIT, cit])))
+    for k in ("source", "where", "opened_by", "opened_on"):
+        fe(two(dict(CIT, **{k: None})), [_fl("BAD-VALUE", c + f"{k} must be a non-empty string")], 1)
+    fe(two(dict(CIT, url=None)), [_fl("BAD-VALUE", c + "url must be a string starting https://")], 1)
+    fe(two(dict(CIT, source_date=None)), [_fl("BAD-VALUE", c + SD_MSG)], 1)
+    fe(two(dict(CIT, says_open=None)), [_fl("BAD-VALUE", c + "says_open must be true or false")], 1)
+
+
+@case("RUN3", "the recognition line counts the groups at every depth, not the level-1 steps: a chain of levels 1 to 4 with a claim and a "
+              "recognition of a different form at each depth, and a null-claim group beside it (counted in none); K+V+N+O+M = G")
+def _():
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    var = dict(REC, form="variant", difference="d")
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    L = lambda gid, level, parent, order, **kw: dict(_rg(gid=gid, order=order, **kw), level=level, parent=parent)
+    groups = [L("g1", 1, "root", 1, rec=REC),
+              L("g2", 2, "g1", 1, rec=var),
+              L("g3", 3, "g2", 1, role="named_statement", root=("A.C", "baz"), rec=nr),
+              L("g4", 4, "g3", 1, role="named_statement", root=("A.C", "baz"), rec=op),
+              dict(G("g5", level=4, parent="g3", order=2), claim=None),
+              L("g6", 4, "g3", 3)]   # a claim with no recognition: not written
+    r = _ro(*groups)
+    fe(r, [], 0)
+    ok(_rl(1, 1, 1, 1, 1, 5) in r.lines, r.out)
+    k, v, n, o, m, g = 1, 1, 1, 1, 1, 5
+    eq(k + v + n + o + m, g, "the sum")
+
+
+@case("SKC9", "the same root in two groups: an argument block in g2 does NOT satisfy g1's sketch (SKETCH-NO-ARGUMENT for g1), and each "
+              "group may keep its own sketch on that root (no SKETCH-DUPLICATE across groups)")
+def _():
+    two = OL(G("g1"), G("g2", order=2))
+    note1 = lambda body: NOTE(body=body)
+    note2 = lambda body: NOTE(nid="02", group="g2", body=body)
+    fe(go(notes={"01-a.md": note1("Sketch.\n" + _SB("01.b01") + "\n"),
+                 "02-b.md": note2("Idea.\n" + _AB("02.b01") + "\n")}, outline=two, decls=DECLS_K),
+       ["SKETCH-NO-ARGUMENT 01-a.md:7 block '01.b01': root A.B foo has no argument block in group 'g1'"], 1)
+    clean(go(notes={"01-a.md": note1(_AS),
+                    "02-b.md": note2("Idea.\n" + _AB("02.b01") + "\n\nSketch.\n" + _SB("02.b02") + "\n")}, outline=two, decls=DECLS_K))
+
+
+@case("CIT1b", "source_date accepts YYYY, YYYY-MM and YYYY-MM-DD, each a real date (month 01-12, a day that exists, year 0 refused: "
+               "Python's calendar starts at year 1, and the spec does not say otherwise); 2006-13, 2006-02-30, 06, 20061124, an empty "
+               "string and non-strings are refused naming the key; 2024-02-29 is accepted and 2023-02-29 refused; opened_on stays a "
+               "full date, a year or a year-month there is refused; says_open true needs a source_date and a year is enough")
+def _():
+    c = " recognition citations[1]: "
+
+    def two(cit):
+        return _ro(_rg(rec=dict(REC, citations=[CIT, cit])))
+    for good in ("2006", "2006-11", "2006-11-24", "2024-02-29", "0001", "0001-01", "9999-12"):
+        clean(two(dict(CIT, source_date=good)))
+        clean(two(dict(CIT, source_date=good, says_open=True)))
+    for bad in ("2006-13", "2006-00", "2006-02-30", "2023-02-29", "2006-11-00", "06", "20061124", "200611", "", "0000", "0000-01",
+                "0000-01-01", "2006-1", "2006-11-2", " 2006", "2006 ", "2006-", "2006/11", 2006, None, True):
+        fe(two(dict(CIT, source_date=bad)), [_fl("BAD-VALUE", c + SD_MSG)], 1)
+    for bad in ("2006", "2006-11", "06", "0000-01-01"):
+        fe(two(dict(CIT, opened_on=bad)), [_fl("BAD-VALUE", c + "opened_on must be a date YYYY-MM-DD")], 1)
+    fe(two(dict(CIT, says_open=True)), [_fl("MISSING-KEY", c + "missing key 'source_date' (says_open is true)")], 1)
+    op = dict(REC, form="open_in_literature")
+    for sd in ("2006", "2006-11", "2006-11-24"):
+        clean(_ro(_rg("named_statement", rec=dict(op, citations=[dict(OPENCIT, source_date=sd)]), root=("A.C", "baz"))))
+    fe(_ro(_rg("named_statement", rec=dict(op, citations=[drop(OPENCIT, "source_date")]), root=("A.C", "baz"))),
+       [_fl("MISSING-KEY", " recognition citations[0]: missing key 'source_date' (says_open is true)")], 1)
+
+
+@case("CIT1", "a citation: source, where, opened_by, opened_on are required non-empty strings; opened_on is a real full "
+              "YYYY-MM-DD date and source_date a real date that may also be a year or a year-month (CIT1b); says_open exactly true or false; url starts https://; an unknown key is refused; each names the "
+              "group, the citation index and the key")
+def _():
+    c = " recognition citations[1]: "
+
+    def two(cit):
+        return _ro(_rg(rec=dict(REC, citations=[CIT, cit])))
+    clean(two(dict(CIT, url="https://example.org/x", source_date="2019-12-31", says_open=False)))
+    fe(two("x"), [_fl("BAD-VALUE", " recognition citations[1]: must be an object")], 1)
+    fe(two(dict(CIT, extra=1)), [_fl("UNKNOWN-KEY", c + "unknown key 'extra'")], 1)
+    for k in ("source", "where", "opened_by", "opened_on"):
+        fe(two(drop(CIT, k)), [_fl("MISSING-KEY", c + f"missing key {k!r}")], 1)
+        fe(two(dict(CIT, **{k: ""})), [_fl("BAD-VALUE", c + f"{k} must be a non-empty string")], 1)
+        fe(two(dict(CIT, **{k: 4})), [_fl("BAD-VALUE", c + f"{k} must be a non-empty string")], 1)
+    for bad in ("2026-02-30", "2026-2-3", "26-11-23", "2026/11/23", "2026-13-01", "2026-11-23 ", "٢026-11-23"):
+        fe(two(dict(CIT, opened_on=bad)), [_fl("BAD-VALUE", c + "opened_on must be a date YYYY-MM-DD")], 1)
+        fe(two(dict(CIT, source_date=bad)), [_fl("BAD-VALUE", c + SD_MSG)], 1)
+    clean(two(dict(CIT, opened_on="2024-02-29")))
+    for bad in (1, "true", None, "yes"):
+        fe(two(dict(CIT, says_open=bad)), [_fl("BAD-VALUE", c + "says_open must be true or false")], 1)
+    for bad in ("http://example.org", "example.org", "", 5):
+        fe(two(dict(CIT, url=bad)), [_fl("BAD-VALUE", c + "url must be a string starting https://")], 1)
+    fe(two(dict(CIT, says_open=True)), [_fl("MISSING-KEY", c + "missing key 'source_date' (says_open is true)")], 1)
+    clean(two(dict(CIT, says_open=False)))
+
+
+@case("WORD1", "novel and unprecedented, whole words in any case, in result or difference, are refused naming group, field and word; "
+               "once per word per field")
+def _():
+    def line(field, w):
+        return _fl("RECOGNITION-WORD-REFUSED", f" recognition {field}: {w!r} is never said of a statement")
+    var = dict(REC, form="variant", difference="d")
+    for w in ("novel", "unprecedented"):
+        fe(_ro(_rg(rec=dict(REC, result=f"A {w} result"))), [line("result", w)], 1)
+        fe(_ro(_rg(rec=dict(var, difference=f"It is {w.upper()}."))), [line("difference", w)], 1)
+        fe(_ro(_rg(rec=dict(REC, result=f"{w.capitalize()}, and {w} again"))), [line("result", w)], 1)
+    fe(_ro(_rg(rec=dict(var, result="Novel", difference="Unprecedented"))), [line("result", "novel"), line("difference", "unprecedented")], 1)
+
+
+@case("WORD2", "near misses are not refused: novelty, novels, unprecedentedly, and a word joined to others by an underscore or digit")
+def _():
+    for t in ("The novelty of it", "Novels", "unprecedentedly", "a_novel", "novel2", "2novel", "x_unprecedented"):
+        clean(_ro(_rg(rec=dict(REC, result=t))))
+
+
+@case("WORD3", "new, original, first, assume, assumes, assumed (whole words, any case) in result or difference are RECOGNITION-WORD "
+               "listings: exit 0, counted as warnings, naming group, field and word, once per word per field")
+def _():
+    def line(field, w):
+        return _fl("RECOGNITION-WORD", f" recognition {field}: {w!r} (a prompt to the signer and the reviewer, not a verdict)")
+    var = dict(REC, form="variant", difference="d")
+    for w in ("new", "original", "first", "assume", "assumes", "assumed"):
+        r = _ro(_rg(rec=dict(REC, result=f"The {w} statement")))
+        fe(r, [line("result", w)], 0)
+        eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", w)
+        fe(_ro(_rg(rec=dict(var, difference=f"{w.upper()} here, {w} again"))), [line("difference", w)], 0)
+    fe(_ro(_rg(rec=dict(var, result="New and first", difference="First, then new"))),
+       [line("result", "new"), line("result", "first"), line("difference", "first"), line("difference", "new")], 0)
+    fe(_ro(_rg(rec=dict(REC, result="Assumes, assume and assumed"))),
+       [line("result", "assumes"), line("result", "assume"), line("result", "assumed")], 0)
+
+
+@case("WORD4", "near misses are not listed: Newton, renewal, news, firstly, originality, original_x, assumption, reassumes, unassumed, "
+               "newer; a hyphen or an apostrophe is a word boundary")
+def _():
+    for t in ("Newton", "renewal", "news", "firstly", "originality", "original_x", "assumption", "reassumes", "unassumed", "newer",
+              "3new", "first2"):
+        clean(_ro(_rg(rec=dict(REC, result=t))))
+    fe(_ro(_rg(rec=dict(REC, result="a non-new thing"))), [_fl("RECOGNITION-WORD", " recognition result: 'new' (a prompt to the signer and the reviewer, not a verdict)")], 0)
+    fe(_ro(_rg(rec=dict(REC, result="Hardy's first"))), [_fl("RECOGNITION-WORD", " recognition result: 'first' (a prompt to the signer and the reviewer, not a verdict)")], 0)
+
+
+@case("WORD5", "a word inside a single-backtick span IS checked (a span is code, but a person reads the word): `new` lists, `novel` "
+               "refuses; the words are looked for only in result and difference, not in source, where or reader")
+def _():
+    fe(_ro(_rg(rec=dict(REC, result="The `new` lemma"))),
+       [_fl("RECOGNITION-WORD", " recognition result: 'new' (a prompt to the signer and the reviewer, not a verdict)")], 0)
+    fe(_ro(_rg(rec=dict(REC, result="The `novel` lemma"))),
+       [_fl("RECOGNITION-WORD-REFUSED", " recognition result: 'novel' is never said of a statement")], 1)
+    clean(_ro(_rg(rec=dict(REC, citations=[dict(CIT, source="New novel original", where="First, assumed")], reader="New", date="2026-11-23"))))
+
+
+@case("EST1", "established is 'not_traced' or an object {by, reader, date}; by resolves to exactly one row whose kind is theorem or "
+              "lemma; an unknown key, a missing key, a bad by, an unresolved or ambiguous by and a wrong kind are refused; it is "
+              "allowed under any form, for a named_statement only")
+def _():
+    root = ("A.C", "baz")
+    p = " recognition established: "
+    est = {"by": R("A.B", "foo"), "reader": "R", "date": "2026-11-23"}
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    clean(_ro(_rg("named_statement", rec=dict(REC, established="not_traced"), root=root)))
+    clean(_ro(_rg("named_statement", rec=dict(REC, established=est), root=root)))
+    clean(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by=R("A.E", "lem"))), root=root)))
+    for form_rec in (dict(nr, established="not_traced"), dict(nr, established=est),
+                     dict(REC, form="variant", difference="d", established=est)):
+        clean(_ro(_rg("named_statement", rec=form_rec, root=root)))
+    fe(_ro(_rg("named_statement", rec=dict(REC, established="traced"), root=root)),
+       [_fl("BAD-VALUE", p + "must be the string 'not_traced' or an object")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=3), root=root)),
+       [_fl("BAD-VALUE", p + "must be the string 'not_traced' or an object")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, extra=1)), root=root)),
+       [_fl("UNKNOWN-KEY", p + "unknown key 'extra'")], 1)
+    for k in ("by", "reader", "date"):
+        fe(_ro(_rg("named_statement", rec=dict(REC, established=drop(est, k)), root=root)), [_fl("MISSING-KEY", p + f"missing key {k!r}")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, reader="")), root=root)),
+       [_fl("BAD-VALUE", p + "reader must be a non-empty string")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by="A.B.foo")), root=root)),
+       [_fl("BAD-VALUE", " recognition established by: must be an object with non-empty string module and name")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by=R("A.B", "nope"))), root=root)),
+       [_fl("UNRESOLVED", " recognition established by A.B nope: no row in decls.tsv")], 1)
+    fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by=R("A.D", "dup"))), root=root)),
+       [_fl("AMBIGUOUS", " recognition established by A.D dup: 2 rows; candidates (first_line, last_line): (1, 3), (7, 9)")], 1)
+    for by, kind in ((R("A.C", "baz"), "def"), (R("A.E", "stru"), "structure"), (R("A.E", "ind"), "inductive"), (R("A.E", "mys"), "")):
+        fe(_ro(_rg("named_statement", rec=dict(REC, established=dict(est, by=by)), root=root)),
+           [_fl("ESTABLISHED-KIND", f" recognition established by {by['module']} {by['name']} has kind {kind!r} (a theorem or lemma is needed)")], 1)
+
+
+@case("EST2", "established on a group whose root_role is not named_statement is refused (result, object, or absent: the role is needed)")
+def _():
+    p = " recognition: established is only for root_role 'named_statement' ("
+    est = {"by": R("A.B", "foo"), "reader": "R", "date": "2026-11-23"}
+    fe(_ro(_rg("result", rec=dict(REC, established="not_traced"))), [_fl("ESTABLISHED-ROLE", p + "root_role is 'result')")], 1)
+    fe(_ro(_rg("object", rec=dict(REC, established=est), root=("A.C", "baz"))), [_fl("ESTABLISHED-ROLE", p + "root_role is 'object')")], 1)
+    fe(_ro(_rg(None, rec=dict(REC, established="not_traced"))),
+       [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"),
+        _fl("ESTABLISHED-ROLE", p + "this group has no root_role: the role is needed)")], 1)
+
+
+def _rl(k, v, n, o, m, g):
+    return f"recognition: {k} known, {v} variant, {n} not recognised, {o} open in literature, {m} not written, of {g} groups with a claim"
+
+
+@case("RUN1", "the run prints `recognition: K known, V variant, N not recognised, O open in literature, M not written, of G groups "
+              "with a claim`, counted by the tool, right after the `claim basis:` line; a claim with no recognition counts M; "
+              "a null claim counts in none")
+def _():
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    var = dict(REC, form="variant", difference="d")
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    r = _ro(_rg(rec=REC), _rg(rec=var, gid="g2", order=2), _rg("named_statement", rec=nr, gid="g3", order=3, root=("A.C", "baz")),
+            _rg("named_statement", rec=op, gid="g4", order=4, root=("A.C", "baz")), _rg(gid="g5", order=5), _rg(rec=REC, gid="g6", order=6),
+            G("g7", order=7))
+    fe(r, [], 0)
+    ok(_rl(2, 1, 1, 1, 1, 6) in r.lines, r.out)
+    i = r.lines.index(_rl(2, 1, 1, 1, 1, 6))
+    ok(r.lines[i - 1].startswith("claim basis: "), r.out)
+    r = _ro(G("g1"))
+    ok(_rl(0, 0, 0, 0, 0, 0) in r.lines, r.out)
+    r = _ro(_rg(None))
+    ok(_rl(0, 0, 0, 0, 1, 1) in r.lines, r.out)
+    r = _ro(_rg(rec=dict(REC, form="nonsense")))
+    ok(_rl(0, 0, 0, 0, 1, 1) in r.lines, "an unusable form counts as not written: " + r.out)
+
+
+@case("RUN2", "the sum K + V + N + O + M = G is asserted: a count that does not add up is SUM-RECOGNITION, exit 1, planted through the "
+              "counting function's input; the counting function counts each of the five forms")
+def _():
+    eq(_recognition_counts(["known", "variant", "not_recognised", "open_in_literature", None, None]), (1, 1, 1, 1, 2, 6), "counts")
+    eq(_recognition_sum_finding(["known", "open_in_literature", None]), None, "an honest list")
+    f = _recognition_sum_finding(["known", "bogus", None])
+    eq(f and (f[0], f[4]), ("SUM-RECOGNITION", ERROR), "planted")
+    eq(f and f[3], "1 known + 0 variant + 0 not recognised + 0 open in literature + 1 not written is 2, not 3 groups with a claim", "text")
+    eq(_recognition_sum_finding([]), None, "empty")
+
+
+@case("LIST1", "a listing (ROOT-ROLE-MISSING, RECOGNITION-WORD) never changes the exit code and an error beside it still exits 1; "
+               "the note-level and per-note lines are unchanged")
+def _():
+    r = _ro(_rg(None, rec=dict(REC, result="The new thing")))
+    eq((r.rc, [x.split(" ")[0] for x in r.f]), (0, ["ROOT-ROLE-MISSING", "RECOGNITION-WORD"]), "listings")
+    eq(r.lines[-1], "1 notes, 0 findings, 2 warnings", "count")
+    ok("note 01 header ok, blocks 0" in r.lines, r.out)
+    r = _ro(_rg("result", rec=dict(REC, result="The new thing"), root=("A.B", "nope")))
+    eq((r.rc, [x.split(" ")[0] for x in r.f]), (1, ["UNRESOLVED", "RECOGNITION-WORD"]), "an error beside a listing")
+
+
 # ---- F27: a dated pure insertion is an ADDITION (a listing), not a BYTE-DIFF
 TODAY = "2026-11-24"
 T2 = "# Note\n\n## Body\n\nFirst.\n\nSecond.\n"   # two paragraphs, no anchors; the body starts on line 6 of the file on disk
@@ -2878,6 +3740,163 @@ def _():
                      "HEADER-PROBLEM 02-b.md:2 level: must be 0, 1 or 2", "note 02 header FAILED, blocks 0"], "order")
     r = go(notes={"01-a.md": NOTE(level=3, body="Some text.\n<!-- rh-block {bad} -->\n")})
     eq([x.split(" ")[0] + " " + x.split(" ")[1] for x in r.f], ["HEADER-PROBLEM 01-a.md:2", "MALFORMED 01-a.md:7"], "by line")
+
+
+# ---- F25a: the sketch kind in the cross-checks; an argument on a root that is not a theorem or lemma is listed
+# Notes made by NOTE() have the first body line on line 6, so a block anchored after one-line paragraphs sits on a literal line.
+def _AB(bid="01.b01", decls=None, reader="R"):
+    return BL(bid, kind="argument", reader=reader, date="2026-11-23", decls=[R("A.B", "foo")] if decls is None else decls)
+
+
+def _SB(bid="01.b02", decls=None, **kw):
+    d = dict(kind="sketch", reader="R", date="2026-11-23", decls=[R("A.B", "foo")] if decls is None else decls, basis="source")
+    d.update(kw)
+    return BL(bid, **d)
+
+
+_AS = "Idea.\n" + _AB() + "\n\nSketch.\n" + _SB() + "\n"   # the argument is on line 7, the sketch on line 10
+FOO, BAR, BAZ = R("A.B", "foo"), R("A.B", "bar"), R("A.C", "baz")
+
+
+def _sx(body, outline=None, decls=DECLS_K, **hdr):
+    return go(notes={"01-a.md": NOTE(body=body, **hdr)}, outline=OL(G("g1")) if outline is None else outline, decls=decls)
+
+
+NOPROOF = "ARGUMENT-NO-PROOF 01-a.md:{} block '01.b01': root {} has kind {!r}, not a theorem or lemma: say in the argument which proof inside it was read"
+
+
+@case("SKC1", "a sketch with an argument on its root passes: with or without a claim, with more decls than the root, with a run of two, "
+              "and when the argument is in another note of the group by another reader")
+def _():
+    clean(_sx(_AS))
+    clean(_sx(_AS, outline=OL(G("g1", claim=CLAIM))))
+    clean(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(decls=[FOO, BAR]) + "\n"))
+    clean(_sx("Idea.\n" + _AB() + "\n\nOne.\n\nTwo.\n" + _SB(span=2) + "\n"))
+    clean(go(notes={"01-a.md": NOTE(body="Idea.\n" + _AB(reader="X") + "\n"),
+                    "02-b.md": NOTE(nid="02", body="Sketch.\n" + _SB("02.b01") + "\n")}, outline=OL(G("g1")), decls=DECLS_K))
+
+
+@case("SKC2", "SKETCH-NO-ARGUMENT: a sketch whose root has no argument block in its group is refused; an argument of another group, or one "
+              "whose decls do not hold the root, does not count")
+def _():
+    msg = "SKETCH-NO-ARGUMENT 01-a.md:7 block '01.b01': root A.B foo has no argument block in group 'g1'"
+    fe(_sx("Sketch.\n" + _SB("01.b01") + "\n"), [msg], 1)
+    two = OL(G("g1"), G("g2", order=2, roots=[BAR]))
+    fe(go(notes={"01-a.md": NOTE(body="Sketch.\n" + _SB("01.b01") + "\n"),
+                 "02-b.md": NOTE(nid="02", group="g2", body="Idea.\n" + _AB("02.b01") + "\n")}, outline=two, decls=DECLS_K), [msg], 1)
+    fe(_sx("Idea.\n" + _AB(decls=[BAR]) + "\n\nSketch.\n" + _SB() + "\n"),
+       ["SKETCH-NO-ARGUMENT 01-a.md:10 block '01.b02': root A.B foo has no argument block in group 'g1'"], 1)
+
+
+@case("SKC3", "SKETCH-DUPLICATE: a second sketch on one root, in the same note or another, is refused naming both block ids; "
+              "two roots of one group may each have one; a sketch on two roots both taken gives one finding per root")
+def _():
+    body = "Idea.\n" + _AB() + "\n\nS1.\n" + _SB("01.b02") + "\n\nS2.\n" + _SB("01.b03") + "\n"
+    fe(_sx(body), ["SKETCH-DUPLICATE 01-a.md:13 block '01.b03': root A.B foo already has the sketch '01.b02' (at 01-a.md:10)"], 1)
+    fe(go(notes={"01-a.md": NOTE(body=_AS), "02-b.md": NOTE(nid="02", body="S.\n" + _SB("02.b01") + "\n")},
+          outline=OL(G("g1")), decls=DECLS_K),
+       ["SKETCH-DUPLICATE 02-b.md:7 block '02.b01': root A.B foo already has the sketch '01.b02' (at 01-a.md:10)"], 1)
+    two = OL(G("g1", roots=[FOO, BAR]))
+    arg = "Idea.\n" + _AB(decls=[FOO, BAR]) + "\n\nS1.\n" + _SB("01.b02", decls=[FOO]) + "\n\nS2.\n" + _SB("01.b03", decls=[BAR]) + "\n"
+    clean(_sx(arg, outline=two))
+    both = "Idea.\n" + _AB(decls=[FOO, BAR]) + "\n\nS1.\n" + _SB("01.b02", decls=[FOO, BAR]) + "\n\nS2.\n" + _SB("01.b03", decls=[FOO, BAR]) + "\n"
+    fe(_sx(both, outline=two),
+       ["SKETCH-DUPLICATE 01-a.md:13 block '01.b03': root A.B foo already has the sketch '01.b02' (at 01-a.md:10)",
+        "SKETCH-DUPLICATE 01-a.md:13 block '01.b03': root A.B bar already has the sketch '01.b02' (at 01-a.md:10)"], 1)
+
+
+@case("SKC4", "SKETCH-ROLE: the role of the group decides when it has one (only result), else the kind of the root (only theorem or lemma), "
+              "each root of a null-claim group by its own kind; the argument on a definition is listed beside it")
+def _():
+    arg_baz = "Idea.\n" + _AB(decls=[BAZ]) + "\n\nSketch.\n" + _SB(decls=[BAZ]) + "\n"
+    kind = "SKETCH-ROLE 01-a.md:10 block '01.b02': root {} has kind {!r}; a sketch is only for a theorem or lemma"
+    fe(_sx(arg_baz, outline=OL(G("g1", roots=[BAZ]))),
+       [NOPROOF.format(7, "A.C baz", "def"), kind.format("A.C baz", "def")], 1)
+    stru = "Idea.\n" + _AB(decls=[R("A.E", "stru")]) + "\n\nSketch.\n" + _SB(decls=[R("A.E", "stru")]) + "\n"
+    fe(_sx(stru, outline=OL(G("g1", roots=[R("A.E", "stru")]))),
+       [NOPROOF.format(7, "A.E stru", "structure"), kind.format("A.E stru", "structure")], 1)
+    lem = "Idea.\n" + _AB(decls=[R("A.E", "lem")]) + "\n\nSketch.\n" + _SB(decls=[R("A.E", "lem")]) + "\n"
+    clean(_sx(lem, outline=OL(G("g1", roots=[R("A.E", "lem")]))))
+    clean(_sx(lem, outline=OL(_rg("result", root=("A.E", "lem")))))
+    for role in ("named_statement", "object"):
+        fe(_sx(arg_baz, outline=OL(_rg(role, root=("A.C", "baz")))),
+           [NOPROOF.format(7, "A.C baz", "def"),
+            f"SKETCH-ROLE 01-a.md:10 block '01.b02': root A.C baz: root_role is {role!r}; a sketch is only for 'result'"], 1)
+    multi = OL(G("g1", roots=[FOO, BAZ]))
+    both = "Idea.\n" + _AB(decls=[FOO, BAZ]) + "\n\nSketch.\n" + _SB(decls=[FOO, BAZ]) + "\n"
+    fe(_sx(both, outline=multi), [NOPROOF.format(7, "A.C baz", "def"), kind.format("A.C baz", "def")], 1)
+    clean(_sx("Idea.\n" + _AB(decls=[FOO]) + "\n\nSketch.\n" + _SB(decls=[FOO]) + "\n", outline=multi))
+
+
+@case("SKC5", "SKETCH-ROOT: the sketch's decls must include a root of its group (one is enough, more decls are fine); a note whose group is not "
+              "in the outline anchors none; an unresolved or ambiguous decl is only the finding already coded")
+def _():
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(decls=[BAR]) + "\n"),
+       ["SKETCH-ROOT 01-a.md:10 block '01.b02': its decls include no root of group 'g1' (roots: A.B foo)"], 1)
+    clean(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(decls=[BAR, FOO]) + "\n"))
+    fe(_sx("Sketch.\n" + _SB("01.b01") + "\n", group="gx"),
+       ["UNKNOWN-GROUP 01-a.md:2 group 'gx' is not in the outline",
+        "SKETCH-ROOT 01-a.md:7 block '01.b01': group 'gx' is not a group of the outline; a sketch needs a group root in its decls"], 1)
+    dup = R("A.D", "dup")
+    amb = "(first_line, last_line): (1, 3), (7, 9)"
+    fe(_sx("Idea.\n" + _AB(decls=[dup]) + "\n\nSketch.\n" + _SB(decls=[dup]) + "\n", outline=OL(G("g1", roots=[dup]))),
+       [f"AMBIGUOUS outline.json group 'g1' roots[0] A.D dup: 2 rows; candidates {amb}",
+        f"AMBIGUOUS 01-a.md:7 block '01.b01' decls[0] A.D dup: 2 rows; candidates {amb}",
+        f"AMBIGUOUS 01-a.md:10 block '01.b02' decls[0] A.D dup: 2 rows; candidates {amb}"], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(decls=[R("A.B", "nope"), FOO]) + "\n"),
+       ["UNRESOLVED 01-a.md:10 block '01.b02' decls[0] A.B nope: no row in decls.tsv"], 1)
+
+
+@case("SKC6", "SKETCH-RUN: the reason of run_at for the block's span, naming the block; an anchor, a heading or a table in the run, a span past "
+              "the start of the note; a bad span value is only the format problem")
+def _():
+    run = "SKETCH-RUN 01-a.md:{} block '01.b02': {}"
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(span=3) + "\n"), [run.format(10, "the run holds another rh anchor line (line 7)")], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\n### Sub\n\nSketch.\n" + _SB(span=2) + "\n"), [run.format(12, "the run holds a heading at line 9")], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\n| a |\n|---|\n| 1 |\n" + _SB() + "\n"), [run.format(12, "the run holds a table at lines 9-11")], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(span=0) + "\n"),
+       ["BLOCK-PROBLEM 01-a.md:10 block '01.b02': span: must be an integer of 1 or more"], 1)
+    head = NOTE().split("\n")[1]   # a note with no heading, so a span can pass the start of it
+    r = go(notes={"01-a.md": head + "\nSketch.\n" + _SB("01.b01", span=2) + "\n",
+                  "02-b.md": NOTE(nid="02", body="Idea.\n" + _AB("02.b01") + "\n")}, outline=OL(G("g1")), decls=DECLS_K)
+    fe(r, ["SKETCH-RUN 01-a.md:3 block '01.b01': span 2 asks for more elements than the note has before this anchor (only 1)"], 1)
+
+
+@case("SKC7", "the format problems of a sketch and of span come through as BLOCK-PROBLEM: span on an argument, a bad basis, compiled "
+              "without a build, source with a build")
+def _():
+    bp = "BLOCK-PROBLEM 01-a.md:{} block '{}': {}"
+    fe(_sx("Idea.\n" + BL("01.b01", kind="argument", reader="R", date="2026-11-23", decls=[FOO], span=1) + "\n"),
+       [bp.format(7, "01.b01", "span: only a sketch carries span")], 1)
+    for kw, why in ((dict(basis="x"), "basis: must be source or compiled"),
+                    (dict(basis="compiled"), "build: basis compiled needs a non-empty string"),
+                    (dict(build="lake build"), "build: not allowed when basis is source")):
+        fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(**kw) + "\n"), [bp.format(10, "01.b02", why)], 1)
+    clean(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(basis="compiled", build="lake build", unexpanded=["x"]) + "\n"))
+
+
+@case("SKC8", "the note line and the `blocks by kind:` line count sketches as a seventh kind; the checker prints no `sketches:` line (the "
+              "builder counts proofs read)")
+def _():
+    r = _sx(_AS)
+    ok("note 01 header ok, blocks 2 (argument=1 sketch=1)" in r.lines, "note line\n" + r.out)
+    ok("blocks by kind: machine_fact=0 reading=0 interpretation=0 correction=0 not_read=0 argument=1 sketch=1" in r.lines, "kinds\n" + r.out)
+    ok(not any(x.startswith("sketches:") for x in r.lines), "no sketches line\n" + r.out)
+
+
+@case("ARGNP", "ARGUMENT-NO-PROOF is a listing (exit unchanged) for an argument anchored on a root of its group whose kind is not theorem or "
+               "lemma: def and structure listed, theorem and lemma not; a def that is not a root of the group is not listed")
+def _():
+    one = "Idea.\n" + _AB(decls=[BAZ]) + "\n"
+    r = _sx(one, outline=OL(G("g1", roots=[BAZ])))
+    fe(r, [NOPROOF.format(7, "A.C baz", "def")], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "a listing is a warning, not a finding")
+    fe(_sx("Idea.\n" + _AB(decls=[R("A.E", "stru")]) + "\n", outline=OL(G("g1", roots=[R("A.E", "stru")]))),
+       [NOPROOF.format(7, "A.E stru", "structure")], 0)
+    clean(_sx("Idea.\n" + _AB() + "\n"))
+    clean(_sx("Idea.\n" + _AB(decls=[R("A.E", "lem")]) + "\n", outline=OL(G("g1", roots=[R("A.E", "lem")]))))
+    clean(_sx("Idea.\n" + _AB(decls=[FOO, BAZ]) + "\n"))
+    fe(_sx(one, outline=OL(_rg("named_statement", root=("A.C", "baz")))), [NOPROOF.format(7, "A.C baz", "def")], 0)
 
 
 def _run_cases(cases, write):

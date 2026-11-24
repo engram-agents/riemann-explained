@@ -19,6 +19,8 @@ API (the names are the contract)
   item_at(text, line)               the 1-based top-level list item that holds a line (nested lines: the parent item)
   target_at(text, line)             the element (paragraph, table, list, fence) that holds a 1-based line, or whose run of
                                     anchor lines holds it, else None
+  run_at(text, line, span)          the `span` elements ending at the target of the anchor on a 1-based line, as a list of
+                                    (kind, first_line, last_line) in text order, or a reason string when the run is illegal
   next_block_id(note_id, used)      the next unused id of a note, never reusing a hole
   insert_after_line(text, line, c)  insert a comment as its own line after a 1-based line, in that file's line ending
 `Item` has line (1-based), data (the parsed object), canonical (the line is byte-equal to format_comment of its own
@@ -66,6 +68,18 @@ CONTRACT (each line is a self-test case, written before the code)
     of "a".."e"; second_readers (if present, any kind) is a list of {reader, date}, both non-empty strings (the list
     may be empty); row and col (if present) are ints >= 1. Every problem string starts with the field name.
     header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f, SR1-SR3, LN1.
+ B2s A sketch (F25a) needs reader and date (non-empty strings), a non-empty decls list (each entry checked as an argument's),
+    basis `source` or `compiled`, and `build`, a non-empty string, required when basis is compiled and refused when it is
+    source; `unexpanded` (if present) is a list of non-empty strings, the list may be empty; `span` (if present) is an int >= 1,
+    a bool is not one. Only a sketch may carry `span`: any other kind with the key is a problem, span 1 too. No kind has a
+    whitelist of keys, and none is added. Cases SK1-SK4.
+ B3r run_at(text, line, span): the run is the `span` elements that end at the target of the anchor on `line` (target_at's
+    element). A run may hold paragraphs and lists (a display formula alone on its lines is a paragraph). A reason string, never
+    an exception, when: the line is not an anchor line, or no element lies before it; span is not an int >= 1; the run holds a
+    table, a fence, a heading, a quote, an HTML line or a rule line ("the run holds a <word> at line(s) ..."), the target too;
+    the run holds another rh anchor line, malformed ones included, between two of its elements (anchor lines after the target
+    are not in the run); span asks for more elements than the note has before the anchor. The nearest obstacle to the target is
+    the one named. Cases RN1-RN6.
  B3 target_at gives the element holding a line, None between elements; a line inside a table is held by the table, so
     the insertion line is the table's last line, never between rows. A line that is itself an anchor line directly
     after an element (any rh- line, malformed ones too) gets that element, so a caller can find append_after from any
@@ -74,7 +88,8 @@ CONTRACT (each line is a self-test case, written before the code)
  B5 insert_after_line uses that line's own ending, CRLF if it ended CRLF, else LF (a lone-CR file gets LF); on a last line with no line ending it adds one before
     the comment and none after, so strip_anchor_lines(insert_after_line(t, n, c)) == t. Cases B5a-B5d.
 
-LIMIT. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
+LIMIT. run_at reads the same approximation of Markdown as the rest of the module: a list at the end of a run is a list element,
+and whether the anchor of a sketch may sit on one (the checker asks a list for `item`) is not decided here. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
 row, column, declaration or file exists (a table's size is only reported), no date format, no order check on
 `defs_opened[].lines` (a block's own `lines` IS order-checked: first not after last, B2), no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
 `conventions_checked` (open; they are validated when present and never required). Markdown is approximated by the
@@ -117,7 +132,7 @@ import sys
 from dataclasses import dataclass
 
 NEEDS = ("callers", "route", "enclosing", "resolve", "fields_read", "uses", "hand_read", "full_build")
-KINDS = ("machine_fact", "reading", "interpretation", "correction", "not_read", "argument")
+KINDS = ("machine_fact", "reading", "interpretation", "correction", "not_read", "argument", "sketch")
 
 
 # ---------------------------------------------------------------- the module
@@ -465,6 +480,54 @@ def target_at(text, line):
     return None
 
 
+def _run_label(el, a):
+    """The word for an element a sketch's run may not hold (a table, a fence, a heading, a quote, an HTML line, a rule), else None."""
+    if el["type"] in ("paragraph", "list"):
+        return None
+    if el["type"] == "table":
+        return "table"
+    first = el["first_line"] - 1
+    if a.fence_of[first] != -1:
+        return "fence"
+    s = a.lines[first].strip()
+    return "heading" if _HEADING.match(s) else "quote" if s.startswith(">") else "HTML line" if s.startswith("<") else "rule line"
+
+
+def run_at(text, line, span):
+    """The `span` elements that end at the target of the anchor on 1-based `line`, as [(kind, first_line, last_line), ...] in text
+    order (kind is paragraph or list), or a reason string when the run is illegal. Never raises. See the module docstring (F25)."""
+    if not _int(line):
+        return "line must be an integer"
+    if not _int(span) or span < 1:
+        return "span must be an integer of 1 or more"
+    a = _Analysis(text)
+    if not 1 <= line <= a.nreal or not a.cand[line - 1]:
+        return f"line {line} is not an rh anchor line"
+    t = a.target_of[line - 1]
+    if t == -1:
+        return f"no element before the anchor on line {line}"
+    order = sorted(range(len(a.elements)), key=lambda k: a.elements[k]["first_line"])
+    pos = order.index(t)
+    run = []
+    for i in range(span):
+        el = a.elements[order[pos]]
+        label = _run_label(el, a)
+        if label is not None:
+            where = f"line {el['first_line']}" if el["first_line"] == el["last_line"] else f"lines {el['first_line']}-{el['last_line']}"
+            return f"the run holds a {label} at {where}"
+        run.append((el["type"], el["first_line"], el["last_line"]))
+        if i + 1 == span:
+            break
+        if pos == 0:
+            return f"span {span} asks for more elements than the note has before this anchor (only {i + 1})"
+        prev = a.elements[order[pos - 1]]
+        for x in range(prev["last_line"], el["first_line"] - 1):   # the 0-based lines strictly between the two elements
+            if a.cand[x]:
+                return f"the run holds another rh anchor line (line {x + 1})"
+        pos -= 1
+    return run[::-1]
+
+
 def item_at(text, line):
     """The 1-based top-level item of a list that holds a 1-based line (a nested line belongs to its parent item), else None."""
     a = _Analysis(text)
@@ -572,12 +635,34 @@ def problems(block, note_id=None):
     elif kind == "not_read":
         if block.get("needs") not in NEEDS:
             out.append(f"needs: must be one of {', '.join(NEEDS)}")
+    elif kind == "sketch":
+        for f in ("reader", "date"):
+            if not _str(block.get(f)):
+                out.append(f"{f}: a sketch needs a non-empty string")
+        if block.get("decls", []) == []:
+            out.append("decls: a sketch needs at least one declaration")
+        basis = block.get("basis")
+        if basis not in ("source", "compiled"):
+            out.append("basis: must be source or compiled")
+        elif basis == "compiled" and not _str(block.get("build")):
+            out.append("build: basis compiled needs a non-empty string")
+        elif basis == "source" and "build" in block:
+            out.append("build: not allowed when basis is source")
+        if "unexpanded" in block:
+            ue = block["unexpanded"]
+            if not (isinstance(ue, list) and all(_str(x) for x in ue)):
+                out.append("unexpanded: must be a list of non-empty strings")
     elif kind in ("argument", "interpretation"):
         for f in ("reader", "date"):
             if not _str(block.get(f)):
                 out.append(f"{f}: {'an argument' if kind == 'argument' else 'an interpretation'} needs a non-empty string")
         if kind == "argument" and block.get("decls", []) == []:
             out.append("decls: an argument needs at least one declaration")
+    if "span" in block and kind in KINDS:
+        if kind != "sketch":
+            out.append("span: only a sketch carries span")
+        elif not (_int(block["span"]) and block["span"] >= 1):
+            out.append("span: must be an integer of 1 or more")
     if "decls" in block:
         _decl_list("decls", block["decls"], out)
     if "defs_opened" in block:
@@ -1617,7 +1702,153 @@ def _():
 @case("CONST", "the closed lists, in order")
 def _():
     eq(NEEDS, ("callers", "route", "enclosing", "resolve", "fields_read", "uses", "hand_read", "full_build"), "NEEDS")
-    eq(KINDS, ("machine_fact", "reading", "interpretation", "correction", "not_read", "argument"), "KINDS")
+    eq(KINDS, ("machine_fact", "reading", "interpretation", "correction", "not_read", "argument", "sketch"), "KINDS")
+
+
+# ---- F25a: the sketch kind and the run of elements it covers
+def SKB(**kw):
+    d = {"id": "15.b01", "kind": "sketch", "reader": "R", "date": "2026-11-23", "decls": [DECL], "basis": "source"}
+    d.update(kw)
+    return d
+
+
+@case("SK1", "a valid sketch: basis source with no build, basis compiled with a build, unexpanded (even empty), span of 1 or more, "
+             "extra decls; each required key is checked on its own")
+def _():
+    for v in (SKB(), SKB(basis="compiled", build="lake build A.B"), SKB(unexpanded=[]), SKB(unexpanded=["a", "b"]),
+              SKB(span=1), SKB(span=3), SKB(decls=[DECL, {"module": "A.B", "name": "m"}]), SKB(file="F.lean", lines=[1, 2])):
+        eq(problems(v), [], repr(v))
+        eq(problems(v, "15"), [], repr(v) + " with note")
+    for f in ("reader", "date"):
+        one(drop_key(SKB(), f), f)
+        one(SKB(**{f: ""}), f)
+        one(SKB(**{f: 3}), f)
+        eq(problems(drop_key(SKB(), f)), [f + ": a sketch needs a non-empty string"], f)
+    eq(problems(drop_key(SKB(), "decls")), ["decls: a sketch needs at least one declaration"], "decls missing")
+    eq(problems(SKB(decls=[])), ["decls: a sketch needs at least one declaration"], "decls empty")
+    eq(problems(SKB(decls="x")), ["decls: must be a list"], "decls not a list")
+    eq(problems(SKB(decls=[{"module": "", "name": "n"}])), ["decls[0].module: must be a non-empty string"], "entry as an argument's")
+    eq(problems(SKB(decls=[DECL, 5])), ["decls[1]: must be an object with module and name"], "entry not an object")
+
+
+@case("SK2", "basis is source or compiled; build is required for compiled (a non-empty string) and forbidden for source")
+def _():
+    eq(problems(drop_key(SKB(), "basis")), ["basis: must be source or compiled"], "basis missing")
+    for bad in ("Source", "", "built", 1, None, ["source"], True):
+        eq(problems(SKB(basis=bad)), ["basis: must be source or compiled"], repr(bad))
+    eq(problems(SKB(basis="compiled")), ["build: basis compiled needs a non-empty string"], "compiled without build")
+    for bad in ("", 3, None, ["x"], True):
+        eq(problems(SKB(basis="compiled", build=bad)), ["build: basis compiled needs a non-empty string"], "build " + repr(bad))
+    eq(problems(SKB(basis="source", build="lake build")), ["build: not allowed when basis is source"], "source with build")
+    eq(problems(SKB(basis="source", build="")), ["build: not allowed when basis is source"], "source with an empty build")
+    eq(problems(SKB(basis="x", build="lake build")), ["basis: must be source or compiled"], "no build message beside a bad basis")
+
+
+@case("SK3", "unexpanded is a list of non-empty strings; span is an int of 1 or more (a bool is refused)")
+def _():
+    msg = "unexpanded: must be a list of non-empty strings"
+    for bad in ("a", None, [""], [1], ["a", ""], {"a": 1}, ["a", None]):
+        eq(problems(SKB(unexpanded=bad)), [msg], repr(bad))
+    smsg = "span: must be an integer of 1 or more"
+    for bad in (0, -1, "1", True, False, 1.5, None, [1]):
+        eq(problems(SKB(span=bad)), [smsg], repr(bad))
+
+
+@case("SK4", "span belongs to the sketch kind alone: any other kind that carries the key is refused, span 1 too")
+def _():
+    others = [MF(), vb(), vb(kind="interpretation", reader="R", date="2026-11-23"), vb(kind="correction"),
+              vb(kind="not_read", needs="callers"), vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL])]
+    for v in others:
+        eq(problems(v), [], v["kind"] + " control without span")
+        for s in (1, 2):
+            eq(problems(dict(v, span=s)), ["span: only a sketch carries span"], f"{v['kind']} span {s}")
+    eq(problems(vb(kind="nope", span=1)), ["kind: must be one of " + ", ".join(KINDS)], "a bad kind says only the kind")
+
+
+def drop_key(d, key):
+    return {k: v for k, v in d.items() if k != key}
+
+
+def last_anchor(t):
+    """The 1-based number of the last line of t that starts an rh-block comment."""
+    return max(i for i, s in enumerate(t.split("\n"), 1) if s.startswith("<!-- rh-block"))
+
+
+
+@case("RN1", "run_at: span 1 on a paragraph gives it, with its first and last line; a display formula alone on its lines is a paragraph")
+def _():
+    eq(run_at("Intro paragraph.\n" + B(1) + "\n", 2, 1), [("paragraph", 1, 1)], "one line")
+    eq(run_at("a\nb\n" + B(1) + "\n", 3, 1), [("paragraph", 1, 2)], "two lines")
+    eq(run_at("$$\nx = y\n$$\n" + B(1) + "\n", 4, 1), [("paragraph", 1, 3)], "display formula")
+    eq(run_at("Intro.\n" + B(1) + "\n" + B(2) + "\n", 3, 1), [("paragraph", 1, 1)], "the second anchor of the run, the first is not in the run")
+
+
+@case("RN2", "run_at: span 3 over paragraph, list, paragraph gives the three elements in text order; span 2 the last two; "
+             "the same text under CRLF gives the same lines")
+def _():
+    t = "First paragraph.\n\n- item one\n- item two\n\nThird paragraph.\n" + B(1) + "\n"
+    want = [("paragraph", 1, 1), ("list", 3, 4), ("paragraph", 6, 6)]
+    eq(run_at(t, 7, 3), want, "span 3")
+    eq(run_at(t, 7, 2), want[1:], "span 2")
+    eq(run_at(t, 7, 1), want[2:], "span 1")
+    eq(run_at(t.replace("\n", "\r\n"), 7, 3), want, "CRLF")
+
+
+@case("RN3", "run_at: each element that may not be in the run is refused with its kind and lines: table, lean fence, other fence, heading, "
+             "quote, HTML line; as the target (span 1) and further back (span 2)")
+def _():
+    bad = [("table", "| a | b |\n|---|---|\n| 1 | 2 |\n", "table", "lines 1-3"),
+           ("lean fence", "```lean\ntheorem x : True := trivial\n```\n", "fence", "lines 1-3"),
+           ("other fence", "~~~\ncode\n~~~\n", "fence", "lines 1-3"),
+           ("heading", "## A heading\n", "heading", "line 1"),
+           ("quote", "> quoted\n", "quote", "line 1"),
+           ("HTML line", "<div>x</div>\n", "HTML line", "line 1")]
+    for what, text, label, where in bad:
+        n = text.count("\n")
+        t = text + B(1) + "\n"
+        eq(run_at(t, n + 1, 1), f"the run holds a {label} at {where}", what + " as the target")
+        t2 = text + "\nTarget paragraph.\n" + B(1) + "\n"
+        eq(run_at(t2, last_anchor(t2), 1), [("paragraph", n + 2, n + 2)], what + " before the target, span 1 is fine")
+        eq(run_at(t2, last_anchor(t2), 2), f"the run holds a {label} at {where}", what + " inside a span of 2")
+
+
+@case("RN4", "run_at: another rh anchor line inside the run is refused with its line; an anchor after the target is not in the run")
+def _():
+    t = "First.\n" + B(1) + "\n\nSecond.\n" + B(2) + "\n"
+    eq(run_at(t, 5, 2), "the run holds another rh anchor line (line 2)", "between two elements")
+    eq(run_at(t, 5, 1), [("paragraph", 4, 4)], "span 1 does not reach it")
+    t = "First.\n\nSecond.\n" + B(1) + "\n" + B(2) + "\n"
+    eq(run_at(t, 4, 1), [("paragraph", 3, 3)], "an anchor after the target")
+    eq(run_at(t, 5, 2), [("paragraph", 1, 1), ("paragraph", 3, 3)], "an anchor after the target, span 2 from the second anchor")
+    t = "First.\n<!-- rh-block {bad} -->\n\nSecond.\n" + B(1) + "\n"
+    eq(run_at(t, 5, 2), "the run holds another rh anchor line (line 2)", "a malformed rh line is an anchor line too")
+
+
+@case("RN5", "run_at: a span past the elements that exist before the anchor, or past a heading, is refused; "
+             "a table directly before the anchor is refused at span 1")
+def _():
+    eq(run_at("Only.\n" + B(1) + "\n", 2, 2), "span 2 asks for more elements than the note has before this anchor (only 1)", "too large")
+    eq(run_at("A.\n\nB.\n" + B(1) + "\n", 4, 3), "span 3 asks for more elements than the note has before this anchor (only 2)", "too large by one")
+    t = "Intro.\n\n## H\n\nPara.\n" + B(1) + "\n"
+    eq(run_at(t, 6, 1), [("paragraph", 5, 5)], "span 1 stops at the heading")
+    eq(run_at(t, 6, 2), "the run holds a heading at line 3", "span 2 reaches the heading")
+    eq(run_at(t, 6, 3), "the run holds a heading at line 3", "span 3 passes the heading")
+    t = "| a |\n|---|\n| 1 |\n" + B(1) + "\n"
+    eq(run_at(t, 4, 1), "the run holds a table at lines 1-3", "an anchor directly after a table")
+
+
+@case("RN6", "run_at: a line that is not an anchor line, an anchor with no element before it, a line outside the text and a bad span or "
+             "line are reasons, never exceptions")
+def _():
+    t = "Text.\n" + B(1) + "\n"
+    eq(run_at(t, 1, 1), "line 1 is not an rh anchor line", "a text line")
+    eq(run_at(t, 9, 1), "line 9 is not an rh anchor line", "past the end")
+    eq(run_at(t, 0, 1), "line 0 is not an rh anchor line", "line 0")
+    eq(run_at(B(1) + "\n", 1, 1), "no element before the anchor on line 1", "nothing before")
+    for s in (0, -1, "1", True, 1.5, None):
+        eq(run_at(t, 2, s), "span must be an integer of 1 or more", "span " + repr(s))
+    for ln in ("2", None, True, 2.0):
+        eq(run_at(t, ln, 1), "line must be an integer", "line " + repr(ln))
 
 
 @case("IDOK", "block_id_ok: note id, '.b', two or more ASCII digits, nothing else")
