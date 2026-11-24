@@ -120,7 +120,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      `FORMULA-RAW <block id>` per block in note order, on stdout after KIND-NOTE; exit unchanged, nothing written. Formulas
      are not converted here (F26 will). Cases BT1 BT2 BT3 BT4 BT5 BT6 BT7 BT8 FR1 FR2 FR3 FR4.
   F24 THE RECOGNITION (F24b). group/<id>.json and the step summaries carry `root_role`, `root_kind`, `recognition` (null for a
-     group with no claim; never in `counts`). A card with a claim shows, between its premises line and its status lines, the form
+     group with no claim; never in `counts`). A card with a claim shows, between its premises (a line, or a list) and its status lines, the form
      line `recognition_<role>_<form>_line` (role: root_role, else the class of the root's kind), the difference, a line per citation
      (an `<a class=citation>` with an https url, the one external anchor besides a reaction anchor), `established_by_line` or
      `established_not_traced_line` (a named statement only), and `recognition_label_line`; no recognition shows the not-written line;
@@ -174,7 +174,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      marker shows only markers and data. Cases P1a P1b.
   P2 A card, open, in order: the claim (a bare declarative) or the null-claim heading, the conditions directly under it, the
      premises each a link to the premise's card (for a null-claim step too; a card with no premises has no premises heading
-     and no paragraph), the statement line, the proof line, the open-items line (only when its count is above zero), the idea
+     and no premises container), the statement line, the proof line, the open-items line (only when its count is above zero), the idea
      (the first sentence of the argument inside its frame, when an argument block exists); all outside the closed section.
      Text from the data is escaped. Cases P2a P2b PRM1 PRM2 PRM3 OPN1.
   P3 Evidence (Lean module and name and kind, file, lines, hash, blocks, open items) is a closed `<details>` per card; its
