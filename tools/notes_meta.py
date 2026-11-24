@@ -3938,6 +3938,29 @@ def _():
     eq(REFUSED_LIST_SHAPES, (), "restored")
 
 
+@case("F33d", "LIST-SHAPE-REFUSED on a sketch with no span (or span 1) over a loose list; a refused list that is not the last of a run "
+              "(the first of loose, paragraph, ordered: the non-target finding), and one on the last list with the first clean; "
+              "a bad span or an illegal run is one finding, never that and a shape finding")
+def _():
+    tail = " whose shape the renderer shows differently: "
+    one = lambda **kw: "Idea.\n" + _AB() + "\n\n- a\n\n- b\n" + _SB(**kw) + "\n"   # the loose list is on lines 9-11, the sketch on 12
+    three = lambda a, b: "Idea.\n" + _AB() + "\n\n" + a + "\nMid.\n\n" + b + _SB(span=3) + "\n"   # a list, a paragraph, a list; the sketch on line 17
+    loose_first = three("- a\n\n- b\n", "1. x\n2. y\n")   # lists on lines 9-11 and 15-16
+    loose_last = three("- a\n- b\n", "1. x\n\n2. y\n")   # lists on lines 9-10 and 14-16
+    saved = globals()["REFUSED_LIST_SHAPES"]
+    try:
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(_sx(one()), ["LIST-SHAPE-REFUSED 01-a.md:12 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(one(span=1)), ["LIST-SHAPE-REFUSED 01-a.md:12 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(loose_first), ["LIST-SHAPE-REFUSED 01-a.md:17 block '01.b02' covers a list (first line 9)" + tail + "loose"], 1)
+        fe(_sx(loose_last), ["LIST-SHAPE-REFUSED 01-a.md:17 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(one(span=0)), ["BLOCK-PROBLEM 01-a.md:12 block '01.b02': span: must be an integer of 1 or more"], 1)
+        fe(_sx(one(span=2)), ["SKETCH-RUN 01-a.md:12 block '01.b02': the run holds another rh anchor line (line 7)"], 1)
+    finally:
+        globals()["REFUSED_LIST_SHAPES"] = saved
+    eq(REFUSED_LIST_SHAPES, (), "restored")
+
+
 @case("SKC7", "the format problems of a sketch and of span come through as BLOCK-PROBLEM: span on an argument, a bad basis, compiled "
               "without a build, source with a build")
 def _():
