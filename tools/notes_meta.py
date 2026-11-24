@@ -109,6 +109,19 @@ CONTRACT (each line is a self-test case, written before the code)
   F6 The run prints `recognition: K known, V variant, N not recognised, O open in literature, M not written, of G groups with a
      claim` after the `claim basis:` line; a group with a claim and no usable recognition counts M, a null claim counts in none;
      K + V + N + O + M = G is asserted from the counts (SUM-RECOGNITION).
+ Sketches (F25a). A block belongs to the group named in its note's header and ANCHORS a root of that group when its decls
+  include the root (matched by module and name); counts run over ALL the notes of the group. Cases SKC1 to SKC8, ARGNP.
+  S1 SKETCH-NO-ARGUMENT: each root a sketch anchors needs an argument block that anchors it, by any reader, in any note of the group.
+  S2 SKETCH-DUPLICATE: at most one sketch per group root; a later one is refused naming both block ids.
+  S3 SKETCH-ROLE: each anchored root is judged by its own role: the group's root_role when it has a claim and a usable role (only
+     `result`), else the kind of the root's one row (only theorem or lemma). A root with no row or several is not judged here
+     (UNRESOLVED and AMBIGUOUS are the findings already coded).
+  S4 SKETCH-ROOT: the decls of a sketch must include at least one root of its group, and need not list every root; a note whose
+     group is not in the outline (or is `root`) anchors none.
+  S5 SKETCH-RUN: the reason rh_anchor.run_at gives for the block's span (default 1), when span is a valid integer.
+  S6 ARGUMENT-NO-PROOF (a listing, exit unchanged): an argument anchored on a root of its group whose kind is not theorem or
+     lemma; a prompt to the reader, since a definition can carry small proofs inside.
+  The note line and `blocks by kind:` count seven kinds.
 
 LIMIT. The tool checks the SHAPE of the metadata and that every name resolves to a row; it does not read a claim or a
 block and cannot say that it is right. Not checked: whether a claim follows the translation rules (whether a definition
@@ -117,7 +130,10 @@ whether a note's header id matches its file name or is used by another note (onl
 notes); the SHA-256 values of the file table, and whether a quoted lean block is verbatim (check_lean_blocks.py
 does that). Title rules: only the two a script can check are checked, that a list_title is not only code spans
 and does not end in a parenthetical `(...)`; every other rule on titles (plain words, saying what the note is
-about, length, no status in the words) needs a reader. Extra keys are UNKNOWN-KEY for the outline, a group and a
+about, length, no status in the words) needs a reader. The line `sketches: S of P steps with a proof read` is NOT printed
+here: what a step is belongs to the builder, so it counts there. note_cite.py is unchanged: its --kind takes its choices from
+rh_anchor.KINDS, and a sketch cannot be valid through it for want of a basis flag (BAD-BLOCK). A sketch anchored on a list
+is asked for `item` like any block on a list. Extra keys are UNKNOWN-KEY for the outline, a group and a
 claim only; a roots or defs_opened entry with extra keys is accepted, and a JSON key repeated in the outline keeps
 its last value. Notes are the files directly in NOTES_DIR that match the pattern, so docs/tools.md, which sits
 beside the notes, is not a note; a finding names a note by its name in NOTES_DIR and the outline and the table by
