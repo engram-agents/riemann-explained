@@ -3862,6 +3862,67 @@ def _():
     fe(r, ["SKETCH-RUN 01-a.md:3 block '01.b01': span 2 asks for more elements than the note has before this anchor (only 1)"], 1)
 
 
+def _sk_list_notes():
+    """F33 fixtures: the sketch's run ends in a numbered list; the same list under an argument."""
+    lst = "Idea.\n" + _AB() + "\n\nIntro.\n\n1. a\n2. b\n"   # the argument is on line 7, the list on lines 11-12, the next anchor on line 13
+    return lst + _SB(span=2) + "\n", lst + _AB("01.b02") + "\n", lst + _SB(span=1) + "\n"
+
+
+@case("F33a", "a sketch whose run ends in a list is not ITEM-REQUIRED, span 2 or span 1; the same block as an argument is; "
+              "an argument elsewhere keeps ITEM-REQUIRED while another list lies in a sketch's run")
+def _():
+    sk2, arg, sk1 = _sk_list_notes()
+    clean(_sx(sk2))
+    clean(_sx(sk1))
+    fe(_sx(arg), ["ITEM-REQUIRED 01-a.md:13 block '01.b02': a list needs 'item' (1-based, like 'row')"], 1)
+    both = ("Idea.\n" + _AB() + "\n\n- a\n- b\n" + _AB("01.b02") + "\n\nIntro.\n\n1. a\n2. b\n" + _SB("01.b03", span=2) + "\n")
+    fe(_sx(both), ["ITEM-REQUIRED 01-a.md:11 block '01.b02': a list needs 'item' (1-based, like 'row')"], 1)
+
+
+@case("F33b", "item on a sketch is the refusal naming the key and nothing else: on a list, on a paragraph, with a bad value; "
+              "an argument with item on a paragraph keeps NOT-A-LIST")
+def _():
+    sk2, _arg, _sk1 = _sk_list_notes()
+    msg = "BLOCK-PROBLEM 01-a.md:%d block '01.b02': item: a sketch covers whole elements and carries no item"
+    fe(_sx(sk2.replace(_SB(span=2), _SB(span=2, item=1))), [msg % 13], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item=1) + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item="x") + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item=9) + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + BL("01.b02", kind="argument", reader="R", date="2026-11-23", decls=[FOO], item=1) + "\n"),
+       ["NOT-A-LIST 01-a.md:7 block '01.b02' carries item but its target is of type 'paragraph', not a list"], 1)
+
+
+@case("F33c", "LIST-SHAPE-REFUSED on a sketch covers every list in its run: the target, and a list that is not the target (naming its first line); "
+              "the same shape in a paragraph-only run, or in a list before the run, is clean; an argument on a list is unchanged")
+def _():
+    sk2, _arg, _sk1 = _sk_list_notes()
+    tail = " whose shape the renderer shows differently: "
+    saved = globals()["REFUSED_LIST_SHAPES"]
+    target_loose = "Idea.\n" + _AB() + "\n\nIntro.\n\n- a\n\n- b\n" + _SB(span=2) + "\n"   # the list is on lines 11-13, the sketch on 14
+    inner_loose = "Idea.\n" + _AB() + "\n\n- a\n\n- b\n\nClosing.\n" + _SB(span=2) + "\n"   # the list on lines 9-11, the closing paragraph on 13
+    before = "- a\n\n- b\n\nIdea.\n" + _AB() + "\n\nSketch.\n" + _SB() + "\n"   # the list is above the argument, outside the run
+    para_only = "Idea.\n" + _AB() + "\n\nOne.\n\nTwo.\n" + _SB(span=2) + "\n"
+    try:
+        for t in (target_loose, inner_loose, before, para_only, sk2):
+            clean(_sx(t))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(_sx(target_loose), ["LIST-SHAPE-REFUSED 01-a.md:14 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(inner_loose), ["LIST-SHAPE-REFUSED 01-a.md:14 block '01.b02' covers a list (first line 9)" + tail + "loose"], 1)
+        clean(_sx(before))
+        clean(_sx(para_only))
+        clean(_sx(sk2))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"ordered"}),)
+        fe(_sx(sk2), ["LIST-SHAPE-REFUSED 01-a.md:13 block '01.b02' anchors a list" + tail + "ordered"], 1)
+        two = "Idea.\n" + _AB() + "\n\n- a\n- b\n\nOne.\n\n1. a\n2. b\n" + _SB(span=3) + "\n"   # a bullet list, a paragraph, a numbered list
+        fe(_sx(two), ["LIST-SHAPE-REFUSED 01-a.md:15 block '01.b02' anchors a list" + tail + "ordered"], 1)
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(go(notes={"01-a.md": NOTE(body="- a\n\n- b\n" + BL(item=1) + "\n")}),
+           ["LIST-SHAPE-REFUSED 01-a.md:9 block '01.b01' anchors a list" + tail + "loose"], 1)
+    finally:
+        globals()["REFUSED_LIST_SHAPES"] = saved
+    eq(REFUSED_LIST_SHAPES, (), "restored")
+
+
 @case("SKC7", "the format problems of a sketch and of span come through as BLOCK-PROBLEM: span on an argument, a bad basis, compiled "
               "without a build, source with a build")
 def _():

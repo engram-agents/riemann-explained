@@ -1765,6 +1765,30 @@ def _():
     eq(problems(vb(kind="nope", span=1)), ["kind: must be one of " + ", ".join(KINDS)], "a bad kind says only the kind")
 
 
+@case("SK5", "F33: a sketch carries no item (it covers whole elements): the refusal names the key and is the only problem, "
+             "a bad value or a row beside it adds none; the other kinds keep item as before")
+def _():
+    msg = "item: a sketch covers whole elements and carries no item"
+    for it in (1, 2, 0, "1", True):
+        eq(problems(SKB(item=it)), [msg], "item " + repr(it))
+    eq(problems(SKB(item=1, row=1)), [msg], "item with row")
+    eq(problems(dict(vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL]), item=1)), [], "an argument keeps item")
+    eq(problems(dict(vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL]), item=0)), ["item: must be an integer of 1 or more"], "bad item")
+
+
+@case("RN7", "F33: run_lists gives the first line, last line and shape of each list in a run, in text order, from the shape computation "
+             "of the elements; no list, or an illegal run, gives []")
+def _():
+    t = "- a\n\n- b\n\nOne.\n\n1. x\n2. y\n" + B(1) + "\n"
+    eq(run_lists(t, 9, 1), [(7, 8, {"loose": False, "last_nested": False, "ordered": True, "followed_by_paragraph": False})], "span 1: the target")
+    want = [(1, 3, {"loose": True, "last_nested": False, "ordered": False, "followed_by_paragraph": False}),
+            (7, 8, {"loose": False, "last_nested": False, "ordered": True, "followed_by_paragraph": False})]
+    eq(run_lists(t, 9, 3), want, "span 3: both lists, in text order")
+    eq(run_lists("A.\n\nB.\n" + B(1) + "\n", 4, 2), [], "paragraphs only")
+    eq(run_lists("A.\n" + B(1) + "\n", 2, 5), [], "an illegal run")
+    eq(run_lists("A.\n", 1, 1), [], "not an anchor line")
+
+
 def drop_key(d, key):
     return {k: v for k, v in d.items() if k != key}
 
