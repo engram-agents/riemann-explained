@@ -106,10 +106,19 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      single backticks on one line is <code>, escaped; nothing else is markup) wherever a title is shown: the level-0 list, the
      notes list and the corrections list of a card. The JSON keeps the title as written. The source check compares what a
      reader sees: before the whole-line compare the backticks of a span are removed (each span replaced by its content) from
-     the text of a claim, the conditions and the list titles, on the JSON and data.js side and on the copied title lines; the
+     the text of a claim, the conditions, the list titles, the text of a block and a block's first sentence, on the JSON and data.js side and on the copied title lines; the
      page is not compared inside <code>, so a wrapped release line is found in the JSON files, not on the page. Doubled
      backticks, an unpaired backtick and a pair over a line break are not spans and are compared as written. Cases TITLE1
      TITLE2 SPAN1 SPAN2 SPAN3 SPAN4.
+  F28 BLOCK TEXT GOES THROUGH THE SAME RULE. The text of an argument or interpretation block (the evidence list) and the first
+     sentence of an argument block (the card) are rendered by the span rule, the frame staying escaped text. The block text is
+     ONE paragraph, its source lines joined by spaces before the rule is applied, so a span that runs over a source line break
+     is a span to the reader (an unpaired backtick, doubled backticks and an empty pair stay literal). The JSON and data.js keep
+     the text and the first sentence as written. The source check removes span backticks from the `text` of a block and from a
+     `first_sentence` on the JSON and data.js side, as for a claim (doubled backticks compare as written). A block whose text,
+     once the content of its single-backtick spans is taken out, holds `$`, `\\(`, `\\[` or `\\begin{` is LISTED, one line
+     `FORMULA-RAW <block id>` per block in note order, on stdout after KIND-NOTE; exit unchanged, nothing written. Formulas
+     are not converted here (F26 will). Cases BT1 BT2 BT3 BT4 BT5 BT6 FR1 FR2.
   F9 The run prints the builder's own line `claim basis: R read, C census, M without (treated as read)` (without the
      parenthesis when M is 0), counted over the non-null claims of the outline, beside the checker's line of the same
      counts. Case BAS1.
@@ -250,7 +259,9 @@ distinguish: it shows steps_proof_not_applicable_line whenever no step has a pro
 top-level steps is not reachable on a real table (the table holds the eight kinds only). The source check ranges over what a reader sees: the text of claims, conditions and note titles
 with the backticks of a span removed (on the JSON and data.js side, and on the copied title lines; the page skips <code>), the
 other values as written; a release line that is inside a longer sentence, or that is split by a span in its middle, is still not
-seen. A code span (CODE) is the one place the page turns
+seen. FORMULA-RAW is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
+span, is listed too, and a formula inside a code span is not; F26 will convert formulas. A K1 source line is compared as it
+stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
 claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
 seen in the JSON and not on the page. The nine keys of PHR must hold their placeholders, so a value that says the fact without
