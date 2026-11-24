@@ -2866,7 +2866,8 @@ SD_MSG = "source_date must be a date YYYY, YYYY-MM or YYYY-MM-DD"
 
 
 @case("NUL1", "a null result or difference is refused like an empty one, on every form that takes the key; on not_recognised the key's "
-              "presence is the offence (RECOGNITION-FORBIDDEN) whatever the value, null, empty string or empty list")
+              "presence is the offence (RECOGNITION-FORBIDDEN) whatever the value, null, empty string or empty list; for a null or empty "
+              "result or difference the BAD-VALUE finding co-fires and is pinned, in that order")
 def _():
     p = " recognition: "
     bad = lambda k: [_fl("BAD-VALUE", p + f"{k} must be a non-empty string")]
@@ -2883,9 +2884,10 @@ def _():
     nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
     for k, vals in (("result", (None, "")), ("citations", ([],)), ("difference", (None, ""))):
         for v in vals:
-            r = _ro(_rg(rec=dict(nr, **{k: v})))
-            ok(_fl("RECOGNITION-FORBIDDEN", p + f"key {k!r} is not allowed with form 'not_recognised'") in r.f, r.out)
-            eq(r.rc, 1, "exit code " + r.out)
+            forb = _fl("RECOGNITION-FORBIDDEN", p + f"key {k!r} is not allowed with form 'not_recognised'")
+            bv = _fl("BAD-VALUE", p + f"{k} must be a non-empty string")
+            # BAD-VALUE co-fires with the FORBIDDEN finding when the value is null or empty (result, difference); a list has no such check
+            fe(_ro(_rg(rec=dict(nr, **{k: v}))), [forb] if k == "citations" else [forb, bv], 1)
 
 
 @case("NUL2", "a null in a citation: source, where, opened_by and opened_on are refused as BAD-VALUE (a non-empty string is needed), "
@@ -2960,8 +2962,8 @@ def _():
        [_fl("MISSING-KEY", " recognition citations[0]: missing key 'source_date' (says_open is true)")], 1)
 
 
-@case("CIT1", "a citation: source, where, opened_by, opened_on are required non-empty strings; opened_on and source_date are real "
-              "YYYY-MM-DD dates; says_open exactly true or false; url starts https://; an unknown key is refused; each names the "
+@case("CIT1", "a citation: source, where, opened_by, opened_on are required non-empty strings; opened_on is a real full "
+              "YYYY-MM-DD date and source_date a real date that may also be a year or a year-month (CIT1b); says_open exactly true or false; url starts https://; an unknown key is refused; each names the "
               "group, the citation index and the key")
 def _():
     c = " recognition citations[1]: "
