@@ -3280,7 +3280,7 @@ FACES_DECLS = DECLS + ("A.H\tdefa\tdef\t1\t2\ttext-extent\n"
                        "A.H\tdefc\tdef\t5\t6\ttext-extent\n"
                        "A.H\tdefd\tdef\t7\t8\ttext-extent\n"
                        "A.H\tstru\tstructure\t9\t10\ttext-extent\n")
-FACES_TITLES = {"fr": "the reduction step", "fd": "the top condition", "fc": "the window set", "fs": "the bundle of statements"}
+FACES_TITLES = {"fr": "The reduction step", "fd": "The top condition", "fc": "The window set", "fs": "The bundle of statements"}
 FACES_NOTES = {"00-whole.md": N00}
 
 
@@ -7576,7 +7576,7 @@ def _selftest_cases():
         return _eq((b.rc, heading(b, "fr"), names[:4], [x.text() for x in c.find("h3", "claim")[0].find("code")],
                     "qux" in c.find("details", "evidence")[0].text()),
                    (0, ('<h3 class="claim unread-claim"><span class="title-label">What this step is:</span> '
-                        '<span class="title-text">the reduction step</span></h3>', NOCLAIM),
+                        '<span class="title-text">The reduction step</span></h3>', NOCLAIM),
                     [("h3", "unread-claim"), ("p", "no-claim-label"), ("p", "statement"), ("p", "proof")], [], True))
 
     @case("TT3", "F48 face (b): a card with a null claim, a title and a DEFINITION root (fd): the heading is `Definition.` in its own span then "
@@ -7588,9 +7588,9 @@ def _selftest_cases():
         names = [(k.tag, k.cls[-1] if k.cls else "") for k in c.elems()]
         return _eq((b.rc, heading(b, "fd"), names[:4], c.find("h3", "claim")[0].text(), "defa" in c.find("details", "evidence")[0].text()),
                    (0, ('<h3 class="claim unread-claim"><span class="definition-label">Definition.</span> '
-                        '<span class="title-text">the top condition</span></h3>', NOCLAIM),
+                        '<span class="title-text">The top condition</span></h3>', NOCLAIM),
                     [("h3", "unread-claim"), ("p", "no-claim-label"), ("p", "statement"), ("p", "proof")],
-                    "Definition. the top condition", True))
+                    "Definition. The top condition", True))
 
     @case("TT4", "F48 face (c): a definition (fc) or a structure (fs) with a claim and a title: the heading is `Definition.`, the title, "
                  "`is defined as:` (each in its own span) and then the claim text as a claim is shown without a title; the conditions list is "
@@ -7601,9 +7601,9 @@ def _selftest_cases():
         return _eq((b.rc, heading(b, "fc")[0], heading(b, "fs")[0],
                     [(k.tag, k.cls[-1] if k.cls else "") for k in fc.elems()][:3], fc.find("ul", "conditions")[0].text(),
                     fc.find("p", "no-claim-label"), fs.find("p", "no-claim-label")),
-                   (0, '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">the window set</span> '
+                   (0, '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">The window set</span> '
                        '<span class="definition-join">is defined as:</span> Claim of the window set</h3>',
-                    '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">the bundle of statements</span> '
+                    '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">The bundle of statements</span> '
                     '<span class="definition-join">is defined as:</span> Claim of the bundle</h3>',
                     [("h3", "claim"), ("ul", "conditions"), ("p", "named-statement-use")],
                     "Condition of the window set holds.", [], []))
@@ -7624,8 +7624,8 @@ def _selftest_cases():
                  "a backtick span, a formula `$x$` and `& <b> \"q\"` shows <code>, MathML and the escaped characters in the heading of a no-claim "
                  "card (a) and (b) and of a claim card (c), and in the premise rows (3 more); the run's formula count includes all six")
     def _():
-        ttl = 'the set `S` of $x$ & <b> "q"'
-        want = 'the set <code>S</code> of <math><mi>x</mi></math> &amp; &lt;b&gt; &quot;q&quot;'
+        ttl = 'The set `S` of $x$ & <b> "q"'
+        want = 'The set <code>S</code> of <math><mi>x</mi></math> &amp; &lt;b&gt; &quot;q&quot;'
         b = _faces(titles={"fr": ttl, "fd": ttl, "fc": ttl})
         return _eq((b.rc, [heading(b, g)[0] for g in ("fr", "fd", "fc")], "<b>" in b.page, b.page.count(want),
                     [x for x in b.out.splitlines() if x.startswith("formulas: ")][0].startswith(
@@ -7645,8 +7645,8 @@ def _selftest_cases():
         b = _faces()
         rows = lambda g: [(a.attrs["href"], _raw(a)) for a in _card(b, g).find(cls="premises")[0].find("a")]
         return _eq((b.rc, rows("fk"), rows("fp"), len(re.findall(r"title_of\(", inspect.getsource(_render_page)))),
-                   (0, [("#fd", "the top condition"), ("#fc", "the window set"), ("#fs", "the bundle of statements"),
-                        ("#fz", "Claim without a title"), ("#fr", "the reduction step"), ("#fn", "defc")],
+                   (0, [("#fd", "The top condition"), ("#fc", "The window set"), ("#fs", "The bundle of statements"),
+                        ("#fz", "Claim without a title"), ("#fr", "The reduction step"), ("#fn", "defc")],
                     [("#fk", "Claim of the result")], 3))
 
     @case("TT8", "F47: a titled null-claim card that has premises keeps the order heading, no_claim_label line, premises, status lines")
@@ -7666,15 +7666,15 @@ def _selftest_cases():
         return _eq((b.rc, {g: b.js(f"group/{g}.json")["title"] for g in ("fr", "fd", "fc", "fs", "fz", "fn", "fk", "fp")},
                     dj["groups"]["fr"]["title"], dj["groups"]["fk"]["title"], [x for x in steps if "title" in x],
                     b.js("manifest.json")["counts"]),
-                   (0, {"fr": "the reduction step", "fd": "the top condition", "fc": "the window set", "fs": "the bundle of statements",
+                   (0, {"fr": "The reduction step", "fd": "The top condition", "fc": "The window set", "fs": "The bundle of statements",
                         "fz": None, "fn": None, "fk": None, "fp": None},
-                    "the reduction step", None, [], {"blocks": 0, "groups": 8, "notes": 1}))
+                    "The reduction step", None, [], {"blocks": 0, "groups": 8, "notes": 1}))
 
     @case("TT10", "F47 D2 and the page: a title on a result card with a claim is refused by the checker in a run (TITLE-WITH-CLAIM, exit 1, "
                   "nothing written); and with the checker bypassed (the model called directly) the page still does not show it: the heading of "
                   "fk is its claim alone, the title is on the page nowhere, and the premise row of fp is the claim")
     def _():
-        o = _faces_outline(dict(FACES_TITLES, fk="a result title that must not show"))
+        o = _faces_outline(dict(FACES_TITLES, fk="A result title that must not show"))
         b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
         with tempfile.TemporaryDirectory() as d:
             p = _plant(d, outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
@@ -7684,7 +7684,7 @@ def _selftest_cases():
             page = _render_page(m, sj, facts, False)
         c = types.SimpleNamespace(page=page)
         return _eq((b.rc, [x for x in b.out.splitlines() if x.startswith("TITLE-WITH-CLAIM")], b.existed, errors,
-                    heading(c, "fk")[0], "a result title that must not show" in page,
+                    heading(c, "fk")[0], "A result title that must not show" in page,
                     [_raw(a) for a in _card(c, "fp").find(cls="premises")[0].find("a")]),
                    (1, ["TITLE-WITH-CLAIM outline.json group 'fk': title on a group with a claim whose root is a result; the page prints no "
                         "title there (take the title out)"], False, [], '<h3 class="claim">Claim of the result</h3>', False,
@@ -7710,7 +7710,7 @@ def _selftest_cases():
                   "`BUILD-ERROR TITLE-MISSING <card id> needs a title and has none` for each, exit 1, nothing written, and no bare TITLE-MISSING "
                   "listing line; the cards with every title still build (control: the faces fixture with all six titles, exit 0)")
     def _():
-        full = dict(FACES_TITLES, fz="the untitled definition", fn="the null-claim definition")
+        full = dict(FACES_TITLES, fz="The untitled definition", fn="The null-claim definition")
         with _patched("TITLE_MISSING_REFUSES", True):
             b = _faces()
             ok_ = _faces(titles=full)
@@ -7730,6 +7730,15 @@ def _selftest_cases():
                     static_problems(b.page, b.text("data.js")), element_problems(b.page)),
                    (True, True, 1, False, [], []))
 
+    @case("TT15", "F48 (g): the build stops on the checker's refusal of a title that starts with a lowercase letter: the faces fixture with `fd` titled "
+                  "`the top condition` is exit 1 with the BAD-VALUE line, nothing written; control: the capitalised title builds")
+    def _():
+        o = _faces_outline(dict(FACES_TITLES, fd="the top condition"))
+        b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
+        return _eq((b.rc, [x for x in b.out.splitlines() if x.startswith("BAD-VALUE")], b.existed, _faces().rc),
+                   (1, ["BAD-VALUE outline.json group 'fd': title must start with a capital letter or a character that is not a lowercase letter"],
+                    False, 0))
+
     @case("TT14", "F48 (a): the card's id is not on the reader's surface: a build whose group ids are not English words (zqx1, vlp2, wnr3: a "
                   "step, a card it rests on and a card nested under that) has no text node, outside the attributes, that holds an id as a "
                   "token; control: the detector finds an id in a text node it is given")
@@ -7740,8 +7749,8 @@ def _selftest_cases():
         ids = ("zqx1", "vlp2", "wnr3")
         o = {"release": "rel-1", "groups": [
             _g("zqx1", 1, "root", 1, [FOO], _claim("A claim"), ["vlp2"]),
-            dict(_g("vlp2", 1, "root", 2, [_d("A.H", "defa")]), title="the window set"),
-            dict(_g("wnr3", 2, "vlp2", 1, [_d("A.H", "defb")]), title="the inner step")]}
+            dict(_g("vlp2", 1, "root", 2, [_d("A.H", "defa")]), title="The window set"),
+            dict(_g("wnr3", 2, "vlp2", 1, [_d("A.H", "defb")]), title="The inner step")]}
         b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
         return _eq((b.rc, [f'id="{i}"' in b.page for i in ids], hits(b.page, ids), hits("<p>see zqx1 and wnr3.</p>", ids)),
                    (0, [True, True, True], [], ["wnr3", "zqx1"]))
@@ -7768,11 +7777,11 @@ def _selftest_cases():
 
     def _shared_outline():
         gs = [_g("kpa1", 1, "root", 1, [FOO], _claim("Claim of the shared theorem")),
-              dict(_g("kpb2", 1, "root", 2, [FOO, QUX]), title="the reduction step"),
+              dict(_g("kpb2", 1, "root", 2, [FOO, QUX]), title="The reduction step"),
               _g("kpc3", 1, "root", 3, [FOO, BAR]),
               _g("kpd4", 1, "root", 4, [_d("A.H", "defa")], _claim("Claim of the window set")),
-              dict(_g("kpe5", 1, "root", 5, [_d("A.H", "defa"), _d("A.H", "defb")]), title="the combined step")]
-        gs[3]["title"] = "the window set"
+              dict(_g("kpe5", 1, "root", 5, [_d("A.H", "defa"), _d("A.H", "defb")]), title="The combined step")]
+        gs[3]["title"] = "The window set"
         return {"release": "rel-1", "groups": gs}
 
     @case("SH2", "F48 (a) the note on cards that share a root, ids that are not words (kpa1 a result with a claim, kpb2 titled with no claim, "
@@ -7786,11 +7795,11 @@ def _selftest_cases():
         p = '<p class="shared">Also a root of: '
         return _eq((b.rc, shared_lines(b, "kpa1"), shared_lines(b, "kpb2"), shared_lines(b, "kpc3"), shared_lines(b, "kpd4"),
                     shared_lines(b, "kpe5"), id_hits(b.page, ids), [f' id="{i}">' in b.page for i in ids]),
-                   (0, [p + '<a href="#kpb2">the reduction step</a>, <a href="#kpc3"><code>foo</code></a></p>'],
+                   (0, [p + '<a href="#kpb2">The reduction step</a>, <a href="#kpc3"><code>foo</code></a></p>'],
                     [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpc3"><code>foo</code></a></p>'],
-                    [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpb2">the reduction step</a></p>'],
-                    [p + '<a href="#kpe5">the combined step</a></p>'],
-                    [p + '<a href="#kpd4">the window set</a></p>'], [], [True] * 5))
+                    [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpb2">The reduction step</a></p>'],
+                    [p + '<a href="#kpe5">The combined step</a></p>'],
+                    [p + '<a href="#kpd4">The window set</a></p>'], [], [True] * 5))
 
     @case("SH3", "F48 (a) with the real strings file the note reads `This result is also part of: ` then the link (the template's own text is "
                  "escaped, the link is not); the group file still holds the ids (shared_with is data, not the reader's surface)")

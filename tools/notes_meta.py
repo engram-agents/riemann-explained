@@ -3023,7 +3023,7 @@ TITLE_BAD = ": title must be a non-empty string with no blank at either end and 
 TITLE_CLAIM = ": title on a group with a claim whose root is a result; the page prints no title there (take the title out)"
 
 
-def _tg(title="the top condition", **kw):
+def _tg(title="The top condition", **kw):
     """A group with a null claim and a title (the root is a theorem unless a root is given)."""
     return dict(G("g1", **kw), title=title)
 
@@ -3035,17 +3035,17 @@ def _():
     clean(_ro(_tg()))                                            # null claim, theorem root
     clean(_ro(_tg(roots=[R("A.C", "baz")])))                     # null claim, def root
     clean(_ro(_tg(roots=[R("A.B", "foo"), R("A.C", "baz")])))    # null claim, several roots
-    clean(_ro(_rg("named_statement", root=("A.C", "baz"), title="the top condition")))   # a definition with a claim
-    clean(_ro(_rg("object", root=("A.E", "stru"), title="the bundle")))                  # a structure with a claim
-    fe(_ro(_rg("result", title="the top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
-    fe(_ro(_rg("result", root=("A.E", "lem"), title="the top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
-    fe(_ro(_rg(None, root=("A.E", "lem"), title="the top result")),                      # no role: the kind decides, as SKETCH-ROLE does
+    clean(_ro(_rg("named_statement", root=("A.C", "baz"), title="The top condition")))   # a definition with a claim
+    clean(_ro(_rg("object", root=("A.E", "stru"), title="The bundle")))                  # a structure with a claim
+    fe(_ro(_rg("result", title="The top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+    fe(_ro(_rg("result", root=("A.E", "lem"), title="The top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+    fe(_ro(_rg(None, root=("A.E", "lem"), title="The top result")),                      # no role: the kind decides, as SKETCH-ROLE does
        [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
-    fe(_ro(_rg(None, root=("A.C", "baz"), title="the top condition")),                   # no role, a def root: allowed
+    fe(_ro(_rg(None, root=("A.C", "baz"), title="The top condition")),                   # no role, a def root: allowed
        [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")], 0)
     clean(_ro(_rg("result")))
     clean(_ro(G("g1")))
-    r = _ro(_rg("result", title="the top result"))
+    r = _ro(_rg("result", title="The top result"))
     eq(r.lines[-1], "1 notes, 1 findings, 0 warnings", "TITLE-WITH-CLAIM is an error")
 
 
@@ -3053,13 +3053,34 @@ def _():
               "a number, null, a boolean, a list and an object (a reader, a date, conditions or a recognition inside it) are BAD-VALUE naming "
               "the group and the key; a bad title on a result with a claim is BAD-VALUE alone; control: a plain title is clean")
 def _():
-    for bad in ("", "   ", " x", "x ", "a\nb", "a\rb", "a\u2028b", "x\n", 3, None, True, ["x"],
+    for bad in ("", "   ", " X", "X ", "A\nB", "A\rB", "A\u2028B", "X\n", 3, None, True, ["X"],
                 {"reader": "R", "date": "2026-11-23"}, {"text": "x", "conditions": ["c"]}, {"recognition": REC}):
         fe(_ro(_tg(bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
         fe(_ro(_rg("result", title=bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
         fe(_ro(_rg("named_statement", root=("A.C", "baz"), title=bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
-    clean(_ro(_tg("a noun phrase with `code` and $x$")))
-    clean(_ro(_tg("a title with an inner  double blank")))
+    clean(_ro(_tg("A noun phrase with `code` and $x$")))
+    clean(_ro(_tg("A title with an inner  double blank")))
+
+
+TITLE_CAP = ": title must start with a capital letter or a character that is not a lowercase letter"
+
+
+@case("TTL4", "F48 (g): a title whose FIRST character is a lowercase letter (`c.isalpha() and c.islower()`) is BAD-VALUE naming the group and the "
+              "key, on a group with a null claim, a definition with a claim, and a result with a claim (there BAD-VALUE alone, not "
+              "TITLE-WITH-CLAIM): Latin `the top condition`, accented `étale cover`, Greek `ζ-function` (an author can rephrase) and a single "
+              "lowercase letter; a title that starts with an uppercase letter, a digit, a quote, a bracket, a symbol or a letter with no case "
+              "passes; the blank, empty and line-break rules are unchanged and win when both apply (one finding, the shape message)")
+def _():
+    for bad in ("the top condition", "\u00e9tale cover", "\u03b6-function", "x", "\u00df-factor"):
+        fe(_ro(_tg(bad)), [_fl("BAD-VALUE", TITLE_CAP)], 1)
+        fe(_ro(_rg("named_statement", root=("A.C", "baz"), title=bad)), [_fl("BAD-VALUE", TITLE_CAP)], 1)
+        fe(_ro(_rg("result", title=bad)), [_fl("BAD-VALUE", TITLE_CAP)], 1)
+    for ok_ in ("The top condition", "2-adic valuation", "(Green) input", "\u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac", '"Quoted" term',
+                "\u221e-category", "\u4e2d\u6587", "\u00c9tale cover", "X"):
+        clean(_ro(_tg(ok_)))
+        clean(_ro(_rg("named_statement", root=("A.C", "baz"), title=ok_)))
+    for both in (" the top", "the top ", "the\nx", "the top\u2028x", "", "   "):   # lowercase and a shape fault: the shape message alone
+        fe(_ro(_tg(both)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
 
 
 @case("TTL3", "the rest of the outline is unchanged by the key: any other key is still UNKNOWN-KEY beside a title, the count line is the same "
@@ -3069,9 +3090,9 @@ def _():
     fe(_ro(dict(_tg(), reader="R")), [_fl("UNKNOWN-KEY", ": unknown key 'reader'")], 1)
     want = "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 0 premise links"
     plain = _ro(G("g1"), G("g2", order=2))
-    titled = _ro(_tg(), dict(G("g2", order=2), title="the second"))
+    titled = _ro(_tg(), dict(G("g2", order=2), title="The second"))
     eq(([want in x.lines for x in (plain, titled)], plain.f, titled.f), ([True, True], [], []), "count line")
-    r = _ro(_rg("result", title="one"), _rg("result", gid="g2", order=2, title="two"), _rg("result", gid="g3", order=3))
+    r = _ro(_rg("result", title="One"), _rg("result", gid="g2", order=2, title="Two"), _rg("result", gid="g3", order=3))
     fe(r, [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM, "g1"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM, "g2")], 1)
 
 
