@@ -259,7 +259,7 @@ distinguish: it shows steps_proof_not_applicable_line whenever no step has a pro
 top-level steps is not reachable on a real table (the table holds the eight kinds only). The source check ranges over what a reader sees: the text of claims, conditions and note titles
 with the backticks of a span removed (on the JSON and data.js side, and on the copied title lines; the page skips <code>), the
 other values as written; a release line that is inside a longer sentence, or that is split by a span in its middle, is still not
-seen. FORMULA-RAW is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
+seen. FORMULA-RAW ranges over argument and interpretation blocks only (the `sketch` kind joins in the F24b change). It is a mark detector, not a formula parser: a dollar amount, or any `$`, `\\(`, `\\[` or `\\begin{` outside a code
 span, is listed too, and a formula inside a code span is not; F26 will convert formulas. A K1 source line is compared as it
 stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
 claim or condition text into markup, and the only new element is <code>: the page's B1 and P6 checks skip the text inside <code>
