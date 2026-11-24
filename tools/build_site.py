@@ -158,12 +158,15 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      title only; its reader and date are in the Evidence block list (the who-span of its block). Cases PV1 to PV12, and the cases that
      moved with it (R6 B7a B7c B7f F1b H1 C1 C1b RDR1 PRF1 PRF2 PH1 PHR1 PHR2 PHR4 PHR5 PHR6 PHR7 BT2 RD1 RD2 RD3 RL1 RE1 RS3 PB1 PB3 DF1
      DF3 DF4 SK2 SK8 LK1 LK2 LK3 ESC1 MK1).
-  F26B-E THE ELEMENTS OF THE PAGE. One module-level list, ALLOWED_ELEMENTS (41 elements, 51 element-attribute pairs), names every element the
-     built page may hold and the attributes of each: the 29 elements the builder emits (measured over the self-test fixtures and a build of
-     the notes of the repository) and the 12 of MathML (math mrow mi mn mo msub msup msubsup mover munder munderover mspace; attributes
-     mathvariant, stretchy, form on those only, width on mspace alone and accent on mover alone). `element_problems(page)` reads the BUILT page with html.parser; an element or an
-     attribute outside the list is `PAGE-STATIC element <name>` or `PAGE-STATIC attribute <name> on <element>` (exit 1, nothing written),
-     the same code as the request-making findings. Cases EL1 EL2 EL3.
+  F26B-E THE ELEMENTS OF THE PAGE. One module-level list, ALLOWED_ELEMENTS (40 elements, 53 element-attribute pairs), names every element the
+     built page may hold and the attributes of each, and nothing else: the 28 elements and 15 pairs the builder emits (measured over the
+     self-test fixtures and a build of the notes of the repository; an entry no path emits is not kept, as `<time>` went with F37) and the
+     MathML set, reserved for the converter and emitted by no path yet (12 elements: math mrow mi mn mo msub msup msubsup mover munder
+     munderover mspace; attributes mathvariant, stretchy and form on those only, width on mspace alone and accent on mover alone).
+     `element_problems(page)` reads the BUILT page, after it is rendered and before anything is written, with html.parser (not the CSS, not
+     data.js): an element or an attribute outside the list is `PAGE-STATIC element <name>` or `PAGE-STATIC attribute <name> on <element>`
+     (exit 1, nothing written), the same code as the request-making findings. `<script>`, `<annotation>`, an event attribute and an
+     `href` on a MathML element are each refused. Cases EL1 to EL4.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
   F29 The base name of the block's file and the range of its lines are shown in the Evidence section (F37 moved them out of the frame;
@@ -572,21 +575,22 @@ def static_problems(page, js):
 
 
 _HTML_ELEMENTS = {"a": ("class", "href"), "article": ("class", "id"), "aside": (), "body": (), "code": (), "dd": (), "details": ("class",),
-                  "div": ("class",), "dl": (), "dt": (), "h1": (), "h2": (), "h3": ("class",), "head": (), "header": (), "html": ("lang",),
-                  "li": (), "main": (), "meta": ("charset",), "ol": (), "p": ("class",), "section": ("class",), "span": ("class",),
-                  "strong": (), "style": (), "summary": (), "time": (), "title": (), "ul": ("class",)}
+                  "div": ("class",), "dl": ("class",), "dt": (), "h1": (), "h2": (), "h3": ("class",), "head": (), "header": (), "html": ("lang",),
+                  "li": ("class",), "main": (), "meta": ("charset",), "ol": (), "p": ("class",), "section": ("class",), "span": ("class",),
+                  "strong": (), "style": (), "summary": (), "title": (), "ul": ("class",)}
 _MATHML_ELEMENTS = ("math", "mrow", "mi", "mn", "mo", "msub", "msup", "msubsup", "mover", "munder", "munderover", "mspace")
 _MATHML_ATTRIBUTES = ("mathvariant", "stretchy", "form")
-# Every element the built page may hold, with the attributes each may carry: the 29 elements the builder emits (measured over the
-# self-test fixtures and a build of the notes of the repository, not guessed) and the 12 of MathML Core that the formula converter writes
-# (F26B), with mathvariant, stretchy and form on the MathML elements only, width on <mspace> alone and accent on <mover> alone. 41 elements, 51 element-attribute pairs.
+# Every element the built page may hold, with the attributes each may carry, and nothing else: the 28 elements and 15 pairs the builder
+# emits (measured over the self-test fixtures and a build of the notes of the repository, not guessed; an entry no path emits is
+# removed, EL4) and the 12 of MathML Core RESERVED FOR THE CONVERTER (no path emits them yet), with mathvariant, stretchy and form on
+# the MathML elements only, width on <mspace> alone and accent on <mover> alone. 40 elements, 53 element-attribute pairs.
 ALLOWED_ELEMENTS = dict(_HTML_ELEMENTS, **{t: _MATHML_ATTRIBUTES for t in _MATHML_ELEMENTS})
 ALLOWED_ELEMENTS["mover"] = _MATHML_ATTRIBUTES + ("accent",)   # the overline of \\bar
 ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element that may carry a width: the spacing commands of a formula
 
 
 def element_problems(page):
-    """What the page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list
+    """What the BUILT page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list
     and `attribute <name> on <element>` for each attribute an allowed element may not carry. The BUILT page is read with html.parser;
     an end tag, a comment and the doctype are not looked at."""
     found = set()
