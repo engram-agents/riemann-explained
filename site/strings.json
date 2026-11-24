@@ -129,5 +129,8 @@
  "edition_note_card": "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
  "edition_link_label": "first edition",
  "edition_href_tree": "https://github.com/engram-agents/riemann-explained/tree/notes-edition-1",
- "edition_href_blob": "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}"
+ "edition_href_blob": "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}",
+ "title_label": "What this step is:",
+ "definition_label": "Definition.",
+ "definition_join": "is defined as:"
 }

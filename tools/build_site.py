@@ -22,7 +22,7 @@ of the outline (a field of the GROUP, null-claim groups included; [] when none);
 EVERY root of the group has the fact (the proof_read of a group whose roots have no proof is null, F22); `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
 roots_proof_read, roots_proof_applicable, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
 `claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `premises`, `roots`, `blocks`,
-`open_items`, `notes` and `commits`, and each root of it has `statement_read` (a boolean) and `proof_read` (a boolean, or null for a root without a proof). level0.json has `facts` ({steps,
+`open_items`, `notes`, `title` (the group's title as written, null when it has none; level0.json and level1.json carry none) and `commits`, and each root of it has `statement_read` (a boolean) and `proof_read` (a boolean, or null for a root without a proof). level0.json has `facts` ({steps,
 statement_read, statement_not_read, proof_read, proof_not_read, proof_not_applicable, proof_applicable}, counted over the level-1 steps) and `totals`, which holds
 `open_items`, the number of distinct open not_read blocks of the whole outline.
 
@@ -305,7 +305,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      text) is only LISTED when it does: one line `WORD-NOTE <where> <word>` per text and word (`of the proof` stands for
      that phrase or a percent sign) on stdout, exit unchanged, the count in the `built:` line; the text is never edited.
      Cases R3a R3b WN1 WN2 WN3.
-  H1 A group whose claim is null shows its root's Lean name and the strings file's `no_claim_label` in the heading (not a
+  H1 A group whose claim is null and that has no outline title (F47) shows its root's Lean name and the strings file's `no_claim_label` in the heading (not a
      status), and its status lines tell the facts: a null claim whose root has a reading block says the statement is read.
      Case H1.
   E1 The premises of a card are linked in the order of the outline, for a null-claim step as for a claimed one. Cases ORD1 PRM2.
@@ -318,7 +318,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   R5 Every card carries exactly one roots-only sentence (F39), chosen by whether the card shows counts, which it does when it has
      more than one root: `roots_only_note` on such a card, `root_only_note_single` (no placeholder) on every other card (one root, or
      none), never both and never neither; a declaration that is a root of two groups is
-     marked shared with the other group's id and counted once in totals. Cases R5 RO1 RO2 RO3.
+     marked shared with the other card, named by its title as a premise row names it and linked to it (F48 a; SH1 to SH3), and counted once in totals. Cases R5 RO1 RO2 RO3.
   PL The premises of a card (F40): one premise is the sentence line `<p class="premises">label link</p>`; two or more are
      `<div class="premises"><p>label</p><ul><li>link</li>...</ul></div>`, one item per premise in the outline's order. Each link is
      the in-page `#<id>` link with the premise's title, as before; the data is unchanged. Cases PL1 PL2 PL3 (PRM2 moved).
@@ -433,6 +433,28 @@ placeholders and the builder-sentence rules (R3: forbidden words, no percent sig
 declares {reader} and {date} (a detector list that may use them; the real file holds none). (d), a record of the publishing commit
 written by the builder, is not done here.
 
+F47, F48 THE TITLE OF A CARD (cases TT1 to TT14, F48WORD1). A group may carry an author-written `title` (notes_meta: a plain one-line
+string; TITLE-WITH-CLAIM on a group with a claim whose root is a result). A card with no claim and a title prints, in the heading,
+the strings key `title_label` (`What this step is:`) in <span class="title-label"> and the title in <span class="title-text">, and
+directly under the heading the `no_claim_label` in <p class="no-claim-label">; when it is a definition card by notes_meta's one predicate definition_card (a usable root_role decides, else no root of any number is a theorem or lemma; the checker uses the same function) (a definition or
+structure card) the label is `definition_label` (`Definition.`, <span class="definition-label">) instead, with no joining word. A
+definition or structure card with a claim and a title has the heading `definition_label` and the title only (F48 i); the statement is
+the FIRST PARAGRAPH under the heading, <p class="definition-statement">: the title, `definition_join` (`is defined as:`) and the claim
+as a claim is rendered (same render, formulas logged under the card id), in normal weight (no CSS of its own); the conditions list
+follows that paragraph, then the rest as before. A definition card with no claim prints no join anywhere (TT18). A claim and no title, and
+no claim and no title, print as before; a result card with a claim never shows a title. The title goes through _rich (span rule, formulas)
+with the card id as `where`. The CSS rule `.title-text { font-weight: normal; }` keeps the title out of the heading's
+weight (normal weight, no colour: the page's CSS holds no colour). title_of, the premise row's
+name for another card, is the title when the card shows one, else the claim, else the root name; its two callers are the premise row
+and the shared-root note. The card's id is on the page only as the `id` attribute and in `#` links (TT14, SH2): the shared-root note
+(the strings key `shared_note`, its {groups} placeholder) names each OTHER card that shares the root by title_of, as <a href="#id">,
+joined by `, ` in the order of the ids; the group file keeps the ids (`shared_with`). A card
+that needs a title (no claim, or a definition or structure card) and has none is listed `TITLE-MISSING <card id>`, in the order of the
+page, one line each, and the line `titles: T of K cards that need one` follows the facts check and the count lines; when the module
+constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISSING (exit 1) and no listing is printed. The
+constant is False. F48WORD1 compares definition_label and definition_join with the wording file named by the environment variable
+RH_F48_WORDING and is skipped when it is not set.
+
 usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX]
                      [--notes-commit REV --repo DIR] [--force]
        build_site.py --selftest [--only ID,ID]
@@ -504,8 +526,8 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "sketch_basis_source", "sketch_basis_compiled", "sketch_note", "sketch_missing_line", "unexpanded_heading",
              "argument_frame_no_proof", "evidence_statement_read_line", "evidence_statement_census_line", "evidence_proof_read_line",
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
-             "evidence_sketch_build_line", "edition_note_first_screen", "edition_note_card", "edition_link_label", "edition_href_tree",
-             "edition_href_blob")
+            "evidence_sketch_build_line", "title_label", "definition_label", "definition_join", "edition_note_first_screen", "edition_note_card",
+            "edition_link_label", "edition_href_tree", "edition_href_blob")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
@@ -556,8 +578,42 @@ REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "ev
                          "sketch_frame": ("basis",),
                          "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"),
                          "edition_href_blob": ("file",)}
-PROOF_KINDS = frozenset(["theorem", "lemma"])   # the table kinds that HAVE a proof; any other kind has none (F22)
+PROOF_KINDS = frozenset(nm.RESULT_KINDS)   # the table kinds that HAVE a proof; any other kind has none (F22): the checker's list, not a copy
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
+# F47: while False a card that needs a title and has none is listed (`TITLE-MISSING <card id>`); when True the same cards refuse the build.
+TITLE_MISSING_REFUSES = False
+
+
+def _is_definition_card(fl):
+    """A card is a definition or structure card when it has a root and no root has a proof: no root of kind theorem or lemma (every other
+    kind of the table, the unknown ones included, names or builds something and proves nothing). A card with a theorem root is a result."""
+    return nm.definition_card(fl["root_role"], [r["kind"] for r in fl["roots"]])
+
+
+def _shown_title(sm, fl):
+    """The title the page shows for a card, or None. A card with no claim shows its title; a card with a claim shows it only when it is a
+    definition or structure card (a result with a claim is shown by its claim: the checker refuses the title there, and the page would not
+    show it if it were let through)."""
+    t = fl.get("title")
+    if not isinstance(t, str) or (sm["claim"] and not _is_definition_card(fl)):
+        return None
+    return t
+
+
+def _title_census(m):
+    """[(card id, has a title)] for the cards that need a title, in the order of the page (the chain in `order`, a card's children
+    nested under it): a card with no claim, or a definition or structure card (with a claim or without)."""
+    out = []
+
+    def walk(gid):
+        sm, fl = m.summary[gid], m.files[gid]
+        if nm.needs_title(sm["claim"] is None, fl["root_role"], [r["kind"] for r in fl["roots"]]):
+            out.append((gid, isinstance(fl.get("title"), str)))
+        for k in m.children.get(gid, []):
+            walk(k)
+    for gid in m.steps:
+        walk(gid)
+    return out
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
 RETIRED_WORDS = ("Read by us", "Partly read", "Not read yet")        # the coverage scale F19 removed
 LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
@@ -1373,6 +1429,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "premises": list(g["premises"]), "roots": root_rows,
                         "root_role": role, "root_kind": root_kind, "recognition": copy.deepcopy(recognition), "sketches": sketches,
                         "edition": {"number": 2, "date": g["edition_date"]} if g.get("edition") == 2 else None,   # F44
+                        "title": g.get("title"),
                         "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
                                        for b in brecs if b["kind"] == "not_read"], "notes": notes}
@@ -1519,7 +1576,8 @@ CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family
        "aside { border-left: 4px double; padding-left: 0.5rem; }\n"
        "code { overflow-wrap: anywhere; }\n"
        "mi { text-transform: none; font-style: italic; }\n"   # a lone <mi> must not be mapped to the math-italic block, which no common font has
-       'mi[mathvariant="normal"] { font-style: normal; }')
+       'mi[mathvariant="normal"] { font-style: normal; }\n'
+       ".title-text { font-weight: normal; }")   # F47: the title is not in the claim's heading weight (the page's CSS has no colour)
 
 
 def _e(x):
@@ -2112,19 +2170,47 @@ def _render_page(m, s, facts, dirty):
 
     def title_of(gid):
         sm = m.summary[gid]
+        ttl = _shown_title(sm, files[gid])   # F47: a card with a title is named by it; any other by its claim, else by its root name
+        if ttl is not None:
+            return _rich(ttl, where=gid)
         return _rich(sm["claim"]["text"], where=gid) if sm["claim"] else f"<code>{_e(sm['lean_name'])}</code>"
+
+    def shared_line(others):
+        """The shared-root note: the strings key's text (escaped) with {groups} filled by the other cards that share the root, each named as a
+        premise row names a card (title_of) and linked to its card by id, joined by `, ` in the order of the ids (F48 a: no id is shown)."""
+        tmpl = s["shared_note"]
+        links = ", ".join(f'<a href="#{_e(urllib.parse.quote(i, safe=""))}">{title_of(i)}</a>' for i in others)
+        out, pos = [], 0
+        for mt in _PLACEHOLDER.finditer(tmpl):
+            out.append(_e(tmpl[pos:mt.start()]))
+            out.append(links if mt.group(1) == "groups" else _e(mt.group(0)))
+            pos = mt.end()
+        out.append(_e(tmpl[pos:]))
+        return "".join(out)
 
     def card(gid):
         sm, fl = m.summary[gid], files[gid]
         o = [f'<article class="card{" unread" if sm["unread"] else ""}" id="{_e(gid)}">']
+        ttl = _shown_title(sm, fl)   # F47, F48: the title, for a card with no claim and for a definition or structure card
         if sm["claim"]:
-            o.append(f'<h3 class="claim">{_rich(sm["claim"]["text"], where=gid)}</h3>')
+            if ttl is None:
+                o.append(f'<h3 class="claim">{_rich(sm["claim"]["text"], where=gid)}</h3>')
+            else:   # F48 (c), (i): the heading is the label and the term; the statement is the first paragraph under it
+                o.append(f'<h3 class="claim"><span class="definition-label">{_e(s["definition_label"])}</span> '
+                         f'<span class="title-text">{_rich(ttl, where=gid)}</span></h3>')
+                o.append(f'<p class="definition-statement">{_rich(ttl, where=gid)} {_e(s["definition_join"])} '
+                         f'{_rich(sm["claim"]["text"], where=gid)}</p>')
             if sm["claim"]["conditions"]:
                 o.append('<ul class="conditions">' + "".join(f"<li>{_rich(c, where=gid)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
-        else:
+        elif ttl is None:
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
-        role = sm["root_role"] or ("result" if sm["root_kind"] in PROOF_KINDS else "named_statement") if sm["claim"] else None   # no role: the class of the kind
+        else:   # F47 (a), F48 (b): a fixed label, the title, then the no_claim_label line directly under the heading
+            lead = ("definition-label", s["definition_label"]) if _is_definition_card(fl) else ("title-label", s["title_label"])
+            o.append(f'<h3 class="claim unread-claim"><span class="{lead[0]}">{_e(lead[1])}</span> '
+                     f'<span class="title-text">{_rich(ttl, where=gid)}</span></h3>')
+            o.append(f'<p class="no-claim-label">{_e(sm["claim_label"])}</p>')
+        role = sm["root_role"] or ("named_statement" if nm.definition_card(None, [sm["root_kind"]]) else "result") if sm["claim"] else None   # no role: the class of the kind
         if role == "named_statement":   # F36: what kind of step this is, directly after the claim and its conditions
             o.append(f'<p class="named-statement-use">{_e(s["named_statement_use_line"])}</p>')
         if sm["premises"]:   # a step with a null claim rests on premises as well
@@ -2201,7 +2287,7 @@ def _render_page(m, s, facts, dirty):
                      f'<dt>{_e(lab["lines"])}</dt><dd>{r["lines"][0]}-{r["lines"][1]}</dd>'
                      + (f'<dt>{_e(lab["sha256"])}</dt><dd><code>{r["sha256"]}</code></dd>' if r["sha256"] else "") + "</dl>")
             if r["shared_with"]:
-                o.append(f'<p class="shared">{_e(_fill(s["shared_note"], groups=", ".join(r["shared_with"])))}</p>')
+                o.append(f'<p class="shared">{shared_line(r["shared_with"])}</p>')
             o.append("</div>")
         # F37: who read what, and when, the sentences that left the card; in a fixed order: the statement, the proof, the recognition,
         # each citation, the established line (the second readers, the file and the lines and the build of a sketch follow their block)
@@ -2471,6 +2557,13 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         print(f"WORD-NOTE {where} {word}")
     for gid, name, kind in m.kind_notes:   # a kind outside the eight: no proof (null), and listed, never refused
         print(f"KIND-NOTE {gid} {name} kind {kind!r}")
+    census = _title_census(m)   # F47: a card that needs a title and has none is listed, or refused while TITLE_MISSING_REFUSES is True
+    for gid, has in census:
+        if not has:
+            if TITLE_MISSING_REFUSES:
+                errors.append(("TITLE-MISSING", gid, "needs a title and has none"))
+            else:
+                print(f"TITLE-MISSING {gid}")
     for bid in _bold_unpaired_blocks(m):   # a `**` that is no pair stays literal on the page, and is listed, never refused (F35)
         print(f"BOLD-UNPAIRED {bid}")
     for bid in _nest_depth_blocks(m):   # a sub-item nested deeper than one level is shown flat, and is listed, never refused (F35)
@@ -2514,6 +2607,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     print("facts check: " + check_line)
     for ln in count_lines:
         print(ln)
+    print(f"titles: {sum(1 for _g_, has in census if has)} of {len(census)} cards that need one")
     for ln in formula_listing(flog):   # a formula outside the subset stays as written, an unpaired dollar sign stays literal: listed, never refused
         print(ln)
     print(formula_run_line(fcounts))
@@ -2731,6 +2825,9 @@ F41_PROOF_LINES = {
     "proof_not_applicable_line": "There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) and does not claim that the statement is true.",
     "proof_none_other_line": "There is no proof to read here: our table of the release's declarations does not list this step as a theorem or a lemma.",
 }
+# F47, F48: the three strings of the card title and the definition heading (no placeholder). definition_label and definition_join are the
+# wording file's values (F48WORD1 compares them when that file is given); title_label is the spec's own.
+F48_STRINGS = {"title_label": "What this step is:", "definition_label": "Definition.", "definition_join": "is defined as:"}
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
     "established_not_traced_line": "Where it is proved: we have not yet traced where in the release this statement is proved.",
@@ -2802,6 +2899,7 @@ def _strings():
     s["argument_frame_no_proof"] = NO_PROOF_FRAME
     s.update(F37_EVIDENCE)
     s.update(EDITION_WORDING)
+    s.update(F48_STRINGS)
     return s
 
 
@@ -3229,6 +3327,38 @@ def _child(args_file, out, seed):
     return r.returncode, r.stdout + r.stderr
 
 
+# ---- F47, F48: the card title. One outline with every kind of card: a null-claim result (fr), a null-claim definition (fd), a
+# definition with a claim (fc), a structure with a claim (fs), a definition with a claim and no title (fz), a null-claim definition with no
+# title (fn), a result with a claim (fk) and a second result with a claim that rests on it (fp). The roots are all different.
+FACES_DECLS = DECLS + ("A.H\tdefa\tdef\t1\t2\ttext-extent\n"
+                       "A.H\tdefb\tdef\t3\t4\ttext-extent\n"
+                       "A.H\tdefc\tdef\t5\t6\ttext-extent\n"
+                       "A.H\tdefd\tdef\t7\t8\ttext-extent\n"
+                       "A.H\tstru\tstructure\t9\t10\ttext-extent\n")
+FACES_TITLES = {"fr": "The reduction step", "fd": "The top condition", "fc": "The window set (Input 2)", "fs": "The statement bundle"}
+FACES_NOTES = {"00-whole.md": N00}
+
+
+def _faces_outline(titles=None):
+    titles = FACES_TITLES if titles is None else titles
+    gs = [_g("fr", 1, "root", 1, [QUX]),
+          _g("fd", 1, "root", 2, [_d("A.H", "defa")]),
+          _g("fc", 1, "root", 3, [_d("A.H", "defb")], _claim("Claim of the window set", conditions=["Condition of the window set holds."])),
+          _g("fs", 1, "root", 4, [_d("A.H", "stru")], _claim("Claim of the bundle")),
+          _g("fz", 1, "root", 5, [_d("A.H", "defd")], _claim("Claim without a title")),
+          _g("fn", 1, "root", 6, [_d("A.H", "defc")]),
+          _g("fk", 1, "root", 7, [FOO], _claim("Claim of the result"), ["fd", "fc", "fs", "fz", "fr", "fn"]),
+          _g("fp", 1, "root", 8, [BAR], _claim("Claim resting on the result"), ["fk"])]
+    for g in gs:
+        if g["id"] in titles:
+            g["title"] = titles[g["id"]]
+    return {"release": "rel-1", "groups": gs}
+
+
+def _faces(titles=None, **kw):
+    return _build(outline=_faces_outline(titles), decls=FACES_DECLS, notes=FACES_NOTES, **kw)
+
+
 STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
                "statement_not_read_line", "proof_read_line", "proof_not_read_line", "proof_not_applicable_line", "proof_none_other_line",
                "steps_proof_not_applicable_line", "statement_count_line",
@@ -3240,7 +3370,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(EDITION_WORDING)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(EDITION_WORDING)
 
 
 def _no_edition(rel, data):
@@ -3463,7 +3593,7 @@ def _selftest_cases():
         got = (sorted(g1), g1["roots"], [b["block"] for b in g1["blocks"]], arg,
                g2["open_items"], g2["roots"][1], g1a["blocks"], sorted(_base().files))
         want = (["blocks", "commits", "edition", "id", "level", "notes", "open_items", "parent", "premises", "recognition", "root_kind", "root_role",
-                 "roots", "sketches"],
+                 "roots", "sketches", "title"],
                 [{"file": "A/B.lean", "kind": "theorem", "lines": [10, 20], "module": "A.B", "name": "foo", "sha256": None,
                   "shared_with": [], "statement_read": True, "proof_read": True}],
                 ["01.b01", "01.b02", "01.b03", "01.b06", "02.b02"],
@@ -3635,7 +3765,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 92 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 95 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -3648,7 +3778,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 92))
+        return _eq((bad, len(STRING_KEYS)), ([], 95))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -3851,7 +3981,7 @@ def _selftest_cases():
         return _eq((notes, sh("g2"), sh("g1a1x"), sh("g1"),
                     b.js("group/g1a1x.json")["roots"][0]["shared_with"], b.js("level0.json")["totals"]["roots"]),
                    ({"g1": [one], "g1a": [one], "g1a1": [one], "g1a1x": [one], "g2": [many], "g3": [one]},
-                    ["Also a root of: g1a1x"], ["Also a root of: g2"], [], ["g2"], 6))
+                    ["Also a root of: qux"], ["Also a root of: quux"], [], ["g2"], 6))
 
     # ---- F39: the roots-only sentence follows what the card shows
     def _roots_only(page):
@@ -6889,8 +7019,8 @@ def _selftest_cases():
         return _eq(((arg["text"], arg["first_sentence"]), l1["claim"]["text"], l1["claim"]["conditions"], "Claim $x$" in b.text("data.js"),
                     [digest(x) for x in (_base(), _zbase(), _sbase(), _bbase())]),
                    (("Let $a. b$ be. More $z$.", "Let $a. b$ be."), "Claim $x$", ["Cond $y$ holds."], True,
-                    ["f80ba09d768a56e83f99eefe6f5ccc659477425f3f48d39c1eb93e1263e0e6a0", "ed1fa4280342e84ef99d41bcaf4679a503cce2af26ddbf614a1ec226c145e05a",
-                     "7ec121d81c1f4d29114c1110eb966d1e3a4b294e95b8b91c9acab30fe6171a8a", "c7ef96bb43b0cc658ee1291858ce9345f688821a5d96505c197d0070e6fa010c"]))
+                    ["51bac9463ef79cddab317cc05d799b672dcb28d43641c0f94ab51060aa31cd4d", "31fdf291c949332a2bf34124202806633060396653ce7229879da0f2653e4924",
+                     "c3e642d484a854098e77b34dae3c29a71ab25916a93f09cb2f6b37c72b0ad839", "7810d5e4bdc3979ce97930a3bbc3e7b3eb73c1558e5572285d433d784af437e5"]))
 
     LEAKL = "abcdefghijklmnopqrstuvwxyz"
     GRL = "αβγδεζηθικλμνξπρστυφχψω"
@@ -7338,11 +7468,11 @@ def _selftest_cases():
                     (arg["reader"], arg["date"], arg["second_readers"], arg["file"], arg["lines"]),
                     (zrv["recognition"]["reader"], zrv["recognition"]["date"],
                      [(c["opened_by"], c["opened_on"]) for c in zrv["recognition"]["citations"]])),
-                   ([0] * 5, ["be90b01739a84e20e61d6925401b6fa3e256e858c2aa0336d07eee6750649bc5",
-                              "94f4db15211979dd993fe33b7580510b73d0ae09fe2cf623656d3459050a5da7",
-                              "0d4bf044dfadbf07c8b1a24788b6b246437d2285759d1ba2449e19b952314baa",
-                              "9ff0b5317fcb3ae718a054f590ab6f1da16c4f86ac48c0784c4d96a2590a526b",
-                              "0019287171c05bb06a9c1e524d491c68506cc8f03d6fc739822d5a7716efe67c"],
+                   ([0] * 5, ["42c5effb608da44a54b94571c3ddb2971b7996d2250ab38b3c42ed6b24398433",
+                              "8e44216149fdf4a56eb01ed3f53b0ed79496998fd298a585789f1e0d7f60661d",
+                              "d8819890e54bfc743f185dd3a5fcf2cb1ef1d55804c1b45b4250a41d5e18298c",
+                              "42d685570cd2b93b887b444eb94d8e30cbc602a444f5a2db130090de9910bfb1",
+                              "ea1ca674176f5dc2234ae31a882dc2f5d3d9c69621f42e39ebad2649a20263d4"],
                     ("Reader One", "2026-11-23", [{"reader": "Reader Two", "date": "2026-11-24"}], "A/B.lean", [15, 18]),
                     ("Reader One", "2026-11-22", [("Reader Two", "2026-11-21"), ("Reader One", "2026-11-22")])))
 
@@ -7379,7 +7509,7 @@ def _selftest_cases():
                    (0, ["Correction Note one"], ["Correction Note eight", "Correction Note nine"], ["Correction Note ten"], 0, [],
                     "01 01.b06 Correction Reader Two 2026-11-22", "08 08.b01 Correction Reader Three 2026-11-26",
                     "09 09.b01 Correction Reader Four 2026-11-27", "10 10.b01 Correction Reader Five 2026-11-28",
-                    "1bea6d12fa8779f32724591755e4fa62c663e37c4a4df0561b46c72def23734a",
+                    "64b66bb9c2e9e6a28d76c30a0a9d48eb6906aadad4b73cecd222c3d833b16180",
                     ("Reader Two", "2026-11-22"), ("Reader Three", "2026-11-26"), ("Reader Four", "2026-11-27"), ("Reader Five", "2026-11-28")))
 
     @case("PV13", "F37 review P1: a second reader of a block that is NOT an argument is in the Evidence section too, one `Read again by ...` "
@@ -7535,10 +7665,10 @@ def _selftest_cases():
         e1 = _build(outline=one, strings=_strings())
         h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
-                   (["4e424c9b532f7a275f1255363b837599afb1f2cb0b46700be345004ad9102496",
-                     "b968044883a54420a01fb47be1685918bf9035ef6a7e9c3df29f4cb53bf14733",
-                     "4a6581dd04f6a3c2e38e96d555100050d45ecf05d470dab0536f2b0566e113cd",
-                     "74a1a08eaa05f11c7f9917344c6c9f6144525868250ee37113e8a1ac97c17307"], 0, True))
+                   (["1a8ef65786002542cfa1684a6f09c9856b8a9bf658a2ff8604dabedf4646a85e",
+                     "9f151baab1fd116b72c56e1c94a1c97f0fcca0c4794b97a11d7436b87bc40c3c",
+                     "571c8c61ca502f116ed635a05a2502f7ef61871150bbca7fcc80144c8b6b160f",
+                     "e2f5c18371abc0b6a06173156a0e26805f525c98ea3ae1f1e3997e0c9fa99473"], 0, True))
 
     @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (three keys, pinned here as "
                  "literals) and the two addresses; a case that compares with the wording file itself runs when RH_EDITION_WORDING_FILE names it "
@@ -7727,6 +7857,438 @@ def _selftest_cases():
                     _marker_violations(T + ["claim.reader"], classes), _marker_violations(T, classes)),
                    (["recognition.note"], ["claim.conditions"], ["recognition.citations[].source_date"], ["recognition.established"],
                     ["unshown:claim.mathlib_read"], ["inside-only:claim.reader"], []))
+
+    # ---- F47, F48: the title of a card and the faces of the no-claim and the definition cards
+    def heading(b, gid):
+        """The card's heading and the line after it, as the page holds them (the heading is one line)."""
+        start = b.page.index(f' id="{gid}">')
+        m_ = re.search(r'(<h3 class="claim[^"]*">[^\n]*</h3>)\n([^\n]*)', b.page[start:])
+        return m_.group(1), m_.group(2)
+
+    NOCLAIM = '<p class="no-claim-label">No plain statement yet</p>'
+
+    @case("TT1", "F47 F48 strings: title_label, definition_label and definition_join are keys of the strings file, each a non-empty string "
+                 "with no placeholder (a placeholder or a lone brace is refused), under the forbidden-words check, and site/strings.json holds "
+                 "the three values as literals (`What this step is:`, `Definition.`, `is defined as:`); P1a pins that each is required")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        res, want = [], []
+        for key in F48_STRINGS:
+            for v, msg in (("has {n} here", f"BUILD-ERROR STRINGS-KEY {key} has an unknown placeholder {{n}}"),
+                           ("a { brace", f"BUILD-ERROR STRINGS-KEY {key} holds a brace, and this key declares no placeholder"),
+                           ("holds the word verified", f"BUILD-ERROR STRINGS-FORBIDDEN {key} holds the word 'verified', which the page never says"),
+                           ("", f"BUILD-ERROR STRINGS-KEY {key} must be a non-empty string")):
+                st = _strings()
+                st[key] = v
+                b = _build(strings=st)
+                res.append((key, b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+                want.append((key, 1, [msg], False))
+        return _eq((res, [real.get(k) for k in ("title_label", "definition_label", "definition_join")],
+                    [k in STRING_KEYS and k in TEXT_KEYS for k in F48_STRINGS], _strings_problems(real)),
+                   (want, ["What this step is:", "Definition.", "is defined as:"], [True, True, True], []))
+
+    @case("F48WORD1", "F48: definition_label and definition_join of site/strings.json are byte-equal to the wording file's two values; the file is "
+                      "named by the environment variable RH_F48_WORDING (SKIPPED, with that reason, when it is not set or not readable: the "
+                      "repository's own cases pass without it)")
+    def _():
+        wf = os.environ.get("RH_F48_WORDING")
+        if not wf or not os.path.isfile(wf):
+            raise _SkipCase("RH_F48_WORDING is not set to a readable wording file")
+        with open(wf, encoding="utf-8") as f:
+            word = json.load(f)
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        return _eq([(k, real.get(k)) for k in ("definition_label", "definition_join")],
+                   [(k, word[k]) for k in ("definition_label", "definition_join")])
+
+    @case("TT2", "F47 face (a): a card with a null claim, a title and a RESULT root (fr, a theorem): the heading is the label `What this step "
+                 "is:` in its own span, then the title in its own span, in the same <h3> as before; directly under it the no_claim_label line, "
+                 "then the two status lines; the root name is no longer in the heading and stays in Evidence")
+    def _():
+        b = _faces()
+        c = _card(b, "fr")
+        names = [(k.tag, k.cls[-1] if k.cls else "") for k in c.elems()]
+        return _eq((b.rc, heading(b, "fr"), names[:4], [x.text() for x in c.find("h3", "claim")[0].find("code")],
+                    "qux" in c.find("details", "evidence")[0].text()),
+                   (0, ('<h3 class="claim unread-claim"><span class="title-label">What this step is:</span> '
+                        '<span class="title-text">The reduction step</span></h3>', NOCLAIM),
+                    [("h3", "unread-claim"), ("p", "no-claim-label"), ("p", "statement"), ("p", "proof")], [], True))
+
+    @case("TT3", "F48 face (b): a card with a null claim, a title and a DEFINITION root (fd): the heading is `Definition.` in its own span then "
+                 "the title in its own span, with no joining word, then the no_claim_label line directly under it, then the status lines; the "
+                 "Lean name is not in the heading and stays in Evidence")
+    def _():
+        b = _faces()
+        c = _card(b, "fd")
+        names = [(k.tag, k.cls[-1] if k.cls else "") for k in c.elems()]
+        return _eq((b.rc, heading(b, "fd"), names[:4], c.find("h3", "claim")[0].text(), "defa" in c.find("details", "evidence")[0].text()),
+                   (0, ('<h3 class="claim unread-claim"><span class="definition-label">Definition.</span> '
+                        '<span class="title-text">The top condition</span></h3>', NOCLAIM),
+                    [("h3", "unread-claim"), ("p", "no-claim-label"), ("p", "statement"), ("p", "proof")],
+                    "Definition. The top condition", True))
+
+    @case("TT4", "F48 face (c), F48 (i): a definition (fc) or a structure (fs) with a claim and a title: the HEADING is `Definition.` and the title and "
+                 "nothing else (the label and the title each in its own span); the statement is the FIRST PARAGRAPH under the heading, in "
+                 "<p class=\"definition-statement\">: the title, `is defined as:`, the claim text as a claim is rendered; the conditions list "
+                 "follows that paragraph, then the named-statement line; there is no no_claim_label line")
+    def _():
+        b = _faces()
+        fc, fs = _card(b, "fc"), _card(b, "fs")
+        par = lambda g: re.search(r'(<p class="definition-statement">[^\n]*</p>)\n', b.page[b.page.index(f' id="{g}">'):]).group(1)
+        return _eq((b.rc, heading(b, "fc")[0], heading(b, "fs")[0], par("fc"), par("fs"),
+                    [(k.tag, k.cls[-1] if k.cls else "") for k in fc.elems()][:4], fc.find("ul", "conditions")[0].text(),
+                    fc.find("p", "no-claim-label"), fs.find("p", "no-claim-label")),
+                   (0, '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">The window set (Input 2)</span></h3>',
+                    '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">The statement bundle</span></h3>',
+                    '<p class="definition-statement">The window set (Input 2) is defined as: Claim of the window set</p>',
+                    '<p class="definition-statement">The statement bundle is defined as: Claim of the bundle</p>',
+                    [("h3", "claim"), ("p", "definition-statement"), ("ul", "conditions"), ("p", "named-statement-use")],
+                    "Condition of the window set holds.", [], []))
+
+    @case("TT5", "F47 (d): a card with a claim and no title is unchanged: a result (fk) and a definition (fz) show the claim alone in the heading, "
+                 "no label and no join; a card with a null claim and no title (fn) keeps the Lean name and the no_claim_label in the heading, with "
+                 "no no_claim_label line under it")
+    def _():
+        b = _faces()
+        spans = lambda g: [x for x in ("title-label", "definition-label", "definition-join", "title-text")
+                           if _card(b, g).find("h3", "claim")[0].find("span", x)]
+        return _eq((b.rc, heading(b, "fk")[0], heading(b, "fz")[0], heading(b, "fn")[0], _card(b, "fn").find("p", "no-claim-label"),
+                    spans("fz"), spans("fk")),
+                   (0, '<h3 class="claim">Claim of the result</h3>', '<h3 class="claim">Claim without a title</h3>',
+                    '<h3 class="claim unread-claim"><code>defc</code> <span class="label">No plain statement yet</span></h3>', [], [], []))
+
+    @case("TT6", "F47 title text: the title goes through the span rule and the formula rule and is escaped like every string: a title holding "
+                 "a backtick span, a formula `$x$` and `& <b> \"q\"` shows <code>, MathML and the escaped characters in the heading of a no-claim "
+                 "card (a) and (b) and of a claim card (c), in the first paragraph of that card (F48 i) and in the premise rows (3 more); the run's "
+                 "formula count includes all seven")
+    def _():
+        ttl = 'The set `S` of $x$ & <b> "q"'
+        want = 'The set <code>S</code> of <math><mi>x</mi></math> &amp; &lt;b&gt; &quot;q&quot;'
+        b = _faces(titles={"fr": ttl, "fd": ttl, "fc": ttl})
+        return _eq((b.rc, [heading(b, g)[0] for g in ("fr", "fd", "fc")], "<b>" in b.page, b.page.count(want),
+                    [x for x in b.out.splitlines() if x.startswith("formulas: ")][0].startswith(
+                        "formulas: 7 converted, 0 unsupported, 0 unpaired, of 7 marks"),
+                    '<p class="definition-statement">' + want + ' is defined as: Claim of the window set</p>' in b.page),
+                   (0, ['<h3 class="claim unread-claim"><span class="title-label">What this step is:</span> <span class="title-text">' + want + "</span></h3>",
+                        '<h3 class="claim unread-claim"><span class="definition-label">Definition.</span> <span class="title-text">' + want + "</span></h3>",
+                        '<h3 class="claim"><span class="definition-label">Definition.</span> <span class="title-text">' + want + "</span></h3>"],
+                    False, 7, True, True))
+
+    @case("TT7", "F47 D1 (title_of): the premise rows of fk are shown by the term for a definition or structure with a title (fc, fs) and a "
+                 "null-claim card with a title (fd, fr), by the claim for a definition with a claim and no title (fz), and by the root name "
+                 "for a null-claim card with no title (fn); the premise row of fp, a result with a claim, is its claim; the callers of "
+                 "title_of are the premise row and the shared-root note (SH1)")
+    def _():
+        import inspect
+        b = _faces()
+        rows = lambda g: [(a.attrs["href"], _raw(a)) for a in _card(b, g).find(cls="premises")[0].find("a")]
+        return _eq((b.rc, rows("fk"), rows("fp"), len(re.findall(r"title_of\(", inspect.getsource(_render_page)))),
+                   (0, [("#fd", "The top condition"), ("#fc", "The window set (Input 2)"), ("#fs", "The statement bundle"),
+                        ("#fz", "Claim without a title"), ("#fr", "The reduction step"), ("#fn", "defc")],
+                    [("#fk", "Claim of the result")], 3))
+
+    @case("TT8", "F47: a titled null-claim card that has premises keeps the order heading, no_claim_label line, premises, status lines")
+    def _():
+        o = _faces_outline()
+        next(g for g in o["groups"] if g["id"] == "fd")["premises"] = ["fz"]
+        b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
+        return _eq((b.rc, [(k.tag, k.cls[-1] if k.cls else "") for k in _card(b, "fd").elems()][:5]),
+                   (0, [("h3", "unread-claim"), ("p", "no-claim-label"), ("p", "premises"), ("p", "statement"), ("p", "proof")]))
+
+    @case("TT9", "F47 (g): group/<id>.json and data.js carry `title` (the string as written, null when none); level0.json and level1.json steps "
+                 "carry none; the manifest counts are the groups, notes and blocks as before")
+    def _():
+        b = _faces()
+        dj = json.loads(b.text("data.js")[len("window.RH_DATA = "):-len(";\n")])
+        steps = b.js("level0.json")["steps"] + b.js("level1.json")["steps"]
+        return _eq((b.rc, {g: b.js(f"group/{g}.json")["title"] for g in ("fr", "fd", "fc", "fs", "fz", "fn", "fk", "fp")},
+                    dj["groups"]["fr"]["title"], dj["groups"]["fk"]["title"], [x for x in steps if "title" in x],
+                    b.js("manifest.json")["counts"]),
+                   (0, {"fr": "The reduction step", "fd": "The top condition", "fc": "The window set (Input 2)", "fs": "The statement bundle",
+                        "fz": None, "fn": None, "fk": None, "fp": None},
+                    "The reduction step", None, [], {"blocks": 0, "editions": 0, "groups": 8, "notes": 1}))
+
+    @case("TT10", "F47 D2 and the page: a title on a result card with a claim is refused by the checker in a run (TITLE-WITH-CLAIM, exit 1, "
+                  "nothing written); and with the checker bypassed (the model called directly) the page still does not show it: the heading of "
+                  "fk is its claim alone, the title is on the page nowhere, and the premise row of fp is the claim")
+    def _():
+        o = _faces_outline(dict(FACES_TITLES, fk="A result title that must not show"))
+        b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d, outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
+            sj, errors = _strings(), []
+            m = _model(p["notes"], json.load(open(p["outline"])), _decl_rows(p["decls"]), sj, None, errors)
+            _e2, _line, _l0, _l1, _groups, facts = _assemble(m, sj, {"notes": "n", "release": "r", "tools": "t"})
+            page = _render_page(m, sj, facts, False)
+        c = types.SimpleNamespace(page=page)
+        return _eq((b.rc, [x for x in b.out.splitlines() if x.startswith("TITLE-WITH-CLAIM")], b.existed, errors,
+                    heading(c, "fk")[0], "A result title that must not show" in page,
+                    [_raw(a) for a in _card(c, "fp").find(cls="premises")[0].find("a")]),
+                   (1, ["TITLE-WITH-CLAIM outline.json group 'fk': title on a group with a claim whose root is a result; the page prints no "
+                        "title there (take the title out)"], False, [], '<h3 class="claim">Claim of the result</h3>', False,
+                    ["Claim of the result"]))
+
+    @case("TT11", "F47 F2: a card that needs a title and has none is listed `TITLE-MISSING <card id>`, one per card, in the order of the page: on "
+                  "the base fixture the three null-claim cards and the definition with a claim (g1a, g1a1, g1a1x, g2; g1 and g3 are results with a "
+                  "claim and need none), and the run line `titles: 0 of 4 cards that need one` comes after the facts check and before the "
+                  "formulas line; on the faces fixture fz and fn (the two cards of the six that need one and have none), `titles: 4 of 6 ...`; exit 0")
+    def _():
+        out = lambda b: b.out.splitlines()
+        ln = lambda b, pre: [x for x in out(b) if x.startswith(pre)]
+        base, fa = _base(), _faces()
+        idx = lambda b, pre: next(i for i, x in enumerate(out(b)) if x.startswith(pre))
+        return _eq((base.rc, ln(base, "TITLE-MISSING"), ln(base, "titles: "),
+                    idx(base, "facts check:") < idx(base, "titles: ") < idx(base, "formulas: "),
+                    fa.rc, ln(fa, "TITLE-MISSING"), ln(fa, "titles: ")),
+                   (0, ["TITLE-MISSING g1a", "TITLE-MISSING g1a1", "TITLE-MISSING g1a1x", "TITLE-MISSING g2"],
+                    ["titles: 0 of 4 cards that need one"], True,
+                    0, ["TITLE-MISSING fz", "TITLE-MISSING fn"], ["titles: 4 of 6 cards that need one"]))
+
+    @case("TT12", "F47 F2: TITLE_MISSING_REFUSES is False in the module; set to True (through _patched) the same cards refuse the build: "
+                  "`BUILD-ERROR TITLE-MISSING <card id> needs a title and has none` for each, exit 1, nothing written, and no bare TITLE-MISSING "
+                  "listing line; the cards with every title still build (control: the faces fixture with all six titles, exit 0)")
+    def _():
+        full = dict(FACES_TITLES, fz="The untitled definition", fn="The null-claim definition")
+        with _patched("TITLE_MISSING_REFUSES", True):
+            b = _faces()
+            ok_ = _faces(titles=full)
+            base = _build()   # not _base(): that one is cached from before the patch
+        return _eq((TITLE_MISSING_REFUSES, b.rc, [x for x in b.out.splitlines() if "TITLE-MISSING" in x], b.existed,
+                    ok_.rc, [x for x in ok_.out.splitlines() if "TITLE-MISSING" in x],
+                    [x for x in ok_.out.splitlines() if x.startswith("titles: ")], base.rc),
+                   (False, 1, ["BUILD-ERROR TITLE-MISSING fz needs a title and has none", "BUILD-ERROR TITLE-MISSING fn needs a title and has none"],
+                    False, 0, [], ["titles: 6 of 6 cards that need one"], 1))
+
+    @case("TT13", "F47: the CSS holds one rule for the title text, normal weight and no colour (the page's CSS holds no colour at all), and it is in "
+                  "the page's <style>; no other new rule; the page still passes the element and attribute list")
+    def _():
+        rule = ".title-text { font-weight: normal; }"
+        b = _faces()
+        return _eq((rule in CSS, rule in b.page, CSS.count(".title-"), "color" in CSS.lower() or "colour" in CSS.lower(),
+                    static_problems(b.page, b.text("data.js")), element_problems(b.page)),
+                   (True, True, 1, False, [], []))
+
+    @case("TT15", "F48 (g): the build stops on the checker's refusal of a title that starts with a lowercase letter: the faces fixture with `fd` titled "
+                  "`the top condition` is exit 1 with the BAD-VALUE line, nothing written; control: the capitalised title builds")
+    def _():
+        o = _faces_outline(dict(FACES_TITLES, fd="the top condition"))
+        b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
+        return _eq((b.rc, [x for x in b.out.splitlines() if x.startswith("BAD-VALUE")], b.existed, _faces().rc),
+                   (1, ["BAD-VALUE outline.json group 'fd': title must start with a capital letter or a character that is not a lowercase letter"],
+                    False, 0))
+
+    @case("TT14", "F48 (a): the card's id is not on the reader's surface: a build whose group ids are not English words (zqx1, vlp2, wnr3: a "
+                  "step, a card it rests on and a card nested under that) has no text node, outside the attributes, that holds an id as a "
+                  "token; control: the detector finds an id in a text node it is given")
+    def _():
+        def hits(page, ids):
+            return sorted(i for i in ids for piece in _dom(page).pieces()
+                          if re.search(r"(?<![A-Za-z0-9_-])" + re.escape(i) + r"(?![A-Za-z0-9_-])", piece))
+        ids = ("zqx1", "vlp2", "wnr3")
+        o = {"release": "rel-1", "groups": [
+            _g("zqx1", 1, "root", 1, [FOO], _claim("A claim"), ["vlp2"]),
+            dict(_g("vlp2", 1, "root", 2, [_d("A.H", "defa")]), title="The window set (Input 2)"),
+            dict(_g("wnr3", 2, "vlp2", 1, [_d("A.H", "defb")]), title="The inner step")]}
+        b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
+        return _eq((b.rc, [f'id="{i}"' in b.page for i in ids], hits(b.page, ids), hits("<p>see zqx1 and wnr3.</p>", ids)),
+                   (0, [True, True, True], [], ["wnr3", "zqx1"]))
+
+    # ---- F48 (a), the shared-root note names the other cards by title, not by id
+    def shared_lines(b, gid):
+        """The shared-root notes in the card gid's own Evidence section (its children are cards of their own, after it)."""
+        start = b.page.index('<details class="evidence">', b.page.index(f' id="{gid}">'))
+        return re.findall(r'<p class="shared">.*?</p>', b.page[start:b.page.index("</details>", start)])
+
+    def id_hits(page, ids):
+        return sorted(i for i in ids for piece in _dom(page).pieces()
+                      if re.search(r"(?<![A-Za-z0-9_-])" + re.escape(i) + r"(?![A-Za-z0-9_-])", piece))
+
+    @case("SH1", "F48 (a) the shared-root note on the base fixture (qux is a root of g2 and of g1a1x, both with no claim and no title): each note "
+                 "names the OTHER card by its root name in <code>, as a premise row does, in an in-page link whose target is the card's id "
+                 "(the id is the href, never the text); the card is not among its own sharers; a card with no shared root has no note")
+    def _():
+        b = _base()
+        return _eq((b.rc, shared_lines(b, "g2"), shared_lines(b, "g1a1x"), shared_lines(b, "g1"),
+                    [x for x in id_hits(b.page, ("g2", "g1a1x")) if x in ("g1a1x",)]),
+                   (0, ['<p class="shared">Also a root of: <a href="#g1a1x"><code>qux</code></a></p>'],
+                    ['<p class="shared">Also a root of: <a href="#g2"><code>quux</code></a></p>'], [], []))
+
+    def _shared_outline():
+        gs = [_g("kpa1", 1, "root", 1, [FOO], _claim("Claim of the shared theorem")),
+              dict(_g("kpb2", 1, "root", 2, [FOO, QUX]), title="The reduction step"),
+              _g("kpc3", 1, "root", 3, [FOO, BAR]),
+              _g("kpd4", 1, "root", 4, [_d("A.H", "defa")], _claim("Claim of the window set")),
+              dict(_g("kpe5", 1, "root", 5, [_d("A.H", "defa"), _d("A.H", "defb")]), title="The combined step")]
+        gs[3]["title"] = "The window set (Input 2)"
+        return {"release": "rel-1", "groups": gs}
+
+    @case("SH2", "F48 (a) the note on cards that share a root, ids that are not words (kpa1 a result with a claim, kpb2 titled with no claim, "
+                 "kpc3 with neither, kpd4 a titled definition with a claim, kpe5 titled with no claim): each sharer is named as a premise row "
+                 "names it (the term of a titled definition, not its claim; a title; the claim of a result; the root name with neither), "
+                 "joined by `, ` in the order of the ids, each an <a href=\"#id\">; no card is among its own sharers; and no id is a text "
+                 "node anywhere on the page")
+    def _():
+        ids = ("kpa1", "kpb2", "kpc3", "kpd4", "kpe5")
+        b = _build(outline=_shared_outline(), decls=FACES_DECLS, notes=FACES_NOTES)
+        p = '<p class="shared">Also a root of: '
+        return _eq((b.rc, shared_lines(b, "kpa1"), shared_lines(b, "kpb2"), shared_lines(b, "kpc3"), shared_lines(b, "kpd4"),
+                    shared_lines(b, "kpe5"), id_hits(b.page, ids), [f' id="{i}">' in b.page for i in ids]),
+                   (0, [p + '<a href="#kpb2">The reduction step</a>, <a href="#kpc3"><code>foo</code></a></p>'],
+                    [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpc3"><code>foo</code></a></p>'],
+                    [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpb2">The reduction step</a></p>'],
+                    [p + '<a href="#kpe5">The combined step</a></p>'],
+                    [p + '<a href="#kpd4">The window set (Input 2)</a></p>'], [], [True] * 5))
+
+    @case("SH3", "F48 (a) with the real strings file the note reads `This result is also part of: ` then the link (the template's own text is "
+                 "escaped, the link is not); the group file still holds the ids (shared_with is data, not the reader's surface)")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        b = _build(strings=real)
+        return _eq((b.rc, shared_lines(b, "g2"), b.js("group/g2.json")["roots"][1]["shared_with"]),
+                   (0, ['<p class="shared">This result is also part of: <a href="#g1a1x"><code>qux</code></a></p>'], ["g1a1x"]))
+
+    # ---- F48 (i): a definition card's heading is the label and the title; the statement is the first paragraph under it
+    def stmt_outline(text):
+        o = _faces_outline()
+        next(g for g in o["groups"] if g["id"] == "fc")["claim"]["text"] = text
+        return o
+
+    @case("TT16", "F48 (i): the heading of a definition (fc) and of a structure (fs) with a claim and a title reads exactly `Definition. {Title}` as text and "
+                  "holds no part of the claim; the first paragraph under it begins with the title and `is defined as:` and then the claim")
+    def _():
+        b = _faces()
+        h = lambda g: _card(b, g).find("h3", "claim")[0].text()
+        p = lambda g: _card(b, g).find("p", "definition-statement")
+        return _eq((b.rc, h("fc"), h("fs"), "Claim" in h("fc") or "Claim" in h("fs"), [x.text() for x in p("fc")], [x.text() for x in p("fs")],
+                    len(_direct(_card(b, "fc"), "p", "definition-statement")) == 1),
+                   (0, "Definition. The window set (Input 2)", "Definition. The statement bundle", False,
+                    ["The window set (Input 2) is defined as: Claim of the window set"],
+                    ["The statement bundle is defined as: Claim of the bundle"], True))
+
+    @case("TT17", "F48 (i): the claim in the paragraph is rendered as a claim is: a formula `$x^2$` is MathML in the paragraph and in no heading, a "
+                  "backtick span is <code> there; the formula listing names the card id for an unsupported formula in that claim, as when the "
+                  "claim was in the heading; the formula count counts it once")
+    def _():
+        b = _build(outline=stmt_outline("Claim of $x^2$ with `code`"), decls=FACES_DECLS, notes=FACES_NOTES)
+        par = re.search(r'(<p class="definition-statement">The window set \(Input 2\)[^\n]*</p>)\n', b.page).group(1)
+        c = _card(b, "fc")
+        u = _build(outline=stmt_outline(r"Claim of $\frac{1}{2}$ here"), decls=FACES_DECLS, notes=FACES_NOTES)
+        return _eq((b.rc, par, len(c.find("h3", "claim")[0].find("math")), len(c.find("p", "definition-statement")[0].find("math")),
+                    [x.text() for x in c.find("p", "definition-statement")[0].find("code")],
+                    u.rc, [x for x in u.out.splitlines() if x.startswith("FORMULA-")]),
+                   (0, '<p class="definition-statement">The window set (Input 2) is defined as: Claim of '
+                       '<math><msup><mi>x</mi><mn>2</mn></msup></math> with <code>code</code></p>', 0, 1, ["code"],
+                    0, ["FORMULA-UNSUPPORTED fc $\\frac{1}{2}$"]))
+
+    @case("TT18", "F48 (i): a definition card with NO claim (fd) has the heading `Definition. {Title}`, then the no_claim_label line directly under it "
+                  "(TT8 pins the order with premises), and no `is defined as` and no definition-join anywhere in the card; the only places `is defined "
+                  "as:` is on the page are the two paragraphs of the definition cards with a claim")
+    def _():
+        b = _faces()
+        c = _card(b, "fd")
+        return _eq((b.rc, "is defined as" in c.text(), c.find("span", "definition-join"), c.find("p", "definition-statement"),
+                    c.find("h3", "claim")[0].text(), [(k.tag, k.cls[-1] if k.cls else "") for k in c.elems()][:2],
+                    b.page.count("is defined as:"), len(_dom(b.page).find("p", "definition-statement"))),
+                   (0, False, [], [], "Definition. The top condition", [("h3", "unread-claim"), ("p", "no-claim-label")], 2, 2))
+
+    @case("TT19", "F48 (i): what does not change: a result card with a claim is its claim alone in the heading and has no definition paragraph; a "
+                  "no-claim result card keeps `What this step is:`; a card with no title keeps its heading (no paragraph); the premise rows still "
+                  "name a titled definition by its title, and the shared-root note names a titled definition by its title")
+    def _():
+        b = _faces()
+        sb = _build(outline=_shared_outline(), decls=FACES_DECLS, notes=FACES_NOTES)
+        rows = [_raw(a) for a in _card(b, "fk").find(cls="premises")[0].find("a")]
+        return _eq((b.rc, heading(b, "fk")[0], _card(b, "fk").find("p", "definition-statement"), _card(b, "fz").find("p", "definition-statement"),
+                    heading(b, "fr")[0].startswith('<h3 class="claim unread-claim"><span class="title-label">What this step is:</span>'),
+                    heading(b, "fz")[0], rows, shared_lines(sb, "kpe5")),
+                   (0, '<h3 class="claim">Claim of the result</h3>', [], [], True, '<h3 class="claim">Claim without a title</h3>',
+                    ["The top condition", "The window set (Input 2)", "The statement bundle", "Claim without a title", "The reduction step", "defc"],
+                    ['<p class="shared">Also a root of: <a href="#kpd4">The window set (Input 2)</a></p>']))
+
+    # ---- F48 (k): one predicate of a definition card, defined in notes_meta, used by the checker and the builder
+    AGREE_DECLS = FACES_DECLS + "A.H\tlem\tlemma\t11\t12\ttext-extent\nA.H\taxa\taxiom\t13\t14\ttext-extent\n"
+    _K = {"def": _d("A.H", "defa"), "structure": _d("A.H", "stru"), "theorem": FOO, "lemma": _d("A.H", "lem"), "axiom": _d("A.H", "axa")}
+
+    def _agree_outline(kinds, claim, role):
+        g = _g("ag", 1, "root", 1, [_K[k] for k in kinds], _claim("A claim") if claim else None)
+        g["title"] = "The step"
+        if role:
+            g["root_role"] = role
+        return {"release": "rel-1", "groups": [g]}
+
+    def _agree_face(o):
+        """`definition` or `result`, as the builder shows the card with no checker run (the model called directly)."""
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d, outline=o, decls=AGREE_DECLS, notes=FACES_NOTES, roles=False)
+            sj = _strings()
+            m = _model(p["notes"], json.load(open(p["outline"])), _decl_rows(p["decls"]), sj, None, [])
+            _e2, _l, _l0, _l1, _g_, facts = _assemble(m, sj, {"notes": "n", "release": "r", "tools": "t"})
+            page = _render_page(m, sj, facts, False)
+        c = types.SimpleNamespace(page=page)
+        h3 = _card(c, "ag").find("h3", "claim")[0]
+        if o["groups"][0]["claim"] is None:
+            return "definition" if h3.find("span", "definition-label") else "result" if h3.find("span", "title-label") else "none"
+        return "definition" if _card(c, "ag").find("p", "definition-statement") else "result"
+
+    @case("TT20", "F48 (k) the checker and the builder agree because they share one predicate: a table of (roots, claim, root_role) rows; for each, the "
+                  "checker's verdict (TITLE-WITH-CLAIM or not, through a run) and the builder's face (definition or result, the model called "
+                  "directly) are the literal below, and equal the predicate nm.definition_card on the same facts; a null claim with a theorem "
+                  "AND a def root is a RESULT face (any root a theorem) with no checker finding; two defs: a definition face; an unknown kind "
+                  "(axiom) is a definition card; a root_role decides over the kind")
+    def _():
+        T = [  # (kinds, claim, role, TITLE-WITH-CLAIM expected, face)
+            (["def"], False, None, False, "definition"), (["theorem"], False, None, False, "result"),
+            (["def", "structure"], False, None, False, "definition"), (["theorem", "def"], False, None, False, "result"),
+            (["def", "theorem"], False, None, False, "result"), (["lemma"], False, None, False, "result"),
+            (["axiom"], False, None, False, "definition"),
+            (["def"], True, None, False, "definition"), (["theorem"], True, None, True, "result"), (["lemma"], True, None, True, "result"),
+            (["axiom"], True, None, False, "definition"),
+            (["def"], True, "named_statement", False, "definition"), (["def"], True, "object", False, "definition"),
+            (["structure"], True, "object", False, "definition"), (["theorem"], True, "result", True, "result"),
+            (["lemma"], True, "result", True, "result"),
+            (["theorem"], True, "named_statement", False, "definition"),   # a role against its kind (ROOT-ROLE says so): the role decides
+            (["def"], True, "result", True, "result")]
+        got, want = [], []
+        for kinds, claim, role, twc, face in T:
+            o = _agree_outline(kinds, claim, role)
+            b = _build(outline=o, decls=AGREE_DECLS, notes=FACES_NOTES, roles=False)
+            rows = [_K[k]["name"] for k in kinds]
+            pred = nm.definition_card(role, kinds)
+            got.append((kinds, claim, role, any(x.startswith("TITLE-WITH-CLAIM") for x in b.out.splitlines()), _agree_face(o),
+                        "definition" if pred else "result"))
+            want.append((kinds, claim, role, twc, face, face))
+        return _eq(got, want)
+
+    @case("TT21", "F48 (k) a group with a claim and SEVERAL roots, one a theorem, and a title cannot pass: the build is refused (ROOT-COUNT, exit 1, nothing "
+                  "written; with no root_role also TITLE-WITH-CLAIM, judged over all the roots); a null claim with the roots [theorem, def] and a "
+                  "title builds with the result face")
+    def _():
+        res = []
+        for kinds in (["theorem", "def"], ["def", "theorem"]):
+            g = _g("ag", 1, "root", 1, [_K[k] for k in kinds], _claim("A claim"))
+            g["title"] = "The step"
+            b = _build(outline={"release": "rel-1", "groups": [g]}, decls=AGREE_DECLS, notes=FACES_NOTES, roles=False)
+            res.append((b.rc, [x.split(" outline.json")[0] for x in b.out.splitlines() if x.startswith(("ROOT-COUNT", "TITLE-WITH-CLAIM"))], b.existed))
+        nb = _build(outline=_agree_outline(["theorem", "def"], False, None), decls=AGREE_DECLS, notes=FACES_NOTES, roles=False)
+        return _eq((res, nb.rc, heading(nb, "ag")[0]),
+                   ([(1, ["ROOT-COUNT", "TITLE-WITH-CLAIM"], False)] * 2, 0,
+                    '<h3 class="claim unread-claim"><span class="title-label">What this step is:</span> <span class="title-text">The step</span></h3>'))
+
+    @case("TT22", "F48 (k) the builder has no list of result kinds of its own: PROOF_KINDS is notes_meta's RESULT_KINDS, and its predicate of a definition "
+                  "card is notes_meta's (the same object is called, not a copy)")
+    def _():
+        import inspect
+        src = inspect.getsource(_is_definition_card) + inspect.getsource(_shown_title) + inspect.getsource(_title_census)
+        return _eq((PROOF_KINDS == frozenset(nm.RESULT_KINDS), "nm.definition_card(" in src, "PROOF_KINDS" in src, "nm.needs_title(" in src),
+                   (True, True, False, True))
 
     return cases
 
