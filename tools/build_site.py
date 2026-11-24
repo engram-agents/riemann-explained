@@ -512,7 +512,7 @@ def _value_lines(obj, seen=False, key=None):
     elif isinstance(obj, dict):
         for k, v in obj.items():
             if k not in NAME_KEYS:
-                yield from _value_lines(v, k in ("conditions", "list_title") or (k == "text" and key == "claim"), k)
+                yield from _value_lines(v, k in ("conditions", "list_title", "first_sentence") or (k == "text" and key in ("claim", "blocks")), k)
 
 
 def _output_lines(rel, data):
@@ -950,6 +950,16 @@ def _word_notes(m, s):
     return found
 
 
+_FORMULA_MARK = re.compile(r"\$|\\\(|\\\[|\\begin\{")
+
+
+def _formula_raw(m):
+    """[block id]: the argument and interpretation blocks, in note order, whose text outside its single-backtick spans holds a formula
+    mark (`$`, `\\(`, `\\[` or `\\begin{`), once per block. A mark detector, not a formula parser. Only a listing."""
+    return [b["block"] for n in m.notes for b in n["blocks"]
+            if b.get("text") and _FORMULA_MARK.search(nm._BACKTICK_SPAN.sub("", b["text"]))]
+
+
 def _nest(m, gid):
     out = dict(m.summary[gid])
     out["children"] = [_nest(m, c) for c in m.children.get(gid, [])]
@@ -1053,7 +1063,7 @@ def _render_page(m, s, facts, dirty):
         if args:
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
-            sent = f" {_e(b['first_sentence'])}" if b.get("first_sentence") else ""
+            sent = f" {_rich(b['first_sentence'])}" if b.get("first_sentence") else ""
             o.append(f'<p class="argument">{frames(b)}{sent} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
         corr = [b for b in fl["blocks"] if b["kind"] == "correction"]
         if corr:
@@ -1091,10 +1101,10 @@ def _render_page(m, s, facts, dirty):
                 o.append(f'<li><a href="{_e(n["link"])}"><code>{_e(b["note"])}</code></a> <code>{_e(b["block"])}</code> '
                          f'<span class="kind">{_e(kinds[b["kind"]])}</span> {who}')
                 if b["kind"] == "argument" and b.get("text"):
-                    o.append(f'<p class="argument">{frames(b)} {_e(b["text"])}</p>')
+                    o.append(f'<p class="argument">{frames(b)} {_rich(b["text"])}</p>')
                 if b["kind"] == "interpretation" and b.get("text"):
                     fr = _fill(s["interpretation_frame"], reader=b["reader"], date=b["date"])
-                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_e(b["text"])}</p></aside>')
+                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_rich(b["text"])}</p></aside>')
                 o.append("</li>")
             o.append("</ul>")
         if fl["open_items"]:
@@ -1319,6 +1329,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         print(f"WORD-NOTE {where} {word}")
     for gid, name, kind in m.kind_notes:   # a kind outside the eight: no proof (null), and listed, never refused
         print(f"KIND-NOTE {gid} {name} kind {kind!r}")
+    for bid in _formula_raw(m):   # a formula mark outside a code span: no conversion yet (F26), and listed, never refused
+        print(f"FORMULA-RAW {bid}")
     for n in m.notes:
         for b in n["blocks"]:
             for what in ("reader", "date"):
