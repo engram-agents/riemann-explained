@@ -2188,6 +2188,17 @@ def _notes_e(**kw):
     return _notes(**kw) | {"06-x.md": N06}
 
 
+def _notes_corr():
+    """The notes with a correction on the definition g1a1 in two notes (eight and nine), and one on the theorem g3 (ten): each has its
+    own reader and date (g1 has the one of note one, 01.b06)."""
+    def note(i, group, root, who, date):
+        return (f"# Note {i}\n" + _h(id=i, group=group, list_title="Note " + {"08": "eight", "09": "nine", "10": "ten"}[i]) + "\n\n## Body\n\n"
+                "What was wrong here.\n" + _b(id=f"{i}.b01", kind="correction", decls=[root], reader=who, date=date) + "\n")
+    return _notes() | {"08-corr.md": note("08", "g1a1", BAZ, "Reader Three", "2026-11-26"),
+                       "09-corr.md": note("09", "g1a1", BAZ, "Reader Four", "2026-11-27"),
+                       "10-corr.md": note("10", "g3", CORGE, "Reader Five", "2026-11-28")}
+
+
 CITA = {"source": "The Source Book", "where": "Theorem 2.1", "opened_by": "Reader Two", "opened_on": "2026-11-21",
         "url": "https://example.invalid/book"}
 CITB = {"source": "Other `Paper`", "where": "Section 3", "opened_by": "Reader One", "opened_on": "2026-11-22"}
@@ -2587,11 +2598,11 @@ def _selftest_cases():
 
     # ---- helpers for the cases that read the Evidence section (F37)
     def surface(node):
-        """The text of a node outside every closed Evidence section and outside the corrections list (a list the ruling of F37 does not name)."""
+        """The text of a node outside every closed Evidence section (F37: the corrections list is read too)."""
         out = []
         for k in node.kids:
             if isinstance(k, _Node):
-                if (k.tag == "details" and "evidence" in k.cls) or (k.tag == "ul" and "corrections" in k.cls):
+                if k.tag == "details" and "evidence" in k.cls:
                     continue
                 out.append(surface(k))
             else:
@@ -5608,7 +5619,7 @@ def _selftest_cases():
         return _eq((res, len(res), f37().rc), (want, 38, 0))
 
     @case("PV3", "F37 S2: no card shows a reader, a date of ours, a file or lines, a build or `read by` outside its closed Evidence section (the "
-                 "corrections list, which the ruling does not name, is left out of the text read): the base, the sketch, the definition and the "
+                 "corrections list is read too): the base, the sketch, the definition and the "
                  "recognition pages; the status lines are the quiet ones (g1 read/read, g3 census/not read, g1a read/not read)")
     def _():
         pages = [f37(), f37(notes=_notes_s()), f37(outline=_outline_b(), notes=_notes_b()), f37(outline=_zoo())]
@@ -5763,6 +5774,30 @@ def _selftest_cases():
                 b = _build(strings=st)
                 res.append((key, b.rc, [x.split(" ")[1:3] for x in b.out.splitlines() if x.startswith("BUILD-ERROR")]))
         return _eq((res, f37().rc), ([(k, 1, [["STRINGS-FORBIDDEN", k]]) for k in F37_EVIDENCE for _i in range(3)], 0))
+
+    @case("PV12", "F37 corrections: a correction on a card keeps its kind and its title on the card (`Correction` and the link to the note) "
+                  "and shows neither its reader nor its date there; its reader and date are in the Evidence section, in the block list "
+                  "beside the block's kind (the existing who-span, no new string). One correction (g1: 01.b06), two on one card (g1a1: "
+                  "08.b01 and 09.b01, a definition) and one on a theorem with a census claim (g3: 10.b01); a card with none has no list; the "
+                  "JSON is byte-equal to what the builder wrote before this change (pinned digest) and holds each reader and date")
+    def _():
+        b = f37(notes=_notes_corr())
+        lis = lambda g: [li.text() for li in _direct(_card(b, g), "ul", "corrections")[0].find("li")]
+        ev = lambda g, bid: blk(b, g, bid).text()
+        h = hashlib.sha256()
+        for k in sorted(b.files):
+            if k not in ("index.html", "manifest.json"):
+                h.update(k.encode() + b"\0" + hashlib.sha256(b.files[k]).digest())
+        js = lambda g, bid: next((x["reader"], x["date"]) for x in b.js(f"group/{g}.json")["blocks"] if x["block"] == bid)
+        return _eq((b.rc, lis("g1"), lis("g1a1"), lis("g3"), len(_direct(_card(b, "g1a"), "ul", "corrections")),
+                    _surface_bad.findall(surface(_dom(b.page))),
+                    ev("g1", "01.b06"), ev("g1a1", "08.b01"), ev("g1a1", "09.b01"), ev("g3", "10.b01"),
+                    h.hexdigest(), js("g1", "01.b06"), js("g1a1", "08.b01"), js("g1a1", "09.b01"), js("g3", "10.b01")),
+                   (0, ["Correction Note one"], ["Correction Note eight", "Correction Note nine"], ["Correction Note ten"], 0, [],
+                    "01 01.b06 Correction Reader Two 2026-11-22", "08 08.b01 Correction Reader Three 2026-11-26",
+                    "09 09.b01 Correction Reader Four 2026-11-27", "10 10.b01 Correction Reader Five 2026-11-28",
+                    "1bea6d12fa8779f32724591755e4fa62c663e37c4a4df0561b46c72def23734a",
+                    ("Reader Two", "2026-11-22"), ("Reader Three", "2026-11-26"), ("Reader Four", "2026-11-27"), ("Reader Five", "2026-11-28")))
 
     @case("PV11", "F37 S1: the argument detector is `How this is proved` (no `, as`): an interpretation block whose text opens `How this is "
                   "proved: ...` is listed as FRAME-NOTE with that detector, and not with the old `How this is proved, as`")
