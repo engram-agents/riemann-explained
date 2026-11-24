@@ -497,7 +497,10 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "sketch_basis_source", "sketch_basis_compiled", "sketch_note", "sketch_missing_line", "unexpanded_heading",
              "argument_frame_no_proof", "evidence_statement_read_line", "evidence_statement_census_line", "evidence_proof_read_line",
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
-             "evidence_sketch_build_line")
+             "evidence_sketch_build_line", "edition_note_first_screen", "edition_note_card", "edition_link_label", "edition_href_tree",
+             "edition_href_blob")
+EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
+EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
 PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
@@ -506,6 +509,7 @@ PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_st
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
                 "shared_note": {"groups"}, "note_href": {"file"},
+                "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_href_blob": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
                 "frames.interpretation": {"reader", "date"},
                 "recognition_result_known_line": {"result"},
@@ -542,7 +546,9 @@ REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "ev
                          "recognition_citation_dated_line": ("source", "where"),
                          "recognition_citation_open_line": ("source", "where", "source_date"),
                          "established_by_line": ("name",),
-                         "sketch_frame": ("basis",)}
+                         "sketch_frame": ("basis",),
+                         "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"),
+                         "edition_href_blob": ("file",)}
 PROOF_KINDS = frozenset(["theorem", "lemma"])   # the table kinds that HAVE a proof; any other kind has none (F22)
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
@@ -620,8 +626,8 @@ def _fact_flags(items, key):
 
 def static_problems(page, js):
     """What the page or data.js holds that could make a request: a sorted list of ids from fetch(, XMLHttpRequest, WebSocket,
-    sendBeacon, import(, @import, src=http, href=http (a reaction anchor excepted, and an <a class=citation> whose href starts
-    `https://`, a source the reader may open), url( to a URL."""
+    sendBeacon, import(, @import, src=http, href=http (a reaction anchor excepted, and an <a class=citation> or <a class=edition-link>
+    whose href starts `https://`, a source or an earlier edition the reader may open; the class is a TOKEN of the class list), url( to a URL."""
     found = set()
     for text in (page, js):
         found.update(tok for tok in _API if tok in text)
@@ -638,7 +644,8 @@ def static_problems(page, js):
                 if k in ("src", "srcset", "poster"):
                     found.add("src=http")
                 elif k in ("href", "action", "formaction", "xlink:href") and not (
-                        tag == "a" and ("reaction" in classes or (k == "href" and "citation" in classes and v.startswith("https://")))):
+                        tag == "a" and ("reaction" in classes or (k == "href" and ("citation" in classes or "edition-link" in classes)
+                                                                  and v.startswith("https://")))):
                     found.add("href=http")
 
     P(convert_charrefs=True).feed(page)
@@ -1034,6 +1041,9 @@ def _strings_problems(s):
             if need_str(f"reactions[{i}].href", r["href"]):
                 if not r["href"].startswith("https://"):
                     bad(f"reactions[{i}].href", "must be an https URL")
+    for k in EDITION_HREFS:   # F44: an address of the first edition must be https (a sentence of the page never holds it)
+        if isinstance(s.get(k), str) and s[k] != "" and not s[k].startswith("https://"):
+            bad(k, "must be an https URL")
     fw = s.get("forbidden_words")
     if "forbidden_words" not in s:
         bad("forbidden_words", "missing")
@@ -1072,7 +1082,7 @@ def _strings_problems(s):
             if "{" + t + "}" not in v:
                 bad(path, "is missing the placeholder {" + t + "}")
     for path, v in _walk_strings(s, ""):
-        if path == "note_href" or re.fullmatch(r"reactions\[\d+\]\.href", path):
+        if path == "note_href" or path in EDITION_HREFS or re.fullmatch(r"reactions\[\d+\]\.href", path):
             continue   # an address, not a sentence of the page
         for w in words:
             if re.search(r"(?<![A-Za-z])" + re.escape(w) + r"(?![A-Za-z])", v, re.I):
@@ -1355,6 +1365,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
             "notes": notes, "roots_only": True}
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "premises": list(g["premises"]), "roots": root_rows,
                         "root_role": role, "root_kind": root_kind, "recognition": copy.deepcopy(recognition), "sketches": sketches,
+                        "edition": {"number": 2, "date": g["edition_date"]} if g.get("edition") == 2 else None,   # F44
                         "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
                                        for b in brecs if b["kind"] == "not_read"], "notes": notes}
@@ -1983,12 +1994,29 @@ def _fillh(template, rich=(), formula_at=None, **kw):
     return "".join(out)
 
 
+def _edition_html(template, date, href, label):
+    """F44: the HTML of an edition sentence: the template's own text escaped, {date} escaped, {link} the `edition-link` anchor to `href`
+    with `label` (any other {name} stays as written)."""
+    link = f'<a class="edition-link" href="{_e(href)}">{_e(label)}</a>'
+    out, pos = [], 0
+    for mt in _PLACEHOLDER.finditer(template):
+        out.append(_e(template[pos:mt.start()]))
+        out.append(link if mt.group(1) == "link" else _e(date) if mt.group(1) == "date" else _e(mt.group(0)))
+        pos = mt.end()
+    out.append(_e(template[pos:]))
+    return "".join(out)
+
+
 def _render_page(m, s, facts, dirty):
     lab, kinds = s["labels"], s["labels"]["kinds"]
     files = m.files
     out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', f"<title>{_e(s['page_title'])}</title>",
            "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>"]
     out += [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
+    ed_dates = [f["edition"]["date"] for f in files.values() if f["edition"]]
+    if ed_dates:   # F44: said once on the first screen, with the LATEST date of a rewrite
+        out.append('<p class="edition-note">' + _edition_html(s["edition_note_first_screen"], max(ed_dates), s["edition_href_tree"],
+                                                              s["edition_link_label"]) + "</p>")
     if dirty:
         out.append(f'<p class="dirty">{_e(s["dirty_note"])}</p>')
     out += ['<ul class="facts">',
@@ -2153,6 +2181,10 @@ def _render_page(m, s, facts, dirty):
             o.append(f'<li><a class="reaction" href="{_e(href)}">{_e(r["label"])}</a></li>')
         o.append("</ul>")
         o += ['<details class="evidence">', f"<summary>{_e(s['evidence_label'])}</summary>"]
+        if fl["edition"]:   # F44: a rewritten card says so once, inside Evidence, with a link to the file of the first edition
+            o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], fl["edition"]["date"],
+                                                                _fill(s["edition_href_blob"], file=EDITION_OUTLINE_FILE),
+                                                                s["edition_link_label"]) + "</p>")
         for r in fl["roots"]:
             o.append('<div class="root">')
             o.append(f'<dl><dt>{_e(s["evidence_module_label"])}</dt><dd><code>{_e(r["module"])}</code></dd>'
@@ -2259,7 +2291,7 @@ def _origin(token, sj, level0, level1, groups):
 
     strings = list(_walk_strings(sj, ""))
     if link:   # the reaction templates are the legal holders of an address: look at the other values first
-        strings.sort(key=lambda pv: bool(re.fullmatch(r"reactions\[\d+\]\.href", pv[0])))
+        strings.sort(key=lambda pv: bool(re.fullmatch(r"reactions\[\d+\]\.href", pv[0])) or pv[0] in EDITION_HREFS)
     for path, v in strings:
         if hit(v):
             return f"strings key {path}"
@@ -2319,8 +2351,8 @@ def _output_files(level0, level1, groups, page, commits, m, release_id, archive)
     out = {k: (_dump(v) + "\n").encode("utf-8") for k, v in files.items()}
     out["data.js"] = data.encode("utf-8")
     out["index.html"] = page.encode("utf-8")
-    manifest = {"commits": commits, "counts": {"blocks": m.totals["blocks"], "groups": m.totals["groups"],
-                                               "notes": m.totals["notes"]},
+    manifest = {"commits": commits, "counts": {"blocks": m.totals["blocks"], "editions": sum(1 for g in groups.values() if g["edition"]),
+                                               "groups": m.totals["groups"], "notes": m.totals["notes"]},
                 "files": {k: _sha(v) for k, v in sorted(out.items())}, "release_archive_sha": archive,
                 "release_id": release_id}
     out["manifest.json"] = (_dump(manifest) + "\n").encode("utf-8")
@@ -2762,6 +2794,7 @@ def _strings():
     s.update(WORDING)
     s["argument_frame_no_proof"] = NO_PROOF_FRAME
     s.update(F37_EVIDENCE)
+    s.update(EDITION_WORDING)
     return s
 
 
@@ -2774,10 +2807,6 @@ EDITION_WORDING = {
     "edition_href_blob": "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}",
 }
 
-
-def _estrings():
-    """The strings fixture with the five edition keys."""
-    return dict(_strings(), **EDITION_WORDING)
 
 
 
@@ -2925,7 +2954,7 @@ _REQ2 = (("recognition_result_known_line", ("result",)), ("recognition_result_va
 def _marked(v, path=""):
     """The strings fixture with every string value replaced by a distinct marker naming its key."""
     if isinstance(v, str):   # a key that must hold its placeholders keeps them behind the marker (they are filled with data)
-        return (("https://" if path.endswith(".href") and path.startswith("reactions") else "") + "MARK-" + path
+        return (("https://" if (path.endswith(".href") and path.startswith("reactions")) or path in EDITION_HREFS else "") + "MARK-" + path
                 + "".join(" {" + t + "}" for t in REQUIRED_PLACEHOLDERS.get(path, ())))
     if isinstance(v, list):
         return [_marked(x, f"{path}.{i}") for i, x in enumerate(v)]
@@ -3050,7 +3079,7 @@ def _left(d):
 def _hostile(v, path=""):
     """The strings fixture with the hostile text added to every string (the href templates get the one with `%`)."""
     if isinstance(v, str):
-        return v + HOST if (path == "note_href" or path.endswith(".href")) else v + " " + HOST_S
+        return v + HOST if (path == "note_href" or path.endswith(".href") or path in EDITION_HREFS) else v + " " + HOST_S
     if isinstance(v, list):
         return [_hostile(x, f"{path}.{i}") for i, x in enumerate(v)]
     if isinstance(v, dict):
@@ -3205,6 +3234,22 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
                "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(EDITION_WORDING)
+
+
+def _no_edition(rel, data):
+    """The bytes of a group file or of data.js as the builder wrote them before F44 added `edition`: the key of each group removed, the
+    file written again the way the builder writes it. Any other file is returned as it is. Used by the cases that pin those bytes."""
+    if rel.startswith("group/") and rel.endswith(".json"):
+        d = json.loads(data.decode("utf-8"))
+        d.pop("edition", None)
+        return (_dump(d) + "\n").encode("utf-8")
+    if rel == "data.js":
+        pre = "window.RH_DATA = "
+        d = json.loads(data.decode("utf-8")[len(pre):-2])
+        for g in d["groups"].values():
+            g.pop("edition", None)
+        return (pre + _js_safe(_dump(d)) + ";\n").encode("utf-8")
+    return data
 
 
 def _real_strings_facts(path):
@@ -4391,17 +4436,17 @@ def _selftest_cases():
                          ("`x Foo.bar y`", True, False)])
 
     @case("PHR4", "the keys that must hold their placeholders (the counts and the open-items lines, the recognition lines, the citation lines, "
-                  "established_by_line, sketch_frame and the eight Evidence keys of F37) are exactly the 27 listed, each declares exactly the "
+                  "established_by_line, sketch_frame, the eight Evidence keys of F37 and the three edition keys of F44) are exactly the 30 listed, each declares exactly the "
                   "placeholders it must hold; the card keys of F37 (the read lines, the frames, the label line, the compiled basis) and the "
                   "retired second_reader_frame declare none and require none")
     def _():
         keys = ["statement_count_line", "proof_count_line", "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
-        new = [k for k, _n in _REQ2]
+        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_href_blob"]
         none_keys = ["statement_read_line", "statement_census_line", "proof_read_line", "argument_frame", "argument_frame_no_proof",
                      "interpretation_frame", "recognition_label_line", "sketch_basis_compiled", "second_reader_frame", "frames.argument"]
         return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys + new],
                     [PLACEHOLDERS.get(k, set()) for k in none_keys], [k in REQUIRED_PLACEHOLDERS for k in none_keys]),
-                   (sorted(keys + new), [True] * 27, [set()] * 10, [False] * 10))
+                   (sorted(keys + new), [True] * 30, [set()] * 10, [False] * 10))
 
     _REQ = (("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
@@ -6826,7 +6871,7 @@ def _selftest_cases():
             h = hashlib.sha256()
             for k in sorted(b_.files):
                 if (k.endswith(".json") and k != "manifest.json") or k == "data.js":
-                    h.update(k.encode() + b"\0" + b_.files[k] + b"\0")
+                    h.update(k.encode() + b"\0" + _no_edition(k, b_.files[k]) + b"\0")
             return h.hexdigest()
 
         o = _ol(lambda g: g["claim"].update(text="Claim $x$", conditions=["Cond $y$ holds."]))
@@ -7276,7 +7321,7 @@ def _selftest_cases():
             h = hashlib.sha256()
             for k in sorted(b_.files):
                 if k not in ("index.html", "manifest.json"):
-                    h.update(k.encode() + b"\0" + hashlib.sha256(b_.files[k]).digest())
+                    h.update(k.encode() + b"\0" + hashlib.sha256(_no_edition(k, b_.files[k])).digest())
             return h.hexdigest()
         outs = [f37(), f37(outline=_zoo()), f37(notes=_notes_s()), f37(outline=_outline_b(), notes=_notes_b()),
                 f37(outline=_zoo(), notes=_notes_s() | {"07-def.md": N07})]
@@ -7318,7 +7363,7 @@ def _selftest_cases():
         h = hashlib.sha256()
         for k in sorted(b.files):
             if k not in ("index.html", "manifest.json"):
-                h.update(k.encode() + b"\0" + hashlib.sha256(b.files[k]).digest())
+                h.update(k.encode() + b"\0" + hashlib.sha256(_no_edition(k, b.files[k])).digest())
         js = lambda g, bid: next((x["reader"], x["date"]) for x in b.js(f"group/{g}.json")["blocks"] if x["block"] == bid)
         return _eq((b.rc, lis("g1"), lis("g1a1"), lis("g3"), len(_direct(_card(b, "g1a"), "ul", "corrections")),
                     _surface_bad.findall(surface(_dom(b.page))),
@@ -7430,7 +7475,7 @@ def _selftest_cases():
         return o
 
     def _eb(*pairs, **others):
-        return _build(outline=_eo(*pairs, **others), strings=_estrings())
+        return _build(outline=_eo(*pairs, **others), strings=_strings())
 
     @case("ED1", "F44: group/<id>.json and data.js carry `edition`: null at edition 1 (absent or 1), else {number: 2, date: the edition_date}; the "
                  "level0 and level1 summaries carry none; manifest.json counts `editions` (the groups at edition 2): 0 for the base, 2 here")
@@ -7480,7 +7525,7 @@ def _selftest_cases():
         one = _outline()
         for g in one["groups"]:
             g["edition"] = 1
-        e1 = _build(outline=one, strings=_estrings())
+        e1 = _build(outline=one, strings=_strings())
         h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
                    (["4e424c9b532f7a275f1255363b837599afb1f2cb0b46700be345004ad9102496",
@@ -7518,14 +7563,14 @@ def _selftest_cases():
                  "placeholder is allowed (a `{file}` in the tree address, `{x}` anywhere is refused); a forbidden word in a sentence is refused")
     def _():
         def one(key, value):
-            s = _estrings()
+            s = _strings()
             s[key] = value
             return [(c, p, m) for c, p, m in _strings_problems(s)]
         got = [one("edition_href_tree", "http://example.invalid/tree"), one("edition_href_blob", "http://example.invalid/{file}"),
                one("edition_href_tree", "https://example.invalid/{file}"), one("edition_href_blob", "https://example.invalid/{x}"),
                one("edition_note_card", "On {date} it was rewritten."), one("edition_note_first_screen", "Rewritten {link}."),
-               one("edition_note_card", "On {date} {link} {x}."), one("edition_note_first_screen", "Clearly rewritten on {date}: {link}."),
-               one("edition_href_blob", "https://example.invalid/blob"), _strings_problems(_estrings())]
+               one("edition_note_card", "On {date} {link} {x}."), one("edition_note_first_screen", "Explained on {date}: {link}."),
+               one("edition_href_blob", "https://example.invalid/blob"), _strings_problems(_strings())]
         return _eq(got, [[("STRINGS-KEY", "edition_href_tree", "must be an https URL")],
                          [("STRINGS-KEY", "edition_href_blob", "must be an https URL")],
                          [("STRINGS-KEY", "edition_href_tree", "has an unknown placeholder {file}")],
@@ -7534,7 +7579,7 @@ def _selftest_cases():
                          [("STRINGS-KEY", "edition_note_card", "is missing the placeholder {link}")],
                          [("STRINGS-KEY", "edition_note_first_screen", "is missing the placeholder {date}")],
                          [("STRINGS-KEY", "edition_note_card", "has an unknown placeholder {x}")],
-                         [("STRINGS-FORBIDDEN", "edition_note_first_screen", "holds the word 'clearly', which the page never says")],
+                         [("STRINGS-FORBIDDEN", "edition_note_first_screen", "holds the word 'explained', which the page never says")],
                          [("STRINGS-KEY", "edition_href_blob", "is missing the placeholder {file}")], []])
 
     @case("ED7", "F44: the static check exempts a THIRD external anchor, by class TOKEN: `<a class=edition-link href=https://...>` (also among other "
@@ -7566,7 +7611,7 @@ def _selftest_cases():
                  "(like the reaction templates, the two edition addresses are legal holders): note_href `http://...` is blamed with the edition "
                  "keys placed first in the strings file")
     def _():
-        s = {k: v for k, v in EDITION_WORDING.items()}
+        s = dict(EDITION_WORDING)
         s.update(_strings())
         s["note_href"] = "http://x.invalid/{file}"
         b = _build(strings=s)
