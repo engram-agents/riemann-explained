@@ -1683,6 +1683,8 @@ class _TexParser:
         mt = _ONE_MI.fullmatch(base) if pr else None
         if mt:   # the prime goes INSIDE the token of a one-token <mi> base: it cannot detach (an <msup> floats it high and apart, a flat <mo> sits in the stroke)
             base, pr = f"{mt.group(1)}{mt.group(2)}{'′' * primes}</mi>", []
+        if primes and sup is not None:   # the prime and the script must not run together
+            sup = f'<mrow><mspace width="0.15em"></mspace>{sup}</mrow>'
         if sub is None and sup is None:
             return [base] + pr
         base = "<mrow>" + base + "".join(pr) + "</mrow>" if pr else base
