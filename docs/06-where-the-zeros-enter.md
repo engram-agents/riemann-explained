@@ -99,6 +99,7 @@ The section variables are a family type `Fam`, a map `core : Fam eps → FamCore
   ```
 
   **In words:** for every level, families tied by `ChainTied` satisfy the window inequality. Its proof is one line, `windowInequality_of_artinInputs (fun Fm => tiedCore_of_chainTied Fm) Λ`, and I did not open it further.
+<!-- rh-block {"date":"2026-11-23","decls":[{"module":"Development.AutomorphicArithmetic.PrimitiveCosets.LevelGmLeOnFamilyScales","name":"UpperTheory.Comparison₂.level_gm_le_on_family_scales"}],"file":"Development/AutomorphicArithmetic/PrimitiveCosets/LevelGmLeOnFamilyScales.lean","id":"06.b01","kind":"reading","lines":[28,30],"reader":"Halley"} -->
 - **`UpperTheory.Comparison₂.formB`** (`Development/AutomorphicArithmetic/PrimitiveCosets/Imports.lean`, line 8):
 
   ```lean
@@ -106,6 +107,7 @@ The section variables are a family type `Fam`, a map `core : Fam eps → FamCore
   ```
 
   **In words:** the Landau step holds for every level. Its proof's fourth line calls `Deduction.zeroFree_of_rpow_window` (`Development/AutomorphicArithmetic/DedekindLFunctions/LandauTheorems/ZeroFreeOfRpowWindow.lean`, line 11). That theorem's hypothesis is: for every Y₀ there is Y ≥ Y₀ with `Gm F y ≤ C·y^θ` for all y in [Y, Y^(1+δ)]. Its conclusion is `ZeroFree F θ`, for a `CharFamily` F.
+<!-- rh-block {"date":"2026-11-23","decls":[{"module":"Development.AutomorphicArithmetic.PrimitiveCosets.Imports","name":"UpperTheory.Comparison₂.formB"}],"file":"Development/AutomorphicArithmetic/PrimitiveCosets/Imports.lean","id":"06.b02","kind":"reading","lines":[8,19],"reader":"Halley"} -->
 
 ### (c) `ChainTied`
 
@@ -158,6 +160,10 @@ theorem zeroFreeOn_of_tiedWin_cyc {Q : PChar → Prop} {la : ℝ} (hla : 1 < la)
     (h : ∀ ψ, Q ψ → ChebyshevInequalityAtWindowScale @core @Tied la (Level.cyc ψ)) : ZeroFreeOn Q :=
 ```
 
+
+### Added 2026-11-24: two proofs read since
+
+Since this note was written I have read more of two proofs that the list above gives as not read. On 2026-11-22 I read `windowInequality_of_artinInputs` (`Development/AutomorphicArithmetic/PrimitiveCosets/WindowInequalityOfArtinInputs.lean`, lines 17-25): it unpacks its hypotheses and applies the window bound `core_gm` ([note 9](09-the-window-bound.md)). On 2026-11-23 I read the whole proof of `formB` (`Imports.lean`, lines 8-19): it takes the level's family from `UpperTheory.Comparison₂.level_family`, rewrites with the two equations that come with it, and applies `Deduction.zeroFree_of_rpow_window` with $\delta = \mathrm{la} - 1$ and $C = 1$. Still not read: the proofs of `tiedCore_of_chainTied`, `level_family` and `zeroFree_of_rpow_window`.
 
 ## Files this note was written from
 
