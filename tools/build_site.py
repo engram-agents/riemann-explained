@@ -22,7 +22,7 @@ of the outline (a field of the GROUP, null-claim groups included; [] when none);
 EVERY root of the group has the fact (the proof_read of a group whose roots have no proof is null, F22); `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
 roots_proof_read, roots_proof_applicable, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
 `claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `premises`, `roots`, `blocks`,
-`open_items`, `notes` and `commits`, and each root of it has `statement_read` (a boolean) and `proof_read` (a boolean, or null for a root without a proof). level0.json has `facts` ({steps,
+`open_items`, `notes`, `title` (the group's title as written, null when it has none; level0.json and level1.json carry none) and `commits`, and each root of it has `statement_read` (a boolean) and `proof_read` (a boolean, or null for a root without a proof). level0.json has `facts` ({steps,
 statement_read, statement_not_read, proof_read, proof_not_read, proof_not_applicable, proof_applicable}, counted over the level-1 steps) and `totals`, which holds
 `open_items`, the number of distinct open not_read blocks of the whole outline.
 
@@ -426,6 +426,24 @@ placeholders and the builder-sentence rules (R3: forbidden words, no percent sig
 declares {reader} and {date} (a detector list that may use them; the real file holds none). (d), a record of the publishing commit
 written by the builder, is not done here.
 
+F47, F48 THE TITLE OF A CARD (cases TT1 to TT14, F48WORD1). A group may carry an author-written `title` (notes_meta: a plain one-line
+string; TITLE-WITH-CLAIM on a group with a claim whose root is a result). A card with no claim and a title prints, in the heading,
+the strings key `title_label` (`What this step is:`) in <span class="title-label"> and the title in <span class="title-text">, and
+directly under the heading the `no_claim_label` in <p class="no-claim-label">; when its roots are all without a proof (a definition or
+structure card) the label is `definition_label` (`Definition.`, <span class="definition-label">) instead, with no joining word. A
+definition or structure card with a claim and a title prints `definition_label`, the title, `definition_join` (`is defined as:`,
+<span class="definition-join">) and then the claim as before, its conditions list directly under the heading. A claim and no title, and
+no claim and no title, print as before; a result card with a claim never shows a title. The title goes through _rich (span rule, formulas)
+with the card id as `where`. The CSS rule `.title-text { font-weight: normal; color: GrayText; }` keeps the title out of the heading's
+weight; the CSS had no colour value, so a system colour keyword is used (no palette value is invented). title_of, the premise row's
+name for another card, is the title when the card shows one, else the claim, else the root name; it has no other caller. The card's
+id is on the page only as the `id` attribute and in `#` links (TT14); shared_note names the groups that share a root by id. A card
+that needs a title (no claim, or a definition or structure card) and has none is listed `TITLE-MISSING <card id>`, in the order of the
+page, one line each, and the line `titles: T of K cards that need one` follows the facts check and the count lines; when the module
+constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISSING (exit 1) and no listing is printed. The
+constant is False. F48WORD1 compares definition_label and definition_join with the wording file named by the environment variable
+RH_F48_WORDING and is skipped when it is not set.
+
 usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX]
                      [--notes-commit REV --repo DIR] [--force]
        build_site.py --selftest [--only ID,ID]
@@ -497,7 +515,7 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "sketch_basis_source", "sketch_basis_compiled", "sketch_note", "sketch_missing_line", "unexpanded_heading",
              "argument_frame_no_proof", "evidence_statement_read_line", "evidence_statement_census_line", "evidence_proof_read_line",
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
-             "evidence_sketch_build_line")
+             "evidence_sketch_build_line", "title_label", "definition_label", "definition_join")
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
 PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
@@ -545,6 +563,40 @@ REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "ev
                          "sketch_frame": ("basis",)}
 PROOF_KINDS = frozenset(["theorem", "lemma"])   # the table kinds that HAVE a proof; any other kind has none (F22)
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
+# F47: while False a card that needs a title and has none is listed (`TITLE-MISSING <card id>`); when True the same cards refuse the build.
+TITLE_MISSING_REFUSES = False
+
+
+def _is_definition_card(fl):
+    """A card is a definition or structure card when it has a root and no root has a proof: no root of kind theorem or lemma (every other
+    kind of the table, the unknown ones included, names or builds something and proves nothing). A card with a theorem root is a result."""
+    return bool(fl["roots"]) and not any(r["kind"] in PROOF_KINDS for r in fl["roots"])
+
+
+def _shown_title(sm, fl):
+    """The title the page shows for a card, or None. A card with no claim shows its title; a card with a claim shows it only when it is a
+    definition or structure card (a result with a claim is shown by its claim: the checker refuses the title there, and the page would not
+    show it if it were let through)."""
+    t = fl.get("title")
+    if not isinstance(t, str) or (sm["claim"] and not _is_definition_card(fl)):
+        return None
+    return t
+
+
+def _title_census(m):
+    """[(card id, has a title)] for the cards that need a title, in the order of the page (the chain in `order`, a card's children
+    nested under it): a card with no claim, or a definition or structure card (with a claim or without)."""
+    out = []
+
+    def walk(gid):
+        sm, fl = m.summary[gid], m.files[gid]
+        if sm["claim"] is None or _is_definition_card(fl):
+            out.append((gid, isinstance(fl.get("title"), str)))
+        for k in m.children.get(gid, []):
+            walk(k)
+    for gid in m.steps:
+        walk(gid)
+    return out
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
 RETIRED_WORDS = ("Read by us", "Partly read", "Not read yet")        # the coverage scale F19 removed
 LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
@@ -1355,6 +1407,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
             "notes": notes, "roots_only": True}
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "premises": list(g["premises"]), "roots": root_rows,
                         "root_role": role, "root_kind": root_kind, "recognition": copy.deepcopy(recognition), "sketches": sketches,
+                        "title": g.get("title"),
                         "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
                                        for b in brecs if b["kind"] == "not_read"], "notes": notes}
@@ -1501,7 +1554,8 @@ CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family
        "aside { border-left: 4px double; padding-left: 0.5rem; }\n"
        "code { overflow-wrap: anywhere; }\n"
        "mi { text-transform: none; font-style: italic; }\n"   # a lone <mi> must not be mapped to the math-italic block, which no common font has
-       'mi[mathvariant="normal"] { font-style: normal; }')
+       'mi[mathvariant="normal"] { font-style: normal; }\n'
+       ".title-text { font-weight: normal; color: GrayText; }")   # F47: the title is not in the claim's heading weight; GrayText is a system colour (the page has no other colour to reuse)
 
 
 def _e(x):
@@ -2077,18 +2131,32 @@ def _render_page(m, s, facts, dirty):
 
     def title_of(gid):
         sm = m.summary[gid]
+        ttl = _shown_title(sm, files[gid])   # F47: a card with a title is named by it; any other by its claim, else by its root name
+        if ttl is not None:
+            return _rich(ttl, where=gid)
         return _rich(sm["claim"]["text"], where=gid) if sm["claim"] else f"<code>{_e(sm['lean_name'])}</code>"
 
     def card(gid):
         sm, fl = m.summary[gid], files[gid]
         o = [f'<article class="card{" unread" if sm["unread"] else ""}" id="{_e(gid)}">']
+        ttl = _shown_title(sm, fl)   # F47, F48: the title, for a card with no claim and for a definition or structure card
         if sm["claim"]:
-            o.append(f'<h3 class="claim">{_rich(sm["claim"]["text"], where=gid)}</h3>')
+            if ttl is None:
+                o.append(f'<h3 class="claim">{_rich(sm["claim"]["text"], where=gid)}</h3>')
+            else:   # F48 (c): the term, then what it is defined as
+                o.append(f'<h3 class="claim"><span class="definition-label">{_e(s["definition_label"])}</span> '
+                         f'<span class="title-text">{_rich(ttl, where=gid)}</span> '
+                         f'<span class="definition-join">{_e(s["definition_join"])}</span> {_rich(sm["claim"]["text"], where=gid)}</h3>')
             if sm["claim"]["conditions"]:
                 o.append('<ul class="conditions">' + "".join(f"<li>{_rich(c, where=gid)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
-        else:
+        elif ttl is None:
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
+        else:   # F47 (a), F48 (b): a fixed label, the title, then the no_claim_label line directly under the heading
+            lead = ("definition-label", s["definition_label"]) if _is_definition_card(fl) else ("title-label", s["title_label"])
+            o.append(f'<h3 class="claim unread-claim"><span class="{lead[0]}">{_e(lead[1])}</span> '
+                     f'<span class="title-text">{_rich(ttl, where=gid)}</span></h3>')
+            o.append(f'<p class="no-claim-label">{_e(sm["claim_label"])}</p>')
         role = sm["root_role"] or ("result" if sm["root_kind"] in PROOF_KINDS else "named_statement") if sm["claim"] else None   # no role: the class of the kind
         if role == "named_statement":   # F36: what kind of step this is, directly after the claim and its conditions
             o.append(f'<p class="named-statement-use">{_e(s["named_statement_use_line"])}</p>')
@@ -2432,6 +2500,13 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         print(f"WORD-NOTE {where} {word}")
     for gid, name, kind in m.kind_notes:   # a kind outside the eight: no proof (null), and listed, never refused
         print(f"KIND-NOTE {gid} {name} kind {kind!r}")
+    census = _title_census(m)   # F47: a card that needs a title and has none is listed, or refused while TITLE_MISSING_REFUSES is True
+    for gid, has in census:
+        if not has:
+            if TITLE_MISSING_REFUSES:
+                errors.append(("TITLE-MISSING", gid, "needs a title and has none"))
+            else:
+                print(f"TITLE-MISSING {gid}")
     for bid in _bold_unpaired_blocks(m):   # a `**` that is no pair stays literal on the page, and is listed, never refused (F35)
         print(f"BOLD-UNPAIRED {bid}")
     for bid in _nest_depth_blocks(m):   # a sub-item nested deeper than one level is shown flat, and is listed, never refused (F35)
@@ -2475,6 +2550,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     print("facts check: " + check_line)
     for ln in count_lines:
         print(ln)
+    print(f"titles: {sum(1 for _g_, has in census if has)} of {len(census)} cards that need one")
     for ln in formula_listing(flog):   # a formula outside the subset stays as written, an unpaired dollar sign stays literal: listed, never refused
         print(ln)
     print(formula_run_line(fcounts))
@@ -6857,8 +6933,8 @@ def _selftest_cases():
         return _eq(((arg["text"], arg["first_sentence"]), l1["claim"]["text"], l1["claim"]["conditions"], "Claim $x$" in b.text("data.js"),
                     [digest(x) for x in (_base(), _zbase(), _sbase(), _bbase())]),
                    (("Let $a. b$ be. More $z$.", "Let $a. b$ be."), "Claim $x$", ["Cond $y$ holds."], True,
-                    ["f80ba09d768a56e83f99eefe6f5ccc659477425f3f48d39c1eb93e1263e0e6a0", "ed1fa4280342e84ef99d41bcaf4679a503cce2af26ddbf614a1ec226c145e05a",
-                     "7ec121d81c1f4d29114c1110eb966d1e3a4b294e95b8b91c9acab30fe6171a8a", "c7ef96bb43b0cc658ee1291858ce9345f688821a5d96505c197d0070e6fa010c"]))
+                    ["51bac9463ef79cddab317cc05d799b672dcb28d43641c0f94ab51060aa31cd4d", "31fdf291c949332a2bf34124202806633060396653ce7229879da0f2653e4924",
+                     "c3e642d484a854098e77b34dae3c29a71ab25916a93f09cb2f6b37c72b0ad839", "7810d5e4bdc3979ce97930a3bbc3e7b3eb73c1558e5572285d433d784af437e5"]))
 
     LEAKL = "abcdefghijklmnopqrstuvwxyz"
     GRL = "αβγδεζηθικλμνξπρστυφχψω"
@@ -7306,11 +7382,11 @@ def _selftest_cases():
                     (arg["reader"], arg["date"], arg["second_readers"], arg["file"], arg["lines"]),
                     (zrv["recognition"]["reader"], zrv["recognition"]["date"],
                      [(c["opened_by"], c["opened_on"]) for c in zrv["recognition"]["citations"]])),
-                   ([0] * 5, ["be90b01739a84e20e61d6925401b6fa3e256e858c2aa0336d07eee6750649bc5",
-                              "94f4db15211979dd993fe33b7580510b73d0ae09fe2cf623656d3459050a5da7",
-                              "0d4bf044dfadbf07c8b1a24788b6b246437d2285759d1ba2449e19b952314baa",
-                              "9ff0b5317fcb3ae718a054f590ab6f1da16c4f86ac48c0784c4d96a2590a526b",
-                              "0019287171c05bb06a9c1e524d491c68506cc8f03d6fc739822d5a7716efe67c"],
+                   ([0] * 5, ["42c5effb608da44a54b94571c3ddb2971b7996d2250ab38b3c42ed6b24398433",
+                              "8e44216149fdf4a56eb01ed3f53b0ed79496998fd298a585789f1e0d7f60661d",
+                              "d8819890e54bfc743f185dd3a5fcf2cb1ef1d55804c1b45b4250a41d5e18298c",
+                              "42d685570cd2b93b887b444eb94d8e30cbc602a444f5a2db130090de9910bfb1",
+                              "ea1ca674176f5dc2234ae31a882dc2f5d3d9c69621f42e39ebad2649a20263d4"],
                     ("Reader One", "2026-11-23", [{"reader": "Reader Two", "date": "2026-11-24"}], "A/B.lean", [15, 18]),
                     ("Reader One", "2026-11-22", [("Reader Two", "2026-11-21"), ("Reader One", "2026-11-22")])))
 
@@ -7347,7 +7423,7 @@ def _selftest_cases():
                    (0, ["Correction Note one"], ["Correction Note eight", "Correction Note nine"], ["Correction Note ten"], 0, [],
                     "01 01.b06 Correction Reader Two 2026-11-22", "08 08.b01 Correction Reader Three 2026-11-26",
                     "09 09.b01 Correction Reader Four 2026-11-27", "10 10.b01 Correction Reader Five 2026-11-28",
-                    "1bea6d12fa8779f32724591755e4fa62c663e37c4a4df0561b46c72def23734a",
+                    "64b66bb9c2e9e6a28d76c30a0a9d48eb6906aadad4b73cecd222c3d833b16180",
                     ("Reader Two", "2026-11-22"), ("Reader Three", "2026-11-26"), ("Reader Four", "2026-11-27"), ("Reader Five", "2026-11-28")))
 
     @case("PV13", "F37 review P1: a second reader of a block that is NOT an argument is in the Evidence section too, one `Read again by ...` "
@@ -7623,7 +7699,7 @@ def _selftest_cases():
         with _patched("TITLE_MISSING_REFUSES", True):
             b = _faces()
             ok_ = _faces(titles=full)
-            base = _base()
+            base = _build()   # not _base(): that one is cached from before the patch
         return _eq((TITLE_MISSING_REFUSES, b.rc, [x for x in b.out.splitlines() if "TITLE-MISSING" in x], b.existed,
                     ok_.rc, [x for x in ok_.out.splitlines() if "TITLE-MISSING" in x],
                     [x for x in ok_.out.splitlines() if x.startswith("titles: ")], base.rc),

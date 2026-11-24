@@ -124,5 +124,8 @@
  "sketch_basis_compiled": "from the goals Lean shows when this part of the release is compiled",
  "sketch_note": "A sketch for a reader, not a proof: it leaves steps out and may hide the hard part.",
  "sketch_missing_line": "Proof sketch: not written yet.",
- "unexpanded_heading": "Places where Lean finishes the proof by automation we have not opened up:"
+ "unexpanded_heading": "Places where Lean finishes the proof by automation we have not opened up:",
+ "title_label": "What this step is:",
+ "definition_label": "Definition.",
+ "definition_join": "is defined as:"
 }
