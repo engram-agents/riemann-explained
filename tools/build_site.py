@@ -3895,7 +3895,7 @@ def _selftest_cases():
         return _eq((notes, sh("g2"), sh("g1a1x"), sh("g1"),
                     b.js("group/g1a1x.json")["roots"][0]["shared_with"], b.js("level0.json")["totals"]["roots"]),
                    ({"g1": [one], "g1a": [one], "g1a1": [one], "g1a1x": [one], "g2": [many], "g3": [one]},
-                    ["Also a root of: g1a1x"], ["Also a root of: g2"], [], ["g2"], 6))
+                    ["Also a root of: qux"], ["Also a root of: quux"], [], ["g2"], 6))
 
     # ---- F39: the roots-only sentence follows what the card shows
     def _roots_only(page):
@@ -7623,8 +7623,8 @@ def _selftest_cases():
 
     @case("TT7", "F47 D1 (title_of): the premise rows of fk are shown by the term for a definition or structure with a title (fc, fs) and a "
                  "null-claim card with a title (fd, fr), by the claim for a definition with a claim and no title (fz), and by the root name "
-                 "for a null-claim card with no title (fn); the premise row of fp, a result with a claim, is its claim; the only caller of "
-                 "title_of is the premise row")
+                 "for a null-claim card with no title (fn); the premise row of fp, a result with a claim, is its claim; the callers of "
+                 "title_of are the premise row and the shared-root note (SH1)")
     def _():
         import inspect
         b = _faces()
@@ -7632,7 +7632,7 @@ def _selftest_cases():
         return _eq((b.rc, rows("fk"), rows("fp"), len(re.findall(r"title_of\(", inspect.getsource(_render_page)))),
                    (0, [("#fd", "the top condition"), ("#fc", "the window set"), ("#fs", "the bundle of statements"),
                         ("#fz", "Claim without a title"), ("#fr", "the reduction step"), ("#fn", "defc")],
-                    [("#fk", "Claim of the result")], 2))
+                    [("#fk", "Claim of the result")], 3))
 
     @case("TT8", "F47: a titled null-claim card that has premises keeps the order heading, no_claim_label line, premises, status lines")
     def _():
@@ -7729,6 +7729,64 @@ def _selftest_cases():
         b = _build(outline=o, decls=FACES_DECLS, notes=FACES_NOTES)
         return _eq((b.rc, [f'id="{i}"' in b.page for i in ids], hits(b.page, ids), hits("<p>see zqx1 and wnr3.</p>", ids)),
                    (0, [True, True, True], [], ["wnr3", "zqx1"]))
+
+    # ---- F48 (a), the shared-root note names the other cards by title, not by id
+    def shared_lines(b, gid):
+        """The shared-root notes inside the card gid (the cards of these fixtures are all top level, so the card ends at the first </article>)."""
+        start = b.page.index(f' id="{gid}">')
+        return re.findall(r'<p class="shared">.*?</p>', b.page[start:b.page.index("</article>", start)])
+
+    def id_hits(page, ids):
+        return sorted(i for i in ids for piece in _dom(page).pieces()
+                      if re.search(r"(?<![A-Za-z0-9_-])" + re.escape(i) + r"(?![A-Za-z0-9_-])", piece))
+
+    @case("SH1", "F48 (a) the shared-root note on the base fixture (qux is a root of g2 and of g1a1x, both with no claim and no title): each note "
+                 "names the OTHER card by its root name in <code>, as a premise row does, in an in-page link whose target is the card's id "
+                 "(the id is the href, never the text); the card is not among its own sharers; a card with no shared root has no note")
+    def _():
+        b = _base()
+        return _eq((b.rc, shared_lines(b, "g2"), shared_lines(b, "g1a1x"), shared_lines(b, "g1"),
+                    [x for x in id_hits(b.page, ("g2", "g1a1x")) if x in ("g1a1x",)]),
+                   (0, ['<p class="shared">Also a root of: <a href="#g1a1x"><code>qux</code></a></p>'],
+                    ['<p class="shared">Also a root of: <a href="#g2"><code>quux</code></a></p>'], [], []))
+
+    def _shared_outline():
+        gs = [_g("kpa1", 1, "root", 1, [FOO], _claim("Claim of the shared theorem")),
+              dict(_g("kpb2", 1, "root", 2, [FOO, QUX]), title="the reduction step"),
+              _g("kpc3", 1, "root", 3, [FOO, BAR]),
+              _g("kpd4", 1, "root", 4, [_d("A.H", "defa")], _claim("Claim of the window set")),
+              dict(_g("kpe5", 1, "root", 5, [_d("A.H", "defa"), _d("A.H", "defb")]), title="the combined step")]
+        gs[3]["title"] = "the window set"
+        return {"release": "rel-1", "groups": gs}
+
+    @case("SH2", "F48 (a) the note on cards that share a root, ids that are not words (kpa1 a result with a claim, kpb2 titled with no claim, "
+                 "kpc3 with neither, kpd4 a titled definition with a claim, kpe5 titled with no claim): each sharer is named as a premise row "
+                 "names it (the term of a titled definition, not its claim; a title; the claim of a result; the root name with neither), "
+                 "joined by `, ` in the order of the ids, each an <a href=\"#id\">; no card is among its own sharers; and no id is a text "
+                 "node anywhere on the page")
+    def _():
+        ids = ("kpa1", "kpb2", "kpc3", "kpd4", "kpe5")
+        b = _build(outline=_shared_outline(), decls=FACES_DECLS, notes=FACES_NOTES)
+        p = '<p class="shared">Also a root of: '
+        return _eq((b.rc, shared_lines(b, "kpa1"), shared_lines(b, "kpb2"), shared_lines(b, "kpc3"), shared_lines(b, "kpd4"),
+                    shared_lines(b, "kpe5"), id_hits(b.page, ids), [f' id="{i}">' in b.page for i in ids]),
+                   (0, [p + '<a href="#kpb2">the reduction step</a>, <a href="#kpc3"><code>foo</code></a></p>'],
+                    [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpc3"><code>foo</code></a></p>'],
+                    [p + '<a href="#kpa1">Claim of the shared theorem</a>, <a href="#kpb2">the reduction step</a></p>'],
+                    [p + '<a href="#kpe5">the combined step</a></p>'],
+                    [p + '<a href="#kpd4">the window set</a></p>'], [], [True] * 5))
+
+    @case("SH3", "F48 (a) with the real strings file the note reads `This result is also part of: ` then the link (the template's own text is "
+                 "escaped, the link is not); the group file still holds the ids (shared_with is data, not the reader's surface)")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        b = _build(strings=real)
+        return _eq((b.rc, shared_lines(b, "g2"), b.js("group/g2.json")["roots"][1]["shared_with"]),
+                   (0, ['<p class="shared">This result is also part of: <a href="#g1a1x"><code>qux</code></a></p>'], ["g1a1x"]))
 
     return cases
 
