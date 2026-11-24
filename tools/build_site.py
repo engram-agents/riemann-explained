@@ -6308,10 +6308,14 @@ def _selftest_cases():
         return _eq(got, want)
 
     @case("CV4", "converter, Greek: each of the 37 Greek letter commands is one <mi> of its Unicode letter (U+03F5 for `\\epsilon`, U+03B5 for "
-                 "`\\varepsilon`, U+03D5 for `\\phi`, U+03C6 for `\\varphi`); a command run into a letter (`\\alphax`) is an unknown command")
+                 "`\\varepsilon`, U+03D5 for `\\phi`, U+03C6 for `\\varphi`); the 11 capitals (Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi "
+                 "Omega) carry mathvariant=\"normal\" (TeX sets capital Greek upright, MathML would slant a lone <mi>), the 26 lower-case letters "
+                 "carry no attribute; a command run into a letter (`\\alphax`) is an unknown command")
     def _():
-        bad = [(n, cv("\\" + n)) for n, c in GREEK if cv("\\" + n) != M_(f"<mi>{c}</mi>")]
-        return _eq((bad, len(GREEK), cv("\\alphax")), ([], 37, None))
+        bad = [(n, cv("\\" + n)) for n, c in GREEK
+               if cv("\\" + n) != M_(f'<mi mathvariant="normal">{c}</mi>' if n[0].isupper() else f"<mi>{c}</mi>")]
+        return _eq((bad, len(GREEK), sum(n[0].isupper() for n, _c in GREEK), cv("\\Gamma"), cv("\\gamma"), cv("\\alphax")),
+                   ([], 37, 11, M_('<mi mathvariant="normal">Γ</mi>'), M_("<mi>γ</mi>"), None))
 
     @case("CV5", "converter, symbols and large operators: each of le ge leq geq ne neq pm cdot infty dots mid lceil rceil sum prod int is one <mo> "
                  "(`\\infty` too, as F26B says), and `\\sum`, `\\prod`, `\\int` take limits as <msub>, <msup> or <msubsup> in line")
@@ -6666,6 +6670,18 @@ def _selftest_cases():
         src = {"A/B.lean": LEAK + "\n"}
         r = [_leaks(notes=_bn(para="[" + LEAK + "](06-x.md)", last="$x$"), src=src), _leaks(notes=_bn(para="[short](06-x.md)", last="$x$"), src=src)]
         return _eq([(x[0], x[2]) for x in r], [(1, False), (0, True)])
+
+    @case("MS1", "the page CSS makes a lone <mi> render without the browser's math-italic mapping (which needs glyphs no common font has): it holds "
+                 "`mi { text-transform: none; font-style: italic; }` and `mi[mathvariant=\"normal\"] { font-style: normal; }` (so the words of "
+                 "\\operatorname and the capitals stay upright), in the built page's <style> too; the static check stays green (no url(), no "
+                 "@import). A case on the text cannot show the glyphs, nor that the second rule wins over the first (it does by specificity): "
+                 "that needs a browser, which the twenty-longest page is for")
+    def _():
+        r1, r2 = "mi { text-transform: none; font-style: italic; }", 'mi[mathvariant="normal"] { font-style: normal; }'
+        b = _build(notes=_notes(arg_text="A $x$ and $\\Gamma$ here"))
+        style = b.page.split("<style>")[1].split("</style>")[0]
+        return _eq((r1 in CSS, r2 in CSS, r1 in style, r2 in style, CSS.index(r1) < CSS.index(r2), static_problems(b.page, b.text("data.js")), b.rc),
+                   (True, True, True, True, True, [], 0))
 
     @case("EL1", "element_problems, planted: `<script>`, `<annotation>`, `<iframe>` and an unknown element are `element <name>`; an `onclick` on a "
                  "<p>, a `style` on a <p> (the builder has none), an `href` on a <mi> and a `mathvariant` on a <p> are `attribute <name> on <element>`; "
