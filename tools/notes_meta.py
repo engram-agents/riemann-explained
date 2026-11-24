@@ -1022,7 +1022,7 @@ def _put(path, text):
 
 
 def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None, committed=None, glob=None,
-       raw_outline=None, repo_arg=False, check_dirs=None):
+       raw_outline=None, repo_arg=False, check_dirs=None, today=None):
     """Plant a fixture and call run(); (rc, stdout, stderr) as a Res. `committed` names files of NOTES_DIR that exist
     at the commit called HEAD of a throwaway git repository around the fixture (BYTES)."""
     notes = {"01-a.md": NOTE()} if notes is None else notes
@@ -1058,6 +1058,8 @@ def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None,
             kw["repo"] = d
         if glob is not None:
             kw["glob"] = glob
+        if today is not None:
+            kw["today"] = today
         buf, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
             rc = run(nd, op, dp, **kw)
@@ -1679,7 +1681,7 @@ def _():
     cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n" + BL("01.b02") + "\n")
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD")
     eq((r.f, r.rc), ([], 0), r.out)
-    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD", repo_arg=True)
     eq((r.f, r.rc), ([], 0), "--repo given")
 
@@ -1724,7 +1726,7 @@ def _():
     cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n" + BL("01.b02") + "\n")
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": BASEH}, base="HEAD")
     eq((r.f, r.rc), ([], 0), r.out)
-    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
     r = go(notes={"01-a.md": BASEH}, committed={"01-a.md": BASEH}, base="HEAD")
     eq((r.f, r.rc), ([], 0), "unchanged")
     r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n")}, committed={"01-a.md": BASEH}, base="HEAD")
@@ -1735,7 +1737,7 @@ def _():
 def _():
     r = go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD")
     eq((r.f, r.rc), ([], 0), r.out)
-    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
 
 
 @case("Y3", "a base with header and anchor and a current note with one word of the body changed: BYTE-DIFF, the line counted without anchors")
@@ -1743,7 +1745,7 @@ def _():
     cur = NOTE(body="Some texts.\n" + BL() + "\nMore text.\n")
     r = go(notes={"01-a.md": cur}, committed={"01-a.md": BASEH}, base="HEAD")
     eq((r.f, r.rc), (["BYTE-DIFF 01-a.md:6 line 6 differs (line 5 of the text without anchors): at HEAD (without anchors) 'Some text.\\n', now (without anchors) 'Some texts.\\n'"], 1), r.out)
-    ok("byte check: 0 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
 
 
 @case("Y4", "an anchor-looking line inside a fence is text on both sides: it is compared, and a change to it is a BYTE-DIFF")
@@ -1761,7 +1763,7 @@ def _():
     bad = b"# Note\n\xff\n"
     r = go(notes={"01-a.md": CUR, "02-b.md": NOTE(nid="02")}, committed={"01-a.md": bad, "02-b.md": T0.replace("More text.\n", "")}, base="HEAD")
     eq((r.f, r.rc), (["BYTE-DIFF 01-a.md the note at HEAD is not valid UTF-8 and cannot be compared"], 1), r.out)
-    ok("byte check: 1 notes equal to HEAD, 0 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
 
 
 @case("Y6", "CRLF notes and notes without a final newline strip the same way on both sides")
@@ -2092,7 +2094,7 @@ def _():
     r = go(notes={"01-a.md": CUR, "02-b.md": other, "03-c.md": NOTE(nid="03")}, committed={"01-a.md": T0, "02-b.md": T0},
            base="HEAD", strings=fr)
     ok("strings: 3 frame phrases loaded for 2 kinds" in r.lines, r.out)
-    ok("byte check: 1 notes equal to HEAD, 1 new" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 1 new, 0 additions" in r.lines, r.out)
     eq((r.rc, [x[:9] for x in r.f]), (1, ["BYTE-DIFF", "NEW-NOTE "]), "findings")
     ok(not any(x.startswith("FRAME-NOTE skipped") for x in r.lines), "no skip notice when phrases loaded")
 
@@ -2274,6 +2276,241 @@ def _():
     fe(_clw("The McDonald bound."), [_clw_line("claim text", "McDonald")], 0)
     fe(_clw("The naïveThing bound."), [_clw_line("claim text", "veThing")], 0)
     fe(_clw("The GröbnerBasis bound."), [_clw_line("claim text", "bnerBasis")], 0)
+
+
+# ---- F27: a dated pure insertion is an ADDITION (a listing), not a BYTE-DIFF
+TODAY = "2026-11-24"
+T2 = "# Note\n\n## Body\n\nFirst.\n\nSecond.\n"   # two paragraphs, no anchors; the body starts on line 6 of the file on disk
+
+
+def _add(body, base=T0, today=TODAY, **hdr):
+    return go(notes={"01-a.md": NOTE(body=body, **hdr)}, committed={"01-a.md": base}, base="HEAD", today=today)
+
+
+def _bdt(l, sidx, a, b, extra=""):
+    return _bd(l, sidx, a, b) + extra
+
+
+@case("ADD1", "an insert-only dated addition at the end (a blank line, then a heading with a date): no finding, one ADDITION line, "
+              "exit 0, counted in the warnings and in the byte-check summary; the base note is not 'equal' and not 'new'")
+def _():
+    r = _add("Some text.\nMore text.\n\n## 2026-11-22 Added\nNew words.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 1 additions" in r.lines, r.out)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "count line")
+
+
+@case("ADD2", "the same insertion with the date removed from its heading is a BYTE-DIFF at the first line of the run (today's message)")
+def _():
+    r = _add("Some text.\nMore text.\n\n## Added\nNew words.\n")
+    eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'\\n'")], 1), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+
+
+@case("ADD3", "an insertion plus one altered earlier line is a BYTE-DIFF naming the altered line, as before")
+def _():
+    r = _add("Some texts.\nMore text.\n\n## 2026-11-22 Added\nNew words.\n")
+    eq((r.f, r.rc), ([_bd(6, 5, "'Some text.\\n'", "'Some texts.\\n'")], 1), r.out)
+
+
+@case("ADD4", "two additions in one note: two ADDITION lines in file order, each with its own first line, count and heading; "
+              "both count in the warnings and in `additions`")
+def _():
+    r = _add("Some text.\n\n## 2026-11-21 First add\nA.\nMore text.\n\n### 2026-11-22 Second add\nB.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:7 3 lines, heading 2026-11-21 First add",
+                      "ADDITION 01-a.md:11 3 lines, heading 2026-11-22 Second add"], 0), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 2 additions" in r.lines, r.out)
+    eq(r.lines[-1], "1 notes, 0 findings, 2 warnings", "count line")
+
+
+@case("ADD5", "an addition inside a fenced block of the published text is a BYTE-DIFF; control: the same addition after the closing "
+              "fence is an ADDITION; an unclosed published fence swallows an addition too")
+def _():
+    base = "# Note\n\n## Body\n\n```text\nline a\nline b\n```\n"
+    ins = NOTE(body="```text\nline a\n## 2026-11-22 Added\nline b\n```\n")
+    r = go(notes={"01-a.md": ins}, committed={"01-a.md": base}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), ([_bd(8, 7, "'line b\\n'", "'## 2026-11-22 Added\\n'")], 1), r.out)
+    after = NOTE(body="```text\nline a\nline b\n```\n\n## 2026-11-22 Added\nX.\n")
+    r = go(notes={"01-a.md": after}, committed={"01-a.md": base}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:10 3 lines, heading 2026-11-22 Added"], 0), "after the fence: " + r.out)
+    open_base = "# Note\n\n## Body\n\n```text\nline a\n"
+    r = go(notes={"01-a.md": NOTE(body="```text\nline a\n## 2026-11-22 Added\n")}, committed={"01-a.md": open_base},
+           base="HEAD", today=TODAY)
+    eq(r.rc, 1, "unclosed fence: " + r.out)
+    ok(not any(x.startswith("ADDITION") for x in r.f), "no ADDITION inside an unclosed fence: " + r.out)
+
+
+@case("ADD6", "an addition between two paragraphs: the run begins with the heading itself (no blank line to skip), and the blank line "
+              "after it is part of the run")
+def _():
+    r = _add("First.\n\n## 2026-11-22 Added\nExtra.\n\nSecond.\n", base=T2)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), r.out)
+
+
+@case("ADD7", "the heading is the first line of the run after its LEADING blank lines only: several blank lines then a heading is "
+              "legal and the run counts them; text then a heading (the heading is the SECOND line) is a BYTE-DIFF at the run's first line")
+def _():
+    r = _add("Some text.\nMore text.\n\n\n\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 5 lines, heading 2026-11-22 Added"], 0), r.out)
+    r = _add("Some text.\nMore text.\n\nIntro.\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'\\n'")], 1), r.out)
+    r = _add("Some text.\nMore text.\nIntro.\n## 2026-11-22 Added\n")
+    eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'Intro.\\n'")], 1), "text first, no blank: " + r.out)
+
+
+@case("ADD8", "the heading is 1 to 6 `#`, a space, then text with a date: levels 1, 2, 4 and 6 are accepted; seven `#`, no space after "
+              "the marks, and indented are not headings (BYTE-DIFF)")
+def _():
+    for marks in ("#", "##", "####", "######"):
+        r = _add("Some text.\nMore text.\n\n" + marks + " 2026-11-22 Added\nX.\n")
+        eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), marks + " " + r.out)
+    for bad in ("####### 2026-11-22 Added", "##2026-11-22 Added", " ## 2026-11-22 Added", "2026-11-22 Added", "## "):
+        r = _add("Some text.\nMore text.\n\n" + bad + "\nX.\n")
+        eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'\\n'")], 1), repr(bad) + " " + r.out)
+
+
+@case("ADD9", "the heading text of the listing has no `#` marks and no surrounding spaces; the date may sit anywhere in the heading")
+def _():
+    r = _add("Some text.\nMore text.\n\n##   Notes of 2026-11-22, a day later   \nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading Notes of 2026-11-22, a day later"], 0), r.out)
+
+
+@case("ADD10", "the date must be a real calendar date: 2026-13-45, 2026-02-30 and 2026-00-10 are BYTE-DIFF (today's message, no suffix); "
+               "a heading with an impossible date and later a real one is read by its first REAL date; 2028-02-29 is real")
+def _():
+    for bad in ("2026-13-45", "2026-02-30", "2026-00-10", "2026-11-31"):
+        r = _add("Some text.\nMore text.\n\n## " + bad + " Added\nX.\n")
+        eq((r.f, r.rc), ([_bd(8, 7, "<no line>", "'\\n'")], 1), bad + " " + r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-13-45 then 2026-11-22\nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-13-45 then 2026-11-22"], 0), r.out)
+    r = _add("Some text.\nMore text.\n\n## 2028-02-29 leap\nX.\n", today="2028-03-01")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2028-02-29 leap"], 0), r.out)
+
+
+@case("ADD11", "upper bound: a date later than --today is a BYTE-DIFF whose message names the date and the window (no lower bound "
+               "when the release has no date); a date equal to --today is accepted")
+def _():
+    r = _add("Some text.\nMore text.\n\n## 2026-11-25 Added\nX.\n")
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'",
+                           "; the added heading's date 2026-11-25 is outside the window up to 2026-11-24 (no lower bound)")], 1), r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-11-24 Added\nX.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-24 Added"], 0), "equal to today: " + r.out)
+
+
+@case("ADD12", "lower bound: the date of the header's `release` when it is `rh-YYYY-MM-DD` and real; a date before it is a BYTE-DIFF "
+               "naming the window, a date equal to it is accepted; the upper bound still applies")
+def _():
+    rel = dict(release="rh-2026-11-20")
+    r = _add("Some text.\nMore text.\n\n## 2026-11-19 Added\nX.\n", **rel)
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'",
+                           "; the added heading's date 2026-11-19 is outside the window 2026-11-20 to 2026-11-24")], 1), r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-11-20 Added\nX.\n", **rel)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-20 Added"], 0), "equal to the release date: " + r.out)
+    r = _add("Some text.\nMore text.\n\n## 2026-11-25 Added\nX.\n", **rel)
+    eq((r.f, r.rc), ([_bdt(8, 7, "<no line>", "'\\n'",
+                           "; the added heading's date 2026-11-25 is outside the window 2026-11-20 to 2026-11-24")], 1), r.out)
+
+
+@case("ADD13", "a release that does not parse as rh-YYYY-MM-DD with a real date gives NO lower bound: a date far in the past is accepted "
+               "for rel-1, rh-1, rh-2026-13-45, a prefix-only and a suffixed release")
+def _():
+    for rel in ("rel-1", "rh-1", "rh-2026-13-45", "x-rh-2026-11-20", "rh-2026-11-20-b", "RH-2026-11-20"):
+        r = _add("Some text.\nMore text.\n\n## 2001-01-01 Added\nX.\n", release=rel)
+        eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2001-01-01 Added"], 0), rel + " " + r.out)
+
+
+@case("ADD14", "a CRLF note with an addition: CRLF endings are part of the line compare, the heading text and count carry no carriage return")
+def _():
+    crlf = T0.replace("\n", "\r\n")
+    cur = NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 Added\nNew words.\n").replace("\n", "\r\n")
+    r = go(notes={"01-a.md": cur}, committed={"01-a.md": crlf}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 0), r.out)
+    r = go(notes={"01-a.md": cur.replace("Some text.\r\n", "Some text.\n", 1)}, committed={"01-a.md": crlf}, base="HEAD", today=TODAY)
+    eq(r.rc, 1, "a line ending changed in a base line is not an addition: " + r.out)
+
+
+@case("ADD15", "greedy alignment is pinned: a repeated base line takes its EARLIEST match, so an addition whose last line repeats a base "
+               "line is a legal run when the repeat comes after the original, and the same words before it leave the original unmatched "
+               "as a second run without a heading (BYTE-DIFF at that run)")
+def _():
+    r = _add("Some text.\nMore text.\n\n## 2026-11-22 Extra\nMore text.\n")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Extra"], 0), r.out)
+    r = _add("Some text.\n\n## 2026-11-22 Extra\nMore text.\nMore text.\n")
+    eq((r.f, r.rc), ([_bd(10, 9, "<no line>", "'More text.\\n'")], 1), r.out)
+
+
+@case("ADD16", "one bad run makes the whole note BYTE-DIFF even beside a legal one, and no ADDITION line is printed for that note; "
+               "the first bad run is the one named")
+def _():
+    r = _add("Some text.\n\n## 2026-11-21 Good\nA.\nMore text.\n\nNo heading here.\n")
+    eq((r.f, r.rc), ([_bd(11, 10, "<no line>", "'\\n'")], 1), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+
+
+@case("ADD17", "removed or altered base lines are never additions: a deleted line beside a legal addition and a replaced line are "
+               "BYTE-DIFF at the first positional difference, as before")
+def _():
+    r = _add("Some text.\n\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), ([_bd(7, 6, "'More text.\\n'", "'\\n'")], 1), "deleted: " + r.out)
+    r = _add("Some text.\nOther text.\n\n## 2026-11-22 Added\nX.\n")
+    eq((r.f, r.rc), ([_bd(7, 6, "'More text.\\n'", "'Other text.\\n'")], 1), "replaced: " + r.out)
+
+
+@case("ADD18", "the byte check runs per note: one note with an addition lists it, another with an altered line is BYTE-DIFF, exit 1; "
+               "the counts say one finding and one warning")
+def _():
+    a = NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n")
+    b = NOTE(nid="02", group="g2", body="Some texts.\nMore text.\n")
+    r = go(notes={"01-a.md": a, "02-b.md": b}, committed={"01-a.md": T0, "02-b.md": T0}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added",
+                      "BYTE-DIFF 02-b.md:6 line 6 differs (line 5 of the text without anchors): at HEAD (without anchors) "
+                      "'Some text.\\n', now (without anchors) 'Some texts.\\n'"], 1), r.out)
+    eq(r.lines[-1], "2 notes, 1 findings, 1 warnings", "count line")
+    ok("byte check: 0 notes equal to HEAD, 0 new, 1 additions" in r.lines, r.out)
+
+
+@case("ADD19", "a note with an addition and another finding reports both: the other finding first (line order), then the ADDITION; "
+               "the exit code is the other finding's")
+def _():
+    r = _add("Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n", level=3)
+    eq((r.f, r.rc), (["HEADER-PROBLEM 01-a.md:2 level: must be 0, 1 or 2",
+                      "ADDITION 01-a.md:8 3 lines, heading 2026-11-22 Added"], 1), r.out)
+    eq(r.lines[-1], "1 notes, 1 findings, 1 warnings", "count line")
+
+
+@case("ADD20", "anchor lines in the current file shift the line numbers of the listing and of a BYTE-DIFF, as for any difference: "
+               "an addition after a block anchor is numbered on disk")
+def _():
+    cur = NOTE(body="Some text.\n" + BL() + "\nMore text.\n\n## 2026-11-22 Added\nX.\n")
+    r = go(notes={"01-a.md": cur}, committed={"01-a.md": T0}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), (["ADDITION 01-a.md:9 3 lines, heading 2026-11-22 Added"], 0), r.out)
+    bad = NOTE(body="Some text.\n" + BL() + "\nMore text.\n\n## Added\nX.\n")
+    r = go(notes={"01-a.md": bad}, committed={"01-a.md": T0}, base="HEAD", today=TODAY)
+    eq((r.f, r.rc), ([_bd(9, 7, "<no line>", "'\\n'")], 1), r.out)
+
+
+@case("ADD21", "--today: the clock's UTC date is the default (a far-future heading date is refused without --today, a past one "
+               "accepted), a value that is not a real YYYY-MM-DD date is exit 2 with nothing on stdout, and the option parses once with a value")
+def _():
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2999-01-01 Added\nX.\n")}, committed={"01-a.md": T0}, base="HEAD")
+    eq(r.rc, 1, "future: " + r.out)
+    ok("is outside the window up to " in r.out and "2999-01-01" in r.out, r.out)
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2001-01-01 Added\nX.\n")}, committed={"01-a.md": T0}, base="HEAD")
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 3 lines, heading 2001-01-01 Added"], 0), "past: " + r.out)
+    for bad in ("2026-13-45", "yesterday", "2026-1-1", ""):
+        r = _add("Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n", today=bad)
+        eq((r.rc, r.out), (2, ""), repr(bad))
+        ok("--today" in r.err, r.err)
+    eq(_parse(["a", "b", "c", "--today", "2026-11-24"]), (["a", "b", "c"], {"today": "2026-11-24"}), "parse")
+    eq(_parse(["a", "b", "c", "--today", "2026-11-24", "--today", "2026-11-25"]), None, "twice")
+    eq(_parse(["a", "b", "c", "--today"]), None, "no value")
+
+
+@case("ADD22", "without --base nothing is compared: an addition-shaped note is not listed and the summary says the check did not run")
+def _():
+    r = go(notes={"01-a.md": NOTE(body="Some text.\nMore text.\n\n## 2026-11-22 Added\nX.\n")}, today=TODAY)
+    eq((r.f, r.rc), ([], 0), r.out)
+    ok("byte check: did not run, no --base given" in r.lines, r.out)
 
 
 @case("ORDER", "notes are checked in name order whatever the directory order; each note's findings come before its note line, "
