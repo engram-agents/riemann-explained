@@ -204,7 +204,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
      formula, marks included>`; nothing is refused. Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
      minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command (the 11 capitals with mathvariant="normal", upright as TeX sets them; the page CSS gives a lone <mi> `text-transform: none; font-style: italic` and the normal variant upright), \\max \\min \\log \\cos
-     <mi mathvariant="normal">, \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
+     <mi mathvariant="normal"> (after \\operatorname and these, and their scripts, a thin <mspace> when an identifier, number, group, Greek letter or another function follows in the group: TeX's rule), \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
      brace group (`x^10` is x^1 then 0), a prime is the msup of <mo>U+2032</mo>, a prime then a superscript are ONE msup (`r'^{-k}`), `\\bar`
      takes one token or one group (a mover over U+00AF), \\mathrm{..} and \\operatorname{..} give one <mi mathvariant="normal"> per word,
      \\bigl \\bigr \\big give the delimiter alone, `\\,` `\\;` `\\ ` `\\!` are an <mspace> of width 0.167em, 0.278em, 0.222em, -0.167em
@@ -377,7 +377,7 @@ backticks removed (so a release line that itself holds a span is still seen ther
 (of a claim, of block text or of a first sentence), or that is split by a span in its middle, is still not seen. The first sentence
 is cut at the first `.`, `!` or `?` followed by white space even inside a span (`We apply `f. g` here.` gives `We apply `f.`, the
 backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). Formulas are converted by F26B (below). A K1 source line is compared as it
-stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
+stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. KNOWN COSMETIC (F26B): a `|` is a flat <mo stretchy="false">, so a closing bar (`|a_k(\\sigma)|`) gets the infix spacing on its right side; form="postfix" would need the converter to know an opening bar from a closing one, which it does not. A code span (CODE) is the one place the page turns
 claim or condition text into markup (F35 adds <strong> and a nested <ul> for block text; the static check has no list of allowed elements), and the only new element for those is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
 seen in the JSON and not on the page. The keys of PHR must hold their placeholders, so an Evidence value that says the fact without
@@ -1592,11 +1592,27 @@ def _tex_tokens(body):
     return toks
 
 
+_FUNCTIONS = ("operatorname", "max", "min", "log", "cos")   # the function-like commands: a thin space follows them (\\mathrm is text, not a function)
+
+
+def _after_function(t):
+    """True when the token t, the next of a group after a function name, takes the thin space TeX sets there: an identifier, a number, a group,
+    a Greek letter, \\infty, a large operator, \\bar, another function or \\mathrm. Not a fence, an operator, a relation, a prime, a script
+    or an explicit space, and not the end of the group (None)."""
+    if t is None:
+        return False
+    if t[0] in ("mi", "mn", "{"):
+        return True
+    if t[0] != "cmd":
+        return False
+    return FORMULA_COMMANDS[t[1]][0] in ("mi", "fn", "bar", "font") or t[1] in ("infty", "sum", "prod", "int")
+
+
 class _TexParser:
     """Recursive descent over the tokens; every method returns MathML text or raises _Unsupported."""
 
     def __init__(self, toks):
-        self.t, self.i = toks, 0
+        self.t, self.i, self.fn = toks, 0, False
 
     def peek(self):
         while self.i < len(self.t) and self.t[self.i][0] == "sp":
@@ -1624,8 +1640,12 @@ class _TexParser:
                     return out
                 raise _Unsupported
             out.append(self.item())
+            if self.fn and _after_function(self.peek()):
+                out.append('<mspace width="0.167em"></mspace>')
 
     def item(self):
+        t0 = self.peek()
+        is_fn = t0 is not None and t0[0] == "cmd" and t0[1] in _FUNCTIONS
         base, sub, sup, primes = self.atom(), None, None, 0
         while True:
             t = self.peek()
@@ -1644,6 +1664,7 @@ class _TexParser:
                 raise _Unsupported   # a second superscript or subscript, or a prime after a superscript
             else:
                 break
+        self.fn = is_fn   # read by seq() once the scripts of the function are in
         parts = ["<mo>′</mo>"] * primes + ([sup] if sup is not None else [])
         top = None if not parts else parts[0] if len(parts) == 1 else "<mrow>" + "".join(parts) + "</mrow>"
         if sub is not None and top is not None:
@@ -6343,7 +6364,8 @@ def _selftest_cases():
     def _():
         got = [cv(x) for x in ("\\mathrm{eD}", "\\operatorname{Re} s", "\\mathrm{a b}", "\\operatorname{Re}^2", "\\mathrm{}", "\\mathrm{a1}",
                                "\\mathrm x", "\\operatorname{a+b}", "\\mathrm")]
-        want = [M_('<mi mathvariant="normal">eD</mi>'), M_('<mrow><mi mathvariant="normal">Re</mi><mi>s</mi></mrow>'),
+        want = [M_('<mi mathvariant="normal">eD</mi>'),
+                M_('<mrow><mi mathvariant="normal">Re</mi><mspace width="0.167em"></mspace><mi>s</mi></mrow>'),
                 M_('<mrow><mi mathvariant="normal">a</mi><mi mathvariant="normal">b</mi></mrow>'),
                 M_('<msup><mi mathvariant="normal">Re</mi><mn>2</mn></msup>')] + [None] * 5
         return _eq(got, want)

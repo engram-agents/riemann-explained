@@ -105,6 +105,9 @@ RULES = (
 
 
 EXTRA_RULES = (
+    (lambda f: re.search(r"(\\operatorname\{[^}]*\}|\\max|\\min|\\log|\\cos)\s*(?=[A-Za-z0-9{]|\\[A-Za-z])", f) is not None,
+     "space after a function name: ours writes the name as <mi> and adds a thin <mspace> before an identifier, number or group (TeX's rule); pandoc "
+     "writes the name as <mo> and adds none, the browser's operator spacing gives the gap: both render a gap, ours is TeX's and right for an <mi>"),
     (lambda f: "/" in f, "`/`: pandoc <mi>/</mi>, ours <mo> (a division slash is an infix operator, F26B): ours right"),
     (lambda f: "!" in f.replace("\\!", ""), "`!`: pandoc <mi>!</mi>, ours <mo> (the factorial sign is a postfix operator, F26B): ours right"),
     (lambda f: "\\dots" in f, "\\dots: pandoc <mi>, F26B says <mo>: MathML 3 writes an ellipsis as an identifier, so pandoc is closer; F26B text to be revisited"),
