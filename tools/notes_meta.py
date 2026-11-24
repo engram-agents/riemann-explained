@@ -3089,7 +3089,7 @@ def _():
     eq(k + v + n + o + m, g, "the sum")
 
 
-@case("SKC5", "the same root in two groups: an argument block in g2 does NOT satisfy g1's sketch (SKETCH-NO-ARGUMENT for g1), and each "
+@case("SKC9", "the same root in two groups: an argument block in g2 does NOT satisfy g1's sketch (SKETCH-NO-ARGUMENT for g1), and each "
               "group may keep its own sketch on that root (no SKETCH-DUPLICATE across groups)")
 def _():
     two = OL(G("g1"), G("g2", order=2))
