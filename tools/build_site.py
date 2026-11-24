@@ -434,8 +434,8 @@ structure card) the label is `definition_label` (`Definition.`, <span class="def
 definition or structure card with a claim and a title prints `definition_label`, the title, `definition_join` (`is defined as:`,
 <span class="definition-join">) and then the claim as before, its conditions list directly under the heading. A claim and no title, and
 no claim and no title, print as before; a result card with a claim never shows a title. The title goes through _rich (span rule, formulas)
-with the card id as `where`. The CSS rule `.title-text { font-weight: normal; color: GrayText; }` keeps the title out of the heading's
-weight; the CSS had no colour value, so a system colour keyword is used (no palette value is invented). title_of, the premise row's
+with the card id as `where`. The CSS rule `.title-text { font-weight: normal; }` keeps the title out of the heading's
+weight (normal weight, no colour: the page's CSS holds no colour). title_of, the premise row's
 name for another card, is the title when the card shows one, else the claim, else the root name; its two callers are the premise row
 and the shared-root note. The card's id is on the page only as the `id` attribute and in `#` links (TT14, SH2): the shared-root note
 (the strings key `shared_note`, its {groups} placeholder) names each OTHER card that shares the root by title_of, as <a href="#id">,
@@ -1557,7 +1557,7 @@ CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family
        "code { overflow-wrap: anywhere; }\n"
        "mi { text-transform: none; font-style: italic; }\n"   # a lone <mi> must not be mapped to the math-italic block, which no common font has
        'mi[mathvariant="normal"] { font-style: normal; }\n'
-       ".title-text { font-weight: normal; color: GrayText; }")   # F47: the title is not in the claim's heading weight; GrayText is a system colour (the page has no other colour to reuse)
+       ".title-text { font-weight: normal; }")   # F47: the title is not in the claim's heading weight (the page's CSS has no colour)
 
 
 def _e(x):
