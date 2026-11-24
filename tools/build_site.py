@@ -630,10 +630,39 @@ def _link_targets(text):
     return _delink(masked, tok)[1]
 
 
+_BOLD = re.compile(r"(?<!\*)\*\*(?!\*)([^\r\n]+?)(?<!\*)\*\*(?!\*)")
+
+
+def _bold_pieces(masked):
+    """[(is bold, text)] for masked text: a pair of double asterisks on one line (no LF or CR between) around text that is not only
+    white space, neither pair next to a third asterisk, is a bold piece holding the text between them; every other stretch is a plain
+    piece, its asterisks as written. Run on text with the spans masked and the links taken out, so an asterisk in a span is not seen
+    and a link text may be bold."""
+    out, pos = [], 0
+    for mt in _BOLD.finditer(masked):
+        if not mt.group(1).strip():
+            continue
+        if mt.start() > pos:
+            out.append((False, masked[pos:mt.start()]))
+        out.append((True, mt.group(1)))
+        pos = mt.end()
+    if pos < len(masked):
+        out.append((False, masked[pos:]))
+    return out
+
+
+def _bold_unpaired(text):
+    """True when a `**` is left in the block text once its code spans, its links and its bold pairs are taken out (the text a reader
+    sees with a literal `**` in it)."""
+    masked, _spans, tok = _masked(text)
+    return any("**" in t for bold, t in _bold_pieces(_delink(masked, tok)[0]) if not bold)
+
+
 def _shown(text):
-    """The block text as a reader sees it: each link as its text and each span as its content (no backticks)."""
+    """The block text as a reader sees it: each link as its text, each bold pair as its content (no asterisks) and each span as its
+    content (no backticks)."""
     masked, spans, tok = _masked(text)
-    shown, _targets = _delink(masked, tok)
+    shown = "".join(t for _bold, t in _bold_pieces(_delink(masked, tok)[0]))
     return re.sub(re.escape(tok) + r"(\d+)" + re.escape(tok), lambda mt: spans[int(mt.group(1))], shown)
 
 
@@ -658,7 +687,7 @@ def _value_lines(obj, seen=False, key=None):
     elif isinstance(obj, dict):
         for k, v in obj.items():
             if k not in NAME_KEYS or (k == "note" and key == "recognition"):
-                if k == "first_sentence" or (k in ("text", "items") and key == "blocks"):
+                if k == "first_sentence" or (k in ("text", "items") and key in ("blocks", "items")):
                     mode = "block"
                 elif (k in ("result", "difference", "note") and key == "recognition") or (k in ("source", "where") and key == "citations") \
                         or k == "unexpanded":
@@ -921,6 +950,11 @@ def _paragraph(lines, target):
 
 
 _ITEM_MARK = re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+")
+_SUB_MARK = re.compile(r"[-*][ \t]+\S")   # a sub-item starts (on its stripped line) with `- ` or `* ` and a text
+
+
+def _indent(line):
+    return len(line.expandtabs(4)) - len(line.expandtabs(4).lstrip(" "))
 
 
 def _sketch(text, lines, anchor_line, d):
@@ -928,7 +962,7 @@ def _sketch(text, lines, anchor_line, d):
     gives for the anchor on `anchor_line`, a paragraph as its lines joined by spaces and a list as its items, each item its lines joined
     by spaces with the list marker taken off its first (the anchor lines of the note left out). A run the checker would refuse is empty."""
     run = rh.run_at(text, anchor_line, d.get("span", 1))
-    blocks, src = [], []
+    blocks, src, depth = [], [], False
     for kind, first, last in (run if isinstance(run, list) else []):
         if kind == "paragraph":
             blocks.append({"type": "paragraph", "text": _paragraph(lines, {"first_line": first, "last_line": last})})
@@ -939,10 +973,25 @@ def _sketch(text, lines, anchor_line, d):
         for f, l in spans:
             parts = [_ITEM_MARK.sub("", lines[f - 1], count=1)] + lines[f:l]
             parts = [x.strip() for x in parts if x.strip() and not x.lstrip().startswith("<!-- rh-")]
-            items.append(" ".join(parts))
             src += parts
+            own, subs, sub_ind, base = [_ITEM_MARK.sub("", lines[f - 1], count=1).strip()], [], None, _indent(lines[f - 1])
+            for ln in lines[f:l]:
+                st = ln.strip()
+                if not st or st.startswith("<!-- rh-"):
+                    continue
+                ind = _indent(ln)
+                if _SUB_MARK.match(st) and ind > base:
+                    if sub_ind is None or ind <= sub_ind:
+                        sub_ind = ind if sub_ind is None else sub_ind
+                        subs.append([st[1:].strip()])
+                        continue
+                    depth = True   # a deeper level: its text, marker kept, joins its parent sub-item as it did before
+                (subs[-1] if subs else own).append(st)
+            own = " ".join(x for x in own if x)
+            items.append({"text": own, "items": [" ".join(x) for x in subs]} if subs else " ".join(parts))
         blocks.append({"type": "list", "ordered": re.match(r"[ \t]*\d{1,9}[.)]", lines[spans[0][0] - 1]) is not None, "items": items})
-    return {"basis": d.get("basis"), "build": d.get("build"), "unexpanded": list(d.get("unexpanded", [])), "blocks": blocks}, src
+    return {"basis": d.get("basis"), "build": d.get("build"), "unexpanded": list(d.get("unexpanded", [])), "blocks": blocks,
+            "_depth": depth}, src
 
 
 def _load_notes(notes_dir, strings):
@@ -1146,10 +1195,13 @@ _FORMULA_MARK = re.compile(r"\$|\\\(|\\\[|\\begin\{")
 
 
 def _sketch_texts(sk):
-    """The texts of a sketch (its `_sk` record): each paragraph and each list item."""
+    """The texts of a sketch (its `_sk` record): each paragraph, each list item and each sub-item."""
     out = []
     for blk in sk.get("blocks", []):
-        out += [blk["text"]] if blk["type"] == "paragraph" else list(blk["items"])
+        if blk["type"] == "paragraph":
+            out.append(blk["text"])
+        for x in blk.get("items", []):
+            out += [x] if isinstance(x, str) else [x["text"]] + list(x["items"])
     return out
 
 
@@ -1167,6 +1219,18 @@ def _formula_raw(m):
     formula parser. Only a listing."""
     return [b["block"] for n in m.notes for b in n["blocks"]
             if any(_FORMULA_MARK.search(nm._BACKTICK_SPAN.sub(" ", x)) for x in _block_texts(b))]
+
+
+def _bold_unpaired_blocks(m):
+    """[block id]: the argument, interpretation and sketch blocks, in note order, whose text (a sketch's paragraphs, items and sub-items,
+    an argument's first sentence too, which is cut at its own) holds a `**` that is no pair, once per block. Only a listing."""
+    return [b["block"] for n in m.notes for b in n["blocks"]
+            if any(_bold_unpaired(x) for x in _block_texts(b) + ([b["first_sentence"]] if b.get("first_sentence") else []))]
+
+
+def _nest_depth_blocks(m):
+    """[block id]: the sketch blocks, in note order, with a list item nested deeper than one level (shown flat). Only a listing."""
+    return [b["block"] for n in m.notes for b in n["blocks"] if b["kind"] == "sketch" and (b.get("_sk") or {}).get("_depth")]
 
 
 def recognition_counts(forms):
@@ -1238,7 +1302,8 @@ CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family
        ".unread { border-style: dashed; }\n"
        ".frame { font-style: italic; }\n"
        "ul.chain, ul.children { list-style: none; padding-left: 0; }\n"
-       "aside { border-left: 4px double; padding-left: 0.5rem; }")
+       "aside { border-left: 4px double; padding-left: 0.5rem; }\n"
+       "code { overflow-wrap: anywhere; }")
 
 
 def _e(x):
@@ -1251,16 +1316,23 @@ def _rich(text, links=False):
     pair, doubled backticks and a pair over a line break (LF or CR) stay literal. With `links` (the text of a block and its first
     sentence, F30) a markdown link `[text](target)` outside a span is shown as its text, escaped, and no anchor is made: neither bracket,
     parenthesis nor target is shown; an image `![a](b)`, a bare bracket pair, a link with no closing parenthesis, one with a space
-    in its target and one with no text stay as written."""
+    in its target and one with no text stay as written. `links` also turns on the bold rule (F35), since both belong to the Markdown of a
+    note's block text: a pair of double asterisks on one line around text is <strong>, its content through the span rule (the links
+    are taken out first, so a link text may be bold); see `_bold_pieces` for what stays literal."""
     masked, spans, tok = _masked(text)
+    pieces = [(False, masked)]
     if links:
-        masked = _delink(masked, tok)[0]
-    out, pos = [], 0
-    for mt in re.finditer(re.escape(tok) + r"(\d+)" + re.escape(tok), masked):
-        out.append(_e(masked[pos:mt.start()]))
-        out.append("<code>" + _e(spans[int(mt.group(1))]) + "</code>")
-        pos = mt.end()
-    out.append(_e(masked[pos:]))
+        pieces = _bold_pieces(_delink(masked, tok)[0])
+    out = []
+    for bold, piece in pieces:
+        pos = 0
+        out.append("<strong>" if bold else "")
+        for mt in re.finditer(re.escape(tok) + r"(\d+)" + re.escape(tok), piece):
+            out.append(_e(piece[pos:mt.start()]))
+            out.append("<code>" + _e(spans[int(mt.group(1))]) + "</code>")
+            pos = mt.end()
+        out.append(_e(piece[pos:]))
+        out.append("</strong>" if bold else "")
     return "".join(out)
 
 
@@ -1356,12 +1428,14 @@ def _render_page(m, s, facts, dirty):
         basis = _fill(s["sketch_basis_compiled"], build=sk["build"]) if sk["basis"] == "compiled" else s["sketch_basis_source"]
         frame = _fill(s["sketch_frame"], reader=sk["reader"], date=sk["date"], basis=basis)
         o = ['<div class="sketch">', f'<p class="frame sketch-frame">{_e(frame)}</p>']
+        item = lambda x: (f"<li>{_rich(x, links=True)}</li>" if isinstance(x, str) else
+                          f"<li>{_rich(x['text'], links=True)}<ul>" + "".join(f"<li>{_rich(y, links=True)}</li>" for y in x["items"]) + "</ul></li>")
         for blk in sk["blocks"]:
             if blk["type"] == "paragraph":
                 o.append(f'<p>{_rich(blk["text"], links=True)}</p>')
             else:
                 tag = "ol" if blk["ordered"] else "ul"
-                o.append(f"<{tag}>" + "".join(f"<li>{_rich(x, links=True)}</li>" for x in blk["items"]) + f"</{tag}>")
+                o.append(f"<{tag}>" + "".join(item(x) for x in blk["items"]) + f"</{tag}>")
         if sk["unexpanded"]:
             o.append(f'<p class="unexpanded-heading">{_e(s["unexpanded_heading"])}</p><ul class="unexpanded">'
                      + "".join(f"<li>{_rich(x)}</li>" for x in sk["unexpanded"]) + "</ul>")
@@ -1693,6 +1767,10 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         print(f"KIND-NOTE {gid} {name} kind {kind!r}")
     for bid in _formula_raw(m):   # a formula mark outside a code span: no conversion yet (F26), and listed, never refused
         print(f"FORMULA-RAW {bid}")
+    for bid in _bold_unpaired_blocks(m):   # a `**` that is no pair stays literal on the page, and is listed, never refused (F35)
+        print(f"BOLD-UNPAIRED {bid}")
+    for bid in _nest_depth_blocks(m):   # a sub-item nested deeper than one level is shown flat, and is listed, never refused (F35)
+        print(f"NEST-DEPTH {bid}")
     n_links, outside = _link_listing(m)   # a link in block text is shown as its text; a target that is no note of the build is listed
     print(f"links in block text: {n_links} shown as text")
     for bid, target in outside:
@@ -5037,7 +5115,7 @@ def _selftest_cases():
                  "listed; a first sentence cut inside a pair (`**one. Two**`) shows a literal `**` and lists the block")
     def _():
         res = []
-        for kw in ({"arg": "Cost $5 and **x and **y."}, {"para": "Also **y here."}, {"last": "A `**` code and *one* and **two**."},
+        for kw in ({"arg": "Cost $5 and **x and y."}, {"para": "Also **y here."}, {"last": "A `**` code and *one* and **two**."},
                    {"arg": "Take **one. Two** steps."}, {}):
             b = _build(notes=_bn(**kw))
             res.append((b.rc, listing(b), b.existed))
