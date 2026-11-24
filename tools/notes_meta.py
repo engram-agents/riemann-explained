@@ -2981,6 +2981,63 @@ def _():
     eq(REQUIRE_ROOT_ROLE, False, "restored")
 
 
+# ---- the card title (F47, F48): an optional author-written `title` on a group
+TITLE_BAD = ": title must be a non-empty string with no blank at either end and no line break"
+TITLE_CLAIM = ": title on a group with a claim whose root is a result; the page prints no title there (take the title out)"
+
+
+def _tg(title="the top condition", **kw):
+    """A group with a null claim and a title (the root is a theorem unless a root is given)."""
+    return dict(G("g1", **kw), title=title)
+
+
+@case("TTL1", "a title is allowed on a group with a null claim (a theorem root or a def root), on a definition with a claim, on a structure "
+              "with a claim; refused as TITLE-WITH-CLAIM on a group with a claim whose root is a result (a theorem by role, a lemma by kind "
+              "when there is no role); a result with a null claim is clean; a group without a title is unchanged")
+def _():
+    clean(_ro(_tg()))                                            # null claim, theorem root
+    clean(_ro(_tg(roots=[R("A.C", "baz")])))                     # null claim, def root
+    clean(_ro(_tg(roots=[R("A.B", "foo"), R("A.C", "baz")])))    # null claim, several roots
+    clean(_ro(_rg("named_statement", root=("A.C", "baz"), title="the top condition")))   # a definition with a claim
+    clean(_ro(_rg("object", root=("A.E", "stru"), title="the bundle")))                  # a structure with a claim
+    fe(_ro(_rg("result", title="the top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+    fe(_ro(_rg("result", root=("A.E", "lem"), title="the top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+    fe(_ro(_rg(None, root=("A.E", "lem"), title="the top result")),                      # no role: the kind decides, as SKETCH-ROLE does
+       [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+    fe(_ro(_rg(None, root=("A.C", "baz"), title="the top condition")),                   # no role, a def root: allowed
+       [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")], 0)
+    clean(_ro(_rg("result")))
+    clean(_ro(G("g1")))
+    r = _ro(_rg("result", title="the top result"))
+    eq(r.lines[-1], "1 notes, 1 findings, 0 warnings", "TITLE-WITH-CLAIM is an error")
+
+
+@case("TTL2", "a title is a plain string: an empty one, a blank one, one with a blank at either end, one with a line break (LF, CR, U+2028), "
+              "a number, null, a boolean, a list and an object (a reader, a date, conditions or a recognition inside it) are BAD-VALUE naming "
+              "the group and the key; a bad title on a result with a claim is BAD-VALUE alone; control: a plain title is clean")
+def _():
+    for bad in ("", "   ", " x", "x ", "a\nb", "a\rb", "a\u2028b", "x\n", 3, None, True, ["x"],
+                {"reader": "R", "date": "2026-11-23"}, {"text": "x", "conditions": ["c"]}, {"recognition": REC}):
+        fe(_ro(_tg(bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
+        fe(_ro(_rg("result", title=bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
+        fe(_ro(_rg("named_statement", root=("A.C", "baz"), title=bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
+    clean(_ro(_tg("a noun phrase with `code` and $x$")))
+    clean(_ro(_tg("a title with an inner  double blank")))
+
+
+@case("TTL3", "the rest of the outline is unchanged by the key: any other key is still UNKNOWN-KEY beside a title, the count line is the same "
+              "with and without titles, and the findings of a titled and an untitled group come in the order of the outline")
+def _():
+    fe(_ro(dict(_tg(), titel="x")), [_fl("UNKNOWN-KEY", ": unknown key 'titel'")], 1)
+    fe(_ro(dict(_tg(), reader="R")), [_fl("UNKNOWN-KEY", ": unknown key 'reader'")], 1)
+    want = "outline: 2 groups, 0 claimed, 2 null, 1 roots resolved, 0 defs_opened resolved, 0 premise links"
+    plain = _ro(G("g1"), G("g2", order=2))
+    titled = _ro(_tg(), dict(G("g2", order=2), title="the second"))
+    eq(([want in x.lines for x in (plain, titled)], plain.f, titled.f), ([True, True], [], []), "count line")
+    r = _ro(_rg("result", title="one"), _rg("result", gid="g2", order=2, title="two"), _rg("result", gid="g3", order=3))
+    fe(r, [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM, "g1"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM, "g2")], 1)
+
+
 @case("REC1b", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
 def _():
     fe(_ro(_rg("result", rec=REC, claim=None, root=("A.B", "foo"))),
