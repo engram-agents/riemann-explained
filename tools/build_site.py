@@ -100,7 +100,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      card none of whose roots has a proof); a several-root card counts proof_count_line over the roots that have a proof. A
      card is `unread` when its statement is not read and its proof is not read or not applicable. level0 `facts` carry
      proof_applicable (the steps that have a proof) and proof_not_applicable; the first-screen steps_proof_line counts over
-     the steps that have a proof. Cases PRK1 PRK2 DEF1 DEF2 DEF3 NAL1.
+     the steps that have a proof. Cases PRK1 PRK2 DEF1 DEF2 DEF3 NAL1 NAL2 (NAL2 reads the strings file of the checkout).
   F23 ONE SPAN RULE FOR EVERY AUTHOR-WRITTEN LINE. A note's list_title is rendered by the same rule as a claim (a span between
      single backticks on one line is <code>, escaped; nothing else is markup) wherever a title is shown: the level-0 list, the
      notes list and the corrections list of a card. The JSON keeps the title as written. The source check compares what a
@@ -1771,6 +1771,15 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument"]
 
 
+def _real_strings_facts(path):
+    """(the problems `_strings_problems` finds in the strings file at `path`, whether it carries the key proof_not_applicable_line,
+    whether that value is free of braces)."""
+    with open(path, encoding="utf-8") as f:
+        real = json.load(f)
+    v = real.get("proof_not_applicable_line") if isinstance(real, dict) else None
+    return _strings_problems(real), isinstance(v, str), isinstance(v, str) and "{" not in v and "}" not in v
+
+
 def _selftest_cases():
     cases = []
 
@@ -3372,6 +3381,14 @@ def _selftest_cases():
                      (1, ["BUILD-ERROR STRINGS-KEY proof_not_applicable_line must be a non-empty string"], False),
                      (1, ["BUILD-ERROR STRINGS-FORBIDDEN proof_not_applicable_line holds the word 'verified', which the page never says"],
                       False)], 0, "MARK-proof_not_applicable_line", "MARK-steps_proof_line 1 2"))
+
+    @case("NAL2", "the strings file of this checkout (site/strings.json) passes the builder's own check (`_strings_problems` returns []), "
+                  "carries the key proof_not_applicable_line, and that value holds no brace")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        return _eq(_real_strings_facts(path), ([], True, True))
 
     # ---- F23: a note title is rendered like a claim, and the source check compares what a reader sees
     def _titled(t00, t01, t02):
