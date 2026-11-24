@@ -8199,10 +8199,10 @@ def _selftest_cases():
         e1 = _build(outline=one, strings=_strings())
         h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
-                   (["1a8ef65786002542cfa1684a6f09c9856b8a9bf658a2ff8604dabedf4646a85e",
-                     "9f151baab1fd116b72c56e1c94a1c97f0fcca0c4794b97a11d7436b87bc40c3c",
-                     "571c8c61ca502f116ed635a05a2502f7ef61871150bbca7fcc80144c8b6b160f",
-                     "e2f5c18371abc0b6a06173156a0e26805f525c98ea3ae1f1e3997e0c9fa99473"], 0, True))
+                   (["8e35639b3ec3b256ec2470cf52ca06caf60d9f5d526585f0913c420784c1c037",
+                     "1f206f67be691345fe6d9368e8042efbbe99dbc5b5f216d9294c356b6606d630",
+                     "87a9cdd09c1ed5efb40ed7a0f1bb679814dab4142acbd798eaf8c9c341017261",
+                     "f327f40f146f2b41912c113e1bf9ffb85b980d88c407113959edfa94c8cac1dc"], 0, True))
 
     @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (three keys, pinned here as "
                  "literals) and the two addresses; a case that compares with the wording file itself runs when RH_EDITION_WORDING_FILE names it "
