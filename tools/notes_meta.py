@@ -147,7 +147,7 @@ CONTRACT (each line is a self-test case, written before the code)
  summary has `selector changes: K` (or `did not run`). A base outline with `groups: []` compares nothing and says so; a groups list holding a
  non-object is OUTLINE-BASE `has no usable groups`. A bad edition_date prints its BAD-VALUE and no EDITION line.
 
- Edition of a note (F44B; cases NE1a to NE10, B2g of rh_anchor). A note header may carry `edition` and `edition_date` under the rules of a group's
+ Edition of a note (F44B; cases NE1a to NE11, B2g of rh_anchor). A note header may carry `edition` and `edition_date` under the rules of a group's
  (rh_anchor.header_problems; each problem is a BAD-VALUE on the header line, and `edition_date` later than the day of the run is one too).
  With --base REV, the edition of the note at REV (no header, or no `edition`, is 1) and the current one decide, before the ADDITION rule:
  base 1 and now 2 with a valid date and the texts without anchor lines different is the listing `EDITION <note> +A -R lines, edition 1 to 2,
