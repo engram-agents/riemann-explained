@@ -281,6 +281,7 @@ usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check
        build_site.py --selftest [--only ID,ID]
 """
 import contextlib
+import copy
 import fnmatch
 import functools
 import hashlib
@@ -398,6 +399,7 @@ LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks
               "read_more", "lines_missing")
 FROZEN_WORDS = ("verified", "explained", "understood")
 READER_KINDS = ("reading", "argument", "interpretation", "correction")
+FORMS = ("known", "variant", "not_recognised", "open_in_literature")   # the forms of a recognition (F24)
 SAFE_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]*")
 _PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _LINE_SPLIT = re.compile(r"\r\n|\n|\r")
@@ -461,7 +463,8 @@ def _fact_flags(items, key):
 
 def static_problems(page, js):
     """What the page or data.js holds that could make a request: a sorted list of ids from fetch(, XMLHttpRequest, WebSocket,
-    sendBeacon, import(, @import, src=http, href=http (a reaction anchor excepted), url( to a URL."""
+    sendBeacon, import(, @import, src=http, href=http (a reaction anchor excepted, and an <a class=citation> whose href starts
+    `https://`, a source the reader may open), url( to a URL."""
     found = set()
     for text in (page, js):
         found.update(tok for tok in _API if tok in text)
@@ -471,13 +474,14 @@ def static_problems(page, js):
     class P(html.parser.HTMLParser):
         def handle_starttag(self, tag, attrs):
             a = dict(attrs)
+            classes = (a.get("class") or "").split()
             for k, v in attrs:
                 if not isinstance(v, str) or not re.match(r"\s*(?:https?:)?//", v, re.I):
                     continue
                 if k in ("src", "srcset", "poster"):
                     found.add("src=http")
                 elif k in ("href", "action", "formaction", "xlink:href") and not (
-                        tag == "a" and "reaction" in (a.get("class") or "").split()):
+                        tag == "a" and ("reaction" in classes or (k == "href" and "citation" in classes and v.startswith("https://")))):
                     found.add("href=http")
 
     P(convert_charrefs=True).feed(page)
@@ -556,23 +560,78 @@ def _unspan(text):
     return nm._BACKTICK_SPAN.sub(lambda mt: mt.group(1), text)
 
 
+def _masked(text):
+    """(the text with each single-backtick span replaced by a private-use character, the index and the character again; the contents
+    of the spans in order; that character). The character is one that the text does not hold."""
+    tok = next(chr(c) for c in range(0xE000, 0xF900) if chr(c) not in text)
+    spans = []
+
+    def take(mt):
+        spans.append(mt.group(1))
+        return f"{tok}{len(spans) - 1}{tok}"
+    return nm._BACKTICK_SPAN.sub(take, text), spans, tok
+
+
+@functools.lru_cache(maxsize=None)
+def _link_pattern(tok):
+    """A markdown link `[text](target)` in masked text: a text of one or more characters with no bracket, then a target with no
+    parenthesis, no white space and no mask character (a span binds tighter than a link, so a link never starts or ends in one); not
+    an image (`![a](b)`: the bracket pair follows a `!`)."""
+    return re.compile(r"(?<!!)\[([^\[\]]+)\]\(([^()\s" + re.escape(tok) + r"]*)\)")
+
+
+def _delink(masked, tok):
+    """(the masked text with each link replaced by its text, the targets in order)."""
+    targets = []
+
+    def one(mt):
+        targets.append(mt.group(2))
+        return mt.group(1)
+    return _link_pattern(tok).sub(one, masked), targets
+
+
+def _link_targets(text):
+    """The targets of the links of a block's text that lie outside its code spans, in order."""
+    masked, _spans, tok = _masked(text)
+    return _delink(masked, tok)[1]
+
+
+def _shown(text):
+    """The block text as a reader sees it: each link as its text and each span as its content (no backticks)."""
+    masked, spans, tok = _masked(text)
+    shown, _targets = _delink(masked, tok)
+    return re.sub(re.escape(tok) + r"(\d+)" + re.escape(tok), lambda mt: spans[int(mt.group(1))], shown)
+
+
 def _value_lines(obj, seen=False, key=None):
     """Every line of every string value of a parsed JSON, except the values under a key of NAME_KEYS (names and ids). The values a
     reader sees through the span rule (the text of a claim, a condition, a note's list_title) are compared with the backticks
-    of their spans removed (`seen` is True); the text of a block and a first sentence are compared BOTH as written and with the
-    backticks removed (`seen` is "both"), because a release line may itself hold a span; the JSON itself keeps them."""
+    of their spans removed (`seen` is True); the text of a block, a first sentence and a paragraph or item of a sketch are compared
+    as written, with the backticks removed, as the reader sees them (each link as its text) and by each link target as a line
+    (`seen` is "block"); the other author text of the F24b outputs (the recognition's result, difference, citation source and
+    where, a sketch's unexpanded entries) as written and with the backticks removed (`seen` is "both"), because a release line may
+    itself hold a span; the JSON itself keeps them."""
     if isinstance(obj, str):
-        if seen == "both":
+        if seen in ("both", "block"):
             yield from obj.split("\n")
         yield from (_unspan(obj) if seen else obj).split("\n")
+        if seen == "block":
+            yield from _shown(obj).split("\n")
+            yield from _link_targets(obj)
     elif isinstance(obj, list):
         for x in obj:
             yield from _value_lines(x, seen, key)
     elif isinstance(obj, dict):
         for k, v in obj.items():
-            if k not in NAME_KEYS:
-                yield from _value_lines(v, "both" if k == "first_sentence" or (k == "text" and key == "blocks")
-                                        else k in ("conditions", "list_title") or (k == "text" and key == "claim"), k)
+            if k not in NAME_KEYS or (k == "note" and key == "recognition"):
+                if k == "first_sentence" or (k in ("text", "items") and key == "blocks"):
+                    mode = "block"
+                elif (k in ("result", "difference", "note") and key == "recognition") or (k in ("source", "where") and key == "citations") \
+                        or k == "unexpanded":
+                    mode = "both"
+                else:
+                    mode = k in ("conditions", "list_title") or (k == "text" and key == "claim")
+                yield from _value_lines(v, mode, k)
 
 
 def _output_lines(rel, data):
@@ -827,6 +886,31 @@ def _paragraph(lines, target):
     return " ".join(x.strip() for x in lines[target["first_line"] - 1:target["last_line"]])
 
 
+_ITEM_MARK = re.compile(r"[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+")
+
+
+def _sketch(text, lines, anchor_line, d):
+    """({basis, build, unexpanded, blocks}, the source lines it copies) for a sketch block: its blocks are the elements rh_anchor.run_at
+    gives for the anchor on `anchor_line`, a paragraph as its lines joined by spaces and a list as its items, each item its lines joined
+    by spaces with the list marker taken off its first (the anchor lines of the note left out). A run the checker would refuse is empty."""
+    run = rh.run_at(text, anchor_line, d.get("span", 1))
+    blocks, src = [], []
+    for kind, first, last in (run if isinstance(run, list) else []):
+        if kind == "paragraph":
+            blocks.append({"type": "paragraph", "text": _paragraph(lines, {"first_line": first, "last_line": last})})
+            src += lines[first - 1:last]
+            continue
+        items = []
+        spans = rh.target_at(text, first)["items"]
+        for f, l in spans:
+            parts = [_ITEM_MARK.sub("", lines[f - 1], count=1)] + lines[f:l]
+            parts = [x.strip() for x in parts if x.strip() and not x.lstrip().startswith("<!-- rh-")]
+            items.append(" ".join(parts))
+            src += parts
+        blocks.append({"type": "list", "ordered": re.match(r"[ \t]*\d{1,9}[.)]", lines[spans[0][0] - 1]) is not None, "items": items})
+    return {"basis": d.get("basis"), "build": d.get("build"), "unexpanded": list(d.get("unexpanded", [])), "blocks": blocks}, src
+
+
 def _load_notes(notes_dir, strings):
     """The notes in name order: id, title, level, group, link, and each block's record (its decls kept apart)."""
     notes = []
@@ -850,6 +934,8 @@ def _load_notes(notes_dir, strings):
                 rec["text"] = para
                 rec["first_sentence"] = _first_sentence(para) if para else None
                 rec["_src"] = lines[t["first_line"] - 1:t["last_line"]] if para else None
+            if d["kind"] == "sketch":
+                rec["_sk"], rec["_src"] = _sketch(text, lines, b.line, d)
             rec["_decls"] = [(e["module"], e["name"]) for e in d.get("decls", [])]
             note["blocks"].append(rec)
         notes.append(note)
@@ -902,14 +988,19 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         for r in roots:
             for rec in anchored.get(r, []):
                 blocks.setdefault(rec["block"], rec)
-        brecs = []
+        brecs, sketches = [], []
         for rec in sorted(blocks.values(), key=_block_key):
-            out = {k: v for k, v in rec.items() if k not in ("_decls", "_src")}
+            out = {k: v for k, v in rec.items() if k not in ("_decls", "_src", "_sk")}
             if rec.get("_src") and rec["block"] not in seen_blocks:
                 seen_blocks.add(rec["block"])
                 m.copied.append((rec["note"], "block " + rec["block"], rec["_src"]))
             out["roots"] = [{"module": a, "name": b} for a, b in roots if (a, b) in rec["_decls"]]
             brecs.append(out)
+            if rec["kind"] == "sketch":
+                sk = rec["_sk"]
+                sketches.append({"note": rec["note"], "block": rec["block"], "reader": rec["reader"], "date": rec["date"],
+                                 "basis": sk["basis"], "build": sk["build"], "unexpanded": list(sk["unexpanded"]),
+                                 "roots": out["roots"], "blocks": sk["blocks"]})
         root_rows = []
         for mod, name in roots:
             kind, first, last = rows[(mod, name)]
@@ -948,11 +1039,15 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         notes = [_note_ref(by_note[i]) for i in sorted(ids)]
         if not roots:
             errors.append(("FACTS-NO-ROOT", gid, "group has no root, so no fact claim"))
+        role = g.get("root_role") if claim is not None and isinstance(g.get("root_role"), str) else None
+        root_kind = root_rows[0]["kind"] if claim is not None and len(root_rows) == 1 else None
+        recognition = copy.deepcopy(g["recognition"]) if claim is not None and isinstance(g.get("recognition"), dict) else None
         m.summary[gid] = {
             "id": gid, "level": g["level"], "order": g["order"], "parent": g["parent"],
             "claim": None if claim is None else {"text": claim["text"], "reader": claim["reader"], "date": claim["date"],
                                                  "basis": claim.get("basis", "read"), "conditions": claim.get("conditions", [])},
             "premises": list(g["premises"]),
+            "root_role": role, "root_kind": root_kind, "recognition": recognition,
             "lean_name": g["roots"][0]["name"] if roots else None,
             "claim_label": strings["no_claim_label"] if claim is None else None,
             "statement_read": bool(roots) and all(r["statement_read"] for r in root_rows),
@@ -967,6 +1062,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                        "open_items": len(open_here)},
             "notes": notes, "roots_only": True}
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "premises": list(g["premises"]), "roots": root_rows,
+                        "root_role": role, "root_kind": root_kind, "recognition": copy.deepcopy(recognition), "sketches": sketches,
                         "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
                                        for b in brecs if b["kind"] == "not_read"], "notes": notes}
@@ -1013,11 +1109,82 @@ def _word_notes(m, s):
 _FORMULA_MARK = re.compile(r"\$|\\\(|\\\[|\\begin\{")
 
 
+def _sketch_texts(sk):
+    """The texts of a sketch (its `_sk` record): each paragraph and each list item."""
+    out = []
+    for blk in sk.get("blocks", []):
+        out += [blk["text"]] if blk["type"] == "paragraph" else list(blk["items"])
+    return out
+
+
+def _block_texts(b):
+    """The author texts of a block that the page shows as block text: the paragraph of an argument or interpretation, the paragraphs
+    and list items of a sketch, nothing for any other kind."""
+    if b["kind"] in ("argument", "interpretation"):
+        return [b["text"]] if b.get("text") else []
+    return _sketch_texts(b.get("_sk") or {}) if b["kind"] == "sketch" else []
+
+
 def _formula_raw(m):
-    """[block id]: the argument and interpretation blocks, in note order, whose text outside its single-backtick spans holds a formula
-    mark (`$`, `\\(`, `\\[` or `\\begin{`), once per block, for the kinds `argument` and `interpretation` only (the `sketch` kind joins in the F24b change). A mark detector, not a formula parser. Only a listing."""
+    """[block id]: the argument, interpretation and sketch blocks, in note order, whose text (a sketch's paragraphs and list items)
+    outside its single-backtick spans holds a formula mark (`$`, `\\(`, `\\[` or `\\begin{`), once per block. A mark detector, not a
+    formula parser. Only a listing."""
     return [b["block"] for n in m.notes for b in n["blocks"]
-            if b["kind"] in ("argument", "interpretation") and b.get("text") and _FORMULA_MARK.search(nm._BACKTICK_SPAN.sub(" ", b["text"]))]
+            if any(_FORMULA_MARK.search(nm._BACKTICK_SPAN.sub(" ", x)) for x in _block_texts(b))]
+
+
+def recognition_counts(forms):
+    """(K known, V variant, N not recognised, O open in literature, M not written, G) over the list of the forms of the groups with a
+    claim: a form is one of FORMS, or None for a group with no recognition (counted as not written); any other value is counted
+    nowhere, which is what the sum assertion catches. G is the length of the list."""
+    c = [sum(1 for x in forms if x == f) for f in FORMS]
+    return c[0], c[1], c[2], c[3], sum(1 for x in forms if x is None), len(forms)
+
+
+def sketch_counts(rows):
+    """(S, P) over the level-1 steps given as (proof_read, has a sketch): P the steps whose proof is read, S those of them that carry a
+    sketch. A step whose proof is not read does not count, sketch or no sketch."""
+    read = [r for r in rows if r[0] is True]
+    return sum(1 for r in read if r[1]), len(read)
+
+
+def _count_lines(m):
+    """([(code, where, message)], the two run lines): the recognition counts over ALL groups with a claim, at every depth, and the
+    sketches over the level-1 steps, each asserted (K + V + N + O + M = G; S <= P)."""
+    errors = []
+    forms = []
+    for gid in sorted(m.groups):
+        sm = m.summary[gid]
+        if sm["claim"] is not None:
+            rec = sm["recognition"]
+            forms.append(rec.get("form") if isinstance(rec, dict) and rec.get("form") in FORMS else None)
+    k, v, n, o, nw, g = recognition_counts(forms)
+    if k + v + n + o + nw != g:
+        errors.append(("SUM-RECOGNITION", "groups", f"{k} known + {v} variant + {n} not recognised + {o} open in literature + "
+                                                     f"{nw} not written is {k + v + n + o + nw}, not {g} groups with a claim"))
+    s, p = sketch_counts([(m.summary[i]["proof_read"], bool(m.files[i]["sketches"])) for i in m.steps])
+    if s > p:
+        errors.append(("SUM-SKETCH", "steps", f"{s} steps with a sketch, but only {p} steps have a proof read"))
+    return errors, [f"recognition: {k} known, {v} variant, {n} not recognised, {o} open in literature, {nw} not written, of {g} "
+                    "groups with a claim", f"sketches: {s} of {p} steps with a proof read"]
+
+
+def _link_listing(m):
+    """(how many links are shown as text, [(block id, target)] of those whose target is not a note of the build): the links of the text
+    of the argument, interpretation and sketch blocks that reach a card (once per block), a target being a note when its part before
+    any `#fragment` is the file name of a note of the build."""
+    shown = {b["block"] for fl in m.files.values() for b in fl["blocks"]}
+    names = {n["name"] for n in m.notes}
+    count, outside = 0, []
+    for n in m.notes:
+        for b in n["blocks"]:
+            if b["block"] in shown:
+                for text in _block_texts(b):
+                    for target in _link_targets(text):
+                        count += 1
+                        if target.split("#", 1)[0] not in names:
+                            outside.append((b["block"], target))
+    return count, outside
 
 
 def _nest(m, gid):
@@ -1040,16 +1207,35 @@ def _e(x):
     return html.escape(str(x), quote=True)
 
 
-def _rich(text):
+def _rich(text, links=False):
     """Escaped text in which a span between single backticks on one line is a <code> element (its content escaped too). The span is
     notes_meta's _BACKTICK_SPAN, the one definition the checker uses too. Nothing else is markup: an unpaired backtick, an empty
-    pair, doubled backticks and a pair over a line break (LF or CR) stay literal."""
+    pair, doubled backticks and a pair over a line break (LF or CR) stay literal. With `links` (the text of a block and its first
+    sentence, F30) a markdown link `[text](target)` outside a span is shown as its text, escaped, and no anchor is made: neither bracket,
+    parenthesis nor target is shown; an image `![a](b)`, a bare bracket pair, a link with no closing parenthesis, one with a space
+    in its target and one with no text stay as written."""
+    masked, spans, tok = _masked(text)
+    if links:
+        masked = _delink(masked, tok)[0]
     out, pos = [], 0
-    for mt in nm._BACKTICK_SPAN.finditer(text):
-        out.append(_e(text[pos:mt.start()]))
-        out.append("<code>" + _e(mt.group(1)) + "</code>")
+    for mt in re.finditer(re.escape(tok) + r"(\d+)" + re.escape(tok), masked):
+        out.append(_e(masked[pos:mt.start()]))
+        out.append("<code>" + _e(spans[int(mt.group(1))]) + "</code>")
         pos = mt.end()
-    out.append(_e(text[pos:]))
+    out.append(_e(masked[pos:]))
+    return "".join(out)
+
+
+def _fillh(template, rich=(), **kw):
+    """The HTML of a template of the strings file with each known {name} replaced in one pass by its value, escaped (through the span
+    rule for the names in `rich`); a name that is not given stays as written. The template's own text is escaped."""
+    out, pos = [], 0
+    for mt in _PLACEHOLDER.finditer(template):
+        out.append(_e(template[pos:mt.start()]))
+        name = mt.group(1)
+        out.append((_rich(str(kw[name])) if name in rich else _e(kw[name])) if name in kw else _e(mt.group(0)))
+        pos = mt.end()
+    out.append(_e(template[pos:]))
     return "".join(out)
 
 
@@ -1072,11 +1258,78 @@ def _render_page(m, s, facts, dirty):
         out += ["</ul>", "</section>"]
     out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
 
-    def frames(b):
-        lines = f"{b['file']} {b['lines'][0]}-{b['lines'][1]}" if b.get("lines") and b.get("file") else lab["lines_missing"]
-        first = _fill(s["argument_frame"], reader=b["reader"], date=b["date"], lines=lines)
+    def frames(b, rows):
+        """(the frame of a block, the frames of its second readers, each led by a space): the second readers come AFTER the text of
+        the block, so the two are apart. {file} is the base name of the block's file (`not given` with no file), {lines} the range
+        only (`not given` with no lines, or no file for them to name). A block anchored only on roots whose kind is not a theorem or
+        a lemma is framed by argument_frame_no_proof (`rows` are the root rows of the card)."""
+        fname = (b["file"].replace("\\", "/").rsplit("/", 1)[-1] if b.get("file") else "") or lab["lines_missing"]
+        lines = f"{b['lines'][0]}-{b['lines'][1]}" if b.get("lines") and b.get("file") else lab["lines_missing"]
+        kind_of = {(r["module"], r["name"]): r["kind"] for r in rows}
+        proofless = bool(b.get("roots")) and not any(kind_of.get((x["module"], x["name"])) in PROOF_KINDS for x in b["roots"])
+        first = _fill(s["argument_frame_no_proof" if proofless else "argument_frame"], reader=b["reader"], date=b["date"], file=fname,
+                      lines=lines)
         more = [_fill(s["second_reader_frame"], reader=r["reader"], date=r["date"]) for r in b.get("second_readers", [])]
-        return f'<span class="frame">{_e(first)}</span>' + "".join(f' <span class="frame second">{_e(x)}</span>' for x in more)
+        return (f'<span class="frame">{_e(first)}</span>',
+                "".join(f' <span class="frame second">{_e(x)}</span>' for x in more))
+
+    def recognition(sm, role):
+        """The recognition block of a card with a claim: the form line, the difference, the citations, the established line (a named
+        statement only) and the label line; or the not-written line. {source_date} of an open form is the newest source_date among
+        the citations that say open, compared as the strings as written."""
+        rec = sm["recognition"]
+        if rec is None:
+            return ['<div class="recognition">', f'<p class="recognition-form">{_e(s["recognition_not_written_line"])}</p>', "</div>"]
+        cits = rec.get("citations") or []
+        if rec["form"] == "open_in_literature":
+            line = _fillh(s[f"recognition_{role}_open_line"], ("result",), result=rec["result"],
+                          source_date=max(c["source_date"] for c in cits if c.get("says_open") is True))
+        else:
+            line = _fillh(s[f"recognition_{role}_{rec['form']}_line"], ("result",), result=rec.get("result", ""))
+        o = ['<div class="recognition">', f'<p class="recognition-form">{line}</p>']
+        if rec.get("difference"):
+            o.append(f'<p class="recognition-difference">{_rich(rec["difference"])}</p>')
+        if rec["form"] == "not_recognised" and rec.get("note"):   # F31: the note of a reading that found nothing (span rule only)
+            o.append(f'<p class="recognition-note">{_rich(rec["note"])}</p>')
+        if cits:
+            o.append('<ul class="recognition-citations">')
+            for c in cits:
+                key = "recognition_citation_open_line" if rec["form"] == "open_in_literature" and c.get("says_open") is True \
+                    else "recognition_citation_dated_line"
+                text = _fillh(s[key], ("source", "where"), source=c["source"], where=c["where"], source_date=c.get("source_date", ""),
+                              opened_by=c["opened_by"], opened_on=c["opened_on"])
+                if c.get("url"):
+                    text = f'<a class="citation" href="{_e(c["url"])}">{text}</a>'
+                o.append(f"<li>{text}</li>")
+            o.append("</ul>")
+        est = rec.get("established")
+        if role == "named_statement" and est is not None:
+            line = (_e(s["established_not_traced_line"]) if est == "not_traced" else
+                    _fillh(s["established_by_line"], name=f"{est['by']['module']}.{est['by']['name']}", reader=est["reader"],
+                           date=est["date"]))
+            o.append(f'<p class="recognition-established">{line}</p>')
+        o.append(f'<p class="recognition-label">{_fillh(s["recognition_label_line"], reader=rec["reader"], date=rec["date"])}</p>')
+        o.append("</div>")
+        return o
+
+    def sketch(sk):
+        """The sketch of a root: its frame (the basis string filled first, then the frame), its paragraphs and lists, the places
+        Lean finishes by automation when there are any, and the note that it is a sketch."""
+        basis = _fill(s["sketch_basis_compiled"], build=sk["build"]) if sk["basis"] == "compiled" else s["sketch_basis_source"]
+        frame = _fill(s["sketch_frame"], reader=sk["reader"], date=sk["date"], basis=basis)
+        o = ['<div class="sketch">', f'<p class="frame sketch-frame">{_e(frame)}</p>']
+        for blk in sk["blocks"]:
+            if blk["type"] == "paragraph":
+                o.append(f'<p>{_rich(blk["text"], links=True)}</p>')
+            else:
+                tag = "ol" if blk["ordered"] else "ul"
+                o.append(f"<{tag}>" + "".join(f"<li>{_rich(x, links=True)}</li>" for x in blk["items"]) + f"</{tag}>")
+        if sk["unexpanded"]:
+            o.append(f'<p class="unexpanded-heading">{_e(s["unexpanded_heading"])}</p><ul class="unexpanded">'
+                     + "".join(f"<li>{_rich(x)}</li>" for x in sk["unexpanded"]) + "</ul>")
+        o.append(f'<p class="sketch-note">{_e(s["sketch_note"])}</p>')
+        o.append("</div>")
+        return o
 
     def title_of(gid):
         sm = m.summary[gid]
@@ -1095,6 +1348,11 @@ def _render_page(m, s, facts, dirty):
         if sm["premises"]:   # a step with a null claim rests on premises as well
             links = ", ".join(f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>' for p in sm["premises"])
             o.append(f'<p class="premises">{_e(lab["premises"])} {links}</p>')
+        if sm["claim"]:   # the recognition of the statement: after the premises line, before the two status lines (F24)
+            role = sm["root_role"] or ("result" if sm["root_kind"] in PROOF_KINDS else "named_statement")   # no role: the class of the kind
+            o += recognition(sm, role)
+            if role == "named_statement":
+                o.append(f'<p class="named-statement-use">{_e(s["named_statement_use_line"])}</p>')
         c, by = sm["counts"], sm["statement_by"]
         # the line of a card with no proof: the builder does not know what a declaration of an unknown kind is
         none_line = (s["proof_none_other_line"] if any(r["kind"] not in KNOWN_KINDS for r in fl["roots"])
@@ -1123,8 +1381,13 @@ def _render_page(m, s, facts, dirty):
         if args:
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
-            sent = f" {_rich(b['first_sentence'])}" if b.get("first_sentence") else ""
-            o.append(f'<p class="argument">{frames(b)}{sent} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
+            sent = f" {_rich(b['first_sentence'], links=True)}" if b.get("first_sentence") else ""
+            first, more = frames(b, fl["roots"])
+            o.append(f'<p class="argument">{first}{sent}{more} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
+        for sk in fl["sketches"]:
+            o += sketch(sk)
+        if not fl["sketches"] and sm["proof_read"] is True:   # a card whose proof is read and that has no sketch says so
+            o.append(f'<p class="sketch-missing">{_e(s["sketch_missing_line"])}</p>')
         corr = [b for b in fl["blocks"] if b["kind"] == "correction"]
         if corr:
             o.append('<ul class="corrections">')
@@ -1161,10 +1424,11 @@ def _render_page(m, s, facts, dirty):
                 o.append(f'<li><a href="{_e(n["link"])}"><code>{_e(b["note"])}</code></a> <code>{_e(b["block"])}</code> '
                          f'<span class="kind">{_e(kinds[b["kind"]])}</span> {who}')
                 if b["kind"] == "argument" and b.get("text"):
-                    o.append(f'<p class="argument">{frames(b)} {_rich(b["text"])}</p>')
+                    first, more = frames(b, fl["roots"])
+                    o.append(f'<p class="argument">{first} {_rich(b["text"], links=True)}{more}</p>')
                 if b["kind"] == "interpretation" and b.get("text"):
                     fr = _fill(s["interpretation_frame"], reader=b["reader"], date=b["date"])
-                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_rich(b["text"])}</p></aside>')
+                    o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_rich(b["text"], links=True)}</p></aside>')
                 o.append("</li>")
             o.append("</ul>")
         if fl["open_items"]:
@@ -1391,6 +1655,10 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         print(f"KIND-NOTE {gid} {name} kind {kind!r}")
     for bid in _formula_raw(m):   # a formula mark outside a code span: no conversion yet (F26), and listed, never refused
         print(f"FORMULA-RAW {bid}")
+    n_links, outside = _link_listing(m)   # a link in block text is shown as its text; a target that is no note of the build is listed
+    print(f"links in block text: {n_links} shown as text")
+    for bid, target in outside:
+        print(f"LINK-OUTSIDE {bid} {target}")
     for n in m.notes:
         for b in n["blocks"]:
             for what in ("reader", "date"):
@@ -1398,7 +1666,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
                     errors.append(("BLOCK-NO-READER" if what == "reader" else "BLOCK-NO-DATE", b["block"],
                                    f"{b['kind']} block has no {what}"))
     e2, check_line, level0, level1, groups, facts = _assemble(m, sj, commits)
-    errors += e2
+    e3, count_lines = _count_lines(m)
+    errors += e2 + e3
     if errors:
         return _refuse(errors)
     page = _render_page(m, sj, facts, dirty)
@@ -1412,6 +1681,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     if errors:
         return _refuse(errors)
     print("facts check: " + check_line)
+    for ln in count_lines:
+        print(ln)
     if source_check is not None:
         if not sg.walk_lean(source_check):
             print("CHECKED NOTHING: no .lean file under SRC_ROOT")
@@ -3810,9 +4081,11 @@ def _selftest_cases():
                    (0, True, 0, "`" + other + "`", ["`" + other + "`"], ["Note one", "Note two\n`" + other + "`"], 0, 0))
 
     # ---- F28: the text of an argument or interpretation block goes through the one span rule
+    _nosecond = lambda h: re.sub(r' <span class="frame second">.*?</span>', "", h)   # F29: the second readers follow the text
+
     def _para(page, cls):
         """The text after the frame of the last `<p class=cls>` of the page (the evidence list's paragraph, not the card's)."""
-        return re.findall(r'<p class="' + cls + r'">(.*?)</p>', page, re.S)[-1].rsplit("</span> ", 1)[1]
+        return _nosecond(re.findall(r'<p class="' + cls + r'">(.*?)</p>', page, re.S)[-1]).rsplit("</span> ", 1)[1]
 
     BT_TEXTS = ["See `a<b` here", "`one` and `two` end", "a ` b", "a ``x`` b", "a `` b", "a `x\ny` b", "Plain text only"]
     BT_WANT = ["See <code>a&lt;b</code> here", "<code>one</code> and <code>two</code> end", "a ` b", "a ``x`` b", "a `` b",
@@ -3850,7 +4123,7 @@ def _selftest_cases():
         got = []
         for t in CARD_TEXTS:
             card = re.findall(r'<p class="argument">(.*?)</p>', _build(notes=_notes(arg_text=t)).page, re.S)[0]
-            got.append(card.rsplit("</span> ", 1)[1].split(' <a href=')[0])
+            got.append(_nosecond(card).rsplit("</span> ", 1)[1].split(' <a href=')[0])
         return _eq(got, CARD_WANT)
 
     R1 = "Zq release text one sentence here. And the second sentence of it."   # leaks through the block `text` only when wrapped whole
@@ -3908,7 +4181,7 @@ def _selftest_cases():
                  "the evidence list shows the whole text with its span as code")
     def _():
         b = _build(notes=_notes(arg_text="We apply `f. g` here. More."))
-        card = re.findall(r'<p class="argument">(.*?)</p>', b.page, re.S)[0].rsplit("</span> ", 1)[1].split(' <a href=')[0]
+        card = _nosecond(re.findall(r'<p class="argument">(.*?)</p>', b.page, re.S)[0]).rsplit("</span> ", 1)[1].split(' <a href=')[0]
         first = [x for x in b.js("group/g1.json")["blocks"] if x["block"] == "01.b02"][0]["first_sentence"]
         return _eq((first, card, _para(b.page, "argument")), ("We apply `f.", "We apply `f.", "We apply <code>f. g</code> here. More."))
 
@@ -4148,7 +4421,7 @@ def _selftest_cases():
     def _():
         b = _zbase()
         dom = _dom(b.page)
-        ids = sorted(a.attrs["id"] for a in dom.find("article") if a.find("p", "recognition-established"))
+        ids = sorted(a.attrs["id"] for a in dom.find("article") if any(_direct(d_, "p", "recognition-established") for d_ in _direct(a, "div", "recognition")))
         est = lambda g: _raw(_direct(rcn(b, g), "p", "recognition-established")[0])
         return _eq((ids, est("znk"), est("znv"), lead(rcn(b, "znk")), lead(rcn(b, "znv"))),
                    (["znk", "znv"], "Where it is proved: the release proves this statement as A.B.foo (read by Reader Two on 2026-11-23).",
@@ -4606,7 +4879,8 @@ def _selftest_cases():
                    (["note 6", "x a <code>b</code> c y", "<code>[a](b)</code>", "[a <code>b](c)</code> d", "[x]", "[a](b", "![a](b)",
                      "[a](b c)", "[](x)", "a(c)", "[a [b] c](d)", "&lt;i&gt;", "a &amp; b"], "[a](b)", ["b.md", "f#g"]))
 
-    # ---- F31: the note of a recognition that is not recognised
+    # ---- F31: the note of a recognition that is not recognised (the checker of the notes does not know the key yet, so these cases
+    # call the model and the page directly, as the builder reads the outline object as written)
     def _noted(form="not_recognised", note="We looked in `Foo.bar` and found [nothing](x.md)."):
         o = _outline()
         g = next(g for g in o["groups"] if g["id"] == "g1")
@@ -4614,17 +4888,31 @@ def _selftest_cases():
         g["recognition"] = _rec(form, note=note, **({"result": "R", "citations": [CITB]} if form == "known" else {}))
         return o
 
+    def _direct_build(outline, src=None):
+        """(the page, every output file, the files that hold a release line, the model) with no checker run."""
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d, outline=outline, src=src)
+            sj, errors, commits = _strings(), [], {"notes": "n", "release": "r", "tools": "t"}
+            m = _model(p["notes"], json.load(open(p["outline"])), _decl_rows(p["decls"]), sj, None, errors)
+            _e2, _line, l0, l1, groups, facts = _assemble(m, sj, commits)
+            page = _render_page(m, sj, facts, False)
+            files = _output_files(l0, l1, groups, page, commits, m, "r", None)
+            leaks = leak_check(files, p["src"], m.copied)[0] if p["src"] else None
+        return types.SimpleNamespace(page=page, files=files, leaks=leaks, m=m)
+
     @case("FN1", "F2: a not_recognised recognition with a `note` shows the form line, THEN the note as one paragraph through the span rule "
                  "(`Foo.bar` is <code>) and NOT through the link rule (the link stays as written, no anchor), THEN the label line; the "
                  "JSON carries the note inside recognition and nothing in counts; a not_recognised card without a note (zrn) is the form "
                  "line and the label line only")
     def _():
-        b = _build(outline=_noted())
+        b = _direct_build(_noted())
         rc = rcn(b, "g1")
         note = _direct(rc, "p", "recognition-note")[0]
-        return _eq((b.rc, lead(rc), _raw(note), [c.text() for c in note.find("code")], len(rc.find("a")),
-                    b.js("group/g1.json")["recognition"]["note"], sorted(b.js("level0.json")["steps"][0]["counts"]), lead(rcn(_zbase(), "zrn"))),
-                   (0, [("p", "recognition-form"), ("p", "recognition-note"), ("p", "recognition-label")],
+        l0 = json.loads(b.files["level0.json"].decode("utf-8"))
+        return _eq((lead(rc), _raw(note), [c.text() for c in note.find("code")], len(rc.find("a")),
+                    json.loads(b.files["group/g1.json"].decode("utf-8"))["recognition"]["note"],
+                    sorted(next(s for s in l0["steps"] if s["id"] == "g1")["counts"]), lead(rcn(_zbase(), "zrn"))),
+                   ([("p", "recognition-form"), ("p", "recognition-note"), ("p", "recognition-label")],
                     "We looked in Foo.bar and found [nothing](x.md).", ["Foo.bar"], 0,
                     "We looked in `Foo.bar` and found [nothing](x.md).",
                     ["open_items", "roots", "roots_open_items", "roots_proof_applicable", "roots_proof_read", "roots_statement_read"],
@@ -4633,27 +4921,21 @@ def _selftest_cases():
     @case("FN2", "F2: a note on any other form is not printed (the checker refuses it; the builder ignores the key): a known recognition with a "
                  "note shows no note paragraph")
     def _():
-        b = _build(outline=_noted("known"))
-        return _eq((b.rc, [k[1] for k in lead(rcn(b, "g1"))]), (0, ["recognition-form", "recognition-citations", "recognition-label"]))
+        b = _direct_build(_noted("known"))
+        return _eq([k[1] for k in lead(rcn(b, "g1"))], ["recognition-form", "recognition-citations", "recognition-label"])
 
     @case("FN3", "F3: the source check compares the note as written and with its span backticks removed: a release line inside single "
-                 "backticks as the note is SOURCE-LEAK (data.js, group/g1.json, level0.json, level1.json), exit 1, OUT_DIR absent; "
-                 "doubled backticks and an unrelated note build")
+                 "backticks as the note is a leak (data.js, group/g1.json, level0.json, level1.json); doubled backticks and an unrelated note "
+                 "are not")
     def _():
         src = {"A/B.lean": "x\n" + LEAK + "\n"}
-        res = []
-        for v in ("`" + LEAK + "`", "``" + LEAK + "``", "An unrelated note of ours."):
-            b = _build(outline=_noted(note=v), src=src)
-            res.append((b.rc, sorted(ln.split(" ")[2] for ln in b.out.splitlines()
-                                     if ln.startswith("BUILD-ERROR SOURCE-LEAK ") and not ln.startswith("BUILD-ERROR SOURCE-LEAK note ")),
-                        b.existed))
-        return _eq(res, [(1, ["data.js", "group/g1.json", "level0.json", "level1.json"], False), (0, [], True), (0, [], True)])
+        got = [_direct_build(_noted(note=v), src=src).leaks for v in ("`" + LEAK + "`", "``" + LEAK + "``", "An unrelated note of ours.")]
+        return _eq(got, [["data.js", "group/g1.json", "level0.json", "level1.json"], [], []])
 
-    @case("FN4", "F4: a note changes no count: the run line of a build with one noted not_recognised group counts it as not recognised only")
+    @case("FN4", "F4: a note changes no count: the run line of a model with one noted not_recognised group counts it as not recognised only")
     def _():
-        b = _build(outline=_noted())
-        return _eq("recognition: 0 known, 0 variant, 1 not recognised, 0 open in literature, 2 not written, of 3 groups with a claim"
-                   in b.out.splitlines(), True)
+        return _eq(_count_lines(_direct_build(_noted()).m)[1][0],
+                   "recognition: 0 known, 0 variant, 1 not recognised, 0 open in literature, 2 not written, of 3 groups with a claim")
 
     return cases
 

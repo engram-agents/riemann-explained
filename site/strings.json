@@ -34,6 +34,7 @@
   "claim": []
  },
  "argument_frame": "How this is proved, as {reader} read it on {date} (lines {lines}):",
+ "argument_frame_no_proof": "What this definition contains, as {reader} read it on {date} ({file}, lines {lines}):",
  "second_reader_frame": "Read again by {reader} on {date}.",
  "interpretation_frame": "What we think it means, by {reader} on {date}:",
  "evidence_label": "Evidence: where this sits in the Lean code, and who read what",
