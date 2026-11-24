@@ -22,7 +22,7 @@ of the outline (a field of the GROUP, null-claim groups included; [] when none);
 EVERY root of the group has the fact (the proof_read of a group whose roots have no proof is null, F22); `unread`, true when no root has either fact; `counts`, {roots, roots_statement_read,
 roots_proof_read, roots_proof_applicable, roots_open_items, open_items}; `notes`, a list of {note, list_title, link}. group/<id>.json has none of
 `claim`, `counts`, `statement_read` and `proof_read`: it has `id`, `level`, `parent`, `premises`, `roots`, `blocks`,
-`open_items`, `notes` and `commits`, and each root of it has the booleans `statement_read` and `proof_read`. level0.json has `facts` ({steps,
+`open_items`, `notes` and `commits`, and each root of it has `statement_read` (a boolean) and `proof_read` (a boolean, or null for a root without a proof). level0.json has `facts` ({steps,
 statement_read, statement_not_read, proof_read, proof_not_read, proof_not_applicable, proof_applicable}, counted over the level-1 steps) and `totals`, which holds
 `open_items`, the number of distinct open not_read blocks of the whole outline.
 
@@ -75,8 +75,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      counts as `read` until the checker requires one) or a reading block anchors the root; proof_read = an argument block
      anchors a root that has a proof (F22; null for a root that has none). Nothing else sets either: an interpretation, a correction, a not_read and a machine_fact block
      set neither, a claim with basis `census` does not set statement_read. Cases F1a F1b S1.
-  F2 JSON: group/<id>.json per root `statement_read` and `proof_read` (booleans); level files per group `counts` {roots,
-     roots_statement_read, roots_proof_read, roots_open_items, open_items} (no key of it holds `not_read`) and `claim.basis`
+  F2 JSON: group/<id>.json per root `statement_read` and `proof_read` (boolean, or null for a root without a proof); level files per group `counts` {roots,
+     roots_statement_read, roots_proof_read, roots_proof_applicable, roots_open_items, open_items} (no key of it holds `not_read`) and `claim.basis`
      (the effective value); `unread` = neither fact on any root; there is no `coverage` key; the proof_read of a root without a
      proof is null (F22). Case F2a.
   F3 There is no coverage word: a strings file that carries a `coverage` key, or a key whose name holds `not_read` other
@@ -100,7 +100,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      card none of whose roots has a proof); a several-root card counts proof_count_line over the roots that have a proof. A
      card is `unread` when its statement is not read and its proof is not read or not applicable. level0 `facts` carry
      proof_applicable (the steps that have a proof) and proof_not_applicable; the first-screen steps_proof_line counts over
-     the steps that have a proof. Cases PRK1 PRK2 DEF1 DEF2 DEF3 NAL1 NAL2 (NAL2 reads the strings file of the checkout).
+     the steps that have a proof, and when no step has one the first screen shows proof_not_applicable_line in its place
+     (as a card does; never `of 0 steps`). Cases PRK1 PRK2 DEF1 DEF2 DEF3 DEF4 NAL1 NAL2 (NAL2 reads the strings file of the checkout).
   F23 ONE SPAN RULE FOR EVERY AUTHOR-WRITTEN LINE. A note's list_title is rendered by the same rule as a claim (a span between
      single backticks on one line is <code>, escaped; nothing else is markup) wherever a title is shown: the level-0 list, the
      notes list and the corrections list of a card. The JSON keeps the title as written. The source check compares what a
@@ -143,7 +144,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      CODE3 CODE4 AGR1.
   C1 The two status lines come from the strings keys: statement_read_line ({reader} {date} of the claim, or of the first
      reading block of the root when the claim is null, or when its basis is census), statement_census_line ({reader} {date}
-     of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line. A group with several
+     of the claim; it does not count), statement_not_read_line; proof_read_line, proof_not_read_line, proof_not_applicable_line (a root that has no proof,
+     no placeholders). A group with several
      roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is shown on a
      card only when n is above zero (a zero is not said there); the first-screen line steps_open_items_line is ALWAYS shown, zero
      included. The JSON counts are unchanged. Cases C1 C2 B7c OPN1 OPN2.
@@ -227,9 +229,9 @@ of the JSON (its hash fields left out) or the strings file: it cannot say the nu
 the outline and the strings file against the notes commit, and for tracked files of this folder against the tools
 commit; an untracked file of the tools folder is not seen, and without --notes-commit the notes commit is `unknown` and
 the notes are not judged. The sha256 of a root's file needs --source-check; a hash table in a note is not read. There is no
-coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the eleven
+coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the twelve
 of them: statement_read_line, statement_census_line, statement_not_read_line, proof_read_line, proof_not_read_line,
-statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
+proof_not_applicable_line, statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
 (and the three labels of the evidence block, evidence_module_label, evidence_name_label, evidence_kind_label);
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
 missing is read as `read` until the checker requires it (the run line says how many). The page shows the claim's reader and
@@ -987,7 +989,7 @@ def _render_page(m, s, facts, dirty):
         out.append(f'<p class="dirty">{_e(s["dirty_note"])}</p>')
     out += ['<ul class="facts">',
             f"<li>{_e(_fill(s['steps_statement_line'], n=facts['statement_read'], m=facts['steps']))}</li>",
-            f"<li>{_e(_fill(s['steps_proof_line'], n=facts['proof_read'], m=facts['proof_applicable']))}</li>",
+            f"<li>{_e(_fill(s['steps_proof_line'], n=facts['proof_read'], m=facts['proof_applicable']) if facts['proof_applicable'] else s['proof_not_applicable_line'])}</li>",
             f"<li>{_e(_fill(s['steps_open_items_line'], n=m.totals['open_items']))}</li>", "</ul>",
             f'<p class="mapped">{_e(s["mapped_line"])}</p>']
     if m.header_notes:
@@ -3362,6 +3364,22 @@ def _selftest_cases():
                     "facts check: statements read 1 + not read 2 = 3 steps; proofs read 1 + not read 1 + not applicable 1 = 3 steps"
                     in b.out.splitlines(), facts_line(b)[1]),
                    (0, None, 0, 0, [None, None], NA_LINE, NA_LINE, False, True, "Proofs read: 1 of 2 steps."))
+
+    @case("DEF4", "when NO top-level step has a proof (every root of the table a def) the first screen shows proof_not_applicable_line in "
+                  "place of steps_proof_line, as a card does (never `of 0 steps`): the second line of the facts list is that line, `of 0` is "
+                  "nowhere on the page, the facts count 0 + 0 + 3 and the run prints the three-term check line; with every strings value a "
+                  "marker the line is `MARK-proof_not_applicable_line`; control: one step with a proof keeps steps_proof_line")
+    def _():
+        alld = _decls_kinds({ln.split("\t")[1]: "def" for ln in DECLS.splitlines() if len(ln.split("\t")) == 6 and
+                             not ln.startswith("#") and ln.split("\t")[2] != "kind"})
+        b = _build(decls=alld)
+        m = _build(decls=alld, strings=_marked(_strings()))
+        one = _build(decls=_decls_kinds({"corge": "def", "quux": "def", "qux": "def"}))
+        return _eq((b.rc, facts_line(b), "of 0" in b.page, b.js("level0.json")["facts"]["proof_applicable"],
+                    "facts check: statements read 1 + not read 2 = 3 steps; proofs read 0 + not read 0 + not applicable 3 = 3 steps"
+                    in b.out.splitlines(), facts_line(m)[1], one.rc, facts_line(one)[1]),
+                   (0, ["Statements read: 1 of 3 steps.", NA_LINE, "Questions written down in these notes: 1."], False, 0, True,
+                    "MARK-proof_not_applicable_line", 0, "Proofs read: 1 of 1 steps."))
 
     @case("NAL1", "the strings key proof_not_applicable_line is required and holds no placeholder: a value with `{n}` is refused as an unknown "
                   "placeholder, a value with `{ x }` as a brace, an empty value as `must be a non-empty string`, a value with a forbidden "
