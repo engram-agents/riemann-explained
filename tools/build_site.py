@@ -5823,6 +5823,401 @@ def _selftest_cases():
         controls = ['<a class="citation extra" href="https://x.invalid/">x</a>', '<a class="extra reaction" href="http://x.invalid/">x</a>']
         return _eq(([sp(h, "") for h, _w in planted], [sp(h, "") for h in controls]), ([w for _h, w in planted], [[], []]))
 
+    # ---- F26B: formulas to MathML at build time (the converter is a closed subset; anything else stays raw and is listed)
+    M_ = lambda inner: "<math>" + inner + "</math>"
+    cv = lambda body: formula_to_mathml(body)
+    GREEK = [("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("epsilon", "ϵ"), ("varepsilon", "ε"), ("zeta", "ζ"),
+             ("eta", "η"), ("theta", "θ"), ("vartheta", "ϑ"), ("iota", "ι"), ("kappa", "κ"), ("lambda", "λ"), ("mu", "μ"), ("nu", "ν"),
+             ("xi", "ξ"), ("pi", "π"), ("rho", "ρ"), ("sigma", "σ"), ("tau", "τ"), ("upsilon", "υ"), ("phi", "ϕ"), ("varphi", "φ"),
+             ("chi", "χ"), ("psi", "ψ"), ("omega", "ω"), ("Gamma", "Γ"), ("Delta", "Δ"), ("Theta", "Θ"), ("Lambda", "Λ"), ("Xi", "Ξ"),
+             ("Pi", "Π"), ("Sigma", "Σ"), ("Upsilon", "Υ"), ("Phi", "Φ"), ("Psi", "Ψ"), ("Omega", "Ω")]
+    SYMBOLS = [("le", "≤"), ("ge", "≥"), ("leq", "≤"), ("geq", "≥"), ("ne", "≠"), ("neq", "≠"), ("pm", "±"), ("cdot", "⋅"),
+               ("infty", "∞"), ("dots", "…"), ("mid", "∣"), ("lceil", "⌈"), ("rceil", "⌉"), ("sum", "∑"), ("prod", "∏"), ("int", "∫")]
+    OPS = [("+", "+"), ("-", "−"), ("=", "="), ("<", "&lt;"), (">", "&gt;"), ("/", "/"), ("(", "("), (")", ")"), ("[", "["), ("]", "]"),
+           (",", ","), (";", ";"), (":", ":"), ("!", "!"), ("|", "|"), (".", "."), ("*", "∗")]
+
+    @case("CV0", "the subset is a named constant: FORMULA_COMMANDS holds 66 commands (36 Greek letters, 13 symbols, sum prod int, max min log cos, "
+                 "bar mathrm operatorname bigl bigr big, and the four spacing commands `,` `;` `!` and the space), FORMULA_VERSION is `1`, and "
+                 "every name of the tables of these cases is in it")
+    def _():
+        tabled = {n for n, _c in GREEK} | {n for n, _c in SYMBOLS} | {"max", "min", "log", "cos", "bar", "mathrm", "operatorname", "bigl", "bigr",
+                                                                       "big", ",", ";", "!", " "}
+        return _eq((len(FORMULA_COMMANDS), FORMULA_VERSION, tabled == set(FORMULA_COMMANDS)), (66, "1", True))
+
+    @case("CV1", "converter, tokens: a letter is <mi>, a run of digits (with one decimal point between digits) one <mn>, `3.` is <mn>3</mn> then "
+                 "<mo>.</mo>, each of the operators and punctuation `+ - = < > / ( ) [ ] , ; : ! | . *` is <mo> (the minus is U+2212, `<` is "
+                 "escaped, `*` is U+2217), several tokens are in one <mrow>")
+    def _():
+        got = [cv(x) for x in ("x", "Z", "12", "12.5", "3.", "2x", "x+1")] + [cv(o) for o, _e in OPS]
+        want = [M_("<mi>x</mi>"), M_("<mi>Z</mi>"), M_("<mn>12</mn>"), M_("<mn>12.5</mn>"), M_("<mrow><mn>3</mn><mo>.</mo></mrow>"),
+                M_("<mrow><mn>2</mn><mi>x</mi></mrow>"), M_("<mrow><mi>x</mi><mo>+</mo><mn>1</mn></mrow>")] + [M_(f"<mo>{e}</mo>") for _o, e in OPS]
+        return _eq(got, want)
+
+    @case("CV2", "converter, scripts and groups: `x^2` is <msup>, `x_i` <msub> (base first), `x_i^2` and `x^2_i` <msubsup> (base, sub, sup), a script "
+                 "takes ONE token or one brace group (`x^10` is x^1 then 0), a group is <mrow> (`{}` is an empty <mrow>); a second superscript, a "
+                 "second subscript, a script with no base, a script with nothing after it, an unclosed and an unopened brace are unsupported (None)")
+    def _():
+        got = [cv(x) for x in ("x^2", "x_i", "x_i^2", "x^2_i", "x^{ab}", "x^10", "x^{-1}", "{a}", "{}", "x^ 2", "x^\\alpha")]
+        got += [cv(x) for x in ("x^2^3", "x_1_2", "^2", "_i", "x^", "x_", "{a", "a}", "x^{", "}")]
+        want = [M_("<msup><mi>x</mi><mn>2</mn></msup>"), M_("<msub><mi>x</mi><mi>i</mi></msub>"),
+                M_("<msubsup><mi>x</mi><mi>i</mi><mn>2</mn></msubsup>"), M_("<msubsup><mi>x</mi><mi>i</mi><mn>2</mn></msubsup>"),
+                M_("<msup><mi>x</mi><mrow><mi>a</mi><mi>b</mi></mrow></msup>"),
+                M_("<mrow><msup><mi>x</mi><mn>1</mn></msup><mn>0</mn></mrow>"),
+                M_("<msup><mi>x</mi><mrow><mo>−</mo><mn>1</mn></mrow></msup>"), M_("<mrow><mi>a</mi></mrow>"), M_("<mrow></mrow>"),
+                M_("<msup><mi>x</mi><mn>2</mn></msup>"), M_("<msup><mi>x</mi><mi>α</mi></msup>")] + [None] * 10
+        return _eq(got, want)
+
+    @case("CV3", "converter, primes (a choice, pinned): `L'` is <msup> of <mo>′</mo>; `f''` an <msup> over an <mrow> of two; a prime then a superscript "
+                 "merge into ONE <msup> whose script is an <mrow> of the primes and the superscript (`r'^{-k}` as TeX reads it); a prime and a "
+                 "subscript are <msubsup>; a prime after a superscript (`x^2'`) and a prime with no base are unsupported")
+    def _():
+        got = [cv(x) for x in ("L'", "f''", "r'^{-k}", "L'_s", "x'^2", "x^2'", "'")]
+        want = [M_("<msup><mi>L</mi><mo>′</mo></msup>"), M_("<msup><mi>f</mi><mrow><mo>′</mo><mo>′</mo></mrow></msup>"),
+                M_("<msup><mi>r</mi><mrow><mo>′</mo><mrow><mo>−</mo><mi>k</mi></mrow></mrow></msup>"),
+                M_("<msubsup><mi>L</mi><mi>s</mi><mo>′</mo></msubsup>"), M_("<msup><mi>x</mi><mrow><mo>′</mo><mn>2</mn></mrow></msup>"), None, None]
+        return _eq(got, want)
+
+    @case("CV4", "converter, Greek: each of the 36 Greek letter commands is one <mi> of its Unicode letter (U+03F5 for `\\epsilon`, U+03B5 for "
+                 "`\\varepsilon`, U+03D5 for `\\phi`, U+03C6 for `\\varphi`); a command run into a letter (`\\alphax`) is an unknown command")
+    def _():
+        bad = [(n, cv("\\" + n)) for n, c in GREEK if cv("\\" + n) != M_(f"<mi>{c}</mi>")]
+        return _eq((bad, len(GREEK), cv("\\alphax")), ([], 36, None))
+
+    @case("CV5", "converter, symbols and large operators: each of le ge leq geq ne neq pm cdot infty dots mid lceil rceil sum prod int is one <mo> "
+                 "(`\\infty` too, as F26B says), and `\\sum`, `\\prod`, `\\int` take limits as <msub>, <msup> or <msubsup> in line")
+    def _():
+        bad = [(n, cv("\\" + n)) for n, c in SYMBOLS if cv("\\" + n) != M_(f"<mo>{c}</mo>")]
+        got = [cv("\\sum_{n \\le y} a"), cv("\\int_0^\\infty g"), cv("\\prod_{p \\mid N} x"), cv("\\sum^n"), cv("\\sum x")]
+        want = [M_("<mrow><msub><mo>∑</mo><mrow><mi>n</mi><mo>≤</mo><mi>y</mi></mrow></msub><mi>a</mi></mrow>"),
+                M_("<mrow><msubsup><mo>∫</mo><mn>0</mn><mo>∞</mo></msubsup><mi>g</mi></mrow>"),
+                M_("<mrow><msub><mo>∏</mo><mrow><mi>p</mi><mo>∣</mo><mi>N</mi></mrow></msub><mi>x</mi></mrow>"),
+                M_("<msup><mo>∑</mo><mi>n</mi></msup>"), M_("<mrow><mo>∑</mo><mi>x</mi></mrow>")]
+        return _eq((bad, got), ([], want))
+
+    @case("CV6", "converter, named functions: `\\max` `\\min` `\\log` `\\cos` are <mi mathvariant=\"normal\"> over their name")
+    def _():
+        got = [cv("\\" + n) for n in ("max", "min", "log", "cos")] + [cv("\\max(a, b)")]
+        want = [M_(f'<mi mathvariant="normal">{n}</mi>') for n in ("max", "min", "log", "cos")] + [
+            M_('<mrow><mi mathvariant="normal">max</mi><mo>(</mo><mi>a</mi><mo>,</mo><mi>b</mi><mo>)</mo></mrow>')]
+        return _eq(got, want)
+
+    @case("CV7", "converter, \\mathrm and \\operatorname (a choice, pinned): a group of letters is ONE <mi mathvariant=\"normal\"> per word, several "
+                 "words are an <mrow>; an empty group, a digit, a symbol or no group are unsupported; the result takes scripts")
+    def _():
+        got = [cv(x) for x in ("\\mathrm{eD}", "\\operatorname{Re} s", "\\mathrm{a b}", "\\operatorname{Re}^2", "\\mathrm{}", "\\mathrm{a1}",
+                               "\\mathrm x", "\\operatorname{a+b}", "\\mathrm")]
+        want = [M_('<mi mathvariant="normal">eD</mi>'), M_('<mrow><mi mathvariant="normal">Re</mi><mi>s</mi></mrow>'),
+                M_('<mrow><mi mathvariant="normal">a</mi><mi mathvariant="normal">b</mi></mrow>'),
+                M_('<msup><mi mathvariant="normal">Re</mi><mn>2</mn></msup>')] + [None] * 5
+        return _eq(got, want)
+
+    @case("CV8", "converter, K1: `\\bar` takes one token or one brace group, like `^` and `_`: `\\bar\\chi` and `\\bar{\\chi}` are the same <mover> over "
+                 "U+00AF, `\\bar x_i` scripts the whole <mover>, `\\bar` alone and `\\bar^2` are unsupported")
+    def _():
+        got = [cv(x) for x in ("\\bar\\chi", "\\bar{\\chi}", "\\bar x_i", "\\bar", "\\bar^2")]
+        want = [M_("<mover><mi>χ</mi><mo>¯</mo></mover>"), M_("<mover><mrow><mi>χ</mi></mrow><mo>¯</mo></mover>"),
+                M_("<msub><mover><mi>x</mi><mo>¯</mo></mover><mi>i</mi></msub>"), None, None]
+        return _eq(got, want)
+
+    @case("CV9", "converter, big delimiters: `\\bigl(` `\\bigr)` `\\big|` give the delimiter alone as <mo>; only ( ) [ ] | and \\lceil \\rceil \\mid may "
+                 "follow; `\\bigl x` and `\\bigl` alone are unsupported")
+    def _():
+        got = [cv(x) for x in ("\\bigl(a\\bigr)", "\\big|a\\big|", "\\bigl\\lceil x\\bigr\\rceil", "\\bigl[x\\bigr]", "\\bigl x", "\\bigl")]
+        want = [M_("<mrow><mo>(</mo><mi>a</mi><mo>)</mo></mrow>"), M_("<mrow><mo>|</mo><mi>a</mi><mo>|</mo></mrow>"),
+                M_("<mrow><mo>⌈</mo><mi>x</mi><mo>⌉</mo></mrow>"), M_("<mrow><mo>[</mo><mi>x</mi><mo>]</mo></mrow>"), None, None]
+        return _eq(got, want)
+
+    @case("CV10", "converter, spaces (a choice, pinned): a space and the commands `\\,` `\\;` `\\!` `\\ ` give NOTHING (the allow-list has no width "
+                  "attribute, so an <mspace> would be empty); a formula of spaces only is unsupported; `|a|` and `p \\mid N` are as the tables say")
+    def _():
+        got = [cv(x) for x in ("a b", "a\\,b", "a\\;b", "a\\!b", "a\\ b", "", " ", "\\,", "|a|", "p \\mid N")]
+        want = [M_("<mrow><mi>a</mi><mi>b</mi></mrow>")] * 5 + [None, None, None] + [
+            M_("<mrow><mo>|</mo><mi>a</mi><mo>|</mo></mrow>"), M_("<mrow><mi>p</mi><mo>∣</mo><mi>N</mi></mrow>")]
+        return _eq(got, want)
+
+    @case("CV11", "converter, K2: a Greek letter typed directly is <mi> (`α`, `é`), a symbol or punctuation mark typed directly is <mo> (`≤`, `∑`, `→`, `·`), "
+                  "anything else is unsupported: a combining mark (`a` + U+0301), a non-ASCII digit (U+0663), a no-break space, a private-use "
+                  "character")
+    def _():
+        got = [cv(x) for x in ("α", "é", "≤", "∑", "→", "·", "á", "٣", "a b", "")]
+        want = [M_("<mi>α</mi>"), M_("<mi>é</mi>"), M_("<mo>≤</mo>"), M_("<mo>∑</mo>"), M_("<mo>→</mo>"), M_("<mo>·</mo>")] + [None] * 4
+        return _eq(got, want)
+
+    @case("CV12", "converter, unsupported shapes: `\\frac{a}{b}`, `\\begin{x}`, an unknown command, `\\\\`, `\\$`, a backtick, a `$` inside, `&`, `#`, `%`, "
+                  "`~`, a quote and a backslash at the end are None (the whole formula; nothing partial)")
+    def _():
+        got = [cv(x) for x in ("\\frac{a}{b}", "a + \\begin{x}", "\\foo", "a\\\\b", "a\\$b", "a`b", "a$b", "a&b", "a#b", "a%b", "a~b", 'a"b', "a\\")]
+        return _eq(got, [None] * 13)
+
+    @case("CV13", "the converter is deterministic: the conversions of a sample and the page of a build that holds formulas are the same text under "
+                  "PYTHONHASHSEED 0 and 3 (a fresh interpreter each)")
+    def _():
+        code = ("import importlib.util, sys\n"
+                "s = importlib.util.spec_from_file_location('bs', sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)\n"
+                "print([m.formula_to_mathml(x) for x in ('x_i^2', \"r'^{-k}\", '\\\\sum_{n \\\\le y} \\\\Lambda(n)', '\\\\bar\\\\chi', 'a\\\\,b', '\\\\frac')])\n"
+                "print(m._rich('a $x^2$ and **$y$** and [t $z$](u) and $\\\\foo$ `$c$`', links=True))\n")
+        outs = []
+        for seed in ("0", "3"):
+            r = subprocess.run([sys.executable, "-I", "-c", code, os.path.abspath(__file__)], capture_output=True, text=True,
+                               env=dict(os.environ, PYTHONHASHSEED=seed))
+            outs.append((r.returncode, r.stdout))
+        return _eq((outs[0] == outs[1], outs[0][0], outs[0][1].count("<math>")), (True, 0, 8))
+
+    @case("FM1", "marks, in `_rich`: `$...$` on one line is converted; `\\$` is a literal dollar sign shown as `$`; an unescaped `$` with no partner is "
+                 "literal; a `$` in a code span is code; a `$` in a link target is no formula (the link is its text, F30); a formula inside a "
+                 "link's text is converted; `$ $` (white space only) is unsupported and stays raw; two formulas and text around are in order")
+    def _():
+        r = lambda t, links=False: _rich(t, links=links)
+        got = [r("a $x$ b"), r("cost \\$5 and \\$6"), r("a $x"), r("a $ b"), r("`$x$`"), r("[a](b$c$d)", True), r("[the $x$ here](t)", True),
+               r("$ $"), r("$x$ and $y$ end"), r("$x$$y$")]
+        want = ["a " + M_("<mi>x</mi>") + " b", "cost $5 and $6", "a $x", "a $ b", "<code>$x$</code>", "a", "the " + M_("<mi>x</mi>") + " here",
+                "$ $", M_("<mi>x</mi>") + " and " + M_("<mi>y</mi>") + " end", M_("<mi>x</mi>") + M_("<mi>y</mi>")]
+        return _eq(got, want)
+
+    @case("FM2", "marks, unsupported: a formula the subset does not hold stays as written, escaped, marks and all (`$\\frac{1}{2}$`, `$a<b\\foo$` with "
+                 "its `<` escaped, a backtick inside: the span stays code, `$a\\$b$` a dollar inside, display `$$x$$` and `$$x$$` around text), "
+                 "and the text around it is converted as usual")
+    def _():
+        r = lambda t: _rich(t, links=True)
+        got = [r("a $\\frac{1}{2}$ b $x$"), r("$a<b\\foo$"), r("$a `b` c$"), r("$a\\$b$"), r("$$x$$"), r("see $$x = y$$ and $z$"), r("$$x")]
+        want = ["a $\\frac{1}{2}$ b " + M_("<mi>x</mi>"), "$a&lt;b\\foo$", "$a <code>b</code> c$", "$a\\$b$", "$$x$$",
+                "see $$x = y$$ and " + M_("<mi>z</mi>"), "$$x"]
+        return _eq(got, want)
+
+    @case("FM3", "F35 beside formulas, formulas are taken out BEFORE the bold pass (as code spans are): `$a**b**c$` and `$x**2 + y**2$` are formulas "
+                 "(the stars are <mo>, nothing is bolded), `$**x**$` is a formula, `**a $b$ c**` is bold around text and a formula, `**$x$**` "
+                 "and `**$x$ holds**` bold around a formula, `$x$ and **b**` a formula then a bold pair, `**$x**` a bold pair that is no pair "
+                 "(the `$` is unpaired, so literal, inside the bold)")
+    def _():
+        r = lambda t: _rich(t, links=True)
+        st = "<mo>∗</mo>"
+        got = [r("$a**b**c$"), r("$x**2 + y**2$"), r("$**x**$"), r("**a $b$ c**"), r("**$x$**"), r("**$x$ holds**"), r("$x$ and **b**"),
+               r("**$x**")]
+        want = [M_("<mrow><mi>a</mi>" + st * 2 + "<mi>b</mi>" + st * 2 + "<mi>c</mi></mrow>"),
+                M_("<mrow><mi>x</mi>" + st * 2 + "<mn>2</mn><mo>+</mo><mi>y</mi>" + st * 2 + "<mn>2</mn></mrow>"),
+                M_("<mrow>" + st * 2 + "<mi>x</mi>" + st * 2 + "</mrow>"),
+                "<strong>a " + M_("<mi>b</mi>") + " c</strong>", "<strong>" + M_("<mi>x</mi>") + "</strong>",
+                "<strong>" + M_("<mi>x</mi>") + " holds</strong>", M_("<mi>x</mi>") + " and <strong>b</strong>", "<strong>$x</strong>"]
+        return _eq(got, want)
+
+    @case("FM4", "the BOLD-UNPAIRED listing and the leak text of a block see formulas the same way: `$x**2 + y**2$` holds no unpaired `**`, so the block "
+                 "is not listed, nor is `$a**b$`; `$a$ and ** b` is; `_bold_unpaired` and `_shown` read a formula as one piece")
+    def _():
+        return _eq((_bold_unpaired("$x**2 + y**2$"), _bold_unpaired("$a**b$"), _bold_unpaired("$a$ and ** b"), _bold_unpaired("**$x$ holds**"),
+                    _shown("**$x$ holds** [a $y$](b)"), _shown("$x**2 + y**2$")),
+                   (False, False, True, False, "$x$ holds a $y$", "$x**2 + y**2$"))
+
+    @case("FM5", "the first sentence is cut at the first full stop followed by white space or the end that is NOT inside a `$...$` pair: `Let $a. b$ be. More.` "
+                 "gives `Let $a. b$ be.`, `Take $x.$ then. More.` gives `Take $x.$ then.`, a `$` in a code span is not a mark for the cut, and "
+                 "text with no formula is cut as before (`First. Second.` gives `First.`, `a `f. g` here. More.` gives `a `f.`)")
+    def _():
+        got = [_first_sentence(t) for t in ("Let $a. b$ be. More.", "Take $x.$ then. More.", "Use `$` then x. More $y. z$.", "First. Second.",
+                                             "a `f. g` here. More.", "Cost $5. Then $6. End.", "$x$. Next", "No stop")]
+        return _eq(got, ["Let $a. b$ be.", "Take $x.$ then.", "Use `$` then x.", "First.", "a `f.", "Cost $5. Then $6.", "$x$.", "No stop"])
+
+    def _place(cid, desc, make, needle, absent="$x$"):
+        @case(cid, desc)
+        def _():
+            b = make()
+            return _eq((b.rc, needle in b.page, absent in b.page), (0, True, False))
+
+    def _ol(edit):
+        o = _outline()
+        edit(next(g for g in o["groups"] if g["id"] == "g1"))
+        return o
+
+    def _claim_o(g):
+        g["claim"]["text"] = "Claim $x$"
+
+    def _cond_o(g):
+        g["claim"]["conditions"] = ["Cond $x$ holds."]
+
+    def _rec_o(**kw):
+        def edit(g):
+            g["root_role"] = "result"
+            g["recognition"] = _rec("known", result="res", citations=[dict(CITB, source="Src", where="Place")], **kw)
+        return edit
+
+    def _rec_f(field, value):
+        def edit(g):
+            g["root_role"] = "result"
+            cit = {"source": "A source", "where": "A place", "opened_by": "Reader One", "opened_on": "2026-11-22"}
+            rec = _rec("variant", result="A result", difference="A difference.", citations=[cit])
+            if field in ("source", "where"):
+                cit[field] = value
+            else:
+                rec[field] = value
+            g["recognition"] = rec
+        return edit
+
+    def _note_o(g):
+        g["root_role"] = "result"
+        g["recognition"] = _rec("not_recognised", note="Note $x$ here")
+
+    X_ = M_("<mi>x</mi>")
+    _place("PL1", "place: a claim (the card's heading) is converted", lambda: _build(outline=_ol(_claim_o)), '<h3 class="claim">Claim ' + X_ + "</h3>")
+    _place("PL2", "place: a condition of a claim is converted", lambda: _build(outline=_ol(_cond_o)), "<li>Cond " + X_ + " holds.</li>")
+    _place("PL3", "place: a note's list title is converted (the notes list of a card)",
+           lambda: _build(notes=_notes() | {"01-one.md": _n01().replace('"list_title":"Note one"', '"list_title":"Note $x$"')}), "Note " + X_ + "</a>")
+    _place("PL4", "place: the first sentence of an argument on the closed card is converted, and the evidence list shows the whole text converted",
+           lambda: _build(notes=_notes(arg_text="First $x$ sentence. Second $x$ sentence.")),
+           'sentence. Second ' + X_ + ' sentence.</p>')
+
+    @case("PL4b", "place: the card's first sentence is `First <math>` ... `sentence.` and the evidence list's paragraph is the whole text, both converted")
+    def _():
+        b = _build(notes=_notes(arg_text="First $x$ sentence. Second $x$ sentence."))
+        card = _nosecond(re.findall(r'<p class="argument">(.*?)</p>', b.page, re.S)[0]).rsplit("</span> ", 1)[1].split(' <a href=')[0]
+        return _eq((b.rc, card, _para(b.page, "argument")),
+                   (0, "First " + X_ + " sentence.", "First " + X_ + " sentence. Second " + X_ + " sentence."))
+
+    _place("PL5", "place: an interpretation block's text is converted",
+           lambda: _build(notes=_notes(interp_text="We $x$ think")), "</span> We " + X_ + " think</p>")
+    _place("PL6", "place: a sketch paragraph is converted", lambda: _build(notes=_bn(para="Para $x$ here.")), "<p>Para " + X_ + " here.</p>")
+    _place("PL7", "place: a sketch list item is converted", lambda: _build(notes=_bn(item="Item $x$ here")), "<li>Item " + X_ + " here</li>")
+    _place("PL8", "place: a nested sub-item of a sketch list item is converted (F35)",
+           lambda: _build(notes=_bn(item="Item two.\n   - sub $x$ here")), "<li>sub " + X_ + " here</li>")
+    _place("PL9", "place: an `unexpanded` entry of a sketch is converted",
+           lambda: _build(notes=_bn(unexpanded=("Auto $x$ closes", "Plain"))), "<li>Auto " + X_ + " closes</li>")
+    _place("PL10", "place: the recognition's result, in the form line, is converted",
+           lambda: _build(outline=_ol(_rec_f("result", "res $x$"))), "(res " + X_ + "), changed")
+    _place("PL11", "place: the recognition's difference is converted",
+           lambda: _build(outline=_ol(_rec_f("difference", "Diff $x$."))), '<p class="recognition-difference">Diff ' + X_ + ".</p>")
+    _place("PL12", "place: the note of a reading that found nothing is converted",
+           lambda: _build(outline=_ol(_note_o)), '<p class="recognition-note">Note ' + X_ + " here</p>")
+    _place("PL13", "place: a citation's source is converted", lambda: _build(outline=_ol(_rec_f("source", "Src $x$"))), "Src " + X_ + ", A place")
+    _place("PL14", "place: a citation's where is converted", lambda: _build(outline=_ol(_rec_f("where", "Pl $x$"))), "A source, Pl " + X_ + " (as read")
+
+    @case("PL15", "place: the claim of a premise, shown in the premises line of a card, is converted (the title of a premise group)")
+    def _():
+        b = _build(outline=_ol(_claim_o))
+        prem = re.findall(r'<p class="premises">(.*?)</p>', b.page, re.S)
+        return _eq((b.rc, any(">Claim " + X_ + "</a>" in p_ for p_ in prem)), (0, True))
+
+    @case("LS1", "listing: an unsupported formula is listed `FORMULA-UNSUPPORTED <block id> <the first 40 characters of the formula, marks included>` "
+                 "(once per block and text, in page order), an unpaired dollar `FORMULA-UNPAIRED <block id>` (once per block), the build exits 0, "
+                 "the page shows the raw text; a claim is named by its group id, a list title by its note id")
+    def _():
+        long = "$\\frac{" + "a" * 50 + "}{b}$"
+        b = _build(notes=_notes(arg_text="Take $\\frac{1}{2}$ and " + long + " and $x$ and a $ here"))
+        c = _build(outline=_ol(lambda g: g["claim"].update(text="Claim $\\foo$")))
+        t = _build(notes=_notes() | {"01-one.md": _n01().replace('"list_title":"Note one"', '"list_title":"Note $\\\\bar$ $"')})
+        pick = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith(("FORMULA-UNSUPPORTED", "FORMULA-UNPAIRED"))]
+        return _eq((b.rc, pick(b), "Take $\\frac{1}{2}$ and " in b.page, c.rc, pick(c), pick(t)),
+                   (0, ["FORMULA-UNSUPPORTED 01.b02 $\\frac{1}{2}$", "FORMULA-UNSUPPORTED 01.b02 $\\frac{" + "a" * 33, "FORMULA-UNPAIRED 01.b02"], True, 0,
+                       ["FORMULA-UNSUPPORTED g1 $\\foo$"], ["FORMULA-UNSUPPORTED 01 $\\bar$", "FORMULA-UNPAIRED 01"]))
+
+    @case("LS2", "listing: a formula that is converted, a `\\$`, a dollar sign in a code span and a link target are NOT listed; the base build lists none")
+    def _():
+        b = _build(notes=_notes(arg_text="Cost \\$5, `$x`, $y$ and [a](b$c) here"))
+        pick = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith(("FORMULA-UNSUPPORTED", "FORMULA-UNPAIRED"))]
+        return _eq((b.rc, pick(b), pick(_base())), (0, [], []))
+
+    @case("RL1", "the run line, in the output after `sketches:`: `formulas: N converted, U unsupported, P unpaired, of T marks, converter "
+                 "own-subset-1 (66 commands)`; the base build is `0 converted, 0 unsupported, 0 unpaired, of 0 marks`; the counts are of renderings "
+                 "(the card's first sentence and the evidence text both count): `A $x$ and $\\frac{1}{2}$ and \\$ and a $ here` is 2 converted, 2 "
+                 "unsupported, 2 unpaired, of 4")
+    def _():
+        line = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith("formulas: ")]
+        b = _build(notes=_notes(arg_text="A $x$ and $\\frac{1}{2}$ and \\$ and a $ here"))
+        idx = b.out.splitlines()
+        return _eq((line(_base()), line(b), idx.index(line(b)[0]) > next(i for i, x in enumerate(idx) if x.startswith("sketches: "))),
+                   (["formulas: 0 converted, 0 unsupported, 0 unpaired, of 0 marks, converter own-subset-1 (66 commands)"],
+                    ["formulas: 2 converted, 2 unsupported, 2 unpaired, of 4 marks, converter own-subset-1 (66 commands)"], True))
+
+    @case("RL2", "the sum N + U = T (code FORMULA-SUM) is asserted on the pure counting function: `formula_counts` of a log with a mark that has no "
+                 "result is (0, 0, 0, 1) and `formula_sum_errors` of it is FORMULA-SUM; a log that adds up gives none; a build whose counting "
+                 "function is made to miss a mark is refused (BUILD-ERROR FORMULA-SUM, exit 1, OUT_DIR absent)")
+    def _():
+        bad = [("mark", "w", "$a$")]
+        good = [("mark", "w", "$a$"), ("converted", "w", "$a$"), ("mark", "w", "$\\foo$"), ("unsupported", "w", "$\\foo$"), ("unpaired", "w", "$")]
+        real = formula_counts
+        with _patched("formula_counts", lambda log: dict(real(log), T=real(log)["T"] + 1)):
+            b = _build(notes=_notes(arg_text="A $x$ here"))
+        return _eq((formula_counts(bad), formula_sum_errors(formula_counts(bad)), formula_counts(good), formula_sum_errors(formula_counts(good)),
+                    b.rc, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR FORMULA-SUM")], b.existed),
+                   ({"N": 0, "U": 0, "P": 0, "T": 1}, [("FORMULA-SUM", "page", "converted 0 + unsupported 0 = 0, but there are 1 marks")],
+                    {"N": 1, "U": 1, "P": 1, "T": 2}, [], 1,
+                    ["BUILD-ERROR FORMULA-SUM page converted 2 + unsupported 0 = 2, but there are 3 marks"], False))
+
+    @case("RL3", "FORMULA-RAW is gone: no build line starts with it (a formula is converted or it is FORMULA-UNSUPPORTED), `_formula_raw` and "
+                 "`_FORMULA_MARK` are not defined, and a mark `\\(` or `\\begin{` alone in text is no mark at all (plain text)")
+    def _():
+        b = _build(notes=_notes(arg_text="Take \\(x\\) and \\[y\\] and \\begin{a} here"))
+        return _eq(([ln for ln in b.out.splitlines() if ln.startswith("FORMULA")], "_formula_raw" in globals(), "_FORMULA_MARK" in globals(), b.rc),
+                   ([], False, False, 0))
+
+    @case("RL4", "a listing never changes the exit code and never refuses: a build with a converted formula, an unsupported one, an unpaired dollar "
+                 "and a display formula is exit 0 with its files written; the same build with no listing is exit 0 as well")
+    def _():
+        b = _build(notes=_notes(arg_text="Take $\\frac{1}{2}$, $x$, $$y$$ and a $ here"))
+        return _eq((b.rc, b.existed, len(b.files)), (0, True, len(_base().files)))
+
+    @case("JS1b", "the JSON keeps the text as written: a block text, a claim, a condition and a list title with formulas are in group/g1.json "
+                  "(and in data.js) with their `$`, the first sentence is as written (and cut outside a formula); and the JSON files of the "
+                  "fixtures with no dollar sign are byte-equal to before this change (sha256 over the JSON files and data.js, literal)")
+    def _():
+        import hashlib
+
+        def digest(b_):
+            h = hashlib.sha256()
+            for k in sorted(b_.files):
+                if (k.endswith(".json") and k != "manifest.json") or k == "data.js":
+                    h.update(k.encode() + b"\0" + b_.files[k] + b"\0")
+            return h.hexdigest()
+
+        o = _ol(lambda g: g["claim"].update(text="Claim $x$", conditions=["Cond $y$ holds."]))
+        b = _build(outline=o, notes=_notes(arg_text="Let $a. b$ be. More $z$."))
+        g1 = b.js("group/g1.json")
+        arg = [x for x in g1["blocks"] if x["block"] == "01.b02"][0]
+        l1 = next(x for x in b.js("level0.json")["steps"] if x["id"] == "g1")
+        return _eq(((arg["text"], arg["first_sentence"]), l1["claim"]["text"], l1["claim"]["conditions"], "Claim $x$" in b.text("data.js"),
+                    [digest(x) for x in (_base(), _zbase(), _sbase(), _bbase())]),
+                   (("Let $a. b$ be. More $z$.", "Let $a. b$ be."), "Claim $x$", ["Cond $y$ holds."], True,
+                    ["f80ba09d768a56e83f99eefe6f5ccc659477425f3f48d39c1eb93e1263e0e6a0", "ed1fa4280342e84ef99d41bcaf4679a503cce2af26ddbf614a1ec226c145e05a",
+                     "7ec121d81c1f4d29114c1110eb966d1e3a4b294e95b8b91c9acab30fe6171a8a", "c7ef96bb43b0cc658ee1291858ce9345f688821a5d96505c197d0070e6fa010c"]))
+
+    LEAKL = "abcdefghijklmnopqrstuvwxyz"
+    GRL = "αβγδεζηθικλμνξπρστυφχψω"
+
+    def _leaks(**kw):
+        b = _build(**kw)
+        return b.rc, sorted(ln.split(" ")[2] for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ") and "note " not in ln), b.existed
+
+    @case("LF1", "leak, planted first: a release line wrapped in `$...$` in a CLAIM is refused (SOURCE-LEAK naming the JSON files and the page's data, "
+                 "exit 1, OUT_DIR absent), because the marks are removed before the comparison; the same claim without the marks stays refused, "
+                 "and an ids-only formula in the claim (`$g1$`) with the same release builds clean")
+    def _():
+        src = {"A/B.lean": LEAK + "\n"}
+        o = _ol(lambda g: g["claim"].update(text="$" + LEAK + "$"))
+        o2 = _ol(lambda g: g["claim"].update(text="$g1$"))
+        r1, r2 = _leaks(outline=o, src=src), _leaks(outline=o2, src=src)
+        return _eq((r1[0], r1[2], "data.js" in r1[1], r2), (1, False, True, (0, [], True)))
+
+    @case("LF2", "leak, planted first: a release line wrapped in `$...$` in a SKETCH PARAGRAPH is refused (SOURCE-LEAK, exit 1, OUT_DIR absent); in a sketch "
+                 "item too; a release line wrapped in a formula inside a bold pair is refused")
+    def _():
+        src = {"A/B.lean": LEAK + "\n"}
+        r = [_leaks(notes=_bn(para="$" + LEAK + "$"), src=src), _leaks(notes=_bn(item="$" + LEAK + "$"), src=src),
+             _leaks(notes=_bn(para="**$" + LEAK + "$**"), src=src), _leaks(notes=_bn(para="Fine $x$ here."), src=src)]
+        return _eq([(x[0], x[2]) for x in r], [(1, False), (1, False), (1, False), (0, True)])
+
+    @case("LF3", "leak, planted first: a release line SPELLED ACROSS a formula's letters is refused: the line `abc...z` as `$a b c ... z$` (the text of the "
+                 "MathML is the line, the text as written is not), and a line of Greek letters spelled by commands (`\\alpha\\beta...`)")
+    def _():
+        order = {c: n for n, c in GREEK}
+        spelled = "".join("\\" + order[c] for c in GRL)
+        r = [_leaks(outline=_ol(lambda g: g["claim"].update(text="$" + " ".join(LEAKL) + "$")), src={"A/B.lean": LEAKL + "\n"}),
+             _leaks(outline=_ol(lambda g: g["claim"].update(text="$" + spelled + "$")), src={"A/B.lean": GRL + "\n"}),
+             _leaks(outline=_ol(lambda g: g["claim"].update(text="$a b$ " + " ".join(LEAKL))), src={"A/B.lean": LEAKL + "\n"})]
+        return _eq([(x[0], x[2]) for x in r], [(1, False), (1, False), (0, True)])
+
+    @case("LF4", "leak, planted first: a release line inside a LINK TEXT next to a formula stays refused (a sketch whose first paragraph is `[LINE](06-x.md)` "
+                 "and whose second is `$x$`): SOURCE-LEAK, exit 1, OUT_DIR absent; the same without the link text builds")
+    def _():
+        src = {"A/B.lean": LEAK + "\n"}
+        r = [_leaks(notes=_bn(para="[" + LEAK + "](06-x.md)", last="$x$"), src=src), _leaks(notes=_bn(para="[short](06-x.md)", last="$x$"), src=src)]
+        return _eq([(x[0], x[2]) for x in r], [(1, False), (0, True)])
+
     @case("EL1", "element_problems, planted: `<script>`, `<annotation>`, `<iframe>` and an unknown element are `element <name>`; an `onclick` on a "
                  "<p>, a `style` on a <p> (the builder has none), an `href` on a <mi> and a `mathvariant` on a <p> are `attribute <name> on <element>`; "
                  "`<time>` (no builder path emits it since F37 moved the dates), an `onclick` on a <dl> and an `id` on a <li> are refused too; "
