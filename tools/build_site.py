@@ -1888,6 +1888,14 @@ def formula_sum_errors(c):
     return [("FORMULA-SUM", "page", f"converted {c['N']} + unsupported {c['U']} = {c['N'] + c['U']}, but there are {c['T']} marks")]
 
 
+def formula_page_errors(c, n_math):
+    """[(FORMULA-PAGE, page, message)] when the page holds a number of <math> elements other than the formulas the run counted as converted:
+    a check on the OUTPUT, so a place that renders a formula without logging it (a call of the span rule with no `where`) is caught."""
+    if c["N"] == n_math:
+        return []
+    return [("FORMULA-PAGE", "page", f"the page holds {n_math} <math> elements, but the run counted {c['N']} converted formulas")]
+
+
 def formula_listing(log):
     """The listing lines of a render, in order of first occurrence, each once: `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
     formula as written, marks included>` and `FORMULA-UNPAIRED <where>`."""
@@ -2166,7 +2174,7 @@ def _render_page(m, s, facts, dirty):
         if sm["claim"] and rec is not None:
             reads.append(("recognition", _e(_fill(s["evidence_recognition_line"], reader=rec["reader"], date=rec["date"]))))
             for ct in rec.get("citations") or []:
-                reads.append(("citation", _fillh(s["evidence_citation_line"], ("source",), source=ct["source"], opened_by=ct["opened_by"],
+                reads.append(("citation", _fillh(s["evidence_citation_line"], ("source",), sm["id"], source=ct["source"], opened_by=ct["opened_by"],
                                                  opened_on=ct["opened_on"])))
             est = rec.get("established")
             if role == "named_statement" and isinstance(est, dict):
@@ -2448,6 +2456,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         _FORMULA_LOG = None
     fcounts = formula_counts(flog)
     errors += formula_sum_errors(fcounts)
+    errors += formula_page_errors(fcounts, len(re.findall(r"<math[ >]", page)))
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
