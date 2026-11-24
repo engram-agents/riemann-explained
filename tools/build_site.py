@@ -311,7 +311,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   R5 Every card carries exactly one roots-only sentence (F39), chosen by whether the card shows counts, which it does when it has
      more than one root: `roots_only_note` on such a card, `root_only_note_single` (no placeholder) on every other card (one root, or
      none), never both and never neither; a declaration that is a root of two groups is
-     marked shared with the other group's id and counted once in totals. Cases R5 RO1 RO2 RO3.
+     marked shared with the other card, named by its title as a premise row names it and linked to it (F48 a; SH1 to SH3), and counted once in totals. Cases R5 RO1 RO2 RO3.
   PL The premises of a card (F40): one premise is the sentence line `<p class="premises">label link</p>`; two or more are
      `<div class="premises"><p>label</p><ul><li>link</li>...</ul></div>`, one item per premise in the outline's order. Each link is
      the in-page `#<id>` link with the premise's title, as before; the data is unchanged. Cases PL1 PL2 PL3 (PRM2 moved).
@@ -436,8 +436,10 @@ definition or structure card with a claim and a title prints `definition_label`,
 no claim and no title, print as before; a result card with a claim never shows a title. The title goes through _rich (span rule, formulas)
 with the card id as `where`. The CSS rule `.title-text { font-weight: normal; color: GrayText; }` keeps the title out of the heading's
 weight; the CSS had no colour value, so a system colour keyword is used (no palette value is invented). title_of, the premise row's
-name for another card, is the title when the card shows one, else the claim, else the root name; it has no other caller. The card's
-id is on the page only as the `id` attribute and in `#` links (TT14); shared_note names the groups that share a root by id. A card
+name for another card, is the title when the card shows one, else the claim, else the root name; its two callers are the premise row
+and the shared-root note. The card's id is on the page only as the `id` attribute and in `#` links (TT14, SH2): the shared-root note
+(the strings key `shared_note`, its {groups} placeholder) names each OTHER card that shares the root by title_of, as <a href="#id">,
+joined by `, ` in the order of the ids; the group file keeps the ids (`shared_with`). A card
 that needs a title (no claim, or a definition or structure card) and has none is listed `TITLE-MISSING <card id>`, in the order of the
 page, one line each, and the line `titles: T of K cards that need one` follows the facts check and the count lines; when the module
 constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISSING (exit 1) and no listing is printed. The
@@ -2136,6 +2138,19 @@ def _render_page(m, s, facts, dirty):
             return _rich(ttl, where=gid)
         return _rich(sm["claim"]["text"], where=gid) if sm["claim"] else f"<code>{_e(sm['lean_name'])}</code>"
 
+    def shared_line(others):
+        """The shared-root note: the strings key's text (escaped) with {groups} filled by the other cards that share the root, each named as a
+        premise row names a card (title_of) and linked to its card by id, joined by `, ` in the order of the ids (F48 a: no id is shown)."""
+        tmpl = s["shared_note"]
+        links = ", ".join(f'<a href="#{_e(urllib.parse.quote(i, safe=""))}">{title_of(i)}</a>' for i in others)
+        out, pos = [], 0
+        for mt in _PLACEHOLDER.finditer(tmpl):
+            out.append(_e(tmpl[pos:mt.start()]))
+            out.append(links if mt.group(1) == "groups" else _e(mt.group(0)))
+            pos = mt.end()
+        out.append(_e(tmpl[pos:]))
+        return "".join(out)
+
     def card(gid):
         sm, fl = m.summary[gid], files[gid]
         o = [f'<article class="card{" unread" if sm["unread"] else ""}" id="{_e(gid)}">']
@@ -2230,7 +2245,7 @@ def _render_page(m, s, facts, dirty):
                      f'<dt>{_e(lab["lines"])}</dt><dd>{r["lines"][0]}-{r["lines"][1]}</dd>'
                      + (f'<dt>{_e(lab["sha256"])}</dt><dd><code>{r["sha256"]}</code></dd>' if r["sha256"] else "") + "</dl>")
             if r["shared_with"]:
-                o.append(f'<p class="shared">{_e(_fill(s["shared_note"], groups=", ".join(r["shared_with"])))}</p>')
+                o.append(f'<p class="shared">{shared_line(r["shared_with"])}</p>')
             o.append("</div>")
         # F37: who read what, and when, the sentences that left the card; in a fixed order: the statement, the proof, the recognition,
         # each citation, the established line (the second readers, the file and the lines and the build of a sketch follow their block)
@@ -7732,9 +7747,9 @@ def _selftest_cases():
 
     # ---- F48 (a), the shared-root note names the other cards by title, not by id
     def shared_lines(b, gid):
-        """The shared-root notes inside the card gid (the cards of these fixtures are all top level, so the card ends at the first </article>)."""
-        start = b.page.index(f' id="{gid}">')
-        return re.findall(r'<p class="shared">.*?</p>', b.page[start:b.page.index("</article>", start)])
+        """The shared-root notes in the card gid's own Evidence section (its children are cards of their own, after it)."""
+        start = b.page.index('<details class="evidence">', b.page.index(f' id="{gid}">'))
+        return re.findall(r'<p class="shared">.*?</p>', b.page[start:b.page.index("</details>", start)])
 
     def id_hits(page, ids):
         return sorted(i for i in ids for piece in _dom(page).pieces()
