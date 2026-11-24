@@ -6335,13 +6335,18 @@ def _selftest_cases():
                 M_('<mrow><mo stretchy="false" form="prefix">[</mo><mi>x</mi><mo stretchy="false" form="postfix">]</mo></mrow>'), None, None]
         return _eq(got, want)
 
-    @case("CV10", "converter, spaces (a choice, pinned): a space and the commands `\\,` `\\;` `\\!` `\\ ` give NOTHING (the allow-list has no width "
-                  "attribute, so an <mspace> would be empty); a formula of spaces only is unsupported; `|a|` and `p \\mid N` are as the tables say")
+    @case("CV10", "converter, spaces (a choice, pinned): `\\,` is <mspace width=\"0.167em\">, `\\;` 0.278em, `\\ ` 0.222em, `\\!` -0.167em (pandoc's widths); "
+                  "a plain space in the source gives nothing; the spacing commands split the words of \\mathrm; a formula of spaces only is "
+                  "unsupported; `|a|` and `p \\mid N` are as the tables say")
     def _():
-        got = [cv(x) for x in ("a b", "a\\,b", "a\\;b", "a\\!b", "a\\ b", "", " ", "\\,", "|a|", "p \\mid N")]
-        want = [M_("<mrow><mi>a</mi><mi>b</mi></mrow>")] * 5 + [None, None, None] + [
-            M_('<mrow><mo stretchy="false">|</mo><mi>a</mi><mo stretchy="false">|</mo></mrow>'),
-            M_('<mrow><mi>p</mi><mo stretchy="false">∣</mo><mi>N</mi></mrow>')]
+        sp = lambda w: f'<mspace width="{w}"></mspace>'
+        got = [cv(x) for x in ("a b", "a\\,b", "a\\;b", "a\\!b", "a\\ b", "x\\,", "\\mathrm{a\\,b}", "", " ", "\\,", "\\, \\;", "|a|", "p \\mid N")]
+        want = [M_("<mrow><mi>a</mi><mi>b</mi></mrow>"), M_("<mrow><mi>a</mi>" + sp("0.167em") + "<mi>b</mi></mrow>"),
+                M_("<mrow><mi>a</mi>" + sp("0.278em") + "<mi>b</mi></mrow>"), M_("<mrow><mi>a</mi>" + sp("-0.167em") + "<mi>b</mi></mrow>"),
+                M_("<mrow><mi>a</mi>" + sp("0.222em") + "<mi>b</mi></mrow>"), M_("<mrow><mi>x</mi>" + sp("0.167em") + "</mrow>"),
+                M_('<mrow><mi mathvariant="normal">a</mi><mi mathvariant="normal">b</mi></mrow>'), None, None, None, None,
+                M_('<mrow><mo stretchy="false">|</mo><mi>a</mi><mo stretchy="false">|</mo></mrow>'),
+                M_('<mrow><mi>p</mi><mo stretchy="false">∣</mo><mi>N</mi></mrow>')]
         return _eq(got, want)
 
     @case("CV11", "converter, K2: a Greek letter typed directly is <mi> (`α`, `é`), a symbol or punctuation mark typed directly is <mo> (`≤`, `∑`, `→`, `·`), "
