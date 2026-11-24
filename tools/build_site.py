@@ -5816,6 +5816,7 @@ def _selftest_cases():
                    ('<!doctype html><html><!doctype html><head></head>', ["declaration"]),
                    ('<!doctype html public "x"><html></html>', ["declaration"]), ('<!doctype html system "about:legacy-compat"><html></html>', ["declaration"]),
                    ("<!doctype><html></html>", ["declaration"]),
+                   ("<html><!DOCTYPE html><head></head></html>", ["declaration"]), ("<p>a</p><!doctype html>", ["declaration"]),
                    (pre + "<!-- a --><?x>", ["comment", "processing instruction"]), (pre + "<!-- a --><!-- b -->", ["comment"])]
         controls = [pre + "<p>a</p></body></html>", "<!doctype html>" + pre[len("<!DOCTYPE html>"):], "<!doctype html >" + pre[len("<!DOCTYPE html>"):],
                     "<p>a</p>", "<!DocType HTML><html></html>"]
