@@ -5,7 +5,8 @@ Each formula (one per line, with its `$` marks) goes through the converter of `b
 `pandoc -f markdown -t html --mathml`, and the two STRUCTURES are compared: the tag tree with every attribute and every text dropped,
 pandoc's `<semantics>` wrapper and its `<annotation>` removed, and an `<mrow>` that holds a single child replaced by that child. (Neither
 side merges adjacent `<mn>` or `<mi>`.) The run prints the number of formulas for which the structures agree, and EVERY formula that
-differs, with a one-line diagnosis and which side is right. It always exits 0: a table to read, never a gate, never a build dependency.
+differs, with a one-line diagnosis and which side is right. A completed run exits 0 whatever the number of differences: a table to read, never a gate, never a build
+dependency. With pandoc missing from the PATH, a formulas file that cannot be read, or pandoc failing, it prints ONE line to stderr and exits 2.
 
 usage: formula_oracle.py --run FORMULAS_FILE [FORMULAS_FILE ...]   (needs pandoc on the path; the formulas of the files are merged, sorted, once each)
        formula_oracle.py --selftest                               (no pandoc: built-in formulas and a recorded pandoc output)
@@ -14,6 +15,7 @@ import html.parser
 import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -260,15 +262,30 @@ def main(argv):
     if argv[1:] == ["--selftest"]:
         return selftest()
     if len(argv) >= 3 and argv[1] == "--run":
-        formulas = read_formulas(argv[2:])
+        if shutil.which("pandoc") is None:
+            print("formula_oracle: pandoc is not on the PATH (--run needs it; --selftest does not)", file=sys.stderr)
+            return 2
+        try:
+            formulas = read_formulas(argv[2:])
+        except OSError as ex:
+            print(f"formula_oracle: cannot read {ex.filename}: {ex.strerror}", file=sys.stderr)
+            return 2
+        except UnicodeDecodeError as ex:
+            print(f"formula_oracle: a formulas file is not UTF-8 ({ex.reason})", file=sys.stderr)
+            return 2
         cache = {}
 
         def pandoc_of(f):
             if f not in cache:
                 cache[f] = pandoc_markup(f)
             return cache[f]
-        print("\n".join(report(formulas, pandoc_of, pandoc_version())))
-        return 0   # a measurement: never a gate
+        try:
+            lines = report(formulas, pandoc_of, pandoc_version())
+        except (OSError, subprocess.CalledProcessError) as ex:
+            print(f"formula_oracle: pandoc failed: {ex}".splitlines()[0], file=sys.stderr)
+            return 2
+        print("\n".join(lines))
+        return 0   # a completed run: a measurement, never a gate, whatever the number of differences
     print(__doc__.split("usage:")[1].strip(), file=sys.stderr)
     return 2
 
