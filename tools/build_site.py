@@ -1496,6 +1496,7 @@ FORMULA_COMMANDS = dict(
        ("big", ("big", ""))] + [(c, ("space", "")) for c in (",", ";", "!", " ")])
 _FOPS = {"+": "+", "-": "−", "=": "=", "<": "<", ">": ">", "/": "/", "(": "(", ")": ")", "[": "[", "]": "]", ",": ",", ";": ";",
          ":": ":", "!": "!", "|": "|", ".": ".", "*": "∗"}
+_FSPACES = {",": "0.167em", ";": "0.278em", " ": "0.222em", "!": "-0.167em"}   # the spacing commands, with pandoc's widths
 _TEX_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _TEX_NAME = re.compile(r"[A-Za-z]+")
 
@@ -1532,8 +1533,8 @@ def _tex_tokens(body):
                     raise _Unsupported
                 toks.append(("cmd", mt.group()))
                 i = mt.end()
-            elif i + 1 < n and body[i + 1] in ",;! ":
-                toks.append(("sp",))
+            elif i + 1 < n and body[i + 1] in _FSPACES:
+                toks.append(("space", _FSPACES[body[i + 1]]))
                 i += 2
             else:
                 raise _Unsupported
@@ -1648,6 +1649,8 @@ class _TexParser:
             return "<mrow>" + "".join(self.seq(True)) + "</mrow>"
         if k == "cmd":
             return self.command(t[1])
+        if k == "space":
+            return f'<mspace width="{t[1]}"></mspace>'
         raise _Unsupported
 
     def command(self, name):
@@ -1686,7 +1689,7 @@ class _TexParser:
                 cur = ""
             if t[0] == "}":
                 break
-            if t[0] != "sp":
+            if t[0] not in ("sp", "space"):
                 raise _Unsupported
         if not words:
             raise _Unsupported
@@ -1702,7 +1705,7 @@ def formula_to_mathml(body):
         nodes = _TexParser(_tex_tokens(body)).seq(False)
     except (_Unsupported, RecursionError):
         return None
-    if not nodes:
+    if not nodes or all(x.startswith("<mspace") for x in nodes):
         return None
     return "<math>" + (nodes[0] if len(nodes) == 1 else "<mrow>" + "".join(nodes) + "</mrow>") + "</math>"
 
