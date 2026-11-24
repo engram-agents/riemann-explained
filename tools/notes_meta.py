@@ -113,8 +113,11 @@ CONTRACT (each line is a self-test case, written before the code)
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
- Title (cases TTL1 to TTL3). A group may carry the optional key `title`: a plain string, not empty, with no blank at either end and no
- line break (any other value, an object or a list included, is BAD-VALUE naming the group). The page prints it on a card with no claim and
+ Title (cases TTL1 to TTL4). A group may carry the optional key `title`: a plain string, not empty, with no blank at either end and no
+ line break (any other value, an object or a list included, is BAD-VALUE naming the group), whose FIRST character is not a lowercase letter
+ (`c.isalpha() and c.islower()`: BAD-VALUE `title must start with a capital letter or a character that is not a lowercase letter`; a digit,
+ a quote, a bracket, a symbol and a letter with no case pass; a Greek or accented lowercase initial is refused too, the author rephrases;
+ a title with a shape fault has that finding alone). The author writes the capital: no code changes author text. The page prints it on a card with no claim and
  on a definition or structure card; a group with a claim whose root is a result and a title is TITLE-WITH-CLAIM (an error), because the page
  would ignore a title there and the author must choose. The role decides when the group has a usable root_role, else the kind of the one
  root in decls.tsv decides, as SKETCH-ROLE does; a root with no row, or with several, is not judged. A bad title is BAD-VALUE alone.
@@ -535,13 +538,26 @@ def _check_group_shape(g, label, path, out):
             _check_claim(g["claim"], label, path, out)
         else:
             bad("claim must be an object or null")
-    if "title" in g and not _title_ok(g["title"]):
-        bad("title must be a non-empty string with no blank at either end and no line break")
+    if "title" in g:
+        why = _title_problem(g["title"])
+        if why == "shape":
+            bad("title must be a non-empty string with no blank at either end and no line break")
+        elif why == "capital":
+            bad("title must start with a capital letter or a character that is not a lowercase letter")
+
+
+def _title_problem(v):
+    """None for a good title, else "shape" or "capital". A title is a plain string: not empty, no blank at either end, one line (any line
+    break `str.splitlines` knows is one) and its FIRST character is not a lowercase letter (an uppercase letter, a digit, a quote, a bracket,
+    a symbol and a letter with no case all pass: code never changes the author's text, so the author writes the capital). The shape is judged
+    first, so a title with both faults has the shape finding alone."""
+    if not (isinstance(v, str) and v != "" and v == v.strip() and len(v.splitlines()) == 1):
+        return "shape"
+    return "capital" if v[0].isalpha() and v[0].islower() else None
 
 
 def _title_ok(v):
-    """A title is a plain string: not empty, no blank at either end, one line (any line break `str.splitlines` knows is one)."""
-    return isinstance(v, str) and v != "" and v == v.strip() and len(v.splitlines()) == 1
+    return _title_problem(v) is None
 
 
 # ---- root_role and recognition (F24): the role is compared with the kind class here, and the builder reads it
