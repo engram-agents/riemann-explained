@@ -214,9 +214,13 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      other non-ASCII character makes the formula unsupported (K2). The first sentence is not cut at a stop inside a formula. The run prints
      `formulas: N converted, U unsupported, P unpaired, of T marks, converter own-subset-V (K commands)` after the sketches line (counts of
      renderings: the card's first sentence and the evidence text both count), and N + U = T is asserted (FORMULA-SUM), T counted from the
-     marks the scanner finds. The source check also compares each text with its formula marks removed and with the text of its MathML,
+     marks the scanner finds, and N is compared with the number of <math> elements of the page (FORMULA-PAGE: a place that renders a formula without
+     logging it is caught on the output; cases FP1 FP2 RL5). The source check also compares each text with its formula marks removed and with the text of its MathML,
      so a release line wrapped in `$..$`, or spelled out in a formula's letters, is a leak. The JSON keeps every text as written.
-     `tools/formula_oracle.py` compares the converter with pandoc's MathML on a list of formulas (a measurement, not a build step). Cases CV0 to
+     LIMIT (review F2, case LIM-LINK): the link pass runs before the formulas, so text shaped like a link inside a formula (brackets, then
+     parentheses: `$a [b](c) d$`, `$[a](b)$`) is read as a link first, the formula is converted from what is left and a spurious LINK-OUTSIDE is
+     listed; no formula of the real notes or of the corpus has the shape, and the order of the passes is not changed here. A formula that needs
+     such text uses another notation. `tools/formula_oracle.py` compares the converter with pandoc's MathML on a list of formulas (a measurement, not a build step). Cases CV0 to
      CV13 FM1 to FM5 PL1 to PL15 LS1 LS2 RL1 to RL4 JS1b LF1 to LF4, and the moved FR1 FR2 FR3 FR4 FR5 BD4 NS4.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
      stays and proof_read stays null. Cases PB1 PB2.
