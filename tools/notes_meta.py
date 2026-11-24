@@ -155,7 +155,10 @@ does that). Title rules: only the two a script can check are checked, that a lis
 and does not end in a parenthetical `(...)`; every other rule on titles (plain words, saying what the note is
 about, length, no status in the words) needs a reader. A group with no root_role and the form open_in_literature is OPEN-ROLE, because the role decides whether the form is
 allowed (the spec is silent on that case; this is our reading, and a role added later clears it). `established` is for
-a named statement only, also under open_in_literature. The line `sketches: S of P steps with a proof read` is NOT printed
+a named statement only, also under open_in_literature. A `note` on not_recognised is only checked to be a non-empty string
+with no word the rules refuse: the number of sentences (one or two, the pilot spec says) and whether it says what the step is and
+what we looked for are not checked, and a note of one word passes. A repeated self-test case id is refused when the case is
+registered, so a second case can no longer run under another's name. The line `sketches: S of P steps with a proof read` is NOT printed
 here: what a step is belongs to the builder, so it counts there. note_cite.py is unchanged: its --kind takes its choices from
 rh_anchor.KINDS, and a sketch cannot be valid through it for want of a basis flag (BAD-BLOCK). A sketch anchored on a list
 is asked for `item` like any block on a list. Extra keys are UNKNOWN-KEY for the outline, a group and a
