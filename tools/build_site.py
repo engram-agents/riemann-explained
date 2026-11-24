@@ -604,36 +604,38 @@ ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element
 
 # The elements html.parser reads as TEXT (raw text, RCDATA) wherever they stand, among the allowed ones: today `style` and `title`, taken from the
 # parser's own lists so a Python that has more (or fewer) of them is followed, and EL7 fails when the set changes. A browser reads their content as text
-# only in HTML content; directly inside <math>, <mrow> and the other MathML elements they are MathML elements and their content is MARKUP, so a tag
-# behind them is one the parser never reports. The page has them in <head> only, so any other place is refused (`element <name> outside head`).
+# only in HTML content; inside MathML they are MathML elements and their content is MARKUP, so a tag behind them is one the parser never reports. The page
+# has them in <head> only, in the OPENING RUN of the page: the start tags before the first one that is not html, head, meta or one of them. Once any
+# other start tag has been seen, every later one is refused (`element <name> outside head`), whatever end tags came between: an end tag that a browser
+# ignores (`</head>` while <math> is open, `</body>`) must not buy the permission back, so the run is never reopened by one.
 HIDING_ELEMENTS = frozenset(set(html.parser.HTMLParser.CDATA_CONTENT_ELEMENTS)
                             | set(getattr(html.parser.HTMLParser, "RCDATA_CONTENT_ELEMENTS", ()))) & frozenset(ALLOWED_ELEMENTS)
-_VOID_ELEMENTS = frozenset({"meta"})   # the allowed elements written with no end tag
+_OPENING_RUN = frozenset({"html", "head", "meta"}) | HIDING_ELEMENTS
 
 
 def element_problems(page):
     """What the BUILT page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list,
     `attribute <name> on <element>` for each attribute an allowed element may not carry, and `element <name> outside head` for an element of
-    HIDING_ELEMENTS (style, title) that is not directly inside <head> of <html>. The BUILT page is read with html.parser: start tags and attribute
-    NAMES (end tags only to keep the stack of open elements); a comment and the doctype are not looked at. It is a name check on the tags as
-    html.parser sees them, not a browser-grade parse."""
+    HIDING_ELEMENTS (style, title) after the opening run of the page. The BUILT page is read with html.parser, start tags and attribute NAMES; the
+    one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one); a comment and the doctype are not
+    looked at. It is a name check on the tags as html.parser sees them, not a browser-grade parse."""
     found = set()
-    stack = []
+    run = [True]   # the page is still in its opening run
 
     class P(html.parser.HTMLParser):
         def handle_starttag(self, tag, attrs):
-            if tag in HIDING_ELEMENTS and stack != ["html", "head"]:
+            if tag in HIDING_ELEMENTS and not run[0]:
                 found.add(f"element {tag} outside head")
+            if tag not in _OPENING_RUN:
+                run[0] = False
             if tag not in ALLOWED_ELEMENTS:
                 found.add("element " + tag)
             else:
                 found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in ALLOWED_ELEMENTS[tag])
-            if tag not in _VOID_ELEMENTS:
-                stack.append(tag)
 
         def handle_endtag(self, tag):
-            if tag in stack:
-                del stack[len(stack) - 1 - stack[::-1].index(tag):]
+            if tag == "head":
+                run[0] = False
 
     P(convert_charrefs=True).feed(page)
     return sorted(found)
