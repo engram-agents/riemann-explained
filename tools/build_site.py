@@ -205,8 +205,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      formula, marks included>`; nothing is refused. Choices: a letter is <mi>, a number (with one decimal point) one <mn>, an operator <mo> (the
      minus U+2212, `*` U+2217; a fence or bar has stretchy="false", a bracket also form), Greek letters by command (the 11 capitals with mathvariant="normal", upright as TeX sets them; the page CSS gives a lone <mi> `text-transform: none; font-style: italic` and the normal variant upright), \\max \\min \\log \\cos
      <mi mathvariant="normal"> (after \\operatorname and these, and their scripts, a thin <mspace> when an identifier, number, group, Greek letter or another function follows in the group: TeX's rule), \\sum \\prod \\int with limits in line as msub, msup or msubsup (also for \\infty as <mo>), a script is ONE token or one
-     brace group (`x^10` is x^1 then 0), a prime is the msup of <mo>U+2032</mo>, a prime then a superscript are ONE msup (`r'^{-k}`), `\\bar`
-     takes one token or one group (a mover over U+00AF), \\mathrm{..} and \\operatorname{..} give one <mi mathvariant="normal"> per word,
+     brace group (`x^10` is x^1 then 0), a prime is FLAT right after its base (<mo stretchy="false">U+2032</mo>; with a script, the base and its primes are an <mrow>
+     that takes it: `r'^{-k}`), the `|` signs of one group pair in order (prefix, postfix; an odd one stays flat), `\\bar`
+     takes one token or one group (<mover accent="true"> over a stretchy U+2015, which renders a full-width overline), \\mathrm{..} and \\operatorname{..} give one <mi mathvariant="normal"> per word,
      \\bigl \\bigr \\big give the delimiter alone, `\\,` `\\;` `\\ ` `\\!` are an <mspace> of width 0.167em, 0.278em, 0.222em, -0.167em
      and a plain space is nothing, a `{}` is an empty <mrow>, a literal non-ASCII letter is <mi>, a symbol or punctuation mark <mo>, any
      other non-ASCII character makes the formula unsupported (K2). The first sentence is not cut at a stop inside a formula. The run prints
@@ -377,7 +378,7 @@ backticks removed (so a release line that itself holds a span is still seen ther
 (of a claim, of block text or of a first sentence), or that is split by a span in its middle, is still not seen. The first sentence
 is cut at the first `.`, `!` or `?` followed by white space even inside a span (`We apply `f. g` here.` gives `We apply `f.`, the
 backtick left literal on the card); that cut is a known limit and is not changed here (case BT8). Formulas are converted by F26B (below). A K1 source line is compared as it
-stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. KNOWN COSMETIC (F26B): a `|` is a flat <mo stretchy="false">, so a closing bar (`|a_k(\\sigma)|`) gets the infix spacing on its right side; form="postfix" would need the converter to know an opening bar from a closing one, which it does not. A code span (CODE) is the one place the page turns
+stands in the note, so a release line wrapped in backticks within a longer line is found only on the JSON side. A code span (CODE) is the one place the page turns
 claim or condition text into markup (F35 adds <strong> and a nested <ul> for block text; the static check has no list of allowed elements), and the only new element for those is <code>: the page's B1 and P6 checks skip the text inside <code>
 (the JSON still holds the text with its backticks, and B1 checks that), so a release line or a number written inside backticks is
 seen in the JSON and not on the page. The keys of PHR must hold their placeholders, so an Evidence value that says the fact without
@@ -1516,7 +1517,7 @@ _FSYMBOLS = (("le", "≤"), ("ge", "≥"), ("leq", "≤"), ("geq", "≥"), ("ne"
 # 4 named functions, bar, mathrm, operatorname, bigl, bigr, big, and the four spacing commands (`\,` `\;` `\!` and the backslash-space).
 FORMULA_COMMANDS = dict(
     [(n, ("mi", c)) for n, c in _GREEK] + [(n, ("mo", c)) for n, c in _FSYMBOLS] + [(n, ("fn", n)) for n in ("max", "min", "log", "cos")]
-    + [("bar", ("bar", "¯")), ("mathrm", ("font", "")), ("operatorname", ("font", "")), ("bigl", ("big", "")), ("bigr", ("big", "")),
+    + [("bar", ("bar", "―")), ("mathrm", ("font", "")), ("operatorname", ("font", "")), ("bigl", ("big", "")), ("bigr", ("big", "")),
        ("big", ("big", ""))] + [(c, ("space", "")) for c in (",", ";", "!", " ")])
 _FOPS = {"+": "+", "-": "−", "=": "=", "<": "<", ">": ">", "/": "/", "(": "(", ")": ")", "[": "[", "]": "]", ",": ",", ";": ";",
          ":": ":", "!": "!", "|": "|", ".": ".", "*": "∗"}
@@ -1592,6 +1593,10 @@ def _tex_tokens(body):
     return toks
 
 
+_PRIME = '<mo stretchy="false">′</mo>'
+_BAR = "\x00bar"   # a `|` until its group is read and it is known whether it has a partner
+_BAR_FLAT = '<mo stretchy="false">|</mo>'
+_BAR_FORMS = {"prefix": '<mo form="prefix" stretchy="false">|</mo>', "postfix": '<mo form="postfix" stretchy="false">|</mo>'}
 _FUNCTIONS = ("operatorname", "max", "min", "log", "cos")   # the function-like commands: a thin space follows them (\\mathrm is text, not a function)
 
 
@@ -1633,15 +1638,23 @@ class _TexParser:
             if t is None:
                 if closing:
                     raise _Unsupported
-                return out
+                return self.pair_bars(out)
             if t[0] == "}":
                 if closing:
                     self.i += 1
-                    return out
+                    return self.pair_bars(out)
                 raise _Unsupported
-            out.append(self.item())
+            out.extend(self.item())
             if self.fn and _after_function(self.peek()):
                 out.append('<mspace width="0.167em"></mspace>')
+
+    def pair_bars(self, out):
+        """The `|` signs of ONE group, in order of appearance, pair: the first of a pair is form=prefix, the second form=postfix; an odd leftover
+        stays a flat <mo>. A bar inside a brace group pairs within that group only; \\mid and \\big| are no bar here."""
+        idx = [i for i, x in enumerate(out) if x == _BAR]
+        for k, i in enumerate(idx):
+            out[i] = (_BAR_FORMS["prefix"] if k % 2 == 0 and k + 1 < len(idx) else _BAR_FORMS["postfix"] if k % 2 else _BAR_FLAT)
+        return out
 
     def item(self):
         t0 = self.peek()
@@ -1665,13 +1678,13 @@ class _TexParser:
             else:
                 break
         self.fn = is_fn   # read by seq() once the scripts of the function are in
-        parts = ["<mo>′</mo>"] * primes + ([sup] if sup is not None else [])
-        top = None if not parts else parts[0] if len(parts) == 1 else "<mrow>" + "".join(parts) + "</mrow>"
-        if sub is not None and top is not None:
-            return f"<msubsup>{base}{sub}{top}</msubsup>"
-        if sub is not None:
-            return f"<msub>{base}{sub}</msub>"
-        return f"<msup>{base}{top}</msup>" if top is not None else base
+        pr = [_PRIME] * primes   # a prime is flat, right after its base (an <msup> floats it high and detached)
+        if sub is None and sup is None:
+            return [base] + pr
+        base = "<mrow>" + base + "".join(pr) + "</mrow>" if pr else base
+        if sub is not None and sup is not None:
+            return [f"<msubsup>{base}{sub}{sup}</msubsup>"]
+        return [f"<msub>{base}{sub}</msub>"] if sub is not None else [f"<msup>{base}{sup}</msup>"]
 
     def script(self):
         """The argument of ^ _ and \\bar: ONE token or one brace group (a number is cut to its first digit, as TeX reads it)."""
@@ -1689,7 +1702,7 @@ class _TexParser:
         if k == "mn":
             return f"<mn>{t[1]}</mn>"
         if k == "mo":
-            return _mo(t[1])
+            return _BAR if t[1] == "|" else _mo(t[1])
         if k == "{":
             return "<mrow>" + "".join(self.seq(True)) + "</mrow>"
         if k == "cmd":
@@ -1707,7 +1720,7 @@ class _TexParser:
         if kind == "fn":
             return f'<mi mathvariant="normal">{val}</mi>'
         if kind == "bar":
-            return f"<mover>{self.script()}<mo>{val}</mo></mover>"
+            return f'<mover accent="true">{self.script()}<mo stretchy="true">{val}</mo></mover>'   # U+2015 renders a full-width overline
         if kind == "big":   # the delimiter alone
             t = self.peek()
             if t is not None and t[0] == "mo" and t[1] in "()[]|":
@@ -1752,7 +1765,7 @@ def formula_to_mathml(body):
         return None
     if not nodes or all(x.startswith("<mspace") for x in nodes):
         return None
-    return "<math>" + (nodes[0] if len(nodes) == 1 else "<mrow>" + "".join(nodes) + "</mrow>") + "</math>"
+    return ("<math>" + (nodes[0] if len(nodes) == 1 else "<mrow>" + "".join(nodes) + "</mrow>") + "</math>").replace(_BAR, _BAR_FLAT)
 
 
 def _mathml_text(markup):
