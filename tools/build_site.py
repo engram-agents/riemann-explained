@@ -2088,14 +2088,34 @@ def _put(path, data):
         f.write(data if isinstance(data, bytes) else data.encode("utf-8"))
 
 
-def _plant(d, notes=None, outline=None, decls=DECLS, strings=None, src=None):
-    """The fixture under directory d; the paths run() takes."""
+def _with_roles(outline, decls):
+    """The outline with a root_role on every group that has a claim and none: `result` when the kind of its one root in the table `decls`
+    is theorem or lemma, else `named_statement`, as notes_meta compares them. A group that already has one, and one whose root has no
+    row, is left as it is. The fixtures are role-complete, so the selftest passes whatever REQUIRE_ROOT_ROLE says."""
+    kinds = {}
+    for ln in decls.splitlines():
+        c = ln.split("\t")
+        if len(c) == 6 and c != nm.DECL_COLS and not ln.startswith("#"):
+            kinds.setdefault((c[0], c[1]), c[2])
+    out = json.loads(json.dumps(outline))
+    for g in out["groups"]:
+        if isinstance(g.get("claim"), dict) and "root_role" not in g and len(g.get("roots", [])) == 1:
+            kind = kinds.get((g["roots"][0]["module"], g["roots"][0]["name"]))
+            if kind is not None:
+                g["root_role"] = "result" if kind in PROOF_KINDS else "named_statement"
+    return out
+
+
+def _plant(d, notes=None, outline=None, decls=DECLS, strings=None, src=None, roles=True):
+    """The fixture under directory d; the paths run() takes. `roles` False leaves the outline as given (for a case that needs a claim
+    with no root_role and calls the model directly)."""
     for k, v in (_notes() if notes is None else notes).items():
         _put(os.path.join(d, "notes", k), v)
     p = {"notes": os.path.join(d, "notes"), "outline": os.path.join(d, "outline.json"),
          "decls": os.path.join(d, "decls.tsv"), "strings": os.path.join(d, "strings.json"), "out": os.path.join(d, "out")}
     os.makedirs(p["notes"], exist_ok=True)
-    _put(p["outline"], json.dumps(_outline() if outline is None else outline))
+    o = _outline() if outline is None else outline
+    _put(p["outline"], json.dumps(_with_roles(o, decls) if roles and isinstance(decls, str) else o))
     _put(p["decls"], decls)
     s = _strings() if strings is None else strings
     _put(p["strings"], s if isinstance(s, (str, bytes)) else json.dumps(s))
@@ -4321,8 +4341,8 @@ def _selftest_cases():
     @case("RJ1", "A1: group/<id>.json and the step summaries of level0.json and level1.json (nested too) carry root_role (the group's "
                  "string, null when the group has no claim or no role), root_kind (the table's kind of the one root of a group with a "
                  "claim, else null) and recognition (the object as written, else null); the outline is written with its keys in "
-                 "reverse order; none of them is in counts: zrv is (result, theorem, its object), g1 has a claim and no role "
-                 "(null, theorem, null), g1a1 a definition (null, def, null), g2 no claim (null, null, null), zkr no role and a recognition")
+                 "reverse order; none of them is in counts: zrv is (result, theorem, its object), g1 has a claim and a role the fixture gave it "
+                 "(result, theorem, null), g1a1 a definition (named_statement, def, null), g2 no claim (null, null, null), zkr a recognition")
     def _():
         b = _zbase()
         pick = lambda o: (o["root_role"], o["root_kind"], o["recognition"])
@@ -4331,8 +4351,8 @@ def _selftest_cases():
         got = (pick(b.js("group/zrv.json")), pick(kid), pick(b.js("group/g1.json")), pick(l0["g1"]), pick(b.js("group/g1a1.json")),
                pick(b.js("group/g2.json")), pick(l0["g2"]), pick(b.js("group/zkr.json")), sorted(l0["g1"]["counts"]),
                b.js("group/zrv.json") == json.loads(b.text("data.js")[len("window.RH_DATA = "):-len(";\n")])["groups"]["zrv"])
-        want = (("result", "theorem", zd["zrv"]), ("result", "theorem", zd["zrv"]), (None, "theorem", None), (None, "theorem", None),
-                (None, "def", None), (None, None, None), (None, None, None), (None, "theorem", zd["zkr"]),
+        want = (("result", "theorem", zd["zrv"]), ("result", "theorem", zd["zrv"]), ("result", "theorem", None), ("result", "theorem", None),
+                ("named_statement", "def", None), (None, None, None), (None, None, None), ("result", "theorem", zd["zkr"]),
                 ["open_items", "roots", "roots_open_items", "roots_proof_applicable", "roots_proof_read", "roots_statement_read"], True)
         return _eq(got, want)
 
@@ -4917,10 +4937,10 @@ def _selftest_cases():
         g["recognition"] = _rec(form, note=note, **({"result": "R", "citations": [CITB]} if form == "known" else {}))
         return o
 
-    def _direct_build(outline, src=None):
+    def _direct_build(outline, src=None, roles=True):
         """(the page, every output file, the files that hold a release line, the model) with no checker run."""
         with tempfile.TemporaryDirectory() as d:
-            p = _plant(d, outline=outline, src=src)
+            p = _plant(d, outline=outline, src=src, roles=roles)
             sj, errors, commits = _strings(), [], {"notes": "n", "release": "r", "tools": "t"}
             m = _model(p["notes"], json.load(open(p["outline"])), _decl_rows(p["decls"]), sj, None, errors)
             _e2, _line, l0, l1, groups, facts = _assemble(m, sj, commits)
@@ -4965,6 +4985,23 @@ def _selftest_cases():
     def _():
         return _eq(_count_lines(_direct_build(_noted()).m)[1][0],
                    "recognition: 0 known, 0 variant, 1 not recognised, 0 open in literature, 2 not written, of 3 groups with a claim")
+
+    @case("FB1", "A3: the role of a claimed group with NO root_role is the class of its root's kind, pinned through the model and the page with "
+                 "no checker run (a claim with no role is ROOT-ROLE-MISSING, an error once REQUIRE_ROOT_ROLE is True, so a run cannot carry "
+                 "one): the zoo with the roles of zkr, zkn and g1a1 left off has root_role null in their summaries, the form lines of "
+                 "a result (zkr, theorem) and of a named statement (zkn, def), and the named-statement line on zkn and g1a1 only")
+    def _():
+        o = _zoo()
+        for g in o["groups"]:
+            if g["id"] in ("zkr", "zkn", "g1a1"):
+                g.pop("root_role", None)
+        b = _direct_build(o, roles=False)
+        sm = b.m.summary
+        form = lambda g: _raw(_direct(rcn(b, g), "p", "recognition-form")[0])
+        use = [g for g in ("zkr", "zkn", "g1a1") if _direct(_card(b, g), "p", "named-statement-use")]
+        return _eq(([sm[g]["root_role"] for g in ("zkr", "zkn", "g1a1")], form("zkr"), form("zkn"), use),
+                   ([None, None, None], "Our reading: this is a well-known result in mathematics (res-zkr).",
+                    "Our reading: the statement named here is a well-known result in mathematics (res-zkn).", ["zkn", "g1a1"]))
 
     return cases
 
