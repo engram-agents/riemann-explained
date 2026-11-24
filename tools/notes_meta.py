@@ -117,7 +117,7 @@ CONTRACT (each line is a self-test case, written before the code)
   F2 recognition (an object; BRIEF 18e: none on a null claim, RECOGNITION-NULL-CLAIM) has `form` (known, variant, not_recognised,
      open_in_literature), `reader`, `date` (required) and `result`, `citations`, `difference`, `established`. known and variant need
      `result` and a citation, variant also `difference`; not_recognised forbids result, citations and difference
-     (RECOGNITION-FORBIDDEN) but may carry one optional `note` (a non-empty string; refused on every other form with
+     (RECOGNITION-FORBIDDEN) but may carry one optional `note` (a string that is not blank; refused on every other form with
      RECOGNITION-FORBIDDEN; the sentences are not counted); open_in_literature needs `result`, a citation, a citation with says_open true (OPEN-NO-SAYS-OPEN)
      and root_role `result` or `named_statement` (OPEN-ROLE on `object`, also when the role is absent). An unknown key, an unknown form and a missing key
      are UNKNOWN-KEY, BAD-VALUE and MISSING-KEY naming the group and the key.
@@ -155,10 +155,11 @@ does that). Title rules: only the two a script can check are checked, that a lis
 and does not end in a parenthetical `(...)`; every other rule on titles (plain words, saying what the note is
 about, length, no status in the words) needs a reader. A group with no root_role and the form open_in_literature is OPEN-ROLE, because the role decides whether the form is
 allowed (the spec is silent on that case; this is our reading, and a role added later clears it). `established` is for
-a named statement only, also under open_in_literature. A `note` on not_recognised is only checked to be a non-empty string
+a named statement only, also under open_in_literature. A `note` on not_recognised is only checked to be a string that is not blank
 with no word the rules refuse: the number of sentences (one or two, the pilot spec says) and whether it says what the step is and
 what we looked for are not checked, and a note of one word passes. A repeated self-test case id is refused when the case is
-registered, so a second case can no longer run under another's name. The line `sketches: S of P steps with a proof read` is NOT printed
+registered, so a second case can no longer run under another's name; ids are compared as exact strings (`rec1`, `REC1` and
+`REC1 ` are three ids). The line `sketches: S of P steps with a proof read` is NOT printed
 here: what a step is belongs to the builder, so it counts there. note_cite.py is unchanged: its --kind takes its choices from
 rh_anchor.KINDS, and a sketch cannot be valid through it for want of a basis flag (BAD-BLOCK). A sketch anchored on a list
 is asked for `item` like any block on a list. Extra keys are UNKNOWN-KEY for the outline, a group and a
@@ -3232,7 +3233,7 @@ NOTE_NR = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
 NOTE_TEXT = "The release's own composition of three inputs; none of the three is a statement we found in the literature."
 
 
-@case("NOTE1", "not_recognised may carry one optional `note`, a non-empty string (empty, whitespace-only, null, a list, a number and "
+@case("NOTE1", "not_recognised may carry one optional `note`, a string that is not blank (empty, whitespace-only, null, a list, a number and "
                "a boolean are BAD-VALUE naming group and key); a note and no other key is clean; result, citations and difference "
                "stay RECOGNITION-FORBIDDEN beside a note; the sentences are not counted")
 def _():
@@ -3305,7 +3306,8 @@ def _():
 
 @case("UNIQ1", "the case registry refuses an id registered twice at decoration time, raising ValueError that names the id and both "
                "descriptions; the second registration is refused whatever the descriptions (equal or not) and whatever the id "
-               "(with or without a letter suffix); distinct ids register; a refused case is not added")
+               "(with or without a letter suffix); the comparison is exact string, so ids that differ in case or by a space are distinct "
+               "and register; a refused case is not added")
 def _():
     reg = []
     f1, f2 = (lambda: None), (lambda: None)
