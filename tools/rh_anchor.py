@@ -21,6 +21,7 @@ API (the names are the contract)
                                     anchor lines holds it, else None
   run_at(text, line, span)          the `span` elements ending at the target of the anchor on a 1-based line, as a list of
                                     (kind, first_line, last_line) in text order, or a reason string when the run is illegal
+  run_lists(text, line, span)       the lists in that run, as (first_line, last_line, shape), in text order; [] for none or an illegal run
   next_block_id(note_id, used)      the next unused id of a note, never reusing a hole
   insert_after_line(text, line, c)  insert a comment as its own line after a 1-based line, in that file's line ending
 `Item` has line (1-based), data (the parsed object), canonical (the line is byte-equal to format_comment of its own
@@ -84,12 +85,14 @@ CONTRACT (each line is a self-test case, written before the code)
     the insertion line is the table's last line, never between rows. A line that is itself an anchor line directly
     after an element (any rh- line, malformed ones too) gets that element, so a caller can find append_after from any
     line of the run; a blank line or a line between elements is None. Cases B3, W2.
+ F33 problems: a sketch carries no `item` ("item: a sketch covers whole elements and carries no item", the only problem for the key); run_lists(text, line, span) gives
+    the lists of that run with their shape, from the shape the parse computes. Cases SK5, RN7.
  B4 next_block_id is the smallest number above the largest used for that note, at least two digits. Case B4.
  B5 insert_after_line uses that line's own ending, CRLF if it ended CRLF, else LF (a lone-CR file gets LF); on a last line with no line ending it adds one before
     the comment and none after, so strip_anchor_lines(insert_after_line(t, n, c)) == t. Cases B5a-B5d.
 
 LIMIT. run_at reads the same approximation of Markdown as the rest of the module: a list at the end of a run is a list element,
-and whether the anchor of a sketch may sit on one (the checker asks a list for `item`) is not decided here. The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
+and a sketch may sit on one: it covers whole elements and carries no `item` (F33; problems refuses the key). The module checks the SHAPE of the format, not its meaning: no outline, no declaration table, no check that a
 row, column, declaration or file exists (a table's size is only reported), no date format, no order check on
 `defs_opened[].lines` (a block's own `lines` IS order-checked: first not after last, B2), no check that the first words of a block fit its kind, and no rule on which kind carries `defs_opened` or
 `conventions_checked` (open; they are validated when present and never required). Markdown is approximated by the
@@ -528,6 +531,17 @@ def run_at(text, line, span):
     return run[::-1]
 
 
+def run_lists(text, line, span):
+    """[(first_line, last_line, shape), ...] for each list in the run run_at gives for this anchor, in text order; shape is a copy of the
+    shape the parse reads for that list (the same one parse_note puts in a block's target). [] when the run has no list or is illegal."""
+    run = run_at(text, line, span)
+    if isinstance(run, str):
+        return []
+    a = _Analysis(text)
+    shapes = {el["first_line"]: el["shape"] for el in a.elements if el["type"] == "list"}
+    return [(f, l, dict(shapes[f])) for kind, f, l in run if kind == "list"]
+
+
 def item_at(text, line):
     """The 1-based top-level item of a list that holds a 1-based line (a nested line belongs to its parent item), else None."""
     a = _Analysis(text)
@@ -683,7 +697,9 @@ def problems(block, note_id=None):
                 for f in ("reader", "date"):
                     if not _str(e.get(f)):
                         out.append(f"second_readers[{k}].{f}: must be a non-empty string")
-    if "item" in block:
+    if "item" in block and kind == "sketch":   # F33: a sketch covers whole elements, a list included as a whole
+        out.append("item: a sketch covers whole elements and carries no item")
+    elif "item" in block:
         it = block["item"]
         if not (_int(it) and it >= 1):
             out.append("item: must be an integer of 1 or more")
@@ -1763,6 +1779,30 @@ def _():
         for s in (1, 2):
             eq(problems(dict(v, span=s)), ["span: only a sketch carries span"], f"{v['kind']} span {s}")
     eq(problems(vb(kind="nope", span=1)), ["kind: must be one of " + ", ".join(KINDS)], "a bad kind says only the kind")
+
+
+@case("SK5", "F33: a sketch carries no item (it covers whole elements): the refusal names the key and is the only problem, "
+             "a bad value or a row beside it adds none; the other kinds keep item as before")
+def _():
+    msg = "item: a sketch covers whole elements and carries no item"
+    for it in (1, 2, 0, "1", True):
+        eq(problems(SKB(item=it)), [msg], "item " + repr(it))
+    eq(problems(SKB(item=1, row=1)), [msg], "item with row")
+    eq(problems(dict(vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL]), item=1)), [], "an argument keeps item")
+    eq(problems(dict(vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL]), item=0)), ["item: must be an integer of 1 or more"], "bad item")
+
+
+@case("RN7", "F33: run_lists gives the first line, last line and shape of each list in a run, in text order, from the shape computation "
+             "of the elements; no list, or an illegal run, gives []")
+def _():
+    t = "- a\n\n- b\n\nOne.\n\n1. x\n2. y\n" + B(1) + "\n"
+    eq(run_lists(t, 9, 1), [(7, 8, {"loose": False, "last_nested": False, "ordered": True, "followed_by_paragraph": False})], "span 1: the target")
+    want = [(1, 3, {"loose": True, "last_nested": False, "ordered": False, "followed_by_paragraph": False}),
+            (7, 8, {"loose": False, "last_nested": False, "ordered": True, "followed_by_paragraph": False})]
+    eq(run_lists(t, 9, 3), want, "span 3: both lists, in text order")
+    eq(run_lists("A.\n\nB.\n" + B(1) + "\n", 4, 2), [], "paragraphs only")
+    eq(run_lists("A.\n" + B(1) + "\n", 2, 5), [], "an illegal run")
+    eq(run_lists("A.\n", 1, 1), [], "not an anchor line")
 
 
 def drop_key(d, key):

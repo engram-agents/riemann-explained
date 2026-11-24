@@ -86,10 +86,16 @@ CONTRACT (each line is a self-test case, written before the code)
   R4 Every group has at least one root; a null claim with no root, once accepted, is now a ROOT-COUNT error.
   R5 A strings file with no phrase at all is announced. R6 Without the git program a normal run is refused (exit 4).
  List items (cases ITEM1 ITEM2 CONST2 LSH1; rh_anchor L1a to L5):
-  I1 A block whose target is a list must carry `item` (ITEM-REQUIRED); `item` above the number of top-level items is
+  I1 A block whose target is a list must carry `item` (ITEM-REQUIRED), a sketch excepted (F33: it covers whole elements, and `item`
+  on it is a BLOCK-PROBLEM from rh_anchor.problems, with no NOT-A-LIST, ITEM-OUT-OF-RANGE or ITEM-REQUIRED beside it); `item` above the number of top-level items is
   ITEM-OUT-OF-RANGE; `item` that is not an integer of 1 or more is ITEM-BAD-VALUE; `item` on a target that is not a list is
   NOT-A-LIST. Nested items are not numbered. A heading, quote, HTML line or non-lean fence is still ORPHAN-BLOCK.
-  I2 A list target whose shape has every key of an entry of REFUSED_LIST_SHAPES (empty by default) is LIST-SHAPE-REFUSED.
+  I2 A list target whose shape has every key of an entry of REFUSED_LIST_SHAPES (empty by default) is LIST-SHAPE-REFUSED; for a
+  sketch it is every list in the run (rh_anchor.run_lists), the target included; cases F33a F33b F33c F33d.
+  A sketch with a bad span or an illegal run gets the span problem or SKETCH-RUN and no shape finding (the run is empty then): one
+  finding, not both. LIMIT: the shape keys last_nested and followed_by_paragraph describe an anchor adjoining a list; no anchor
+  follows a list in the middle of a run, yet the table is applied to every list as written, so whoever fills REFUSED_LIST_SHAPES
+  decides whether those two keys apply to a list that is not the target.
  Summary lines (cases N5a N5b N5c): `outline: G groups, C claimed, Z null, R roots resolved, D defs_opened resolved, P
  premise links` always, counted over the whole outline; `strings: F frame phrases loaded for K kinds` and `byte check:
  N notes equal to REV, M new` when those ran. Header group (cases HROOT1 to HROOT3): `root` only at level 0.
@@ -107,7 +113,7 @@ CONTRACT (each line is a self-test case, written before the code)
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
- Root role and recognition (cases RR1 to RR4, REC1 to REC4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
+ Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
   F1 root_role is `result`, `named_statement` or `object` (any other value, or a non-string, is ROOT-ROLE) and belongs to a claim (on
      a null claim it is ROOT-ROLE). The role is compared with the kind of the group's one root in decls.tsv HERE (the builder only
@@ -117,13 +123,14 @@ CONTRACT (each line is a self-test case, written before the code)
   F2 recognition (an object; BRIEF 18e: none on a null claim, RECOGNITION-NULL-CLAIM) has `form` (known, variant, not_recognised,
      open_in_literature), `reader`, `date` (required) and `result`, `citations`, `difference`, `established`. known and variant need
      `result` and a citation, variant also `difference`; not_recognised forbids result, citations and difference
-     (RECOGNITION-FORBIDDEN); open_in_literature needs `result`, a citation, a citation with says_open true (OPEN-NO-SAYS-OPEN)
+     (RECOGNITION-FORBIDDEN) but may carry one optional `note` (a string that is not blank; refused on every other form with
+     RECOGNITION-FORBIDDEN; the sentences are not counted); open_in_literature needs `result`, a citation, a citation with says_open true (OPEN-NO-SAYS-OPEN)
      and root_role `result` or `named_statement` (OPEN-ROLE on `object`, also when the role is absent). An unknown key, an unknown form and a missing key
      are UNKNOWN-KEY, BAD-VALUE and MISSING-KEY naming the group and the key.
   F3 A citation has source, where, opened_by, opened_on (non-empty strings) and optionally url (starts https://), source_date and
      says_open (exactly true or false); opened_on is a real YYYY-MM-DD date; source_date is a real YYYY, YYYY-MM or YYYY-MM-DD (year 0 refused, no padding: a year stays
      a year); says_open true needs source_date.
-  F4 Words of `result` and `difference`, whole words in any case: novel and unprecedented are RECOGNITION-WORD-REFUSED (an error);
+  F4 Words of `result`, `difference` and `note`, whole words in any case: novel and unprecedented are RECOGNITION-WORD-REFUSED (an error);
      new, original, first, assume, assumes, assumed are RECOGNITION-WORD listings, once per word per field.
   F5 `established` is the string `not_traced` or {by: {module, name}, reader, date}; by resolves to exactly one row (UNRESOLVED,
      AMBIGUOUS) whose kind is theorem or lemma (ESTABLISHED-KIND); on a group whose root_role is not `named_statement` it is
@@ -154,10 +161,14 @@ does that). Title rules: only the two a script can check are checked, that a lis
 and does not end in a parenthetical `(...)`; every other rule on titles (plain words, saying what the note is
 about, length, no status in the words) needs a reader. A group with no root_role and the form open_in_literature is OPEN-ROLE, because the role decides whether the form is
 allowed (the spec is silent on that case; this is our reading, and a role added later clears it). `established` is for
-a named statement only, also under open_in_literature. The line `sketches: S of P steps with a proof read` is NOT printed
+a named statement only, also under open_in_literature. A `note` on not_recognised is only checked to be a string that is not blank
+with no word the rules refuse: the number of sentences (one or two, the pilot spec says) and whether it says what the step is and
+what we looked for are not checked, and a note of one word passes. A repeated self-test case id is refused when the case is
+registered, so a second case can no longer run under another's name; ids are compared as exact strings (`rec1`, `REC1` and
+`REC1 ` are three ids). The line `sketches: S of P steps with a proof read` is NOT printed
 here: what a step is belongs to the builder, so it counts there. note_cite.py is unchanged: its --kind takes its choices from
 rh_anchor.KINDS, and a sketch cannot be valid through it for want of a basis flag (BAD-BLOCK). A sketch anchored on a list
-is asked for `item` like any block on a list. Extra keys are UNKNOWN-KEY for the outline, a group and a
+is not asked for `item` (F33). Extra keys are UNKNOWN-KEY for the outline, a group and a
 claim only; a roots or defs_opened entry with extra keys is accepted, and a JSON key repeated in the outline keeps
 its last value. Notes are the files directly in NOTES_DIR that match the pattern, so docs/tools.md, which sits
 beside the notes, is not a note; a finding names a note by its name in NOTES_DIR and the outline and the table by
@@ -303,7 +314,8 @@ RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that 
 # yet; once it carries one on every claim this constant is set to True and a claim without a role becomes an error.
 REQUIRE_ROOT_ROLE = False
 FORMS = ("known", "variant", "not_recognised", "open_in_literature")
-REC_KEYS = ("form", "result", "citations", "difference", "reader", "date", "established")
+REC_KEYS = ("form", "result", "citations", "difference", "reader", "date", "established", "note")
+NOTE_FORM = "not_recognised"   # the one form that may carry `note`
 FORM_REQUIRES = {"known": ("result", "citations"), "variant": ("result", "citations", "difference"), "not_recognised": (),
                  "open_in_literature": ("result", "citations")}
 FORM_FORBIDS = {"not_recognised": ("result", "citations", "difference")}
@@ -634,9 +646,13 @@ def _check_recognition_object(rec, g, role, label, path, index, kinds, out):
     for k in FORM_FORBIDS.get(form, ()):
         if k in rec:
             out.append(_f("RECOGNITION-FORBIDDEN", path, None, f"{pre}: key {k!r} is not allowed with form {form!r}"))
+    if "note" in rec and form in FORMS and form != NOTE_FORM:
+        out.append(_f("RECOGNITION-FORBIDDEN", path, None, f"{pre}: key 'note' is not allowed with form {form!r}"))
     for k in ("result", "difference"):
         if k in rec and not _str(rec[k]):
             out.append(_f("BAD-VALUE", path, None, f"{pre}: {k} must be a non-empty string"))
+    if "note" in rec and form == NOTE_FORM and not (_str(rec["note"]) and rec["note"].strip()):   # a note of spaces says nothing
+        out.append(_f("BAD-VALUE", path, None, f"{pre}: note must be a non-empty string"))
     cits = rec.get("citations")
     if "citations" in rec:
         if not isinstance(cits, list):
@@ -654,7 +670,7 @@ def _check_recognition_object(rec, g, role, label, path, index, kinds, out):
             out.append(_f("OPEN-NO-SAYS-OPEN", path, None, f"{pre}: form 'open_in_literature' needs a citation with says_open true"))
     if "established" in rec:
         _check_established(rec["established"], g, role, label, path, index, kinds, out)
-    for k in ("result", "difference"):
+    for k in ("result", "difference", "note"):
         if _str(rec.get(k)):
             for w in _words_of(rec[k]):
                 if w in REFUSED_WORDS:
@@ -969,7 +985,7 @@ def _check_header(name, headers, ctx):
     return out, (d["id"] if _str(d.get("id")) else None)
 
 
-def _check_block(name, b, note_id, listed, lines, ctx, out):
+def _check_block(name, b, note_id, listed, lines, ctx, out, text):
     d = b.data
     bid = d.get("id")
     label = f"block {bid!r}" if isinstance(bid, str) else "block"
@@ -1027,21 +1043,33 @@ def _check_block(name, b, note_id, listed, lines, ctx, out):
             if _int(d.get("col")) and d["col"] > t["ncols"]:
                 out.append(_f("COL-OUT-OF-RANGE", name, b.line, f"{label} col {d['col']} but the table has {t['ncols']} columns"))
     ttype = (b.target or {}).get("type")   # list items: a list needs item, item needs a list
-    if "item" in d:
-        if ttype != "list":
-            out.append(_f("NOT-A-LIST", name, b.line, f"{label} carries item but its target is of type '{ttype}', not a list"))
-        elif _int(d["item"]) and d["item"] >= 1 and d["item"] > b.target["nitems"]:
-            out.append(_f("ITEM-OUT-OF-RANGE", name, b.line,
-                          f"{label} item {d['item']} but the list has {b.target['nitems']} top-level items"))
+    kind = d.get("kind")   # F12
+    # F33: a sketch covers whole elements, so it carries no item. rh_anchor.problems refuses `item` on a sketch (a BLOCK-PROBLEM), and the
+    # item checks below never see a sketch: no NOT-A-LIST, ITEM-OUT-OF-RANGE or ITEM-REQUIRED beside that one finding.
+    if kind != "sketch":
+        if "item" in d:
+            if ttype != "list":
+                out.append(_f("NOT-A-LIST", name, b.line, f"{label} carries item but its target is of type '{ttype}', not a list"))
+            elif _int(d["item"]) and d["item"] >= 1 and d["item"] > b.target["nitems"]:
+                out.append(_f("ITEM-OUT-OF-RANGE", name, b.line,
+                              f"{label} item {d['item']} but the list has {b.target['nitems']} top-level items"))
+        elif ttype == "list":
+            out.append(_f("ITEM-REQUIRED", name, b.line, f"{label}: a list needs 'item' (1-based, like 'row')"))
+    if kind == "sketch":   # F33: the renderer shows every whole list of the run, the target included; a list's shape is the one the parse reads
+        span = d.get("span", 1)
+        for first, _last, shape in (rh.run_lists(text, b.line, span) if _int(span) and span >= 1 else []):
+            on = {k for k, v in shape.items() if v}
+            for entry in REFUSED_LIST_SHAPES:
+                if entry and entry <= on:
+                    who = "anchors a list" if first == b.target["first_line"] else f"covers a list (first line {first})"
+                    out.append(_f("LIST-SHAPE-REFUSED", name, b.line,
+                                  f"{label} {who} whose shape the renderer shows differently: {', '.join(sorted(entry))}"))
     elif ttype == "list":
-        out.append(_f("ITEM-REQUIRED", name, b.line, f"{label}: a list needs 'item' (1-based, like 'row')"))
-    if ttype == "list":
         on = {k for k, v in b.target["shape"].items() if v}
         for entry in REFUSED_LIST_SHAPES:
             if entry and entry <= on:
                 out.append(_f("LIST-SHAPE-REFUSED", name, b.line,
                               f"{label} anchors a list whose shape the renderer shows differently: {', '.join(sorted(entry))}"))
-    kind = d.get("kind")   # F12
     if ctx.strings is not None and kind in FRAME_ONLY and (b.target or {}).get("type") == "paragraph":
         t = b.target
         hit = _frame_hit(" ".join(lines[t["first_line"] - 1:t["last_line"]]), ctx.strings, kind)
@@ -1061,7 +1089,7 @@ def _check_note(name, text, ctx):
     listed = clb.listed_files(text)
     counts, invalid = {k: 0 for k in rh.KINDS}, 0
     for b in blocks:
-        kind = _check_block(name, b, note_id, listed, lines, ctx, out)
+        kind = _check_block(name, b, note_id, listed, lines, ctx, out, text)
         if kind in counts:
             counts[kind] += 1
         else:
@@ -1497,9 +1525,18 @@ def run(notes_dir, outline, decls, base=None, repo=None, strings=None, src=None,
 _CASES = []
 
 
+def _register_case(registry, cid, what, fn):
+    """Add (cid, what, fn) to the registry; an id already there is a ValueError naming the id and both descriptions, whatever the
+    descriptions are and whatever the id looks like."""
+    for old_id, old_what, _fn in registry:
+        if old_id == cid:
+            raise ValueError(f"self-test case id {cid!r} is registered twice: {old_what!r} and {what!r}")
+    registry.append((cid, what, fn))
+
+
 def case(cid, what):
     def deco(fn):
-        _CASES.append((cid, what, fn))
+        _register_case(_CASES, cid, what, fn)
         return fn
     return deco
 
@@ -2944,7 +2981,7 @@ def _():
     eq(REQUIRE_ROOT_ROLE, False, "restored")
 
 
-@case("REC1", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
+@case("REC1b", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
 def _():
     fe(_ro(_rg("result", rec=REC, claim=None, root=("A.B", "foo"))),
        [_fl("ROOT-ROLE", ": root_role on a group with a null claim (a role belongs to a claim)"),
@@ -3208,6 +3245,141 @@ def _():
     fe(_ro(_rg(rec=dict(REC, result="The `novel` lemma"))),
        [_fl("RECOGNITION-WORD-REFUSED", " recognition result: 'novel' is never said of a statement")], 1)
     clean(_ro(_rg(rec=dict(REC, citations=[dict(CIT, source="New novel original", where="First, assumed")], reader="New", date="2026-11-23"))))
+
+
+NOTE_NR = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+NOTE_TEXT = "The release's own composition of three inputs; none of the three is a statement we found in the literature."
+
+
+@case("NOTE1", "not_recognised may carry one optional `note`, a string that is not blank (empty, whitespace-only, null, a list, a number and "
+               "a boolean are BAD-VALUE naming group and key); a note and no other key is clean; result, citations and difference "
+               "stay RECOGNITION-FORBIDDEN beside a note; the sentences are not counted")
+def _():
+    p = " recognition: "
+    clean(_ro(_rg(rec=dict(NOTE_NR, note=NOTE_TEXT))))
+    clean(_ro(_rg(rec=dict(NOTE_NR, note="One. Two. Three. Four."))))
+    clean(_ro(_rg(rec=NOTE_NR)))
+    for bad in ("", " ", "\n\t ", None, [], ["x"], 5, True, {"a": "b"}):
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=bad))), [_fl("BAD-VALUE", p + "note must be a non-empty string")], 1)
+    for k, v in (("result", "x"), ("citations", [CIT]), ("difference", "d")):
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=NOTE_TEXT, **{k: v}))),
+           [_fl("RECOGNITION-FORBIDDEN", p + f"key {k!r} is not allowed with form 'not_recognised'")], 1)
+
+
+@case("NOTE2", "`note` on known, variant or open_in_literature is RECOGNITION-FORBIDDEN naming the form and the key (the value is not "
+               "judged there); on a group whose form is missing or unknown the form finding alone is given, no note finding")
+def _():
+    p = " recognition: "
+    var = dict(REC, form="variant", difference="d")
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    for form, rec, role, root in (("known", REC, "result", ("A.B", "foo")), ("variant", var, "result", ("A.B", "foo")),
+                                  ("open_in_literature", op, "named_statement", ("A.C", "baz"))):
+        want = [_fl("RECOGNITION-FORBIDDEN", p + f"key 'note' is not allowed with form {form!r}")]
+        fe(_ro(_rg(role, rec=dict(rec, note=NOTE_TEXT), root=root)), want, 1)
+        fe(_ro(_rg(role, rec=dict(rec, note=""), root=root)), want, 1)
+        clean(_ro(_rg(role, rec=rec, root=root)))
+    fe(_ro(_rg(rec=dict(var, note="A novel thing"))),
+       [_fl("RECOGNITION-FORBIDDEN", p + "key 'note' is not allowed with form 'variant'"),
+        _fl("RECOGNITION-WORD-REFUSED", " recognition note: 'novel' is never said of a statement")], 1)
+    fe(_ro(_rg(rec=dict(var, note="The new step"))),
+       [_fl("RECOGNITION-FORBIDDEN", p + "key 'note' is not allowed with form 'variant'"),
+        _fl("RECOGNITION-WORD", " recognition note: 'new' (a prompt to the signer and the reviewer, not a verdict)")], 1)
+    fe(_ro(_rg(rec=dict(drop(REC, "form"), note=NOTE_TEXT))), [_fl("MISSING-KEY", p + "missing key 'form'")], 1)
+    fe(_ro(_rg(rec=dict(REC, form="novel_form", note=NOTE_TEXT))),
+       [_fl("BAD-VALUE", p + "form must be one of 'known', 'variant', 'not_recognised', 'open_in_literature', not 'novel_form'")], 1)
+
+
+@case("NOTE3", "the word rules of result and difference apply to `note` through the same function: novel and unprecedented are "
+               "RECOGNITION-WORD-REFUSED (exit 1), new, original, first, assume, assumes, assumed are RECOGNITION-WORD listings "
+               "(exit 0), whole words in any case and inside a backtick span; Newton, renewal and firstly are not listed")
+def _():
+    def refused(w):
+        return _fl("RECOGNITION-WORD-REFUSED", f" recognition note: {w!r} is never said of a statement")
+
+    def listed(w):
+        return _fl("RECOGNITION-WORD", f" recognition note: {w!r} (a prompt to the signer and the reviewer, not a verdict)")
+    for w in ("novel", "unprecedented"):
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=f"We found a {w} thing"))), [refused(w)], 1)
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=f"{w.upper()}, and `{w}` again"))), [refused(w)], 1)
+    for w in ("new", "original", "first", "assume", "assumes", "assumed"):
+        r = _ro(_rg(rec=dict(NOTE_NR, note=f"The {w} step")))
+        fe(r, [listed(w)], 0)
+        eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", w)
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=f"{w.upper()} here, `{w}` again"))), [listed(w)], 0)
+    fe(_ro(_rg(rec=dict(NOTE_NR, note="New, then novel, then first"))), [listed("new"), refused("novel"), listed("first")], 1)
+    for t in ("Newton", "renewal", "firstly", "novelty", "assumption"):
+        clean(_ro(_rg(rec=dict(NOTE_NR, note=t))))
+
+
+@case("NOTE4", "a note changes no count: a not_recognised with a note counts in N as one case, the recognition line and the note "
+               "line are those of the same outline without the note")
+def _():
+    other = _rg(rec=REC, gid="g2", order=2)
+    with_note = _ro(_rg(rec=dict(NOTE_NR, note=NOTE_TEXT)), other)
+    without = _ro(_rg(rec=NOTE_NR), other)
+    fe(with_note, [], 0)
+    ok(_rl(1, 0, 1, 0, 0, 2) in with_note.lines, with_note.out)
+    eq(with_note.lines, without.lines, "every output line")
+
+
+@case("UNIQ1", "the case registry refuses an id registered twice at decoration time, raising ValueError that names the id and both "
+               "descriptions; the second registration is refused whatever the descriptions (equal or not) and whatever the id "
+               "(with or without a letter suffix); the comparison is exact string, so ids that differ in case or by a space are distinct "
+               "and register; a refused case is not added")
+def _():
+    reg = []
+    f1, f2 = (lambda: None), (lambda: None)
+    _register_case(reg, "A1", "first one", f1)
+    _register_case(reg, "A1b", "other id", f2)
+    eq([c[0] for c in reg], ["A1", "A1b"], "distinct ids register")
+    for cid, d1, d2 in (("A1", "first one", "second one"), ("A1", "first one", "first one"), ("A1b", "other id", "different"),
+                        ("A1b", "other id", "other id")):
+        try:
+            _register_case(reg, cid, d2, f2)
+        except ValueError as e:
+            eq(str(e), f"self-test case id {cid!r} is registered twice: {d1!r} and {d2!r}", "message")
+        else:
+            raise AssertionError(f"{cid}: a second registration was accepted")
+    eq(len(reg), 2, "refused cases are not added")
+    # the comparison is exact: ids that differ in case or by a space are different ids
+    for cid in ("rec1", "REC1", "REC1 ", " REC1", "Rec1"):
+        _register_case(reg, cid, "d " + cid, f1)
+    eq([c[0] for c in reg][2:], ["rec1", "REC1", "REC1 ", " REC1", "Rec1"], "exact string comparison")
+    # the decorator itself, on a scratch registry swapped in for the call
+    saved = list(_CASES)
+    try:
+        _CASES[:] = [("ZZ9", "held", f1)]
+        try:
+            case("ZZ9", "again")(f2)
+        except ValueError as e:
+            eq(str(e), "self-test case id 'ZZ9' is registered twice: 'held' and 'again'", "decorator message")
+        else:
+            raise AssertionError("the decorator accepted a repeated id")
+        eq(_CASES, [("ZZ9", "held", f1)], "unchanged")
+    finally:
+        _CASES[:] = saved
+    eq(_CASES, saved, "the real registry is restored")
+
+
+@case("NOTE5", "a bad note is found on a group that is not the first: of four groups the first is clean and the 2nd, 3rd and 4th carry "
+               "a blank note on not_recognised (BAD-VALUE), a note on a known form (RECOGNITION-FORBIDDEN) and a `novel` note on "
+               "not_recognised (RECOGNITION-WORD-REFUSED), each reported once, in the order of the outline")
+def _():
+    p = " recognition: "
+    r = _ro(_rg(rec=NOTE_NR),
+            _rg(rec=dict(NOTE_NR, note="  "), gid="g2", order=2),
+            _rg(rec=dict(REC, note=NOTE_TEXT), gid="g3", order=3),
+            _rg(rec=dict(NOTE_NR, note="A novel step"), gid="g4", order=4))
+    fe(r, [_fl("BAD-VALUE", p + "note must be a non-empty string", gid="g2"),
+           _fl("RECOGNITION-FORBIDDEN", p + "key 'note' is not allowed with form 'known'", gid="g3"),
+           _fl("RECOGNITION-WORD-REFUSED", " recognition note: 'novel' is never said of a statement", gid="g4")], 1)
+
+
+@case("UNIQ2", "every id in the real registry is unique (the runner's own list, checked here independently of the decorator)")
+def _():
+    ids = [c[0] for c in _CASES]
+    eq(sorted(x for x in set(ids) if ids.count(x) > 1), [], "repeated ids")
+    ok("REC1" in ids and "REC1b" in ids, "the repeated REC1 was renamed REC1b, the first kept")
 
 
 @case("EST1", "established is 'not_traced' or an object {by, reader, date}; by resolves to exactly one row whose kind is theorem or "
@@ -3860,6 +4032,90 @@ def _():
     r = go(notes={"01-a.md": head + "\nSketch.\n" + _SB("01.b01", span=2) + "\n",
                   "02-b.md": NOTE(nid="02", body="Idea.\n" + _AB("02.b01") + "\n")}, outline=OL(G("g1")), decls=DECLS_K)
     fe(r, ["SKETCH-RUN 01-a.md:3 block '01.b01': span 2 asks for more elements than the note has before this anchor (only 1)"], 1)
+
+
+def _sk_list_notes():
+    """F33 fixtures: the sketch's run ends in a numbered list; the same list under an argument."""
+    lst = "Idea.\n" + _AB() + "\n\nIntro.\n\n1. a\n2. b\n"   # the argument is on line 7, the list on lines 11-12, the next anchor on line 13
+    return lst + _SB(span=2) + "\n", lst + _AB("01.b02") + "\n", lst + _SB(span=1) + "\n"
+
+
+@case("F33a", "a sketch whose run ends in a list is not ITEM-REQUIRED, span 2 or span 1; the same block as an argument is; "
+              "an argument elsewhere keeps ITEM-REQUIRED while another list lies in a sketch's run")
+def _():
+    sk2, arg, sk1 = _sk_list_notes()
+    clean(_sx(sk2))
+    clean(_sx(sk1))
+    fe(_sx(arg), ["ITEM-REQUIRED 01-a.md:13 block '01.b02': a list needs 'item' (1-based, like 'row')"], 1)
+    both = ("Idea.\n" + _AB() + "\n\n- a\n- b\n" + _AB("01.b02") + "\n\nIntro.\n\n1. a\n2. b\n" + _SB("01.b03", span=2) + "\n")
+    fe(_sx(both), ["ITEM-REQUIRED 01-a.md:11 block '01.b02': a list needs 'item' (1-based, like 'row')"], 1)
+
+
+@case("F33b", "item on a sketch is the refusal naming the key and nothing else: on a list, on a paragraph, with a bad value; "
+              "an argument with item on a paragraph keeps NOT-A-LIST")
+def _():
+    sk2, _arg, _sk1 = _sk_list_notes()
+    msg = "BLOCK-PROBLEM 01-a.md:%d block '01.b02': item: a sketch covers whole elements and carries no item"
+    fe(_sx(sk2.replace(_SB(span=2), _SB(span=2, item=1))), [msg % 13], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item=1) + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item="x") + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + _AB() + "\n\nSketch.\n" + _SB(item=9) + "\n"), [msg % 10], 1)
+    fe(_sx("Idea.\n" + BL("01.b02", kind="argument", reader="R", date="2026-11-23", decls=[FOO], item=1) + "\n"),
+       ["NOT-A-LIST 01-a.md:7 block '01.b02' carries item but its target is of type 'paragraph', not a list"], 1)
+
+
+@case("F33c", "LIST-SHAPE-REFUSED on a sketch covers every list in its run: the target, and a list that is not the target (naming its first line); "
+              "the same shape in a paragraph-only run, or in a list before the run, is clean; an argument on a list is unchanged")
+def _():
+    sk2, _arg, _sk1 = _sk_list_notes()
+    tail = " whose shape the renderer shows differently: "
+    saved = globals()["REFUSED_LIST_SHAPES"]
+    target_loose = "Idea.\n" + _AB() + "\n\nIntro.\n\n- a\n\n- b\n" + _SB(span=2) + "\n"   # the list is on lines 11-13, the sketch on 14
+    inner_loose = "Idea.\n" + _AB() + "\n\n- a\n\n- b\n\nClosing.\n" + _SB(span=2) + "\n"   # the list on lines 9-11, the closing paragraph on 13
+    before = "- a\n\n- b\n\nIdea.\n" + _AB() + "\n\nSketch.\n" + _SB() + "\n"   # the list is above the argument, outside the run
+    para_only = "Idea.\n" + _AB() + "\n\nOne.\n\nTwo.\n" + _SB(span=2) + "\n"
+    try:
+        for t in (target_loose, inner_loose, before, para_only, sk2):
+            clean(_sx(t))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(_sx(target_loose), ["LIST-SHAPE-REFUSED 01-a.md:14 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(inner_loose), ["LIST-SHAPE-REFUSED 01-a.md:14 block '01.b02' covers a list (first line 9)" + tail + "loose"], 1)
+        clean(_sx(before))
+        clean(_sx(para_only))
+        clean(_sx(sk2))
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"ordered"}),)
+        fe(_sx(sk2), ["LIST-SHAPE-REFUSED 01-a.md:13 block '01.b02' anchors a list" + tail + "ordered"], 1)
+        two = "Idea.\n" + _AB() + "\n\n- a\n- b\n\nOne.\n\n1. a\n2. b\n" + _SB(span=3) + "\n"   # a bullet list, a paragraph, a numbered list
+        fe(_sx(two), ["LIST-SHAPE-REFUSED 01-a.md:16 block '01.b02' anchors a list" + tail + "ordered"], 1)
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(go(notes={"01-a.md": NOTE(body="- a\n\n- b\n" + BL(item=1) + "\n")}),
+           ["LIST-SHAPE-REFUSED 01-a.md:9 block '01.b01' anchors a list" + tail + "loose"], 1)
+    finally:
+        globals()["REFUSED_LIST_SHAPES"] = saved
+    eq(REFUSED_LIST_SHAPES, (), "restored")
+
+
+@case("F33d", "LIST-SHAPE-REFUSED on a sketch with no span (or span 1) over a loose list; a refused list that is not the last of a run "
+              "(the first of loose, paragraph, ordered: the non-target finding), and one on the last list with the first clean; "
+              "a bad span or an illegal run is one finding, never that and a shape finding")
+def _():
+    tail = " whose shape the renderer shows differently: "
+    one = lambda **kw: "Idea.\n" + _AB() + "\n\n- a\n\n- b\n" + _SB(**kw) + "\n"   # the loose list is on lines 9-11, the sketch on 12
+    three = lambda a, b: "Idea.\n" + _AB() + "\n\n" + a + "\nMid.\n\n" + b + _SB(span=3) + "\n"   # a list, a paragraph, a list; the sketch on line 17
+    loose_first = three("- a\n\n- b\n", "1. x\n2. y\n")   # lists on lines 9-11 and 15-16
+    loose_last = three("- a\n- b\n", "1. x\n\n2. y\n")   # lists on lines 9-10 and 14-16
+    saved = globals()["REFUSED_LIST_SHAPES"]
+    try:
+        globals()["REFUSED_LIST_SHAPES"] = (frozenset({"loose"}),)
+        fe(_sx(one()), ["LIST-SHAPE-REFUSED 01-a.md:12 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(one(span=1)), ["LIST-SHAPE-REFUSED 01-a.md:12 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(loose_first), ["LIST-SHAPE-REFUSED 01-a.md:17 block '01.b02' covers a list (first line 9)" + tail + "loose"], 1)
+        fe(_sx(loose_last), ["LIST-SHAPE-REFUSED 01-a.md:17 block '01.b02' anchors a list" + tail + "loose"], 1)
+        fe(_sx(one(span=0)), ["BLOCK-PROBLEM 01-a.md:12 block '01.b02': span: must be an integer of 1 or more"], 1)
+        fe(_sx(one(span=2)), ["SKETCH-RUN 01-a.md:12 block '01.b02': the run holds another rh anchor line (line 7)"], 1)
+    finally:
+        globals()["REFUSED_LIST_SHAPES"] = saved
+    eq(REFUSED_LIST_SHAPES, (), "restored")
 
 
 @case("SKC7", "the format problems of a sketch and of span come through as BLOCK-PROBLEM: span on an argument, a bad basis, compiled "
