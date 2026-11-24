@@ -96,11 +96,13 @@ RULES = (
     ("\\log", "named function: pandoc <mo>, ours <mi mathvariant=normal>: ours right"),
     ("\\cos", "named function: pandoc <mo>, ours <mi mathvariant=normal>: ours right"),
     ("\\mathrm", "\\mathrm: pandoc one <mi> per letter, ours one <mi mathvariant=normal> per word (F26B choice): ours right"),
-    ("'", "prime: pandoc writes the prime as a sibling <mi>, ours as the script of an <msup> (F26B): ours right"),
+    ("'", "prime: pandoc writes the prime as a sibling <mi>, ours as a flat sibling <mo stretchy=false> (a symbol, not an identifier), and with a script as an <mrow> "
+          "that takes it (pandoc puts a script on the prime alone): ours right"),
     ("\\infty", "\\infty: pandoc <mi>, F26B says <mo>; MathML practice is <mi>: pandoc right, F26B text to be revisited"),
     ("(", "fences: pandoc groups `( .. )` in an <mrow>, so a script after `)` sits on the whole group; ours is flat (the script sits on `)`, as TeX "
           "sets it, and our brackets are not stretchy): same rendering, pandoc's tree richer, ours chosen"),
-    ("|", "bars: pandoc groups `| .. |` in an <mrow>, ours is flat (our bars are not stretchy): same rendering, pandoc's tree richer, ours chosen"),
+    ("|", "bars: pandoc groups `| .. |` in an <mrow> with stretchy delimiters; ours pairs them in order as non-stretchy prefix and postfix in the flat row "
+          "(`|C|` stays tight): same look, pandoc's tree richer, ours chosen"),
 )
 
 
