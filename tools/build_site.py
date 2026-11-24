@@ -6340,8 +6340,8 @@ def _selftest_cases():
     @case("CV3", "converter, primes (a choice, pinned; a headless Chromium look at 1x and 2.2x for every primed formula of the corpus): a prime is U+2032 "
                  "INSIDE the token of a one-token <mi> base (`L'` is <mi>L′</mi>, `\\zeta'` <mi>ζ′</mi>, `f''` <mi>f′′</mi>, a capital Greek letter and a "
                  "function name keep their normal variant: <mi mathvariant=\"normal\">Γ′</mi>, `\\operatorname{Re}'` Re′), so it cannot detach (an <msup> floated "
-                 "it high and apart, a separate <mo> sat inside the top stroke of a zeta); a script then takes the whole <mi> (`r'^{-k}` is <msup> of "
-                 "<mi>r′</mi>); a base that is not a one-token <mi> (a number, a fence, a group) keeps a flat <mo stretchy=\"false\">′</mo> after it; "
+                 "it high and apart, a separate <mo> sat inside the top stroke of a zeta); a script then takes the whole <mi>, with a thin <mspace width=0.15em> "
+                 "first in the script so the prime and the script do not run together (`r'^{-k}` is <msup> of <mi>r′</mi> and that); a subscript takes no space; a base that is not a one-token <mi> (a number, a fence, a group) keeps a flat <mo stretchy=\"false\">′</mo> after it; "
                  "a prime after a superscript and a prime with no base are unsupported")
     def _():
         pr = '<mo stretchy="false">′</mo>'
@@ -6350,8 +6350,8 @@ def _selftest_cases():
                                "x^2'", "'", "\\max'")]
         want = [M_("<mi>L′</mi>"), M_("<mrow><mi>ζ′</mi>" + lp + "<mi>s</mi>" + rp + "</mrow>"), M_("<mi>f′′</mi>"),
                 M_('<mi mathvariant="normal">Γ′</mi>'), M_('<mi mathvariant="normal">Re′</mi>'),
-                M_("<msup><mi>r′</mi><mrow><mo>−</mo><mi>k</mi></mrow></msup>"), M_("<msub><mi>L′</mi><mi>s</mi></msub>"),
-                M_("<msup><mi>x′</mi><mn>2</mn></msup>"), M_("<mrow><mi>L′</mi>" + '<mo stretchy="false">/</mo>' + "<mi>L</mi></mrow>"),
+                M_('<msup><mi>r′</mi><mrow><mspace width="0.15em"></mspace><mrow><mo>−</mo><mi>k</mi></mrow></mrow></msup>'),
+                M_("<msub><mi>L′</mi><mi>s</mi></msub>"), M_('<msup><mi>x′</mi><mrow><mspace width="0.15em"></mspace><mn>2</mn></mrow></msup>'), M_("<mrow><mi>L′</mi>" + '<mo stretchy="false">/</mo>' + "<mi>L</mi></mrow>"),
                 M_("<mrow>" + lp + "<mi>a</mi>" + rp + pr + "</mrow>"), M_("<mrow><mn>2</mn>" + pr + "</mrow>"),
                 M_("<mrow><mrow><mi>a</mi><mi>b</mi></mrow>" + pr + "</mrow>"), None, None, M_('<mi mathvariant="normal">max′</mi>')]
         return _eq(got, want)
