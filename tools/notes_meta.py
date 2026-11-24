@@ -119,8 +119,8 @@ CONTRACT (each line is a self-test case, written before the code)
  a quote, a bracket, a symbol and a letter with no case pass; a Greek or accented lowercase initial is refused too, the author rephrases;
  a title with a shape fault has that finding alone). The author writes the capital: no code changes author text. The page prints it on a card with no claim and
  on a definition or structure card; a group with a claim whose root is a result and a title is TITLE-WITH-CLAIM (an error), because the page
- would ignore a title there and the author must choose. The role decides when the group has a usable root_role, else the kind of the one
- root in decls.tsv decides, as SKETCH-ROLE does; a root with no row, or with several, is not judged. A bad title is BAD-VALUE alone.
+ would ignore a title there and the author must choose. The ONE predicate `definition_card(role, kinds)` decides (build_site loads it too): a usable root_role decides, else the kinds of ALL the
+ roots (no root a theorem or lemma, at least one root; an unknown kind is a definition card); a root with no row, or with several, is not judged. A bad title is BAD-VALUE alone.
 
  Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
@@ -319,6 +319,24 @@ GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
 GROUP_OPTIONAL = ("recognition", "root_role", "title")
 ROOT_ROLES = ("result", "named_statement", "object")
 RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that take the role `result`; every other kind does not
+
+
+def definition_card(role, kinds):
+    """THE one predicate of a definition (or structure) card, used by this checker and by build_site.py (it loads this file), so the two
+    cannot drift. `role` is the group's usable root_role or None; `kinds` are the declaration-table kinds of ALL its roots. A usable
+    root_role decides: named_statement and object are definition cards, result is not (a null claim has no role). With no role, a card is a
+    definition card when it has a root and NO root is a theorem or lemma (RESULT_KINDS): one theorem or lemma root among several makes it a
+    result card; an unknown or empty kind is not a result kind, so it counts as a definition card; no root is not a definition card."""
+    if role in ("named_statement", "object"):
+        return True
+    if role == "result":
+        return False
+    return bool(kinds) and not any(k in RESULT_KINDS for k in kinds)
+
+
+def needs_title(claim_null, role, kinds):
+    """A card needs a title when it has no claim or is a definition card (build_site lists it TITLE-MISSING without one)."""
+    return bool(claim_null) or definition_card(role, kinds)
 # While False a group with a claim need not carry root_role (ROOT-ROLE-MISSING is then a listing). The real outline has no roles
 # yet; once it carries one on every claim this constant is set to True and a claim without a role becomes an error.
 REQUIRE_ROOT_ROLE = False
@@ -569,7 +587,7 @@ def _role_of(g):
 def _check_titles(data, path, index, kinds):
     """TITLE-WITH-CLAIM for each group with a claim, a well-formed title and a root that is a result, in the order of the outline
     (a bad title is the shape finding and is not judged twice). The role decides when the group has a usable root_role, else the kind of
-    the one root in the declaration table, as SKETCH-ROLE decides; a root with no row, several rows or several roots is not judged here."""
+    the roots in the declaration table by the shared predicate definition_card; a root with no row or several rows is not judged here."""
     out = []
     groups = data.get("groups") if isinstance(data, dict) and isinstance(data.get("groups"), list) else []
     for i, g in enumerate(groups):
@@ -577,12 +595,13 @@ def _check_titles(data, path, index, kinds):
             continue
         label = f"group {g.get('id')!r}" if _str(g.get("id")) else f"groups[{i}]"
         role = _role_of(g)
-        result = role == "result"
-        if role is None:
+        result = False
+        if role is not None:
+            result = not definition_card(role, [])
+        else:   # no role: the kinds of ALL the roots decide (a group with a claim has one root; ROOT-COUNT says so when it has more)
             roots = g.get("roots")
-            if isinstance(roots, list) and len(roots) == 1 and _decl_entry_ok(roots[0]) \
-                    and len(index.get((roots[0]["module"], roots[0]["name"]), [])) == 1:
-                result = kinds[(roots[0]["module"], roots[0]["name"])][0] in RESULT_KINDS
+            if isinstance(roots, list) and roots and all(_decl_entry_ok(e) and len(index.get((e["module"], e["name"]), [])) == 1 for e in roots):
+                result = not definition_card(None, [kinds[(e["module"], e["name"])][0] for e in roots])
         if result:
             out.append(_f("TITLE-WITH-CLAIM", path, None, f"{label}: title on a group with a claim whose root is a result; "
                           "the page prints no title there (take the title out)"))
@@ -3122,7 +3141,8 @@ def _():
     for roots, twc in (([R("A.B", "foo"), R("A.C", "baz")], True), ([R("A.C", "baz"), R("A.B", "foo")], True),
                        ([R("A.C", "baz"), R("A.E", "stru")], False)):
         g = dict(drop(G("g1", roots=roots, claim=CLAIM), "root_role"), title="The step")
-        fe(_ro(g), [_fl("ROOT-COUNT", rc)] + ([_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)] if twc else []), 1)
+        fe(_ro(g), [_fl("ROOT-COUNT", rc), _fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")]
+           + ([_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)] if twc else []), 1)
         clean(_ro(dict(G("g1", roots=roots), title="The step")))
 
 

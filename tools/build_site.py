@@ -429,7 +429,7 @@ written by the builder, is not done here.
 F47, F48 THE TITLE OF A CARD (cases TT1 to TT14, F48WORD1). A group may carry an author-written `title` (notes_meta: a plain one-line
 string; TITLE-WITH-CLAIM on a group with a claim whose root is a result). A card with no claim and a title prints, in the heading,
 the strings key `title_label` (`What this step is:`) in <span class="title-label"> and the title in <span class="title-text">, and
-directly under the heading the `no_claim_label` in <p class="no-claim-label">; when its roots are all without a proof (a definition or
+directly under the heading the `no_claim_label` in <p class="no-claim-label">; when it is a definition card by notes_meta's one predicate definition_card (a usable root_role decides, else no root of any number is a theorem or lemma; the checker uses the same function) (a definition or
 structure card) the label is `definition_label` (`Definition.`, <span class="definition-label">) instead, with no joining word. A
 definition or structure card with a claim and a title has the heading `definition_label` and the title only (F48 i); the statement is
 the FIRST PARAGRAPH under the heading, <p class="definition-statement">: the title, `definition_join` (`is defined as:`) and the claim
@@ -565,7 +565,7 @@ REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "ev
                          "recognition_citation_open_line": ("source", "where", "source_date"),
                          "established_by_line": ("name",),
                          "sketch_frame": ("basis",)}
-PROOF_KINDS = frozenset(["theorem", "lemma"])   # the table kinds that HAVE a proof; any other kind has none (F22)
+PROOF_KINDS = frozenset(nm.RESULT_KINDS)   # the table kinds that HAVE a proof; any other kind has none (F22): the checker's list, not a copy
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
 # F47: while False a card that needs a title and has none is listed (`TITLE-MISSING <card id>`); when True the same cards refuse the build.
 TITLE_MISSING_REFUSES = False
@@ -574,7 +574,7 @@ TITLE_MISSING_REFUSES = False
 def _is_definition_card(fl):
     """A card is a definition or structure card when it has a root and no root has a proof: no root of kind theorem or lemma (every other
     kind of the table, the unknown ones included, names or builds something and proves nothing). A card with a theorem root is a result."""
-    return bool(fl["roots"]) and not any(r["kind"] in PROOF_KINDS for r in fl["roots"])
+    return nm.definition_card(fl["root_role"], [r["kind"] for r in fl["roots"]])
 
 
 def _shown_title(sm, fl):
@@ -594,7 +594,7 @@ def _title_census(m):
 
     def walk(gid):
         sm, fl = m.summary[gid], m.files[gid]
-        if sm["claim"] is None or _is_definition_card(fl):
+        if nm.needs_title(sm["claim"] is None, fl["root_role"], [r["kind"] for r in fl["roots"]]):
             out.append((gid, isinstance(fl.get("title"), str)))
         for k in m.children.get(gid, []):
             walk(k)
@@ -2175,7 +2175,7 @@ def _render_page(m, s, facts, dirty):
             o.append(f'<h3 class="claim unread-claim"><span class="{lead[0]}">{_e(lead[1])}</span> '
                      f'<span class="title-text">{_rich(ttl, where=gid)}</span></h3>')
             o.append(f'<p class="no-claim-label">{_e(sm["claim_label"])}</p>')
-        role = sm["root_role"] or ("result" if sm["root_kind"] in PROOF_KINDS else "named_statement") if sm["claim"] else None   # no role: the class of the kind
+        role = sm["root_role"] or ("named_statement" if nm.definition_card(None, [sm["root_kind"]]) else "result") if sm["claim"] else None   # no role: the class of the kind
         if role == "named_statement":   # F36: what kind of step this is, directly after the claim and its conditions
             o.append(f'<p class="named-statement-use">{_e(s["named_statement_use_line"])}</p>')
         if sm["premises"]:   # a step with a null claim rests on premises as well
