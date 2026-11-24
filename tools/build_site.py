@@ -5600,7 +5600,9 @@ def _selftest_cases():
 
     @case("EL1", "element_problems, planted: `<script>`, `<annotation>`, `<iframe>` and an unknown element are `element <name>`; an `onclick` on a "
                  "<p>, a `style` on a <p> (the builder has none), an `href` on a <mi> and a `mathvariant` on a <p> are `attribute <name> on <element>`; "
-                 "controls: <strong>, a nested <ul>/<li>, and a MathML tree with mathvariant, stretchy and form on its elements are clean")
+                 "`<time>` (no builder path emits it since F37 moved the dates), an `onclick` on a <dl> and an `id` on a <li> are refused too; "
+                 "controls: <strong>, a nested <ul>/<li>, the Evidence markup (`<ul class=provenance>` with `<li class=statement>`, `<dl class=block-source>`), "
+                 "and a MathML tree with mathvariant, stretchy and form on its elements are clean")
     def _():
         ep = element_problems
         planted = [("<script>x</script>", ["element script"]), ("<math><annotation>x</annotation></math>", ["element annotation"]),
@@ -5609,21 +5611,27 @@ def _selftest_cases():
                    ("<p mathvariant=\"normal\">a</p>", ["attribute mathvariant on p"]), ("<blink>a</blink>", ["element blink"]),
                    ("<math><mi width=\"1em\">x</mi></math>", ["attribute width on mi"]),
                    ("<p accent=\"true\">a</p>", ["attribute accent on p"]), ("<math><mi accent=\"true\">x</mi></math>", ["attribute accent on mi"]), ("<p width=\"1em\">a</p>", ["attribute width on p"]),
+                   ("<time>2026</time>", ["element time"]), ("<dl onclick=\"x\"><dt>a</dt><dd>b</dd></dl>", ["attribute onclick on dl"]),
+                   ("<ul><li id=\"a\">a</li></ul>", ["attribute id on li"]),
                    ("<p>a</p><script></script><iframe></iframe>", ["element iframe", "element script"])]
         controls = ["<p>a <strong>b</strong></p>", "<ul><li>a<ul><li>b</li></ul></li></ul>",
+                    '<ul class="provenance"><li class="statement">a</li><li class="citation">b</li></ul>',
+                    '<details class="evidence"><summary>s</summary><dl class="block-source"><dt>File</dt><dd>B.lean</dd></dl>'
+                    '<p class="second-reader">x</p><p class="sketch-build">y</p></details>',
                     '<math><mrow><mi mathvariant="normal">f</mi><mo stretchy="false" form="prefix">(</mo><msubsup><mi>x</mi><mn>1</mn><mn>2</mn></msubsup>'
                     '<mover accent="true"><mi>x</mi><mo stretchy="true">&#8213;</mo></mover><munder><mi>a</mi><mi>b</mi></munder><munderover><mo>&#8721;</mo><mi>a</mi><mi>b</mi></munderover>'
                     '<msub><mi>a</mi><mi>b</mi></msub><msup><mi>a</mi><mi>b</mi></msup><mspace></mspace><mspace width="0.167em"></mspace></mrow></math>']
-        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 3))
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 5))
 
-    @case("EL2", "the allow-list: 41 elements (the 29 the builder emits today and the 12 of MathML) and 51 element-attribute pairs (`width` on <mspace> and `accent` on <mover> too); the built page of "
+    @case("EL2", "the allow-list: 40 elements (the 28 the builder emits and the 12 of MathML reserved for the converter) and 53 element-attribute pairs "
+                 "(15 of the page, 36 of mathvariant, stretchy and form on the 12 MathML elements, `width` on <mspace> and `accent` on <mover>); the built page of "
                  "the base fixture, the zoo, the sketch fixture, the definition fixture and one with bold and a nested sub-item is clean under it")
     def _():
         bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
         pages = [_base().page, _zbase().page, _sbase().page, _bbase().page, bold.page]
         return _eq(([element_problems(x) for x in pages], len(ALLOWED_ELEMENTS), sum(len(v) for v in ALLOWED_ELEMENTS.values()),
                      "<strong>" in bold.page, "<ul><li>" in bold.page.replace("\n", "")),
-                   ([[]] * 5, 41, 51, True, True))
+                   ([[]] * 5, 40, 53, True, True))
 
     @case("EL3", "the check runs on the BUILT page and refuses like the other static findings: a page with an <iframe> added is "
                  "`BUILD-ERROR PAGE-STATIC element iframe found in index.html`, one with an `onclick` on a <p> is `attribute onclick on p`; "
@@ -5637,6 +5645,36 @@ def _selftest_cases():
             res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR PAGE-STATIC")), b.existed))
         return _eq(res, [(1, ["BUILD-ERROR PAGE-STATIC element iframe found in index.html"], False),
                          (1, ["BUILD-ERROR PAGE-STATIC attribute onclick on p found in index.html"], False), (0, [], True)])
+
+    @case("EL4", "nothing else: the elements and attributes the five fixture pages of EL2 hold are exactly the 28 elements and 15 pairs of the list outside "
+                 "MathML (no entry nobody emits: `time` went with F37); what the list holds besides is the MathML set reserved for the converter, 12 elements, "
+                 "mathvariant, stretchy and form on all 12, `width` on <mspace> alone and `accent` on <mover> alone")
+    def _():
+        bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
+        mathml = ["math", "mi", "mn", "mo", "mover", "mrow", "mspace", "msub", "msubsup", "msup", "munder", "munderover"]
+        emitted, pairs = set(), set()
+
+        class P(html.parser.HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                emitted.add(tag)
+                pairs.update(f"{tag}[{k}]" for k, _v in attrs)
+
+        for pg in (_base().page, _zbase().page, _sbase().page, _bbase().page, bold.page):
+            P(convert_charrefs=True).feed(pg)
+        outside = {t: a for t, a in ALLOWED_ELEMENTS.items() if t not in mathml}
+        by_attr = {}
+        for t in mathml:
+            for k in ALLOWED_ELEMENTS.get(t, ()):
+                by_attr.setdefault(k, []).append(t)
+        html_tags = ["a", "article", "aside", "body", "code", "dd", "details", "div", "dl", "dt", "h1", "h2", "h3", "head", "header", "html", "li",
+                     "main", "meta", "ol", "p", "section", "span", "strong", "style", "summary", "title", "ul"]
+        html_pairs = ["a[class]", "a[href]", "article[class]", "article[id]", "details[class]", "div[class]", "dl[class]", "h3[class]", "html[lang]",
+                      "li[class]", "meta[charset]", "p[class]", "section[class]", "span[class]", "ul[class]"]
+        return _eq((sorted(emitted - set(mathml)), sorted(p for p in pairs if p.split("[")[0] not in mathml), sorted(outside),
+                    sorted(f"{t}[{k}]" for t, a in outside.items() for k in a), sorted(t for t in mathml if t in ALLOWED_ELEMENTS),
+                    {k: sorted(v) for k, v in sorted(by_attr.items())}),
+                   (html_tags, html_pairs, html_tags, html_pairs, mathml,
+                    {"accent": ["mover"], "form": mathml, "mathvariant": mathml, "stretchy": mathml, "width": ["mspace"]}))
 
     @case("DF4", "D1: a Windows-style path in a block's file gives the base name in the Evidence section (`A\\Deep\\Nest.lean` shows `Nest.lean`), "
                  "the JSON keeps the path as written")
