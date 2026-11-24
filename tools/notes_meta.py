@@ -350,7 +350,7 @@ EDITIONS = (1, 2)   # F44: a published text is rewritten in place once, as editi
 # not text: a change to one is a change of substance, not a rewrite for readers, so the check lists it as SELECTOR-CHANGED and never as EDITION.
 EDITION_TEXT_FIELDS = ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
                        "recognition.citations[].where", "recognition.citations[].source", "recognition.citations[].source_date",
-                       "recognition.established")
+                       "recognition.established", "title")
 ROOT_ROLES = ("result", "named_statement", "object")
 RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that take the role `result`; every other kind does not
 
