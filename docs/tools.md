@@ -79,7 +79,8 @@ https `href` through, by class token, as it does a citation anchor. A page with 
 `YYYY-MM-DD`, not later than the day of the run; required at edition 2, refused at edition 1 or absent). `rh_anchor.header_problems` checks the
 shape and `notes_meta.py` reports each bad value as a `BAD-VALUE` on the header line (edition 3 or more says `edition 3 needs a ruling`).
 With `--base REV`, `notes_meta.py` compares the note without its anchor lines against the note at REV (a base with no header, or no
-`edition`, is edition 1). A bump to edition 2 on a note whose text changed is one `EDITION` listing, `EDITION <note> +A -R lines, edition 1
+`edition`, is edition 1; so is a base whose header cannot be used for any reason other than an unusable `edition` value, which is the
+`EDITION-BASE` listing below). A note is found at REV by its file name, so a note renamed since REV is a new note. A bump to edition 2 on a note whose text changed is one `EDITION` listing, `EDITION <note> +A -R lines, edition 1
 to 2, <date>`, where A and R are the lines added and removed by `difflib.SequenceMatcher` over the lines (a replaced run counts on both
 sides, a moved run counts on both); the note then has no `BYTE-DIFF` and no `ADDITION`. A bump with the text unchanged is `EDITION-EMPTY`
 (an error). A note at edition 2 at REV follows the ordinary rules (a dated addition is legal, any other change is `BYTE-DIFF`); edition 1 or
@@ -94,8 +95,11 @@ notes of that card (the header's `group`) at edition 2, in note order, `[]` when
 edition 2 and adds `note_editions`, the number of notes at edition 2. The first-screen sentence appears when a group or a note is at edition 2,
 with the latest date over both. A card's Evidence section gets, after the group's own paragraph, one `edition_note_card` paragraph for each
 edition-2 note of the card whose date differs from the group's date at edition 2 (all of them when the group is at edition 1), each with the
-note's date and a link made from `edition_href_blob` with `{file}` = `docs/<note file>`. A page with no group and no note at edition 2 is
-byte-equal to a page built before.
+note's date and a link made from `edition_href_blob` with `{file}` = `docs/<note file>` (the file name percent-encoded as the note's own
+link is). A level-0 note (a note about the whole proof) gets no card paragraph, even when its header names a real card as its group: it is
+not in that card's `editions`, but it is counted in `note_editions` and its date counts for the first screen. The page (`index.html`) of a
+build with no group and no note at edition 2 anywhere is byte-equal to a page built before; the data files (each group file, `data.js`,
+`manifest.json`) still gain `editions` (`[]`) and `note_editions` (`0`).
 
 **`tools/note_cite.py NOTE DECLS_TSV --at LINE --decl FULL.NAME --kind KIND`** writes one block anchor, so nobody
 types the JSON. It finds the declaration's module in `decls.tsv` (`--module` picks one when the name is in several),
