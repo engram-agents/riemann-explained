@@ -5243,6 +5243,26 @@ def _selftest_cases():
                 want.append((where, name, *((1, three, False) if name in ("wrapped", "bare") else (0, [], True))))
         return _eq(res, want)
 
+    @case("LB2", "F35 L1: a release line split by two and by three bold pairs (`**theorem** leak_example_long_name **:** 1 + 1 = 2 := rfl`) "
+                 "is SOURCE-LEAK in a sketch paragraph, a sketch item and a sub-item (data.js and group/g1.json; the page's own text nodes are "
+                 "cut by the <strong> tags, so index.html does not hold the line), exit 1, OUT_DIR absent; control: the same text with "
+                 "one word changed builds")
+    def _():
+        src = {"A/B.lean": "x\n" + LEAK + "\n"}
+        files = lambda b_: sorted(ln.split(" ")[2] for ln in b_.out.splitlines()
+                                  if ln.startswith("BUILD-ERROR SOURCE-LEAK ") and not ln.startswith("BUILD-ERROR SOURCE-LEAK note "))
+        two = "**theorem** leak_example_long_name **:** 1 + 1 = 2 := rfl"
+        three = "**theorem** leak_example_long_name **:** 1 + 1 **=** 2 := rfl"
+        ctl = "**theorem** leak_example_other_name **:** 1 + 1 = 2 := rfl"
+        res, want = [], []
+        for where, mk in (("para", lambda v: _bn(para=v)), ("item", lambda v: _bn(item=v)),
+                          ("sub", lambda v: _bn(item="Item two.\n   - " + v))):
+            for name, v in (("two", two), ("three", three), ("control", ctl)):
+                b = _build(notes=mk(v), src=src)
+                res.append((where, name, b.rc, files(b), b.existed))
+                want.append((where, name, *((0, [], True) if name == "control" else (1, ["data.js", "group/g1.json"], False))))
+        return _eq(res, want)
+
     @case("CW1", "F35 P1: the page CSS holds `code { overflow-wrap: anywhere; }`, so long code in the evidence list wraps on a narrow screen "
                  "(the browser read of the page is the check that it does); the page still passes the static check, with no url( and no @import")
     def _():
