@@ -1631,9 +1631,10 @@ def _put(path, text):
 
 
 def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None, committed=None, glob=None,
-       raw_outline=None, repo_arg=False, check_dirs=None, today=None):
+       raw_outline=None, repo_arg=False, check_dirs=None, today=None, committed_outline=None):
     """Plant a fixture and call run(); (rc, stdout, stderr) as a Res. `committed` names files of NOTES_DIR that exist
-    at the commit called HEAD of a throwaway git repository around the fixture (BYTES)."""
+    at the commit called HEAD of a throwaway git repository around the fixture (BYTES). `committed_outline` (a dict, or a
+    string written as it is) is the outline.json that exists at that commit; None leaves the outline out of it."""
     notes = {"01-a.md": NOTE()} if notes is None else notes
     outline = OL(G("g1"), G("g2", order=2, premises=["g1"])) if outline is None else outline
     with tempfile.TemporaryDirectory() as d:
@@ -1643,6 +1644,8 @@ def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None,
             _git(d, "init", "-q")
             for k, v in committed.items():
                 _put(os.path.join(nd, k), v)
+            if committed_outline is not None:
+                _put(os.path.join(d, "outline.json"), committed_outline if isinstance(committed_outline, str) else json.dumps(committed_outline))
             _git(d, "add", "-A")
             _git(d, "commit", "-q", "-m", "base")
         for k, v in notes.items():
@@ -4153,6 +4156,309 @@ def _():
     clean(_sx("Idea.\n" + _AB(decls=[R("A.E", "lem")]) + "\n", outline=OL(G("g1", roots=[R("A.E", "lem")]))))
     clean(_sx("Idea.\n" + _AB(decls=[FOO, BAZ]) + "\n"))
     fe(_sx(one, outline=OL(_rg("named_statement", root=("A.C", "baz")))), [NOPROOF.format(7, "A.C baz", "def")], 0)
+
+
+# ---- F44 (Q6): the edition fields of a group, and the edition check of the outline against the outline at --base
+ED_DAY = "2026-11-24"   # the day of these runs (--today)
+
+
+def _eg1():
+    return _rg(gid="g1", claim=dict(CLAIM, text="T1", conditions=["c1"]),
+               rec={"form": "variant", "result": "R1", "difference": "D1", "reader": "R", "date": "2026-11-23",
+                    "citations": [dict(CIT, source="S1", where="W1")]})
+
+
+def _eg2():
+    return _rg(gid="g2", order=2, root=("A.B", "bar"), claim=dict(CLAIM, text="T2"),
+               rec={"form": "not_recognised", "note": "N1", "reader": "R", "date": "2026-11-23"})
+
+
+def _epair():
+    return OL(_eg1(), _eg2())
+
+
+def _eof(o, gid):
+    return next(g for g in o["groups"] if g["id"] == gid)
+
+
+def _edb(cur, base):
+    """Run the check: the current outline `cur`, and the outline committed at HEAD `base` (None: none committed)."""
+    return go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD", outline=cur, committed_outline=base, today=ED_DAY)
+
+
+def _edc(cur_mut=None, base_mut=None):
+    """The pair of groups at HEAD and now, each changed by its function."""
+    cur, base = _epair(), _epair()
+    if base_mut:
+        base_mut(base)
+    if cur_mut:
+        cur_mut(cur)
+    return _edb(cur, base)
+
+
+def _set(gid, path, value):
+    def f(o):
+        node = _eof(o, gid)
+        parts = path.split(".")
+        for p in parts[:-1]:
+            node = node[p]
+        node[parts[-1]] = value
+    return f
+
+
+def _both(*fs):
+    def f(o):
+        for x in fs:
+            x(o)
+    return f
+
+
+def _ed2(gid="g1", date="2026-11-23"):
+    return _both(_set(gid, "edition", 2), _set(gid, "edition_date", date))
+
+
+def _chg(gid, paths):
+    return f"OUTLINE-CHANGED outline.json group {gid!r}: {paths} changed, but the edition is not raised to 2 with an edition_date"
+
+
+def _edone(**kw):
+    return go(outline=OL(_rg(**kw)), today=ED_DAY)
+
+
+@case("E21a", "edition is the integer 1 or 2 (absent is 1): 0, -1, 3 (needs a ruling), a string, a boolean and 2.0 are BAD-VALUE naming the group "
+              "and the key; control: 1 and 2 with their date pass")
+def _():
+    bad = lambda t: _fl("BAD-VALUE", ": " + t)
+    fe(_edone(edition=0), [bad("edition must be 1 or 2, not 0")], 1)
+    fe(_edone(edition=-1), [bad("edition must be 1 or 2, not -1")], 1)
+    fe(_edone(edition=3), [bad("edition 3 needs a ruling")], 1)
+    fe(_edone(edition=7), [bad("edition 7 needs a ruling")], 1)
+    fe(_edone(edition="2"), [bad("edition must be the integer 1 or 2 (the value is of type string)")], 1)
+    fe(_edone(edition=True), [bad("edition must be the integer 1 or 2 (the value is of type boolean)")], 1)
+    fe(_edone(edition=2.0), [bad("edition must be the integer 1 or 2 (the value is of type number)")], 1)
+    clean(_edone(edition=1))
+    clean(_edone(edition=2, edition_date="2026-11-23"))
+    clean(_edone())
+
+
+@case("E21b", "edition_date is a real YYYY-MM-DD date not later than the day of the run; required at edition 2, refused at edition 1 or "
+              "with no edition; each a BAD-VALUE naming the group and the key")
+def _():
+    bad = lambda t: _fl("BAD-VALUE", ": " + t)
+    fe(_edone(edition=2), [bad("edition_date is required when edition is 2")], 1)
+    fe(_edone(edition=1, edition_date="2026-11-23"), [bad("edition_date is refused when edition is 1 or absent (it dates an edition 2)")], 1)
+    fe(_edone(edition_date="2026-11-23"), [bad("edition_date is refused when edition is 1 or absent (it dates an edition 2)")], 1)
+    fe(_edone(edition=2, edition_date="2026/11/23"), [bad("edition_date must be a date YYYY-MM-DD")], 1)
+    fe(_edone(edition=2, edition_date="2026-02-30"), [bad("edition_date must be a date YYYY-MM-DD")], 1)
+    fe(_edone(edition=2, edition_date=20261123), [bad("edition_date must be a date YYYY-MM-DD")], 1)
+    fe(_edone(edition=2, edition_date="2026-11-25"), [bad("edition_date 2026-11-25 is later than the day of the run, 2026-11-24")], 1)
+    clean(_edone(edition=2, edition_date="2026-11-24"))
+    clean(_edone(edition=2, edition_date="2026-11-23"))
+
+
+@case("E21c", "with no --base the run says the edition check did not run; the editions line counts the groups at edition 2 over the outline "
+              "as it is now, with or without --base")
+def _():
+    o = _epair()
+    _ed2("g2")(o)
+    r = go(outline=o, today=ED_DAY)
+    clean(r)
+    ok("edition check: did not run, no --base given" in r.lines, r.out)
+    ok("editions: 1 of 2 groups at edition 2" in r.lines, r.out)
+    r = go(outline=_epair(), today=ED_DAY)
+    ok("editions: 0 of 2 groups at edition 2" in r.lines, r.out)
+    r = _edc(_ed2("g2"), None)
+    ok("editions: 1 of 2 groups at edition 2" in r.lines, r.out)
+
+
+_PATHS = (("E23a", "claim.text", _set("g1", "claim.text", "T1b")),
+          ("E23b", "claim.conditions", _set("g1", "claim.conditions", ["c1b"])),
+          ("E23c", "claim.conditions", _set("g1", "claim.conditions", ["c1", "c2"])),
+          ("E23d", "recognition.difference", _set("g1", "recognition.difference", "D1b")),
+          ("E23e", "recognition.note", _set("g2", "recognition.note", "N1b")),
+          ("E23f", "recognition.citations[].where", _set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1b")])),
+          ("E23g", "recognition.citations[].source", _set("g1", "recognition.citations", [dict(CIT, source="S1b", where="W1")])))
+
+
+def _mk_path_case(cid, path, mut):
+    gid = "g2" if path == "recognition.note" else "g1"
+    desc = f"a change of {path} (as the case sets it) with no bump is OUTLINE-CHANGED naming the group and the path, exit 1"
+
+    def fn():
+        fe(_edc(mut), [_chg(gid, path)], 1)
+    _register_case(_CASES, cid, desc, fn)
+
+
+for _c in _PATHS:
+    _mk_path_case(*_c)
+
+
+@case("E23h", "a first claim on a group that had none, and no bump, is OUTLINE-CHANGED (the card shows something new); the same with a bump is EDITION")
+def _():
+    def base(o):
+        _eof(o, "g1")["claim"] = None
+        _eof(o, "g1").pop("recognition")
+        _eof(o, "g1").pop("root_role")
+
+    def cur(o):
+        g = _eof(o, "g1")
+        g["claim"] = dict(CLAIM, text="T1")
+        g.pop("recognition")
+    fe(_edc(cur, base), [_chg("g1", "claim.text")], 1)
+    r = _edc(_both(cur, _ed2()), base)
+    fe(r, ["EDITION outline.json g1 fields claim.text, edition 1 to 2, 2026-11-23"], 0)
+
+
+@case("E23i", "a bump with a change is one EDITION listing: the group id, the changed paths sorted and comma-separated, edition 1 to 2, the date; "
+              "exit 0, counted as a warning; two groups give two lines in the outline's order")
+def _():
+    cur = _both(_set("g1", "claim.text", "T1b"), _set("g1", "claim.conditions", ["c9"]),
+                _set("g1", "recognition.citations", [dict(CIT, source="S1", where="W1b")]), _ed2("g1"))
+    r = _edc(cur)
+    fe(r, ["EDITION outline.json g1 fields claim.conditions, claim.text, recognition.citations[].where, edition 1 to 2, 2026-11-23"], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "count line")
+    both = _both(_set("g1", "claim.text", "T1b"), _ed2("g1", "2026-11-22"), _set("g2", "recognition.note", "N1b"), _ed2("g2", "2026-11-23"))
+    fe(_edc(both), ["EDITION outline.json g1 fields claim.text, edition 1 to 2, 2026-11-22",
+                    "EDITION outline.json g2 fields recognition.note, edition 1 to 2, 2026-11-23"], 0)
+
+
+@case("E23j", "edition 2 with nothing changed since REV is EDITION-EMPTY (an edition names a rewrite and there is none), exit 1")
+def _():
+    fe(_edc(_ed2()), ["EDITION-EMPTY outline.json group 'g1': edition 2 with edition_date, but no reader-facing text changed since HEAD"], 1)
+
+
+def _at2():
+    return _ed2("g1", "2026-11-20")
+
+
+@case("E23k", "a group at edition 2 at REV: a text change is OUTLINE-CHANGED, a changed edition_date is EDITION-DATE-CHANGED, a lowered edition is "
+              "EDITION-DOWN, edition 3 is BAD-VALUE; unchanged is clean; a bump line is never printed")
+def _():
+    clean(_edc(_at2(), _at2()))
+    fe(_edc(_both(_at2(), _set("g1", "claim.text", "T1b")), _at2()),
+       ["OUTLINE-CHANGED outline.json group 'g1': claim.text changed after edition 2 was set at HEAD (a third edition needs a ruling)"], 1)
+    fe(_edc(_ed2("g1", "2026-11-21"), _at2()),
+       ["EDITION-DATE-CHANGED outline.json group 'g1': edition_date 2026-11-21 differs from 2026-11-20 at HEAD"], 1)
+    fe(_edc(None, _at2()), ["EDITION-DOWN outline.json group 'g1': edition is 1, but it was 2 at HEAD (an edition is not lowered)"], 1)
+    fe(_edc(_both(_at2(), _set("g1", "edition", 3)), _at2()), [_fl("BAD-VALUE", ": edition 3 needs a ruling")], 1)
+
+
+@case("E23l", "a group that is not in the outline at REV has no comparison; edition 2 on it is EDITION-NEW-GROUP (there is no edition 1 to rewrite), "
+              "edition 1 on it is nothing")
+def _():
+    def add(o):
+        o["groups"].append(_rg(gid="g3", order=3, root=("A.B", "foo"), claim=dict(CLAIM, text="T3")))
+    clean(_edc(add))
+    fe(_edc(_both(add, _ed2("g3"))),
+       ["EDITION-NEW-GROUP outline.json group 'g3': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)"], 1)
+
+
+@case("E23m", "a group that is in the outline at REV and not now is a GROUP-GONE listing (a card disappearing is not silent), exit 0")
+def _():
+    def gone(o):
+        o["groups"] = [g for g in o["groups"] if g["id"] != "g2"]
+    r = _edc(gone)
+    fe(r, ["GROUP-GONE outline.json g2"], 0)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "count line")
+
+
+@case("E23n", "a change of reader, date, premises, order, roots, conventions_checked, mathlib_read, basis, and a recognition's reader and date "
+              "is no change of the text: no finding (edition 1 stays)")
+def _():
+    for what, f in (("claim.reader", _set("g1", "claim.reader", "R2")), ("claim.date", _set("g1", "claim.date", "2026-11-20")),
+                    ("premises", _set("g2", "premises", ["g1"])), ("order", _set("g2", "order", 5)),
+                    ("roots", _set("g2", "roots", [R("A.B", "foo")])),
+                    ("conventions_checked", _set("g1", "claim.conventions_checked", ["a", "b"])),
+                    ("mathlib_read", _set("g1", "claim.mathlib_read", ["Mathlib.X"])),
+                    ("basis", _set("g1", "claim.basis", "census")),
+                    ("recognition.reader", _set("g1", "recognition.reader", "R2")),
+                    ("recognition.date", _set("g1", "recognition.date", "2026-11-20"))):
+        r = _edc(f)
+        eq((r.f, r.rc), ([], 0), what + "\n" + r.out)
+
+
+@case("E23o", "the base outline missing at REV, not JSON, not an object with a groups list: one OUTLINE-BASE listing with the reason, the rule does not run, "
+              "exit 0; and a text change with no bump is then not refused")
+def _():
+    cur = _epair()
+    _set("g1", "claim.text", "T1b")(cur)
+    fe(_edb(cur, None), ["OUTLINE-BASE outline.json is not in HEAD, so the edition check did not run"], 0)
+    fe(_edb(cur, "{not json"), ["OUTLINE-BASE outline.json at HEAD is not valid JSON, so the edition check did not run"], 0)
+    fe(_edb(cur, '{"release": "x"}'), ["OUTLINE-BASE outline.json at HEAD has no groups list, so the edition check did not run"], 0)
+    fe(_edb(cur, "[]"), ["OUTLINE-BASE outline.json at HEAD has no groups list, so the edition check did not run"], 0)
+    r = _edb(cur, None)
+    ok("edition check: did not run, the outline at HEAD could not be used" in r.lines, r.out)
+
+
+@case("E23p", "an outline outside the repository of the run: one OUTLINE-BASE listing, the rule does not run, exit 0")
+def _():
+    with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as o:
+        nd = os.path.join(d, "notes")
+        _git(d, "init", "-q")
+        _put(os.path.join(nd, "01-a.md"), T0)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-q", "-m", "base")
+        _put(os.path.join(nd, "01-a.md"), CUR)
+        op, dp = os.path.join(o, "outline.json"), os.path.join(o, "decls.tsv")
+        _put(op, json.dumps(_epair()))
+        _put(dp, DECLS)
+        buf, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            rc = run(nd, op, dp, base="HEAD", repo=d, today=ED_DAY)
+        r = Res(rc, buf.getvalue(), err.getvalue())
+    fe(r, ["OUTLINE-BASE outline.json is outside the repository, so the edition check did not run"], 0)
+
+
+@case("E23q", "the base is read from REV, not from the working tree: the outline as committed is compared with the one on disk; "
+              "an edit in place with no bump is refused, the same edit committed first is not")
+def _():
+    fe(_edc(_set("g1", "claim.text", "T1b")), [_chg("g1", "claim.text")], 1)
+    base = _epair()
+    _set("g1", "claim.text", "T1b")(base)
+    cur = _epair()
+    _set("g1", "claim.text", "T1b")(cur)
+    clean(_edb(cur, base))
+    fe(_edb(cur, _epair()), [_chg("g1", "claim.text")], 1)
+
+
+@case("E23r", "the edition check is deterministic: two runs in fresh interpreters under PYTHONHASHSEED 0 and 3 print the same bytes")
+def _():
+    outs = []
+    for seed in ("0", "3"):
+        with tempfile.TemporaryDirectory() as d:
+            nd = os.path.join(d, "notes")
+            _git(d, "init", "-q")
+            _put(os.path.join(nd, "01-a.md"), T0)
+            _put(os.path.join(d, "outline.json"), json.dumps(_epair()))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-q", "-m", "base")
+            cur = _epair()
+            _both(_set("g1", "claim.text", "T1b"), _set("g1", "claim.conditions", ["c9"]), _ed2("g1"))(cur)
+            cur["groups"] = [g for g in cur["groups"] if g["id"] != "g2"] + [
+                _rg(gid="g3", order=3, claim=dict(CLAIM, text="T3"), edition=2, edition_date="2026-11-23")]
+            _put(os.path.join(nd, "01-a.md"), CUR)
+            _put(os.path.join(d, "outline.json"), json.dumps(cur))
+            _put(os.path.join(d, "decls.tsv"), DECLS)
+            code = ("import importlib.util, sys\n"
+                    "spec = importlib.util.spec_from_file_location('nm_child', sys.argv[1])\n"
+                    "m = importlib.util.module_from_spec(spec)\nsys.modules['nm_child'] = m\nspec.loader.exec_module(m)\n"
+                    "sys.exit(m.run(sys.argv[2], sys.argv[3], sys.argv[4], base='HEAD', today='2026-11-24'))\n")
+            r = subprocess.run([sys.executable, "-I", "-c", code, os.path.abspath(__file__), nd, os.path.join(d, "outline.json"),
+                                os.path.join(d, "decls.tsv")], capture_output=True, text=True, env=dict(os.environ, PYTHONHASHSEED=seed))
+            outs.append((r.returncode, r.stdout, r.stderr))
+    eq(outs[0], outs[1], "the two seeds")
+    eq(outs[0][0], 1, "exit")
+    want = ["EDITION outline.json g1 fields claim.conditions, claim.text, edition 1 to 2, 2026-11-23",
+            "EDITION-NEW-GROUP outline.json group 'g3': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)",
+            "GROUP-GONE outline.json g2"]
+    got = [x for x in outs[0][1].splitlines() if x.split(" ")[0] in ("EDITION", "EDITION-NEW-GROUP", "GROUP-GONE")]
+    eq(got, want, "the lines")
+
+
+@case("E22", "EDITION_TEXT_FIELDS is the one definition of the reader-facing author text of a group, a literal list in a fixed order")
+def _():
+    eq(EDITION_TEXT_FIELDS, ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
+                             "recognition.citations[].where", "recognition.citations[].source"), "the fields")
 
 
 def _run_cases(cases, write):
