@@ -3247,7 +3247,7 @@ def _selftest_cases():
         miss = _build(strings=st)
         return _eq((real.get("root_only_note_single"), real.get("roots_only_note"), _strings_problems(real), res,
                     (miss.rc, [x for x in miss.out.splitlines() if x.startswith("BUILD-ERROR")], miss.existed)),
-                   ("These two lines are about this step's named Lean result only, not about the results it uses.",
+                   ("These two lines are about this step only, not about anything it uses.",
                     "These counts are for the step's named Lean results only, not for everything they use.", [],
                     [(1, ["BUILD-ERROR STRINGS-KEY root_only_note_single has an unknown placeholder {n}"], False),
                      (1, ["BUILD-ERROR STRINGS-KEY root_only_note_single must be a non-empty string"], False),
