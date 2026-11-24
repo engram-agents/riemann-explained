@@ -5725,25 +5725,36 @@ def _selftest_cases():
         controls = ['<a class="citation" href="#x">a</a>', '<p class="mapped">a</p>']
         return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[], []]))
 
-    @case("EL6", "a raw-text or RCDATA element (`style`, `title`) is refused unless it is directly inside <head> (`element style outside head`), because "
-                 "html.parser reads its content as text wherever it stands while a browser reads it as MARKUP inside MathML: each of style and title "
-                 "directly inside <math>, inside <math><mrow>, inside <mi>, in <body> and after </head> is refused, with an <img onerror> behind it "
-                 "(which the parser cannot see); a real style after a clean head's own is refused too; controls: the real <head> with its meta, "
-                 "title and style, and a <style> in a head after an earlier clean page, are clean")
+    @case("EL6", "a raw-text or RCDATA element (`style`, `title`) is allowed only in the page's OPENING RUN, before the first start tag that is not "
+                 "html, head, meta or one of them (`element style outside head` after that, whatever end tags came between): each of style and title "
+                 "directly inside <math>, <math><mrow>, <mi>, in <body>, after </head>, behind a <p> in the head, and behind the four pages a browser reads "
+                 "as MathML although html.parser's end tags say otherwise (`<head><math></head>` and `<body><math></body>` then the element), each with "
+                 "an <img onerror> behind it (which the parser cannot see), is refused; controls: the real <head> with its meta, title and style; a "
+                 "SECOND style and a SECOND title still inside the opening run (allowed: a browser is still in its head modes); a style after a meta "
+                 "after a title")
     def _():
         ep = element_problems
         img = '<img src="x" onerror="alert(1)">'
+        pre = '<!doctype html><html><head><meta charset="utf-8">'
         planted = []
         for t in ("style", "title"):
-            for pre, post in (("<math>", "</math>"), ("<math><mrow>", "</mrow></math>"), ("<math><mi>", "</mi></math>"), ("<body>", "</body>"),
-                              ("<html><head></head>", "</html>")):
-                planted.append((f"{pre}<{t}>{img}</{t}>{post}", [f"element {t} outside head"]))
+            for pre_, post in (("<math>", "</math>"), ("<math><mrow>", "</mrow></math>"), ("<math><mi>", "</mi></math>"), ("<body>", "</body>"),
+                               ("<html><head></head>", "</html>")):
+                planted.append((f"{pre_}<{t}>{img}</{t}>{post}", [f"element {t} outside head"]))
         planted.append(('<html><head><style>p{}</style></head><body><math><style>' + img + '</style></math></body></html>', ["element style outside head"]))
         planted.append(('<html><head><style>p{}</style></head><body><math><title>' + img + '</title></math></body></html>', ["element title outside head"]))
         planted.append(('<html><head><math><style>' + img + '</style></math></head></html>', ["element style outside head"]))
-        controls = ['<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>T</title><style>p { color: red; }</style></head><body><p>a</p></body></html>',
-                    '<html><head><style>a{}</style></head><body><p>a</p></body></html>']
-        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[], []]))
+        planted += [(pre + "<head><math></head><style>" + img + "</style>", ["element style outside head"]),
+                    (pre + "<head><math></head><title>" + img + "</title>", ["element title outside head"]),
+                    (pre + "<body><math></body><style>" + img + "</style>", ["element style outside head"]),
+                    (pre + "<body><math></body><title>" + img + "</title>", ["element title outside head"]),
+                    (pre + "<p>a</p><style>" + img + "</style>", ["element style outside head"]),
+                    (pre + "<p>a</p><title>" + img + "</title>", ["element title outside head"])]
+        controls = [pre + '<title>T</title><style>p { color: red; }</style></head><body><p>a</p></body></html>',
+                    '<html><head><style>a{}</style></head><body><p>a</p></body></html>',
+                    pre + "<title>T</title><style>a{}</style><title>U</title><style>b{}</style></head><body><p>a</p></body></html>",
+                    '<html><head><title>T</title><meta charset="utf-8"><style>a{}</style></head><body><p>a</p></body></html>']
+        return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 4))
 
     @case("EL7", "the hiding set (the elements html.parser reads as text, from its own CDATA_CONTENT_ELEMENTS and, where it has it, RCDATA_CONTENT_ELEMENTS, "
                  "among the allowed elements) is `style` and `title` today: a future allowed raw-text element must be classified, as this case fails until it is")
