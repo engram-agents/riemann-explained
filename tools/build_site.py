@@ -1964,11 +1964,11 @@ N07 = ("# Note seven\n" + _h(id="07", group="g1a1", list_title="Note seven") + "
 
 def _n04(para="First sketch paragraph with `a span`.", item="Ordered item `two` here.",
          last="Last sketch paragraph, see [note 6](06-x.md).", unexpanded=("Closed by `omega` automation.", "A last `simp` call."),
-         build="lake build A.B"):
+         build="lake build A.B", decls=None):
     """Note four: a sketch of three elements (a paragraph, an ordered list, a paragraph) for the root of g1."""
     return ("# Note four\n" + _h(id="04", group="g1", list_title="Note four") + "\n\n## Body\n\n"
             + para + "\n\n1) Ordered item one.\n2) " + item + "\n\n" + last + "\n"
-            + _b(id="04.b01", kind="sketch", decls=[FOO], reader="Reader Two", date="2026-11-24", basis="compiled", build=build,
+            + _b(id="04.b01", kind="sketch", decls=decls or [FOO], reader="Reader Two", date="2026-11-24", basis="compiled", build=build,
                  unexpanded=list(unexpanded), span=3) + "\n")
 
 
@@ -4670,6 +4670,20 @@ def _selftest_cases():
                      "sentence. Second mixed sentence."],
                     ["How this is proved, as Reader Two read it on 2026-11-24 (TopPlug.lean, lines not given): Mixed argument sentence. "
                      "Second mixed sentence."], False))
+
+    @case("SK10", "C1/F25: a sketch belongs to the group named in its note's HEADER (the group notes_meta checks it against), never to another "
+                  "group whose root is only among its further `decls`: the note headed g1 whose sketch lists FOO (the root of g1) and CORGE (the "
+                  "root of g3) shows on g1's card and in group/g1.json only; g3, whose proof is read, shows its own missing-sketch line and "
+                  "no sketch, and its JSON has none and no sketch block; the page holds one sketch; `sketches: 1 of 2 steps with a proof read`")
+    def _():
+        b = _build(notes=_notes_s(decls=[FOO, CORGE]))
+        dom = _dom(b.page)
+        g3 = _card(b, "g3")
+        return _eq((b.rc, [a.attrs["id"] for a in dom.find("article") if _direct(a, "div", "sketch")], len(dom.find("div", "sketch")),
+                    [x["block"] for x in b.js("group/g1.json")["sketches"]], b.js("group/g3.json")["sketches"],
+                    [x["block"] for x in b.js("group/g3.json")["blocks"]], len(_direct(g3, "div", "sketch")), len(_direct(g3, "p", "sketch-missing")),
+                    "sketches: 1 of 2 steps with a proof read" in b.out.splitlines()),
+                   (0, ["g1", "g1a"], 2, ["04.b01"], [], ["06.b01"], 0, 1, True))
 
     @case("PB2", "B2: the not-applicable line STAYS on a card whose root is a definition with an argument block (`Proof: none to read, this is "
                  "not a theorem.`), and proof_read stays null for it (the root, the group summary, the counts: 0 read of 0 that have a "
