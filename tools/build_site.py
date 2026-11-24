@@ -5605,21 +5605,22 @@ def _selftest_cases():
                    ("<iframe></iframe>", ["element iframe"]), ("<p onclick=\"x\">a</p>", ["attribute onclick on p"]),
                    ("<p style=\"color:red\">a</p>", ["attribute style on p"]), ("<math><mi href=\"#a\">x</mi></math>", ["attribute href on mi"]),
                    ("<p mathvariant=\"normal\">a</p>", ["attribute mathvariant on p"]), ("<blink>a</blink>", ["element blink"]),
+                   ("<math><mi width=\"1em\">x</mi></math>", ["attribute width on mi"]), ("<p width=\"1em\">a</p>", ["attribute width on p"]),
                    ("<p>a</p><script></script><iframe></iframe>", ["element iframe", "element script"])]
         controls = ["<p>a <strong>b</strong></p>", "<ul><li>a<ul><li>b</li></ul></li></ul>",
                     '<math><mrow><mi mathvariant="normal">f</mi><mo stretchy="false" form="prefix">(</mo><msubsup><mi>x</mi><mn>1</mn><mn>2</mn></msubsup>'
                     '<mover><mi>x</mi><mo>&#175;</mo></mover><munder><mi>a</mi><mi>b</mi></munder><munderover><mo>&#8721;</mo><mi>a</mi><mi>b</mi></munderover>'
-                    '<msub><mi>a</mi><mi>b</mi></msub><msup><mi>a</mi><mi>b</mi></msup><mspace></mspace></mrow></math>']
+                    '<msub><mi>a</mi><mi>b</mi></msub><msup><mi>a</mi><mi>b</mi></msup><mspace></mspace><mspace width="0.167em"></mspace></mrow></math>']
         return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 3))
 
-    @case("EL2", "the allow-list: 41 elements (the 29 the builder emits today and the 12 of MathML) and 49 element-attribute pairs; the built page of "
+    @case("EL2", "the allow-list: 41 elements (the 29 the builder emits today and the 12 of MathML) and 50 element-attribute pairs (`width` on <mspace> too); the built page of "
                  "the base fixture, the zoo, the sketch fixture, the definition fixture and one with bold and a nested sub-item is clean under it")
     def _():
         bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
         pages = [_base().page, _zbase().page, _sbase().page, _bbase().page, bold.page]
         return _eq(([element_problems(x) for x in pages], len(ALLOWED_ELEMENTS), sum(len(v) for v in ALLOWED_ELEMENTS.values()),
                      "<strong>" in bold.page, "<ul><li>" in bold.page.replace("\n", "")),
-                   ([[]] * 5, 41, 49, True, True))
+                   ([[]] * 5, 41, 50, True, True))
 
     @case("EL3", "the check runs on the BUILT page and refuses like the other static findings: a page with an <iframe> added is "
                  "`BUILD-ERROR PAGE-STATIC element iframe found in index.html`, one with an `onclick` on a <p> is `attribute onclick on p`; "
