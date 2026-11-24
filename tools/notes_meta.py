@@ -97,7 +97,7 @@ CONTRACT (each line is a self-test case, written before the code)
      open_in_literature), `reader`, `date` (required) and `result`, `citations`, `difference`, `established`. known and variant need
      `result` and a citation, variant also `difference`; not_recognised forbids result, citations and difference
      (RECOGNITION-FORBIDDEN); open_in_literature needs `result`, a citation, a citation with says_open true (OPEN-NO-SAYS-OPEN)
-     and root_role `named_statement` (OPEN-ROLE, also when the role is absent). An unknown key, an unknown form and a missing key
+     and root_role `result` or `named_statement` (OPEN-ROLE on `object`, also when the role is absent). An unknown key, an unknown form and a missing key
      are UNKNOWN-KEY, BAD-VALUE and MISSING-KEY naming the group and the key.
   F3 A citation has source, where, opened_by, opened_on (non-empty strings) and optionally url (starts https://), source_date and
      says_open (exactly true or false); opened_on and source_date are real YYYY-MM-DD dates; says_open true needs source_date.
@@ -130,7 +130,9 @@ whether a note's header id matches its file name or is used by another note (onl
 notes); the SHA-256 values of the file table, and whether a quoted lean block is verbatim (check_lean_blocks.py
 does that). Title rules: only the two a script can check are checked, that a list_title is not only code spans
 and does not end in a parenthetical `(...)`; every other rule on titles (plain words, saying what the note is
-about, length, no status in the words) needs a reader. The line `sketches: S of P steps with a proof read` is NOT printed
+about, length, no status in the words) needs a reader. A group with no root_role and the form open_in_literature is OPEN-ROLE, because the role decides whether the form is
+allowed (the spec is silent on that case; this is our reading, and a role added later clears it). `established` is for
+a named statement only, also under open_in_literature. The line `sketches: S of P steps with a proof read` is NOT printed
 here: what a step is belongs to the builder, so it counts there. note_cite.py is unchanged: its --kind takes its choices from
 rh_anchor.KINDS, and a sketch cannot be valid through it for want of a basis flag (BAD-BLOCK). A sketch anchored on a list
 is asked for `item` like any block on a list. Extra keys are UNKNOWN-KEY for the outline, a group and a
@@ -595,9 +597,9 @@ def _check_recognition_object(rec, g, role, label, path, index, kinds, out):
             for i, c in enumerate(cits):
                 _check_citation(c, f"{pre} citations[{i}]", path, out)
     if form == "open_in_literature":
-        if role != "named_statement":
+        if role not in ("result", "named_statement"):
             why = f"root_role is {role!r}" if role else "this group has no root_role: the role is needed"
-            out.append(_f("OPEN-ROLE", path, None, f"{pre}: form 'open_in_literature' needs root_role 'named_statement' ({why})"))
+            out.append(_f("OPEN-ROLE", path, None, f"{pre}: form 'open_in_literature' needs root_role 'result' or 'named_statement' ({why})"))
         if isinstance(cits, list) and cits and not any(isinstance(c, dict) and c.get("says_open") is True for c in cits):
             out.append(_f("OPEN-NO-SAYS-OPEN", path, None, f"{pre}: form 'open_in_literature' needs a citation with says_open true"))
     if "established" in rec:
@@ -2804,25 +2806,40 @@ def _():
 
 
 @case("REC4", "open_in_literature: needs result, a citation and a citation that says open; difference is optional; only for a "
-              "named_statement (refused on result, object and when root_role is absent, which says the role is needed)")
+              "result or named_statement (refused on object and when root_role is absent, which says the role is needed)")
 def _():
     p = " recognition: "
     op = dict(REC, form="open_in_literature", citations=[OPENCIT])
     root = ("A.C", "baz")
     clean(_ro(_rg("named_statement", rec=op, root=root)))
     clean(_ro(_rg("named_statement", rec=dict(op, difference="Stated as a problem."), root=root)))
-    for role, root_ in (("result", ("A.B", "foo")), ("object", root)):
-        fe(_ro(_rg(role, rec=op, root=root_)),
-           [_fl("OPEN-ROLE", p + f"form 'open_in_literature' needs root_role 'named_statement' (root_role is {role!r})")], 1)
+    clean(_ro(_rg("result", rec=op, root=("A.B", "foo"))))
+    clean(_ro(_rg("result", rec=dict(op, difference="Stated as a problem."), root=("A.B", "foo"))))
+    fe(_ro(_rg("object", rec=op, root=root)),
+       [_fl("OPEN-ROLE", p + "form 'open_in_literature' needs root_role 'result' or 'named_statement' (root_role is 'object')")], 1)
     fe(_ro(_rg(None, rec=op, root=root)),
        [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"),
-        _fl("OPEN-ROLE", p + "form 'open_in_literature' needs root_role 'named_statement' (this group has no root_role: the role is needed)")], 1)
+        _fl("OPEN-ROLE", p + "form 'open_in_literature' needs root_role 'result' or 'named_statement' (this group has no root_role: the role is needed)")], 1)
     fe(_ro(_rg("named_statement", rec=dict(op, citations=[CIT]), root=root)),
        [_fl("OPEN-NO-SAYS-OPEN", p + "form 'open_in_literature' needs a citation with says_open true")], 1)
     fe(_ro(_rg("named_statement", rec=dict(op, citations=[dict(CIT, says_open=False, source_date="2020-01-31")]), root=root)),
        [_fl("OPEN-NO-SAYS-OPEN", p + "form 'open_in_literature' needs a citation with says_open true")], 1)
     for k in ("result", "citations"):
         fe(_ro(_rg("named_statement", rec=drop(op, k), root=root)), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'open_in_literature')")], 1)
+
+
+@case("REC4b", "open_in_literature on a result keeps the other rules: a citation that says open is still needed, result and citations are "
+               "still needed, and `established` stays for a named statement only (a result carrying it is ESTABLISHED-ROLE)")
+def _():
+    p = " recognition: "
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    root = ("A.B", "foo")
+    fe(_ro(_rg("result", rec=dict(op, citations=[CIT]), root=root)),
+       [_fl("OPEN-NO-SAYS-OPEN", p + "form 'open_in_literature' needs a citation with says_open true")], 1)
+    for k in ("result", "citations"):
+        fe(_ro(_rg("result", rec=drop(op, k), root=root)), [_fl("MISSING-KEY", p + f"missing key {k!r} (form 'open_in_literature')")], 1)
+    fe(_ro(_rg("result", rec=dict(op, established="not_traced"), root=root)),
+       [_fl("ESTABLISHED-ROLE", p + "established is only for root_role 'named_statement' (root_role is 'result')")], 1)
 
 
 @case("CIT1", "a citation: source, where, opened_by, opened_on are required non-empty strings; opened_on and source_date are real "
