@@ -624,13 +624,32 @@ def element_problems(page):
     """What the BUILT page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list,
     `attribute <name> on <element>` for each attribute an allowed element may not carry, and `element <name> outside head` for an element of
     HIDING_ELEMENTS (style, title) after the opening run of the page. The BUILT page is read with html.parser, start tags and attribute NAMES; the
-    one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one); a comment and the doctype are not
-    looked at. It is a name check on the tags as html.parser sees them, not a browser-grade parse."""
+    one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one). Every comment is `comment`
+    (an ordinary one too: stricter than a browser needs, because html.parser and a browser disagree where `<!-->` ends), every processing
+    instruction is `processing instruction`, and every declaration but ONE `<!doctype html>` before the first start tag (compared lower-cased and
+    stripped) and every unknown declaration (`<![CDATA[`) is `declaration`. It is a name check on the tags as html.parser sees them, not a
+    browser-grade parse."""
     found = set()
     run = [True]   # the page is still in its opening run
+    seen = {"start": False, "decl": False}   # a start tag has been seen; a declaration has been seen
 
     class P(html.parser.HTMLParser):
+        def handle_comment(self, data):
+            found.add("comment")
+
+        def handle_pi(self, data):
+            found.add("processing instruction")
+
+        def unknown_decl(self, data):
+            found.add("declaration")
+
+        def handle_decl(self, decl):
+            if seen["start"] or seen["decl"] or decl.strip().lower() != "doctype html":
+                found.add("declaration")
+            seen["decl"] = True
+
         def handle_starttag(self, tag, attrs):
+            seen["start"] = True
             if tag in HIDING_ELEMENTS and not run[0]:
                 found.add(f"element {tag} outside head")
             if tag not in _OPENING_RUN:
