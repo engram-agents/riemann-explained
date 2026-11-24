@@ -113,6 +113,15 @@ CONTRACT (each line is a self-test case, written before the code)
  Real shape: an outline in the shape the pilot uses (depth 4, premises that name a child) passes; the same with a
  draft-only key added fails UNKNOWN-KEY. Cases REAL1 REAL2.
 
+ Title (cases TTL1 to TTL4). A group may carry the optional key `title`: a plain string, not empty, with no blank at either end and no
+ line break (any other value, an object or a list included, is BAD-VALUE naming the group), whose FIRST character is not a lowercase letter
+ (`c.isalpha() and c.islower()`: BAD-VALUE `title must start with a capital letter or a character that is not a lowercase letter`; a digit,
+ a quote, a bracket, a symbol and a letter with no case pass; a Greek or accented lowercase initial is refused too, the author rephrases;
+ a title with a shape fault has that finding alone). The author writes the capital: no code changes author text. The page prints it on a card with no claim and
+ on a definition or structure card; a group with a claim whose root is a result and a title is TITLE-WITH-CLAIM (an error), because the page
+ would ignore a title there and the author must choose. The ONE predicate `definition_card(role, kinds)` decides (build_site loads it too): a usable root_role decides, else the kinds of ALL the
+ roots (no root a theorem or lemma, at least one root; an unknown kind is a definition card); a root with no row, or with several, is not judged. A bad title is BAD-VALUE alone.
+
  Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
   F1 root_role is `result`, `named_statement` or `object` (any other value, or a non-string, is ROOT-ROLE) and belongs to a claim (on
@@ -307,9 +316,27 @@ ERROR, LISTING = "error", "listing"
 NOCODE = "CHECKED NOTHING"
 TOP_KEYS = ("groups", "release")
 GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
-GROUP_OPTIONAL = ("recognition", "root_role")
+GROUP_OPTIONAL = ("recognition", "root_role", "title")
 ROOT_ROLES = ("result", "named_statement", "object")
 RESULT_KINDS = ("theorem", "lemma")   # the kinds of the declaration table that take the role `result`; every other kind does not
+
+
+def definition_card(role, kinds):
+    """THE one predicate of a definition (or structure) card, used by this checker and by build_site.py (it loads this file), so the two
+    cannot drift. `role` is the group's usable root_role or None; `kinds` are the declaration-table kinds of ALL its roots. A usable
+    root_role decides: named_statement and object are definition cards, result is not (a null claim has no role). With no role, a card is a
+    definition card when it has a root and NO root is a theorem or lemma (RESULT_KINDS): one theorem or lemma root among several makes it a
+    result card; an unknown or empty kind is not a result kind, so it counts as a definition card; no root is not a definition card."""
+    if role in ("named_statement", "object"):
+        return True
+    if role == "result":
+        return False
+    return bool(kinds) and not any(k in RESULT_KINDS for k in kinds)
+
+
+def needs_title(claim_null, role, kinds):
+    """A card needs a title when it has no claim or is a definition card (build_site lists it TITLE-MISSING without one)."""
+    return bool(claim_null) or definition_card(role, kinds)
 # While False a group with a claim need not carry root_role (ROOT-ROLE-MISSING is then a listing). The real outline has no roles
 # yet; once it carries one on every claim this constant is set to True and a claim without a role becomes an error.
 REQUIRE_ROOT_ROLE = False
@@ -529,12 +556,56 @@ def _check_group_shape(g, label, path, out):
             _check_claim(g["claim"], label, path, out)
         else:
             bad("claim must be an object or null")
+    if "title" in g:
+        why = _title_problem(g["title"])
+        if why == "shape":
+            bad("title must be a non-empty string with no blank at either end and no line break")
+        elif why == "capital":
+            bad("title must start with a capital letter or a character that is not a lowercase letter")
+
+
+def _title_problem(v):
+    """None for a good title, else "shape" or "capital". A title is a plain string: not empty, no blank at either end, one line (any line
+    break `str.splitlines` knows is one) and its FIRST character is not a lowercase letter (an uppercase letter, a digit, a quote, a bracket,
+    a symbol and a letter with no case all pass: code never changes the author's text, so the author writes the capital). The shape is judged
+    first, so a title with both faults has the shape finding alone."""
+    if not (isinstance(v, str) and v != "" and v == v.strip() and len(v.splitlines()) == 1):
+        return "shape"
+    return "capital" if v[0].isalpha() and v[0].islower() else None
+
+
+def _title_ok(v):
+    return _title_problem(v) is None
 
 
 # ---- root_role and recognition (F24): the role is compared with the kind class here, and the builder reads it
 def _role_of(g):
     r = g.get("root_role")
     return r if isinstance(r, str) and r in ROOT_ROLES else None
+
+
+def _check_titles(data, path, index, kinds):
+    """TITLE-WITH-CLAIM for each group with a claim, a well-formed title and a root that is a result, in the order of the outline
+    (a bad title is the shape finding and is not judged twice). The role decides when the group has a usable root_role, else the kind of
+    the roots in the declaration table by the shared predicate definition_card; a root with no row or several rows is not judged here."""
+    out = []
+    groups = data.get("groups") if isinstance(data, dict) and isinstance(data.get("groups"), list) else []
+    for i, g in enumerate(groups):
+        if not (isinstance(g, dict) and isinstance(g.get("claim"), dict) and "title" in g and _title_ok(g["title"])):
+            continue
+        label = f"group {g.get('id')!r}" if _str(g.get("id")) else f"groups[{i}]"
+        role = _role_of(g)
+        result = False
+        if role is not None:
+            result = not definition_card(role, [])
+        else:   # no role: the kinds of ALL the roots decide (a group with a claim has one root; ROOT-COUNT says so when it has more)
+            roots = g.get("roots")
+            if isinstance(roots, list) and roots and all(_decl_entry_ok(e) and len(index.get((e["module"], e["name"]), [])) == 1 for e in roots):
+                result = not definition_card(None, [kinds[(e["module"], e["name"])][0] for e in roots])
+        if result:
+            out.append(_f("TITLE-WITH-CLAIM", path, None, f"{label}: title on a group with a claim whose root is a result; "
+                          "the page prints no title there (take the title out)"))
+    return out
 
 
 def _is_date(v):
@@ -1454,6 +1525,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     rec_counts = _recognition_counts(rec_forms)
     sum_f = _recognition_sum_finding(rec_forms)
     rec_found += [sum_f] if sum_f else []
+    rec_found += _check_titles(odata, os.path.basename(outline), ctx.index, ctx.kinds)
     found = found + rec_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions
     lines = [_render(f) for f in found + words]
     errors = sum(1 for f in found if f[4] == ERROR)
@@ -2979,6 +3051,117 @@ def _():
     finally:
         globals()["REQUIRE_ROOT_ROLE"] = saved
     eq(REQUIRE_ROOT_ROLE, False, "restored")
+
+
+# ---- the card title (F47, F48): an optional author-written `title` on a group
+TITLE_BAD = ": title must be a non-empty string with no blank at either end and no line break"
+TITLE_CLAIM = ": title on a group with a claim whose root is a result; the page prints no title there (take the title out)"
+
+
+def _tg(title="The top condition", **kw):
+    """A group with a null claim and a title (the root is a theorem unless a root is given)."""
+    return dict(G("g1", **kw), title=title)
+
+
+@case("TTL1", "a title is allowed on a group with a null claim (a theorem root or a def root), on a definition with a claim, on a structure "
+              "with a claim; refused as TITLE-WITH-CLAIM on a group with a claim whose root is a result (a theorem by role, a lemma by kind "
+              "when there is no role); a result with a null claim is clean; a group without a title is unchanged")
+def _():
+    clean(_ro(_tg()))                                            # null claim, theorem root
+    clean(_ro(_tg(roots=[R("A.C", "baz")])))                     # null claim, def root
+    clean(_ro(_tg(roots=[R("A.B", "foo"), R("A.C", "baz")])))    # null claim, several roots
+    clean(_ro(_rg("named_statement", root=("A.C", "baz"), title="The top condition")))   # a definition with a claim
+    clean(_ro(_rg("object", root=("A.E", "stru"), title="The bundle")))                  # a structure with a claim
+    fe(_ro(_rg("result", title="The top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+    fe(_ro(_rg("result", root=("A.E", "lem"), title="The top result")), [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+    saved = REQUIRE_ROOT_ROLE   # the two cases below are about a group with no role: the flag that makes that an error is set False for them
+    try:
+        globals()["REQUIRE_ROOT_ROLE"] = False
+        fe(_ro(_rg(None, root=("A.E", "lem"), title="The top result")),                  # no role: the kind decides, as SKETCH-ROLE does
+           [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM)], 1)
+        fe(_ro(_rg(None, root=("A.C", "baz"), title="The top condition")),               # no role, a def root: allowed
+           [_fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")], 0)
+    finally:
+        globals()["REQUIRE_ROOT_ROLE"] = saved
+    clean(_ro(_rg("result")))
+    clean(_ro(G("g1")))
+    r = _ro(_rg("result", title="The top result"))
+    eq(r.lines[-1], "1 notes, 1 findings, 0 warnings", "TITLE-WITH-CLAIM is an error")
+
+
+@case("TTL2", "a title is a plain string: an empty one, a blank one, one with a blank at either end, one with a line break (LF, CR, U+2028), "
+              "a number, null, a boolean, a list and an object (a reader, a date, conditions or a recognition inside it) are BAD-VALUE naming "
+              "the group and the key; a bad title on a result with a claim is BAD-VALUE alone; control: a plain title is clean")
+def _():
+    for bad in ("", "   ", " X", "X ", "A\nB", "A\rB", "A\u2028B", "X\n", 3, None, True, ["X"],
+                {"reader": "R", "date": "2026-11-23"}, {"text": "x", "conditions": ["c"]}, {"recognition": REC}):
+        fe(_ro(_tg(bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
+        fe(_ro(_rg("result", title=bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
+        fe(_ro(_rg("named_statement", root=("A.C", "baz"), title=bad)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
+    clean(_ro(_tg("A noun phrase with `code` and $x$")))
+    clean(_ro(_tg("A title with an inner  double blank")))
+
+
+TITLE_CAP = ": title must start with a capital letter or a character that is not a lowercase letter"
+
+
+@case("TTL4", "F48 (g): a title whose FIRST character is a lowercase letter (`c.isalpha() and c.islower()`) is BAD-VALUE naming the group and the "
+              "key, on a group with a null claim, a definition with a claim, and a result with a claim (there BAD-VALUE alone, not "
+              "TITLE-WITH-CLAIM): Latin `the top condition`, accented `étale cover`, Greek `ζ-function` (an author can rephrase) and a single "
+              "lowercase letter; a title that starts with an uppercase letter, a digit, a quote, a bracket, a symbol or a letter with no case "
+              "passes; the blank, empty and line-break rules are unchanged and win when both apply (one finding, the shape message)")
+def _():
+    for bad in ("the top condition", "\u00e9tale cover", "\u03b6-function", "x", "\u00df-factor"):
+        fe(_ro(_tg(bad)), [_fl("BAD-VALUE", TITLE_CAP)], 1)
+        fe(_ro(_rg("named_statement", root=("A.C", "baz"), title=bad)), [_fl("BAD-VALUE", TITLE_CAP)], 1)
+        fe(_ro(_rg("result", title=bad)), [_fl("BAD-VALUE", TITLE_CAP)], 1)
+    for ok_ in ("The top condition", "2-adic valuation", "(Green) input", "\u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac", '"Quoted" term',
+                "\u221e-category", "\u4e2d\u6587", "\u00c9tale cover", "X"):
+        clean(_ro(_tg(ok_)))
+        clean(_ro(_rg("named_statement", root=("A.C", "baz"), title=ok_)))
+    for both in (" the top", "the top ", "the\nx", "the top\u2028x", "", "   "):   # lowercase and a shape fault: the shape message alone
+        fe(_ro(_tg(both)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
+
+
+@case("TTL5", "the ONE predicate of a definition card, definition_card(role, kinds), literal: a usable root_role decides (named_statement and "
+              "object: definition; result: not), else the table kinds of ALL the roots decide: a definition card when there is a root and no "
+              "root is a theorem or lemma; an unknown or empty kind counts as a definition card; no root is not one; needs_title is "
+              "`no claim or a definition card`")
+def _():
+    table = [("named_statement", [], True), ("object", ["theorem"], True), ("result", ["def"], False), ("result", [], False),
+             (None, ["def"], True), (None, ["structure"], True), (None, ["theorem"], False), (None, ["lemma"], False),
+             (None, ["theorem", "def"], False), (None, ["def", "theorem"], False), (None, ["def", "structure"], True),
+             (None, ["inductive", "instance"], True), (None, ["axiom"], True), (None, [""], True), (None, [], False)]
+    eq([(r, k, definition_card(r, k)) for r, k, _w in table], table, "the predicate")
+    eq([needs_title(c, r, k) for c, r, k in ((True, None, ["theorem"]), (False, None, ["theorem"]), (False, None, ["def"]),
+                                             (False, "object", ["def"]), (True, "result", []), (False, "result", ["def"]))],
+       [True, False, True, True, True, False], "needs_title")
+
+
+@case("TTL6", "a group with a claim has ONE root (ROOT-COUNT) so `several roots + a claim + a theorem root + a title` is refused there: with no "
+              "root_role the title is judged over ALL the roots by the shared predicate, so [theorem, def] and [def, theorem] are each ROOT-COUNT "
+              "and TITLE-WITH-CLAIM, [def, structure] is ROOT-COUNT alone; a null claim with the same roots is not judged (no finding)")
+def _():
+    rc = ": a group with a claim has exactly one root, not 2"
+    for roots, twc in (([R("A.B", "foo"), R("A.C", "baz")], True), ([R("A.C", "baz"), R("A.B", "foo")], True),
+                       ([R("A.C", "baz"), R("A.E", "stru")], False)):
+        g = dict(drop(G("g1", roots=roots, claim=CLAIM), "root_role"), title="The step")
+        fe(_ro(g), [_fl("ROOT-COUNT", rc), _fl("ROOT-ROLE-MISSING", ": no root_role (result, named_statement or object)")]
+           + ([_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)] if twc else []), 1)
+        clean(_ro(dict(G("g1", roots=roots), title="The step")))
+
+
+@case("TTL3", "the rest of the outline is unchanged by the key: any other key is still UNKNOWN-KEY beside a title, the count line is the same "
+              "with and without titles, and the findings of a titled and an untitled group come in the order of the outline")
+def _():
+    fe(_ro(dict(_tg(), titel="x")), [_fl("UNKNOWN-KEY", ": unknown key 'titel'")], 1)
+    fe(_ro(dict(_tg(), reader="R")), [_fl("UNKNOWN-KEY", ": unknown key 'reader'")], 1)
+    want = "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 0 premise links"
+    plain = _ro(G("g1"), G("g2", order=2))
+    titled = _ro(_tg(), dict(G("g2", order=2), title="The second"))
+    eq(([want in x.lines for x in (plain, titled)], plain.f, titled.f), ([True, True], [], []), "count line")
+    r = _ro(_rg("result", title="One"), _rg("result", gid="g2", order=2, title="Two"), _rg("result", gid="g3", order=3))
+    fe(r, [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM, "g1"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM, "g2")], 1)
 
 
 @case("REC1b", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
