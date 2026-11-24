@@ -75,6 +75,28 @@ wording and the two addresses are the strings keys `edition_note_first_screen`, 
 and `edition_href_blob`; the addresses must be https and are not sentences. The static check lets an `<a class="edition-link">` with an
 https `href` through, by class token, as it does a citation anchor. A page with no group at edition 2 is byte-equal to a page built before.
 
+**Editions of a note (F44B).** A note's header may carry `edition` (the integer 1 or 2; absent is 1) and `edition_date` (a real date
+`YYYY-MM-DD`, not later than the day of the run; required at edition 2, refused at edition 1 or absent). `rh_anchor.header_problems` checks the
+shape and `notes_meta.py` reports each bad value as a `BAD-VALUE` on the header line (edition 3 or more says `edition 3 needs a ruling`).
+With `--base REV`, `notes_meta.py` compares the note without its anchor lines against the note at REV (a base with no header, or no
+`edition`, is edition 1). A bump to edition 2 on a note whose text changed is one `EDITION` listing, `EDITION <note> +A -R lines, edition 1
+to 2, <date>`, where A and R are the lines added and removed by `difflib.SequenceMatcher` over the lines (a replaced run counts on both
+sides, a moved run counts on both); the note then has no `BYTE-DIFF` and no `ADDITION`. A bump with the text unchanged is `EDITION-EMPTY`
+(an error). A note at edition 2 at REV follows the ordinary rules (a dated addition is legal, any other change is `BYTE-DIFF`); edition 1 or
+none after edition 2 is `EDITION-DOWN`, a changed `edition_date` is `EDITION-DATE-CHANGED`, and edition 2 on a note that is not at REV is
+`EDITION-NEW-NOTE` (errors). A base whose edition is not usable is an `EDITION-BASE` listing and the rule does not run for that note. For a
+note at edition 2, `EDITION-BLOCK <note> <block id> element <n> <kind> -> <n> <kind>` lists each block (matched by id) whose target element
+changed its place in the note (the n-th element, headings counted) or its kind, and `EDITION-BLOCK <note> <block id> gone` a block that is
+no longer there; these are listings and say nothing about wording. The run prints `edition check: N groups compared to REV; K notes compared
+to REV` and `editions: K of N notes and J of M groups at edition 2`.
+`build_site.py` writes `editions` into each group file and into `data.js`: a list of `{"note": "<file>", "edition": 2, "date": "..."}` for the
+notes of that card (the header's `group`) at edition 2, in note order, `[]` when none; `manifest.json` keeps `editions` as the number of groups at
+edition 2 and adds `note_editions`, the number of notes at edition 2. The first-screen sentence appears when a group or a note is at edition 2,
+with the latest date over both. A card's Evidence section gets, after the group's own paragraph, one `edition_note_card` paragraph for each
+edition-2 note of the card whose date differs from the group's date at edition 2 (all of them when the group is at edition 1), each with the
+note's date and a link made from `edition_href_blob` with `{file}` = `docs/<note file>`. A page with no group and no note at edition 2 is
+byte-equal to a page built before.
+
 **`tools/note_cite.py NOTE DECLS_TSV --at LINE --decl FULL.NAME --kind KIND`** writes one block anchor, so nobody
 types the JSON. It finds the declaration's module in `decls.tsv` (`--module` picks one when the name is in several),
 takes the element of the note that holds line `--at` (a paragraph, table, list or lean block, or the anchor lines just
