@@ -431,8 +431,10 @@ string; TITLE-WITH-CLAIM on a group with a claim whose root is a result). A card
 the strings key `title_label` (`What this step is:`) in <span class="title-label"> and the title in <span class="title-text">, and
 directly under the heading the `no_claim_label` in <p class="no-claim-label">; when its roots are all without a proof (a definition or
 structure card) the label is `definition_label` (`Definition.`, <span class="definition-label">) instead, with no joining word. A
-definition or structure card with a claim and a title prints `definition_label`, the title, `definition_join` (`is defined as:`,
-<span class="definition-join">) and then the claim as before, its conditions list directly under the heading. A claim and no title, and
+definition or structure card with a claim and a title has the heading `definition_label` and the title only (F48 i); the statement is
+the FIRST PARAGRAPH under the heading, <p class="definition-statement">: the title, `definition_join` (`is defined as:`) and the claim
+as a claim is rendered (same render, formulas logged under the card id), in normal weight (no CSS of its own); the conditions list
+follows that paragraph, then the rest as before. A definition card with no claim prints no join anywhere (TT18). A claim and no title, and
 no claim and no title, print as before; a result card with a claim never shows a title. The title goes through _rich (span rule, formulas)
 with the card id as `where`. The CSS rule `.title-text { font-weight: normal; }` keeps the title out of the heading's
 weight (normal weight, no colour: the page's CSS holds no colour). title_of, the premise row's
@@ -2158,10 +2160,11 @@ def _render_page(m, s, facts, dirty):
         if sm["claim"]:
             if ttl is None:
                 o.append(f'<h3 class="claim">{_rich(sm["claim"]["text"], where=gid)}</h3>')
-            else:   # F48 (c): the term, then what it is defined as
+            else:   # F48 (c), (i): the heading is the label and the term; the statement is the first paragraph under it
                 o.append(f'<h3 class="claim"><span class="definition-label">{_e(s["definition_label"])}</span> '
-                         f'<span class="title-text">{_rich(ttl, where=gid)}</span> '
-                         f'<span class="definition-join">{_e(s["definition_join"])}</span> {_rich(sm["claim"]["text"], where=gid)}</h3>')
+                         f'<span class="title-text">{_rich(ttl, where=gid)}</span></h3>')
+                o.append(f'<p class="definition-statement">{_rich(ttl, where=gid)} {_e(s["definition_join"])} '
+                         f'{_rich(sm["claim"]["text"], where=gid)}</p>')
             if sm["claim"]["conditions"]:
                 o.append('<ul class="conditions">' + "".join(f"<li>{_rich(c, where=gid)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
         elif ttl is None:
