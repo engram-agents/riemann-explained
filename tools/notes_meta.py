@@ -3210,6 +3210,116 @@ def _():
     clean(_ro(_rg(rec=dict(REC, citations=[dict(CIT, source="New novel original", where="First, assumed")], reader="New", date="2026-11-23"))))
 
 
+NOTE_NR = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+NOTE_TEXT = "The release's own composition of three inputs; none of the three is a statement we found in the literature."
+
+
+@case("NOTE1", "not_recognised may carry one optional `note`, a non-empty string (empty, whitespace-only, null, a list, a number and "
+               "a boolean are BAD-VALUE naming group and key); a note and no other key is clean; result, citations and difference "
+               "stay RECOGNITION-FORBIDDEN beside a note; the sentences are not counted")
+def _():
+    p = " recognition: "
+    clean(_ro(_rg(rec=dict(NOTE_NR, note=NOTE_TEXT))))
+    clean(_ro(_rg(rec=dict(NOTE_NR, note="One. Two. Three. Four."))))
+    clean(_ro(_rg(rec=NOTE_NR)))
+    for bad in ("", " ", "\n\t ", None, [], ["x"], 5, True, {"a": "b"}):
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=bad))), [_fl("BAD-VALUE", p + "note must be a non-empty string")], 1)
+    for k, v in (("result", "x"), ("citations", [CIT]), ("difference", "d")):
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=NOTE_TEXT, **{k: v}))),
+           [_fl("RECOGNITION-FORBIDDEN", p + f"key {k!r} is not allowed with form 'not_recognised'")], 1)
+
+
+@case("NOTE2", "`note` on known, variant or open_in_literature is RECOGNITION-FORBIDDEN naming the form and the key (the value is not "
+               "judged there); on a group whose form is missing or unknown the form finding alone is given, no note finding")
+def _():
+    p = " recognition: "
+    var = dict(REC, form="variant", difference="d")
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    for form, rec, role, root in (("known", REC, "result", ("A.B", "foo")), ("variant", var, "result", ("A.B", "foo")),
+                                  ("open_in_literature", op, "named_statement", ("A.C", "baz"))):
+        want = [_fl("RECOGNITION-FORBIDDEN", p + f"key 'note' is not allowed with form {form!r}")]
+        fe(_ro(_rg(role, rec=dict(rec, note=NOTE_TEXT), root=root)), want, 1)
+        fe(_ro(_rg(role, rec=dict(rec, note=""), root=root)), want, 1)
+        clean(_ro(_rg(role, rec=rec, root=root)))
+    fe(_ro(_rg(rec=dict(drop(REC, "form"), note=NOTE_TEXT))), [_fl("MISSING-KEY", p + "missing key 'form'")], 1)
+    fe(_ro(_rg(rec=dict(REC, form="novel_form", note=NOTE_TEXT))),
+       [_fl("BAD-VALUE", p + "form must be one of 'known', 'variant', 'not_recognised', 'open_in_literature', not 'novel_form'")], 1)
+
+
+@case("NOTE3", "the word rules of result and difference apply to `note` through the same function: novel and unprecedented are "
+               "RECOGNITION-WORD-REFUSED (exit 1), new, original, first, assume, assumes, assumed are RECOGNITION-WORD listings "
+               "(exit 0), whole words in any case and inside a backtick span; Newton, renewal and firstly are not listed")
+def _():
+    def refused(w):
+        return _fl("RECOGNITION-WORD-REFUSED", f" recognition note: {w!r} is never said of a statement")
+
+    def listed(w):
+        return _fl("RECOGNITION-WORD", f" recognition note: {w!r} (a prompt to the signer and the reviewer, not a verdict)")
+    for w in ("novel", "unprecedented"):
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=f"We found a {w} thing"))), [refused(w)], 1)
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=f"{w.upper()}, and `{w}` again"))), [refused(w)], 1)
+    for w in ("new", "original", "first", "assume", "assumes", "assumed"):
+        r = _ro(_rg(rec=dict(NOTE_NR, note=f"The {w} step")))
+        fe(r, [listed(w)], 0)
+        eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", w)
+        fe(_ro(_rg(rec=dict(NOTE_NR, note=f"{w.upper()} here, `{w}` again"))), [listed(w)], 0)
+    fe(_ro(_rg(rec=dict(NOTE_NR, note="New, then novel, then first"))), [listed("new"), refused("novel"), listed("first")], 1)
+    for t in ("Newton", "renewal", "firstly", "novelty", "assumption"):
+        clean(_ro(_rg(rec=dict(NOTE_NR, note=t))))
+
+
+@case("NOTE4", "a note changes no count: a not_recognised with a note counts in N as one case, the recognition line and the note "
+               "line are those of the same outline without the note")
+def _():
+    other = _rg(rec=REC, gid="g2", order=2)
+    with_note = _ro(_rg(rec=dict(NOTE_NR, note=NOTE_TEXT)), other)
+    without = _ro(_rg(rec=NOTE_NR), other)
+    fe(with_note, [], 0)
+    ok(_rl(1, 0, 1, 0, 0, 2) in with_note.lines, with_note.out)
+    eq(with_note.lines, without.lines, "every output line")
+
+
+@case("UNIQ1", "the case registry refuses an id registered twice at decoration time, raising ValueError that names the id and both "
+               "descriptions; the second registration is refused whatever the descriptions (equal or not) and whatever the id "
+               "(with or without a letter suffix); distinct ids register; a refused case is not added")
+def _():
+    reg = []
+    f1, f2 = (lambda: None), (lambda: None)
+    _register_case(reg, "A1", "first one", f1)
+    _register_case(reg, "A1b", "other id", f2)
+    eq([c[0] for c in reg], ["A1", "A1b"], "distinct ids register")
+    for cid, d1, d2 in (("A1", "first one", "second one"), ("A1", "first one", "first one"), ("A1b", "other id", "different"),
+                        ("A1b", "other id", "other id")):
+        try:
+            _register_case(reg, cid, d2, f2)
+        except ValueError as e:
+            eq(str(e), f"self-test case id {cid!r} is registered twice: {d1!r} and {d2!r}", "message")
+        else:
+            raise AssertionError(f"{cid}: a second registration was accepted")
+    eq(len(reg), 2, "refused cases are not added")
+    # the decorator itself, on a scratch registry swapped in for the call
+    saved = list(_CASES)
+    try:
+        _CASES[:] = [("ZZ9", "held", f1)]
+        try:
+            case("ZZ9", "again")(f2)
+        except ValueError as e:
+            eq(str(e), "self-test case id 'ZZ9' is registered twice: 'held' and 'again'", "decorator message")
+        else:
+            raise AssertionError("the decorator accepted a repeated id")
+        eq(_CASES, [("ZZ9", "held", f1)], "unchanged")
+    finally:
+        _CASES[:] = saved
+    eq(_CASES, saved, "the real registry is restored")
+
+
+@case("UNIQ2", "every id in the real registry is unique (the runner's own list, checked here independently of the decorator)")
+def _():
+    ids = [c[0] for c in _CASES]
+    eq(sorted(x for x in set(ids) if ids.count(x) > 1), [], "repeated ids")
+    ok("REC1" in ids and "REC1b" in ids, "the repeated REC1 was renamed REC1b, the first kept")
+
+
 @case("EST1", "established is 'not_traced' or an object {by, reader, date}; by resolves to exactly one row whose kind is theorem or "
               "lemma; an unknown key, a missing key, a bad by, an unresolved or ambiguous by and a wrong kind are refused; it is "
               "allowed under any form, for a named_statement only")
