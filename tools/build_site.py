@@ -158,10 +158,10 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      title only; its reader and date are in the Evidence block list (the who-span of its block). Cases PV1 to PV12, and the cases that
      moved with it (R6 B7a B7c B7f F1b H1 C1 C1b RDR1 PRF1 PRF2 PH1 PHR1 PHR2 PHR4 PHR5 PHR6 PHR7 BT2 RD1 RD2 RD3 RL1 RE1 RS3 PB1 PB3 DF1
      DF3 DF4 SK2 SK8 LK1 LK2 LK3 ESC1 MK1).
-  F26B-E THE ELEMENTS OF THE PAGE. One module-level list, ALLOWED_ELEMENTS (41 elements, 50 element-attribute pairs), names every element the
+  F26B-E THE ELEMENTS OF THE PAGE. One module-level list, ALLOWED_ELEMENTS (41 elements, 51 element-attribute pairs), names every element the
      built page may hold and the attributes of each: the 29 elements the builder emits (measured over the self-test fixtures and a build of
      the notes of the repository) and the 12 of MathML (math mrow mi mn mo msub msup msubsup mover munder munderover mspace; attributes
-     mathvariant, stretchy, form on those only, and width on mspace alone). `element_problems(page)` reads the BUILT page with html.parser; an element or an
+     mathvariant, stretchy, form on those only, width on mspace alone and accent on mover alone). `element_problems(page)` reads the BUILT page with html.parser; an element or an
      attribute outside the list is `PAGE-STATIC element <name>` or `PAGE-STATIC attribute <name> on <element>` (exit 1, nothing written),
      the same code as the request-making findings. Cases EL1 EL2 EL3.
   F22b A block anchored only on roots that are no theorem or lemma is framed by `argument_frame_no_proof`; the not-applicable line
@@ -579,8 +579,9 @@ _MATHML_ELEMENTS = ("math", "mrow", "mi", "mn", "mo", "msub", "msup", "msubsup",
 _MATHML_ATTRIBUTES = ("mathvariant", "stretchy", "form")
 # Every element the built page may hold, with the attributes each may carry: the 29 elements the builder emits (measured over the
 # self-test fixtures and a build of the notes of the repository, not guessed) and the 12 of MathML Core that the formula converter writes
-# (F26B), with mathvariant, stretchy and form on the MathML elements only, and width on <mspace> alone. 41 elements, 50 element-attribute pairs.
+# (F26B), with mathvariant, stretchy and form on the MathML elements only, width on <mspace> alone and accent on <mover> alone. 41 elements, 51 element-attribute pairs.
 ALLOWED_ELEMENTS = dict(_HTML_ELEMENTS, **{t: _MATHML_ATTRIBUTES for t in _MATHML_ELEMENTS})
+ALLOWED_ELEMENTS["mover"] = _MATHML_ATTRIBUTES + ("accent",)   # the overline of \\bar
 ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element that may carry a width: the spacing commands of a formula
 
 
