@@ -1572,7 +1572,9 @@ CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family
        "code { overflow-wrap: anywhere; }\n"
        "mi { text-transform: none; font-style: italic; }\n"   # a lone <mi> must not be mapped to the math-italic block, which no common font has
        'mi[mathvariant="normal"] { font-style: normal; }\n'
-       ".title-text { font-weight: normal; }")   # F47: the title is not in the claim's heading weight (the page's CSS has no colour)
+       ".title-text { font-weight: normal; }\n"   # F47: the title is not in the claim's heading weight (the page's CSS has no colour)
+       # a formula wider than the line scrolls inside itself (a phone); the vertical axis is clipped, or the engine draws a scroll control beside every short formula
+       "math { max-width: 100%; overflow-x: auto; overflow-y: clip; }")
 
 
 def _e(x):
@@ -4029,13 +4031,13 @@ def _selftest_cases():
 
     @case("R2", "the first screen counts steps per fact (`Statements read: 1 of 3 steps.`, `Proofs read: 1 of 3 steps.`) and the open "
                 "blocks once (`Questions written down in these notes: 1.`); a card of a group with several roots (g2) counts "
-                "declarations; no percent sign and no `of the proof` anywhere on the page")
+                "declarations; no percent sign in the text of the page (its style element is left out: the formula rule says `100%`) and no `of the proof` anywhere on it")
     def _():
         dom = _dom(_base().page)
         facts = [li.text() for li in dom.find("ul", "facts")[0].find("li")]
         g2 = _card(_base(), "g2")
         return _eq((facts, g2.find("p", "statement")[0].text(), g2.find("p", "proof")[0].text(),
-                    g2.find("p", "open-items")[0].text(), "%" in _base().page, "of the proof" in _base().page),
+                    g2.find("p", "open-items")[0].text(), "%" in " ".join(_page_text(_base().page)), "of the proof" in _base().page),
                    (["Statements read: 1 of 3 steps.", "Proofs read: 1 of 3 steps.", "Questions written down in these notes: 1."],
                     "Statements read: 1 of 2 declarations.", "Proofs read: 0 of 2 declarations.", "Questions written down: 1.",
                     False, False))
@@ -7441,6 +7443,20 @@ def _selftest_cases():
         src = {"A/B.lean": LEAK + "\n"}
         r = [_leaks(notes=_bn(para="[" + LEAK + "](06-x.md)", last="$x$"), src=src), _leaks(notes=_bn(para="[short](06-x.md)", last="$x$"), src=src)]
         return _eq([(x[0], x[2]) for x in r], [(1, False), (0, True)])
+
+    @case("PW1", "a formula wider than the line scrolls INSIDE itself on a narrow screen instead of widening the page: the page CSS holds, once, the rule "
+                 "`math { max-width: 100%; overflow-x: auto; overflow-y: clip; }`, in the built page's <style> and nowhere else on the page; the "
+                 "vertical axis is `clip`, not the word that R4a forbids, and not left to `auto` (the engine would then draw a vertical scroll control "
+                 "beside every short formula); no new element and no attribute (the allow-list is unchanged and the static checks stay green); "
+                 "a case on the text cannot show the scrolling, which was measured in a headless Chromium (`docs/tools.md`)")
+    def _():
+        rule = "math { max-width: 100%; overflow-x: auto; overflow-y: clip; }"
+        b = _build(notes=_notes(arg_text="A $x$ and $\\Gamma$ here"))
+        style = b.page.split("<style>")[1].split("</style>")[0]
+        outside = b.page.replace(style, "")
+        return _eq((CSS.count(rule), style.count(rule), rule in outside, "hidden" in CSS.lower(), "overflow-y: auto" in CSS,
+                    static_problems(b.page, b.text("data.js")), element_problems(b.page), b.rc),
+                   (1, 1, False, False, False, [], [], 0))
 
     @case("MS1", "the page CSS makes a lone <mi> render without the browser's math-italic mapping (which needs glyphs no common font has): it holds "
                  "`mi { text-transform: none; font-style: italic; }` and `mi[mathvariant=\"normal\"] { font-style: normal; }` (so the words of "
