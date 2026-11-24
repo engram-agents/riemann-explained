@@ -2746,6 +2746,11 @@ def _():
         fe(_ro(_rg("result", root=root)), [_fl("ROOT-ROLE", res.format(root[0], root[1], kind))], 1)
         clean(_ro(_rg("named_statement", root=root)))
         clean(_ro(_rg("object", root=root)))
+    for root, kind in ((("A.E", "cls"), "class"), (("A.E", "inst"), "instance")):   # the two kinds of the table the list above left out
+        d = _ro(_rg("result", root=root), decls=DECLS_K + f"{root[0]}\t{root[1]}\t{kind}\t11\t12\ttext-extent\n")
+        fe(d, [_fl("ROOT-ROLE", res.format(root[0], root[1], kind))], 1)
+        for role in ("named_statement", "object"):
+            clean(_ro(_rg(role, root=root), decls=DECLS_K + f"{root[0]}\t{root[1]}\t{kind}\t11\t12\ttext-extent\n"))
     for root, kind in ((("A.B", "foo"), "theorem"), (("A.E", "lem"), "lemma")):
         clean(_ro(_rg("result", root=root)))
         for role in ("named_statement", "object"):
@@ -2858,6 +2863,76 @@ def _():
 
 
 SD_MSG = "source_date must be a date YYYY, YYYY-MM or YYYY-MM-DD"
+
+
+@case("NUL1", "a null result or difference is refused like an empty one, on every form that takes the key; on not_recognised the key's "
+              "presence is the offence (RECOGNITION-FORBIDDEN) whatever the value, null, empty string or empty list")
+def _():
+    p = " recognition: "
+    bad = lambda k: [_fl("BAD-VALUE", p + f"{k} must be a non-empty string")]
+    var = dict(REC, form="variant", difference="d")
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    for form_rec, role, root in ((REC, "result", ("A.B", "foo")), (var, "result", ("A.B", "foo")),
+                                 (op, "named_statement", ("A.C", "baz")), (op, "result", ("A.B", "foo"))):
+        fe(_ro(_rg(role, rec=dict(form_rec, result=None), root=root)), bad("result"), 1)
+        fe(_ro(_rg(role, rec=dict(form_rec, result=""), root=root)), bad("result"), 1)
+    for form_rec, role, root in ((REC, "result", ("A.B", "foo")), (var, "result", ("A.B", "foo")),
+                                 (op, "named_statement", ("A.C", "baz"))):
+        fe(_ro(_rg(role, rec=dict(form_rec, difference=None), root=root)), bad("difference"), 1)
+        fe(_ro(_rg(role, rec=dict(form_rec, difference=""), root=root)), bad("difference"), 1)
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    for k, vals in (("result", (None, "")), ("citations", ([],)), ("difference", (None, ""))):
+        for v in vals:
+            r = _ro(_rg(rec=dict(nr, **{k: v})))
+            ok(_fl("RECOGNITION-FORBIDDEN", p + f"key {k!r} is not allowed with form 'not_recognised'") in r.f, r.out)
+            eq(r.rc, 1, "exit code " + r.out)
+
+
+@case("NUL2", "a null in a citation: source, where, opened_by and opened_on are refused as BAD-VALUE (a non-empty string is needed), "
+              "and so are a null url, source_date and says_open (the key is present, so its value is checked, not skipped)")
+def _():
+    c = " recognition citations[1]: "
+
+    def two(cit):
+        return _ro(_rg(rec=dict(REC, citations=[CIT, cit])))
+    for k in ("source", "where", "opened_by", "opened_on"):
+        fe(two(dict(CIT, **{k: None})), [_fl("BAD-VALUE", c + f"{k} must be a non-empty string")], 1)
+    fe(two(dict(CIT, url=None)), [_fl("BAD-VALUE", c + "url must be a string starting https://")], 1)
+    fe(two(dict(CIT, source_date=None)), [_fl("BAD-VALUE", c + SD_MSG)], 1)
+    fe(two(dict(CIT, says_open=None)), [_fl("BAD-VALUE", c + "says_open must be true or false")], 1)
+
+
+@case("RUN3", "the recognition line counts the groups at every depth, not the level-1 steps: a chain of levels 1 to 4 with a claim and a "
+              "recognition of a different form at each depth, and a null-claim group beside it (counted in none); K+V+N+O+M = G")
+def _():
+    nr = {"form": "not_recognised", "reader": "R", "date": "2026-11-23"}
+    var = dict(REC, form="variant", difference="d")
+    op = dict(REC, form="open_in_literature", citations=[OPENCIT])
+    L = lambda gid, level, parent, order, **kw: dict(_rg(gid=gid, order=order, **kw), level=level, parent=parent)
+    groups = [L("g1", 1, "root", 1, rec=REC),
+              L("g2", 2, "g1", 1, rec=var),
+              L("g3", 3, "g2", 1, role="named_statement", root=("A.C", "baz"), rec=nr),
+              L("g4", 4, "g3", 1, role="named_statement", root=("A.C", "baz"), rec=op),
+              dict(G("g5", level=4, parent="g3", order=2), claim=None),
+              L("g6", 4, "g3", 3)]   # a claim with no recognition: not written
+    r = _ro(*groups)
+    fe(r, [], 0)
+    ok(_rl(1, 1, 1, 1, 1, 5) in r.lines, r.out)
+    k, v, n, o, m, g = 1, 1, 1, 1, 1, 5
+    eq(k + v + n + o + m, g, "the sum")
+
+
+@case("SKC5", "the same root in two groups: an argument block in g2 does NOT satisfy g1's sketch (SKETCH-NO-ARGUMENT for g1), and each "
+              "group may keep its own sketch on that root (no SKETCH-DUPLICATE across groups)")
+def _():
+    two = OL(G("g1"), G("g2", order=2))
+    note1 = lambda body: NOTE(body=body)
+    note2 = lambda body: NOTE(nid="02", group="g2", body=body)
+    fe(go(notes={"01-a.md": note1("Sketch.\n" + _SB("01.b01") + "\n"),
+                 "02-b.md": note2("Idea.\n" + _AB("02.b01") + "\n")}, outline=two, decls=DECLS_K),
+       ["SKETCH-NO-ARGUMENT 01-a.md:7 block '01.b01': root A.B foo has no argument block in group 'g1'"], 1)
+    clean(go(notes={"01-a.md": note1(_AS),
+                    "02-b.md": note2("Idea.\n" + _AB("02.b01") + "\n\nSketch.\n" + _SB("02.b02") + "\n")}, outline=two, decls=DECLS_K))
 
 
 @case("CIT1b", "source_date accepts YYYY, YYYY-MM and YYYY-MM-DD, each a real date (month 01-12, a day that exists, year 0 refused: "
