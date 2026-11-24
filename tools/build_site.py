@@ -280,8 +280,8 @@ NAME_KEYS = frozenset(["id", "module", "name", "lean_name", "file", "note", "blo
 # ---------------------------------------------------------------- the tool
 
 TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
-             "statement_not_read_line", "proof_read_line", "proof_not_read_line", "statement_count_line", "proof_count_line",
-             "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
+             "statement_not_read_line", "proof_read_line", "proof_not_read_line", "proof_not_applicable_line", "statement_count_line",
+             "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
              "second_reader_frame", "interpretation_frame", "evidence_label", "evidence_module_label", "evidence_name_label", "evidence_kind_label",
              "roots_only_note", "dirty_note", "shared_note", "note_href")
 PLACEHOLDERS = {"statement_read_line": {"reader", "date"}, "statement_census_line": {"reader", "date"},
@@ -298,6 +298,8 @@ REQUIRED_PLACEHOLDERS = {"statement_read_line": ("reader", "date"), "statement_c
                          "proof_read_line": ("reader", "date"), "statement_count_line": ("n", "m"), "proof_count_line": ("n", "m"),
                          "steps_statement_line": ("n", "m"), "steps_proof_line": ("n", "m"), "open_items_line": ("n",),
                          "steps_open_items_line": ("n",)}
+PROOF_KINDS = frozenset(["theorem", "lemma"])   # the table kinds that HAVE a proof; any other kind has none (F22)
+KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
 NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
 RETIRED_WORDS = ("Read by us", "Partly read", "Not read yet")        # the coverage scale F19 removed
 LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
@@ -350,6 +352,12 @@ def fact_pairs(flags):
     """(how many flags are True, how many are False): anything else (None) is counted in neither, so a sum that does not add up
     to the total is visible."""
     return sum(1 for f in flags if f is True), sum(1 for f in flags if f is False)
+
+
+def fact_triples(flags):
+    """(how many flags are True, how many are False, how many are None = not applicable): anything else is counted in none of the
+    three, so a sum that does not add up to the total is visible."""
+    return (sum(1 for f in flags if f is True), sum(1 for f in flags if f is False), sum(1 for f in flags if f is None))
 
 
 def _fact_flags(items, key):
@@ -450,17 +458,25 @@ def number_problems(page, json_text, strings_text):
 
 # ---- B1: no release text
 
-def _value_lines(obj):
-    """Every line of every string value of a parsed JSON, except the values under a key of NAME_KEYS (names and ids)."""
+def _unspan(text):
+    """The text as a reader sees it: each span between single backticks (notes_meta's _BACKTICK_SPAN, the one definition) replaced by
+    its content. Doubled backticks, an unpaired one and a pair over a line break are not spans and stay as written."""
+    return nm._BACKTICK_SPAN.sub(lambda mt: mt.group(1), text)
+
+
+def _value_lines(obj, seen=False, key=None):
+    """Every line of every string value of a parsed JSON, except the values under a key of NAME_KEYS (names and ids). The values a
+    reader sees through the span rule (the text of a claim, a condition, a note's list_title) are compared with the backticks
+    of their spans removed (`seen`); the JSON itself keeps them."""
     if isinstance(obj, str):
-        yield from obj.split("\n")
+        yield from (_unspan(obj) if seen else obj).split("\n")
     elif isinstance(obj, list):
         for x in obj:
-            yield from _value_lines(x)
+            yield from _value_lines(x, seen, key)
     elif isinstance(obj, dict):
         for k, v in obj.items():
             if k not in NAME_KEYS:
-                yield from _value_lines(v)
+                yield from _value_lines(v, k in ("conditions", "list_title") or (k == "text" and key == "claim"), k)
 
 
 def _output_lines(rel, data):
@@ -783,6 +799,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
             owners.setdefault((r["module"], r["name"]), []).append(gid)
     by_note = {n["id"]: n for n in m.notes}
     m.files, m.summary, m.copied, seen_blocks, open_blocks = {}, {}, [], set(), set()
+    m.kind_notes = []
     for gid, g in groups.items():
         roots = [(r["module"], r["name"]) for r in g["roots"]]
         blocks = {}
@@ -812,7 +829,13 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
         for row, r in zip(root_rows, roots):
             kinds = {x["kind"] for x in anchored.get(r, [])}
             row["statement_read"] = claim_read or "reading" in kinds
-            row["proof_read"] = "argument" in kinds
+            if row["kind"] in PROOF_KINDS:
+                row["proof_read"] = "argument" in kinds
+            else:   # a definition, a structure, an instance ...: no proof to read, so the fact is not applicable (null)
+                row["proof_read"] = None
+                if row["kind"] not in KNOWN_KINDS:
+                    m.kind_notes.append((gid, f"{row['module']}.{row['name']}", row["kind"]))
+        applicable = [r["proof_read"] for r in root_rows if r["proof_read"] is not None]
         by = None
         if len(roots) == 1:   # one root: who read the statement (the claim, else the first reading block of the root)
             first = sorted((x for x in anchored.get(roots[0], []) if x["kind"] == "reading"), key=_block_key)
@@ -837,11 +860,14 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
             "lean_name": g["roots"][0]["name"] if roots else None,
             "claim_label": strings["no_claim_label"] if claim is None else None,
             "statement_read": bool(roots) and all(r["statement_read"] for r in root_rows),
-            "proof_read": bool(roots) and all(r["proof_read"] for r in root_rows),
+            # true when every root that HAS a proof has it read (a root without a proof is left out of the test), null when no
+            # root has a proof, false otherwise (and for a group with no root: never counted as read)
+            "proof_read": False if not roots else (all(applicable) if applicable else None),
             "statement_by": by,
-            "unread": not any(r["statement_read"] or r["proof_read"] for r in root_rows),
+            "unread": not any(r["statement_read"] is True or r["proof_read"] is True for r in root_rows),
             "counts": {"roots": len(roots), "roots_statement_read": sum(1 for r in root_rows if r["statement_read"]),
-                       "roots_proof_read": sum(1 for r in root_rows if r["proof_read"]), "roots_open_items": roots_open,
+                       "roots_proof_read": sum(1 for r in root_rows if r["proof_read"] is True),
+                       "roots_proof_applicable": len(applicable), "roots_open_items": roots_open,
                        "open_items": len(open_here)},
             "notes": notes, "roots_only": True}
         m.files[gid] = {"id": gid, "level": g["level"], "parent": g["parent"], "premises": list(g["premises"]), "roots": root_rows,
@@ -931,12 +957,12 @@ def _render_page(m, s, facts, dirty):
         out.append(f'<p class="dirty">{_e(s["dirty_note"])}</p>')
     out += ['<ul class="facts">',
             f"<li>{_e(_fill(s['steps_statement_line'], n=facts['statement_read'], m=facts['steps']))}</li>",
-            f"<li>{_e(_fill(s['steps_proof_line'], n=facts['proof_read'], m=facts['steps']))}</li>",
+            f"<li>{_e(_fill(s['steps_proof_line'], n=facts['proof_read'], m=facts['proof_applicable']))}</li>",
             f"<li>{_e(_fill(s['steps_open_items_line'], n=m.totals['open_items']))}</li>", "</ul>",
             f'<p class="mapped">{_e(s["mapped_line"])}</p>']
     if m.header_notes:
         out += ['<section class="whole">', f"<h2>{_e(lab['level0_notes'])}</h2>", "<ul>"]
-        out += [f'<li><a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>' for n in m.header_notes]
+        out += [f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>' for n in m.header_notes]
         out += ["</ul>", "</section>"]
     out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
 
@@ -967,7 +993,8 @@ def _render_page(m, s, facts, dirty):
         args = [b for b in fl["blocks"] if b["kind"] == "argument"]   # blocks are in note id, then block number, order
         if c["roots"] > 1:   # several roots (a null claim): counts with their denominators
             st = _fill(s["statement_count_line"], n=c["roots_statement_read"], m=c["roots"])
-            pf = _fill(s["proof_count_line"], n=c["roots_proof_read"], m=c["roots"])
+            pf = (_fill(s["proof_count_line"], n=c["roots_proof_read"], m=c["roots_proof_applicable"])
+                  if c["roots_proof_applicable"] else s["proof_not_applicable_line"])   # counted over the roots that HAVE a proof
         else:
             if sm["statement_read"]:
                 st = _fill(s["statement_read_line"], reader=by["reader"], date=by["date"])
@@ -975,7 +1002,8 @@ def _render_page(m, s, facts, dirty):
                 st = _fill(s["statement_census_line"], reader=by["reader"], date=by["date"])
             else:
                 st = s["statement_not_read_line"]
-            pf = (_fill(s["proof_read_line"], reader=args[0]["reader"], date=args[0]["date"]) if sm["proof_read"]
+            pf = (s["proof_not_applicable_line"] if sm["proof_read"] is None
+                  else _fill(s["proof_read_line"], reader=args[0]["reader"], date=args[0]["date"]) if sm["proof_read"]
                   else s["proof_not_read_line"])
         o.append(f'<p class="status statement">{_e(st)}</p>')
         o.append(f'<p class="status proof">{_e(pf)}</p>')
@@ -994,11 +1022,11 @@ def _render_page(m, s, facts, dirty):
             for b in corr:
                 n = next(n for n in sm["notes"] if n["note"] == b["note"])
                 o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <span class="reader">{_e(b["reader"])}</span> '
-                         f'<time>{_e(b["date"])}</time> <a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>')
+                         f'<time>{_e(b["date"])}</time> <a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>')
             o.append("</ul>")
         if sm["notes"]:
             o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
-                     + "".join(f'<li><a href="{_e(n["link"])}">{_e(n["list_title"])}</a></li>' for n in sm["notes"]) + "</ul>")
+                     + "".join(f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"])}</a></li>' for n in sm["notes"]) + "</ul>")
         o.append('<ul class="reactions">')
         for r in s["reactions"]:
             href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
@@ -1105,21 +1133,25 @@ def _assemble(m, s, commits):
     """(errors, the facts check line, level0, level1, the group files, the facts over the steps)."""
     errors = []
     steps = [m.summary[i] for i in m.steps]
-    pairs = {}
-    for fact, code in (("statement_read", "SUM-STATEMENT"), ("proof_read", "SUM-PROOF")):
-        a, b = fact_pairs(_fact_flags(steps, fact))
-        pairs[fact] = (a, b)
-        if a + b != len(steps):
-            errors.append((code, "steps:", f"read {a} + not read {b} = {a + b}, but there are {len(steps)} steps"))
+    def check(items, where, noun):
+        """The two sums over `items` (steps or the root rows of a group): read + not read = total for the statement, read + not
+        read + not applicable = total for the proof."""
+        a, b = fact_pairs(_fact_flags(items, "statement_read"))
+        if a + b != len(items):
+            errors.append(("SUM-STATEMENT", where, f"read {a} + not read {b} = {a + b}, but there are {len(items)} {noun}"))
+        c, d, e = fact_triples(_fact_flags(items, "proof_read"))
+        if c + d + e != len(items):
+            errors.append(("SUM-PROOF", where, f"read {c} + not read {d} + not applicable {e} = {c + d + e}, but there are "
+                                               f"{len(items)} {noun}"))
+        return (a, b), (c, d, e)
+
+    (sa, sb), (pa, pb, pn) = check(steps, "steps:", "steps")
     for gid in sorted(m.groups):
-        rows = m.files[gid]["roots"]
-        for fact, code in (("statement_read", "SUM-STATEMENT"), ("proof_read", "SUM-PROOF")):
-            a, b = fact_pairs(_fact_flags(rows, fact))
-            if a + b != len(rows):
-                errors.append((code, f"group {gid} roots:", f"read {a} + not read {b} = {a + b}, but there are {len(rows)} roots"))
-    (sa, sb), (pa, pb) = pairs["statement_read"], pairs["proof_read"]
-    line = f"statements read {sa} + not read {sb} = {sa + sb} steps; proofs read {pa} + not read {pb} = {pa + pb} steps"
-    facts = {"steps": len(steps), "statement_read": sa, "statement_not_read": sb, "proof_read": pa, "proof_not_read": pb}
+        check(m.files[gid]["roots"], f"group {gid} roots:", "roots")
+    line = (f"statements read {sa} + not read {sb} = {sa + sb} steps; "
+            f"proofs read {pa} + not read {pb} + not applicable {pn} = {pa + pb + pn} steps")
+    facts = {"steps": len(steps), "statement_read": sa, "statement_not_read": sb, "proof_read": pa, "proof_not_read": pb,
+             "proof_not_applicable": pn, "proof_applicable": pa + pb}
     level0 = {"commits": commits, "header_notes": m.header_notes, "level": 0, "facts": facts, "steps": steps,
               "totals": m.totals}
     level1 = {"commits": commits, "level": 1, "steps": [_nest(m, i) for i in m.steps]}
@@ -1246,6 +1278,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     word_notes = _word_notes(m, sj)
     for where, word in word_notes:
         print(f"WORD-NOTE {where} {word}")
+    for gid, name, kind in m.kind_notes:   # a kind outside the eight: no proof (null), and listed, never refused
+        print(f"KIND-NOTE {gid} {name} kind {kind!r}")
     for n in m.notes:
         for b in n["blocks"]:
             for what in ("reader", "date"):
@@ -1271,7 +1305,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         if not sg.walk_lean(source_check):
             print("CHECKED NOTHING: no .lean file under SRC_ROOT")
             return 3
-        copied = m.copied + [(n["id"], "field list_title", n["title"].split("\n")) for n in m.notes]
+        copied = m.copied + [(n["id"], "field list_title", _unspan(n["title"]).split("\n")) for n in m.notes]
         try:
             leaks, st = leak_check(files, source_check, copied)
         except ValueError as ex:
@@ -3312,9 +3346,9 @@ def _selftest_cases():
     # ---- F23: a note title is rendered like a claim, and the source check compares what a reader sees
     def _titled(t00, t01, t02):
         n = _notes()
-        n["00-whole.md"] = N00.replace('"list_title":"Whole one"', '"list_title":' + json.dumps(t00))
-        n["01-one.md"] = _n01().replace('"list_title":"Note one"', '"list_title":' + json.dumps(t01))
-        n["02-two.md"] = N02.replace('"list_title":"Note two"', '"list_title":' + json.dumps(t02))
+        n["00-whole.md"] = N00.replace('"list_title":"Whole one"', '"list_title":' + _js_safe(json.dumps(t00)))
+        n["01-one.md"] = _n01().replace('"list_title":"Note one"', '"list_title":' + _js_safe(json.dumps(t01)))
+        n["02-two.md"] = N02.replace('"list_title":"Note two"', '"list_title":' + _js_safe(json.dumps(t02)))
         return n
 
     show_links = lambda node: [(a.text(), [c.text() for c in a.find("code")]) for a in node.find("a")]
