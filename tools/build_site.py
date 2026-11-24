@@ -7877,6 +7877,83 @@ def _selftest_cases():
                     ["The top condition", "The window set (Input 2)", "The statement bundle", "Claim without a title", "The reduction step", "defc"],
                     ['<p class="shared">Also a root of: <a href="#kpd4">The window set (Input 2)</a></p>']))
 
+    # ---- F48 (k): one predicate of a definition card, defined in notes_meta, used by the checker and the builder
+    AGREE_DECLS = FACES_DECLS + "A.H\tlem\tlemma\t11\t12\ttext-extent\nA.H\taxa\taxiom\t13\t14\ttext-extent\n"
+    _K = {"def": _d("A.H", "defa"), "structure": _d("A.H", "stru"), "theorem": FOO, "lemma": _d("A.H", "lem"), "axiom": _d("A.H", "axa")}
+
+    def _agree_outline(kinds, claim, role):
+        g = _g("ag", 1, "root", 1, [_K[k] for k in kinds], _claim("A claim") if claim else None)
+        g["title"] = "The step"
+        if role:
+            g["root_role"] = role
+        return {"release": "rel-1", "groups": [g]}
+
+    def _agree_face(o):
+        """`definition` or `result`, as the builder shows the card with no checker run (the model called directly)."""
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d, outline=o, decls=AGREE_DECLS, notes=FACES_NOTES, roles=False)
+            sj = _strings()
+            m = _model(p["notes"], json.load(open(p["outline"])), _decl_rows(p["decls"]), sj, None, [])
+            _e2, _l, _l0, _l1, _g_, facts = _assemble(m, sj, {"notes": "n", "release": "r", "tools": "t"})
+            page = _render_page(m, sj, facts, False)
+        c = types.SimpleNamespace(page=page)
+        h3 = _card(c, "ag").find("h3", "claim")[0]
+        if o["groups"][0]["claim"] is None:
+            return "definition" if h3.find("span", "definition-label") else "result" if h3.find("span", "title-label") else "none"
+        return "definition" if _card(c, "ag").find("p", "definition-statement") else "result"
+
+    @case("TT20", "F48 (k) the checker and the builder agree because they share one predicate: a table of (roots, claim, root_role) rows; for each, the "
+                  "checker's verdict (TITLE-WITH-CLAIM or not, through a run) and the builder's face (definition or result, the model called "
+                  "directly) are the literal below, and equal the predicate nm.definition_card on the same facts; a null claim with a theorem "
+                  "AND a def root is a RESULT face (any root a theorem) with no checker finding; two defs: a definition face; an unknown kind "
+                  "(axiom) is a definition card; a root_role decides over the kind")
+    def _():
+        T = [  # (kinds, claim, role, TITLE-WITH-CLAIM expected, face)
+            (["def"], False, None, False, "definition"), (["theorem"], False, None, False, "result"),
+            (["def", "structure"], False, None, False, "definition"), (["theorem", "def"], False, None, False, "result"),
+            (["def", "theorem"], False, None, False, "result"), (["lemma"], False, None, False, "result"),
+            (["axiom"], False, None, False, "definition"),
+            (["def"], True, None, False, "definition"), (["theorem"], True, None, True, "result"), (["lemma"], True, None, True, "result"),
+            (["axiom"], True, None, False, "definition"),
+            (["def"], True, "named_statement", False, "definition"), (["def"], True, "object", False, "definition"),
+            (["structure"], True, "object", False, "definition"), (["theorem"], True, "result", True, "result"),
+            (["lemma"], True, "result", True, "result"),
+            (["theorem"], True, "named_statement", False, "definition"),   # a role against its kind (ROOT-ROLE says so): the role decides
+            (["def"], True, "result", True, "result")]
+        got, want = [], []
+        for kinds, claim, role, twc, face in T:
+            o = _agree_outline(kinds, claim, role)
+            b = _build(outline=o, decls=AGREE_DECLS, notes=FACES_NOTES, roles=False)
+            rows = [_K[k]["name"] for k in kinds]
+            pred = nm.definition_card(role, kinds)
+            got.append((kinds, claim, role, any(x.startswith("TITLE-WITH-CLAIM") for x in b.out.splitlines()), _agree_face(o),
+                        "definition" if pred else "result"))
+            want.append((kinds, claim, role, twc, face, face))
+        return _eq(got, want)
+
+    @case("TT21", "F48 (k) a group with a claim and SEVERAL roots, one a theorem, and a title cannot pass: the build is refused (ROOT-COUNT, exit 1, nothing "
+                  "written; with no root_role also TITLE-WITH-CLAIM, judged over all the roots); a null claim with the roots [theorem, def] and a "
+                  "title builds with the result face")
+    def _():
+        res = []
+        for kinds in (["theorem", "def"], ["def", "theorem"]):
+            g = _g("ag", 1, "root", 1, [_K[k] for k in kinds], _claim("A claim"))
+            g["title"] = "The step"
+            b = _build(outline={"release": "rel-1", "groups": [g]}, decls=AGREE_DECLS, notes=FACES_NOTES, roles=False)
+            res.append((b.rc, [x.split(" outline.json")[0] for x in b.out.splitlines() if x.startswith(("ROOT-COUNT", "TITLE-WITH-CLAIM"))], b.existed))
+        nb = _build(outline=_agree_outline(["theorem", "def"], False, None), decls=AGREE_DECLS, notes=FACES_NOTES, roles=False)
+        return _eq((res, nb.rc, heading(nb, "ag")[0]),
+                   ([(1, ["ROOT-COUNT", "TITLE-WITH-CLAIM"], False)] * 2, 0,
+                    '<h3 class="claim unread-claim"><span class="title-label">What this step is:</span> <span class="title-text">The step</span></h3>'))
+
+    @case("TT22", "F48 (k) the builder has no list of result kinds of its own: PROOF_KINDS is notes_meta's RESULT_KINDS, and its predicate of a definition "
+                  "card is notes_meta's (the same object is called, not a copy)")
+    def _():
+        import inspect
+        src = inspect.getsource(_is_definition_card) + inspect.getsource(_shown_title) + inspect.getsource(_title_census)
+        return _eq((PROOF_KINDS == frozenset(nm.RESULT_KINDS), "nm.definition_card(" in src, "PROOF_KINDS" in src, "nm.needs_title(" in src),
+                   (True, True, False, True))
+
     return cases
 
 

@@ -3099,6 +3099,33 @@ def _():
         fe(_ro(_tg(both)), [_fl("BAD-VALUE", TITLE_BAD)], 1)
 
 
+@case("TTL5", "the ONE predicate of a definition card, definition_card(role, kinds), literal: a usable root_role decides (named_statement and "
+              "object: definition; result: not), else the table kinds of ALL the roots decide: a definition card when there is a root and no "
+              "root is a theorem or lemma; an unknown or empty kind counts as a definition card; no root is not one; needs_title is "
+              "`no claim or a definition card`")
+def _():
+    table = [("named_statement", [], True), ("object", ["theorem"], True), ("result", ["def"], False), ("result", [], False),
+             (None, ["def"], True), (None, ["structure"], True), (None, ["theorem"], False), (None, ["lemma"], False),
+             (None, ["theorem", "def"], False), (None, ["def", "theorem"], False), (None, ["def", "structure"], True),
+             (None, ["inductive", "instance"], True), (None, ["axiom"], True), (None, [""], True), (None, [], False)]
+    eq([(r, k, definition_card(r, k)) for r, k, _w in table], table, "the predicate")
+    eq([needs_title(c, r, k) for c, r, k in ((True, None, ["theorem"]), (False, None, ["theorem"]), (False, None, ["def"]),
+                                             (False, "object", ["def"]), (True, "result", []), (False, "result", ["def"]))],
+       [True, False, True, True, True, False], "needs_title")
+
+
+@case("TTL6", "a group with a claim has ONE root (ROOT-COUNT) so `several roots + a claim + a theorem root + a title` is refused there: with no "
+              "root_role the title is judged over ALL the roots by the shared predicate, so [theorem, def] and [def, theorem] are each ROOT-COUNT "
+              "and TITLE-WITH-CLAIM, [def, structure] is ROOT-COUNT alone; a null claim with the same roots is not judged (no finding)")
+def _():
+    rc = ": a group with a claim has exactly one root, not 2"
+    for roots, twc in (([R("A.B", "foo"), R("A.C", "baz")], True), ([R("A.C", "baz"), R("A.B", "foo")], True),
+                       ([R("A.C", "baz"), R("A.E", "stru")], False)):
+        g = dict(drop(G("g1", roots=roots, claim=CLAIM), "root_role"), title="The step")
+        fe(_ro(g), [_fl("ROOT-COUNT", rc)] + ([_fl("TITLE-WITH-CLAIM", TITLE_CLAIM)] if twc else []), 1)
+        clean(_ro(dict(G("g1", roots=roots), title="The step")))
+
+
 @case("TTL3", "the rest of the outline is unchanged by the key: any other key is still UNKNOWN-KEY beside a title, the count line is the same "
               "with and without titles, and the findings of a titled and an untitled group come in the order of the outline")
 def _():
