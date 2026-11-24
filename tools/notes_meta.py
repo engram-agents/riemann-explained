@@ -60,17 +60,22 @@ CONTRACT (each line is a self-test case, written before the code)
      BYTE-DIFF with no line); a note not at REV is NEW-NOTE. Without --base the run says it did not run.
      Cases B1a to B1e, Y1 to Y6, Z1, Z2a to Z2d, BL1 to BL6.
   ADD A pure insertion of dated text is an ADDITION, not a BYTE-DIFF (F27). With the same two stripped texts: the base is
-     a subsequence of the current when each base line (with its line ending) matches, in order and GREEDILY from the left (the
-     earliest equal line after the previous match), a current line; the unmatched current lines are the inserted runs (maximal
-     gaps, one after the last base line too). A base that is not a subsequence (a line removed or altered) is a BYTE-DIFF as
-     before. Each run, after its LEADING blank lines, must begin with a heading (1 to 6 `#`, a space, text) whose text holds a
-     real calendar date YYYY-MM-DD (the first real one is the heading's date); that date is not later than --today (default
-     the UTC date of the clock) and not earlier than the date in the header's `release` when it is `rh-YYYY-MM-DD` (a release
-     with no such date gives no lower bound). A run inside a fence of the published text (opened by base lines before it and
-     closed after, or never closed) fails. One failing run makes the whole note a BYTE-DIFF at the run's first line (a date
+     a subsequence of the current when each base line (with its line ending) matches, in order, a current line; the unmatched
+     current lines are the inserted runs (maximal gaps, one after the last base line too). Two alignments are tried, not all:
+     the LEFT-greedy one (each base line takes the earliest equal line after the previous match) and the RIGHT-greedy one (each
+     takes the latest equal line before the next match). The note is accepted when either gives only legal runs, and the runs of
+     the first such alignment, the left one before the right one, are listed; when neither does, the BYTE-DIFF is the left
+     alignment's. A base that is not a subsequence (a line removed or altered) is a BYTE-DIFF as before, under both. Each run,
+     after its LEADING blank lines, must begin with a heading (1 to 6 `#`, a space, text) whose text holds a real calendar date
+     YYYY-MM-DD; EVERY real date of the heading is not later than --today (default the UTC date of the clock) and not earlier
+     than the date in the `release` of the BASE text's header (the published one) when it is `rh-YYYY-MM-DD` (a release with no
+     such date, or none, gives no lower bound). A run inside a fence of the published text (opened by base lines before it and
+     closed after, or never closed) fails. Fence state is kept (F1): for every base line matched to a current line, being inside a
+     fence (rh_anchor's reading of each stripped text) must be the same in both texts, else the note is a BYTE-DIFF whose message
+     names the run before that line. One failing run makes the whole note a BYTE-DIFF at the run's first line (a date
      outside the window adds its date and the window to the message). Each legal run is an ADDITION listing
      `ADDITION path:first_line N lines, heading TEXT` (first_line on disk, N in the text without anchors), a warning, never
-     an error; the byte-check line ends `additions A` (runs). Cases ADD1 to ADD22.
+     an error; the byte-check line ends `additions A` (runs). Cases ADD1 to ADD29.
  Added after review (cases REC1 M5d M5e M5f DEFS1 ORPH1 F12c GIT1 B1e and the changed O4):
   R1 JSON nested too deep is unreadable input (exit 2), like any other. R2 A block's `defs_opened` resolves like its
   `decls`. R3 A block whose target is none or other (a heading, a list item, a quote, a non-lean fence) is ORPHAN-BLOCK.
@@ -134,12 +139,16 @@ past the last line of the file (a line that is not there, so do not look for it)
 (an empty file, or one that holds only anchor lines). Trailing anchor lines do not shift either number. Both sides are
 stripped, so a header or an anchor added OR removed since REV is not a text change (the checker's other rules judge the
 result); a line that looks like an anchor inside a fence is text and is compared. A base that is not UTF-8 is a BYTE-DIFF
-with no line, and the other notes are still compared. ADDITION (F27): the floor of the date window is the date of the header's
-`release`, not the note's own, and a note whose release carries no date has no floor; the upper bound is the day of the run.
-The alignment is greedy, so an inserted line that repeats a base line can leave the original unmatched as a second run (a
-BYTE-DIFF unless that run is itself a dated addition); a base whose last line has no line ending cannot gain text after it
-(the line differs). The fence test reads the published text only: an inserted fence marker that changes how later base lines
-read as fenced is not detected. A heading with an impossible date beside a real one is read by the real one. --today is
+with no line, and the other notes are still compared. ADDITION (F27): the floor of the date window is the date of the `release` in the header of the BASE
+text, not the note's own and not the current header's (a release deleted or reworded since REV does not lower it), and a base
+without a header, or whose release carries no date or an impossible one such as `rh-2026-02-30`, has no floor; the upper bound
+is the day of the run. Two alignments of the base into the current are tried (left-greedy, then right-greedy), not every
+order-preserving one, so an addition that no other alignment reads as legal can still be a BYTE-DIFF (an inserted line that
+repeats a base line can leave the original unmatched as a second run on both sides); a base whose last line has no line ending
+cannot gain text after it (the line differs). The fence test compares the fence state of every matched base line in the two
+texts, so an inserted marker that wraps or unwraps published text is a BYTE-DIFF; a fence opened in a run and never closed, at the
+very end of the note, swallows no base line and is left to rh_anchor's UNCLOSED-FENCE error. Every real date in an added heading
+must lie in the window; an impossible date beside a real one is skipped. --today is
 a test hook and a value that is not a real date is a usage error (exit 2). "Byte for byte" means byte for byte AFTER the strip rule of rh_anchor: a
 last anchor line with no line ending of its own also removes the line ending before it, so adding or removing such a
 hand-typed last line can read as a one-line-ending difference (anchors written by the helper carry their own ending; case
