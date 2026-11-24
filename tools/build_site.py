@@ -135,7 +135,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   F35 BOLD AND NESTED ITEMS IN BLOCK TEXT. Where block text is rendered with links (argument, interpretation, the first sentence, sketch
      paragraphs, items and sub-items; not claims, conditions, titles or `unexpanded`), a pair of `**` on one line around text is
      <strong>, its content through the span rule; a span wins, links are taken out first; empty pairs, runs of three or more
-     asterisks and pairs over a line break stay literal. A leftover `**` is listed `BOLD-UNPAIRED <block id>` (once per block, after
+     asterisks and pairs over a line break that remains after the paragraph join (source lines are joined by spaces first, as for
+     spans, F28) stay literal. A leftover `**` is listed `BOLD-UNPAIRED <block id>` (once per block, after
      FORMULA-RAW; exit unchanged). In a sketch list the indented `- ` or `* ` lines of an item are one nested <ul> in its <li>; the
      JSON item is {text, items}; a deeper level is flat and listed `NEST-DEPTH <block id>`. The source check removes the asterisks
      of a pair. CSS `code { overflow-wrap: anywhere; }`. Cases BD1 to BD8 NS1 to NS4 LB1 CW1.
