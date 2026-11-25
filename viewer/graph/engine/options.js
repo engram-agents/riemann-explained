@@ -36,6 +36,15 @@ const GROUPS = ["sizes", "zoom", "semantic", "input"];
 const fail = (m) => { throw new TypeError("graph options: " + m); };
 const num = (g, k, v, min) => { if (!Number.isFinite(v) || v < min) fail(g + "." + k + " must be a finite number >= " + min); };
 
+/* The whole zoom.fitMin rule, in one place. DEFAULTS holds null (= "zoom.min"); a caller who leaves it out gets zoom.min,
+   resolved after the merge and not range-checked (so a caller whose zoom.min is above fitMax is not newly refused);
+   one who gives it must give a number > 0 with zoom.min <= fitMin <= zoom.fitMax. `z` is the merged zoom group. */
+function resolveFitMin(z, rawZoom) {
+  if (!(rawZoom && Object.hasOwn(rawZoom, "fitMin"))) { z.fitMin = z.min; return; }
+  const f = z.fitMin;
+  if (!(Number.isFinite(f) && f > 0 && f >= z.min && f <= z.fitMax)) fail("zoom.fitMin must be a number > 0 with zoom.min <= zoom.fitMin <= zoom.fitMax");
+}
+
 export function normalizeOptions(raw) {
   if (raw === undefined || raw === null) raw = {};
   if (typeof raw !== "object" || Array.isArray(raw)) fail("options must be an object");
@@ -47,7 +56,7 @@ export function normalizeOptions(raw) {
       if (r === null || typeof r !== "object" || Array.isArray(r)) fail(k + " must be an object");
       for (const sub of Object.keys(r)) if (!Object.hasOwn(DEFAULTS[k], sub)) fail("unknown option " + k + "." + sub);
       o[k] = { ...DEFAULTS[k], ...r };
-      for (const [sub, v] of Object.entries(o[k])) if (!(k === "zoom" && sub === "fitMin" && v === null && !Object.hasOwn(r, sub))) num(k, sub, v, 0);
+      for (const [sub, v] of Object.entries(o[k])) if (!(k === "zoom" && sub === "fitMin")) num(k, sub, v, 0);
     } else o[k] = raw[k] === undefined ? DEFAULTS[k] : raw[k];
   }
   if (!Array.isArray(o.roots)) fail("roots must be an array");
@@ -60,10 +69,7 @@ export function normalizeOptions(raw) {
   if (typeof o.fitOnStart !== "boolean") fail("fitOnStart must be a boolean");
   for (const k of ["nodeW", "nodeH", "head"]) if (!(o.sizes[k] > 0)) fail("sizes." + k + " must be > 0");
   if (!(o.zoom.min > 0 && o.zoom.max > o.zoom.min)) fail("zoom.min must be > 0 and below zoom.max");
-  if (Object.hasOwn(raw.zoom || {}, "fitMin")) {
-    const f = o.zoom.fitMin;
-    if (!(f > 0 && f >= o.zoom.min && f <= o.zoom.fitMax)) fail("zoom.fitMin must be a number > 0 with zoom.min <= zoom.fitMin <= zoom.fitMax");
-  } else o.zoom.fitMin = o.zoom.min;   // resolved after the merge: a caller who sets only zoom.min gets fitMin = that min
+  resolveFitMin(o.zoom, raw.zoom);
   if (!(o.semantic.closePx > 0 && o.semantic.openPx > o.semantic.closePx)) fail("semantic.openPx must be above semantic.closePx (the gap is what stops flicker)");
   return o;
 }

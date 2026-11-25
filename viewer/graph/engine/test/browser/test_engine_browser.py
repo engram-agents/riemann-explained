@@ -213,6 +213,20 @@ def main():
                 ev("T.destroy('c')")
         case("zoom.fitMin 1: the start camera is scale 1 with the top node in view; fit() then goes below 1", c_fitmin)
 
+        def c_fitmin_key():
+            try:
+                ev("T.create('c', { zoom: { fitMin: 1 } })")
+                assert ev("T.ready('c')") is True
+                settle()
+                assert abs(ev("T.cam('c')")["k"] - 1) < 1e-9
+                page.focus("#c .ge-stage")
+                page.keyboard.press("0")      # the key for fit: the whole drawing, not bounded by fitMin
+                settle()
+                assert ev("T.cam('c')")["k"] < 1, ev("T.cam('c')")
+            finally:
+                ev("T.destroy('c')")
+        case("zoom.fitMin 1: after the start fit, the 0 key (fit) goes below 1", c_fitmin_key)
+
         def c_foreign_attr():
             assert ev("T.foreign('c')") is True
             settle(120)

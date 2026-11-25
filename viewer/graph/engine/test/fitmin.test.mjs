@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createController } from "../controller.js";
-import { normalizeOptions } from "../options.js";
+import { normalizeOptions, DEFAULTS } from "../options.js";
 import { frame } from "../camera.js";
 import { recordingView } from "./helpers.mjs";
 
@@ -32,6 +32,7 @@ test("default fitMin is zoom.min as the caller set it, resolved after the merge"
   assert.deepEqual(a.cam, frame(a.vp, 0, 0, a.w.w, a.w.h, FITMAX, PAD, 0.5));
   assert.equal(normalizeOptions({ zoom: { min: 0.5 } }).zoom.fitMin, 0.5);
   assert.equal(normalizeOptions({}).zoom.fitMin, ZMIN);
+  assert.equal(DEFAULTS.zoom.fitMin, null, "DEFAULTS holds null; the resolution is on the caller's copy");
 });
 
 test("fitMin 1 on a tall drawing in a short viewport: start k is 1, top-anchored; unset gives k < 1", async () => {
@@ -82,4 +83,24 @@ test("validation: fitMin <= 0, below zoom.min, above fitMax, or not a number is 
 
 test("an existing caller whose zoom.min is above fitMax (no fitMin given) is not newly refused", () => {
   assert.doesNotThrow(() => normalizeOptions({ zoom: { min: 2, max: 3 } }));
+});
+
+test("clamped start fit, narrower than the stage: centred horizontally and top-anchored (deliberate; a wider-than-stage drawing would be cut on both sides, see INTERFACE)", async () => {
+  const { w, cam, vp } = await start({ fitMin: 1 }, SHORT);
+  assert.ok(w.w < vp.w && w.h > vp.h, "narrower than the stage, taller than it: " + JSON.stringify([w, vp]));
+  assert.equal(cam.k, 1);
+  assert.equal(cam.tx, (vp.w - w.w * cam.k) / 2 - 0 * cam.k, "centred: tx = (vp.w - w*k)/2 - x*k with x = 0");
+  assert.equal(cam.ty, PAD, "top-anchored: ty = fitPad - y*k with y = 0");
+});
+
+test("after a fitMin 1 start, reveal() of a node frames it below scale 1, bounded by zoom.min", async () => {
+  const kid = { id: "c", childCount: 0, links: [], parentLinksTo: false, path: ["p", "c"], data: null };
+  const par = { id: "p", childCount: 1, links: [], parentLinksTo: false, path: ["p"], data: null };
+  const view = recordingView(SHORT);
+  const ctl = createController({ roots: [par], loadChildren: async () => [kid], zoom: { fitMin: 1 } }, view);
+  await ctl.ready;
+  assert.equal(ctl.camera().k, 1);
+  assert.equal(await ctl.reveal(["p", "c"]), true);
+  const k = ctl.camera().k;
+  assert.ok(k < 1 && k >= ZMIN, "framed below 1, not below zoom.min: " + k);
 });
