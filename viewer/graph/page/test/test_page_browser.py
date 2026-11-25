@@ -29,6 +29,8 @@ ALL_IDS = ["goal-chain", "inputs", "bounds", "a1", "a2", "a3", "a4", "topg", "a6
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     blocked = set()
+    garbage = set()     # paths answered 200 with a body that is not JSON
+    delay = {}          # path -> threading.Event: the response waits until the event is set (at most 15 s)
     seen = []
 
     def __init__(self, *a, **k):
@@ -36,8 +38,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         Handler.seen.append(self.path)
-        if self.path.split("?")[0] in Handler.blocked:
+        path = self.path.split("?")[0]
+        if path in Handler.delay:
+            Handler.delay[path].wait(15)
+        if path in Handler.blocked:
             self.send_error(404)
+            return
+        if path in Handler.garbage:
+            body = b"this is not json"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         super().do_GET()
 
@@ -449,6 +462,123 @@ def c_clamp(b, S):
     pg.close()
 
 
+# ---------------------------------------------------------------------------------------- after a fallback, nothing acts (B1)
+
+def snapshot(pg):
+    return pg.ev("""({cards: document.getElementById('graph-cards').outerHTML,
+        n: document.querySelectorAll('#graph-cards article').length,
+        fb: document.getElementById('graph-fallback').outerHTML,
+        gone: document.getElementById('graph-layer') === null})""")
+
+
+def errors_of(pg):
+    return [c for c in pg.console if c[0] in ("error", "pageerror")]
+
+
+def c_dead_after_fallback(b, S, engine):
+    """Force a fallback AFTER setup (a non-JSON step file reached by a deep link), then try every way the page used to
+    still act: a hash change to a valid id, a click on an in-article premise link, the keys the page handles. Every card
+    stays exactly where the fallback left it."""
+    Handler.garbage = {"/graph/step/a1.json"}
+    try:
+        pg = Pg(b, S.base + "graph/index.html").settled()
+        at_hash(pg, "a1")
+        pg.wait("!document.getElementById('graph-layer')", 6000)
+        pg.page.wait_for_timeout(300)
+        before = snapshot(pg)
+        assert before["n"] == 23 and before["gone"], before["n"]
+        assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards")
+        at_hash(pg, "inputs")                                           # (i) a valid id in the address
+        pg.page.wait_for_timeout(500)
+        assert snapshot(pg) == before, "a hash change moved or changed something after the fallback"
+        pg.ev("document.querySelector('#graph-cards a[href=\"#bounds\"]').click()")      # (ii) an in-article premise link
+        pg.page.wait_for_timeout(500)
+        assert snapshot(pg) == before, "a premise link click moved or changed something after the fallback"
+        for k in ("Escape", "Tab", "Enter", "Space", "ArrowLeft", "ArrowRight", "+", "-", "0", "f"):       # (iii) keys
+            pg.page.keyboard.press(k)
+        pg.page.wait_for_timeout(300)
+        assert snapshot(pg) == before, "a key press moved or changed something after the fallback"
+        assert pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
+        assert not errors_of(pg), errors_of(pg)
+        pg.csp_clean()
+        pg.close()
+    finally:
+        Handler.garbage = set()
+
+
+def c_dead_inflight(b, S, engine):
+    """A step load in flight when the fallback happens resolves afterwards: it must not move anything."""
+    gate = threading.Event()
+    Handler.garbage = {"/graph/step/a1.json"}
+    Handler.delay = {"/graph/step/a2.json": gate}
+    try:
+        pg = Pg(b, S.base + "graph/index.html").settled()
+        at_hash(pg, "a2")                                               # in flight: the response is held
+        waited = 0
+        while "/graph/step/a2.json" not in Handler.seen and waited < 5000:
+            pg.page.wait_for_timeout(50)
+            waited += 50
+        assert "/graph/step/a2.json" in Handler.seen, "the held request never arrived"
+        at_hash(pg, "a1")                                               # the fallback, by another path
+        pg.wait("!document.getElementById('graph-layer')", 6000)
+        before = snapshot(pg)
+        assert before["n"] == 23
+        gate.set()                                                      # now the held load resolves
+        pg.page.wait_for_timeout(700)
+        assert snapshot(pg) == before, "a step load that resolved after the fallback moved or changed something"
+        assert pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
+        assert not errors_of(pg), errors_of(pg)
+        pg.close()
+    finally:
+        gate.set()
+        Handler.garbage = set()
+        Handler.delay = {}
+
+
+# ---------------------------------------------------------------------------------------------- the open-parts route (S1)
+
+def c_open_parts_rejects(b):
+    """The engine's open() rejects: the route handles it as go() does (a fallback for anything but a 4xx), never an
+    unhandled rejection."""
+    def mut(text):
+        old = '    log.push(["open", id]);\n'
+        assert old in text
+        return text.replace(old, old + '    if (id === "goal-chain") throw new Error("the open was rejected");\n')
+    root = tempfile.mkdtemp(prefix="pg-s1-")
+    assemble.assemble(root, "double", mutate={os.path.join("engine", "index.js"): mut})
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        pg.wait("!document.getElementById('graph-layer')", 4000)
+        assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards")
+        assert pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
+        assert not errors_of(pg), errors_of(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+# --------------------------------------------------------------------- a failed load leaves the open card open (S2)
+
+def c_failed_load_keeps_card(b, S):
+    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    tap(pg, "goal-chain")
+    wait_sheet(pg, True)
+    at_hash(pg, "nope-1")                                              # a valid id with no step file: 404
+    pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+    assert pg.ev("document.getElementById('graph-notice').textContent") == "That address does not name a step on this map."
+    assert sheet_open(pg), "the reader's open card stays open when the load fails"
+    assert shown_id(pg) == "goal-chain"
+    assert pg.ev("document.getElementById('graph-fallback').hidden"), "a 404 is a notice, not the fallback"
+    pg.page.click("#graph-sheet-close")
+    wait_sheet(pg, False)
+    pg.csp_clean()
+    pg.close()
+
+
 # ------------------------------------------------------------------------- cases that need the REAL engine (camera, gestures)
 
 def center(pg, sel):
@@ -530,7 +660,7 @@ SHEET_MUTANTS = [
     ("close does not restore the details the list had open", SHEET, "    for (const x of rec.details) x.d.open = x.open;\n", "", c_sheet_r2),
     ("close leaves the status line in the article", SHEET, "    if (rec.status && rec.status.parentNode) rec.status.parentNode.removeChild(rec.status);\n", "", c_sheet_r2),
     ("close does not move the article home", SHEET, "        rec.home.parentNode.insertBefore(rec.node, rec.home);\n", "", c_sheet_r2),
-    ("sheetcloserequest is not listened for", SHEET, '  root.addEventListener("sheetcloserequest", () => close());\n', "", c_close_request),
+    ("sheetcloserequest is not listened for", SHEET, '  root.addEventListener("sheetcloserequest", () => close(), { signal });\n', "", c_close_request),
 ]
 
 
@@ -735,12 +865,17 @@ def main():
                 run("List link reaches ../list/", c_list_link)
                 run("phone layout at 390: intro <= 200, targets >= 44, no h-scroll, sheet <= 85%", c_phone_layout)
                 run("claim clamp: the six long claims clamp, the others do not", c_clamp)
+                run("after a fallback: a hash change, a premise link click and the keys move nothing", c_dead_after_fallback, eng)
+                run("after a fallback: a step load that was in flight moves nothing when it resolves", c_dead_inflight, eng)
+                run("a failed load (404) leaves the reader's open card open and shows the notice", c_failed_load_keeps_card)
                 if eng == "real":
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
                     run("REAL: pinch semantic-opens a step and loads its step file; no sheet", c_real_pinch)
             finally:
                 S.stop()
+        if only is None or "open-parts" in only:
+            case("open-parts: a rejecting open() is a fallback, not an unhandled rejection", c_open_parts_rejects, br)
         if only is None or "hostile" in only or "mutant" in only:
             case("hostile: 6 payloads x title, role, runtime words, key, crumb, status", c_hostile, br)
             case("hostile: kind and state payloads are refusals", c_hostile_kind_state, br)

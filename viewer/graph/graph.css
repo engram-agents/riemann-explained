@@ -101,6 +101,8 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 
 @media (min-width: 768px) {
   .graph-sheet { left: auto; top: 0; width: 26rem; max-width: 50vw; max-height: none; border-top: 0; border-left: 2px solid var(--fg); }
+  /* a notice shown while a card is open (a failed link leaves the card open) must not cover the panel's Close button */
+  body:has(#graph-sheet:not([hidden])) #graph-notice { right: min(26rem, 50vw); }
 }
 
 /* ---- the key: rows generated from the closed lists ---- */

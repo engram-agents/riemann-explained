@@ -103,3 +103,120 @@ test("stylesheets: the shell links engine.css then graph.css, in that order, and
     assert.ok(!/url\s*\(/i.test(css), rel(f) + " uses url()");
   }
 });
+
+/* ---- Scans of the page layer's own code (engine and tests excluded) -------------------------------------------------- */
+const pageFiles = files.filter((x) => x.includes(path.join("graph", "page")) && x.endsWith(".js"));
+
+/* The text of the call whose "(" is at `open`: up to the matching ")", skipping string literals. */
+function callText(src, open) {
+  let depth = 0, q = null;
+  for (let i = open; i < src.length; i++) {
+    const c = src[i];
+    if (q) { if (c === "\\") i++; else if (c === q) q = null; continue; }
+    if (c === '"' || c === "'" || c === "`") { q = c; continue; }
+    if (c === "(") depth++;
+    else if (c === ")" && --depth === 0) return src.slice(open, i + 1);
+  }
+  return src.slice(open);
+}
+
+/* Every call of `name(` (`.method(` or a bare call; a `function name(` definition is not a call): [{at, text}]. */
+function callsOf(src, name) {
+  const out = [];
+  const pat = name.startsWith(".") ? "\\" + name : "(?<![\\w$.])" + name;
+  const re = new RegExp("(?<!function\\s)" + pat + "\\(", "g");
+  for (const m of src.matchAll(re)) out.push({ at: m.index, text: callText(src, m.index + m[0].length - 1) });
+  return out;
+}
+
+/* The name of the innermost `function NAME(...) {` that contains index `at` (null at top level). */
+function enclosingFunction(src, at) {
+  let best = null;
+  for (const m of src.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/g)) {
+    let depth = 0, end = -1;
+    for (let i = m.index + m[0].length - 1; i < src.length; i++) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}" && --depth === 0) { end = i; break; }
+    }
+    if (m.index < at && at < end && (!best || m.index > best.start)) best = { name: m[1], start: m.index };
+  }
+  return best ? best.name : null;
+}
+
+/* B1: every listener the page adds is removed by the one teardown, because each passes the shared signal. */
+function listenersWithoutSignal(src) {
+  return callsOf(src, ".addEventListener").filter((c) => !/\bsignal\b/.test(c.text.slice(c.text.lastIndexOf(",") + 1))).map((c) => c.text.slice(0, 60));
+}
+/* B1: every engine subscription is kept as an unsubscribe function, so the teardown can remove it. */
+function subscriptionsNotKept(src) {
+  return callsOf(src, ".on").filter((c) => !/offs\.push\(\s*[\w.]*$/.test(src.slice(Math.max(0, c.at - 60), c.at))).map((c) => c.text.slice(0, 40));
+}
+
+test("B1: every addEventListener in page code passes the shared signal; every engine subscription is kept for teardown", () => {
+  let seen = 0;
+  for (const f of pageFiles) {
+    const src = read(f);
+    seen += callsOf(src, ".addEventListener").length;
+    assert.deepEqual(listenersWithoutSignal(src), [], rel(f) + " has a listener without the shared signal");
+    assert.deepEqual(subscriptionsNotKept(src), [], rel(f) + " has an engine subscription that teardown cannot remove");
+  }
+  assert.ok(seen >= 10, "the scan found the listeners it is meant to police: " + seen);
+});
+
+test("B1 scan control: a planted listener without the signal, and a planted subscription not kept, are found", () => {
+  assert.equal(listenersWithoutSignal('x.addEventListener("click", () => f(1, 2));').length, 1);
+  assert.equal(listenersWithoutSignal('x.addEventListener("click", () => f(1, 2), { signal });').length, 0);
+  assert.equal(listenersWithoutSignal('x.addEventListener("click", () => f(), { once: true });').length, 1);
+  assert.equal(subscriptionsNotKept('handle.on("tap", fn);').length, 1);
+  assert.equal(subscriptionsNotKept("offs.push(handle.on(\"tap\", fn));").length, 0);
+});
+
+/* S4: the sheet's content moves in one place (adopt, only after close()) and ends in one place (release, only from
+   close() and dispose()); the page ends it only through sheet.close() or, at the fallback, sheet.dispose(). */
+function closeRouteViolations(name, src) {
+  const bad = [];
+  const where = (c) => name + " " + c.text.slice(0, 50);
+  if (name === "sheet.js") {
+    for (const c of callsOf(src, "release")) if (!["close", "dispose"].includes(enclosingFunction(src, c.at))) bad.push(where(c) + " (release outside close/dispose)");
+    for (const c of callsOf(src, "adopt")) if (!["showCard", "showPanel"].includes(enclosingFunction(src, c.at))) bad.push(where(c) + " (adopt outside showCard/showPanel)");
+    for (const m of ["appendChild", "insertBefore", "removeChild", "replaceChild"]) {
+      for (const c of callsOf(src, "." + m)) {
+        if (/\b(rec\.)?node\b/.test(c.text) && !["release", "adopt", "clear"].includes(enclosingFunction(src, c.at))) bad.push(where(c) + " (moves the root outside release/adopt)");
+      }
+    }
+    // clear(node) empties a container it is handed; handed the sheet body it would take the root out
+    for (const c of callsOf(src, "clear")) if (/^\(\s*body\b/.test(c.text)) bad.push(where(c) + " (clears the body, which holds the root)");
+    for (const fn of ["showCard", "showPanel"]) {
+      const m = src.match(new RegExp("function " + fn + "\\([^)]*\\)\\s*\\{\\s*\\n\\s*if \\(!close\\(\\)\\) return false;"));
+      if (!m) bad.push(name + " " + fn + " does not begin with the one close function");
+    }
+  } else {
+    for (const c of callsOf(src, "release")) bad.push(where(c) + " (the page calls release)");
+    for (const c of callsOf(src, "adopt")) bad.push(where(c) + " (the page calls adopt)");
+    for (const c of callsOf(src, ".dispose")) if (enclosingFunction(src, c.at) !== "fallback") bad.push(where(c) + " (dispose outside the fallback)");
+    for (const m of ["appendChild", "insertBefore", "removeChild", "replaceChild"])
+      for (const c of callsOf(src, "." + m)) if (enclosingFunction(src, c.at) !== "fallback") bad.push(where(c) + " (the page moves a node outside the fallback)");
+  }
+  return bad;
+}
+
+test("S4: the sheet is ended and its root moved only through close() and the fallback teardown", () => {
+  let checked = 0;
+  for (const f of pageFiles) {
+    const n = path.basename(f);
+    if (n !== "sheet.js" && n !== "app.js") continue;
+    assert.deepEqual(closeRouteViolations(n, read(f)), [], n);
+    checked++;
+  }
+  assert.equal(checked, 2);
+});
+
+test("S4 scan control: planted calls are found", () => {
+  const app = read(path.join(GRAPH, "page", "app.js")), sheet = read(path.join(GRAPH, "page", "sheet.js"));
+  assert.equal(closeRouteViolations("app.js", app + '\nroutes["x"] = () => sheet.dispose();\n').length, 1);
+  assert.equal(closeRouteViolations("app.js", app + "\nfunction other() { release(1); }\n").length, 1);
+  assert.equal(closeRouteViolations("sheet.js", sheet + "\nfunction extra() { release(cur); }\n").length, 1);
+  assert.equal(closeRouteViolations("sheet.js", sheet + "\nfunction extra2() { body.appendChild(node); }\n").length, 1);
+  assert.equal(closeRouteViolations("sheet.js", sheet + "\nfunction extra3() { adopt(node, true); }\n").length, 1);
+  assert.equal(closeRouteViolations("sheet.js", sheet.replace("if (!close()) return false;\n    const rec", "const rec")).length, 1);
+});

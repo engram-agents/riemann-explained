@@ -16,7 +16,7 @@
    bubbling `sheetcloserequest` from inside the sheet runs the same close(). */
 import { el } from "./dom.js";
 
-export function createSheet(parts, strings, hooks) {
+export function createSheet(parts, strings, hooks, signal) {
   const { root, crumbs, tools, body, closeButton } = parts;
   const doc = root.ownerDocument;
   const win = doc.defaultView;
@@ -97,7 +97,7 @@ export function createSheet(parts, strings, hooks) {
     if (info.canParts) {
       const b = el("button", { type: "button", class: "sheet-tool" }, [info.partsOpen ? strings.close_parts : strings.open_parts]);
       rec.partsOpen = !!info.partsOpen;
-      b.addEventListener("click", () => (rec.partsOpen ? hooks.closeParts(info.id) : hooks.openParts(info.id)));
+      b.addEventListener("click", () => (rec.partsOpen ? hooks.closeParts(info.id) : hooks.openParts(info.id)), { signal });
       rec.parts = b;
       tools.appendChild(b);
     }
@@ -126,7 +126,7 @@ export function createSheet(parts, strings, hooks) {
       const clamped = body.classList.toggle("claim-clamped");
       clear(b);
       b.appendChild(doc.createTextNode(clamped ? strings.claim_more : strings.claim_less));
-    });
+    }, { signal });
     tools.appendChild(b);
   }
 
@@ -137,17 +137,17 @@ export function createSheet(parts, strings, hooks) {
     cur.parts.appendChild(doc.createTextNode(open ? strings.close_parts : strings.open_parts));
   }
 
-  closeButton.addEventListener("click", () => hooks.closeButton());
-  root.addEventListener("sheetcloserequest", () => close());
+  closeButton.addEventListener("click", () => hooks.closeButton(), { signal });
+  root.addEventListener("sheetcloserequest", () => close(), { signal });
   crumbs.addEventListener("click", (e) => {
     const b = e.target.closest && e.target.closest("button[data-id]");
     if (b) hooks.go(b.getAttribute("data-id"));
-  });
+  }, { signal });
   body.addEventListener("click", (e) => {
     const a = e.target.closest && e.target.closest("a");
     const h = a && a.getAttribute("href");
     if (h && h.charAt(0) === "#") { e.preventDefault(); hooks.go(h.slice(1)); }
-  });
+  }, { signal });
 
   return {
     close, dispose, showCard, showPanel, setPartsOpen,

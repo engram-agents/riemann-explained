@@ -43,11 +43,24 @@ export async function start(doc, deps) {
   const failure = { reason: null };
   let handle = null, sheet = null, layer = null, fallbackEl = null, cardsEl = null;
 
+  /* THE ONE TEARDOWN. `signal` goes to EVERY addEventListener in page code (the sheet's too), `offs` holds the unsubscribe
+     function of EVERY engine subscription, and `dead` is the mark each async continuation checks after an await. The
+     fallback runs all of it first, so once it has run no listener fires and no continuation touches the page again; the
+     builder's cards and the one fallback sentence stay exactly as it left them. (sources.test.mjs scans for a listener
+     without the signal.) */
+  const ctl = new AbortController();
+  const signal = ctl.signal;
+  const offs = [];
+  let dead = false;
+
   function fallback(reason) {
-    if (failure.reason) return;
+    if (dead) return;
+    dead = true;
     failure.reason = String(reason);
-    try { if (sheet) sheet.dispose(); } catch (e) { /* the page is being put back; carry on */ }
+    ctl.abort();
+    for (const off of offs.splice(0)) { try { off(); } catch (e) { /* the page is being put back; carry on */ } }
     try { if (handle) handle.destroy(); } catch (e) { /* the same */ }
+    try { if (sheet) sheet.dispose(); } catch (e) { /* the same */ }
     if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
     if (fallbackEl) fallbackEl.hidden = false;
     if (cardsEl) cardsEl.hidden = false;
@@ -82,10 +95,11 @@ export async function start(doc, deps) {
         openParts: (id) => routes["open-parts"](id),
         closeParts: (id) => { if (handle) handle.close(id); },
       },
+      signal,
     );
 
     const notice = q["graph-notice"];
-    function say(text) { notice.replaceChildren(doc.createTextNode(text)); notice.hidden = false; }
+    function say(text) { if (dead) return; notice.replaceChildren(doc.createTextNode(text)); notice.hidden = false; }
     function hush() { notice.hidden = true; }
 
     function openCard(id) {
@@ -102,17 +116,28 @@ export async function start(doc, deps) {
       return ok;
     }
 
+    /* The one rule for a route that fails: after the fallback nothing is said or done; a 4xx is a notice; anything else is the fallback. */
+    function failed(e) {
+      if (dead) return false;
+      if (e instanceof DataError && /^http-4/.test(e.code)) { say(strings.link_refused); return false; }
+      fallback(e && e.message);
+      return false;
+    }
+
+    /* The step is loaded (and validated) BEFORE the open card is touched: a failed load leaves it open. After every await,
+       a dead page does nothing. */
     async function go(id) {
+      if (dead) return false;
       if (!isId(id)) { say(strings.link_refused); return false; }
-      if (!sheet.close()) return false;
       try {
         const step = await data.loadStep(id);
+        if (dead) return false;
+        if (!sheet.close()) return false;
         await handle.reveal(step.path.concat(id));
+        if (dead) return false;
         return openCard(id);
       } catch (e) {
-        if (e instanceof DataError && /^http-4/.test(e.code)) { say(strings.link_refused); return false; }
-        fallback(e && e.message);
-        return false;
+        return failed(e);
       }
     }
 
@@ -125,17 +150,24 @@ export async function start(doc, deps) {
     routes["toolbar-key"] = () => { if (sheet.shown() === keyEl) sheet.close(); else sheet.showPanel(keyEl, false); };
     routes["toolbar-about"] = () => { if (sheet.shown() === aboutEl) sheet.close(); else sheet.showPanel(aboutEl, true); };
     routes["open-parts"] = async (id) => {
-      if (!sheet.close()) return;
-      const m = data.meta(id);
-      if (m && await handle.open(id)) await handle.reveal(m.path.concat(id));
+      try {
+        if (dead || !sheet.close()) return;
+        const m = data.meta(id);
+        if (m && await handle.open(id)) {
+          if (dead) return;
+          await handle.reveal(m.path.concat(id));
+        }
+      } catch (e) {
+        failed(e);
+      }
     };
     for (const name of CLOSE_ROUTES) if (typeof routes[name] !== "function") throw new Error("no route for " + name);
 
-    q["graph-show-all"].addEventListener("click", () => routes["toolbar-show-all"]());
-    q["graph-key"].addEventListener("click", () => routes["toolbar-key"]());
-    q["graph-about-open"].addEventListener("click", () => routes["toolbar-about"]());
-    doc.addEventListener("keydown", (e) => { if (e.key === "Escape") routes["escape"](); });
-    doc.defaultView.addEventListener("hashchange", () => { const id = hashId(doc); if (id !== null) routes["deep-link"](id); });
+    q["graph-show-all"].addEventListener("click", () => routes["toolbar-show-all"](), { signal });
+    q["graph-key"].addEventListener("click", () => routes["toolbar-key"](), { signal });
+    q["graph-about-open"].addEventListener("click", () => routes["toolbar-about"](), { signal });
+    doc.addEventListener("keydown", (e) => { if (e.key === "Escape") routes["escape"](); }, { signal });
+    doc.defaultView.addEventListener("hashchange", () => { const id = hashId(doc); if (id !== null) routes["deep-link"](id); }, { signal });
 
     layer.hidden = false;
     handle = deps.createGraph(q["graph"], {
@@ -143,20 +175,22 @@ export async function start(doc, deps) {
       loadChildren: (id) => data.loadChildren(id),
       renderFace: makeRenderFace(strings),
     });
-    const guard = (fn) => (...a) => { try { fn(...a); } catch (e) { fallback(e && e.message); } };
-    handle.on("tap", guard((node) => { if (node) routes["open-card"](node.id); else routes["tap-outside"](); }));
-    handle.on("open", guard((node) => { openIds.add(node.id); sheet.setPartsOpen(node.id, true); }));
-    handle.on("close", guard((node) => { openIds.delete(node.id); sheet.setPartsOpen(node.id, false); }));
-    handle.on("error", guard((node, reason) => {
+    const guard = (fn) => (...a) => { if (dead) return; try { fn(...a); } catch (e) { fallback(e && e.message); } };
+    offs.push(handle.on("tap", guard((node) => { if (node) routes["open-card"](node.id); else routes["tap-outside"](); })));
+    offs.push(handle.on("open", guard((node) => { openIds.add(node.id); sheet.setPartsOpen(node.id, true); })));
+    offs.push(handle.on("close", guard((node) => { openIds.delete(node.id); sheet.setPartsOpen(node.id, false); })));
+    offs.push(handle.on("error", guard((node, reason) => {
       if (reason === "path-not-found") say(strings.link_refused); else fallback("engine error " + reason);
-    }));
-    handle.on("refused", guard((node, reason) => {
+    })));
+    offs.push(handle.on("refused", guard((node, reason) => {
       if (reason === "invalid-path") say(strings.link_refused); else fallback("engine refused " + reason);
-    }));
+    })));
 
-    if (!(await handle.ready)) { fallback("the engine refused the roots"); return failure; }
+    const ready = await handle.ready;
+    if (dead) return failure;
+    if (!ready) { fallback("the engine refused the roots"); return failure; }
     await new Promise((r) => doc.defaultView.requestAnimationFrame(() => r()));
-    if (failure.reason) return failure;
+    if (dead) return failure;
     fallbackEl.hidden = true;     // only after the first graph frame is drawn
     cardsEl.hidden = true;
     const first = hashId(doc);
