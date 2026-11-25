@@ -4,6 +4,7 @@
   "id": "inputs",
   "kind": "def",
   "path": [],
+  "proof": "none",
   "role": "Definition",
   "state": "read",
   "title": "Title of step inputs"
@@ -17,6 +18,7 @@
    "path": [
     "inputs"
    ],
+   "proof": "none",
    "role": "Definition",
    "state": "none",
    "title": "Title of step b1"
@@ -29,6 +31,7 @@
    "path": [
     "inputs"
    ],
+   "proof": "none",
    "role": "Structure",
    "state": "none",
    "title": "Title of step b2"
@@ -41,6 +44,7 @@
    "path": [
     "inputs"
    ],
+   "proof": "not_read",
    "role": "Theorem",
    "state": "read",
    "title": "Title of step b3"

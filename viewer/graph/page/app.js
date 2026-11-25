@@ -34,11 +34,12 @@ function hashId(doc) {
   try { return decodeURIComponent(h.slice(1)); } catch (e) { return ""; }
 }
 
-/* The key: one row per kind and per state in the contract's closed lists, each with its words from index.json strings. */
+/* The key: one row per kind, then per state, in symbols.order order, each with its label strings[row.words]. (Proofs have no
+   section in the key: a proof shows only in the sheet's status line.) */
 function buildKey(index) {
-  const s = index.strings;
-  const kindRows = index.symbols.kinds.map((k) => el("li", {}, [el("span", { class: "swatch " + KIND_CLASS[k] }), el("span", {}, [s["key_kind_" + k]])]));
-  const stateRows = index.symbols.states.map((st) => el("li", {}, [el("span", { class: "swatch k-theorem " + STATE_CLASS[st] }), el("span", {}, [s["key_state_" + st]])]));
+  const s = index.strings, w = index.symbols.words;
+  const kindRows = index.symbols.kinds.map((k) => el("li", {}, [el("span", { class: "swatch " + KIND_CLASS[k] }), el("span", {}, [s[w.kinds[k]]])]));
+  const stateRows = index.symbols.states.map((st) => el("li", {}, [el("span", { class: "swatch k-theorem " + STATE_CLASS[st] }), el("span", {}, [s[w.states[st]]])]));
   return el("div", { class: "key-content" }, [
     el("h2", {}, [s.key_kinds_heading]), el("ul", {}, kindRows),
     el("h2", {}, [s.key_states_heading]), el("ul", {}, stateRows),
@@ -112,8 +113,8 @@ export async function start(doc, deps) {
       const art = articles.get(id), m = data.meta(id);
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
       if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
-      const proof = art.querySelector(":scope > p.status.proof");
-      const status = [strings["status_" + m.state]].concat(proof ? [proof.textContent] : []).join(" · ");
+      const w = index.symbols.words;
+      const status = [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
       const ok = sheet.showCard(art, {
         id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id),
         crumbs: anc.concat(m).map((x) => ({ id: x.id, title: x.title, role: x.role })),

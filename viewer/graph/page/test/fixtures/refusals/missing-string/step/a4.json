@@ -6,6 +6,7 @@
   "path": [
    "goal-chain"
   ],
+  "proof": "not_read",
   "role": "Theorem",
   "state": "read",
   "title": "Title of step a4"

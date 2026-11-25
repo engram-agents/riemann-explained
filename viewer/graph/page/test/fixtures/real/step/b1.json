@@ -6,6 +6,7 @@
   "path": [
    "inputs"
   ],
+  "proof": "none",
   "role": "Definition",
   "state": "none",
   "title": "Title of step b1"
@@ -20,6 +21,7 @@
     "inputs",
     "b1"
    ],
+   "proof": "none",
    "role": "Definition",
    "state": "read",
    "title": "Title of step b1-a"
@@ -33,6 +35,7 @@
     "inputs",
     "b1"
    ],
+   "proof": "none",
    "role": "Structure",
    "state": "census",
    "title": "Title of step b1-b"

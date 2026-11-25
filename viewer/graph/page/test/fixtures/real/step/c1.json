@@ -6,6 +6,7 @@
   "path": [
    "bounds"
   ],
+  "proof": "read",
   "role": "Theorem",
   "state": "census",
   "title": "Title of step c1"

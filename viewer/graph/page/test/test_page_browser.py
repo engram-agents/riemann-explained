@@ -831,6 +831,78 @@ def c_first_fit_mutant(b):
     print("   with the old 0.5 allowance the gapY 70 build passes (that is what the strict case is for)")
 
 
+def c_status_from_data(b, S0, engine):
+    """The sheet's status line is strings[states[state].words] and strings[proofs[proof].words], joined; the list's own
+    `p.status.proof` line is never read: a sentinel in it does not reach the sheet, and a card whose list line is absent
+    (proof none) still gets its proof words from the data."""
+    def cards(text):
+        old = "Proof: not read yet."
+        assert old in text
+        return text.replace(old, "SENTINEL from the list page", 1)
+
+    def steps(st):
+        for s in st.values():
+            for c in [s["card"]] + s["children"]:
+                if c["id"] == "a2":
+                    c["proof"] = "none"
+                if c["id"] == "a3":
+                    c["proof"] = "read"
+    root = tempfile.mkdtemp(prefix="pg-status-")
+    assemble.assemble(root, engine, cards_edit=cards, step_edit=steps)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        st = lambda: pg.ev("document.querySelector('#graph-sheet-body .sheet-status').textContent")
+        for card, want in (("goal-chain", "Statement read · Proof: not read yet."), ("a2", None), ("a3", None)):
+            at_hash(pg, card)
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+            text = st()
+            assert "SENTINEL" not in text, text
+            if want:
+                assert text == want, text
+        at_hash(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 6000)
+        assert st().endswith(" · No proof to read"), st()
+        at_hash(pg, "a3")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a3'", 6000)
+        assert st().endswith(" · Proof read"), st()
+        # the key lists kinds then states, in symbols.order order, with the states' words (no proofs section)
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")
+        rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
+        assert heads == ["Colour and shape: what Lean declares", "Frame: what we have read"], heads
+        assert rows == ["Theorem: a result the Lean code proves", "Definition: a named object or statement", "Structure: a bundle of named fields",
+                        "Statement read", "Statement counted by a program", "Statement not read"], rows
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_key_order(b, S0, engine):
+    """symbols.order sets the key's row order; the labels come from strings[row.words]."""
+    def idx(i):
+        i["symbols"]["order"]["kinds"] = ["structure", "def", "theorem"]
+        i["symbols"]["order"]["states"] = ["none", "census", "read"]
+    root = tempfile.mkdtemp(prefix="pg-order-")
+    assemble.assemble(root, engine, index_edit=idx)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
+        assert rows == ["Structure: a bundle of named fields", "Definition: a named object or statement", "Theorem: a result the Lean code proves",
+                        "Statement not read", "Statement counted by a program", "Statement read"], rows
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
 # ------------------------------------------------------------------------- cases that need the REAL engine (camera, gestures)
 
 def center(pg, sel):
@@ -954,7 +1026,7 @@ def c_hidden_strings_are_text(b):
         tap(pg, "goal-chain")
         wait_sheet(pg, True)
         assert pg.ev("document.querySelector('#graph-crumbs nav').getAttribute('aria-label')") == "«crumb_label»"
-        assert pg.ev("document.querySelector('#graph-sheet-body .sheet-status').textContent").startswith("«status_read»")
+        assert pg.ev("document.querySelector('#graph-sheet-body .sheet-status').textContent").startswith("«sheet_statement_read» · «sheet_proof_not_read»")
         tools = pg.ev("[...document.querySelectorAll('#graph-sheet-tools .sheet-tool')].map(x => x.textContent)")
         assert "«open_parts»" in tools, tools
         pg.csp_clean()
@@ -966,8 +1038,9 @@ def c_hidden_strings_are_text(b):
 def build_hostile(root, payload, mutate=None):
     def idx(i):
         i["strings"]["parts_n"] = payload + " {n}"
-        i["strings"]["key_state_none"] = payload
-        i["strings"]["status_read"] = payload
+        i["strings"]["sheet_statement_not_read"] = payload      # the last key row (states, in order)
+        i["strings"]["sheet_statement_read"] = payload          # the sheet status of goal-chain: statement
+        i["strings"]["sheet_proof_not_read"] = payload          # ... and proof
 
     def steps(st):
         for s in st.values():
@@ -1017,8 +1090,8 @@ def hostile_cell(b, S, n, payload):
             fails.append(cell + ": breadcrumb is not role+title as text")
         if pg.ev("document.querySelectorAll('#graph-crumbs *').length") != 5:
             fails.append(cell + ": the breadcrumb has a different number of elements than the 5 it is built from")
-        if (q("#graph-sheet-body .sheet-status") or "").split(" · ")[0] != payload:
-            fails.append(cell + ": status word is not the payload as text")
+        if (q("#graph-sheet-body .sheet-status") or "").split(" · ") != [payload, payload]:
+            fails.append(cell + ": status words are not the payloads as text")
         if pg.ev("document.querySelectorAll('img, iframe, object, embed, [onerror], [onmouseover], [onclick], [onload]').length") != 0:
             fails.append(cell + ": an element or event handler appeared")
         if pg.ev("document.querySelectorAll('script').length") != 1:
@@ -1116,6 +1189,8 @@ def main():
                 run("the sheet's tools sit in the bar beside Close; the article is the body's one child and starts with its claim", c_tools_in_bar)
                 run("the comment script's details.rc-section row is an ordinary closed 44 px sheet row and goes home", c_rc_section_row, eng)
                 run("first fit at 390 x 844: title >= 15 px and other face text >= 14 px at the engine's camera scale, no allowance; nothing overlaps", c_first_fit_size, eng)
+                run("the sheet status line is the data's words (states and proofs); the list's proof line is never read; the key shows kinds then states", c_status_from_data, eng)
+                run("symbols.order sets the key's order", c_key_order, eng)
                 run("after a fallback: a hash change, a premise link click and the keys move nothing", c_dead_after_fallback, eng)
                 run("after a fallback: a step load that was in flight moves nothing when it resolves", c_dead_inflight, eng)
                 run("a failed load (404) leaves the reader's open card open and shows the notice", c_failed_load_keeps_card)

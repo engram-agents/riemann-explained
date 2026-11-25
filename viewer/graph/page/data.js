@@ -3,10 +3,12 @@
    that names its reason; nothing partial is ever returned. This module is the engine's `loadChildren`. */
 import { isId, stepPath } from "./dom.js";
 
-/* The enumerated class tables (R3): a kind or state reaches a class name only through these. A kind or state that
-   the contract's `symbols` lists but that is not here is a refusal, never a blank. */
+/* The enumerated class tables (R3): a kind, state or proof reaches a class name only through these. One that the
+   contract's `symbols` lists but that is not here is a refusal, never a blank. The `class` the builder writes in a
+   symbols row is checked as a string and IGNORED. */
 export const KIND_CLASS = Object.freeze({ theorem: "k-theorem", def: "k-def", structure: "k-structure" });
 export const STATE_CLASS = Object.freeze({ read: "s-read", census: "s-census", none: "s-none" });
+export const PROOF_CLASS = Object.freeze({ read: "p-read", not_read: "p-not-read", none: "p-none" });
 
 export class DataError extends Error {
   constructor(code, detail) {
@@ -43,38 +45,44 @@ function idList(v, where) {
 }
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-/* The runtime words the page uses, generated from the closed lists so a kind or state cannot exist without its words. */
+/* The runtime words the page reads from index.json `strings`: the fixed list, plus the `words` key of every symbols row
+   (the legend and the sheet's status line read the same name per symbol). `strings` must be EXACTLY this set. */
+export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label",
+  "link_refused", "key_kinds_heading", "key_states_heading"]);
+const TABLES = Object.freeze([["kinds", KIND_CLASS, "unknown-kind"], ["proofs", PROOF_CLASS, "unknown-proof"], ["states", STATE_CLASS, "unknown-state"]]);
+
 export function requiredStrings(symbols) {
-  const out = ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused",
-    "key_kinds_heading", "key_states_heading"];
-  for (const k of symbols.kinds) out.push("key_kind_" + k);
-  for (const s of symbols.states) out.push("key_state_" + s, "status_" + s);
+  const out = FIXED_STRINGS.slice();
+  for (const [t] of TABLES) for (const name of symbols[t]) out.push(symbols.words[t][name]);
   return out;
 }
 
-function nameList(v, table, code, where) {
-  const names = Array.isArray(v) ? v : isObj(v) ? Object.keys(v) : null;
-  if (!names || names.length === 0) throw new DataError("bad-type", where + " is not a non-empty list");
-  for (const n of names) {
-    if (!isStr(n) || !has(table, n)) throw new DataError(code, where + " names a value this page cannot draw");
-  }
-  return names.slice();
-}
-
+/* symbols = {order: {kinds, proofs, states}, kinds|proofs|states: {name: {class, text, words}}}: exact key sets. A name the
+   page has no table entry for is a refusal; `order` lists are permutations of the names; `class` and `text` are strings and
+   otherwise ignored; `words` is a string (that it is a key of `strings` is checked with the strings). */
 function symbolsOf(v) {
-  exactKeys(v, ["kinds", "states"], ["order"], "symbols");
-  let kinds = nameList(v.kinds, KIND_CLASS, "unknown-kind", "symbols.kinds");
-  let states = nameList(v.states, STATE_CLASS, "unknown-state", "symbols.states");
-  if (has(v, "order")) {
-    exactKeys(v.order, [], ["kinds", "states"], "symbols.order");
-    if (has(v.order, "kinds")) kinds = orderOf(v.order.kinds, kinds, "symbols.order.kinds");
-    if (has(v.order, "states")) states = orderOf(v.order.states, states, "symbols.order.states");
+  exactKeys(v, ["order", "kinds", "proofs", "states"], [], "symbols");
+  exactKeys(v.order, ["kinds", "proofs", "states"], [], "symbols.order");
+  const out = { words: {} };
+  for (const [t, table, code] of TABLES) {
+    const rows = v[t];
+    if (!isObj(rows) || Object.keys(rows).length === 0) throw new DataError("bad-type", "symbols." + t + " is not a non-empty object");
+    const names = Object.keys(rows);
+    out.words[t] = {};
+    for (const n of names) {
+      if (!has(table, n)) throw new DataError(code, "symbols." + t + " names a value this page cannot draw");
+      exactKeys(rows[n], ["class", "text", "words"], [], "symbols." + t + " row");
+      if (!isStr(rows[n].class) || !isStr(rows[n].text) || !isStr(rows[n].words))
+        throw new DataError("bad-type", "symbols." + t + " row has a class, text or words that is not a string");
+      out.words[t][n] = rows[n].words;
+    }
+    out[t] = orderOf(v.order[t], names, "symbols.order." + t);
   }
-  return { kinds, states };
+  return out;
 }
 function orderOf(list, names, where) {
   if (!Array.isArray(list) || list.length !== names.length || !list.every((x) => names.includes(x)) || new Set(list).size !== list.length)
-    throw new DataError("bad-type", where + " is not an ordering of the same names");
+    throw new DataError("bad-order", where + " is not a permutation of the table's names");
   return list.slice();
 }
 
@@ -112,23 +120,28 @@ export function validateIndex(raw) {
   }
   if (!isObj(raw.strings)) throw new DataError("bad-type", "index strings is not an object");
   for (const k of Object.keys(raw.strings)) if (!isStr(raw.strings[k])) throw new DataError("bad-type", "index strings holds a non-string");
-  for (const k of requiredStrings(symbols)) {
+  const need = requiredStrings(symbols);
+  for (const k of need) {
     if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("missing-string", "index strings lacks the runtime key " + k);
+  }
+  for (const k of Object.keys(raw.strings)) {
+    if (!need.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   }
   return { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
 }
 
 function closedOf(c, ctx, isChild, where) {
-  exactKeys(c, ["id", "title", "kind", "state", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role"], where);
+  exactKeys(c, ["id", "title", "kind", "state", "proof", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role"], where);
   idOf(c.id, where + ".id");
   if (!isStr(c.title) || c.title === "") throw new DataError("bad-title", where + " has no title");
   if (!isStr(c.kind) || !ctx.symbols.kinds.includes(c.kind)) throw new DataError("unknown-kind", where + " has a kind that symbols does not list");
   if (!isStr(c.state) || !ctx.symbols.states.includes(c.state)) throw new DataError("unknown-state", where + " has a state that symbols does not list");
+  if (!isStr(c.proof) || !ctx.symbols.proofs.includes(c.proof)) throw new DataError("unknown-proof", where + " has a proof that symbols does not list");
   if (!isInt(c.child_count) || c.child_count < 0) throw new DataError("bad-count", where + " child_count is not a count");
   const path = idList(c.path, where + ".path");
   if (has(c, "role") && (!isStr(c.role) || c.role === "")) throw new DataError("bad-role", where + " role is not a non-empty string");
   if (isChild && typeof c.parent_rests_on !== "boolean") throw new DataError("bad-type", where + " parent_rests_on is not a boolean");
-  const out = { id: c.id, title: c.title, kind: c.kind, state: c.state, child_count: c.child_count, path };
+  const out = { id: c.id, title: c.title, kind: c.kind, state: c.state, proof: c.proof, child_count: c.child_count, path };
   if (has(c, "role")) out.role = c.role;
   if (isChild) out.parent_rests_on = c.parent_rests_on;
   return out;
@@ -181,7 +194,7 @@ export function createData(fetchLike) {
   const metaOf = new Map();     // id -> what the breadcrumb needs about a step already seen
 
   function note(c) {
-    const m = { id: c.id, title: c.title, kind: c.kind, state: c.state, childCount: c.child_count, path: c.path.slice() };
+    const m = { id: c.id, title: c.title, kind: c.kind, state: c.state, proof: c.proof, childCount: c.child_count, path: c.path.slice() };
     if (has(c, "role")) m.role = c.role;
     metaOf.set(c.id, m);
   }

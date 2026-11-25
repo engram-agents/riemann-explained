@@ -4,6 +4,7 @@
   "id": "bounds",
   "kind": "structure",
   "path": [],
+  "proof": "none",
   "role": "Structure",
   "state": "census",
   "title": "Title of step bounds"
@@ -17,6 +18,7 @@
    "path": [
     "bounds"
    ],
+   "proof": "read",
    "role": "Theorem",
    "state": "census",
    "title": "Title of step c1"
@@ -29,6 +31,7 @@
    "path": [
     "bounds"
    ],
+   "proof": "none",
    "state": "none",
    "title": "Title of step linkn"
   }

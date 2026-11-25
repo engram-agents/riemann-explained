@@ -6,6 +6,7 @@
   "path": [
    "goal-chain"
   ],
+  "proof": "read",
   "role": "Theorem",
   "state": "census",
   "title": "Title of step a1"
@@ -20,6 +21,7 @@
     "goal-chain",
     "a1"
    ],
+   "proof": "read",
    "role": "Theorem",
    "state": "census",
    "title": "Title of step a1-a"
@@ -33,6 +35,7 @@
     "goal-chain",
     "a1"
    ],
+   "proof": "none",
    "role": "Definition",
    "state": "none",
    "title": "Title of step a1-b"
@@ -46,6 +49,7 @@
     "goal-chain",
     "a1"
    ],
+   "proof": "none",
    "role": "Structure",
    "state": "none",
    "title": "Title of step a1-c"
@@ -59,6 +63,7 @@
     "goal-chain",
     "a1"
    ],
+   "proof": "not_read",
    "role": "Theorem",
    "state": "read",
    "title": "Title of step a1-d"

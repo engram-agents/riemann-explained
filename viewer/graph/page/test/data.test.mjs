@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { createData, DataError, validateIndex, validateStep, requiredStrings } from "../data.js";
+import { createData, DataError, validateIndex, validateStep, requiredStrings, FIXED_STRINGS, KIND_CLASS, STATE_CLASS, PROOF_CLASS } from "../data.js";
 
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -156,6 +156,11 @@ const REFUSALS = [
   ["link-not-sibling", "bad-link"], ["commit-mismatch", "commit-mismatch"], ["symbols-lacks-kind", "unknown-kind"],
   ["unrenderable-kind", "unknown-kind"], ["empty-role", "bad-role"], ["role-not-string", "bad-role"], ["empty-title", "bad-title"],
   ["extra-key", "extra-key"],
+  // contract section 8
+  ["unrenderable-proof", "unknown-proof"], ["bad-proof-value", "unknown-proof"], ["missing-proof", "missing-key"],
+  ["missing-words-string", "missing-string"], ["extra-string", "extra-string"], ["extra-string-proofs-heading", "extra-string"],
+  ["order-not-permutation", "bad-order"], ["order-repeats", "bad-order"], ["class-not-string", "bad-type"], ["words-not-string", "bad-type"],
+  ["symbols-old-shape", "missing-key"],
 ];
 
 test("refusal fixtures: the list covers every fixture directory", () => {
@@ -189,9 +194,12 @@ test("validateIndex / validateStep are pure and exported; requiredStrings is gen
   assert.deepEqual(v.symbols.kinds, ["theorem", "def", "structure"]);
   assert.deepEqual(v.symbols.states, ["read", "census", "none"]);
   const req = requiredStrings(v.symbols);
-  for (const k of ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused",
-    "status_read", "status_census", "status_none", "key_kind_theorem", "key_kind_def", "key_kind_structure", "key_state_read", "key_state_census", "key_state_none"])
-    assert.ok(req.includes(k), k);
+  assert.deepEqual(FIXED_STRINGS, ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused",
+    "key_kinds_heading", "key_states_heading"], "the fixed runtime list (no proofs heading: the key has no proofs section)");
+  for (const k of ["sheet_statement_read", "sheet_statement_census", "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read",
+    "sheet_proof_none", "key_kind_theorem", "key_kind_def", "key_kind_structure"]) assert.ok(req.includes(k), k);
+  assert.equal(req.length, 19, "10 fixed + one `words` key per row (3 kinds, 3 states, 3 proofs)");
+  assert.deepEqual([...req].sort(), Object.keys(idx.strings).sort(), "strings is EXACTLY the required set");
   for (const k of req) assert.equal(typeof idx.strings[k], "string", k);
   // a runtime key missing -> refusal naming it
   for (const k of req) {
@@ -266,4 +274,157 @@ test("INDEX LINKS: the contract gives top steps the empty path, so an index rest
       assert.throws(() => validateIndex(bad), (e) => e instanceof DataError && e.code === "bad-link", field + " = " + JSON.stringify(value));
     }
   }
+});
+
+
+/* ------------------------------------------------------------------------------------------ contract section 8 */
+
+const realIndex = () => JSON.parse(readFileSync(path.join(FIX, "real", "index.json"), "utf8"));
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+test("SECTION 8 symbols: the exact shape is accepted, with order, words by table, and the page's own class tables", () => {
+  const v = validateIndex(realIndex());
+  assert.deepEqual(v.symbols.kinds, ["theorem", "def", "structure"]);
+  assert.deepEqual(v.symbols.proofs, ["read", "not_read", "none"]);
+  assert.deepEqual(v.symbols.states, ["read", "census", "none"]);
+  assert.deepEqual(v.symbols.words.proofs, { read: "sheet_proof_read", not_read: "sheet_proof_not_read", none: "sheet_proof_none" });
+  assert.deepEqual(v.symbols.words.states, { read: "sheet_statement_read", census: "sheet_statement_census", none: "sheet_statement_not_read" });
+  assert.deepEqual(Object.keys(PROOF_CLASS), ["read", "not_read", "none"]);
+  assert.deepEqual(Object.keys(KIND_CLASS), ["theorem", "def", "structure"]);
+  assert.deepEqual(Object.keys(STATE_CLASS), ["read", "census", "none"]);
+});
+
+test("SECTION 8 order: a permutation is accepted and changes the order; a repeat, a missing name, a stranger and a non-list are refused", () => {
+  const idx = realIndex();
+  const ok = clone(idx);
+  ok.symbols.order.kinds = ["structure", "theorem", "def"];
+  ok.symbols.order.proofs = ["none", "read", "not_read"];
+  const v = validateIndex(ok);
+  assert.deepEqual(v.symbols.kinds, ["structure", "theorem", "def"]);
+  assert.deepEqual(v.symbols.proofs, ["none", "read", "not_read"]);
+  for (const t of ["kinds", "proofs", "states"]) {
+    const names = idx.symbols.order[t];
+    for (const bad of [names.slice(0, -1), [...names, names[0]], [names[0], names[0], ...names.slice(2)], [...names.slice(0, -1), "stranger"], "x", null, []]) {
+      const b = clone(idx);
+      b.symbols.order[t] = bad;
+      assert.throws(() => validateIndex(b), (e) => e instanceof DataError && e.code === "bad-order", t + " " + JSON.stringify(bad));
+    }
+  }
+});
+
+test("SECTION 8 symbols: exact key sets at every level (an extra or a missing key is refused)", () => {
+  const idx = realIndex();
+  for (const where of [["symbols"], ["symbols", "order"], ["symbols", "kinds", "theorem"], ["symbols", "proofs", "read"], ["symbols", "states", "none"]]) {
+    const get = (o) => where.reduce((a, k) => a[k], o);
+    const extra = clone(idx);
+    get(extra).unexpected = "x";
+    assert.throws(() => validateIndex(extra), (e) => e instanceof DataError && e.code === "extra-key", where.join(".") + " extra");
+    for (const k of Object.keys(get(idx))) {
+      const miss = clone(idx);
+      delete get(miss)[k];
+      assert.throws(() => validateIndex(miss), DataError, where.join(".") + " lacks " + k);
+    }
+  }
+});
+
+test("SECTION 8: `class` and `text` must be strings and are IGNORED; the page's class comes only from its own tables", () => {
+  const idx = realIndex();
+  for (const t of ["kinds", "proofs", "states"]) {
+    const name = Object.keys(idx.symbols[t])[0];
+    for (const field of ["class", "text", "words"]) {
+      for (const bad of [7, null, [], {}, true]) {
+        const b = clone(idx);
+        b.symbols[t][name][field] = bad;
+        assert.throws(() => validateIndex(b), (e) => e instanceof DataError && e.code === "bad-type", t + "." + name + "." + field + " = " + JSON.stringify(bad));
+      }
+    }
+  }
+  const hostile = clone(idx);
+  hostile.symbols.kinds.theorem.class = '" onmouseover="x';
+  hostile.symbols.kinds.theorem.text = "<img src=x onerror=alert(1)>";
+  const v = validateIndex(hostile);
+  assert.ok(!JSON.stringify(v).includes("onmouseover") && !JSON.stringify(v).includes("<img"), "neither class nor text is carried into the page's data");
+});
+
+test("SECTION 8: a symbols name the page has no table entry for is refused, per table", () => {
+  const idx = realIndex();
+  for (const [t, code, order] of [["kinds", "unknown-kind"], ["proofs", "unknown-proof"], ["states", "unknown-state"]]) {
+    const b = clone(idx);
+    b.symbols[t].stranger = { class: "x", text: "x", words: Object.values(idx.symbols[t])[0].words };
+    b.symbols.order[t] = [...b.symbols.order[t], "stranger"];
+    assert.throws(() => validateIndex(b), (e) => e instanceof DataError && e.code === code, t);
+  }
+});
+
+test("SECTION 8 strings: EXACTLY the required set; each missing key and each extra key is a named refusal", () => {
+  const idx = realIndex();
+  const need = requiredStrings(validateIndex(idx).symbols);
+  for (const k of need) {
+    const b = clone(idx);
+    delete b.strings[k];
+    assert.throws(() => validateIndex(b), (e) => e instanceof DataError && e.code === "missing-string" && e.message.includes(k), "missing " + k);
+    const empty = clone(idx);
+    empty.strings[k] = "";
+    assert.throws(() => validateIndex(empty), (e) => e instanceof DataError && e.code === "missing-string", "empty " + k);
+  }
+  for (const extra of ["key_proofs_heading", "bonus", "status_read", "key_state_read", "key_kind_lemma"]) {
+    const b = clone(idx);
+    b.strings[extra] = "a word";
+    assert.throws(() => validateIndex(b), (e) => e instanceof DataError && e.code === "extra-string" && e.message.includes(extra), "extra " + extra);
+  }
+  // a `words` that names no key of strings: the row's words key is then a missing string
+  const dangling = clone(idx);
+  dangling.symbols.proofs.read.words = "no_such_key";
+  assert.throws(() => validateIndex(dangling), (e) => e instanceof DataError && e.code === "missing-string" && e.message.includes("no_such_key"));
+  // two rows may share a words key (one label, two symbols): the set stays exact
+  const shared = clone(idx);
+  shared.symbols.kinds.def.words = shared.symbols.kinds.theorem.words;
+  delete shared.strings.key_kind_def;
+  assert.equal(validateIndex(shared).symbols.words.kinds.def, "key_kind_theorem");
+});
+
+test("SECTION 8 cards: `proof` is a required key with the three values; nothing else is accepted; meta carries it", async () => {
+  const v = validateIndex(realIndex());
+  const step = JSON.parse(readFileSync(path.join(FIX, "real", "step", "a1.json"), "utf8"));
+  const seen = new Set();
+  for (const c of [step.card, ...step.children]) seen.add(c.proof);
+  for (const val of ["read", "not_read", "none"]) {
+    const b = clone(step);
+    b.card.proof = val;
+    assert.equal(validateStep(b, v).card.proof, val);
+    const c = clone(step);
+    c.children[0].proof = val;
+    assert.equal(validateStep(c, v).children[0].proof, val);
+  }
+  for (const bad of ["maybe", "Read", "", null, 1, [], {}, "read "]) {
+    for (const where of ["card", "child"]) {
+      const b = clone(step);
+      (where === "card" ? b.card : b.children[0]).proof = bad;
+      assert.throws(() => validateStep(b, v), (e) => e instanceof DataError && e.code === "unknown-proof", where + " " + JSON.stringify(bad));
+    }
+  }
+  const missing = clone(step);
+  delete missing.children[0].proof;
+  assert.throws(() => validateStep(missing, v), (e) => e instanceof DataError && e.code === "missing-key");
+  const d = createData(real());
+  await d.loadIndex();
+  await d.loadRoots();
+  assert.equal(d.meta("goal-chain").proof, "not_read");
+  await d.loadChildren("goal-chain");
+  assert.ok(["read", "not_read", "none"].includes(d.meta("a1").proof));
+});
+
+test("SECTION 8 fixtures: every real step carries a proof derived from its card (definitions and structures have none to read)", () => {
+  const dir = path.join(FIX, "real", "step");
+  let n = 0;
+  const counts = { read: 0, not_read: 0, none: 0 };
+  for (const f of readdirSync(dir)) {
+    const st = JSON.parse(readFileSync(path.join(dir, f), "utf8"));
+    for (const c of [st.card, ...st.children]) {
+      n++;
+      counts[c.proof]++;
+      assert.equal(c.proof === "none", c.kind !== "theorem", c.id + ": " + c.kind + " -> " + c.proof);
+    }
+  }
+  assert.ok(n > 23 && counts.read > 0 && counts.not_read > 0 && counts.none > 0, JSON.stringify(counts));
 });

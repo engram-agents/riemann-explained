@@ -7,6 +7,7 @@
    "goal-chain",
    "a1"
   ],
+  "proof": "read",
   "role": "Theorem",
   "state": "census",
   "title": "Title of step a1-a"
@@ -22,6 +23,7 @@
     "a1",
     "a1-a"
    ],
+   "proof": "none",
    "role": "Definition",
    "state": "read",
    "title": "Title of step a1-a-1"
@@ -36,6 +38,7 @@
     "a1",
     "a1-a"
    ],
+   "proof": "none",
    "role": "Structure",
    "state": "census",
    "title": "Title of step a1-a-2"

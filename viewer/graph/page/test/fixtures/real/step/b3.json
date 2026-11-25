@@ -6,6 +6,7 @@
   "path": [
    "inputs"
   ],
+  "proof": "not_read",
   "role": "Theorem",
   "state": "read",
   "title": "Title of step b3"

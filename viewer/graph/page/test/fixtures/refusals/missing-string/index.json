@@ -14,22 +14,34 @@
   "key_kind_structure": "Structure: a bundle of named fields",
   "key_kind_theorem": "Theorem: a result the Lean code proves",
   "key_kinds_heading": "Colour and shape: what Lean declares",
-  "key_state_census": "Dotted: counted by a program, not read",
-  "key_state_none": "Dashed: not read yet",
-  "key_state_read": "Solid: one of us read the statement",
   "key_states_heading": "Frame: what we have read",
   "link_refused": "That address does not name a step on this map.",
   "part_one": "1 part",
   "parts_n": "{n} parts",
-  "status_census": "Statement counted by a program",
-  "status_none": "Statement not read",
-  "status_read": "Statement read"
+  "sheet_proof_none": "No proof to read",
+  "sheet_proof_not_read": "Proof: not read yet.",
+  "sheet_proof_read": "Proof read",
+  "sheet_statement_census": "Statement counted by a program",
+  "sheet_statement_not_read": "Statement not read",
+  "sheet_statement_read": "Statement read"
  },
  "symbols": {
   "kinds": {
-   "def": {},
-   "structure": {},
-   "theorem": {}
+   "def": {
+    "class": "builder-def",
+    "text": "Definition: a named object or statement",
+    "words": "key_kind_def"
+   },
+   "structure": {
+    "class": "builder-structure",
+    "text": "Structure: a bundle of named fields",
+    "words": "key_kind_structure"
+   },
+   "theorem": {
+    "class": "builder-theorem",
+    "text": "Theorem: a result the Lean code proves",
+    "words": "key_kind_theorem"
+   }
   },
   "order": {
    "kinds": [
@@ -37,16 +49,50 @@
     "def",
     "structure"
    ],
+   "proofs": [
+    "read",
+    "not_read",
+    "none"
+   ],
    "states": [
     "read",
     "census",
     "none"
    ]
   },
+  "proofs": {
+   "none": {
+    "class": "builder-none",
+    "text": "No proof to read",
+    "words": "sheet_proof_none"
+   },
+   "not_read": {
+    "class": "builder-not_read",
+    "text": "Proof: not read yet.",
+    "words": "sheet_proof_not_read"
+   },
+   "read": {
+    "class": "builder-read",
+    "text": "Proof read",
+    "words": "sheet_proof_read"
+   }
+  },
   "states": {
-   "census": {},
-   "none": {},
-   "read": {}
+   "census": {
+    "class": "builder-census",
+    "text": "Statement counted by a program",
+    "words": "sheet_statement_census"
+   },
+   "none": {
+    "class": "builder-none",
+    "text": "Statement not read",
+    "words": "sheet_statement_not_read"
+   },
+   "read": {
+    "class": "builder-read",
+    "text": "Statement read",
+    "words": "sheet_statement_read"
+   }
   }
  },
  "top": [

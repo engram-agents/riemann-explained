@@ -220,3 +220,26 @@ test("S4 scan control: planted calls are found", () => {
   assert.equal(closeRouteViolations("sheet.js", sheet + "\nfunction extra3() { adopt(node, true); }\n").length, 1);
   assert.equal(closeRouteViolations("sheet.js", sheet.replace("if (!close()) return false;\n    const rec", "const rec")).length, 1);
 });
+
+
+/* SECTION 8: the proof state comes from the data (`proof` and the symbols' words), never from the list page's own status line. */
+function statusSelectors(code) {
+  const src = code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");     // comments hold apostrophes
+  const lits = [];
+  for (let i = 0; i < src.length; i++) {          // the string literals, in order (a quote inside a literal is skipped)
+    const q = src[i];
+    if (q !== '"' && q !== "'" && q !== "`") continue;
+    let j = i + 1;
+    while (j < src.length && src[j] !== q) j += src[j] === "\\" ? 2 : 1;
+    lits.push(src.slice(i + 1, j));
+    i = j;
+  }
+  return lits.filter((l) => /(^|[\s>,+~(])[a-z]*\.status(?![\w-])/.test(l));
+}
+
+test("SECTION 8: no shipped page code selects `.status` or `p.status` (the page does not read the list's proof line)", () => {
+  for (const f of pageFiles) assert.deepEqual(statusSelectors(read(f)), [], rel(f));
+  assert.deepEqual(statusSelectors('art.querySelector(":scope > p.status.proof")'), [':scope > p.status.proof']);
+  assert.deepEqual(statusSelectors("x.querySelector('.status')"), [".status"]);
+  assert.deepEqual(statusSelectors('el("p", { class: "sheet-status" })'), []);
+});
