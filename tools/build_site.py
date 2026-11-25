@@ -3043,7 +3043,7 @@ F41_PROOF_LINES = {
 F48_STRINGS = {"title_label": "What this step is:", "definition_label": "Definition.", "definition_join": "is defined as:"}
 # F49: the no-proof line of a card that also prints named_statement_use_line (the fixture's value, then the real file's literal, pinned)
 F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this step does not claim its statement is true."}
-# F53: the heading of the per-file list inside Evidence (the wording seat's words; no placeholder). The same literal is in site/strings.json.
+# F53: the heading of the per-file list inside Evidence (no placeholder). The same literal is in site/strings.json.
 F53_STRINGS = {"unexpanded_detail_heading": "In the Lean files, file by file: the automation used and where, as we found it:"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
