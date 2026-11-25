@@ -863,6 +863,25 @@ def element_problems(page):
     return sorted(found)
 
 
+_HEAD_TAGS = (("viewport", META_VIEWPORT), ("robots", META_ROBOTS))   # fixed at load: the check does not follow a change of the two names above
+
+
+def head_meta_problems(page):
+    """F55: what the RENDERED page text lacks of its two head tags: `viewport missing` / `robots missing` when the literal tag (META_VIEWPORT,
+    META_ROBOTS) is not between `<head>` and `</head>`, and `viewport outside head` / `robots outside head` when a copy stands anywhere
+    else. A sorted list. It is a check of presence and position over the text, separate from element_problems (which says what a meta may
+    be, and whose cases feed it pages with only a charset tag); a tag twice is `meta repeated` there."""
+    a, b = page.find("<head>"), page.find("</head>")
+    head = page[a:b] if 0 <= a < b else ""
+    found = set()
+    for name, tag in _HEAD_TAGS:
+        if head.count(tag) == 0:
+            found.add(name + " missing")
+        if page.count(tag) > head.count(tag):
+            found.add(name + " outside head")
+    return sorted(found)
+
+
 def link_problems(page):
     """Every `#` link that has no element of that id on the page (as `#id`), then every id used twice (`duplicate id X`)."""
     ids, links = [], []
@@ -2881,6 +2900,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
     for pb in element_problems(page):
         errors.append(("PAGE-STATIC", pb, "found in index.html"))
+    for pb in head_meta_problems(page):
+        errors.append(("HEAD-META", pb, "in index.html"))
     for pb in link_problems(page):
         errors.append(("PAGE-LINK", pb, "does not resolve on the page"))
     for pb in number_problems(page, number_pool([level0, level1] + list(groups.values())), json.dumps(sj, ensure_ascii=False)):
@@ -3786,6 +3807,8 @@ def _ws_recv(s):
             mask = os.urandom(4)
             s.sendall(bytes([0x8A, 0x80 | len(data)]) + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
             continue
+        if op == 10:   # a pong nobody asked for: ignored
+            continue
         msg += data
         if b0 & 0x80:
             return msg.decode("utf-8")
@@ -3842,6 +3865,8 @@ def _chrome_mobile_widths(chrome, pages, ticks=200):
                 if value("document.readyState") == "complete" and value("location.href").endswith(f"page{i}.html"):
                     break
                 time.sleep(0.1)
+            else:
+                raise OSError(f"the page did not finish loading in {ticks} polls of 0.1 s")
             out.append((value("innerWidth"), value("document.documentElement.scrollWidth")))
         out.append(call("Browser.getVersion")["product"])
         return out
