@@ -240,7 +240,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      formula works). `\\$` is a literal dollar sign; an unescaped `$` with no partner on its line stays literal and is listed `FORMULA-UNPAIRED
      <where>`; `$$...$$` is not converted (stays as written, listed as unsupported). `<where>` is the block id (a group id for a claim, its conditions
      and the recognition, a note id for a list title). THE CONVERTER `formula_to_mathml` is a pure function over a closed subset of TeX named by
-     FORMULA_COMMANDS (69 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
+     FORMULA_COMMANDS (70 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
      `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
      formula, marks included>` when the place is inside the Evidence section of a card; on the reader's surface (every author-text place rendered through the span rule outside Evidence; the first screen and the key are strings of the
      strings file, not author text: only FORMULA-CANDIDATE covers them) a formula the
@@ -1723,20 +1723,20 @@ def _e(x):
 
 # ---- F26B: formulas to MathML at build time. A closed subset of TeX; anything else stays raw text and is LISTED (never refused).
 
-FORMULA_VERSION = "1"   # named in the run line; bumped when the subset changes (F26 (f))
+FORMULA_VERSION = "2"   # named in the run line; bumped when the subset changes (F26 (f))
 _GREEK = (("alpha", "α"), ("beta", "β"), ("gamma", "γ"), ("delta", "δ"), ("epsilon", "ϵ"), ("varepsilon", "ε"), ("zeta", "ζ"),
           ("eta", "η"), ("theta", "θ"), ("vartheta", "ϑ"), ("iota", "ι"), ("kappa", "κ"), ("lambda", "λ"), ("mu", "μ"), ("nu", "ν"),
           ("xi", "ξ"), ("pi", "π"), ("rho", "ρ"), ("sigma", "σ"), ("tau", "τ"), ("upsilon", "υ"), ("phi", "ϕ"), ("varphi", "φ"),
           ("chi", "χ"), ("psi", "ψ"), ("omega", "ω"), ("Gamma", "Γ"), ("Delta", "Δ"), ("Theta", "Θ"), ("Lambda", "Λ"), ("Xi", "Ξ"),
           ("Pi", "Π"), ("Sigma", "Σ"), ("Upsilon", "Υ"), ("Phi", "Φ"), ("Psi", "Ψ"), ("Omega", "Ω"))
 _FSYMBOLS = (("le", "≤"), ("ge", "≥"), ("leq", "≤"), ("geq", "≥"), ("ne", "≠"), ("neq", "≠"), ("pm", "±"), ("cdot", "⋅"), ("infty", "∞"),
-             ("dots", "…"), ("mid", "∣"), ("lceil", "⌈"), ("rceil", "⌉"), ("sum", "∑"), ("prod", "∏"), ("int", "∫"))
+             ("dots", "…"), ("mid", "∣"), ("lceil", "⌈"), ("rceil", "⌉"), ("sum", "∑"), ("prod", "∏"), ("int", "∫"), ("ast", "∗"))   # ast: the star's synonym, the same character as _FOPS["*"]
 # The letter table (S4), CLOSED: exactly the letters the real notes and drafts write under \mathbb and \mathcal. The converter writes the Unicode letter
 # itself as a plain <mi> with no attribute (MathML Core takes no script or double-struck variant through mathvariant). F is not in the Letterlike block:
 # its double-struck capital is U+1D53D, in the mathematical alphanumeric block.
 _BLACKBOARD = {"C": "ℂ", "F": "\U0001D53D", "Z": "ℤ"}
 _SCRIPT = {"H": "ℋ"}
-# The subset: every command the converter knows, as name -> (kind, value). 69 commands: 37 Greek letters, 16 symbols and large operators,
+# The subset: every command the converter knows, as name -> (kind, value). 70 commands: 37 Greek letters, 17 symbols and large operators (\ast is the star's synonym),
 # 4 named functions, bar, mathrm, operatorname, bigl, bigr, big, mathbb, mathcal, and the four spacing commands (`\,` `\;` `\!` and the backslash-space).
 FORMULA_COMMANDS = dict(
     [(n, ("mi", c)) for n, c in _GREEK] + [(n, ("mo", c)) for n, c in _FSYMBOLS] + [(n, ("fn", n)) for n in ("max", "min", "log", "cos")]
