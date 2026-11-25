@@ -387,7 +387,8 @@ F52_LISTINGS = ("PLACEMENT-CHANGED", "RE-POINTED")   # listings of the byte chec
 NO_ELEMENT = "(no element)"   # F52: the words of the element a block anchors, when it anchors none
 TOP_KEYS = ("groups", "release")
 GROUP_KEYS = ("id", "level", "parent", "order", "roots", "claim", "premises")
-GROUP_OPTIONAL = ("recognition", "root_role", "title", "edition", "edition_date")
+GROUP_OPTIONAL = ("recognition", "root_role", "title", "edition", "edition_date", "short")
+SHORT_MAX = 50   # the most characters (`len`) a group's `short` may hold
 EDITIONS = (1, 2)   # F44: a published text is rewritten in place once, as edition 2; a third needs a ruling
 # F44 (Q6): the ONE definition of the reader-facing author text of a group: dotted paths into the group, `[]` meaning each element of a
 # list (the value of such a path is the list of that key over the elements; `recognition.established` is the string `not_traced` or the
@@ -677,7 +678,16 @@ def _check_group_shape(g, label, path, out, today=None):
             bad("title must be a non-empty string with no blank at either end and no line break")
         elif why == "capital":
             bad("title must start with a capital letter or a character that is not a lowercase letter")
+    if "short" in g and not _short_ok(g["short"]):
+        bad(f"short must be a non-empty string of at most {SHORT_MAX} characters with no line break")
     _check_edition(g, label, path, _parse_today(None) if today is None else today, out)
+
+
+def _short_ok(v):
+    """True for a good `short`, the closed-card line of a group: a string of 1 to SHORT_MAX characters (`len`, not bytes), with no blank at
+    either end (`v == v.strip()`, which also keeps it from being only blanks) and no LF or CR. Backticks and non-ASCII text pass; no
+    capital is asked for (the author writes the line as it is to read)."""
+    return isinstance(v, str) and 1 <= len(v) <= SHORT_MAX and v == v.strip() and "\n" not in v and "\r" not in v
 
 
 def _title_problem(v):
@@ -3710,7 +3720,7 @@ def _():
     plain = _ro(G("g1"), G("g2", order=2))
     shorted = _ro(dict(G("g1"), short="One"), dict(G("g2", order=2), short="Two"))
     eq(([want in x.lines for x in (plain, shorted)], plain.f, shorted.f, plain.lines[-1], shorted.lines[-1]),
-       ([True, True], [], [], "2 notes, 0 findings, 0 warnings", "2 notes, 0 findings, 0 warnings"), "count line")
+       ([True, True], [], [], "1 notes, 0 findings, 0 warnings", "1 notes, 0 findings, 0 warnings"), "count line")
     r = _ro(dict(G("g1"), short="x" * 51))
     eq(r.lines[-1], "1 notes, 1 findings, 0 warnings", "a bad short is an error")
 
@@ -6104,15 +6114,11 @@ def _():
               "no finding and exit 0 (no OUTLINE-CHANGED, no EDITION, no SELECTOR-CHANGED), and the summary counts no selector change; "
               "on a group at edition 2 at REV the same three are also clean; a bad `short` is still BAD-VALUE beside --base")
 def _():
-    def drop_short(gid):
-        def f(o):
-            del _eof(o, gid)["short"]
-        return f
     s1, s2 = _set("g1", "short", "One"), _set("g1", "short", "Two")
-    for cur, base in ((s1, None), (s2, s1), (drop_short("g1"), s1), (s1, s1)):
+    for cur, base in ((s1, None), (s2, s1), (None, s1), (s1, s1)):   # added, changed, removed, kept (None: the group has no `short` now)
         r = _edc(cur, base)
         fe(r, [], 0)
-        ok("selector changes: 0" in r.lines and "first claims: 0" in r.lines and "edition check: 2 groups compared to HEAD" in r.lines,
+        ok("selector changes: 0" in r.lines and "first claims: 0" in r.lines and "edition check: 2 groups compared to HEAD; 1 notes compared to HEAD" in r.lines,
            "summary lines\n" + r.out)
     e2 = _both(_set("g1", "edition", 2), _set("g1", "edition_date", "2026-11-20"))
     for cur, base in ((_both(e2, s1), e2), (_both(e2, s2), _both(e2, s1)), (e2, _both(e2, s1))):
