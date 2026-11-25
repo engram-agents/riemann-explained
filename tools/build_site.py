@@ -126,6 +126,10 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      text of the card was rewritten), one `edition_note_card_note` paragraph (a sentence that
      speaks of the note, not of the card) per edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
      {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6, NC1 to NC7.
+  F52 EDITION FIELDS THE BUILDER CANNOT USE. A group or note at edition 2 whose `edition_date` is missing or not a string is `BUILD-ERROR
+     EDITION-DATE <id> edition 2 needs an edition_date`; an `edition` that is not the integer 1 or 2 (a boolean and 2.0 included) is
+     `BUILD-ERROR EDITION-VALUE <id> edition must be 1 or 2`: exit 1, OUT_DIR not written, no traceback, every bad group then note in one
+     refusal. The checker refuses these first and is unchanged; the cases stub it to pass. Cases ER1 to ER5.
   F28 BLOCK TEXT GOES THROUGH THE SAME RULE. The text of an argument or interpretation block (the evidence list) and the first
      sentence of an argument block (the card) are rendered by the span rule, the frame staying escaped text. The block text is
      ONE paragraph, its source lines joined by spaces before the rule is applied, so a span that runs over a source line break
@@ -2603,6 +2607,39 @@ def _formula_locator(m):
     return locate
 
 
+def _edition_problem(d):
+    """F52: None, or (code, message) when the `edition` and `edition_date` of a group or a note header (a dict) cannot be built from: `edition`
+    present and not the integer 1 or 2 (a boolean or 2.0 is not one) is EDITION-VALUE; edition 2 with an edition_date that is missing or not a
+    string is EDITION-DATE. The checker refuses the same inputs first; this is the builder saying so itself, never with a KeyError."""
+    if "edition" in d:
+        e = d["edition"]
+        if isinstance(e, bool) or not isinstance(e, int) or e not in (1, 2):
+            return "EDITION-VALUE", "edition must be 1 or 2"
+        if e == 2 and not isinstance(d.get("edition_date"), str):
+            return "EDITION-DATE", "edition 2 needs an edition_date"
+    return None
+
+
+def _edition_errors(notes_dir, odata):
+    """F52: the BUILD-ERROR tuples of the groups (in the outline's order), then of the notes (in file order)."""
+    out = []
+    for g in odata["groups"]:
+        p = _edition_problem(g) if isinstance(g, dict) else None
+        if p:
+            out.append((p[0], g.get("id"), p[1]))
+    for name in sorted(n for n in os.listdir(notes_dir) if fnmatch.fnmatchcase(n, nm.DEFAULT_GLOB) and os.path.isfile(os.path.join(notes_dir, n))):
+        try:
+            with open(os.path.join(notes_dir, name), "rb") as fh:
+                headers = rh.parse_note(fh.read().decode("utf-8"))[0]
+        except (OSError, UnicodeDecodeError):
+            continue
+        p = _edition_problem(headers[0].data) if headers else None
+        if p:
+            nid = headers[0].data.get("id")
+            out.append((p[0], nid if isinstance(nid, str) else name, p[1]))
+    return out
+
+
 def _refuse(lines, code=1):
     for code_, where, msg in lines:
         print(f"BUILD-ERROR {code_} {where} {msg}")
@@ -2750,6 +2787,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     for k, v in sorted(low.items()):
         if len(v) > 1:
             errors.append(("GROUP-ID-UNSAFE", ", ".join(sorted(v)), "differ only in case, so they could share a file"))
+    errors += _edition_errors(notes_dir, odata)   # F52: before the model, which reads edition_date of a group at edition 2
     if errors:
         return _refuse(errors)
     dirty = n_dirty or tools_state[1]
@@ -8755,6 +8793,89 @@ def _selftest_cases():
                     later.page.count(nd_first("2026-11-22")), count(later, "g1"), "docs/00-whole.md" in later.page),
                    (0, [], 1, 1, [0, 0, 0, 0, 0, 0], False,
                     0, [], 1, 1, 1, False))
+
+    # ---- F52: the builder refuses an edition field it cannot use, with a message and no traceback. The checker (notes_meta) refuses the same
+    # inputs first, so these cases run with the checker stubbed to pass; the last case runs the real one.
+    @contextlib.contextmanager
+    def _checker_passes():
+        real = nm.run
+
+        def passes(*_a, **_k):
+            print("outline: 0 groups, 0 claimed, 0 null, 0 roots resolved, 0 defs_opened resolved, 0 premise links")
+            print("claim basis: 0 read, 0 census, 0 without")
+            return 0
+        nm.run = passes
+        try:
+            yield
+        finally:
+            nm.run = real
+
+    def _eg(gid="g1", **fields):
+        """The base outline with the named fields set on one group, written as given."""
+        o = _outline()
+        next(g for g in o["groups"] if g["id"] == gid).update(fields)
+        return o
+
+    def _er(b):
+        return (b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed)
+
+    ED_DATE = "BUILD-ERROR EDITION-DATE {} edition 2 needs an edition_date"
+    ED_VALUE = "BUILD-ERROR EDITION-VALUE {} edition must be 1 or 2"
+
+    @case("ER1", "F52: a group at edition 2 whose edition_date is missing, null or not a string is the BUILD-ERROR EDITION-DATE naming the group, exit 1, "
+                 "OUT_DIR not written, no traceback; the same on another group; a group with a date, at edition 1 or with no edition builds")
+    def _():
+        with _checker_passes():
+            res = [_er(_build(outline=_eg(edition=2))), _er(_build(outline=_eg(edition=2, edition_date=None))),
+                   _er(_build(outline=_eg(edition=2, edition_date=20261123))), _er(_build(outline=_eg(edition=2, edition_date=["2026-11-23"]))),
+                   _er(_build(outline=_eg("g3", edition=2))), _er(_build(outline=_eg(edition=2, edition_date="2026-11-23"))),
+                   _er(_build(outline=_eg(edition=1))), _er(_build(outline=_eg(edition=1, edition_date="2026-11-23")))]
+        bad = (1, [ED_DATE.format("g1")], False)
+        return _eq(res, [bad, bad, bad, bad, (1, [ED_DATE.format("g3")], False), (0, [], True), (0, [], True), (0, [], True)])
+
+    @case("ER2", "F52: a group whose `edition` is not the integer 1 or 2 (3, 0, -1, a boolean, 2.0, \"2\", null, a list) is the BUILD-ERROR EDITION-VALUE naming "
+                 "the group, once (no EDITION-DATE beside it), exit 1, OUT_DIR not written")
+    def _():
+        with _checker_passes():
+            res = [_er(_build(outline=_eg(edition=v, edition_date="2026-11-23"))) for v in (3, 0, -1, True, False, 2.0, "2", None, [2])]
+            res.append(_er(_build(outline=_eg(edition=3))))
+        return _eq(res, [(1, [ED_VALUE.format("g1")], False)] * 10)
+
+    @case("ER3", "F52: a note at edition 2 whose edition_date is missing or not a string is the BUILD-ERROR EDITION-DATE naming the note id, and a note whose "
+                 "edition is not the integer 1 or 2 is EDITION-VALUE; exit 1, OUT_DIR not written; a note with a date builds")
+    def _():
+        notes = lambda **kw: _nnotes() | {f: _nset(_nnotes()[f], e, d) for f, (e, d) in kw.items()}
+        with _checker_passes():
+            res = [_er(_build(notes=notes(**{"01-one.md": (2, None)}))), _er(_build(notes=notes(**{"01-one.md": (2, 20261123)}))),
+                   _er(_build(notes=notes(**{"03-three.md": (2, None)}))), _er(_build(notes=notes(**{"01-one.md": (3, "2026-11-23")}))),
+                   _er(_build(notes=notes(**{"01-one.md": (True, "2026-11-23")}))), _er(_build(notes=notes(**{"01-one.md": ("2", "2026-11-23")}))),
+                   _er(_build(notes=notes(**{"01-one.md": (2, "2026-11-23")}))), _er(_build(notes=notes(**{"01-one.md": (1, None)})))]
+        return _eq(res, [(1, [ED_DATE.format("01")], False), (1, [ED_DATE.format("01")], False), (1, [ED_DATE.format("03")], False),
+                         (1, [ED_VALUE.format("01")], False), (1, [ED_VALUE.format("01")], False), (1, [ED_VALUE.format("01")], False),
+                         (0, [], True), (0, [], True)])
+
+    @case("ER4", "F52: every bad group and note is said in one refusal, groups first (in the outline's order) then notes (in file order); "
+                 "no page and no data file is written")
+    def _():
+        o = _outline()
+        for g in o["groups"]:
+            if g["id"] in ("g1", "g3"):
+                g["edition"] = 2
+        o["groups"].append(dict(next(g for g in o["groups"] if g["id"] == "g2"), id="g2b", order=9, edition=3))
+        notes = _nnotes() | {"01-one.md": _nset(_nnotes()["01-one.md"], 2, None), "03-three.md": _nset(_nnotes()["03-three.md"], 4, "2026-11-23")}
+        with _checker_passes():
+            b = _build(outline=o, notes=notes)
+        return _eq((_er(b), b.files, "Traceback" in b.err), ((1, [ED_DATE.format("g3"), ED_DATE.format("g1"), ED_VALUE.format("g2b"),
+                                                                 ED_DATE.format("01"), ED_VALUE.format("03")], False), {}, False))
+
+    @case("ER5", "F52: the checker's own refusal of the same inputs is unchanged: with the real notes_meta a group at edition 2 with no date, or a note at "
+                 "edition 2 with no date, is its BAD-VALUE and exit 1 with nothing written, and no BUILD-ERROR EDITION line")
+    def _():
+        g = _build(outline=_eg(edition=2))
+        n = _build(notes=_nnotes() | {"01-one.md": _nset(_nnotes()["01-one.md"], 2, None)})
+        return _eq(([x.rc for x in (g, n)], [x.existed for x in (g, n)], ["BUILD-ERROR EDITION" in x.out for x in (g, n)],
+                    ["required when edition is 2" in x.out for x in (g, n)], ["REFUSED: notes_meta found errors" in x.err for x in (g, n)]),
+                   ([1, 1], [False, False], [False, False], [True, True], [True, True]))
 
     # ---- F54: a note of a card has its own sentence, `edition_note_card_note`; the group keeps `edition_note_card`
     NC_NOTE = "a note this card draws on was rewritten for readers"
