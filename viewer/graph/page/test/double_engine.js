@@ -8,6 +8,7 @@ const ID = /^[a-z0-9][a-z0-9._-]*$/;
 
 export function createGraph(container, options) {
   const doc = container.ownerDocument;
+  const SZ = Object.assign({ nodeW: 300, nodeH: 190 }, options.sizes || {});    // the engine's own defaults, overridden as the page asks
   const log = (container.__log = []);
   const stage = doc.createElement("div");
   stage.className = "ge-stage dbl-stage";
@@ -25,10 +26,10 @@ export function createGraph(container, options) {
     const el = doc.createElement("div");
     el.className = "ge-node";
     el.setAttribute("data-node", spec.id);
-    el.style.cssText = "width:150px;min-height:110px;position:relative";
+    el.style.cssText = "width:" + SZ.nodeW + "px;min-height:" + SZ.nodeH + "px;position:relative";
     const face = doc.createElement("div");
     face.className = "ge-face";
-    face.style.cssText = "height:110px";
+    face.style.cssText = "height:" + SZ.nodeH + "px";
     try { face.appendChild(options.renderFace(spec)); } catch (e) { emit("error", null, "face-failed", {}); }
     el.appendChild(face);
     const kids = doc.createElement("div");

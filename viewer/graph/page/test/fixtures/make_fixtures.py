@@ -125,7 +125,6 @@ def article(i, kids, depth=0):
            '<details class="conditions"%s><summary>Conditions (1)</summary><ul><li>a condition</li></ul></details>' % (" open" if i == "a1" else ""),
            '<details class="uses"><summary>What it uses</summary><p>nothing yet</p></details>',
            '<details class="evidence"><summary>Evidence</summary><dl><dt>Lean name</dt><dd><code>Formalism.%s</code></dd></dl></details>' % e(i),
-           '<details class="comments"><summary>Comments (0)</summary><div class="thread"></div></details>',
            '<ul class="reactions"><li><a class="reaction" href="#%s">This makes sense</a></li></ul>' % i]
     if kids[i]:
         out.append('<details class="children"><summary>Go deeper: the parts of this step</summary><ul class="children">')
@@ -142,7 +141,6 @@ def cards_html(top, kids):
     parts = ['<section id="graph-about"><h2>About this page</h2>',
              '<p>The zeta function and the Riemann Hypothesis paragraph.</p>',
              '<p>Each step names results in the Lean code.</p>',
-             '<details class="feedback"><summary>Feedback on this page</summary><div class="thread"></div></details>',
              "</section>", '<ul class="chain">']
     for t in top:
         parts.append("<li>")

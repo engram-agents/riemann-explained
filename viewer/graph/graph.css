@@ -70,18 +70,22 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .face.k-structure { --kc: var(--struct); border-radius: 18px; box-shadow: inset 0 0 0 3px var(--card), inset 0 0 0 4.5px var(--kc); }
 .face.s-census { border-style: dotted; border-width: 3px; }
 .face.s-none { border-style: dashed; background: var(--card-unread); }
-.face-role { font-family: var(--sans); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kc); white-space: nowrap; }
+.face-role { font-family: var(--sans); font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kc); white-space: nowrap; }
 .face-title { font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
-.face-foot { margin-top: auto; font-family: var(--sans); font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 3px; }
+.face-foot { margin-top: auto; font-family: var(--sans); font-size: 14px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 3px; }
 
 /* ---- the sheet: a bottom sheet under 768 px (up to 85% of the height, the graph visible above), a side panel from 768 ---- */
 .graph-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 85vh; max-height: 85dvh; z-index: 20; display: flex; flex-direction: column;
   background: var(--card); border-top: 2px solid var(--fg); font-size: 15px; }
 /* the comment script adds this class while its editor is open; the sheet then takes the full height and no bar covers Post */
 .graph-sheet.comments-editing { max-height: none; top: 0; }
-.sheet-bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 6px 14px 0; font-family: var(--sans); }
-.crumb-slot { min-width: 0; flex: 1 1 auto; }
-.sheet-tools { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 14px 0; }
+/* the bar holds the breadcrumb, Close and the card's tools (Open its parts, Show the whole claim); the first thing below it
+   is the card itself, so the reader meets the claim before any button */
+.sheet-bar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 4px 8px; padding: 6px 14px 0; font-family: var(--sans); }
+.crumb-slot { min-width: 0; flex: 1 1 14rem; }
+#graph-sheet-close { order: 2; }
+.sheet-tools { order: 3; display: flex; flex-wrap: wrap; gap: 8px; }
+.sheet-tools:empty { display: none; }
 .sheet-tool { min-height: 44px; padding: 0 14px; border: 1px solid var(--rule); background: var(--bg); font-family: var(--sans); font-size: 14px; cursor: pointer; }
 .graph-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 14px 24px; overscroll-behavior: contain; }
 .crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; font-family: var(--sans); font-size: 13px; color: var(--muted); }
@@ -94,7 +98,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .graph-sheet-body.claim-clamped .claim { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 10; line-clamp: 10; overflow: hidden; }
 /* a card's nested parts stay on the List page; on the map they are separate cards */
 .graph-sheet-body details.children { display: none; }
-.graph-sheet-body summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-family: var(--sans); }
+.graph-sheet-body summary, .graph-sheet-body details.rc-section > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-family: var(--sans); }
 .graph-sheet-body .premises, .graph-sheet-body .roots-only { font-size: 14px; }
 .graph-sheet-body dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; font-size: 13px; }
 .graph-sheet-body dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }

@@ -579,6 +579,185 @@ def c_failed_load_keeps_card(b, S):
     pg.close()
 
 
+# ---------------------------------------------------------------- face text sizes and one fixed closed size (A1, R1')
+
+FACE_TEXT_JS = """(() => { const out = [];
+  for (const f of document.querySelectorAll('#graph .face')) {
+    const w = document.createTreeWalker(f, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode())) {
+      if (!n.textContent.trim()) continue;
+      const e = n.parentElement;
+      out.push({cls: e.className, size: parseFloat(getComputedStyle(e).fontSize), title: !!e.closest('.face-title'), text: n.textContent.slice(0, 16)});
+    }
+  }
+  return out; })()"""
+
+
+def assert_face_text_sizes(pg):
+    """Generated from the faces on the page: every text node inside every face. The title is at least 15 px, every other
+    face text (the role word, the 'N parts' foot) at least 14 px."""
+    texts = pg.ev(FACE_TEXT_JS)
+    assert len(texts) >= 3, texts
+    for t in texts:
+        assert t["size"] >= (15 if t["title"] else 14), ("a face text is too small", t)
+    return texts
+
+
+def c_face_text_sizes(b, S, engine):
+    pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+    texts = assert_face_text_sizes(pg)
+    kinds = {("title" if t["title"] else t["cls"]) for t in texts}
+    assert {"title", "face-role", "face-foot"} <= kinds, kinds        # all three kinds of face text were looked at
+    pg.csp_clean()
+    pg.close()
+
+
+WIDE_TITLE = "WMWMW MWMWM WMWMW MWMWM WMWMW MWMWM WMWMW MWMWM WM"      # 50 characters of the widest glyphs
+PLAIN_TITLE = "No zero of the zeta function lies off the line yet"      # 50 characters of ordinary prose
+assert len(WIDE_TITLE) == 50 and len(PLAIN_TITLE) == 50
+
+
+FIT_JS = """(() => { const n = document.querySelector('[data-node="goal-chain"]'), f = n.querySelector('.face');
+  const nr = n.getBoundingClientRect(), fr = f.getBoundingClientRect();
+  const texts = [...f.querySelectorAll('.face-role, .face-title, .face-foot')].map(e => ({cls: e.className, sh: e.scrollHeight, ch: e.clientHeight, sw: e.scrollWidth, cw: e.clientWidth,
+    size: parseFloat(getComputedStyle(e).fontSize), text: e.textContent}));
+  return {node: [nr.left, nr.top, nr.right, nr.bottom], face: [fr.left, fr.top, fr.right, fr.bottom], fsh: f.scrollHeight, fch: f.clientHeight, fsw: f.scrollWidth, fcw: f.clientWidth,
+    texts, sw: document.documentElement.scrollWidth}; })()"""
+
+
+def c_face_fits(b, engine, title, mutate=None, kind=None, state=None):
+    """A closed face with a 50-character title, its role word and a two-digit parts count: nothing is clipped (so the
+    guard clamp on the title never fires), the face is inside its node box, text sizes hold."""
+    def steps(st):
+        g = st["goal-chain"]
+        g["card"]["title"] = title
+        if kind:
+            g["card"]["kind"] = kind
+        if state:
+            g["card"]["state"] = state
+        for k in range(6):                       # 6 children + 6 = 12: a two-digit '12 parts' foot
+            c = json.loads(json.dumps(g["children"][0]))
+            c["id"] = "pad-%d" % k
+            g["children"].append(c)
+        g["card"]["child_count"] = len(g["children"])
+    root = tempfile.mkdtemp(prefix="pg-fit-")
+    assemble.assemble(root, engine, step_edit=steps, mutate=mutate)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+        r = pg.ev(FIT_JS)
+        kinds = [t["cls"] for t in r["texts"]]
+        assert kinds == ["face-role", "face-title", "face-foot"], kinds
+        assert r["texts"][1]["text"] == title and r["texts"][2]["text"] == "12 parts", r["texts"]
+        e = 1.5
+        nr, fr = r["node"], r["face"]
+        assert fr[0] >= nr[0] - e and fr[2] <= nr[2] + e and fr[1] >= nr[1] - e and fr[3] <= nr[3] + e, ("the face is outside its node box", r["node"], r["face"])
+        assert r["fsh"] <= r["fch"] and r["fsw"] <= r["fcw"], ("the face's content overflows it", r["fsh"], r["fch"], r["fsw"], r["fcw"])
+        for t in r["texts"]:
+            assert t["sh"] <= t["ch"] and t["sw"] <= t["cw"], ("a face text is clipped", t)
+            assert t["size"] >= (15 if t["cls"] == "face-title" else 14), t
+        assert r["sw"] <= 390, "no horizontal scroll"
+        assert_face_text_sizes(pg)
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_face_fits_both(b, S0, engine):
+    c_face_fits(b, engine, PLAIN_TITLE)
+    for kind, state in (("theorem", "read"), ("def", "census"), ("structure", "none")):      # the frames differ: border widths, corners
+        c_face_fits(b, engine, WIDE_TITLE, kind=kind, state=state)
+
+
+# ------------------------------------------------------------------------- the sheet's tools sit in the bar, beside Close (A5)
+
+def c_tools_in_bar(b, S):
+    pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+    # the control still does its job: tapping it opens the parts
+    tap(pg, "goal-chain")
+    wait_sheet(pg, True)
+    pg.page.click("#graph-sheet-tools .sheet-tool")
+    wait_sheet(pg, False)
+    pg.wait("document.querySelector('[data-node=\"a1\"]')", 6000)
+    for card, want_parts, want_more in (("goal-chain", True, False), ("a3", False, True)):
+        at_hash(pg, card)
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        r = pg.ev("""(() => { const sh = document.getElementById('graph-sheet'), bar = sh.querySelector('.sheet-bar'), body = document.getElementById('graph-sheet-body');
+          const tools = [...document.querySelectorAll('#graph-sheet-tools .sheet-tool')];
+          const br = body.getBoundingClientRect(), kr = bar.getBoundingClientRect(), cr = document.getElementById('graph-crumbs').getBoundingClientRect();
+          return {kids: [...sh.children].map(c => c.classList[0]), bodyKids: body.children.length, first: body.firstElementChild.id,
+            firstChild: body.firstElementChild.firstElementChild.className,
+            toolsInBar: tools.length > 0 && tools.every(t => bar.contains(t)), toolBottoms: tools.map(t => t.getBoundingClientRect().bottom), bodyTop: br.top, barBottom: kr.bottom,
+            texts: tools.map(t => t.textContent), crumbsBottom: cr.bottom}; })()""")
+        assert r["kids"] == ["sheet-bar", "graph-sheet-body"], ("the sheet is the bar, then the body", r["kids"])
+        assert r["bodyKids"] == 1 and r["first"] == card, "the moved article is the body's one child"
+        assert r["firstChild"] == "claim", ("the claim comes first inside the article", r["firstChild"])
+        assert r["toolsInBar"], ("the tools are in the bar", r)
+        assert all(x <= r["bodyTop"] + 1 for x in r["toolBottoms"]), ("a tool sits below the top of the article", r)
+        if want_parts:
+            assert "Open its parts" in r["texts"] or any("parts" in t.lower() for t in r["texts"]), r["texts"]
+        if want_more:
+            assert "Show the whole claim" in r["texts"], r["texts"]
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        pg.ev("location.hash = ''")
+    pg.csp_clean()
+    pg.close()
+
+
+# -------------------------------------------------- the comment script's row is the real shape, an ordinary sheet row (A6)
+
+def c_rc_section_row(b, S0, engine):
+    """The builder emits no comment row; the comment script adds details.rc-section[data-comments-target]. In the sheet it is
+    an ordinary closed 44 px row, and it goes home with the article."""
+    def cards(text):
+        old = '<ul class="reactions">'
+        i = text.index('id="goal-chain"')
+        j = text.index(old, i)
+        row = '<details class="rc-section" data-comments-target="goal-chain"><summary>Comments (0)</summary><div class="thread"></div></details>\n'
+        return text[:j] + row + text[j:]
+    root = tempfile.mkdtemp(prefix="pg-rc-")
+    assemble.assemble(root, engine, cards_edit=cards)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+        before = pg.ev("document.getElementById('graph-cards').outerHTML")
+        assert 'class="rc-section"' in before and "class=\"comments\"" not in before and "class=\"feedback\"" not in before
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        r = pg.ev("""(() => { const d = document.querySelector('#graph-sheet-body details.rc-section'), s = d.querySelector('summary');
+          const o = document.querySelector('#graph-sheet-body details.conditions summary').getBoundingClientRect().height;
+          return {open: d.open, h: s.getBoundingClientRect().height, other: o, shown: d.getBoundingClientRect().height > 0}; })()""")
+        assert r["open"] is False and r["shown"], r
+        assert r["h"] >= 44 and abs(r["h"] - r["other"]) < 1, ("the row is the same 44 px closed row as the others", r)
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == before, "the row went home with the article"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_face_mutant(b):
+    """Control: a fixed closed height 30 px shorter turns the fit case red (a plausible-wrong size, not the old code)."""
+    import re
+
+    def mut(text):
+        m = re.search(r"nodeH: (\d+)", text)
+        assert m, "nodeH not found"
+        return text.replace(m.group(0), "nodeH: %d" % (int(m.group(1)) - 30))
+    for engine in ("double", "real"):
+        red = False
+        try:
+            c_face_fits(b, engine, WIDE_TITLE, mutate={os.path.join("page", "app.js"): mut})
+        except Exception as e:  # noqa: BLE001
+            red = True
+            print("   face mutant red (%s): %s" % (engine, repr(e)[:110]))
+        assert red, "MUTANT SURVIVED: a 30 px shorter face (%s)" % engine
+
+
 # ------------------------------------------------------------------------- cases that need the REAL engine (camera, gestures)
 
 def center(pg, sel):
@@ -865,6 +1044,10 @@ def main():
                 run("List link reaches ../list/", c_list_link)
                 run("phone layout at 390: intro <= 200, targets >= 44, no h-scroll, sheet <= 85%", c_phone_layout)
                 run("claim clamp: the six long claims clamp, the others do not", c_clamp)
+                run("face text sizes: the title >= 15 px, every other face text >= 14 px (generated over every text node)", c_face_text_sizes, eng)
+                run("one fixed closed size: a 50-character title (wide glyphs, then plain), role word and a two-digit parts count all fit, nothing clipped", c_face_fits_both, eng)
+                run("the sheet's tools sit in the bar beside Close; the article is the body's one child and starts with its claim", c_tools_in_bar)
+                run("the comment script's details.rc-section row is an ordinary closed 44 px sheet row and goes home", c_rc_section_row, eng)
                 run("after a fallback: a hash change, a premise link click and the keys move nothing", c_dead_after_fallback, eng)
                 run("after a fallback: a step load that was in flight moves nothing when it resolves", c_dead_inflight, eng)
                 run("a failed load (404) leaves the reader's open card open and shows the notice", c_failed_load_keeps_card)
@@ -880,6 +1063,7 @@ def main():
             case("hostile: 6 payloads x title, role, runtime words, key, crumb, status", c_hostile, br)
             case("hostile: kind and state payloads are refusals", c_hostile_kind_state, br)
             case("R7 MUTANT (innerHTML text path) turns the hostile cells red", c_mutant, br)
+            case("face MUTANT: a fixed closed height 30 px shorter turns the fit case red", c_face_mutant, br)
             case("sheet MUTANTS: each plausible-wrong sheet turns its case red; the first-frame case stays green", c_sheet_mutants, br)
         if only is None or "markers" in only:
             case("markers: every runtime word on the page comes from index.json strings", c_hidden_strings_are_text, br)
