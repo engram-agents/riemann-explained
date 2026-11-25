@@ -139,7 +139,10 @@
  "symbol_kind_theorem": "Square: the part is a theorem",
  "symbol_kind_def": "Circle: the part is a definition",
  "symbol_kind_structure": "Diamond: the part is a structure",
- "symbol_state_read": "Filled: one of us read its statement",
- "symbol_state_census": "Half filled: counted by a program, not read",
- "symbol_state_none": "Empty: not read yet"
+ "sheet_statement_read": "Statement read",
+ "sheet_statement_census": "Statement counted, not read",
+ "sheet_statement_not_read": "Statement not read yet",
+ "sheet_proof_read": "proof read",
+ "sheet_proof_not_read": "proof not read yet",
+ "sheet_proof_none": "no proof to read"
 }

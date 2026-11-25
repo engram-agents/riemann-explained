@@ -613,7 +613,8 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
             "evidence_sketch_build_line", "title_label", "definition_label", "definition_join", "edition_note_first_screen", "edition_note_card",
             "edition_note_card_note", "edition_link_label", "edition_href_tree", "edition_href_blob",
-             "symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure", "symbol_state_read", "symbol_state_census", "symbol_state_none")
+             "symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure", "sheet_statement_read", "sheet_statement_census",
+             "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -702,7 +703,9 @@ def _title_census(m):
     for gid in m.steps:
         walk(gid)
     return out
-NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line")   # the only keys whose name may hold `not_read`
+# the only keys whose name may hold `not_read`: the two status lines of a card, and the two words of the graph key (the sheet's status words, which the
+# graph's symbol table names as they are)
+NOT_READ_KEYS = ("statement_not_read_line", "proof_not_read_line", "sheet_statement_not_read", "sheet_proof_not_read")
 RETIRED_WORDS = ("Read by us", "Partly read", "Not read yet")        # the coverage scale F19 removed
 LABEL_KEYS = ("chain", "level0_notes", "premises", "notes", "go_deeper", "blocks", "open_items", "file", "lines", "sha256",
               "read_more", "lines_missing")
@@ -1206,7 +1209,7 @@ def _strings_problems(s):
         if k == "coverage":
             bad(k, "is retired: the strings file no longer carries a word scale")
         elif "not_read" in k and k not in NOT_READ_KEYS:
-            bad(k, "is refused: only statement_not_read_line and proof_not_read_line may carry not_read in their name")
+            bad(k, "is refused: only " + ", ".join(NOT_READ_KEYS[:-1]) + " and " + NOT_READ_KEYS[-1] + " may carry not_read in their name")
     if isinstance(s.get("labels"), dict):
         for k in s["labels"]:
             if "not_read" in k:
@@ -1727,29 +1730,31 @@ GRAPH_ID = re.compile(r"[a-z0-9][a-z0-9-]*")   # a step id; narrower than SAFE_I
 # line). The key `role` is absent for a root_role with no row here (the list page prints no words of its own for it) and for a step with no root_role.
 GRAPH_ROLE_WORDS = {"named_statement": "named_statement_use_line"}
 # F38: THE symbol table. Each row is a css class token and the strings key whose words explain the symbol; graph/index.json `symbols` is built from
-# this table and from nothing else, and the page reads the key from there. The order of the rows is the order of the key.
+# this table and from nothing else, and the page reads the key from there. The order of the rows is the order of the key. `words` is a key of the
+# `strings` object of index.json (the page reads the label from there); the states and the proofs use the sheet's status words.
 GRAPH_SYMBOLS = {
     "kinds": {"theorem": {"class": "kind-theorem", "words": "symbol_kind_theorem"},
               "def": {"class": "kind-def", "words": "symbol_kind_def"},
               "structure": {"class": "kind-structure", "words": "symbol_kind_structure"}},
-    "states": {"read": {"class": "state-read", "words": "symbol_state_read"},
-               "census": {"class": "state-census", "words": "symbol_state_census"},
-               "none": {"class": "state-none", "words": "symbol_state_none"}}}
+    "proofs": {"read": {"class": "proof-read", "words": "sheet_proof_read"},
+               "not_read": {"class": "proof-not-read", "words": "sheet_proof_not_read"},
+               "none": {"class": "proof-none", "words": "sheet_proof_none"}},
+    "states": {"read": {"class": "state-read", "words": "sheet_statement_read"},
+               "census": {"class": "state-census", "words": "sheet_statement_census"},
+               "none": {"class": "state-none", "words": "sheet_statement_not_read"}}}
+GRAPH_KIND_WORDS = "(allowed: theorem, lemma, def, structure)"   # what a root kind outside the table is told (the checker's RESULT_KINDS: theorem, lemma)
 assert {row["words"] for table in GRAPH_SYMBOLS.values() for row in table.values()} <= set(TEXT_KEYS)   # every row's words are a required strings key
 
 
 def _card_line(group, no_claim_label):
-    """The one line a graph card carries as its `title`, from the outline group: its `short` (author text), else its `title`, else the first sentence
-    of its claim (the backticks of a span removed FIRST, then cut by `_first_sentence`, so no lone backtick is left), else the strings file's
-    no_claim_label words; never the Lean name. A blank `short` or `title` is no line. Every arm has the backticks of its spans removed."""
+    """The one line a graph card carries as its `title` (contract section 8), from the outline group: its `short` (author text), else its `title`,
+    each with the backticks of its spans removed, else the strings file's no_claim_label words ONLY when the group has no claim, else None (no line:
+    a claim whose author wrote neither). The first sentence of the claim is not an arm and the Lean name never is. A blank `short` or `title` is no line."""
     for key in ("short", "title"):
         v = group.get(key)
         if isinstance(v, str) and v.strip():
             return _unspan(v)
-    claim = group.get("claim")
-    if isinstance(claim, dict) and isinstance(claim.get("text"), str) and claim["text"].strip():
-        return _first_sentence(_unspan(claim["text"]))
-    return no_claim_label
+    return no_claim_label if group.get("claim") is None else None
 
 
 def _graph_short_errors(groups):
@@ -1774,10 +1779,42 @@ def _graph_short_errors(groups):
     return out
 
 
+def _graph_line_errors(groups, no_claim_label):
+    """[(GRAPH-SHORT, id, "<reason> (<n> characters)")] for the groups (outline dicts), in their order, one refusal per step: a `short` of a bad shape
+    (`_graph_short_errors`, reported as it is, once), else the RESOLVED line (`_card_line`) when it is none (the step has a claim and neither a short nor a
+    title), is longer than GRAPH_SHORT_MAX characters (counted after the backticks of its spans are removed) or holds a dollar sign (TeX source: the
+    face writes text). It looks at the line, not only at the `short`: a title of 60 characters on a step with no short is refused, and on a step
+    with a short it is not looked at, since the short is the line."""
+    shape = {e[1]: e for e in _graph_short_errors(groups)}
+    out = []
+    for g in groups:
+        gid = str(g.get("id"))
+        if "short" in g and gid in shape:
+            out.append(shape[gid])
+            continue
+        line = _card_line(g, no_claim_label)
+        if line is None:
+            why = "has no face line (a claim, and neither a short nor a title)"
+        elif len(line) > GRAPH_SHORT_MAX:
+            why = f"face line is longer than {GRAPH_SHORT_MAX} characters"
+        elif "$" in line:
+            why = "face line holds a dollar sign (TeX source)"
+        else:
+            continue
+        out.append(("GRAPH-SHORT", gid, f"{why} ({len(line or '')} characters)"))
+    return out
+
+
+def _graph_proof(proof_read):
+    """The proof state of a step from the group's `proof_read` (the summary key: True when every root that has a proof has it read, False when one has
+    not, None when no root has a proof): `read`, `not_read` or `none` (no proof to read), the keys of the table GRAPH_SYMBOLS["proofs"]."""
+    return "none" if proof_read is None else ("read" if proof_read else "not_read")
+
+
 def _graph_kind(raw):
     """The kind of a step on the map from the Lean kind of its root: theorem or lemma (the checker's RESULT_KINDS) is `theorem`, any other kind as it is
     (def and structure are rows of the table, anything else is refused by GRAPH-SYMBOL with its own name); a step with no root is `(none)`."""
-    if raw is None:
+    if raw is None:   # not reachable in a build: a group with no root is refused earlier (FACTS-NO-ROOT); kept so that the function never raises
         return "(none)"
     return "theorem" if raw in nm.RESULT_KINDS else raw
 
@@ -1785,7 +1822,8 @@ def _graph_kind(raw):
 def _graph_rows(m, strings):
     """([GRAPH-SHORT errors], the rows `_graph_files` takes) from the model: one row per group, in the outline's order, with its kind (the Lean kind of
     its root, the first root when there are several, for every step, a null claim too), its state (`read` when its statement is read, `census` when it
-    is not and its claim's basis is census, else `none`), its card line and, when its root_role has words (GRAPH_ROLE_WORDS), its `role`."""
+    is not and its claim's basis is census, else `none`), its proof state (`_graph_proof` of the group's proof_read), its card line (None for a step that
+    has no line; the refusal is in the errors) and, when its root_role has words (GRAPH_ROLE_WORDS), its `role`."""
     groups = list(m.groups.values())
     rows = []
     for gid, g in m.groups.items():
@@ -1793,10 +1831,11 @@ def _graph_rows(m, strings):
         state = "read" if sm["statement_read"] else ("census" if sm["claim"] is not None and sm["claim"]["basis"] == "census" else "none")
         roots = m.files[gid]["roots"]
         rows.append({"id": gid, "parent": g["parent"], "order": g["order"], "premises": list(g["premises"]),
-                     "kind": _graph_kind(roots[0]["kind"] if roots else None), "state": state, "title": _card_line(g, strings["no_claim_label"])})
+                     "kind": _graph_kind(roots[0]["kind"] if roots else None), "state": state, "proof": _graph_proof(sm["proof_read"]),
+                     "title": _card_line(g, strings["no_claim_label"])})
         if sm["root_role"] in GRAPH_ROLE_WORDS:
             rows[-1]["role"] = _unspan(strings[GRAPH_ROLE_WORDS[sm["root_role"]]])
-    return _graph_short_errors(groups), rows
+    return _graph_line_errors(groups, strings["no_claim_label"]), rows
 
 
 def _graph_count_errors(objs):
@@ -1822,7 +1861,7 @@ def _graph_count_errors(objs):
 
 
 def _graph_files(rows, commit, strings):
-    """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, title; the parent of a
+    """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
     four stop the run, since what follows needs a tree), then GRAPH-FANOUT, GRAPH-SYMBOL and GRAPH-EDGE together, then GRAPH-COUNT."""
     errors = []
@@ -1859,14 +1898,13 @@ def _graph_files(rows, commit, strings):
         kids.setdefault(r["parent"], []).append(r)
     for k in kids:
         kids[k].sort(key=lambda r: r["order"])
-    for r in rows:
-        n = len(kids.get(r["id"], []))
+    for i, n in [("root", len(kids.get("root", [])))] + [(r["id"], len(kids.get(r["id"], []))) for r in rows]:   # the root's own children (top) count too
         if n > GRAPH_MAX_CHILDREN:
-            errors.append(("GRAPH-FANOUT", r["id"], f"has {n} children (more than {GRAPH_MAX_CHILDREN})"))
+            errors.append(("GRAPH-FANOUT", i, f"has {n} children (more than {GRAPH_MAX_CHILDREN})"))
     for r in rows:
-        for field, table in (("kind", GRAPH_SYMBOLS["kinds"]), ("state", GRAPH_SYMBOLS["states"])):
+        for field, table in (("kind", GRAPH_SYMBOLS["kinds"]), ("state", GRAPH_SYMBOLS["states"]), ("proof", GRAPH_SYMBOLS["proofs"])):
             if r[field] not in table:
-                errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}"))
+                errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}" + (f" {GRAPH_KIND_WORDS}" if field == "kind" else "")))
     edges = {}   # sibling links, from -> [to]: the premises of a step that name a sibling
     for r in rows:
         for p in dict.fromkeys(r["premises"]):
@@ -1905,8 +1943,8 @@ def _graph_files(rows, commit, strings):
         path[r["id"]] = p[::-1]
 
     def closed(r):
-        d = {"child_count": len(kids.get(r["id"], [])), "id": r["id"], "kind": r["kind"], "path": list(path[r["id"]]), "state": r["state"],
-             "title": r["title"]}
+        d = {"child_count": len(kids.get(r["id"], [])), "id": r["id"], "kind": r["kind"], "path": list(path[r["id"]]), "proof": r["proof"],
+             "state": r["state"], "title": r["title"]}
         if r.get("role"):   # optional: absent, never null and never empty
             d["role"] = r["role"]
         return d
@@ -1916,7 +1954,7 @@ def _graph_files(rows, commit, strings):
                 for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
     objs = {"graph/index.json": {
         "assets": {}, "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
-        "strings": {},
+        "strings": {v["words"]: strings[v["words"]] for table in GRAPH_SYMBOLS.values() for v in table.values()},
         "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
                          for name, table in GRAPH_SYMBOLS.items()},
                         order={name: list(table) for name, table in GRAPH_SYMBOLS.items()}),
@@ -3442,11 +3480,13 @@ F48_STRINGS = {"title_label": "What this step is:", "definition_label": "Definit
 F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this step does not claim its statement is true."}
 # F53: the heading of the per-file list inside Evidence (no placeholder). The same literal is in site/strings.json.
 F53_STRINGS = {"unexpanded_detail_heading": "In the Lean files, file by file: the automation used and where, as we found it:"}
-# F38, G1: the words of the six rows of the symbol table (GRAPH_SYMBOLS), no placeholder, the prototype's. The same literals are in site/strings.json.
+# F38, G1, G1b: the words of the nine rows of the symbol table (GRAPH_SYMBOLS), no placeholder: the kinds the prototype's, the states and the proofs the
+# sheet's status words (the legend and the sheet's status line share one name per symbol). The same literals are in site/strings.json.
 F38_STRINGS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
                "symbol_kind_structure": "Diamond: the part is a structure",
-               "symbol_state_read": "Filled: one of us read its statement", "symbol_state_census": "Half filled: counted by a program, not read",
-               "symbol_state_none": "Empty: not read yet"}
+               "sheet_statement_read": "Statement read", "sheet_statement_census": "Statement counted, not read",
+               "sheet_statement_not_read": "Statement not read yet",
+               "sheet_proof_read": "proof read", "sheet_proof_not_read": "proof not read yet", "sheet_proof_none": "no proof to read"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
@@ -11618,11 +11658,13 @@ def _selftest_cases():
     # G1: the older cases below plant data the graph cannot hold, to test something else: a premise on a step that is neither a sibling nor the step's own
     # child (the premises line, PL*, PRM*), or a root kind outside the symbol table (the proof facts, PRK*, NONE1, F41b, F49*). The graph refuses both (GRAPH-EDGE,
     # GRAPH-SYMBOL: GR9, GR10), so these cases run with the graph step switched off and keep every literal they had; GR* are the graph's own cases.
-    no_graph_cases = ("PL1", "PL2", "PL3", "PRM1", "PRM2", "PRM3", "PRK1", "PRK2", "NONE1", "F41b", "F49b", "F49c")
+    # G1b: two more plant a face line the graph refuses (GRAPH-SHORT): ESC1 puts the hostile text on every strings value, so on the no-claim label (over 50
+    # characters), and TT6 a title with a formula (`$`); both test the list page.
+    no_graph_cases = ("PL1", "PL2", "PL3", "PRM1", "PRM2", "PRM3", "PRK1", "PRK2", "NONE1", "F41b", "F49b", "F49c", "ESC1", "TT6")
 
     def without_graph(fn):
         def run_():
-            with _patched("_graph_files", lambda rows, commit, strings: ([], {})):
+            with _patched("_graph_files", lambda rows, commit, strings: ([], {})), _patched("_graph_rows", lambda m, strings: ([], [])):
                 return fn()
         return run_
     cases[:] = [(cid, desc, without_graph(fn) if cid in no_graph_cases else fn) for cid, desc, fn in cases]
