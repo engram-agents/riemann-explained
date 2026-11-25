@@ -12,7 +12,7 @@ CONTRACT
     innerHTML, outerHTML, insertAdjacentHTML, `document . write`, DOMParser, createContextualFragment,
     createElementNS, `eval (`, `new  Function`, a bare `Function (`, `import (`, setTimeout / setInterval whose first
     argument is a string literal, and a PROTOCOL-RELATIVE string literal (a quote or backtick, optional spaces, then
-    `//`).
+    `//`); in .html also an UNQUOTED attribute value that starts with `//` (`src=//host/x.js`, `href=//h`).
  G2b URL schemes `http:` `https:` `javascript:` `data:` `blob:` `ws:` `wss:` `file:`, in any letter case, by file
     type. In .js / .mjs a small scanner reads the file and a scheme counts ONLY inside a string or template
     literal (a `//` or block comment is skipped; an object key or identifier followed by `:`, as in `data: null`,
@@ -35,8 +35,10 @@ CONTRACT
  nor is `(0, eval)(s)`; that is why the engine's own boundary test also forbids the APIs by name in each file.
  Comments count: a comment that names a forbidden token is refused too (the .js scheme and protocol-relative
  checks are the exception: they read literals only, so a scheme in a JS comment is not seen). The scanner does not
- know regex literals or `${}` nesting; a quote inside a regex literal can mislead it for the rest of that line, and
- a quote inside a `${ }` of a template is read as part of the template. An import specifier built at run time is not resolved; a dynamic
+ know regex literals or `${}` nesting. DOCUMENTED MISSES, each asserted as a miss by the self-test (MISSES): a quote
+ inside a regex literal before a URL; `//` inside a regex character class, which hides the rest of that line;
+ `/*` inside a regex character class, which hides the REST OF THE FILE until a `*/`; a template literal nested
+ inside `${}`; backslash-u and backslash-x escapes inside a literal, and String.fromCharCode; and piece-building by concatenation. An import specifier built at run time is not resolved; a dynamic
  `import (` is refused outright instead. A `__pycache__` folder is skipped without a count.
 
 usage: graph_js_check.py [DIR]
@@ -79,6 +81,7 @@ CSS_RE = [("@import", re.compile(r"@import", I)),
           ("url(", re.compile(r"url\s*\(", I))]
 PROTO = "protocol-relative URL"
 PROTO_RE = re.compile(r"[\"'`]\s*//")            # for files that are not scanned as JS (.html, .css, .md ...)
+UNQUOTED_RE = re.compile(r"[\w-]\s*=\s*//")      # .html: an unquoted attribute value that starts with // (src=//host/x.js)
 TESTIMP = "import of a test path"
 IMPORT_RES = [re.compile(r"""\bfrom\s*["']([^"']+)["']"""),
               re.compile(r"""\bimport\s*["']([^"']+)["']"""),
@@ -196,6 +199,8 @@ def check_file(path, rel=None):
                     hits.append((i, name))
         if not path.endswith(JS_EXT) and PROTO_RE.search(line):
             hits.append((i, PROTO))
+        if path.endswith(".html") and UNQUOTED_RE.search(line):
+            hits.append((i, PROTO))
     if path.endswith(JS_EXT):
         hits.extend(js_literal_hits(text))
     if path.endswith(SHIP_IMPORT_EXT):
@@ -269,6 +274,10 @@ PLANTS = [
     ("a.js", "const u = \"  //host/x.js\";", "protocol-relative URL"),
     ("a.js", "const u = `//host/x.js`;", "protocol-relative URL"),
     ("a.html", "<script src=\"//host/x.js\"></script>", "protocol-relative URL"),
+    # G4a: an UNQUOTED html attribute value that starts with //
+    ("a.html", "<script src=//host/x.js></script>", "protocol-relative URL"),
+    ("a.html", "<a href=//h>x</a>", "protocol-relative URL"),
+    ("a.html", "<a href = //h>x</a>", "protocol-relative URL"),
     # css: @import and url( with anything
     ("a.css", "@import url(//host/a.css);", "@import"),
     ("a.css", "@IMPORT 'x.css';", "@import"),
@@ -293,6 +302,22 @@ CLEAN = [
     ("e.md", "data: any\nin this file: a node\nsee https://example.org/ and javascript: here"),
     # F7: a shipped file may import a sibling that merely has `test` inside a name
     ("d.js", "import { q } from './contest/q.js'; import { r } from './latest.js';"),
+    # an html attribute that merely contains // later in its value, or a single slash, is not protocol-relative
+    ("ok2.html", "<a href=/docs/x.html>x</a><a href=\"a//b\">y</a>"),
+]
+# DOCUMENTED MISSES: each of these hides a refusable token from the scanner TODAY (the LIMIT text lists them).
+# The self-test asserts every one is NOT refused, so a change that starts catching one fails here and the list
+# must be edited on purpose: (what is missed, file name, text; every line below carries a scheme or `//` that a
+# perfect reader would refuse).
+MISSES = [
+    ("a quote inside a regex literal before a URL", "m1.js", "const r = /'/; const u = 'https://h/x';"),
+    ("`//` inside a regex character class (hides the rest of the line)", "m2.js", "const r = /[//]/; const u = 'https://h/x';"),
+    ("`/*` inside a regex character class (hides the REST OF THE FILE until a `*/`)", "m3.js", "const r = /[/*]/;\nconst u = 'https://h/x';\nconst v = 'javascript:x';"),
+    ("a template literal nested inside `${}`", "m4.js", "const u = `${ `https://h/x` }`;"),
+    ("a \\x escape", "m5.js", "const u = 'h\\x74tps://h/x';"),
+    ("a \\u escape", "m6.js", "const u = '\\u0068ttps://h/x';"),
+    ("String.fromCharCode", "m7.js", "const u = String.fromCharCode(104, 116, 116, 112, 115, 58);"),
+    ("piece-building by concatenation", "m8.js", "const u = 'java' + 'script:' + x;"),
 ]
 
 
@@ -332,9 +357,16 @@ def selftest():
     if run(d, buf) != 1 or "CHECKED NOTHING" not in buf.getvalue():
         ok = False
         notes.append("an empty tree was not CHECKED NOTHING")
+    for what, name, text in MISSES:           # documented misses: each is NOT refused today
+        d = tempfile.mkdtemp()
+        open(os.path.join(d, name), "w").write(text + "\n")
+        buf = io.StringIO()
+        if run(d, buf) != 0:
+            ok = False
+            notes.append("documented miss is now refused (edit MISSES and the LIMIT text on purpose): " + what + " -> " + buf.getvalue())
     for n in notes:
         print(n)
-    print("SELFTEST " + ("PASS: %d planted tokens each refused, clean files pass, test/ is not read, an empty tree is CHECKED NOTHING" % len(PLANTS) if ok else "FAIL"))
+    print("SELFTEST " + ("PASS: %d planted tokens each refused, clean files pass, test/ is not read, an empty tree is CHECKED NOTHING, %d documented misses are still misses" % (len(PLANTS), len(MISSES)) if ok else "FAIL"))
     return 0 if ok else 4
 
 

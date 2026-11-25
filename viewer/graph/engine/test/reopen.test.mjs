@@ -28,7 +28,8 @@ test("F1: a duplicate id served from the cache on reopen is refused like a fresh
   assert.equal(await ctl.open("a"), true);
   assert.equal(ctl.close("a"), true);                 // a's list goes to the cache
   assert.equal(await ctl.open("b"), true);            // accepted: x is not held now
-  const heldBefore = ctl.stats().held, mountsBefore = view.mountCalls;
+  const heldBefore = ctl.stats().held, mountsBefore = view.mountCalls, cachedBefore = ctl.stats().cached;
+  assert.equal(cachedBefore, 1, "a's list is in the cache");
   assert.equal(await ctl.open("a"), false, "served from the cache, validated, refused");
   assert.deepEqual(log.filter((e) => e[0] === "refused").map((e) => [e[1].id, e[2]]), [["a", "duplicate-id"]]);
   assert.equal(view.mountCalls, mountsBefore, "nothing of the refused list was drawn");
@@ -37,7 +38,8 @@ test("F1: a duplicate id served from the cache on reopen is refused like a fresh
   assert.equal(xs[0].parent.id, "b", "and it is b's");
   assert.equal(ctl.node("a").open, false);
   assert.equal(ctl.node("a").blocked, "duplicate-id", "the node says so (ge-refused) and is not asked again");
-  assert.equal(ctl.stats().held, heldBefore, "the held count did not change");
+  assert.equal(ctl.stats().cached, cachedBefore - 1, "G3: the refused list is dropped from the cache, it holds no slot");
+  assert.equal(ctl.stats().held, heldBefore - 1, "G3: the held count fell by exactly the dropped list (one node); nothing was added");
   assert.equal(ctl.stats().held, ctl.stats().visible + ctl.stats().cachedNodes, "held == visible + cached: the accounting is consistent");
   assert.equal(view.mounted.size, ctl.stats().visible, "what the view draws is what the controller says is visible");
   assert.equal(ctl.close("b"), true);
@@ -63,7 +65,7 @@ test("F2: open, close, open before the first answer starts a fresh load; the can
   let r1 = "pending", r2 = "pending";
   const p1 = ctl.open("a").then((v) => (r1 = v));
   assert.equal(loads.length, 1);
-  assert.equal(ctl.close("a"), false, "closing a node that is loading cancels the load");
+  assert.equal(ctl.close("a"), false, "closing a node that is loading cancels the load (and returns false: nothing was open, as scale.test pins)");
   const p2 = ctl.open("a").then((v) => (r2 = v));
   assert.equal(loads.length, 2, "the second open called the loader again");
   loads[1].resolve([kid("a", "x")]); await p2;
@@ -104,6 +106,48 @@ test("F2: a cancelled load that REJECTS late is silent, and the fresh load is un
   loads[0].reject(new Error("late boom")); assert.equal(await p1, false);
   loads[1].resolve([kid("a", "x")]); assert.equal(await p2, true);
   assert.equal(log.filter((e) => e[0] === "error").length, 0);
+});
+
+test("G1 (Halley's scenario): open, close, open, load 1 settles, close during load 2, load 2 settles: the node stays CLOSED and nothing is drawn", async () => {
+  const view = recordingView(), loads = [];
+  const ctl = createController({ roots: [spec("a", { childCount: 1 })], loadChildren: () => { const d = deferred(); loads.push(d); return d.promise; }, fitOnStart: false }, view);
+  const log = collect(ctl); await ctl.ready;
+  let r1 = "pending", r2 = "pending";
+  const p1 = ctl.open("a").then((v) => (r1 = v));
+  assert.equal(ctl.close("a"), false, "cancels load 1 (false: nothing was open)");
+  const p2 = ctl.open("a").then((v) => (r2 = v));
+  assert.equal(loads.length, 2);
+  loads[0].resolve([kid("a", "x")]); await p1; await tick();       // load 1 settles: its finally must not touch load 2's promise
+  assert.equal(r1, false); assert.equal(r2, "pending");
+  const visibleBefore = ctl.visibleNodes().length, mounts = view.mountCalls;
+  assert.equal(ctl.close("a"), false, "the close during load 2 cancels it (false: nothing was open)");
+  assert.equal(ctl.node("a").pending, null, "and load 2 no longer counts as pending");
+  loads[1].resolve([kid("a", "x")]); await p2;                     // load 2 settles after it was cancelled
+  assert.equal(r2, false, "the second open's promise is false: its load was cancelled");
+  assert.equal(ctl.node("a").open, false, "the node stays closed");
+  assert.equal(view.mountCalls, mounts, "nothing was drawn");
+  assert.equal(view.mounted.has("x"), false);
+  assert.equal(ctl.visibleNodes().length, visibleBefore, "visible is unchanged");
+  assert.equal(log.filter((e) => e[0] === "open").length, 0);
+  assert.equal(loads.length, 2, "and no further load was started");
+});
+
+test("G1 (reviewer's variant): after load 1 settles, a third open does not start a third load while load 2 is pending; load 2 resolves both true", async () => {
+  const view = recordingView(), loads = [];
+  const ctl = createController({ roots: [spec("a", { childCount: 1 })], loadChildren: () => { const d = deferred(); loads.push(d); return d.promise; }, fitOnStart: false }, view);
+  await ctl.ready;
+  let r2 = "pending", r3 = "pending";
+  const p1 = ctl.open("a");
+  ctl.close("a");
+  const p2 = ctl.open("a").then((v) => (r2 = v));
+  loads[0].resolve([kid("a", "x")]); await p1; await tick();
+  const p3 = ctl.open("a").then((v) => (r3 = v));
+  assert.equal(loads.length, 2, "no third load while load 2 is pending");
+  loads[1].resolve([kid("a", "x")]); await p2; await p3;
+  assert.equal(r2, true, "the second open's promise resolves true when load 2 lands");
+  assert.equal(r3, true);
+  assert.equal(ctl.node("a").open, true);
+  assert.equal(view.mounted.size, 2);
 });
 
 for (const [label, returned, detailRe] of [["too few", 2, /childCount 3.*returned 2/], ["too many", 5, /childCount 3.*returned 5/]]) {
