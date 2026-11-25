@@ -68,7 +68,9 @@ CONTRACT (each line is a self-test case, written before the code)
     defs_opened (if present) is a list of {module, name, lines:[int,int]}; conventions_checked (if present) is a list
     of "a".."e"; second_readers (if present, any kind) is a list of {reader, date}, both non-empty strings (the list
     may be empty); row and col (if present) are ints >= 1. Every problem string starts with the field name.
-    header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release. Cases B2a-B2f, SR1-SR3, LN1.
+    header_problems(): id, level in {0,1,2}, group, list_title, authors, readers, release; and (F44B) `edition`, optional, the integer
+    1 or 2 (absent is 1; 3 or more say `edition 3 needs a ruling`), and `edition_date`, a real YYYY-MM-DD date string, required at edition 2
+    and refused at edition 1 or absent (the bound `not later than the day of the run` is the checker's). Cases B2a-B2g, SR1-SR3, LN1.
  B2s A sketch (F25a) needs reader and date (non-empty strings), a non-empty decls list (each entry checked as an argument's),
     basis `source` or `compiled`, and `build`, a non-empty string, required when basis is compiled and refused when it is
     source; `unexpanded` (if present) is a list of non-empty strings, the list may be empty; `span` (if present) is an int >= 1,
@@ -127,6 +129,7 @@ checker that reads the notes, not to this module.
 from __future__ import annotations
 
 import contextlib
+import datetime
 import io
 import json
 import random
@@ -732,7 +735,40 @@ def header_problems(data):
     for f in ("authors", "readers"):
         if not isinstance(data.get(f), list):
             out.append(f"{f}: missing or not a list")
+    ed = 1   # F44B: `edition` is optional (absent is 1), the integer 1 or 2; `edition_date` dates an edition 2
+    if "edition" in data:
+        e = data["edition"]
+        if not _int(e):
+            out.append("edition: must be the integer 1 or 2")
+            ed = None
+        elif e >= 3:
+            out.append(f"edition: edition {e} needs a ruling")
+            ed = None
+        elif e < 1:
+            out.append(f"edition: must be 1 or 2, not {e}")
+            ed = None
+        else:
+            ed = e
+    if "edition_date" in data:
+        d = data["edition_date"]
+        if not _real_ymd(d):
+            out.append("edition_date: must be a date YYYY-MM-DD")
+        elif ed == 1:
+            out.append("edition_date: refused when edition is 1 or absent (it dates an edition 2)")
+    elif ed == 2:
+        out.append("edition_date: required when edition is 2")
     return out
+
+
+def _real_ymd(v):
+    """True for a string of the form YYYY-MM-DD (ASCII digits) that is a real calendar date."""
+    if not (isinstance(v, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", v)):
+        return False
+    try:
+        datetime.date(int(v[:4]), int(v[5:7]), int(v[8:]))
+    except ValueError:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------- self-test
@@ -1256,6 +1292,34 @@ def _():
         eq(len(ps), 1, f"{f}={v!r}: {ps!r}")
         ok(ps[0].startswith(f), f"starts with {f}: {ps[0]!r}")
     eq(len(header_problems("x")), 1, "not an object")
+
+
+GOOD_HDR = {"id": "15", "level": 2, "group": "g", "list_title": "T", "authors": ["H"], "readers": ["K"], "release": "rh-1"}
+
+
+@case("B2g", "header_problems, the edition fields (F44B): edition absent, 1 or 2 is legal; a boolean, a string, 2.0, 0, a negative number and 3 or "
+             "more are each one problem that names the field (3 or more say `edition 3 needs a ruling`); edition_date must be a real YYYY-MM-DD "
+             "date string, required at edition 2 and refused at edition 1 or absent")
+def _():
+    g = GOOD_HDR
+    eq(header_problems(dict(g, edition=1)), [], "edition 1")
+    eq(header_problems(dict(g, edition=2, edition_date="2026-11-23")), [], "edition 2 with a date")
+    eq(header_problems(dict(g, edition=2, edition_date="2028-02-29")), [], "a leap day")
+    for v, want in [(True, "edition: must be the integer 1 or 2"), ("2", "edition: must be the integer 1 or 2"),
+                    (2.0, "edition: must be the integer 1 or 2"), (None, "edition: must be the integer 1 or 2"),
+                    (0, "edition: must be 1 or 2, not 0"), (-1, "edition: must be 1 or 2, not -1"),
+                    (3, "edition: edition 3 needs a ruling"), (7, "edition: edition 7 needs a ruling")]:
+        eq(header_problems(dict(g, edition=v)), [want], f"edition={v!r}")
+        eq(header_problems(dict(g, edition=v, edition_date="2026-11-23")), [want], f"edition={v!r} with a date: the date is not asked for either way")
+    eq(header_problems(dict(g, edition=2)), ["edition_date: required when edition is 2"], "date missing at 2")
+    refused = ["edition_date: refused when edition is 1 or absent (it dates an edition 2)"]
+    eq(header_problems(dict(g, edition=1, edition_date="2026-11-23")), refused, "date at 1")
+    eq(header_problems(dict(g, edition_date="2026-11-23")), refused, "date with no edition")
+    for v in ("2026-02-30", "2026-13-01", "2026-00-10", "2026/11/23", "2026-1-5", " 2026-11-23", "2026-11-23 ", 20261123, True, None, "",
+              "2027-02-29", "\u0662026-11-23"):
+        eq(header_problems(dict(g, edition=2, edition_date=v)), ["edition_date: must be a date YYYY-MM-DD"], f"edition_date={v!r}")
+    eq(header_problems(dict(g, edition=2, edition_date="2026-02-30", level=5)),
+       ["level: must be 0, 1 or 2", "edition_date: must be a date YYYY-MM-DD"], "problems are listed in field order, the edition fields last")
 
 
 # ---- B3 target_at and spans
