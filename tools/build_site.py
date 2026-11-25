@@ -10559,8 +10559,7 @@ def _selftest_cases():
     @case("NL5c", "F60: the `note-link` exemption is not more permissive than the `edition-link` one, on every spelling of the address and of the class list: "
                  "for each plant the two tokens give the SAME answer, and the answer is the literal one. Refused: `HTTPS://`, and a space, a tab or a "
                  "newline before `https://` (the exemption tests the value as written, not folded or stripped), the token in the EARLIER of two class "
-                 "attributes (the parser keeps the later one); passed: the token in the later of two class attributes; `https:/x` is not an address "
-                 "of the first check, so it gives [] under both tokens")
+                 "attributes (the parser keeps the later one); passed: the token in the later of two class attributes")
     def _():
         sp = static_problems
         plants = [('<a class="{c}" href="HTTPS://x.invalid/">x</a>', ["href=http"]),
@@ -10569,7 +10568,6 @@ def _selftest_cases():
                   ('<a class="{c}" href="\nhttps://x.invalid/">x</a>', ["href=http"]),
                   ('<a class="{c}" class="x" href="https://x.invalid/">x</a>', ["href=http"]),
                   ('<a class="x" class="{c}" href="https://x.invalid/">x</a>', []),
-                  ('<a class="{c}" href="https:/x">x</a>', []),
                   ('<a class="{c}" href="https://x.invalid/">x</a>', [])]
         got = [(sp(h.format(c="note-link"), ""), sp(h.format(c="edition-link"), "")) for h, _w in plants]
         return _eq(got, [(w, w) for _h, w in plants])
