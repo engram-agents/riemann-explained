@@ -1718,15 +1718,22 @@ def _edition_of(g):
     return e if _int(e) and e in EDITIONS else None
 
 
+def _first_claim_path(b, g, path):
+    """True when a changed text path is no change of published text in a first claim: its value was empty at the base (the card had
+    none to publish), or it is the title and the first claim removes it."""
+    return _text_value(b, path) is None or (path == "title" and _text_value(g, path) is None)
+
+
 def _edition_check(odata, outline, ctx, name):
-    """(findings, the edition check line, the selector changes line) of the comparison of the groups of the outline with those of the
-    outline at --base."""
+    """(findings, the edition check line, the selector changes line, the first claims line) of the comparison of the groups of the
+    outline with those of the outline at --base."""
     def unusable(reason):
         why = f"the outline at {ctx.base} could not be used"
         return ([_f("OUTLINE-BASE", name, None, f"{reason}, so the edition check did not run", LISTING)],
-                f"edition check: did not run, {why}", f"selector changes: did not run, {why}")
+                f"edition check: did not run, {why}", f"selector changes: did not run, {why}", f"first claims: did not run, {why}")
     if not (isinstance(odata, dict) and isinstance(odata.get("groups"), list)):
-        return [], "edition check: did not run, the outline has no groups list", "selector changes: did not run, the outline has no groups list"
+        why = "the outline has no groups list"
+        return [], f"edition check: did not run, {why}", f"selector changes: did not run, {why}", f"first claims: did not run, {why}"
     rel = os.path.relpath(os.path.realpath(outline), ctx.top)
     if rel.startswith(".."):
         return unusable("is outside the repository")
@@ -1742,7 +1749,7 @@ def _edition_check(odata, outline, ctx, name):
     if any(not isinstance(x, dict) for x in bdata["groups"]):
         return unusable(f"at {ctx.base} has no usable groups")
     bmap, cmap = _group_map(bdata), _group_map(odata)
-    out, compared, n_sel = [], 0, 0
+    out, compared, n_sel, n_first = [], 0, 0, 0
 
     def err(code, gid, msg):
         out.append(_f(code, name, None, f"group {gid!r}: {msg}"))
@@ -1753,6 +1760,9 @@ def _edition_check(odata, outline, ctx, name):
         if gid not in bmap:
             if ce == 2:
                 err("EDITION-NEW-GROUP", gid, f"edition 2, but the group is not in the outline at {ctx.base} (there is no edition 1 to rewrite)")
+            elif isinstance(g.get("claim"), dict):   # F63: a new group that carries a claim shows its first claim
+                out.append(_f("FIRST-CLAIM", name, None, gid, LISTING))
+                n_first += 1
             continue
         b = bmap[gid]
         be = _edition_of(b)
@@ -1761,7 +1771,17 @@ def _edition_check(odata, outline, ctx, name):
         compared += 1
         paths = _text_changes(b, g)
         cd, bd = g.get("edition_date"), b.get("edition_date")
-        if be == 1 and ce == 1:
+        if b.get("claim") is None and isinstance(g.get("claim"), dict):   # F63: a first claim (the key absent or null at the base) is not an edition
+            if ce == 2:   # a first claim is not a rewrite, whether the group was at 1 or at 2 at the base
+                err("EDITION-FIRST-CLAIM", gid, "a first claim is not a rewrite; remove edition and edition_date")
+            else:   # a group at 2 at the base retires its mark in this change (with the title it described), and says so
+                out.append(_f("FIRST-CLAIM", name, None, gid + (", edition mark retired with the title" if be == 2 else ""), LISTING))
+                n_first += 1
+                left = [p for p in paths if not _first_claim_path(b, g, p)]   # text that was published and is altered stays a change
+                if left:
+                    err("OUTLINE-CHANGED", gid, f"{', '.join(left)} changed beside a first claim: published text changes only under an edition, "
+                                                "which a first claim does not carry (make it a separate change)")
+        elif be == 1 and ce == 1:
             if paths:
                 err("OUTLINE-CHANGED", gid, f"{', '.join(paths)} changed, but the edition is not raised to 2 with an edition_date")
         elif be == 1:
@@ -1785,7 +1805,7 @@ def _edition_check(odata, outline, ctx, name):
     line = f"edition check: {compared} groups compared to {ctx.base}"
     if not bdata["groups"]:
         line += f", the outline at {ctx.base} has no groups"
-    return out, line, f"selector changes: {n_sel}"
+    return out, line, f"selector changes: {n_sel}", f"first claims: {n_first}"
 
 
 # ---- the run
@@ -1944,9 +1964,10 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     rec_found += [sum_f] if sum_f else []
     rec_found += _check_titles(odata, os.path.basename(outline), ctx.index, ctx.kinds)
     if base is not None:
-        ed_found, ed_line, sel_line = _edition_check(odata, outline, ctx, os.path.basename(outline))
+        ed_found, ed_line, sel_line, first_line = _edition_check(odata, outline, ctx, os.path.basename(outline))
     else:
-        ed_found, ed_line, sel_line = [], "edition check: did not run, no --base given", "selector changes: did not run, no --base given"
+        ed_found, ed_line, sel_line, first_line = ([], "edition check: did not run, no --base given", "selector changes: did not run, no --base given",
+                                                   "first claims: did not run, no --base given")
     found = found + rec_found + ed_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions, then the edition check's
     lines = [_render(f) for f in found + words]
     errors = sum(1 for f in found if f[4] == ERROR)
@@ -2013,6 +2034,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     n_note_ed2 = sum(1 for n in names if _note_edition(rh.parse_note(texts[n])[0])[0] == 2)
     lines.append(f"editions: {n_note_ed2} of {len(names)} notes and {n_ed2} of {st['groups']} groups at edition 2")
     lines.append(sel_line)
+    lines.append(first_line)
     if base is not None:   # F52
         lines += [f"placement changes: {n_place}", f"re-pointed blocks: {n_repoint}", f"notes gone: {len(gone)}", f"notes renamed: {len(renamed)}"]
     else:
@@ -5234,7 +5256,7 @@ def _():
     r = go(outline=_epair(), today=ED_DAY)
     ok("selector changes: did not run, no --base given" in r.lines, r.out)
     fe(_edc(None, _addg3("object")), ["GROUP-GONE outline.json g3"], 0)
-    fe(_edc(_addg3("object")), [], 0)
+    fe(_edc(_addg3("object")), ["FIRST-CLAIM outline.json g3"], 0)   # F63: a new group that carries a claim is listed as a first claim, nothing else
     r = _edb(_epair(), None)
     ok("selector changes: did not run, the outline at HEAD could not be used" in r.lines, r.out)
 
@@ -5301,7 +5323,8 @@ def _():
     cur = _epair()
     _ed2("g1")(cur)
     fe(_edb(cur, '{"release": "x", "groups": []}'),
-       ["EDITION-NEW-GROUP outline.json group 'g1': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)"], 1)
+       ["EDITION-NEW-GROUP outline.json group 'g1': edition 2, but the group is not in the outline at HEAD (there is no edition 1 to rewrite)",
+        "FIRST-CLAIM outline.json g2"], 1)   # F63: g2 is new too and carries a claim
     for bad in ('{"groups": [1, "x"]}', '{"groups": [{"id": "g1"}, 3]}'):
         fe(_edb(_epair(), bad), ["OUTLINE-BASE outline.json at HEAD has no usable groups, so the edition check did not run"], 0)
 
@@ -6080,8 +6103,8 @@ def _():
         g.pop("recognition")
         g.pop("root_role")
     r = _edc(gone)
-    fe(r, [_chg("g1", "claim.conditions, claim.text, recognition.citations[].source, recognition.citations[].where, "
-                      "recognition.difference, recognition.result"),
+    fe(r, [_chg("g1", "claim.conditions, claim.text, recognition.citations[].source, recognition.citations[].source_date, "
+                      "recognition.citations[].where, recognition.difference, recognition.result"),
            _sel("g1", "recognition.form", '"variant"', "none"), _sel("g1", "root_role", '"result"', "none")], 1)
     ok("first claims: 0" in r.lines, r.out)
     r = _edc(_both(_set("g1", "claim.text", "T1b"), _ed2()))
