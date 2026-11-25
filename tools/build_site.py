@@ -122,9 +122,10 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   F44B EDITION OF A NOTE. A note header may carry `edition` 2 and `edition_date` (checked by notes_meta). group/<id>.json and data.js carry per card
      `editions`, a list of {note: file, edition: 2, date} for the notes of the card (header group, level not 0) at edition 2 in note order, [] when
      none; manifest counts keep `editions` (the groups at 2) and gain `note_editions` (the notes at 2). The first-screen paragraph appears when any
-     group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph, one `edition_note_card` paragraph per
-     edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
-     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6.
+     group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph (which is `edition_note_card`: the
+     text of the card was rewritten), one `edition_note_card_note` paragraph (a sentence that
+     speaks of the note, not of the card) per edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
+     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6, NC1 to NC7.
   F28 BLOCK TEXT GOES THROUGH THE SAME RULE. The text of an argument or interpretation block (the evidence list) and the first
      sentence of an argument block (the card) are rendered by the span rule, the frame staying escaped text. The block text is
      ONE paragraph, its source lines joined by spaces before the rule is applied, so a span that runs over a source line break
@@ -553,7 +554,7 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "argument_frame_no_proof", "evidence_statement_read_line", "evidence_statement_census_line", "evidence_proof_read_line",
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
             "evidence_sketch_build_line", "title_label", "definition_label", "definition_join", "edition_note_first_screen", "edition_note_card",
-            "edition_link_label", "edition_href_tree", "edition_href_blob")
+            "edition_note_card_note", "edition_link_label", "edition_href_tree", "edition_href_blob")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -565,7 +566,8 @@ PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_st
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
                 "shared_note": {"groups"}, "note_href": {"file"},
-                "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_href_blob": {"file"},
+                "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_note_card_note": {"date", "link"},
+                "edition_href_blob": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
                 "frames.interpretation": {"reader", "date"},
                 "recognition_result_known_line": {"result"},
@@ -603,7 +605,7 @@ REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "ev
                          "recognition_citation_open_line": ("source", "where", "source_date"),
                          "established_by_line": ("name",),
                          "sketch_frame": ("basis",),
-                         "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"),
+                         "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"), "edition_note_card_note": ("date", "link"),
                          "edition_href_blob": ("file",)}
 PROOF_KINDS = frozenset(nm.RESULT_KINDS)   # the table kinds that HAVE a proof; any other kind has none (F22): the checker's list, not a copy
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
@@ -2455,7 +2457,7 @@ def _render_page(m, s, facts, dirty):
         for ne in fl["editions"]:   # F44B: one paragraph per note at edition 2 whose date is not the group's own edition date
             if fl["edition"] and ne["date"] == fl["edition"]["date"]:
                 continue
-            o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], ne["date"],
+            o.append('<p class="edition-note">' + _edition_html(s["edition_note_card_note"], ne["date"],
                                                                 _fill(s["edition_href_blob"], file=EDITION_NOTES_DIR + urllib.parse.quote(ne["note"], safe="")),
                                                                 s["edition_link_label"]) + "</p>")
         for r in fl["roots"]:
@@ -3127,6 +3129,7 @@ def _strings():
 EDITION_WORDING = {
     "edition_note_first_screen": "These notes were rewritten for readers, most recently on {date}: where they showed names used inside the Lean code, or formulas as raw code, they now use plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
     "edition_note_card": "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
+    "edition_note_card_note": "On {date} a note this card draws on was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text of that note is kept here: {link}.",
     "edition_link_label": "first edition",
     "edition_href_tree": "https://github.com/engram-agents/riemann-explained/tree/notes-edition-1",
     "edition_href_blob": "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}",
@@ -4829,17 +4832,17 @@ def _selftest_cases():
                          ("`x Foo.bar y`", True, False)])
 
     @case("PHR4", "the keys that must hold their placeholders (the counts and the open-items lines, the recognition lines, the citation lines, "
-                  "established_by_line, sketch_frame, the eight Evidence keys of F37 and the three edition keys of F44) are exactly the 30 listed, each declares exactly the "
+                  "established_by_line, sketch_frame, the eight Evidence keys of F37 and the four edition keys of F44) are exactly the 31 listed, each declares exactly the "
                   "placeholders it must hold; the card keys of F37 (the read lines, the frames, the label line, the compiled basis) and the "
                   "retired second_reader_frame declare none and require none")
     def _():
         keys = ["statement_count_line", "proof_count_line", "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
-        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_href_blob"]
+        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_note_card_note", "edition_href_blob"]
         none_keys = ["statement_read_line", "statement_census_line", "proof_read_line", "argument_frame", "argument_frame_no_proof",
                      "interpretation_frame", "recognition_label_line", "sketch_basis_compiled", "second_reader_frame", "frames.argument"]
         return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys + new],
                     [PLACEHOLDERS.get(k, set()) for k in none_keys], [k in REQUIRED_PLACEHOLDERS for k in none_keys]),
-                   (sorted(keys + new), [True] * 30, [set()] * 10, [False] * 10))
+                   (sorted(keys + new), [True] * 31, [set()] * 10, [False] * 10))
 
     _REQ = (("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
@@ -8513,21 +8516,25 @@ def _selftest_cases():
                      "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
                      "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"], 0, True))
 
-    @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (three keys, pinned here as "
+    @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (four keys, pinned here as "
                  "literals) and the two addresses; a case that compares with the wording file itself runs when RH_EDITION_WORDING_FILE names it "
                  "(SKIPPED otherwise: the file lives outside this checkout)")
     def _():
         want = {"edition_note_first_screen": EDITION_WORDING["edition_note_first_screen"],
-                "edition_note_card": EDITION_WORDING["edition_note_card"], "edition_link_label": "first edition"}
+                "edition_note_card": EDITION_WORDING["edition_note_card"],
+                "edition_note_card_note": EDITION_WORDING["edition_note_card_note"], "edition_link_label": "first edition"}
         lit = ("These notes were rewritten for readers, most recently on {date}: where they showed names used inside the Lean code, or formulas "
                "as raw code, they now use plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
                "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw "
-               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.")
+               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
+               "On {date} a note this card draws on was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw "
+               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text of that note is kept here: {link}.")
         with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
             real = json.load(f)
         got = (EDITION_WORDING["edition_note_first_screen"], EDITION_WORDING["edition_note_card"], real["edition_note_first_screen"],
-               real["edition_note_card"], real["edition_link_label"], real["edition_href_tree"], real["edition_href_blob"])
-        ok_ = _eq(got, (lit[0], lit[1], lit[0], lit[1], "first edition", EDITION_TREE,
+               real["edition_note_card"], EDITION_WORDING["edition_note_card_note"], real["edition_note_card_note"],
+               real["edition_link_label"], real["edition_href_tree"], real["edition_href_blob"])
+        ok_ = _eq(got, (lit[0], lit[1], lit[0], lit[1], lit[2], lit[2], "first edition", EDITION_TREE,
                         "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}"))
         env = os.environ.get("RH_EDITION_WORDING_FILE")
         if not env:
@@ -8538,8 +8545,8 @@ def _selftest_cases():
             theirs = json.load(f)
         return _eq({k: theirs.get(k) for k in want}, want) if ok_[0] else ok_
 
-    @case("ED6", "F44: the strings checks for the edition keys: each of the five is required (P1a); the two addresses must be https (STRINGS-KEY "
-                 "`must be an https URL`); {date} and {link} are required in the two sentences, {file} in the blob address, and no other "
+    @case("ED6", "F44: the strings checks for the edition keys: each of the six is required (P1a); the two addresses must be https (STRINGS-KEY "
+                 "`must be an https URL`); {date} and {link} are required in the three sentences, {file} in the blob address, and no other "
                  "placeholder is allowed (a `{file}` in the tree address, `{x}` anywhere is refused); a forbidden word in a sentence is refused")
     def _():
         def one(key, value):
@@ -8598,9 +8605,9 @@ def _selftest_cases():
         return _eq((b.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in b.out.splitlines()), (1, True))
 
     # ---- F44B: the edition of a note on the page, in the JSON and in the checks
-    NE_CARD = ('<p class="edition-note">On @D the text of this card was rewritten for readers: where it showed names used inside the '
+    NE_CARD = ('<p class="edition-note">On @D a note this card draws on was rewritten for readers: where it showed names used inside the '
                'Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the '
-               'earlier text is kept here: <a class="edition-link" href="https://github.com/engram-agents/riemann-explained/blob/'
+               'earlier text of that note is kept here: <a class="edition-link" href="https://github.com/engram-agents/riemann-explained/blob/'
                'notes-edition-1/@F">first edition</a>.</p>')
     NE_FIRST = ED_FIRST.replace("2026-11-23", "@D")
     nd_card = lambda date, file: NE_CARD.replace("@D", date).replace("@F", file)
@@ -8664,7 +8671,7 @@ def _selftest_cases():
                     [x.rc for x in (only, note_later, group_later, whole, none)], whole.js("manifest.json")["counts"]["note_editions"]),
                    ((1, 1), (1, 1), (1, 1), (1, 1), True, 0, False, True, [0, 0, 0, 0, 0], 1))
 
-    @case("ND3", "F44B: each card's Evidence gets, after the group's own paragraph, one `edition_note_card` paragraph per edition-2 note of the card whose "
+    @case("ND3", "F44B: each card's Evidence gets, after the group's own paragraph, one `edition_note_card_note` paragraph per edition-2 note of the card whose "
                  "date DIFFERS from the group's date at edition 2 (the same date: only the group's paragraph); a card whose group is at 1 gets one per "
                  "edition-2 note, in note order; a nested card gets its own; nothing above Evidence; the page is clean under both checks")
     def _():
@@ -8748,6 +8755,78 @@ def _selftest_cases():
                     later.page.count(nd_first("2026-11-22")), count(later, "g1"), "docs/00-whole.md" in later.page),
                    (0, [], 1, 1, [0, 0, 0, 0, 0, 0], False,
                     0, [], 1, 1, 1, False))
+
+    # ---- F54: a note of a card has its own sentence, `edition_note_card_note`; the group keeps `edition_note_card`
+    NC_NOTE = "a note this card draws on was rewritten for readers"
+    NC_GROUP = "the text of this card was rewritten for readers"
+
+    @case("NC1", "F54: the paragraph of an edition-2 note of a card is `edition_note_card_note` (markup unchanged: `<p class=\"edition-note\">`, own date, an "
+                 "`edition-link` anchor to docs/<file>, right after the summary) and NOT `edition_note_card`; the first-screen sentence is unchanged")
+    def _():
+        b = _nb(notes={"03-three.md": "2026-11-22"})
+        return _eq((b.rc, b.page.count(ED_SUMMARY + nd_card("2026-11-22", "docs/03-three.md")), b.page.count(NC_NOTE), b.page.count(NC_GROUP),
+                    b.page.count(nd_first("2026-11-22"))),
+                   (0, 1, 1, 0, 1))
+
+    @case("NC2", "F54: a group at edition 2 keeps `edition_note_card` (once, with the group's date) and carries NOT the note sentence")
+    def _():
+        b = _eb(("g1", "2026-11-21"))
+        return _eq((b.rc, b.page.count(ED_SUMMARY + nd_group("2026-11-21")), b.page.count(NC_GROUP), b.page.count(NC_NOTE)),
+                   (0, 1, 1, 0))
+
+    @case("NC3", "F54: a card whose group is at 2 and whose note is at 2 on a DIFFERENT date prints both sentences, each once, the group's first and the "
+                 "note's after it; the same date prints the group's only")
+    def _():
+        diff = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-22"})
+        same = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21"})
+        return _eq((diff.rc, diff.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-22", "docs/01-one.md")),
+                    diff.page.count(NC_GROUP), diff.page.count(NC_NOTE),
+                    same.rc, same.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n<"), same.page.count(NC_GROUP), same.page.count(NC_NOTE)),
+                   (0, 1, 1, 1, 0, 1, 1, 0))
+
+    @case("NC4", "F54: a card whose group is at 1 with two edition-2 notes prints the note sentence twice, once per note, each with its own date and "
+                 "file, in note order, and never the card sentence")
+    def _():
+        b = _nb(notes={"01-one.md": "2026-11-21"}, new={"05-five.md": ("05", "g1", "2026-11-20")})
+        return _eq((b.rc, b.page.count(ED_SUMMARY + nd_card("2026-11-21", "docs/01-one.md") + "\n" + nd_card("2026-11-20", "docs/05-five.md")),
+                    b.page.count(NC_NOTE), b.page.count(NC_GROUP)),
+                   (0, 1, 2, 0))
+
+    @case("NC5", "F54: a level-0 note still prints no note sentence on any card (the neighbour of NC1: ND8 pins the same by the file name)")
+    def _():
+        notes = _nnotes()
+        notes["00-whole.md"] = _nset(N00.replace('"group":"root"', '"group":"g1"'), 2, "2026-11-22")
+        b = _build(outline=_eo(), notes=notes, strings=_strings())
+        return _eq((b.rc, b.page.count(NC_NOTE), b.page.count(NC_GROUP), b.page.count(nd_first("2026-11-22"))), (0, 0, 0, 1))
+
+    @case("NC6", "F54: the key `edition_note_card_note` is in EDITION_WORDING and STRING_KEYS and TEXT_KEYS, declares and requires {date} and {link} only, "
+                 "and its value, in the builder and in site/strings.json, is the literal below")
+    def _():
+        lit = ("On {date} a note this card draws on was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw "
+               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text of that note is kept here: {link}.")
+        k = "edition_note_card_note"
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        return _eq((EDITION_WORDING.get(k), real.get(k), _strings().get(k), k in STRING_KEYS, k in TEXT_KEYS, PLACEHOLDERS.get(k),
+                    REQUIRED_PLACEHOLDERS.get(k), _strings_problems(real)),
+                   (lit, lit, lit, True, True, {"date", "link"}, ("date", "link"), []))
+
+    @case("NC7", "F54: the strings checks for the key `edition_note_card_note`: without {link} it is refused (missing the placeholder), without {date} "
+                 "too, with `{x}` it has an unknown placeholder, a missing key is refused; the control passes")
+    def _():
+        def one(value):
+            s = _strings()
+            if value is None:
+                del s["edition_note_card_note"]
+            else:
+                s["edition_note_card_note"] = value
+            return [(c, p, m) for c, p, m in _strings_problems(s)]
+        got = [one("On {date} it was rewritten."), one("A note was rewritten: {link}."), one("On {date} {link} {x}."), one(None),
+               _strings_problems(_strings())]
+        return _eq(got, [[("STRINGS-KEY", "edition_note_card_note", "is missing the placeholder {link}")],
+                         [("STRINGS-KEY", "edition_note_card_note", "is missing the placeholder {date}")],
+                         [("STRINGS-KEY", "edition_note_card_note", "has an unknown placeholder {x}")],
+                         [("STRINGS-KEY", "edition_note_card_note", "missing")], []])
 
     # ---- F44 (Q6) the marker case: every field of a group the page prints as words outside Evidence is in EDITION_TEXT_FIELDS
     def _marker_build():
