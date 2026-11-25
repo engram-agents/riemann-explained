@@ -48,7 +48,7 @@ const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]
 /* The runtime words the page reads from index.json `strings`: the fixed list, plus the `words` key of every symbols row
    (the legend and the sheet's status line read the same name per symbol). `strings` must be EXACTLY this set. */
 export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label",
-  "link_refused", "key_kinds_heading", "key_states_heading"]);
+  "link_refused", "parts_failed_notice", "key_kinds_heading", "key_states_heading"]);
 const TABLES = Object.freeze([["kinds", KIND_CLASS, "unknown-kind"], ["proofs", PROOF_CLASS, "unknown-proof"], ["states", STATE_CLASS, "unknown-state"]]);
 
 export function requiredStrings(symbols) {
@@ -175,6 +175,19 @@ export function validateStep(raw, ctx) {
     return k;
   });
   return { id: raw.id, path, card, children, rests_on: rests };
+}
+
+/* THE FAILURE SPLIT. A failed load is one of two classes. TRANSPORT (the fetch rejected, or the answer had a non-2xx status) is
+   a notice: the reader may try again. DATA that arrived and is invalid (not JSON, any contract refusal) is the fallback. This is
+   the explicit allow-list of KNOWN codes for the first class (fetchJson below throws exactly `fetch-failed` and `http-<status>`);
+   anything else, a code not named here, a non-DataError, an engine error, is the second class. */
+export function isTransportCode(code) {
+  if (typeof code !== "string") return false;
+  if (code === "fetch-failed") return true;
+  const m = /^http-([0-9]{3})$/.exec(code);
+  if (!m) return false;
+  const status = Number(m[1]);
+  return status >= 100 && status <= 599 && !(status >= 200 && status <= 299);
 }
 
 /* Response -> parsed JSON, with a named reason for each way it can fail. */

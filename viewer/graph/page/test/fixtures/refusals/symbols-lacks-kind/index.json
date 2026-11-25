@@ -17,6 +17,7 @@
   "link_refused": "That address does not name a step on this map.",
   "open_parts": "Open its parts",
   "part_one": "1 part",
+  "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
   "parts_n": "{n} parts",
   "sheet_proof_none": "No proof to read",
   "sheet_proof_not_read": "Proof: not read yet.",

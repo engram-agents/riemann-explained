@@ -23,6 +23,7 @@ STRINGS = {
     "key_kinds_heading": "Colour and shape: what Lean declares",
     "key_states_heading": "Frame: what we have read",
     "link_refused": "That address does not name a step on this map.",
+    "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
     "key_kind_theorem": "Theorem: a result the Lean code proves",
     "key_kind_def": "Definition: a named object or statement",
     "key_kind_structure": "Structure: a bundle of named fields",
@@ -243,6 +244,7 @@ def main():
     refusal("unrenderable-proof", index_edit=lemma_proof)
     refusal("bad-proof-value", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("proof", "maybe"))
     refusal("missing-proof", step_edit=lambda st: st["goal-chain"]["children"][0].pop("proof"))
+    refusal("missing-parts-failed-notice", index_edit=lambda i: i["strings"].pop("parts_failed_notice"))
     refusal("missing-words-string", index_edit=lambda i: i["strings"].pop("sheet_proof_read"))
     refusal("extra-string", index_edit=lambda i: i["strings"].__setitem__("bonus_word", "a word the page never reads"))
     refusal("extra-string-proofs-heading", index_edit=lambda i: i["strings"].__setitem__("key_proofs_heading", "Proof: what we have read of it"))

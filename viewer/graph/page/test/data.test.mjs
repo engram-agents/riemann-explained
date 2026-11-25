@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { createData, DataError, validateIndex, validateStep, requiredStrings, FIXED_STRINGS, KIND_CLASS, STATE_CLASS, PROOF_CLASS } from "../data.js";
+import { createData, DataError, validateIndex, validateStep, requiredStrings, FIXED_STRINGS, KIND_CLASS, STATE_CLASS, PROOF_CLASS, isTransportCode } from "../data.js";
 
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -160,7 +160,7 @@ const REFUSALS = [
   ["unrenderable-proof", "unknown-proof"], ["bad-proof-value", "unknown-proof"], ["missing-proof", "missing-key"],
   ["missing-words-string", "missing-string"], ["extra-string", "extra-string"], ["extra-string-proofs-heading", "extra-string"],
   ["order-not-permutation", "bad-order"], ["order-repeats", "bad-order"], ["class-not-string", "bad-type"], ["words-not-string", "bad-type"],
-  ["symbols-old-shape", "missing-key"],
+  ["symbols-old-shape", "missing-key"], ["missing-parts-failed-notice", "missing-string"],
 ];
 
 test("refusal fixtures: the list covers every fixture directory", () => {
@@ -195,10 +195,10 @@ test("validateIndex / validateStep are pure and exported; requiredStrings is gen
   assert.deepEqual(v.symbols.states, ["read", "census", "none"]);
   const req = requiredStrings(v.symbols);
   assert.deepEqual(FIXED_STRINGS, ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused",
-    "key_kinds_heading", "key_states_heading"], "the fixed runtime list (no proofs heading: the key has no proofs section)");
+    "parts_failed_notice", "key_kinds_heading", "key_states_heading"], "the fixed runtime list (no proofs heading: the key has no proofs section)");
   for (const k of ["sheet_statement_read", "sheet_statement_census", "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read",
     "sheet_proof_none", "key_kind_theorem", "key_kind_def", "key_kind_structure"]) assert.ok(req.includes(k), k);
-  assert.equal(req.length, 19, "10 fixed + one `words` key per row (3 kinds, 3 states, 3 proofs)");
+  assert.equal(req.length, 20, "11 fixed + one `words` key per row (3 kinds, 3 states, 3 proofs)");
   assert.deepEqual([...req].sort(), Object.keys(idx.strings).sort(), "strings is EXACTLY the required set");
   for (const k of req) assert.equal(typeof idx.strings[k], "string", k);
   // a runtime key missing -> refusal naming it
@@ -427,4 +427,35 @@ test("SECTION 8 fixtures: every real step carries a proof derived from its card 
     }
   }
   assert.ok(n > 23 && counts.read > 0 && counts.not_read > 0 && counts.none > 0, JSON.stringify(counts));
+});
+
+
+/* ---------------------------------------------------------------------------------- K2: which load failures are a notice */
+
+test("K2: the notice arm is an explicit allow-list of KNOWN codes: a rejected fetch and the non-2xx statuses; everything else is not", () => {
+  for (const yes of ["fetch-failed", "http-404", "http-500", "http-503", "http-403", "http-301", "http-304", "http-100", "http-599"])
+    assert.equal(isTransportCode(yes), true, yes);
+  for (const no of ["http-200", "http-204", "http-299", "http-undefined", "http-", "http-0", "http-99", "http-600", "http-4040", "http-40x", "http-404 ", "HTTP-404",
+    "fetch-failed ", "Fetch-failed", "fetch-failed2", "not-json", "bad-format", "bad-id", "bad-title", "unknown-kind", "unknown-proof", "missing-key", "extra-key", "id-mismatch",
+    "commit-mismatch", "child-count", "bad-link", "bad-path", "bad-order", "weird-code", "", "x", " "])
+    assert.equal(isTransportCode(no), false, JSON.stringify(no));
+  for (const notAString of [undefined, null, 404, {}, [], ["fetch-failed"], true])
+    assert.equal(isTransportCode(notAString), false, String(notAString));
+});
+
+test("K2: the codes the data layer really throws for a rejected fetch and for a bad status are the ones on the allow-list; data that arrived is not", async () => {
+  const code = async (fetchLike) => {
+    const d = createData(fetchLike);
+    try { await d.loadIndex(); } catch (e) { return e instanceof DataError ? e.code : "NOT-A-DATAERROR"; }
+    return "no-error";
+  };
+  assert.equal(await code(async () => { throw new TypeError("network down"); }), "fetch-failed");
+  for (const status of [404, 500, 503]) {
+    const c = await code(async () => ({ ok: false, status, json: async () => ({}) }));
+    assert.equal(c, "http-" + status);
+    assert.equal(isTransportCode(c), true);
+  }
+  assert.equal(isTransportCode(await code(async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("x"); } }))), false, "not-json arrived");
+  assert.equal(isTransportCode(await code(async () => ({ ok: true, status: 200, json: async () => ({ format: 2 }) }))), false, "a contract refusal arrived");
+  assert.equal(isTransportCode(await code(async () => undefined)), false, "no response object at all is not a recognised status");
 });

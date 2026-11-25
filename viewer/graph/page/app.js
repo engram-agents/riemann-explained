@@ -2,11 +2,15 @@
    builds the key from the contract's closed lists, handles deep links and the fallback. One-way: this page imports the
    engine; the engine imports nothing of the page.
 
+   FAILURES split by class (data.js isTransportCode is the one allow-list): a TRANSPORT failure (a rejected fetch, a non-2xx status) is a
+   notice and the reader may tap again; data that ARRIVED and is invalid, and anything unclassified, is the fallback. No string from
+   an exception or a server reaches the page.
+
    THE SEAM: start(doc, {createGraph, fetch}) takes the engine's createGraph and a fetch-like as arguments. The last
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
 import { createGraph } from "../engine/index.js";
 import { el, isId } from "./dom.js";
-import { createData, DataError, KIND_CLASS, STATE_CLASS } from "./data.js";
+import { createData, DataError, isTransportCode, KIND_CLASS, STATE_CLASS } from "./data.js";
 import { makeRenderFace } from "./face.js";
 import { createSheet } from "./sheet.js";
 
@@ -123,16 +127,24 @@ export async function start(doc, deps) {
       return ok;
     }
 
-    /* The one rule for a route that fails: after the fallback nothing is said or done; a 4xx is a notice; anything else is the fallback. */
+    /* The one rule for a route that fails (the data layer's DataError reaches it directly). After the fallback nothing is said or
+       done. A 4xx names no step: the refused-link notice. Any other TRANSPORT failure (an allow-list of known codes, data.js
+       isTransportCode) is the parts notice: the reader may try again, nothing is retried for them. Everything else, data that
+       arrived and is invalid, a code not on the list, a plain exception, is the fallback. No string from the exception or the server
+       is ever written: the notices are page constants (strings.*). */
     function failed(e) {
       if (dead) return false;
-      if (e instanceof DataError && /^http-4/.test(e.code)) { say(strings.link_refused); return false; }
+      const code = e instanceof DataError ? e.code : null;
+      if (isTransportCode(code) && code.startsWith("http-4")) { say(strings.link_refused); return false; }
+      if (isTransportCode(code)) { say(strings.parts_failed_notice); return false; }
       fallback(e && e.message);
       return false;
     }
 
-    /* The step is loaded (and validated) BEFORE the open card is touched: a failed load leaves it open. After every await,
-       a dead page does nothing. */
+    /* The step is loaded (and validated) BEFORE the open card is touched, and that ordering is the retry story: a failed load,
+       transport or data, has changed nothing yet, so the reader's open card is still open and intact, the map is as it was, and
+       a tap or an address again is a clean second attempt (data.js drops a failed load from its cache). After every await, a
+       dead page does nothing. */
     async function go(id) {
       if (dead) return false;
       if (!isId(id)) { say(strings.link_refused); return false; }
@@ -177,9 +189,12 @@ export async function start(doc, deps) {
     doc.defaultView.addEventListener("hashchange", () => { const id = hashId(doc); if (id !== null) routes["deep-link"](id); }, { signal });
 
     layer.hidden = false;
+    /* What the engine tells us about a failed load is a string; the class of the failure is decided here, from the exception itself:
+       id -> the DataError code of the last failed load of that node's parts, or null for anything that was not a DataError. */
+    const loadFailures = new Map();
     handle = deps.createGraph(q["graph"], {
       roots, maxChildren: index.maxChildren, sizes: { ...CARD_SIZES },
-      loadChildren: (id) => data.loadChildren(id),
+      loadChildren: (id) => data.loadChildren(id).catch((e) => { loadFailures.set(id, e instanceof DataError ? e.code : null); throw e; }),
       renderFace: makeRenderFace(strings),
     });
     const guard = (fn) => (...a) => { if (dead) return; try { fn(...a); } catch (e) { fallback(e && e.message); } };
@@ -187,7 +202,11 @@ export async function start(doc, deps) {
     offs.push(handle.on("open", guard((node) => { openIds.add(node.id); sheet.setPartsOpen(node.id, true); })));
     offs.push(handle.on("close", guard((node) => { openIds.delete(node.id); sheet.setPartsOpen(node.id, false); })));
     offs.push(handle.on("error", guard((node, reason) => {
-      if (reason === "path-not-found") say(strings.link_refused); else fallback("engine error " + reason);
+      const code = node ? loadFailures.get(node.id) : undefined;
+      if (node) loadFailures.delete(node.id);
+      if (reason === "path-not-found") say(strings.link_refused);
+      else if (reason === "load-failed" && isTransportCode(code)) say(strings.parts_failed_notice);    // the node stays closed; the reader taps again
+      else fallback("engine error " + reason);
     })));
     offs.push(handle.on("refused", guard((node, reason) => {
       if (reason === "invalid-path") say(strings.link_refused); else fallback("engine refused " + reason);

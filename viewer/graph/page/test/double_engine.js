@@ -112,6 +112,8 @@ export function createGraph(container, options) {
     off: (name, fn) => { const l = listeners[name]; const i = l.indexOf(fn); if (i >= 0) l.splice(i, 1); },
     ready,
   });
+  container.__open = (id) => open(id);       // test hooks: what a semantic zoom does on the real engine
+  container.__close = (id) => close(id);
   return handle;
 }
 export const DEFAULTS = Object.freeze({});

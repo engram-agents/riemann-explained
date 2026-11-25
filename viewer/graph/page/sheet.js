@@ -20,7 +20,7 @@ export function createSheet(parts, strings, hooks, signal) {
   const { root, crumbs, tools, body, closeButton } = parts;
   const doc = root.ownerDocument;
   const win = doc.defaultView;
-  let cur = null;   // { node, home, details: [{d, open}], status, kind }
+  let cur = null;   // { node, home, details: [{d, open}], status, id (a card), parts, partsOpen }
 
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
@@ -87,6 +87,7 @@ export function createSheet(parts, strings, hooks, signal) {
   function showCard(article, info) {
     if (!close()) return false;
     const rec = adopt(article, true);
+    rec.id = info.id;          // the id this sheet shows: an engine event about any other id never touches it
     clear(crumbs);
     crumbs.appendChild(crumbList(info.crumbs));
     const claim = article.querySelector(".claim");
@@ -130,8 +131,9 @@ export function createSheet(parts, strings, hooks, signal) {
     tools.appendChild(b);
   }
 
+  /* The parts button always reflects the open state of the SHOWN id: an event for any other id changes nothing. */
   function setPartsOpen(id, open) {
-    if (!cur || !cur.parts) return;
+    if (!cur || !cur.parts || cur.id !== id) return;
     cur.partsOpen = !!open;
     clear(cur.parts);
     cur.parts.appendChild(doc.createTextNode(open ? strings.close_parts : strings.open_parts));

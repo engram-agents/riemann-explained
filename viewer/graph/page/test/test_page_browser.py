@@ -903,6 +903,226 @@ def c_key_order(b, S0, engine):
         S.stop()
 
 
+# ----------------------------------------------------------------- the parts button follows the SHOWN card, not the engine's events (K1)
+
+def open_on_map(pg, engine, node_id, child_id):
+    """Open a node on the MAP while the sheet is up: the double does what a semantic zoom does; the real engine is zoomed with
+    ctrl + wheel over the node until it opens itself."""
+    if engine == "double":
+        pg.ev("document.getElementById('graph').__open(%s)" % json.dumps(node_id))
+    else:
+        x, y, w, h = center(pg, '[data-node="%s"] .face' % node_id)
+        under = pg.ev("(() => { const e = document.elementFromPoint(%f, %f); return !!(e && e.closest('.ge-stage')); })()" % (x, y))
+        assert under, "the node to zoom is not reachable on the map (covered by the sheet)"
+        pg.page.mouse.move(x, y)
+        pg.page.keyboard.down("Control")
+        try:
+            for _ in range(60):
+                pg.page.mouse.wheel(0, -160)
+                pg.page.wait_for_timeout(40)
+                if pg.ev("document.querySelector('[data-node=\"%s\"]') !== null" % child_id):
+                    break
+        finally:
+            pg.page.keyboard.up("Control")
+    pg.wait("document.querySelector('[data-node=\"%s\"]') !== null" % child_id, 6000)
+
+
+def c_parts_button_follows_shown(b, S, engine):
+    """A's sheet is open (the map stays visible), B is opened on the map: A's button still reads 'Open its parts' and its click
+    opens A's parts. (An engine open or close event for another id changes nothing in the sheet.)"""
+    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    label = lambda: pg.ev("(() => { const t = document.querySelector('#graph-sheet-tools .sheet-tool'); return t ? t.textContent : null; })()")
+    tap(pg, "goal-chain")
+    wait_sheet(pg, True)
+    assert shown_id(pg) == "goal-chain" and label() == "Open its parts", label()
+    open_on_map(pg, engine, "inputs", "b1")
+    assert shown_id(pg) == "goal-chain", "the sheet still shows A"
+    assert label() == "Open its parts", ("B's open flipped A's button", label())
+    assert pg.ev("document.querySelector('[data-node=\"a1\"]') === null"), "A's parts are not open yet"
+    pg.page.click("#graph-sheet-tools .sheet-tool")
+    pg.wait("document.querySelector('[data-node=\"a1\"]') !== null", 6000)
+    assert pg.ev("document.querySelector('[data-node=\"b1\"]') !== null"), "B stayed open"
+    # and A's button now reads 'Close its parts' when A is shown again; closing B on the map (double) leaves it alone
+    tap(pg, "goal-chain")
+    wait_sheet(pg, True)
+    assert label() == "Close its parts", label()
+    if engine == "double":
+        pg.ev("document.getElementById('graph').__close('inputs')")
+        pg.page.wait_for_timeout(150)
+        assert label() == "Close its parts", ("B's close flipped A's button", label())
+    pg.csp_clean()
+    pg.close()
+
+
+# ------------------------------------------------------------ a failure to load a step's parts, split by CLASS (K2)
+
+PARTS_FAILED = "The parts of this step could not be opened; tap it to try again."
+LINK_REFUSED = "That address does not name a step on this map."
+SECRET = "SECRET-BODY-12345"
+
+
+def fail_step(pg, step_id, mode):
+    """Make the step file fail from the browser's side: 'abort' (transport: the fetch rejects), an int (that status, with a body that
+    must never reach the page), 'garbage' (200, not JSON), 'invalid' (200, JSON that breaks the contract)."""
+    pat = "**/graph/step/%s.json" % step_id
+
+    def handler(route):
+        if mode == "abort":
+            route.abort()
+        elif mode == "garbage":
+            route.fulfill(status=200, content_type="application/json", body="this is not json " + SECRET)
+        elif mode == "invalid":
+            route.fulfill(status=200, content_type="application/json", body=json.dumps({"format": 2, "note": SECRET}))
+        else:
+            route.fulfill(status=int(mode), content_type="text/plain", body="server says " + SECRET)
+    pg.page.route(pat, handler)
+    return pat
+
+
+def notice_text(pg):
+    return pg.ev("(() => { const n = document.getElementById('graph-notice'); return n.hidden ? null : n.textContent; })()")
+
+
+def no_leak(pg):
+    assert SECRET not in pg.ev("document.documentElement.outerHTML"), "a server-supplied string reached the page"
+
+
+def c_load_failure_go(b, S0, engine, mode):
+    """B is reached by an address (the load happens in go()). Transport (an aborted fetch, a 5xx) is a notice, the open card A stays
+    open and intact, B stays closed; a retry once the server answers opens B. A 4xx stays the refused-link notice. Data that
+    ARRIVED and is invalid is the fallback."""
+    root = tempfile.mkdtemp(prefix="pg-k2go-")
+    assemble.assemble(root, engine)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        pat = fail_step(pg, "a1", mode)
+        at_hash(pg, "a1")
+        if mode in ("garbage", "invalid"):
+            pg.wait("!document.getElementById('graph-layer')", 6000)
+            assert pg.page.is_visible("#graph-fallback") and pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
+            no_leak(pg)
+        else:
+            pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+            want = LINK_REFUSED if mode == 404 else PARTS_FAILED
+            assert notice_text(pg) == want, (mode, notice_text(pg))
+            assert pg.ev("document.getElementById('graph-notice').childElementCount") == 0
+            assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "no fallback for a transport failure"
+            assert sheet_open(pg) and shown_id(pg) == "goal-chain", "A's sheet is still open"
+            assert pg.ev("document.getElementById('graph-sheet-body').childElementCount") == 1
+            assert pg.ev("document.querySelector('#graph-sheet-body .sheet-status') !== null"), "A's status line is intact"
+            assert pg.ev("document.querySelector('[data-node=\"a1\"]') === null"), "B stays closed (nothing was revealed)"
+            no_leak(pg)
+            pg.page.unroute(pat)                                         # the server answers now; the retry is the reader's
+            pg.ev("location.hash = ''")
+            at_hash(pg, "a1")
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a1'", 6000)
+            assert pg.ev("document.getElementById('graph-notice').hidden")
+            assert pg.ev("document.querySelector('[data-node=\"a1\"]') !== null")
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_load_failure_engine(b, S0, engine, mode):
+    """B's parts are opened from the sheet (the engine loads B's step): same split, through the engine's load-failed event."""
+    root = tempfile.mkdtemp(prefix="pg-k2eng-")
+    assemble.assemble(root, engine)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        pg.page.click("#graph-sheet-tools .sheet-tool")                  # goal-chain's parts (already loaded)
+        wait_sheet(pg, False)
+        pg.wait("document.querySelector('[data-node=\"a1\"]') !== null", 6000)
+        tap(pg, "a1")
+        wait_sheet(pg, True)
+        assert shown_id(pg) == "a1"
+        pat = fail_step(pg, "a1", mode)
+        pg.page.click("#graph-sheet-tools .sheet-tool")                  # open a1's parts: its step file is fetched now
+        if mode in ("garbage", "invalid"):
+            pg.wait("!document.getElementById('graph-layer')", 6000)
+            assert pg.page.is_visible("#graph-fallback") and pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
+            no_leak(pg)
+        else:
+            pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+            assert notice_text(pg) == PARTS_FAILED, (mode, notice_text(pg))
+            assert pg.ev("document.getElementById('graph-notice').childElementCount") == 0
+            assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden")
+            assert pg.ev("document.querySelector('[data-node=\"a1\"]') !== null and document.querySelector('[data-node=\"a1-a\"]') === null".replace(" and ", " && ")), "a1 stays closed"
+            no_leak(pg)
+            pg.page.unroute(pat)
+            tap(pg, "a1")                                                # tapped again, by the reader
+            wait_sheet(pg, True)
+            assert pg.ev("document.getElementById('graph-notice').hidden"), "the card opening clears the notice"
+            pg.page.click("#graph-sheet-tools .sheet-tool")
+            pg.wait("document.querySelector('[data-node=\"a1-a\"]') !== null", 6000)
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_load_failure_unclassified(b, S0, engine, which):
+    """Anything the allow-list does not name is the fallback: a DataError with an unknown code, and a plain Error whose message
+    imitates a transport code."""
+    throw = {"unknown-code": 'throw new DataError("weird-code", "x");', "plain-error": 'throw new Error("fetch-failed: imitation");'}[which]
+
+    def mut(text):
+        old = "    const f = await loadStep(id);\n    return f.children.map("
+        assert old in text
+        return text.replace(old, '    if (id === "a1") { ' + throw + " }\n" + old)
+    root = tempfile.mkdtemp(prefix="pg-k2un-")
+    assemble.assemble(root, engine, mutate={os.path.join("page", "data.js"): mut})
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        pg.wait("document.querySelector('[data-node=\"a1\"]') !== null", 6000)
+        tap(pg, "a1")
+        wait_sheet(pg, True)
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        pg.wait("!document.getElementById('graph-layer')", 6000)
+        assert pg.page.is_visible("#graph-fallback") and pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
+        pg.close()
+    finally:
+        S.stop()
+
+
+# ------------------------------------------------------ the sheet is outside the scaled map: its text is at reading size (K3)
+
+def c_sheet_text_unscaled(b, S, engine):
+    """375 x 667, Show all (the map shrinks), tap a card: the moved article's claim is >= 15 px and rendered at scale 1, and the sheet bar
+    (crumbs, Close) is rendered at scale 1 too. The sheet is not inside the engine's scaled world."""
+    pg = Pg(b, S.base + "graph/index.html", 375, 667, mobile=True).settled()
+    pg.page.click("#graph-show-all")
+    pg.page.wait_for_timeout(400)
+    k = pg.ev("""(() => { const w = document.querySelector('#graph .ge-world'); if (!w) return 1;
+        const m = /scale\\(([-0-9.e]+)\\)/.exec(w.getAttribute('style') || ''); return m ? parseFloat(m[1]) : 1; })()""")
+    print("   show all at 375 x 667 (%s): map scale %.3f" % (engine, k))
+    if engine == "real":
+        assert k < 1, ("the map did not shrink, so this case would pin nothing", k)
+    tap(pg, "goal-chain")
+    wait_sheet(pg, True)
+    r = pg.ev("""(() => { const sc = (e) => { const r = e.getBoundingClientRect(); return e.offsetHeight ? r.height / e.offsetHeight : 1; };
+        const claim = document.querySelector('#graph-sheet-body .claim'), close = document.getElementById('graph-sheet-close');
+        const crumb = document.querySelector('#graph-crumbs .crumb-here'), bar = document.querySelector('.sheet-bar');
+        return {claimPx: parseFloat(getComputedStyle(claim).fontSize), claimScale: sc(claim), closeScale: sc(close), crumbScale: sc(crumb), barScale: sc(bar),
+          sheetInWorld: !!document.getElementById('graph-sheet').closest('.ge-world'), closeH: close.getBoundingClientRect().height}; })()""")
+    assert r["claimPx"] >= 15 and abs(r["claimScale"] - 1) < 0.02, r
+    assert abs(r["closeScale"] - 1) < 0.02 and abs(r["crumbScale"] - 1) < 0.02 and abs(r["barScale"] - 1) < 0.02, r
+    assert not r["sheetInWorld"] and r["closeH"] >= 44, r
+    pg.csp_clean()
+    pg.close()
+
+
 # ------------------------------------------------------------------------- cases that need the REAL engine (camera, gestures)
 
 def center(pg, sel):
@@ -1191,6 +1411,14 @@ def main():
                 run("first fit at 390 x 844: title >= 15 px and other face text >= 14 px at the engine's camera scale, no allowance; nothing overlaps", c_first_fit_size, eng)
                 run("the sheet status line is the data's words (states and proofs); the list's proof line is never read; the key shows kinds then states", c_status_from_data, eng)
                 run("symbols.order sets the key's order", c_key_order, eng)
+                run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
+                run("K1: a parts button follows the SHOWN card: B opened on the map leaves A's button alone and A's click opens A's parts", c_parts_button_follows_shown, eng)
+                for mode in ("abort", 500, 404, "garbage", "invalid"):
+                    run("K2 via an address, %s: transport is a notice (A stays open, B closed, retry works); 4xx a refused link; arrived data the fallback" % mode, c_load_failure_go, eng, mode)
+                for mode in ("abort", 500, 404, "garbage", "invalid"):
+                    run("K2 via the engine's open, %s: transport is a notice (B stays closed, tapped again it opens); arrived data the fallback" % mode, c_load_failure_engine, eng, mode)
+                for which in ("unknown-code", "plain-error"):
+                    run("K2: %s defaults to the fallback" % which, c_load_failure_unclassified, eng, which)
                 run("after a fallback: a hash change, a premise link click and the keys move nothing", c_dead_after_fallback, eng)
                 run("after a fallback: a step load that was in flight moves nothing when it resolves", c_dead_inflight, eng)
                 run("a failed load (404) leaves the reader's open card open and shows the notice", c_failed_load_keeps_card)

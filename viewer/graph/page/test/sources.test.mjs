@@ -243,3 +243,37 @@ test("SECTION 8: no shipped page code selects `.status` or `p.status` (the page 
   assert.deepEqual(statusSelectors("x.querySelector('.status')"), [".status"]);
   assert.deepEqual(statusSelectors('el("p", { class: "sheet-status" })'), []);
 });
+
+
+/* K2: no server- or exception-derived string reaches the DOM. The notice is a page constant: say() takes only `strings.<key>`;
+   nothing written by say(), el() or a text node holds `.message`, `.reason`, `.detail`, `.stack` or failure.reason. */
+const noComments = (code) => code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");
+function domLeaks(code) {
+  const src = noComments(code), bad = [];
+  for (const name of ["say", "el", ".createTextNode", ".replaceChildren", ".appendChild"]) {
+    for (const c of callsOf(src, name)) {
+      if (/\.(message|reason|detail|stack)\b|failure\b/.test(c.text)) bad.push(name + c.text.slice(0, 50));
+    }
+  }
+  for (const c of callsOf(src, "say")) if (!/^\(\s*strings\.[a-z_]+\s*\)$/.test(c.text)) bad.push("say(" + c.text.slice(1, 40) + " is not a page constant");
+  return bad;
+}
+
+test("K2: say() takes only page constants, and no .message, .reason or failure.reason flows into say(), el() or a text node", () => {
+  let says = 0;
+  for (const f of pageFiles) {
+    const src = read(f);
+    says += callsOf(noComments(src), "say").length;
+    assert.deepEqual(domLeaks(src), [], rel(f));
+  }
+  assert.ok(says >= 4, "the scan found the say() calls it polices: " + says);
+});
+
+test("K2 scan control: a planted message or reason flowing into the DOM is found; a page constant is not", () => {
+  assert.equal(domLeaks("say(e.message);").length >= 1, true);
+  assert.equal(domLeaks("say(failure.reason);").length >= 1, true);
+  assert.equal(domLeaks('notice.replaceChildren(doc.createTextNode(e && e.message));').length >= 1, true);
+  assert.equal(domLeaks('el("p", {}, [String(err.detail)]);').length >= 1, true);
+  assert.equal(domLeaks("say(strings.parts_failed_notice);").length, 0);
+  assert.equal(domLeaks("say(text);").length >= 1, true);
+});
