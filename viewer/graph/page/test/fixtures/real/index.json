@@ -1,0 +1,71 @@
+{
+ "assets": {},
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "max_children": 40,
+ "rests_on": [
+  {
+   "from": "goal-chain",
+   "from_path": [],
+   "to": "inputs",
+   "to_path": []
+  },
+  {
+   "from": "inputs",
+   "from_path": [],
+   "to": "bounds",
+   "to_path": []
+  }
+ ],
+ "steps": 23,
+ "strings": {
+  "claim_less": "Show less",
+  "claim_more": "Show the whole claim",
+  "close_parts": "Close its parts",
+  "crumb_label": "Where this step sits",
+  "key_kind_def": "Definition: a named object or statement",
+  "key_kind_structure": "Structure: a bundle of named fields",
+  "key_kind_theorem": "Theorem: a result the Lean code proves",
+  "key_kinds_heading": "Colour and shape: what Lean declares",
+  "key_state_census": "Dotted: counted by a program, not read",
+  "key_state_none": "Dashed: not read yet",
+  "key_state_read": "Solid: one of us read the statement",
+  "key_states_heading": "Frame: what we have read",
+  "link_refused": "That address does not name a step on this map.",
+  "open_parts": "Open its parts",
+  "part_one": "1 part",
+  "parts_n": "{n} parts",
+  "status_census": "Statement counted by a program",
+  "status_none": "Statement not read",
+  "status_read": "Statement read"
+ },
+ "symbols": {
+  "kinds": {
+   "def": {},
+   "structure": {},
+   "theorem": {}
+  },
+  "order": {
+   "kinds": [
+    "theorem",
+    "def",
+    "structure"
+   ],
+   "states": [
+    "read",
+    "census",
+    "none"
+   ]
+  },
+  "states": {
+   "census": {},
+   "none": {},
+   "read": {}
+  }
+ },
+ "top": [
+  "goal-chain",
+  "inputs",
+  "bounds"
+ ]
+}

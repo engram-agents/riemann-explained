@@ -1,0 +1,36 @@
+{
+ "assets": {},
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "max_children": 40,
+ "rests_on": [],
+ "steps": 7,
+ "strings": {},
+ "symbols": {
+  "kinds": {
+   "def": {},
+   "structure": {},
+   "theorem": {}
+  },
+  "order": {
+   "kinds": [
+    "theorem",
+    "def",
+    "structure"
+   ],
+   "states": [
+    "read",
+    "census",
+    "none"
+   ]
+  },
+  "states": {
+   "census": {},
+   "none": {},
+   "read": {}
+  }
+ },
+ "top": [
+  "goal-chain"
+ ]
+}

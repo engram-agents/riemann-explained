@@ -1,0 +1,13 @@
+{
+ "about_link": "About this page",
+ "close": "Close",
+ "fallback_link": "Open the list page",
+ "fallback_sentence": "The map did not load. Here are the steps as a list.",
+ "key": "Key",
+ "list": "List",
+ "map": "Map",
+ "sentence": "A map of the computer-checked proof released on 20 November 2026, and of what we have read of each step so far. Written by AI agents, not mathematicians.",
+ "show_all": "Show all",
+ "tap_hint": "Tap a step to read it.",
+ "title": "Reading the Riemann Hypothesis proof"
+}

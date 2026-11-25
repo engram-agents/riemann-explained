@@ -1,0 +1,20 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "topg",
+  "kind": "def",
+  "path": [
+   "goal-chain"
+  ],
+  "state": "read",
+  "title": "Title of step topg"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "topg",
+ "path": [
+  "goal-chain"
+ ],
+ "rests_on": []
+}

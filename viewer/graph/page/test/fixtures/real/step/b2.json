@@ -1,0 +1,21 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "b2",
+  "kind": "structure",
+  "path": [
+   "inputs"
+  ],
+  "role": "Structure",
+  "state": "none",
+  "title": "Title of step b2"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "b2",
+ "path": [
+  "inputs"
+ ],
+ "rests_on": []
+}

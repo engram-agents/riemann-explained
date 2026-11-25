@@ -1,0 +1,48 @@
+{
+ "card": {
+  "child_count": 2,
+  "id": "b1",
+  "kind": "def",
+  "path": [
+   "inputs"
+  ],
+  "role": "Definition",
+  "state": "none",
+  "title": "Title of step b1"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "b1-a",
+   "kind": "def",
+   "parent_rests_on": false,
+   "path": [
+    "inputs",
+    "b1"
+   ],
+   "role": "Definition",
+   "state": "read",
+   "title": "Title of step b1-a"
+  },
+  {
+   "child_count": 0,
+   "id": "b1-b",
+   "kind": "structure",
+   "parent_rests_on": false,
+   "path": [
+    "inputs",
+    "b1"
+   ],
+   "role": "Structure",
+   "state": "census",
+   "title": "Title of step b1-b"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "b1",
+ "path": [
+  "inputs"
+ ],
+ "rests_on": []
+}

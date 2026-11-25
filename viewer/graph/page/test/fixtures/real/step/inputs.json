@@ -1,0 +1,54 @@
+{
+ "card": {
+  "child_count": 3,
+  "id": "inputs",
+  "kind": "def",
+  "path": [],
+  "role": "Definition",
+  "state": "read",
+  "title": "Title of step inputs"
+ },
+ "children": [
+  {
+   "child_count": 2,
+   "id": "b1",
+   "kind": "def",
+   "parent_rests_on": true,
+   "path": [
+    "inputs"
+   ],
+   "role": "Definition",
+   "state": "none",
+   "title": "Title of step b1"
+  },
+  {
+   "child_count": 0,
+   "id": "b2",
+   "kind": "structure",
+   "parent_rests_on": false,
+   "path": [
+    "inputs"
+   ],
+   "role": "Structure",
+   "state": "none",
+   "title": "Title of step b2"
+  },
+  {
+   "child_count": 0,
+   "id": "b3",
+   "kind": "theorem",
+   "parent_rests_on": false,
+   "path": [
+    "inputs"
+   ],
+   "role": "Theorem",
+   "state": "read",
+   "title": "Title of step b3"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "inputs",
+ "path": [],
+ "rests_on": []
+}

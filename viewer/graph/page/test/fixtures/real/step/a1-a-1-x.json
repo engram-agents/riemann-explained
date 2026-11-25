@@ -1,0 +1,27 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "a1-a-1-x",
+  "kind": "theorem",
+  "path": [
+   "goal-chain",
+   "a1",
+   "a1-a",
+   "a1-a-1"
+  ],
+  "role": "Theorem",
+  "state": "census",
+  "title": "Title of step a1-a-1-x"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "a1-a-1-x",
+ "path": [
+  "goal-chain",
+  "a1",
+  "a1-a",
+  "a1-a-1"
+ ],
+ "rests_on": []
+}

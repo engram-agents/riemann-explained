@@ -1,0 +1,41 @@
+{
+ "card": {
+  "child_count": 2,
+  "id": "bounds",
+  "kind": "structure",
+  "path": [],
+  "role": "Structure",
+  "state": "census",
+  "title": "Title of step bounds"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "c1",
+   "kind": "theorem",
+   "parent_rests_on": true,
+   "path": [
+    "bounds"
+   ],
+   "role": "Theorem",
+   "state": "census",
+   "title": "Title of step c1"
+  },
+  {
+   "child_count": 0,
+   "id": "linkn",
+   "kind": "def",
+   "parent_rests_on": false,
+   "path": [
+    "bounds"
+   ],
+   "state": "none",
+   "title": "Title of step linkn"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "bounds",
+ "path": [],
+ "rests_on": []
+}

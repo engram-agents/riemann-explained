@@ -1,0 +1,23 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "a1-b",
+  "kind": "def",
+  "path": [
+   "goal-chain",
+   "a1"
+  ],
+  "role": "Definition",
+  "state": "none",
+  "title": "Title of step a1-b"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "a1-b",
+ "path": [
+  "goal-chain",
+  "a1"
+ ],
+ "rests_on": []
+}
