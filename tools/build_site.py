@@ -11296,6 +11296,29 @@ def _selftest_cases():
                     [("GRAPH-SYMBOL", "a", "kind x" + al), ("GRAPH-SYMBOL", "a", "state y"), ("GRAPH-SYMBOL", "a", "proof z")],
                     (1, False, ["BUILD-ERROR GRAPH-SYMBOL g1 kind instance" + al]), ["def", "structure", "theorem"]))
 
+    @case("GR9b", "F38 c: the words a refused kind is told, `(allowed: ...)`, are built from the two sources of the accepted kinds (the checker's RESULT_KINDS "
+                  "and the table's kinds), not a literal: as they are, `(allowed: theorem, lemma, def, structure)`; with a kind row planted in the table "
+                  "the planted kind is in the words and in the refusal; with a result kind planted in RESULT_KINDS it is too; both restored after")
+    def _():
+        saved = nm.RESULT_KINDS
+        words = [graph_kind_words()]
+        refusal = []
+        try:
+            GRAPH_SYMBOLS["kinds"]["zeta"] = dict(GRAPH_SYMBOLS["kinds"]["def"])
+            words.append(graph_kind_words())
+            refusal.append(gr_codes([gr_row("a", kind="x")]))
+            del GRAPH_SYMBOLS["kinds"]["zeta"]
+            nm.RESULT_KINDS = saved + ("corollary",)
+            words.append(graph_kind_words())
+        finally:
+            GRAPH_SYMBOLS["kinds"].pop("zeta", None)
+            nm.RESULT_KINDS = saved
+        return _eq((words, refusal, graph_kind_words(), sorted(GRAPH_SYMBOLS["kinds"])),
+                   (["(allowed: theorem, lemma, def, structure)", "(allowed: theorem, lemma, def, structure, zeta)",
+                     "(allowed: theorem, lemma, corollary, def, structure)"],
+                    [[("GRAPH-SYMBOL", "a", "kind x (allowed: theorem, lemma, def, structure, zeta)")]],
+                    "(allowed: theorem, lemma, def, structure)", ["def", "structure", "theorem"]))
+
     @case("GR10", "G1 S5: GRAPH-EDGE: a premise on a step that is neither a sibling nor the step's own child (an uncle, the parent, a grandchild, a "
                   "step that does not exist) is `GRAPH-EDGE <from> <to> crosses subtrees` or `names no step`; a cycle in rests_on among siblings (also "
                   "between top steps, and a step resting on itself) is `GRAPH-EDGE <from> <to> cycle in rests_on`; a chain without a cycle is accepted")
