@@ -7437,10 +7437,10 @@ def _selftest_cases():
                  ("\\ast^2", "*^2", M_("<msup><mo>∗</mo><mn>2</mn></msup>"))]
         return _eq([(cv(a), cv(b)) for a, b, _w in pairs], [(w, w) for _a, _b, w in pairs])
 
-    @case("AS2", "converter, the neighbours of `\\ast` stay refused (None): `\\star`, `a\\star b`, `x^\\star`, `\\Ast`, `\\asts`, `\\astx`, `\\ast_`, `\\AST`; "
+    @case("AS2", "converter, the neighbours of `\\ast` stay refused (None): `\\star`, `a\\star b`, `x^\\star`, `\\Ast`, `\\asts`, `\\astx`, `\\asterisk`, `\\ast_`, `\\AST`; "
                  "and `\\ast2` is TeX's `\\ast` then `2`, the same output as `*2` (a command name is letters only, as `\\alpha2` is `\\alpha` then `2`)")
     def _():
-        bad = ("\\star", "a\\star b", "x^\\star", "\\Ast", "\\asts", "\\astx", "\\ast_", "\\AST")
+        bad = ("\\star", "a\\star b", "x^\\star", "\\Ast", "\\asts", "\\astx", "\\asterisk", "\\ast_", "\\AST")
         return _eq(([cv(x) for x in bad], cv("\\ast2"), cv("\\ast2") == cv("*2")),
                    ([None] * len(bad), M_("<mrow><mo>∗</mo><mn>2</mn></mrow>"), True))
 
@@ -7474,7 +7474,7 @@ def _selftest_cases():
                    ("2", 70, ("mo", "∗"), True, ["formulas: 2 converted, 0 unsupported, 0 unpaired, of 2 marks, converter own-subset-2 (70 commands)"]))
 
     @case("AS5", "a page with `$\\chi^{\\ast}$` builds clean (exit 0), the formula counted as converted, and its MathML is the one of `$\\chi^{*}$` "
-                 "in the same place: the build output of the two spellings differs only by the formula text the author wrote, not by the MathML")
+                 "in the same place: each page holds one MathML element and it is the same string for the two spellings (and the formulas line counts it as converted)")
     def _():
         a = _build(outline=_cond("$\\chi^{\\ast}$ holds"))
         b = _build(outline=_cond("$\\chi^{*}$ holds"))
