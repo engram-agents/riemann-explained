@@ -509,14 +509,17 @@ constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISS
 constant is False. F48WORD1 compares definition_label and definition_join with the wording file named by the environment variable
 RH_F48_WORDING and is skipped when it is not set.
 
-G1 THE GRAPH DATA (cases GR1 to GR18). `graph/index.json` holds exactly assets ({}, a later slice fills it), commit, format, max_children (40, the named constant
+G1 THE GRAPH DATA (cases GR1 to GR20). `graph/index.json` holds exactly assets ({}, a later slice fills it), commit, format, max_children (40, the named constant
 GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number of step files), strings ({}, a later slice fills it), symbols and top (the top
 ids in `order`). `graph/step/<id>.json` holds exactly card, children, commit, format, id, path (the ancestors, top first, [] for a top step), rests_on. A closed
-card holds exactly child_count, id, kind, path, state, title; a child also has parent_rests_on (the step rests on this child). A link is {from, from_path, to,
+card holds exactly child_count, id, kind, path, state, title, plus `role` when the step has one (absent otherwise, never null, never empty: the words the list page prints
+for the step's root_role, today the strings key named_statement_use_line for the role named_statement); a child also has parent_rests_on (the step rests on this child). A link is {from, from_path, to,
 to_path}: `from` rests on `to`, the direction of the outline's `premises`. A premise of a step on a sibling is a link in the file of their parent (in
 index.json for two top steps); a premise on the step's own child is parent_rests_on on that child and in no rests_on; a premise on any other step refuses the
-build (GRAPH-EDGE). `kind` is the builder's root_kind (theorem, def, structure) or `none`; `state` is read, census (not read, claim basis census) or none.
-`symbols` is built from the ONE table GRAPH_SYMBOLS (F38): each row a css class token and a strings key (the seven symbol_* keys), `text` the key's words,
+build (GRAPH-EDGE). `kind` is the Lean kind of the step's root for every step, a null claim too (the first root when there are several): theorem or lemma
+(the checker's RESULT_KINDS) gives theorem, def gives def, structure gives structure; any other kind, or no root, refuses (GRAPH-SYMBOL). `state` is read, census (not read, claim
+basis census) or none.
+`symbols` is built from the ONE table GRAPH_SYMBOLS (F38): each row a css class token and a strings key (the six symbol_* keys: three kinds, three states), `text` the key's words,
 and `order` the fixed order of the rows; a kind or state with no row refuses the build (GRAPH-SYMBOL), a row no step uses stays. The `title` of a card is
 `_card_line(group, no_claim_label)`: the group's `short` (author text, a string of 1 to 50 characters with no line break, else GRAPH-SHORT), else its
 `title`, else the first sentence of its claim (the backticks of a span removed first, then cut by `_first_sentence`), else the strings file's no_claim_label;
