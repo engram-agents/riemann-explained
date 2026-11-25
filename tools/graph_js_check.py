@@ -10,7 +10,7 @@ CONTRACT
     `test` or `__pycache__`, is read as UTF-8 (undecodable bytes are replaced, never skipped) and checked.
  G2 In ANY file these are refused, matched case-insensitively and tolerant of whitespace where code allows it:
     innerHTML, outerHTML, insertAdjacentHTML, `document . write`, DOMParser, createContextualFragment,
-    createElementNS, `eval (`, `new  Function`, a bare `Function (`, `import (`, setTimeout / setInterval whose first
+    createElementNS, `<svg`, `<canvas` (links are drawn as div strokes, so shipped graph code needs no SVG or canvas), `eval (`, `new  Function`, a bare `Function (`, `import (`, setTimeout / setInterval whose first
     argument is a string literal, and a PROTOCOL-RELATIVE string literal (a quote or backtick, optional spaces, then
     `//`); in .html also an UNQUOTED attribute value that starts with `//` (`src=//host/x.js`, `href=//h`).
  G2b URL schemes `http:` `https:` `javascript:` `data:` `blob:` `ws:` `wss:` `file:`, in any letter case, by file
@@ -33,12 +33,19 @@ CONTRACT
     comments included), a token under test/ to be ignored and counted, and an empty tree to be CHECKED NOTHING.
  LIMIT: substring and line-pattern checks over text. A token split across lines or built from pieces is not seen,
  nor is `(0, eval)(s)`; that is why the engine's own boundary test also forbids the APIs by name in each file.
+ `srcdoc`, `setHTMLUnsafe` and `parseHTMLUnsafe` are matched without word boundaries and `Worker(` case-insensitively,
+ so an unrelated identifier that contains one (`mySrcDoc`, a function named `worker()`) is refused; this is a
+ deliberate fail-closed cost, and the answer to such a refusal is a different name, only after a reviewer has
+ looked, never a narrower pattern.
  Comments count: a comment that names a forbidden token is refused too (the .js scheme and protocol-relative
  checks are the exception: they read literals only, so a scheme in a JS comment is not seen). The scanner does not
- know regex literals or `${}` nesting. DOCUMENTED MISSES, each asserted as a miss by the self-test (MISSES): a quote
+ know regex literals or `${}` nesting. KNOWN MISSES, each asserted as a miss by the self-test (MISSES); the list is
+ NOT exhaustive, it holds the misses we have found and nothing more: a quote
  inside a regex literal before a URL; `//` inside a regex character class, which hides the rest of that line;
  `/*` inside a regex character class, which hides the REST OF THE FILE until a `*/`; a template literal nested
- inside `${}`; backslash-u and backslash-x escapes inside a literal, and String.fromCharCode; and piece-building by concatenation. An import specifier built at run time is not resolved; a dynamic
+ inside `${}`; backslash-u and backslash-x escapes inside a literal, and String.fromCharCode; piece-building by concatenation; in html, an attribute value that starts on the line after `href=` (the check
+ is per line), an entity-encoded value (`href=&#47;&#47;h`), and an unquoted `//` value in a `.htm` or `.svg` file
+ (that check reads `.html` only). An import specifier built at run time is not resolved; a dynamic
  `import (` is refused outright instead. A `__pycache__` folder is skipped without a count.
 
 usage: graph_js_check.py [DIR]
@@ -56,6 +63,16 @@ ANY_RE = [
     ("DOMParser", re.compile(r"DOMParser", I)),
     ("createContextualFragment", re.compile(r"createContextualFragment", I)),
     ("createElementNS", re.compile(r"createElementNS", I)),
+    # <svg and <canvas are refused BECAUSE the engine draws links as div bars (see INTERFACE.md, links; `stroke` in
+    # the sizes table). That is a consequence of the drawing path, not a standing rule: a change of drawing path
+    # reopens these two entries.
+    ("<svg", re.compile(r"<svg", I)),
+    ("<canvas", re.compile(r"<canvas", I)),
+    ("setHTMLUnsafe", re.compile(r"setHTMLUnsafe", I)),
+    ("parseHTMLUnsafe", re.compile(r"parseHTMLUnsafe", I)),
+    ("srcdoc", re.compile(r"srcdoc", I)),
+    ("Worker(", re.compile(r"\bWorker\s*\(", I)),
+    ("importScripts", re.compile(r"importScripts", I)),
     ("eval(", re.compile(r"eval\s*\(", I)),
     ("new Function", re.compile(r"new\s+Function", I)),
     ("Function(", re.compile(r"\bFunction\s*\(", I)),
@@ -258,6 +275,19 @@ PLANTS = [
     ("a.js", "document . write(s);", "document.write"),
     ("a.js", "x.INNERHTML = s;", "innerHTML"),
     ("a.js", "d.createElementNS(ns, 'svg');", "createElementNS"),
+    # round 3: the contract's remaining sinks
+    ("a.js", "const s = '<svg></svg>';", "<svg"),
+    ("a.html", "<SVG><path/></SVG>", "<svg"),
+    ("a.js", "const c = '<canvas>';", "<canvas"),
+    ("a.html", "<Canvas></Canvas>", "<canvas"),
+    ("a.js", "e.setHTMLUnsafe(s);", "setHTMLUnsafe"),
+    ("a.js", "Document.parseHTMLUnsafe(s);", "parseHTMLUnsafe"),
+    ("a.js", "f.srcdoc = s;", "srcdoc"),
+    ("a.js", "f.SRCDOC = s;", "srcdoc"),
+    ("a.html", "<iframe srcdoc=\"x\"></iframe>", "srcdoc"),
+    ("a.js", "const w = new Worker(u);", "Worker("),
+    ("a.js", "const w = new Worker (u);", "Worker("),
+    ("a.js", "importScripts(u);", "importScripts"),
     ("a.js", "const u = 'HTTPS://example.org/';", "https:"),
     ("a.js", "const u = 'Http://example.org/';", "http:"),
     ("a.js", "const u = 'JAVASCRIPT:alert(1)';", "javascript:"),
@@ -305,7 +335,7 @@ CLEAN = [
     # an html attribute that merely contains // later in its value, or a single slash, is not protocol-relative
     ("ok2.html", "<a href=/docs/x.html>x</a><a href=\"a//b\">y</a>"),
 ]
-# DOCUMENTED MISSES: each of these hides a refusable token from the scanner TODAY (the LIMIT text lists them).
+# KNOWN MISSES (not exhaustive): each of these hides a refusable token from the scanner TODAY (the LIMIT text lists them).
 # The self-test asserts every one is NOT refused, so a change that starts catching one fails here and the list
 # must be edited on purpose: (what is missed, file name, text; every line below carries a scheme or `//` that a
 # perfect reader would refuse).
@@ -318,6 +348,9 @@ MISSES = [
     ("a \\u escape", "m6.js", "const u = '\\u0068ttps://h/x';"),
     ("String.fromCharCode", "m7.js", "const u = String.fromCharCode(104, 116, 116, 112, 115, 58);"),
     ("piece-building by concatenation", "m8.js", "const u = 'java' + 'script:' + x;"),
+    ("html: an attribute value on the line after `href=` (the check is per line)", "m9.html", "<a href=\n//h>x</a>"),
+    ("html: an entity-encoded value", "m10.html", "<a href=&#47;&#47;h>x</a>"),
+    ("html: an unquoted `//` value in a `.htm` file (the check reads `.html` only)", "m11.htm", "<a href=//h>x</a>"),
 ]
 
 
