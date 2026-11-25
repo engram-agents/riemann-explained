@@ -86,7 +86,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      roots_not_read, roots_not_read_note), is refused
      naming the key (a stale file cannot ship a word scale); a value holding `Read by us`, `Partly read` or `Not read yet` is
      STRINGS-FORBIDDEN; the built page has none of the three. A stale `no_argument` is ignored and never printed.
-     Cases F3a F3b.
+     Cases F3a F3b F3c.
   F4 The build asserts for the statement read + not read = total, and for the proof read + not read + not applicable = total,
      over the level-1 steps and over the roots of each group (the pure functions fact_pairs and fact_triples count them) and
      prints `facts check: statements read A + not read B = N steps; proofs read C + not read D + not applicable E = N steps`;
@@ -5714,13 +5714,27 @@ def _selftest_cases():
                  "two status keys (statement_not_read_line, proof_not_read_line) are allowed (the base builds)")
     def _():
         res = []
-        for key, val in (("coverage", [{"when": {"read_all": True}, "word": "All"}]), ("not_read_yet", "x"), ("roots_not_read", "{N}"),
+        for key, val in (("coverage", [{"when": {"read_all": True}, "word": "All"}]), ("not_read_yet", "x"), ("roots_not_read", "x"),
                          ("roots_not_read_note", "x")):
             st = _strings()
             st[key] = val
             b = _build(strings=st)
             res.append((b.rc, f"BUILD-ERROR STRINGS-KEY {key} " in b.out, b.existed))
         return _eq((res, _base().rc), ([(1, True, False)] * 4, 0))
+
+    @case("F3c", "the not_read key-name guard is an exact-name allow-list, pinned on both sides: the tuple holds the four allowed names, and a near miss "
+                 "(a key with not_read in it that is not one of the four: sheet_statement_not_read_line, sheet_proof_not_read_note, symbol_state_not_read) "
+                 "is refused naming the key")
+    def _():
+        res = []
+        for key in ("sheet_statement_not_read_line", "sheet_proof_not_read_note", "symbol_state_not_read"):
+            st = _strings()
+            st[key] = "x"
+            b = _build(strings=st)
+            res.append((b.rc, f"BUILD-ERROR STRINGS-KEY {key} " in b.out, b.existed))
+        return _eq((res, NOT_READ_KEYS),
+                   ([(1, True, False)] * 3,
+                    ("statement_not_read_line", "proof_not_read_line", "sheet_statement_not_read", "sheet_proof_not_read")))
 
     @case("F3b", "a strings value holding one of the retired words `Read by us`, `Partly read`, `Not read yet` is STRINGS-FORBIDDEN naming "
                  "the key; the built page and data.js hold none of the three")
