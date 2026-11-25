@@ -12,10 +12,12 @@ Outputs under OUT_DIR (JSON: sorted keys, 1-space indent, LF, UTF-8, one final n
   level0.json   the level-1 steps of the chain in `order`, the facts counts, the notes about the whole (level 0), totals
   level1.json   the same steps, each with its child groups nested under it to any depth
   group/<id>.json  one per group: its roots, the blocks that anchor them, the open `not_read` items, the notes
+  graph/index.json  the graph data's index: the top steps, the links among them, the symbol table, the counts (G1)
+  graph/step/<id>.json  one per group, a leaf too: its closed card, its children, the links among them (G1)
   manifest.json sha256 of every other output file, the three commit ids, the release id and archive hash, the counts
   data.js       `window.RH_DATA = {...};` with level0, level1 and every group file (nothing reads it yet)
   index.html    ONE static page: plain semantic HTML, readable without JavaScript, no request of any kind
-Every JSON file carries `commits`: {notes, release, tools} (B5). A group id is used verbatim as the anchor id of its card.
+Every JSON file but the graph files carries `commits`: {notes, release, tools} (B5); a graph file carries `commit` (the notes commit as a string) and `format` 1 (G1). A group id is used verbatim as the anchor id of its card.
 The group objects inside level0.json and level1.json (the steps and, in level1.json, their `children`) have: `claim`, which
 is {text, reader, date, basis (read or census), conditions} or null; `premises`, the group ids the group rests on, in the order
 of the outline (a field of the GROUP, null-claim groups included; [] when none); `lean_name`, the name of the first root; `claim_label`, the strings file's `no_claim_label` when the claim is null; `statement_read` and `proof_read`, true when
@@ -506,6 +508,24 @@ page, one line each, and the line `titles: T of K cards that need one` follows t
 constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISSING (exit 1) and no listing is printed. The
 constant is False. F48WORD1 compares definition_label and definition_join with the wording file named by the environment variable
 RH_F48_WORDING and is skipped when it is not set.
+
+G1 THE GRAPH DATA (cases GR1 to GR18). `graph/index.json` holds exactly assets ({}, a later slice fills it), commit, format, max_children (40, the named constant
+GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number of step files), strings ({}, a later slice fills it), symbols and top (the top
+ids in `order`). `graph/step/<id>.json` holds exactly card, children, commit, format, id, path (the ancestors, top first, [] for a top step), rests_on. A closed
+card holds exactly child_count, id, kind, path, state, title; a child also has parent_rests_on (the step rests on this child). A link is {from, from_path, to,
+to_path}: `from` rests on `to`, the direction of the outline's `premises`. A premise of a step on a sibling is a link in the file of their parent (in
+index.json for two top steps); a premise on the step's own child is parent_rests_on on that child and in no rests_on; a premise on any other step refuses the
+build (GRAPH-EDGE). `kind` is the builder's root_kind (theorem, def, structure) or `none`; `state` is read, census (not read, claim basis census) or none.
+`symbols` is built from the ONE table GRAPH_SYMBOLS (F38): each row a css class token and a strings key (the seven symbol_* keys), `text` the key's words,
+and `order` the fixed order of the rows; a kind or state with no row refuses the build (GRAPH-SYMBOL), a row no step uses stays. The `title` of a card is
+`_card_line(group, no_claim_label)`: the group's `short` (author text, a string of 1 to 50 characters with no line break, else GRAPH-SHORT), else its
+`title`, else the first sentence of its claim (the backticks of a span removed first, then cut by `_first_sentence`), else the strings file's no_claim_label;
+never the Lean name; every arm has its backticks removed. The refusals, each its own code, each naming the id, exit 1, nothing written: GRAPH-ID (not
+`^[a-z0-9][a-z0-9-]*$`, or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted), GRAPH-SYMBOL, GRAPH-EDGE (a premise on
+a step that is neither a sibling nor the step's own child, a premise on no step, or a cycle in rests_on), GRAPH-COUNT (`_graph_count_errors`: child_count
+against the children listed, steps against the files, every listed id has its file) and GRAPH-SHORT. The graph files are written like data.js (keys
+sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in this slice: graph/index.html, the shell,
+{{S:key}}, the sink gate, the asset copy and hash. PENDING: `short` through `run` (the checker refuses the key today); GR12 states it on the function.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
