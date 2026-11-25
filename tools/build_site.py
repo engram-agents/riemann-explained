@@ -548,7 +548,7 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "argument_frame_no_proof", "evidence_statement_read_line", "evidence_statement_census_line", "evidence_proof_read_line",
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
             "evidence_sketch_build_line", "title_label", "definition_label", "definition_join", "edition_note_first_screen", "edition_note_card",
-            "edition_link_label", "edition_href_tree", "edition_href_blob")
+            "edition_note_card_note", "edition_link_label", "edition_href_tree", "edition_href_blob")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -560,7 +560,8 @@ PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_st
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
                 "shared_note": {"groups"}, "note_href": {"file"},
-                "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_href_blob": {"file"},
+                "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_note_card_note": {"date", "link"},
+                "edition_href_blob": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
                 "frames.interpretation": {"reader", "date"},
                 "recognition_result_known_line": {"result"},
@@ -598,7 +599,7 @@ REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "ev
                          "recognition_citation_open_line": ("source", "where", "source_date"),
                          "established_by_line": ("name",),
                          "sketch_frame": ("basis",),
-                         "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"),
+                         "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"), "edition_note_card_note": ("date", "link"),
                          "edition_href_blob": ("file",)}
 PROOF_KINDS = frozenset(nm.RESULT_KINDS)   # the table kinds that HAVE a proof; any other kind has none (F22): the checker's list, not a copy
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
@@ -2450,7 +2451,7 @@ def _render_page(m, s, facts, dirty):
         for ne in fl["editions"]:   # F44B: one paragraph per note at edition 2 whose date is not the group's own edition date
             if fl["edition"] and ne["date"] == fl["edition"]["date"]:
                 continue
-            o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], ne["date"],
+            o.append('<p class="edition-note">' + _edition_html(s["edition_note_card_note"], ne["date"],
                                                                 _fill(s["edition_href_blob"], file=EDITION_NOTES_DIR + urllib.parse.quote(ne["note"], safe="")),
                                                                 s["edition_link_label"]) + "</p>")
         for r in fl["roots"]:
@@ -3116,6 +3117,7 @@ def _strings():
 EDITION_WORDING = {
     "edition_note_first_screen": "These notes were rewritten for readers, most recently on {date}: where they showed names used inside the Lean code, or formulas as raw code, they now use plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
     "edition_note_card": "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
+    "edition_note_card_note": "On {date} a note this card draws on was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text of that note is kept here: {link}.",
     "edition_link_label": "first edition",
     "edition_href_tree": "https://github.com/engram-agents/riemann-explained/tree/notes-edition-1",
     "edition_href_blob": "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}",
