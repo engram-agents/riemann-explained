@@ -9226,6 +9226,33 @@ def _selftest_cases():
                     same.js("manifest.json")["counts"]["editions"], same.js("manifest.json")["counts"]["note_editions"]),
                    (0, 1, 2, 1, 1, 1, 2, 1, [{"note": "01-one.md", "edition": 2, "date": "2026-11-21"}], 1, 1))
 
+    @case("N10", "F56: a card whose group is at 2 dated D with THREE edition-2 notes (two dated D, one dated another day) prints the group's paragraph "
+                 "and then three note paragraphs, one per note, in note order, each with its own date and its own docs/<file> link, nothing above "
+                 "Evidence: four edition paragraphs in that Evidence; no note is merged or dropped for sharing a date")
+    def _():
+        b = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21"},
+                new={"02-same.md": ("0a", "g1", "2026-11-21"), "03-other.md": ("0b", "g1", "2026-11-20")})
+        ev = _direct(_card(b, "g1"), "details", "evidence")[0]
+        blob = "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/"
+        return _eq((b.rc, len(ev.find("p", "edition-note")),
+                    b.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-21", "docs/01-one.md") + "\n"
+                                 + nd_card("2026-11-21", "docs/02-same.md") + "\n" + nd_card("2026-11-20", "docs/03-other.md")),
+                    [b.page.count(blob + f) for f in ("docs/01-one.md", "docs/02-same.md", "docs/03-other.md", "outline/outline.json")],
+                    "rewritten for readers" in surface(_card(b, "g1")), [x["note"] for x in b.js("group/g1.json")["editions"]]),
+                   (0, 4, 1, [1, 1, 1, 1], False, ["01-one.md", "02-same.md", "03-other.md"]))
+
+    @case("N11", "F56: a note on a same-date card (group at 2 dated D, note at 2 dated D) whose file name holds `#`, `?`, `%` and a space gives a note "
+                 "paragraph whose href has %23, %3F, %25 and %20 for them (the group's paragraph keeps the outline file), while the data file's "
+                 "`editions` carries the raw file name")
+    def _():
+        name = "07-a#b?c%d e.md"
+        b = _nb(groups=[("g3", "2026-11-21")], new={name: ("07", "g3", "2026-11-21")})
+        hrefs = re.findall(r'<a class="edition-link" href="([^"]+)">first edition</a>', b.page)
+        return _eq((b.rc, hrefs, "07-a#b" in b.page, "c%d e" in b.page, b.js("group/g3.json")["editions"]),
+                   (0, [EDITION_TREE, "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/outline/outline.json",
+                        "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/docs/07-a%23b%3Fc%25d%20e.md"],
+                    False, False, [{"note": name, "edition": 2, "date": "2026-11-21"}]))
+
     # ---- F52: the builder refuses an edition field it cannot use, with a message and no traceback. The checker (notes_meta) refuses the same
     # inputs first, so these cases run with the checker stubbed to pass; the last case runs the real one.
     @contextlib.contextmanager
