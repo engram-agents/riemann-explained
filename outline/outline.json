@@ -701,7 +701,36 @@
    "title": "The good pair"
   },
   {
-   "claim": null,
+   "claim": {
+    "basis": "read",
+    "conditions": [
+     "Each character is counted together with its modulus: the set is a finite set of pairs (modulus, character), so the same function appearing under two moduli would be two members. Each member's character must be primitive.",
+     "$L(s, \\chi)$ is the Dirichlet L-function continued analytically, so it is defined to the left of the line of real part 1. For the trivial character of modulus 1, whose L-function is the Riemann zeta function, Mathlib gives a junk value at the pole $s = 1$; Mathlib proves that this value is not zero, so it adds no zero. The zero must have real part strictly greater than $1 - 1/400$ and imaginary part at most $Q$ in absolute value; it need not be the same zero for different members.",
+     "Order of choices: one constant $C$ serves every $Q \\ge 3$ and every such set."
+    ],
+    "conventions_checked": [
+     "a",
+     "c",
+     "d"
+    ],
+    "date": "2026-11-25",
+    "defs_opened": [
+     {
+      "lines": [
+       7,
+       11
+      ],
+      "module": "Formalism.GL3MeanSquares.GenusMeanAsymptotics.JacobiCharacterSums.CountSt",
+      "name": "Formalism.HermitianLattices.Ext.PrimitiveCharacterCasts.ZeroDensityBox"
+     }
+    ],
+    "mathlib_read": [
+     "DirichletCharacter.LFunction (by standard meaning)",
+     "DirichletCharacter.IsPrimitive (by standard meaning)"
+    ],
+    "reader": "Halley",
+    "text": "There is a constant $C$ such that for every $Q \\ge 3$, every finite set of primitive Dirichlet characters, each of modulus at most $Q$ and each with an L-function that has a zero $s$ with real part greater than $1 - 1/400$ and $|t| \\le Q$, where $t$ is the imaginary part of $s$, has at most $C Q^{1/4}$ members"
+   },
    "id": "zero-density",
    "level": 5,
    "order": 2,
@@ -713,7 +742,7 @@
      "name": "Formalism.HermitianLattices.Ext.PrimitiveCharacterCasts.ZD.zero_density_box"
     }
    ],
-   "title": "The zero-density box"
+   "root_role": "result"
   },
   {
    "claim": null,
