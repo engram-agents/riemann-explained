@@ -75,6 +75,22 @@ wording and the two addresses are the strings keys `edition_note_first_screen`, 
 `edition_note_card_note` (the sentence of a note, see below), `edition_link_label`, `edition_href_tree` and `edition_href_blob`; the addresses must be https and are not sentences. The static check lets an `<a class="edition-link">` with an
 https `href` through, by class token, as it does a citation anchor. A page with no group at edition 2 is byte-equal to a page built before.
 
+**Links to the notes (F60).** The website does not serve the notes' markdown files, so a relative note link (`notes/<file>`) answers 404 there. The
+strings key `note_href` therefore takes a second, optional placeholder `{commit}` (the first is `{file}`, the note's file name, percent-encoded), and
+`site/strings.json` holds `https://github.com/engram-agents/riemann-explained/blob/{commit}/docs/{file}`. `{commit}` is filled with the FULL notes
+commit of the build (40 lower-case hex digits, the `commits.notes` that every JSON file carries), never with a branch name: a card's record of what
+was read is a record at that commit, and a link that follows `main` could show text the cards have not been checked against. The address is the
+`link` of every note in the group files, `level0.json`, `level1.json` and `data.js`, and the `href` of every note anchor on the page. A template that holds
+`{commit}` when the build has no full notes commit (no `--notes-commit`, a tree with uncommitted changes, which stamps `dirty`, or any id that is not
+40 lower-case hex) is refused: `BUILD-ERROR NOTE-HREF-COMMIT note_href holds {commit}, but the build has no full notes commit (it is <id>; give
+--notes-commit and --repo, and build from a clean tree)`, exit 1, nothing written. A build from an unclean tree is refused because the stamped notes id is `dirty`, so to preview uncommitted notes, build with a copy of the strings file whose `note_href` is the relative `notes/{file}`. A template without `{commit}` builds exactly as before whatever the
+commit is (both placeholders are optional). The static check lets an `<a class="note-link">` with an `https://` `href` through, by class token, as it does a
+citation or an edition anchor; it is the one new exemption, and nothing else changed (`note-link` with `http://` or `//`, as part of another class word, on an
+`img`, a form, a `<link>`, or on `src`, `action`, `formaction` or `xlink:href` is still refused, and so is an https note anchor with no `note-link`). The
+builder writes the class on a note anchor if and only if its link starts `https://`, at the five places the page shows one (the notes about the whole in
+the header, the argument's read-more link, the corrections list, a card's notes list and the block line of the Evidence section), through one helper,
+`_note_open`; a relative template gives anchors with no class. The placing step is unchanged: the notes are not copied to the site.
+
 **Editions of a note (F44B).** A note's header may carry `edition` (the integer 1 or 2; absent is 1) and `edition_date` (a real date
 `YYYY-MM-DD`, not later than the day of the run; required at edition 2, refused at edition 1 or absent). `rh_anchor.header_problems` checks the
 shape and `notes_meta.py` reports each bad value as a `BAD-VALUE` on the header line (edition 3 or more says `edition 3 needs a ruling`).
