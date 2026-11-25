@@ -359,7 +359,7 @@
     "form": "not_recognised",
     "reader": "Halley",
     "date": "2026-11-24",
-    "note": "This step is the release's own composition of three inputs, `Green`, `VWin` and the `HypsAlt` structure, into `ZeroFreeAll`; we found no textbook result that draws this conclusion from these hypotheses."
+    "note": "This step is the release's own composition of three inputs, Input 1, the window supply and the hypothesis package, into the statement that no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$; we found no textbook result that draws this conclusion from these hypotheses."
    },
    "edition": 2,
    "edition_date": "2026-11-25"
