@@ -139,7 +139,6 @@
  "symbol_kind_theorem": "Square: the part is a theorem",
  "symbol_kind_def": "Circle: the part is a definition",
  "symbol_kind_structure": "Diamond: the part is a structure",
- "symbol_kind_none": "Dashed: the step has no single named Lean result",
  "symbol_state_read": "Filled: one of us read its statement",
  "symbol_state_census": "Half filled: counted by a program, not read",
  "symbol_state_none": "Empty: not read yet"

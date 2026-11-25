@@ -610,8 +610,7 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
             "evidence_sketch_build_line", "title_label", "definition_label", "definition_join", "edition_note_first_screen", "edition_note_card",
             "edition_note_card_note", "edition_link_label", "edition_href_tree", "edition_href_blob",
-             "symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure", "symbol_kind_none", "symbol_state_read", "symbol_state_census",
-             "symbol_state_none")
+             "symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure", "symbol_state_read", "symbol_state_census", "symbol_state_none")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -1721,13 +1720,15 @@ GRAPH_FORMAT = 1
 GRAPH_MAX_CHILDREN = 40   # a step with more children is refused (GRAPH-FANOUT); the page reads the number from graph/index.json
 GRAPH_SHORT_MAX = 50      # the longest `short` (author text) a group may carry, in characters
 GRAPH_ID = re.compile(r"[a-z0-9][a-z0-9-]*")   # a step id; narrower than SAFE_ID, so every graph id is also a file name of the build
+# The strings key whose words a closed card carries as its `role`, by root_role: the words the list page prints for that role (the named-statement
+# line). The key `role` is absent for a root_role with no row here (the list page prints no words of its own for it) and for a step with no root_role.
+GRAPH_ROLE_WORDS = {"named_statement": "named_statement_use_line"}
 # F38: THE symbol table. Each row is a css class token and the strings key whose words explain the symbol; graph/index.json `symbols` is built from
 # this table and from nothing else, and the page reads the key from there. The order of the rows is the order of the key.
 GRAPH_SYMBOLS = {
     "kinds": {"theorem": {"class": "kind-theorem", "words": "symbol_kind_theorem"},
               "def": {"class": "kind-def", "words": "symbol_kind_def"},
-              "structure": {"class": "kind-structure", "words": "symbol_kind_structure"},
-              "none": {"class": "kind-none", "words": "symbol_kind_none"}},
+              "structure": {"class": "kind-structure", "words": "symbol_kind_structure"}},
     "states": {"read": {"class": "state-read", "words": "symbol_state_read"},
                "census": {"class": "state-census", "words": "symbol_state_census"},
                "none": {"class": "state-none", "words": "symbol_state_none"}}}
@@ -1770,17 +1771,28 @@ def _graph_short_errors(groups):
     return out
 
 
+def _graph_kind(raw):
+    """The kind of a step on the map from the Lean kind of its root: theorem or lemma (the checker's RESULT_KINDS) is `theorem`, any other kind as it is
+    (def and structure are rows of the table, anything else is refused by GRAPH-SYMBOL with its own name); a step with no root is `(none)`."""
+    if raw is None:
+        return "(none)"
+    return "theorem" if raw in nm.RESULT_KINDS else raw
+
+
 def _graph_rows(m, strings):
-    """([GRAPH-SHORT errors], the rows `_graph_files` takes) from the model: one row per group, in the outline's order, with its kind (the builder's
-    root_kind, `none` when the step has no single named root), its state (`read` when its statement is read, `census` when it is not and its claim's
-    basis is census, else `none`) and its card line."""
+    """([GRAPH-SHORT errors], the rows `_graph_files` takes) from the model: one row per group, in the outline's order, with its kind (the Lean kind of
+    its root, the first root when there are several, for every step, a null claim too), its state (`read` when its statement is read, `census` when it
+    is not and its claim's basis is census, else `none`), its card line and, when its root_role has words (GRAPH_ROLE_WORDS), its `role`."""
     groups = list(m.groups.values())
     rows = []
     for gid, g in m.groups.items():
         sm = m.summary[gid]
         state = "read" if sm["statement_read"] else ("census" if sm["claim"] is not None and sm["claim"]["basis"] == "census" else "none")
-        rows.append({"id": gid, "parent": g["parent"], "order": g["order"], "premises": list(g["premises"]), "kind": sm["root_kind"] or "none",
-                     "state": state, "title": _card_line(g, strings["no_claim_label"])})
+        roots = m.files[gid]["roots"]
+        rows.append({"id": gid, "parent": g["parent"], "order": g["order"], "premises": list(g["premises"]),
+                     "kind": _graph_kind(roots[0]["kind"] if roots else None), "state": state, "title": _card_line(g, strings["no_claim_label"])})
+        if sm["root_role"] in GRAPH_ROLE_WORDS:
+            rows[-1]["role"] = _unspan(strings[GRAPH_ROLE_WORDS[sm["root_role"]]])
     return _graph_short_errors(groups), rows
 
 
@@ -1890,8 +1902,11 @@ def _graph_files(rows, commit, strings):
         path[r["id"]] = p[::-1]
 
     def closed(r):
-        return {"child_count": len(kids.get(r["id"], [])), "id": r["id"], "kind": r["kind"], "path": list(path[r["id"]]), "state": r["state"],
-                "title": r["title"]}
+        d = {"child_count": len(kids.get(r["id"], [])), "id": r["id"], "kind": r["kind"], "path": list(path[r["id"]]), "state": r["state"],
+             "title": r["title"]}
+        if r.get("role"):   # optional: absent, never null and never empty
+            d["role"] = r["role"]
+        return d
 
     def links(step):   # the premises of the children of `step` that name another child of it: `from` rests on `to`
         return [{"from": c["id"], "from_path": list(path[c["id"]]), "to": p, "to_path": list(path[p])}
@@ -3421,10 +3436,9 @@ F48_STRINGS = {"title_label": "What this step is:", "definition_label": "Definit
 F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this step does not claim its statement is true."}
 # F53: the heading of the per-file list inside Evidence (no placeholder). The same literal is in site/strings.json.
 F53_STRINGS = {"unexpanded_detail_heading": "In the Lean files, file by file: the automation used and where, as we found it:"}
-# F38, G1: the words of the seven rows of the symbol table (GRAPH_SYMBOLS), no placeholder; the first six are the prototype's, and
-# symbol_kind_none is a PLACEHOLDER the wording seat replaces. The same literals are in site/strings.json.
+# F38, G1: the words of the six rows of the symbol table (GRAPH_SYMBOLS), no placeholder, the prototype's. The same literals are in site/strings.json.
 F38_STRINGS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
-               "symbol_kind_structure": "Diamond: the part is a structure", "symbol_kind_none": "Dashed: the step has no single named Lean result",
+               "symbol_kind_structure": "Diamond: the part is a structure",
                "symbol_state_read": "Filled: one of us read its statement", "symbol_state_census": "Half filled: counted by a program, not read",
                "symbol_state_none": "Empty: not read yet"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
