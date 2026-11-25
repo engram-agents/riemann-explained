@@ -14,6 +14,7 @@
  "proof_read_line": "We have read this proof.",
  "proof_not_read_line": "We have not read this proof yet.",
  "proof_not_applicable_line": "There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) and does not claim that the statement is true.",
+ "proof_not_applicable_named_line": "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true.",
  "proof_none_other_line": "There is no proof to read here: our table of the release's declarations does not list this step as a theorem or a lemma.",
  "statement_count_line": "Statements read: {n} of {m} named Lean results.",
  "proof_count_line": "Proofs read: {n} of {m} named Lean results.",

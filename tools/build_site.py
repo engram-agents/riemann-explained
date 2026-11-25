@@ -97,7 +97,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      has proof_read true when every root that HAS a proof has it read (the roots without a proof are left out of that test),
      null when no root has a proof, false otherwise; counts.roots_proof_applicable is the number of roots that have a proof. A
      card that has no proof to read shows the strings key proof_not_applicable_line, or proof_none_other_line when any of its roots has a kind outside the
-     eight (no placeholders in either; also for a several-root card none of whose roots has a proof); F41: the two lines name no kind (`There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) ...`, true of a definition and of a structure alike) and are in the voice of the statement line above them (cases F41a F41b); F41: the two lines name no kind (`There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) ...`, true of a definition and of a structure alike) and are in the voice of the statement line above them (cases F41a F41b); a several-root card counts proof_count_line over the roots that have a proof. A
+     eight, or, F49, proof_not_applicable_named_line in place of proof_not_applicable_line when the card also shows named_statement_use_line (ONE boolean, the
+     role named_statement, computed once, decides both: no card shows the use line and proof_not_applicable_line, whose first sentence it would repeat; cases F49a to F49d)
+     (no placeholders in any of the three; also for a several-root card none of whose roots has a proof); F41: the two lines name no kind (`There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) ...`, true of a definition and of a structure alike) and are in the voice of the statement line above them (cases F41a F41b); F41: the two lines name no kind (`There is no proof to read: this step is not a theorem. It gives a name to a statement (or to a kind of object) ...`, true of a definition and of a structure alike) and are in the voice of the statement line above them (cases F41a F41b); a several-root card counts proof_count_line over the roots that have a proof. A
      card is `unread` when its statement is not read and its proof is not read or not applicable. level0 `facts` carry
      proof_applicable (the steps that have a proof) and proof_not_applicable; the first-screen steps_proof_line counts over
      the steps that have a proof, and when no step has one the first screen shows steps_proof_not_applicable_line (no placeholders) in its place
@@ -288,7 +290,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   C1 The two status lines come from the strings keys, and since F37 name nobody: statement_read_line (the claim is read, or a reading
      block anchors the root; the Evidence line names the reader and date of the claim, or of the first reading block of the root
      when the claim is null, or when its basis is census), statement_census_line (a census claim; it does not count; the Evidence
-     line names the claim's reader and date), statement_not_read_line; proof_read_line, proof_not_read_line, proof_not_applicable_line and proof_none_other_line (a root that has no proof,
+     line names the claim's reader and date), statement_not_read_line; proof_read_line, proof_not_read_line, proof_not_applicable_line, proof_not_applicable_named_line (F49: the no-proof line of a card that shows named_statement_use_line) and proof_none_other_line (a root that has no proof,
      no placeholders). A group with several
      roots shows statement_count_line and proof_count_line ({n} {m}) instead. The line open_items_line ({n}) is shown on a
      card only when n is above zero (a zero is not said there); the first-screen line steps_open_items_line is ALWAYS shown, zero
@@ -378,9 +380,9 @@ of the JSON (its hash fields left out) or the strings file: it cannot say the nu
 the outline and the strings file against the notes commit, and for tracked files of this folder against the tools
 commit; an untracked file of the tools folder is not seen, and without --notes-commit the notes commit is `unknown` and
 the notes are not judged. The sha256 of a root's file needs --source-check; a hash table in a note is not read. There is no
-coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the fourteen
+coverage word: the strings file's keys for the two facts are PROVISIONAL names (their wording is another seat's), the fifteen
 of them: statement_read_line, statement_census_line, statement_not_read_line, proof_read_line, proof_not_read_line,
-proof_not_applicable_line, proof_none_other_line, steps_proof_not_applicable_line, statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
+proof_not_applicable_line, proof_not_applicable_named_line, proof_none_other_line, steps_proof_not_applicable_line, statement_count_line, proof_count_line, open_items_line, steps_statement_line, steps_proof_line, steps_open_items_line
 (and the three labels of the evidence block, evidence_module_label, evidence_name_label, evidence_kind_label);
 `coverage`, `not_read_yet`, `route_count`, `no_argument`, `roots_read` and `roots_not_read` are gone. A claim whose basis is
 missing is read as `read` until the checker requires it (the run line says how many). The Evidence section shows the claim's reader and
@@ -394,7 +396,7 @@ reads the kind from the table row of the root and does not look at the Lean text
 some that are definitions is read for the proof when every theorem root is: the definition roots are left out of the every-root
 test, and the card counts over the theorem roots. A kind outside the eight the table holds is treated as no proof and listed as
 KIND-NOTE; it is never refused. A card that shows a no-proof line uses proof_none_other_line when ANY of its proof-less roots
-has such a kind (a step with several roots too), and proof_not_applicable_line otherwise; the first screen does not
+has such a kind (a step with several roots too), and otherwise proof_not_applicable_named_line when the card shows named_statement_use_line (F49: the same boolean as the use line, the role named_statement), else proof_not_applicable_line; the first screen does not
 distinguish: it shows steps_proof_not_applicable_line whenever no step has a proof, and a root of an unknown kind among the
 top-level steps is not reachable on a real table (the table holds the eight kinds only). The source check ranges over what a reader sees: the text of claims, conditions and note titles
 with the backticks of a span removed (on the JSON and data.js side, and on the copied title lines; the page skips <code>), the
@@ -524,7 +526,7 @@ NAME_KEYS = frozenset(["id", "module", "name", "lean_name", "file", "note", "blo
 # ---------------------------------------------------------------- the tool
 
 TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line", "statement_census_line",
-             "statement_not_read_line", "proof_read_line", "proof_not_read_line", "proof_not_applicable_line", "proof_none_other_line",
+             "statement_not_read_line", "proof_read_line", "proof_not_read_line", "proof_not_applicable_line", "proof_not_applicable_named_line", "proof_none_other_line",
              "steps_proof_not_applicable_line", "statement_count_line",
              "proof_count_line", "open_items_line", "steps_statement_line", "steps_proof_line", "steps_open_items_line", "argument_frame",
              "interpretation_frame", "evidence_label", "evidence_module_label", "evidence_name_label", "evidence_kind_label",
@@ -2363,7 +2365,8 @@ def _render_page(m, s, facts, dirty):
                      f'<span class="title-text">{_rich(ttl, where=gid)}</span></h3>')
             o.append(f'<p class="no-claim-label">{_e(sm["claim_label"])}</p>')
         role = sm["root_role"] or ("named_statement" if nm.definition_card(None, [sm["root_kind"]]) else "result") if sm["claim"] else None   # no role: the class of the kind
-        if role == "named_statement":   # F36: what kind of step this is, directly after the claim and its conditions
+        named = role == "named_statement"   # F49: computed once; it decides the use line below and which no-proof line the status shows
+        if named:   # F36: what kind of step this is, directly after the claim and its conditions
             o.append(f'<p class="named-statement-use">{_e(s["named_statement_use_line"])}</p>')
         if sm["premises"]:   # a step with a null claim rests on premises as well
             links = [f'<a href="#{_e(urllib.parse.quote(p, safe=""))}">{title_of(p)}</a>' for p in sm["premises"]]
@@ -2377,6 +2380,7 @@ def _render_page(m, s, facts, dirty):
         c, by = sm["counts"], sm["statement_by"]
         # the line of a card with no proof: the builder does not know what a declaration of an unknown kind is
         none_line = (s["proof_none_other_line"] if any(r["kind"] not in KNOWN_KINDS for r in fl["roots"])
+                     else s["proof_not_applicable_named_line"] if named   # F49: the use line above already says the step names a statement
                      else s["proof_not_applicable_line"])
         args = [b for b in fl["blocks"] if b["kind"] == "argument"]   # blocks are in note id, then block number, order
         counts = c["roots"] > 1   # F39: a card shows counts when it has several roots; the roots-only sentence follows this
@@ -3011,6 +3015,9 @@ F41_PROOF_LINES = {
 # F47, F48: the three strings of the card title and the definition heading (no placeholder). definition_label and definition_join are the
 # wording file's values (F48WORD1 compares them when that file is given); title_label is the spec's own.
 F48_STRINGS = {"title_label": "What this step is:", "definition_label": "Definition.", "definition_join": "is defined as:"}
+# F49: the no-proof line of a card that also prints named_statement_use_line (the fixture's value, then the real file's literal, pinned)
+F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this step does not claim its statement is true."}
+F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
     "established_not_traced_line": "Where it is proved: we have not yet traced where in the release this statement is proved.",
@@ -3083,6 +3090,7 @@ def _strings():
     s.update(F37_EVIDENCE)
     s.update(EDITION_WORDING)
     s.update(F48_STRINGS)
+    s.update(F49_STRINGS)
     return s
 
 
@@ -3554,7 +3562,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(EDITION_WORDING)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(EDITION_WORDING)
 
 
 def _no_edition(rel, data):
@@ -3949,7 +3957,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 95 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 96 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -3962,7 +3970,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 95))
+        return _eq((bad, len(STRING_KEYS)), ([], 96))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -5245,6 +5253,7 @@ def _selftest_cases():
 
     # ---- F22: a definition has no proof to read (a proof needs a theorem or a lemma)
     NA_LINE = "Proof: none to read, this is not a theorem."
+    NAMED_NA_LINE = F49_STRINGS["proof_not_applicable_named_line"]   # F49: a definition with a claim prints the use line, so this one
     ARG_QUX = N03 + "\nArgues qux.\n" + _b(id="03.b01", kind="argument", decls=[QUX], reader="Reader Two", date="2026-11-23") + "\n"
     ARG_CORGE = N03 + "\nArgues corge.\n" + _b(id="03.b01", kind="argument", decls=[CORGE], reader="Reader Two", date="2026-11-23") + "\n"
     facts_line = lambda b_: [li.text() for li in _dom(b_.page).find("ul", "facts")[0].find("li")]
@@ -5281,7 +5290,7 @@ def _selftest_cases():
                   "line, the card is still `unread` (statement not read AND proof not applicable); the facts count it apart (proof read 1 + "
                   "not read 1 + not applicable 1 = 3, applicable 2), the run prints the three-term check line, and the first screen counts "
                   "over the steps that have a proof: `Proofs read: 1 of 2 steps.`; in the base build g1a1 (baz, a def) shows the "
-                  "not-applicable line too")
+                  "same line too (both are definitions with a claim: F49 gives them proof_not_applicable_named_line)")
     def _():
         b = _build(decls=_decls_kinds({"corge": "def"}))
         l0, g3 = b.js("level0.json"), step_of(b, "g3")
@@ -5298,7 +5307,7 @@ def _selftest_cases():
                     {"proof_applicable": 2, "proof_not_applicable": 1, "proof_not_read": 1, "proof_read": 1, "statement_not_read": 2,
                      "statement_read": 1, "steps": 3}, True,
                     ["Statements read: 1 of 3 steps.", "Proofs read: 1 of 2 steps.", "Questions written down in these notes: 1."],
-                    NA_LINE, True, None, None, True, False, NA_LINE))
+                    NAMED_NA_LINE, True, None, None, True, False, NAMED_NA_LINE))
 
     @case("DEF2", "a step with some roots that are theorems and some that are defs (g2: quux a def, qux a theorem): the roots without a proof "
                   "are left out of the `every root` test, so with an argument block on qux the step's proof_read is TRUE (rows null, true), "
@@ -5352,7 +5361,8 @@ def _selftest_cases():
     @case("NAL1", "the strings key proof_not_applicable_line is required and holds no placeholder: a value with `{n}` is refused as an unknown "
                   "placeholder, a value with `{ x }` as a brace, an empty value as `must be a non-empty string`, a value with a forbidden "
                   "word as STRINGS-FORBIDDEN, each naming the key, exit 1, nothing written; with every strings value a marker the not-"
-                  "applicable card shows `MARK-proof_not_applicable_line` and the first screen `MARK-steps_proof_line 1 2`")
+                  "applicable card g3 (a definition with a claim: F49 gives it the named line) shows `MARK-proof_not_applicable_named_line` and the first "
+                  "screen `MARK-steps_proof_line 1 2` (NONE1 pins the plain key on a card with no claim)")
     def _():
         res = []
         for v in ("None {n}", "A set { x } line.", "", "This was verified."):
@@ -5366,7 +5376,7 @@ def _selftest_cases():
                      (1, ["BUILD-ERROR STRINGS-KEY proof_not_applicable_line holds a brace, and this key declares no placeholder"], False),
                      (1, ["BUILD-ERROR STRINGS-KEY proof_not_applicable_line must be a non-empty string"], False),
                      (1, ["BUILD-ERROR STRINGS-FORBIDDEN proof_not_applicable_line holds the word 'verified', which the page never says"],
-                      False)], 0, "MARK-proof_not_applicable_line", "MARK-steps_proof_line 1 2"))
+                      False)], 0, "MARK-proof_not_applicable_named_line", "MARK-steps_proof_line 1 2"))
 
     @case("NAL3", "the two strings keys proof_none_other_line and steps_proof_not_applicable_line are required and hold no placeholder: a "
                   "value with `{n}` is an unknown placeholder, a value with `{ x }` a brace, an empty value `must be a non-empty string`, a "
@@ -5388,7 +5398,7 @@ def _selftest_cases():
         return _eq(res, want)
 
     @case("NONE1", "a card with no proof says what it can: a root whose kind is outside the eight (`axiom`) shows proof_none_other_line "
-                   "(`MARK-proof_none_other_line`, not the not-applicable one), a def keeps proof_not_applicable_line, a step with several "
+                   "(`MARK-proof_none_other_line`, not the not-applicable one), a def with a claim (g3) shows proof_not_applicable_named_line (F49), a step with several "
                    "roots (g2, null claim) shows proof_none_other_line when ANY of its proof-less roots has an unknown kind (def + axiom, "
                    "either order) and proof_not_applicable_line when all are known (def + def); with the fixture wording an axiom card "
                    "shows `Proof: none to read, and this declaration is of a kind we do not know.`")
@@ -5398,7 +5408,7 @@ def _selftest_cases():
         return _eq((line({"corge": "axiom"}, "g3"), line({"corge": "def"}, "g3"), line({"quux": "def", "qux": "axiom"}, "g2"),
                     line({"quux": "axiom", "qux": "def"}, "g2"), line({"quux": "def", "qux": "def"}, "g2"),
                     line({"corge": "axiom"}, "g3", _strings())),
-                   ("MARK-proof_none_other_line", "MARK-proof_not_applicable_line", "MARK-proof_none_other_line",
+                   ("MARK-proof_none_other_line", "MARK-proof_not_applicable_named_line", "MARK-proof_none_other_line",
                     "MARK-proof_none_other_line", "MARK-proof_not_applicable_line",
                     "Proof: none to read, and this declaration is of a kind we do not know."))
 
@@ -6073,8 +6083,8 @@ def _selftest_cases():
                     "sketches: 1 of 2 steps with a proof read" in b.out.splitlines()),
                    (0, ["g1", "g1a"], 2, ["04.b01"], [], ["06.b01"], 0, 1, True))
 
-    @case("PB2", "B2: the not-applicable line STAYS on a card whose root is a definition with an argument block (`Proof: none to read, this is "
-                 "not a theorem.`), and proof_read stays null for it (the root, the group summary, the counts: 0 read of 0 that have a "
+    @case("PB2", "B2: the not-applicable line STAYS on a card whose root is a definition with an argument block (g1a1, a definition with a claim: "
+                 "F49's `Proof: none to read, and this step does not claim its statement is true.`), and proof_read stays null for it (the root, the group summary, the counts: 0 read of 0 that have a "
                  "proof): an argument block there sets nothing; the theorem root of g2 is read by the block that anchors it")
     def _():
         b = _bbase()
@@ -6082,7 +6092,7 @@ def _selftest_cases():
         return _eq((_card(b, "g1a1").find("p", "proof")[0].text(), b.js("group/g1a1.json")["roots"][0]["proof_read"], g1a1["id"],
                     g1a1["proof_read"], g1a1["counts"]["roots_proof_read"], g1a1["counts"]["roots_proof_applicable"], g1a1["unread"],
                     [r["proof_read"] for r in b.js("group/g2.json")["roots"]], _card(b, "g2").find("p", "proof")[0].text()),
-                   ("Proof: none to read, this is not a theorem.", None, "g1a1", None, 0, 0, False, [True, None],
+                   ("Proof: none to read, and this step does not claim its statement is true.", None, "g1a1", None, 0, 0, False, [True, None],
                     "Proofs read: 1 of 1 declarations."))
 
     # ---- F29: the frame of a block
@@ -7818,7 +7828,8 @@ def _selftest_cases():
         return _eq(([k for k in F41_PROOF_LINES if real.get(k) != F41_PROOF_LINES[k]], len(F41_PROOF_LINES),
                     any("This step is a definition" in str(v) for v in real.values()), _strings_problems(real)), ([], 2, False, []))
 
-    @case("F41b", "F41 on a build with the real strings file: a card with no proof shows `proof_not_applicable_line` (a def, g3) and a card whose root "
+    @case("F41b", "F41 on a build with the real strings file: a card with no proof shows `proof_not_applicable_line` (a null-claim step of two defs, g2; "
+                  "F49: a def with a claim, g3, shows `proof_not_applicable_named_line`) and a card whose root "
                   "has a kind outside the eight (an axiom) shows `proof_none_other_line`, each byte-equal to the value of the file; a step with a "
                   "proof shows neither (NONE1 pins the choice between the two with the fixture wording)")
     def _():
@@ -7828,8 +7839,8 @@ def _selftest_cases():
         with open(path, encoding="utf-8") as f:
             real = json.load(f)
         line = lambda kinds, g: _card(_build(decls=_decls_kinds(kinds), strings=real), g).find("p", "proof")[0].text()
-        return _eq((line({"corge": "def"}, "g3"), line({"corge": "axiom"}, "g3")),
-                   (F41_PROOF_LINES["proof_not_applicable_line"], F41_PROOF_LINES["proof_none_other_line"]))
+        return _eq((line({"quux": "def", "qux": "def"}, "g2"), line({"corge": "def"}, "g3"), line({"corge": "axiom"}, "g3")),
+                   (F41_PROOF_LINES["proof_not_applicable_line"], F49_NAMED_LINE, F41_PROOF_LINES["proof_none_other_line"]))
 
     @case("PV2", "F37 S1: placeholders as the new values hold them: each of the 8 EVIDENCE keys that lacks one it requires is refused "
                  "(`is missing the placeholder`, key and token named, 17 cases), a CARD key that holds a reader, date, file, lines, build or "
@@ -8199,10 +8210,10 @@ def _selftest_cases():
         e1 = _build(outline=one, strings=_strings())
         h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
-                   (["8e35639b3ec3b256ec2470cf52ca06caf60d9f5d526585f0913c420784c1c037",
-                     "1f206f67be691345fe6d9368e8042efbbe99dbc5b5f216d9294c356b6606d630",
-                     "87a9cdd09c1ed5efb40ed7a0f1bb679814dab4142acbd798eaf8c9c341017261",
-                     "f327f40f146f2b41912c113e1bf9ffb85b980d88c407113959edfa94c8cac1dc"], 0, True))
+                   (["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
+                     "e56476ab9fa257c33dfa1b2d70a6c64975873428d619a29805c0fae623a1ac52",
+                     "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
+                     "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"], 0, True))
 
     @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (three keys, pinned here as "
                  "literals) and the two addresses; a case that compares with the wording file itself runs when RH_EDITION_WORDING_FILE names it "
@@ -8443,6 +8454,99 @@ def _selftest_cases():
             real = json.load(f)
         return _eq([(k, real.get(k)) for k in ("definition_label", "definition_join")],
                    [(k, word[k]) for k in ("definition_label", "definition_join")])
+
+    @case("F49a", "F49: the key proof_not_applicable_named_line is required (P1a), is in STRING_KEYS and TEXT_KEYS, holds no placeholder (a placeholder "
+                  "or a lone brace is refused) and is under the forbidden-words check, and site/strings.json holds the literal `There is no proof to "
+                  "read: this step is not a theorem, and it does not claim that the statement is true.`")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        key = "proof_not_applicable_named_line"
+        res, want = [], []
+        for v, msg in (("has {n} here", f"BUILD-ERROR STRINGS-KEY {key} has an unknown placeholder {{n}}"),
+                       ("a { brace", f"BUILD-ERROR STRINGS-KEY {key} holds a brace, and this key declares no placeholder"),
+                       ("holds the word verified", f"BUILD-ERROR STRINGS-FORBIDDEN {key} holds the word 'verified', which the page never says"),
+                       ("", f"BUILD-ERROR STRINGS-KEY {key} must be a non-empty string")):
+            st = _strings()
+            st[key] = v
+            b = _build(strings=st)
+            res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+            want.append((1, [msg], False))
+        return _eq((res, real.get(key), key in STRING_KEYS and key in TEXT_KEYS, _strings_problems(real)),
+                   (want, "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true.", True, []))
+
+    @case("F49WORD1", "F49: proof_not_applicable_named_line of site/strings.json is byte-equal to the value the wording file proposes; the file is named "
+                      "by the environment variable RH_F49_WORDING (SKIPPED, with that reason, when it is not set or not readable: the repository's "
+                      "own cases pass without it)")
+    def _():
+        wf = os.environ.get("RH_F49_WORDING")
+        if not wf or not os.path.isfile(wf):
+            raise _SkipCase("RH_F49_WORDING is not set to a readable wording file")
+        with open(wf, encoding="utf-8") as f:
+            found = re.findall(r"`proof_not_applicable_named_line` = \"([^\"\n]*)\"", f.read())
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        return _eq((found, [real.get("proof_not_applicable_named_line")]), ([F49_NAMED_LINE], [F49_NAMED_LINE]))
+
+    @case("F49b", "F49: a card that prints the named-statement line (a definition with a claim fc, fz; a structure with a claim fs) shows "
+                  "proof_not_applicable_named_line as its proof line and not proof_not_applicable_line; a no-claim definition with a proof-less root "
+                  "(fd, fn) shows proof_not_applicable_line and not the new one; a result card (fk, fp) shows neither; a root whose kind is outside "
+                  "the eight (axiom, g3) shows proof_none_other_line, unchanged")
+    def _():
+        mk = _marked(_strings())
+        bf = _faces(strings=mk)
+        proof = lambda b, g: _card(b, g).find("p", "proof")[0].text()
+        use = lambda b, g: len(_direct(_card(b, g), "p", "named-statement-use"))
+        ba = _build(decls=_decls_kinds({"corge": "axiom"}), strings=mk)
+        N, B = "MARK-proof_not_applicable_named_line", "MARK-proof_not_applicable_line"
+        return _eq(([(g, use(bf, g), proof(bf, g)) for g in ("fc", "fs", "fz", "fd", "fn")],
+                    [(g, proof(bf, g) in (N, B)) for g in ("fk", "fp")], proof(ba, "g3")),
+                   ([("fc", 1, N), ("fs", 1, N), ("fz", 1, N), ("fd", 0, B), ("fn", 0, B)],
+                    [("fk", False), ("fp", False)], "MARK-proof_none_other_line"))
+
+    @case("F49c", "F49: no card prints both the named-statement line and proof_not_applicable_line: on every card of the faces page, the zoo, the "
+                  "base page and an axiom page (markers for every strings value) and of the faces page with the real strings file, a card with "
+                  "the named-statement line never shows proof_not_applicable_line, a card with proof_not_applicable_named_line has the "
+                  "named-statement line and not proof_not_applicable_line (control: the pages hold cards of each kind)")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        mk = _marked(_strings())
+        ks = ("named_statement_use_line", "proof_not_applicable_named_line", "proof_not_applicable_line")
+        pages = [(_faces(strings=mk), tuple("MARK-" + k for k in ks)), (_build(outline=_zoo(), strings=mk), tuple("MARK-" + k for k in ks)),
+                 (_build(strings=mk), tuple("MARK-" + k for k in ks)),
+                 (_build(decls=_decls_kinds({"corge": "axiom"}), strings=mk), tuple("MARK-" + k for k in ks)),
+                 (_faces(strings=real), tuple(real[k] for k in ks))]
+        bad, seen = [], [0, 0, 0]
+        for b, (A, N, B) in pages:
+            for art in _dom(b.page).find("article"):
+                ps = [k.text() for k in _direct(art, "p")]
+                a, n, bb = A in ps, N in ps, B in ps
+                seen = [seen[0] + a, seen[1] + n, seen[2] + bb]
+                if (a and bb) or (n and bb) or (n and not a):
+                    bad.append((art.attrs.get("id"), a, n, bb))
+        return _eq((bad, [x > 0 for x in seen]), ([], [True, True, True]))
+
+    @case("F49d", "F49: the choice follows the SAME condition as the use line, also where that condition is not the plain role: with no root_role on "
+                  "zkn and g1a1 (a definition class read from the kind, the fallback of the use line) both show the use line and "
+                  "proof_not_applicable_named_line; an object card (zok, a claim, a definition root, root_role `object`) shows no use line and "
+                  "proof_not_applicable_line; a result card (zkr, no root_role, a theorem) shows neither")
+    def _():
+        o = _zoo()
+        for g in o["groups"]:
+            if g["id"] in ("zkr", "zkn", "g1a1"):
+                g.pop("root_role", None)
+        b = _direct_build(o, roles=False)
+        both = lambda g: (len(_direct(_card(b, g), "p", "named-statement-use")), _card(b, g).find("p", "proof")[0].text())
+        named, plain = F49_STRINGS["proof_not_applicable_named_line"], "Proof: none to read, this is not a theorem."
+        return _eq((both("zkn"), both("g1a1"), both("zok"), both("zkr")),
+                   ((1, named), (1, named), (0, plain), (0, "We have read this proof.")))
 
     @case("TT2", "F47 face (a): a card with a null claim, a title and a RESULT root (fr, a theorem): the heading is the label `What this step "
                  "is:` in its own span, then the title in its own span, in the same <h3> as before; directly under it the no_claim_label line, "
