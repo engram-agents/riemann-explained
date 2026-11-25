@@ -112,8 +112,9 @@ export function createController(rawOptions, view) {
     const cached = cache.get(id);
     if (cached) {      // a cached list is checked again, against what is held NOW, exactly like a fresh answer
       const bad = validate(cached, n);
+      cache.delete(id);                // a refused list holds no slot; the node stays refused and is not asked again
       if (bad) { n.blocked = bad.reason; view.place(n); refuse(n, bad.reason, bad.detail); return Promise.resolve(false); }
-      cache.delete(id); return Promise.resolve(finishOpen(n, cached, manual));
+      return Promise.resolve(finishOpen(n, cached, manual));
     }
     n.loading = true; view.place(n);
     emit("loading", pub(n));
