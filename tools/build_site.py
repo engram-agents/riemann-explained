@@ -82,7 +82,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      (the effective value); `unread` = neither fact on any root; there is no `coverage` key; the proof_read of a root without a
      proof is null (F22). Case F2a.
   F3 There is no coverage word: a strings file that carries a `coverage` key, or a key whose name holds `not_read` other
-     than statement_not_read_line and proof_not_read_line (not_read_yet, roots_not_read, roots_not_read_note), is refused
+     than statement_not_read_line, proof_not_read_line, sheet_statement_not_read and sheet_proof_not_read (not_read_yet,
+     roots_not_read, roots_not_read_note), is refused
      naming the key (a stale file cannot ship a word scale); a value holding `Read by us`, `Partly read` or `Not read yet` is
      STRINGS-FORBIDDEN; the built page has none of the three. A stale `no_argument` is ignored and never printed.
      Cases F3a F3b.
@@ -509,26 +510,31 @@ constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISS
 constant is False. F48WORD1 compares definition_label and definition_join with the wording file named by the environment variable
 RH_F48_WORDING and is skipped when it is not set.
 
-G1 THE GRAPH DATA (cases GR1 to GR20). `graph/index.json` holds exactly assets ({}, a later slice fills it), commit, format, max_children (40, the named constant
-GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number of step files), strings ({}, a later slice fills it), symbols and top (the top
-ids in `order`). `graph/step/<id>.json` holds exactly card, children, commit, format, id, path (the ancestors, top first, [] for a top step), rests_on. A closed
-card holds exactly child_count, id, kind, path, state, title, plus `role` when the step has one (absent otherwise, never null, never empty: the words the list page prints
-for the step's root_role, today the strings key named_statement_use_line for the role named_statement); a child also has parent_rests_on (the step rests on this child). A link is {from, from_path, to,
-to_path}: `from` rests on `to`, the direction of the outline's `premises`. A premise of a step on a sibling is a link in the file of their parent (in
-index.json for two top steps); a premise on the step's own child is parent_rests_on on that child and in no rests_on; a premise on any other step refuses the
-build (GRAPH-EDGE). `kind` is the Lean kind of the step's root for every step, a null claim too (the first root when there are several): theorem or lemma
-(the checker's RESULT_KINDS) gives theorem, def gives def, structure gives structure; any other kind, or no root, refuses (GRAPH-SYMBOL). `state` is read, census (not read, claim
-basis census) or none.
-`symbols` is built from the ONE table GRAPH_SYMBOLS (F38): each row a css class token and a strings key (the six symbol_* keys: three kinds, three states), `text` the key's words,
-and `order` the fixed order of the rows; a kind or state with no row refuses the build (GRAPH-SYMBOL), a row no step uses stays. The `title` of a card is
-`_card_line(group, no_claim_label)`: the group's `short` (author text, a string of 1 to 50 characters with no line break, else GRAPH-SHORT), else its
-`title`, else the first sentence of its claim (the backticks of a span removed first, then cut by `_first_sentence`), else the strings file's no_claim_label;
-never the Lean name; every arm has its backticks removed. The refusals, each its own code, each naming the id, exit 1, nothing written: GRAPH-ID (not
-`^[a-z0-9][a-z0-9-]*$`, or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted), GRAPH-SYMBOL, GRAPH-EDGE (a premise on
-a step that is neither a sibling nor the step's own child, a premise on no step, or a cycle in rests_on), GRAPH-COUNT (`_graph_count_errors`: child_count
-against the children listed, steps against the files, every listed id has its file) and GRAPH-SHORT. The graph files are written like data.js (keys
-sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in this slice: graph/index.html, the shell,
-{{S:key}}, the sink gate, the asset copy and hash. PENDING: `short` through `run` (the checker refuses the key today); GR12 states it on the function.
+G1 THE GRAPH DATA (cases GR1 to GR27). `graph/index.json` holds exactly assets ({}, a later slice fills it), commit, format, max_children (40, the named constant
+GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number of step files), strings (the object of the nine `words` keys of the symbols rows with
+their values from the strings file, `{n}` as written; the keys the page reads at run time are a later slice), symbols and top (the top ids in `order`). `graph/step/<id>.json`
+holds exactly card, children, commit (the commit of index.json), format, id, path (the ancestors, top first, [] for a top step), rests_on. A closed card holds exactly
+child_count, id, kind, path, proof, state, title, plus `role` when the step has one (absent otherwise, never null, never empty: the words the list page prints for the
+step's root_role, today the strings key named_statement_use_line for the role named_statement); a child also has parent_rests_on (the step rests on this child). A link is
+{from, from_path, to, to_path}: `from` rests on `to`, the direction of the outline's `premises`; the paths are the ancestors plus the parent's id. A premise of a step on a
+sibling is a link in the file of their parent (in index.json for two top steps); a premise on the step's own child is parent_rests_on on that child and in no rests_on; a premise
+on any other step refuses the build (GRAPH-EDGE). `kind` is the Lean kind of the step's root for every step, a null claim too (the first root when there are several): theorem
+or lemma (the checker's RESULT_KINDS) gives theorem, def gives def, structure gives structure; any other kind, or no root, refuses (GRAPH-SYMBOL, with the words
+`(allowed: theorem, lemma, def, structure)`). `state` is read, census (not read, claim basis census) or none. `proof` is read, not_read or none from the group's proof_read
+(True, False, None: `_graph_proof`).
+`symbols` is built from the ONE table GRAPH_SYMBOLS (F38) and is exactly {order, kinds, proofs, states}: `order` the fixed arrays of the keys (kinds theorem, def, structure;
+proofs read, not_read, none; states read, census, none), and each row exactly {class, text, words}: a css class token, the words resolved, and the strings key (the three
+symbol_kind_*, the states' sheet_statement_read, sheet_statement_census and sheet_statement_not_read, the proofs' sheet_proof_read, sheet_proof_not_read and sheet_proof_none:
+the sheet's status words, one name per symbol for the legend and the sheet). A kind, a state or a proof with no row refuses the build (GRAPH-SYMBOL), a row no step uses stays.
+The `title` of a card is `_card_line(group, no_claim_label)`: the group's `short`, else its `title` (the backticks of a span removed), else the strings file's no_claim_label for
+a step with no claim, else no line; the first sentence of a claim is not a fallback. `_graph_line_errors` checks the RESOLVED line of every step: no line (a claim and neither a
+short nor a title), more than 50 characters after the strip, a dollar sign, each `GRAPH-SHORT <id> <reason> (<n> characters)`; a short of a bad shape (not a string, empty, a
+line break, over 50) is `GRAPH-SHORT <id> <reason>`, once. The refusals, each its own code, each naming the id, exit 1, nothing written: GRAPH-ID (not
+`^[a-z0-9][a-z0-9-]*$`, or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted; the root's own children count too and the root is
+named `root`), GRAPH-SYMBOL, GRAPH-EDGE (a premise on a step that is neither a sibling nor the step's own child, a premise on no step, or a cycle in rests_on), GRAPH-COUNT
+(`_graph_count_errors`: child_count against the children listed, steps against the files, every listed id has its file) and GRAPH-SHORT. The graph files are written like
+data.js (keys sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in this slice: graph/index.html,
+the shell, {{S:key}}, the sink gate, the asset copy and hash, the run-time strings.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
