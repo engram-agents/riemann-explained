@@ -499,12 +499,14 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import types
 import unicodedata
 import urllib.parse
+import zlib
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -3655,6 +3657,135 @@ def _real_strings_facts(path):
         real = json.load(f)
     v = real.get("proof_not_applicable_line") if isinstance(real, dict) else None
     return _strings_problems(real), isinstance(v, str), isinstance(v, str) and "{" not in v and "}" not in v
+
+
+# The words a `math` rule of the page may use besides the three colour words (properties, keywords, the two functions): F51COL refuses any other word
+# or function, so a named colour, rgb( or hsl( is found by name, and a hex colour by its `#`.
+_CUE_WORDS = frozenset({"max-width", "overflow-x", "overflow-y", "background", "background-color", "auto", "clip", "linear-gradient(", "color-mix(",
+                        "to", "left", "right", "center", "no-repeat", "local", "scroll", "in", "srgb"})
+_CUE_COLOURS = frozenset({"Canvas", "CanvasText", "transparent"})
+
+
+def _cue_colour_problems(rule):
+    """The colour tokens of a CSS rule that are not one of Canvas, CanvasText and transparent: a hex colour, a function or a word that is not on
+    the rule's own list. The declarations (the text between the first `{` and the last `}`) are cut with one regular expression into hex colours,
+    names (a `(` kept when it follows), numbers with their unit, and single characters."""
+    bad = []
+    for tok in re.findall(r"#[0-9A-Za-z]+|[A-Za-z][A-Za-z0-9-]*\(?|[0-9.]+(?:[A-Za-z]+|%)?|\S", rule[rule.index("{") + 1:rule.rindex("}")]):
+        if tok[0] == "#" or (tok[0].isalpha() and tok not in _CUE_WORDS and tok not in _CUE_COLOURS):
+            bad.append(tok)
+    return bad
+
+
+# ---- F51: the real-browser measurement of the continuation cue (the helpers; the case is F51BROWSER)
+
+# The probe appended to a COPY of the page (never to the built page): it reports, for every <math>, whether it overflows and its box, and (when
+# the copy is the `end` variant) first scrolls every overflowing one to its end. The `dump` variant also writes the report into the DOM.
+_CUE_PROBE = ("<script>(function(){var out=[],ms=[].slice.call(document.getElementsByTagName('math'));"
+              "ms.forEach(function(e){var over=e.scrollWidth>e.clientWidth;if(%(end)s&&over){e.scrollLeft=e.scrollWidth;}"
+              "var r=e.getBoundingClientRect();out.push([over?1:0,e.scrollWidth,e.clientWidth,e.scrollLeft,r.left+scrollX,r.top+scrollY,"
+              "r.right+scrollX,r.bottom+scrollY,parseFloat(getComputedStyle(e).fontSize)]);});"
+              "var h=document.documentElement.scrollHeight;if(%(dump)s){var p=document.createElement('pre');p.id='rh-cue';"
+              "p.textContent=JSON.stringify([h,out]);document.body.appendChild(p);}})();</script>")
+
+
+def _png_decode(data):
+    """A PNG of 8 bits per channel, RGB or RGBA, not interlaced, as (width, height, bytes per pixel, rows); the standard library only."""
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("not a PNG")
+    pos, idat, ihdr = 8, [], None
+    while pos < len(data):
+        n, typ = struct.unpack(">I4s", data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + n]
+        pos += 12 + n
+        if typ == b"IHDR":
+            ihdr = struct.unpack(">IIBBBBB", body)
+        elif typ == b"IDAT":
+            idat.append(body)
+    w, h, depth, ctype, _, _, interlace = ihdr
+    if depth != 8 or ctype not in (2, 6) or interlace:
+        raise ValueError(f"unsupported PNG (depth {depth}, colour type {ctype}, interlace {interlace})")
+    bpp = 3 if ctype == 2 else 4
+    raw = zlib.decompress(b"".join(idat))
+    stride = w * bpp
+    rows, prev = [], bytearray(stride)
+    for y in range(h):
+        f = raw[y * (stride + 1)]
+        cur = bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        if f == 1:
+            for i in range(bpp, stride):
+                cur[i] = (cur[i] + cur[i - bpp]) & 255
+        elif f == 2:
+            cur = bytearray((a + b) & 255 for a, b in zip(cur, prev))
+        elif f == 3:
+            for i in range(stride):
+                cur[i] = (cur[i] + (((cur[i - bpp] if i >= bpp else 0) + prev[i]) >> 1)) & 255
+        elif f == 4:
+            for i in range(stride):
+                a, b, c = (cur[i - bpp] if i >= bpp else 0), prev[i], (prev[i - bpp] if i >= bpp else 0)
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                cur[i] = (cur[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        elif f != 0:
+            raise ValueError(f"bad PNG filter {f}")
+        rows.append(cur)
+        prev = cur
+    return w, h, bpp, rows
+
+
+def _png_lum(img, x0, x1, y0, y1):
+    """The mean luminance (0 to 255) of the pixels x0 <= x < x1, y0 <= y < y1 of a decoded PNG; None when the box is empty."""
+    w, h, bpp, rows = img
+    x0, x1, y0, y1 = max(0, x0), min(w, x1), max(0, y0), min(h, y1)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    tot = 0.0
+    for y in range(y0, y1):
+        r = rows[y]
+        tot += 0.299 * sum(r[x0 * bpp:x1 * bpp:bpp]) + 0.587 * sum(r[x0 * bpp + 1:x1 * bpp:bpp]) + 0.114 * sum(r[x0 * bpp + 2:x1 * bpp:bpp])
+    return tot / ((x1 - x0) * (y1 - y0))
+
+
+def _cue_measure(chrome, page, old_rule, new_rule, width=390):
+    """Open `page` (the built index.html text) at `width` px in the headless Chromium `chrome`, every <details> open (a COPY), and measure by
+    pixels. Returns [(overflows, {state: (left, right)})] for every <math>, state `start` and `end` (every overflowing <math> scrolled to its
+    end), each strip the mean luminance DROP of the last 0.75em of that edge against the same page built with `old_rule` instead of `new_rule`
+    (the formula's own ink is in both, so the drop is the shadow alone), then the boxes the probe reported, and the page background luminance."""
+    base = re.sub(r"<details\b", "<details open", page)
+    with tempfile.TemporaryDirectory() as d:
+        def run(name, html_text, flag, extra):
+            path = os.path.join(d, name + ".html")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html_text)
+            cmd = [chrome, "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=1",
+                   "--no-first-run", "--user-data-dir=" + os.path.join(d, "profile")] + extra + [flag, "file://" + path]
+            return subprocess.run(cmd, capture_output=True, timeout=180, check=True)
+
+        def variant(html_text, end, dump):
+            return html_text.replace("</body>", _CUE_PROBE % {"end": "true" if end else "false", "dump": "true" if dump else "false"} + "</body>")
+
+        rep = run("dump", variant(base, True, True), "--dump-dom", ["--window-size=%d,2000" % width]).stdout.decode("utf-8")
+        m = re.search(r'<pre id="rh-cue">(.*?)</pre>', rep, re.S)
+        height, boxes = json.loads(html.unescape(m.group(1)))
+        shots = {}
+        for ref, text in (("new", base), ("old", base.replace(new_rule, old_rule))):
+            for st in ("start", "end"):
+                png = os.path.join(d, f"{ref}-{st}.png")
+                run(f"{ref}-{st}", variant(text, st == "end", False), "--screenshot=" + png, ["--window-size=%d,%d" % (width, height + 20)])
+                with open(png, "rb") as f:
+                    shots[ref, st] = _png_decode(f.read())
+    out = []
+    for over, sw, cw, sl, l, t, r, b, fs in boxes:
+        strip, res = max(1, round(0.75 * fs)), {}
+        y0, y1 = round(t), round(b)
+        for st in ("start", "end"):
+            sides = []
+            for x0, x1 in ((round(l), round(l) + strip), (round(r) - strip, round(r))):
+                a, o = _png_lum(shots["new", st], x0, x1, y0, y1), _png_lum(shots["old", st], x0, x1, y0, y1)
+                sides.append(None if a is None or o is None else o - a)
+            res[st] = tuple(sides)
+        out.append((bool(over), res))
+    return out, boxes, shots["old", "start"]
 
 
 def _selftest_cases():
@@ -7895,19 +8026,97 @@ def _selftest_cases():
         r = [_leaks(notes=_bn(para="[" + LEAK + "](06-x.md)", last="$x$"), src=src), _leaks(notes=_bn(para="[short](06-x.md)", last="$x$"), src=src)]
         return _eq([(x[0], x[2]) for x in r], [(1, False), (0, True)])
 
-    @case("PW1", "a formula wider than the line scrolls INSIDE itself on a narrow screen instead of widening the page: the page CSS holds, once, the rule "
-                 "`math { max-width: 100%; overflow-x: auto; overflow-y: clip; }`, in the built page's <style> and nowhere else on the page; the "
+    # F51: the `math` rule before the continuation cue and after it, literal (the rule after is the wording seat's, read by script from her note)
+    F51_OLD = "math { max-width: 100%; overflow-x: auto; overflow-y: clip; }"
+    F51_NEW = (
+        "math { max-width: 100%; overflow-x: auto; overflow-y: clip;\n"
+        "  background:\n"
+        "    linear-gradient(to right, Canvas 30%, transparent) left center / 1.5em 100% no-repeat local,\n"
+        "    linear-gradient(to left, Canvas 30%, transparent) right center / 1.5em 100% no-repeat local,\n"
+        "    linear-gradient(to right, color-mix(in srgb, CanvasText 35%, transparent), transparent) left center / 0.75em 100% no-repeat scroll,\n"
+        "    linear-gradient(to left, color-mix(in srgb, CanvasText 35%, transparent), transparent) right center / 0.75em 100% no-repeat scroll;\n"
+        "  background-color: Canvas; }")
+
+    @case("PW1", "a formula wider than the line scrolls INSIDE itself on a narrow screen instead of widening the page: the page CSS holds, once, the F51 rule "
+                 "(`math { max-width: 100%; overflow-x: auto; overflow-y: clip; ...` and then its background layers, F51TEXT), in the built page's <style> and nowhere else on the page, and the old one-line rule is gone; the "
                  "vertical axis is `clip`, not the word that R4a forbids, and not left to `auto` (the engine would then draw a vertical scroll control "
                  "beside every short formula); no new element and no attribute (the allow-list is unchanged and the static checks stay green); "
                  "a case on the text cannot show the scrolling, which was measured in a headless Chromium (`docs/tools.md`)")
     def _():
-        rule = "math { max-width: 100%; overflow-x: auto; overflow-y: clip; }"
+        rule = F51_NEW
         b = _build(notes=_notes(arg_text="A $x$ and $\\Gamma$ here"))
         style = b.page.split("<style>")[1].split("</style>")[0]
         outside = b.page.replace(style, "")
-        return _eq((CSS.count(rule), style.count(rule), rule in outside, "hidden" in CSS.lower(), "overflow-y: auto" in CSS,
+        return _eq((CSS.count(rule), style.count(rule), rule in outside, "hidden" in CSS.lower(), "overflow-y: auto" in CSS, F51_OLD in b.page,
                     static_problems(b.page, b.text("data.js")), element_problems(b.page), b.rc),
-                   (1, 1, False, False, False, [], [], 0))
+                   (1, 1, False, False, False, False, [], [], 0))
+
+    @case("F51TEXT", "F51: the page's <style> holds the `math` rule with the continuation cue (four background layers: two `local` covers of Canvas, "
+                     "two `scroll` shadows of CanvasText, then `background-color: Canvas`) exactly once and nowhere else on the page; the old "
+                     "one-line rule is gone; four gradients and two `background` words in the whole style (a second copy of the layers, on `math` or "
+                     "on another selector, is a count that moves); the page declares no `color-scheme` (the docs say so); no new element and no "
+                     "attribute (the static checks and the element check stay green) and the build exits 0")
+    def _():
+        b = _build(notes=_notes(arg_text="A $x$ and $\\Gamma$ here"))
+        style = b.page.split("<style>")[1].split("</style>")[0]
+        return _eq((style.count(F51_NEW), F51_NEW in b.page.replace(style, ""), F51_OLD in b.page, style.count("linear-gradient("), style.count("background"),
+                    "color-scheme" in b.page, static_problems(b.page, b.text("data.js")), element_problems(b.page), b.rc),
+                   (1, False, False, 4, 2, False, [], [], 0))
+
+    @case("F51COL", "F51: the `math` rule of the built page names no colour of its own. The declarations are cut into tokens with "
+                    "`#[0-9A-Za-z]+` (a hex colour), a name with an optional `(` (a function or a word), a number with its unit, and any other single "
+                    "character; every function and every word must be on the list of the rule's own non-colour words or be one of the three colour "
+                    "words `Canvas`, `CanvasText` and `transparent`. The rule of the page has no other token (and is the F51 rule); planted in it, "
+                    "a hex colour (`#fff`), a named colour (`red`), `rgba(`, `hsl(` and a lower-case `canvas` are each refused and named")
+    def _():
+        b = _build(notes=_notes(arg_text="A $x$ and $\\Gamma$ here"))
+        style = b.page.split("<style>")[1].split("</style>")[0]
+        i = style.index("math {")
+        rule = style[i:style.index("}", i) + 1]
+        plant = lambda old, new: _cue_colour_problems(rule.replace(old, new))
+        return _eq((rule == F51_NEW, _cue_colour_problems(rule),
+                    plant("background-color: Canvas;", "background-color: #fff;"), plant("background-color: Canvas;", "background-color: red;"),
+                    plant("background-color: Canvas;", "background-color: rgba(0, 0, 0, 0.3);"), plant("transparent) left center / 0.75em", "hsl(0 0% 0% / 0.3)) left center / 0.75em"),
+                    plant("background-color: Canvas;", "background-color: canvas;")),
+                   (True, [], ["#fff"], ["red"], ["rgba("], ["hsl("], ["canvas"]))
+
+    @case("F51DIG", "F51: a page with no formula is the page before F51 except for the CSS text: the sha256 of index.html of the four fixture pages "
+                    "(the base, the zoo, the sketch notes, the second base) with the F51 rule put back to the old one-line rule is the literal digest "
+                    "ED4 and UD12 pinned from the tree before F51 (the same four values)")
+    def _():
+        import hashlib
+        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(F51_NEW.encode(), F51_OLD.encode())).hexdigest()
+        return _eq([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())],
+                   ["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
+                    "e56476ab9fa257c33dfa1b2d70a6c64975873428d619a29805c0fae623a1ac52",
+                    "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
+                    "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"])
+
+    @case("F51BROWSER", "F51: in a real headless Chromium, by pixels. The environment variable RH_CHROME names the binary (SKIPPED, with that reason, when it "
+                        "is not set to a file: the repository's own cases pass without it, and no path of any host is in this file). A fixture page "
+                        "(an argument with two long formulas and short ones, every <details> opened in a COPY) is opened at 390 px. For EVERY <math> "
+                        "whose scrollWidth exceeds its clientWidth: at scroll start the last 0.75em at the right edge is darker than the same strip "
+                        "of the same page built with the old one-line rule (the formula's own ink is in both) and the left strip is not; scrolled to "
+                        "its end (checked: scrollLeft + clientWidth reaches scrollWidth) the left strip is darker and the right is not. For every "
+                        "<math> that fits, neither strip is darker, at either state. Darker is a mean luminance drop of at least 10 of 255, not "
+                        "darker is less than 5 (measured on the real page: a shadow drops 31 to 44, a strip with none 0.0 to 2.6; the gap is "
+                        "the margin). The fixture has 2 overflowing and 4 fitting formulas; the background beside the first one is 255")
+    def _():
+        chrome = os.environ.get("RH_CHROME")
+        if not chrome or not os.path.isfile(chrome):
+            raise _SkipCase("RH_CHROME is not set to a headless Chromium binary")
+        long1 = "+".join("a_{%d}" % i for i in range(1, 41))
+        long2 = "+".join("b_{%d}" % i for i in range(1, 31))
+        b = _build(notes=_notes(arg_text=f"Short $x$ and $y+z$ here. Long ${long1}$ there. Another ${long2}$ end."))
+        res, boxes, bg = _cue_measure(chrome, b.page, F51_OLD, F51_NEW)
+        dark, clean = (lambda v: v is not None and v >= 10), (lambda v: v is not None and v < 5)
+        over, fit = [r for r in res if r[0]], [r for r in res if not r[0]]
+        ends = [bx[3] + bx[2] >= bx[1] - 1 for bx in boxes if bx[0]]
+        got = (len(over), len(fit), ends,
+               [(dark(r[1]["start"][1]), clean(r[1]["start"][0]), dark(r[1]["end"][0]), clean(r[1]["end"][1])) for r in over],
+               [tuple(clean(v) for st in ("start", "end") for v in r[1][st]) for r in fit], round(_png_lum(bg, 1, 8, round(boxes[0][5]), round(boxes[0][7]))))
+        want = (2, 4, [True] * 2, [(True,) * 4] * 2, [(True,) * 4] * 4, 255)
+        return got == want, f"expected {want!r}, got {got!r}; drops {[(r[0], r[1]) for r in res]!r}"
 
     @case("MS1", "the page CSS makes a lone <mi> render without the browser's math-italic mapping (which needs glyphs no common font has): it holds "
                  "`mi { text-transform: none; font-style: italic; }` and `mi[mathvariant=\"normal\"] { font-style: normal; }` (so the words of "
