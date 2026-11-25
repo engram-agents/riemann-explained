@@ -692,9 +692,15 @@ def _check_group_shape(g, label, path, out, today=None):
 
 def _short_ok(v):
     """True for a good `short`, the closed-card line of a group: a string of 1 to SHORT_MAX characters (`len`, not bytes), with no blank at
-    either end (`v == v.strip()`, which also keeps it from being only blanks) and no LF or CR. Backticks and non-ASCII text pass; no
+    either end (`v == v.strip()`, which also keeps it from being only blanks) and no line break of any kind (`_one_line`). Backticks and non-ASCII text pass; no
     capital is asked for (the author writes the line as it is to read)."""
-    return isinstance(v, str) and 1 <= len(v) <= SHORT_MAX and v == v.strip() and "\n" not in v and "\r" not in v
+    return isinstance(v, str) and 1 <= len(v) <= SHORT_MAX and v == v.strip() and _one_line(v)
+
+
+def _one_line(v):
+    """True when the string is one line: no break of any kind `str.splitlines` knows (LF, CR, CRLF, VT, FF, FS, GS, RS, NEL, LS, PS).
+    The ONE rule of a line break for a title and for a short; a string with no break and a blank at neither end has exactly one."""
+    return len(v.splitlines()) == 1
 
 
 def _title_problem(v):
@@ -702,7 +708,7 @@ def _title_problem(v):
     break `str.splitlines` knows is one) and its FIRST character is not a lowercase letter (an uppercase letter, a digit, a quote, a bracket,
     a symbol and a letter with no case all pass: code never changes the author's text, so the author writes the capital). The shape is judged
     first, so a title with both faults has the shape finding alone."""
-    if not (isinstance(v, str) and v != "" and v == v.strip() and len(v.splitlines()) == 1):
+    if not (isinstance(v, str) and v != "" and v == v.strip() and _one_line(v)):
         return "shape"
     return "capital" if v[0].isalpha() and v[0].islower() else None
 
@@ -1752,15 +1758,17 @@ def _first_claim_path(b, g, path):
 
 
 def _edition_check(odata, outline, ctx, name):
-    """(findings, the edition check line, the selector changes line, the first claims line) of the comparison of the groups of the
+    """(findings, the edition check line, the selector changes line, the first claims line, the short changes line) of the comparison of the groups of the
     outline with those of the outline at --base."""
     def unusable(reason):
         why = f"the outline at {ctx.base} could not be used"
         return ([_f("OUTLINE-BASE", name, None, f"{reason}, so the edition check did not run", LISTING)],
-                f"edition check: did not run, {why}", f"selector changes: did not run, {why}", f"first claims: did not run, {why}")
+                f"edition check: did not run, {why}", f"selector changes: did not run, {why}", f"first claims: did not run, {why}",
+                f"short changes: did not run, {why}")
     if not (isinstance(odata, dict) and isinstance(odata.get("groups"), list)):
         why = "the outline has no groups list"
-        return [], f"edition check: did not run, {why}", f"selector changes: did not run, {why}", f"first claims: did not run, {why}"
+        return ([], f"edition check: did not run, {why}", f"selector changes: did not run, {why}", f"first claims: did not run, {why}",
+                f"short changes: did not run, {why}")
     rel = os.path.relpath(os.path.realpath(outline), ctx.top)
     if rel.startswith(".."):
         return unusable("is outside the repository")
@@ -1831,13 +1839,18 @@ def _edition_check(odata, outline, ctx, name):
         for path, o, c in _selector_changes(b, g):   # whether or not the group carries a bump
             out.append(_f("SELECTOR-CHANGED", name, None, f"{gid} {path} {_short(o)} -> {_short(c)}", LISTING))
             n_sel += 1
+    n_short = 0   # a `short` is author text but not edition-checked: a change is listed, whatever the edition, never a refusal
+    for gid, g in cmap.items():
+        if gid in bmap and g.get("short") != bmap[gid].get("short"):
+            out.append(_f("SHORT-CHANGED", name, None, f"{gid} {_short(bmap[gid].get('short'))} -> {_short(g.get('short'))}", LISTING))
+            n_short += 1
     for gid in bmap:
         if gid not in cmap:
             out.append(_f("GROUP-GONE", name, None, gid, LISTING))
     line = f"edition check: {compared} groups compared to {ctx.base}"
     if not bdata["groups"]:
         line += f", the outline at {ctx.base} has no groups"
-    return out, line, f"selector changes: {n_sel}", f"first claims: {n_first}"
+    return out, line, f"selector changes: {n_sel}", f"first claims: {n_first}", f"short changes: {n_short}"
 
 
 # ---- the run
@@ -1996,10 +2009,10 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     rec_found += [sum_f] if sum_f else []
     rec_found += _check_titles(odata, os.path.basename(outline), ctx.index, ctx.kinds)
     if base is not None:
-        ed_found, ed_line, sel_line, first_line = _edition_check(odata, outline, ctx, os.path.basename(outline))
+        ed_found, ed_line, sel_line, first_line, short_line = _edition_check(odata, outline, ctx, os.path.basename(outline))
     else:
-        ed_found, ed_line, sel_line, first_line = ([], "edition check: did not run, no --base given", "selector changes: did not run, no --base given",
-                                                   "first claims: did not run, no --base given")
+        ed_found, ed_line, sel_line, first_line, short_line = ([], "edition check: did not run, no --base given", "selector changes: did not run, no --base given",
+                                                               "first claims: did not run, no --base given", "short changes: did not run, no --base given")
     found = found + rec_found + ed_found   # findings of both classes: the outline's errors, then those of the roles and the recognitions, then the edition check's
     lines = [_render(f) for f in found + words]
     errors = sum(1 for f in found if f[4] == ERROR)
@@ -2067,6 +2080,7 @@ def _run(notes_dir, outline, decls, base, repo, strings, src, glob, today=None):
     lines.append(f"editions: {n_note_ed2} of {len(names)} notes and {n_ed2} of {st['groups']} groups at edition 2")
     lines.append(sel_line)
     lines.append(first_line)
+    lines.append(short_line)
     if base is not None:   # F52
         lines += [f"placement changes: {n_place}", f"re-pointed blocks: {n_repoint}", f"notes gone: {len(gone)}", f"notes renamed: {len(renamed)}"]
     else:
