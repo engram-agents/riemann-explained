@@ -27,6 +27,7 @@
     "text": "If $L(\\chi, s) \\ne 0$ for every Dirichlet character $\\chi$ and every $s$ with $\\operatorname{Re} s > 1/2$, except a principal character at $s = 1$, then the Riemann Hypothesis holds (in Mathlib's formulation)"
    },
    "id": "rh-from-everycharacter",
+   "short": "From every character to the Riemann Hypothesis",
    "level": 1,
    "order": 1,
    "parent": "root",
@@ -76,6 +77,7 @@
     "text": "If ζ(s) ≠ 0 for every s with Re s > 1/2 and s ≠ 1, then the Riemann Hypothesis holds (in Mathlib's formulation)"
    },
    "id": "rh-from-zeta-right",
+   "short": "From zeta right of 1/2 to the Riemann Hypothesis",
    "level": 2,
    "order": 1,
    "parent": "rh-from-everycharacter",
@@ -144,6 +146,7 @@
     "text": "If no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then $L(\\chi, s) \\ne 0$ for every Dirichlet character $\\chi$ and every $s$ with $\\operatorname{Re} s > 1/2$, except a principal character at $s = 1$"
    },
    "id": "primitive-to-all",
+   "short": "From primitive characters to all characters",
    "level": 1,
    "order": 2,
    "parent": "root",
@@ -233,6 +236,7 @@
     "text": "for every primitive Dirichlet character $\\chi$, of any modulus $N \\ge 1$, $L(\\chi, s) \\ne 0$ whenever $\\operatorname{Re} s > 1/2$"
    },
    "id": "zerofreeall",
+   "short": "Primitive L-functions are zero-free right of 1/2",
    "level": 2,
    "order": 1,
    "parent": "primitive-to-all",
@@ -342,6 +346,7 @@
     "text": "Input 1 (a one-to-one correspondence between polynomials and the functions the library calls cuspidal, stated on its own card), the window supply for every primitive character (Input 2), and one instance of the hypothesis package (Input 3; closed under links, with the definite side condition) give: no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
    },
    "id": "three-inputs",
+   "short": "Three inputs give zero-freeness right of 1/2",
    "level": 1,
    "order": 3,
    "parent": "root",
@@ -451,6 +456,7 @@
     "text": "If the statement about classes of families holds and, for one scale $\\lambda > 1$, the host requirement the library builds from each primitive character $\\psi$ is met at scale $\\lambda$, then no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
    },
    "id": "families-from-topg",
+   "short": "Class statement and hosts give zero-freeness",
    "level": 2,
    "order": 1,
    "parent": "three-inputs",
@@ -586,6 +592,7 @@
     "text": "For a set $Q$ of primitive characters and one scale $\\lambda > 1$: if, for each $\\psi$ in $Q$, the level $\\Lambda_\\psi$ that the library builds from the powers of $\\psi$'s character satisfies the window inequality and has families at scale $\\lambda$, and has the Landau property, then $L(\\psi, s) \\ne 0$ for every $\\psi$ in $Q$ and every $s$ with $\\operatorname{Re} s > 1/2$"
    },
    "id": "zeros-enter",
+   "short": "Three level properties exclude zeros right of 1/2",
    "level": 3,
    "order": 2,
    "parent": "families-from-topg",
@@ -671,6 +678,7 @@
     "text": "For every level $\\Lambda$ (in the library's sense), all constants and every $\\varepsilon > 0$, there is $x_1$ such that for every $x \\ge x_1$ and every host (in the library's sense) satisfying two conditions of the library on the host at $x$ with those constants, the level's weighted error term satisfies $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$. The threshold $x_1$ depends on the level and the constants, not on the host."
    },
    "id": "window-bound",
+   "short": "Square-root bound on a level's error term",
    "level": 4,
    "order": 3,
    "parent": "zeros-enter",
@@ -835,6 +843,7 @@
     "text": "For every integer $M \\ge 1$, every $\\varepsilon$ with $0 < \\varepsilon < 1/52$ and every $A \\ge 1$, there is $Y_1$ such that for every $Y \\ge Y_1$ there are primes $q$ and $d$ that form a good pair for $M$, $\\varepsilon$ and the range from $Y$ to $Y^A$: the pair meets the four conditions listed below"
    },
    "id": "good-pair",
+   "short": "A good pair of primes for every large range",
    "level": 5,
    "order": 1,
    "parent": "window-bound",
@@ -879,6 +888,7 @@
     "text": "There is a constant $C$ such that for every $Q \\ge 3$, every finite set of primitive Dirichlet characters, each of modulus at most $Q$ and each with an L-function that has a zero $s$ with real part greater than $1 - 1/400$ and $|t| \\le Q$, where $t$ is the imaginary part of $s$, has at most $C Q^{1/4}$ members"
    },
    "id": "zero-density",
+   "short": "Few characters have a zero near 1",
    "level": 5,
    "order": 2,
    "parent": "window-bound",
@@ -976,6 +986,7 @@
     "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for $0 < \\theta < 1$ and $\\delta > 0$: if for every $Y_0$ there is $Y \\ge Y_0$ such that the family's weighted error term $E_F(y)$ is at most a constant times $y^\\theta$ for all $y$ in $[Y, Y^{1+\\delta}]$, then none of the family's $L$-functions vanishes for $\\operatorname{Re} s > \\theta$"
    },
    "id": "landau-step",
+   "short": "A one-sided bound on windows forbids zeros",
    "level": 4,
    "order": 5,
    "parent": "zeros-enter",
@@ -1076,6 +1087,7 @@
     "text": "for each prime $g$, each label datum (a datum of the library; we have not opened its definition) and each $d \\ge 1$, a one-to-one correspondence between the monic irreducible polynomials of degree $d$ over $\\mathbb{Z}/g$ with nonzero constant term and the functions on the group the library uses here, which note 3 reads as $GL_d(\\mathbb{F}_g)$ (we have not opened the library's definition of the group), that the library calls cuspidal. Each function is given by an explicit formula from the label datum on elements with irreducible characteristic polynomial, and has value $\\prod (g^i - 1)$ at $1$."
    },
    "id": "input-green",
+   "short": "Polynomials and the library's cuspidal functions",
    "level": 2,
    "order": 2,
    "parent": "three-inputs",
@@ -1094,6 +1106,7 @@
   {
    "claim": null,
    "id": "input-vwin",
+   "short": "The window supply (Input 2)",
    "level": 2,
    "order": 3,
    "parent": "three-inputs",
@@ -1187,6 +1200,7 @@
     "text": "For each primitive character $\\psi$, the window supply of $\\psi$ with constant 401 (stated on the card for the window supply) gives that $\\psi$'s host requirement is met at scale $\\lambda = 3/2$ (in the sense stated on the card this one supports)"
    },
    "id": "hosts",
+   "short": "The window supply meets each host requirement",
    "level": 2,
    "order": 4,
    "parent": "three-inputs",
@@ -1229,6 +1243,7 @@
     "text": "a structure of the library that holds data (a family class, a selection, two functions and a number) together with conditions on that data"
    },
    "id": "input-hypsalt",
+   "short": "The hypothesis package: data with conditions",
    "level": 2,
    "order": 5,
    "parent": "three-inputs",
@@ -1283,6 +1298,7 @@
     "text": "three hypotheses bundled in one structure of the library, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
    },
    "id": "literature-statements",
+   "short": "Three literature hypotheses in one structure",
    "level": 3,
    "order": 2,
    "parent": "input-hypsalt",
@@ -1392,6 +1408,7 @@
     "text": "For every level $\\Lambda$ (in the library's sense), every $\\varepsilon > 0$, all constants $c_D$ and $c_L$, and every host family of the library (we have not opened its definition) that satisfies a condition on the family at that level (we have not opened its definition) and the tied inequality with constants $c_D$ and $c_L$ on its windows: the level's weighted error term satisfies $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$ for all large $x$ in the family's windows"
    },
    "id": "window-bound-every-level",
+   "short": "The same bound on every level's windows",
    "level": 4,
    "order": 1,
    "parent": "zeros-enter",
@@ -1509,6 +1526,7 @@
     "text": "Every level $\\Lambda$ (in the library's sense) has the Landau property: for every $\\lambda > 1$ and every $\\theta$ with $0 < \\theta < 1$, if for every $y$ there is $Y \\ge y$ such that the level's weighted error term satisfies $E_\\Lambda(x) \\le x^\\theta$ for all $x$ in $[Y, Y^\\lambda]$, then no $L$-function of a character the level keeps vanishes for $\\operatorname{Re} s > \\theta$"
    },
    "id": "landau-every-level",
+   "short": "Every level has the Landau property",
    "level": 4,
    "order": 4,
    "parent": "zeros-enter",
