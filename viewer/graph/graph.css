@@ -1,8 +1,7 @@
 /* The Graph page's look. From the prototype's CSS, minus the remote fonts and the minimap, plus the sheet, the toolbar,
    the key and the claim clamp. System font stacks only; no remote asset. The engine's own structure and state rules are
-   in engine/engine.css (imported next); this file styles the page and the faces the page supplies, and may style the
-   engine's ge-* hooks but never repeats an engine rule. */
-@import "engine/engine.css";
+   in engine/engine.css (the shell links it just before this file); this file styles the page and the faces the page
+   supplies, and may style the engine's ge-* hooks but never repeats an engine rule. */
 
 :root {
   --bg: #eef0f5; --dot: #d3d8e3; --card: #ffffff; --card-unread: #f6f7fa; --well: #e3e7f0;

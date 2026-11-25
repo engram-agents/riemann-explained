@@ -67,7 +67,7 @@ test("the shell: R6 and the contract's section 1 item 1", () => {
   assert.equal(sh.split("{{CARDS}}").length - 1, 1, "exactly one {{CARDS}}");
   assert.equal((sh.match(/<script\b/gi) || []).length, 1, "exactly one script tag");
   assert.match(sh, /<script type="module" src="page\/app\.js"><\/script>/);
-  assert.equal((sh.match(/<link\b/gi) || []).length, 1);
+  assert.equal((sh.match(/<link\b/gi) || []).length, 2, "the two stylesheet links (checked in order below)");
   assert.match(sh, /<link rel="stylesheet" href="graph\.css">/);
   assert.match(sh, /<meta name="viewport" content="width=device-width, initial-scale=1">/);
   assert.match(sh, /^<!doctype html>/i);
@@ -91,4 +91,15 @@ test("CSS: no remote font or asset, no minimap, system font stacks only", () => 
   assert.ok(!/Source Serif|Inter\b|JetBrains/.test(css));
   assert.match(css, /\.graph-sheet\.comments-editing/);
   assert.match(css, /\.graph-sheet-body/);
+});
+
+test("stylesheets: the shell links engine.css then graph.css, in that order, and no shipped CSS imports or uses url()", () => {
+  const sh = read(path.join(GRAPH, "shell.html"));
+  const links = [...sh.matchAll(/<link\b[^>]*>/gi)].map((m) => m[0]);
+  assert.deepEqual(links, ['<link rel="stylesheet" href="engine/engine.css">', '<link rel="stylesheet" href="graph.css">']);
+  for (const f of files.filter((x) => x.endsWith(".css"))) {
+    const css = read(f);
+    assert.ok(!/@import/i.test(css), rel(f) + " has an @import");
+    assert.ok(!/url\s*\(/i.test(css), rel(f) + " uses url()");
+  }
 });
