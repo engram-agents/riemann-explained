@@ -36,12 +36,13 @@ const GROUPS = ["sizes", "zoom", "semantic", "input"];
 const fail = (m) => { throw new TypeError("graph options: " + m); };
 const num = (g, k, v, min) => { if (!Number.isFinite(v) || v < min) fail(g + "." + k + " must be a finite number >= " + min); };
 
-/* The whole zoom.fitMin rule, in one place. DEFAULTS holds null (= "zoom.min"); a caller who leaves it out gets zoom.min,
-   resolved after the merge and not range-checked (so a caller whose zoom.min is above fitMax is not newly refused);
-   one who gives it must give a number > 0 with zoom.min <= fitMin <= zoom.fitMax. `z` is the merged zoom group. */
-function resolveFitMin(z, rawZoom) {
-  if (!(rawZoom && Object.hasOwn(rawZoom, "fitMin"))) { z.fitMin = z.min; return; }
+/* The whole zoom.fitMin rule, in one place. DEFAULTS holds null, and null or undefined (a key given as such, or absent)
+   means "not given": it resolves to zoom.min after the merge and is not range-checked, so the documented defaults can be
+   passed back and a caller whose zoom.min is above fitMax is not newly refused. A value given must be a number > 0 with
+   zoom.min <= fitMin <= zoom.fitMax. `z` is the merged zoom group. */
+function resolveFitMin(z) {
   const f = z.fitMin;
+  if (f === null || f === undefined) { z.fitMin = z.min; return; }
   if (!(Number.isFinite(f) && f > 0 && f >= z.min && f <= z.fitMax)) fail("zoom.fitMin must be a number > 0 with zoom.min <= zoom.fitMin <= zoom.fitMax");
 }
 
@@ -69,7 +70,7 @@ export function normalizeOptions(raw) {
   if (typeof o.fitOnStart !== "boolean") fail("fitOnStart must be a boolean");
   for (const k of ["nodeW", "nodeH", "head"]) if (!(o.sizes[k] > 0)) fail("sizes." + k + " must be > 0");
   if (!(o.zoom.min > 0 && o.zoom.max > o.zoom.min)) fail("zoom.min must be > 0 and below zoom.max");
-  resolveFitMin(o.zoom, raw.zoom);
+  resolveFitMin(o.zoom);
   if (!(o.semantic.closePx > 0 && o.semantic.openPx > o.semantic.closePx)) fail("semantic.openPx must be above semantic.closePx (the gap is what stops flicker)");
   return o;
 }

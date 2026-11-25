@@ -73,7 +73,7 @@ test("fitMin is only a lower bound: a small drawing still fits at the natural sc
 });
 
 test("validation: fitMin <= 0, below zoom.min, above fitMax, or not a number is a TypeError naming zoom.fitMin", () => {
-  for (const bad of [0, -1, 0.01, 2, "1", NaN, null, undefined, Infinity])
+  for (const bad of [0, -1, 0.01, 2, "1", NaN, Infinity])
     assert.throws(() => normalizeOptions({ zoom: { fitMin: bad } }), isFitMinError, "fitMin " + String(bad));
   assert.throws(() => normalizeOptions({ zoom: { min: 0.2, fitMin: 0.1 } }), isFitMinError);
   assert.throws(() => normalizeOptions({ zoom: { fitMax: 0.9, fitMin: 1 } }), isFitMinError);
@@ -103,4 +103,24 @@ test("after a fitMin 1 start, reveal() of a node frames it below scale 1, bounde
   assert.equal(await ctl.reveal(["p", "c"]), true);
   const k = ctl.camera().k;
   assert.ok(k < 1 && k >= ZMIN, "framed below 1, not below zoom.min: " + k);
+});
+
+test("an explicit null or undefined fitMin means not given: it resolves to zoom.min like an absent key", () => {
+  for (const v of [null, undefined]) {
+    assert.equal(normalizeOptions({ zoom: { fitMin: v } }).zoom.fitMin, ZMIN);
+    assert.equal(normalizeOptions({ zoom: { min: 0.1, fitMin: v } }).zoom.fitMin, 0.1);
+  }
+});
+
+test("CLASS: the documented defaults can be passed back (the whole DEFAULTS, and each option group of it)", () => {
+  const o = normalizeOptions({ ...DEFAULTS, roots: [] });
+  for (const k of Object.keys(DEFAULTS)) {
+    if (k === "loadChildren") continue;                     // null by default, a function once normalised
+    const want = k === "zoom" ? { ...DEFAULTS.zoom, fitMin: DEFAULTS.zoom.min } : DEFAULTS[k];
+    assert.deepEqual(o[k], want, "resolved " + k + " equals its default (fitMin resolves to zoom.min)");
+  }
+  const groups = Object.keys(DEFAULTS).filter((k) => DEFAULTS[k] && typeof DEFAULTS[k] === "object" && !Array.isArray(DEFAULTS[k]));
+  assert.ok(groups.includes("zoom") && groups.includes("sizes"), "the generated list has the known groups: " + groups);
+  for (const g of groups) assert.doesNotThrow(() => normalizeOptions({ [g]: { ...DEFAULTS[g] } }), "group " + g + " passed back");
+  assert.doesNotThrow(() => normalizeOptions({ zoom: { ...DEFAULTS.zoom, min: 0.1 } }));
 });
