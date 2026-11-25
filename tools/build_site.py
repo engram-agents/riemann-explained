@@ -124,8 +124,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      none; manifest counts keep `editions` (the groups at 2) and gain `note_editions` (the notes at 2). The first-screen paragraph appears when any
      group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph (which is `edition_note_card`: the
      text of the card was rewritten), one `edition_note_card_note` paragraph (a sentence that
-     speaks of the note, not of the card) per edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
-     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6, NC1 to NC7.
+     speaks of the note, not of the card) per edition-2 note of the card, whatever the dates (F56: a note dated the same day as the group's edition gets its paragraph too: the group's
+     paragraph links the outline file and the note's links the note's file, two sentences and two files), {link} to `edition_href_blob` with
+     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND9, N10 and N11 (two same-date notes on one card; an encoded name on a same-date card), NC1 to NC7.
   F52 EDITION FIELDS THE BUILDER CANNOT USE. A group or note at edition 2 whose `edition_date` is missing or not a string is `BUILD-ERROR
      EDITION-DATE <id> edition 2 needs an edition_date`; an `edition` that is not the integer 1 or 2 (a boolean and 2.0 included) is
      `BUILD-ERROR EDITION-VALUE <id> edition must be 1 or 2`: exit 1, OUT_DIR not written, no traceback, every bad group then note in one
@@ -2517,9 +2518,7 @@ def _render_page(m, s, facts, dirty):
             o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], fl["edition"]["date"],
                                                                 _fill(s["edition_href_blob"], file=EDITION_OUTLINE_FILE),
                                                                 s["edition_link_label"]) + "</p>")
-        for ne in fl["editions"]:   # F44B: one paragraph per note at edition 2 whose date is not the group's own edition date
-            if fl["edition"] and ne["date"] == fl["edition"]["date"]:
-                continue
+        for ne in fl["editions"]:   # F44B, F56: one paragraph per note at edition 2, whatever its date (the group's paragraph links the outline file, this one the note's file)
             o.append('<p class="edition-note">' + _edition_html(s["edition_note_card_note"], ne["date"],
                                                                 _fill(s["edition_href_blob"], file=EDITION_NOTES_DIR + urllib.parse.quote(ne["note"], safe="")),
                                                                 s["edition_link_label"]) + "</p>")
@@ -9122,8 +9121,8 @@ def _selftest_cases():
                    ((1, 1), (1, 1), (1, 1), (1, 1), True, 0, False, True, [0, 0, 0, 0, 0], 1))
 
     @case("ND3", "F44B: each card's Evidence gets, after the group's own paragraph, one `edition_note_card_note` paragraph per edition-2 note of the card whose "
-                 "date DIFFERS from the group's date at edition 2 (the same date: only the group's paragraph); a card whose group is at 1 gets one per "
-                 "edition-2 note, in note order; a nested card gets its own; nothing above Evidence; the page is clean under both checks")
+                 "date is whatever it is (a note dated the same day as the group's edition gets its paragraph too: two sentences, two files); a card whose "
+                 "group is at 1 gets one per edition-2 note, in note order; a nested card gets its own; nothing above Evidence; the page is clean under both checks")
     def _():
         own = lambda b_, g: _direct(_card(b_, g), "details", "evidence")[0]
         count = lambda b_, g: len(own(b_, g).find("p", "edition-note"))
@@ -9133,8 +9132,8 @@ def _selftest_cases():
         nest = _nb(new={"04-four.md": ("04", "g1a1x", "2026-11-23")})
         outside = lambda b_: ["rewritten for readers" in surface(_card(b_, g)) for g in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")]
         ev = lambda b_: static_problems(b_.page, b_.text("data.js")) + element_problems(b_.page)
-        return _eq(([count(same, g) for g in ("g1", "g1a", "g3")], same.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-20", "docs/05-five.md")),
-                    "docs/01-one.md" in same.page,
+        return _eq(([count(same, g) for g in ("g1", "g1a", "g3")], same.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-21", "docs/01-one.md") + "\n" + nd_card("2026-11-20", "docs/05-five.md")),
+                    same.page.count("blob/notes-edition-1/docs/01-one.md"),
                     [count(diff, g) for g in ("g1", "g3")],
                     diff.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-22", "docs/01-one.md")),
                     [count(two, g) for g in ("g1", "g3", "g2")],
@@ -9144,7 +9143,7 @@ def _selftest_cases():
                     nest.page.count(ED_SUMMARY + nd_card("2026-11-23", "docs/04-four.md")),
                     outside(same), outside(diff), outside(two), outside(nest), [ev(x) for x in (same, diff, two, nest)],
                     [x.rc for x in (same, diff, two, nest)]),
-                   ([2, 0, 0], 1, False, [2, 0], 1, [0, 2, 0], 1, 0, [0, 0, 0, 1], 1,
+                   ([3, 0, 0], 1, 1, [2, 0], 1, [0, 2, 0], 1, 0, [0, 0, 0, 1], 1,
                     [False] * 6, [False] * 6, [False] * 6, [False] * 6, [[], [], [], []], [0, 0, 0, 0]))
 
     @case("ND4", "F44B: the card link of a note is the edition_href_blob key with {file} = docs/<note file> (the tag name lives in the strings, not in "
@@ -9205,6 +9204,54 @@ def _selftest_cases():
                     later.page.count(nd_first("2026-11-22")), count(later, "g1"), "docs/00-whole.md" in later.page),
                    (0, [], 1, 1, [0, 0, 0, 0, 0, 0], False,
                     0, [], 1, 1, 1, False))
+
+    @case("ND9", "F56: a card whose group is at 2 dated D and a note at 2 dated D prints BOTH paragraphs, the group's first (link: outline/outline.json at "
+                 "edition 1) and the note's after it (link: docs/<note file> at edition 1), each with its own link target, the markup literal; a note "
+                 "dated another day gives the same two paragraphs with its own date; the first screen and the data files are as before")
+    def _():
+        same = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21"})
+        diff = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-22"})
+        own = lambda b_, g: _direct(_card(b_, g), "details", "evidence")[0]
+        blob = "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/"
+        lit = lambda d2: ('<p class="edition-note">On 2026-11-21 the text of this card was rewritten for readers: where it showed names used inside the '
+                          'Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the '
+                          'earlier text is kept here: <a class="edition-link" href="' + blob + 'outline/outline.json">first edition</a>.</p>\n'
+                          '<p class="edition-note">On ' + d2 + ' a note this card draws on was rewritten for readers: where it showed names used inside the '
+                          'Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the '
+                          'earlier text of that note is kept here: <a class="edition-link" href="' + blob + 'docs/01-one.md">first edition</a>.</p>')
+        return _eq((same.rc, same.page.count(ED_SUMMARY + lit("2026-11-21")), len(own(same, "g1").find("p", "edition-note")),
+                    same.page.count(blob + "outline/outline.json"), same.page.count(blob + "docs/01-one.md"),
+                    diff.page.count(ED_SUMMARY + lit("2026-11-22")), len(own(diff, "g1").find("p", "edition-note")),
+                    same.page.count(nd_first("2026-11-21")), same.js("group/g1.json")["editions"],
+                    same.js("manifest.json")["counts"]["editions"], same.js("manifest.json")["counts"]["note_editions"]),
+                   (0, 1, 2, 1, 1, 1, 2, 1, [{"note": "01-one.md", "edition": 2, "date": "2026-11-21"}], 1, 1))
+
+    @case("N10", "F56: a card whose group is at 2 dated D with THREE edition-2 notes (two dated D, one dated another day) prints the group's paragraph "
+                 "and then three note paragraphs, one per note, in note order, each with its own date and its own docs/<file> link, nothing above "
+                 "Evidence: four edition paragraphs in that Evidence; no note is merged or dropped for sharing a date")
+    def _():
+        b = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21"},
+                new={"02-same.md": ("0a", "g1", "2026-11-21"), "03-other.md": ("0b", "g1", "2026-11-20")})
+        ev = _direct(_card(b, "g1"), "details", "evidence")[0]
+        blob = "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/"
+        return _eq((b.rc, len(ev.find("p", "edition-note")),
+                    b.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-21", "docs/01-one.md") + "\n"
+                                 + nd_card("2026-11-21", "docs/02-same.md") + "\n" + nd_card("2026-11-20", "docs/03-other.md")),
+                    [b.page.count(blob + f) for f in ("docs/01-one.md", "docs/02-same.md", "docs/03-other.md", "outline/outline.json")],
+                    "rewritten for readers" in surface(_card(b, "g1")), [x["note"] for x in b.js("group/g1.json")["editions"]]),
+                   (0, 4, 1, [1, 1, 1, 1], False, ["01-one.md", "02-same.md", "03-other.md"]))
+
+    @case("N11", "F56: a note on a same-date card (group at 2 dated D, note at 2 dated D) whose file name holds `#`, `?`, `%` and a space gives a note "
+                 "paragraph whose href has %23, %3F, %25 and %20 for them (the group's paragraph keeps the outline file), while the data file's "
+                 "`editions` carries the raw file name")
+    def _():
+        name = "07-a#b?c%d e.md"
+        b = _nb(groups=[("g3", "2026-11-21")], new={name: ("07", "g3", "2026-11-21")})
+        hrefs = re.findall(r'<a class="edition-link" href="([^"]+)">first edition</a>', b.page)
+        return _eq((b.rc, hrefs, "07-a#b" in b.page, "c%d e" in b.page, b.js("group/g3.json")["editions"]),
+                   (0, [EDITION_TREE, "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/outline/outline.json",
+                        "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/docs/07-a%23b%3Fc%25d%20e.md"],
+                    False, False, [{"note": name, "edition": 2, "date": "2026-11-21"}]))
 
     # ---- F52: the builder refuses an edition field it cannot use, with a message and no traceback. The checker (notes_meta) refuses the same
     # inputs first, so these cases run with the checker stubbed to pass; the last case runs the real one.
@@ -9308,14 +9355,15 @@ def _selftest_cases():
                    (0, 1, 1, 0))
 
     @case("NC3", "F54: a card whose group is at 2 and whose note is at 2 on a DIFFERENT date prints both sentences, each once, the group's first and the "
-                 "note's after it; the same date prints the group's only")
+                 "note's after it; the same date prints both as well")
     def _():
         diff = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-22"})
         same = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21"})
         return _eq((diff.rc, diff.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-22", "docs/01-one.md")),
                     diff.page.count(NC_GROUP), diff.page.count(NC_NOTE),
-                    same.rc, same.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n<"), same.page.count(NC_GROUP), same.page.count(NC_NOTE)),
-                   (0, 1, 1, 1, 0, 1, 1, 0))
+                    same.rc, same.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-21", "docs/01-one.md")),
+                    same.page.count(NC_GROUP), same.page.count(NC_NOTE)),
+                   (0, 1, 1, 1, 0, 1, 1, 1))
 
     @case("NC4", "F54: a card whose group is at 1 with two edition-2 notes prints the note sentence twice, once per note, each with its own date and "
                  "file, in note order, and never the card sentence")
