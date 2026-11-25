@@ -226,7 +226,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "For every primitive Dirichlet character $\\chi$, of any modulus $N \\ge 1$, $L(\\chi, s) \\ne 0$ whenever $\\operatorname{Re} s > 1/2$"
+    "text": "for every primitive Dirichlet character $\\chi$, of any modulus $N \\ge 1$, $L(\\chi, s) \\ne 0$ whenever $\\operatorname{Re} s > 1/2$"
    },
    "id": "zerofreeall",
    "level": 2,
@@ -993,7 +993,7 @@
    "claim": {
     "basis": "census",
     "conditions": [
-     "Counted by a regex over the structure's field lines, not by a parse: 46 field lines, 16 of them containing that name.",
+     "Counted by a text-pattern search over the structure's field lines, not by a parse of the code: 46 field lines, 16 of them containing the library's name for \"closed\".",
      "That the package holds means that such data exist, and a step that uses it takes those conditions as hypotheses."
     ],
     "conventions_checked": [
@@ -1012,7 +1012,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "a structure of the library that holds data (a family class, a selection, two functions and a number) together with conditions on that data; a regex count over its field lines finds 46, of which 16 contain the library's name for \"closed\""
+    "text": "a structure of the library that holds data (a family class, a selection, two functions and a number) together with conditions on that data"
    },
    "id": "input-hypsalt",
    "level": 2,
@@ -1066,7 +1066,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "Three hypotheses bundled in one structure of the library, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
+    "text": "three hypotheses bundled in one structure of the library, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
    },
    "id": "literature-statements",
    "level": 3,
