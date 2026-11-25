@@ -39,6 +39,7 @@ export function createController(rawOptions, view) {
   /* Validate a batch of NodeSpecs as the children of `parent`; null when fine, else {reason, detail}. */
   function validate(specs, parent) {
     if (specs.length > o.maxChildren) return { reason: "fan-out", detail: specs.length + " > " + o.maxChildren };
+    if (!parent.root && specs.length !== parent.childCount) return { reason: "invalid-spec", detail: "childCount " + parent.childCount + ", loader returned " + specs.length };
     const ids = new Set();
     for (let i = 0; i < specs.length; i++) {
       const bad = checkSpec(specs[i], parent.root ? [] : parent.spec.path);
@@ -109,12 +110,16 @@ export function createController(rawOptions, view) {
     if (n.blocked) { refuse(n, n.blocked, "refused earlier"); return Promise.resolve(false); }
     if (n.childCount > o.maxChildren) { n.blocked = "fan-out"; refuse(n, "fan-out", n.childCount + " > " + o.maxChildren); return Promise.resolve(false); }
     const cached = cache.get(id);
-    if (cached) { cache.delete(id); return Promise.resolve(finishOpen(n, cached, manual)); }
+    if (cached) {      // a cached list is checked again, against what is held NOW, exactly like a fresh answer
+      const bad = validate(cached, n);
+      if (bad) { n.blocked = bad.reason; view.place(n); refuse(n, bad.reason, bad.detail); return Promise.resolve(false); }
+      cache.delete(id); return Promise.resolve(finishOpen(n, cached, manual));
+    }
     n.loading = true; view.place(n);
     emit("loading", pub(n));
     const gen = ++n.gen;
     const current = () => !destroyed && nodes.get(id) === n && n.gen === gen;
-    n.pending = (async () => {
+    const p = (async () => {
       let res;
       try { res = await o.loadChildren(id); }
       catch (e) { if (current()) { n.loading = false; n.noAuto = true; view.place(n); emit("error", pub(n), "load-failed", String(e && e.message ? e.message : e)); } return false; }
@@ -124,13 +129,14 @@ export function createController(rawOptions, view) {
       const bad = validate(res, n);
       if (bad) { n.blocked = bad.reason; view.place(n); refuse(n, bad.reason, bad.detail); return false; }
       return finishOpen(n, res, manual);
-    })().finally(() => { n.pending = null; });
-    return n.pending;
+    })().finally(() => { if (n.pending === p) n.pending = null; });   // a cancelled load's end must not clear a newer load's promise
+    n.pending = p;
+    return p;
   }
 
   function closeNode(n, manual) {
     if (!n.open) {
-      if (n.pending) { n.gen++; n.loading = false; n.manualWant = false; view.place(n); }   // cancel a load in flight
+      if (n.pending) { n.gen++; n.loading = false; n.manualWant = false; n.pending = null; view.place(n); }   // cancel a load in flight: its answer is discarded; the next open loads afresh
       return false;
     }
     const bx = n.x + n.w / 2, by = n.y;
