@@ -2011,11 +2011,12 @@ def _put(path, text):
 
 
 def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None, committed=None, glob=None,
-       raw_outline=None, repo_arg=False, check_dirs=None, today=None, committed_outline=None):
+       raw_outline=None, repo_arg=False, check_dirs=None, today=None, committed_outline=None, removed=()):
     """Plant a fixture and call run(); (rc, stdout, stderr) as a Res. `committed` names files of NOTES_DIR that exist
     at the commit called HEAD of a throwaway git repository around the fixture (BYTES). `committed_outline` (a dict, or a
     string written as it is) is the outline.json that exists at that commit; None commits the outline of the run as it is (so
-    the edition check finds nothing to say), False leaves the outline out of the commit."""
+    the edition check finds nothing to say), False leaves the outline out of the commit. `removed` names committed files that are
+    deleted from NOTES_DIR after the commit (a note deleted or renamed since the base)."""
     notes = {"01-a.md": NOTE()} if notes is None else notes
     outline = OL(G("g1"), G("g2", order=2, premises=["g1"])) if outline is None else outline
     with tempfile.TemporaryDirectory() as d:
@@ -2030,6 +2031,8 @@ def go(notes=None, outline=None, decls=DECLS, strings=None, src=None, base=None,
                 _put(os.path.join(d, "outline.json"), co if isinstance(co, str) else json.dumps(co))
             _git(d, "add", "-A")
             _git(d, "commit", "-q", "-m", "base")
+        for k in removed:
+            os.remove(os.path.join(nd, k))
         for k, v in notes.items():
             _put(os.path.join(nd, k), v)
         op, dp = os.path.join(d, "outline.json"), os.path.join(d, "decls.tsv")
@@ -5413,6 +5416,356 @@ def _():
     cur = rest[:196] + moved + rest[196:]
     r = _en("".join(x + "\n" for x in base), "".join(x + "\n" for x in cur), cur_hdr=EN_HDR)
     eq((r.f, r.rc), ([EN_NEW.format(a=4, r=4)], 0), r.out)
+
+
+# ---- F52: the header and anchor changes of a note that no bump covers (list_title, placement, re-pointed blocks), the notes gone or renamed, a bad date
+NX_EMPTY = ("EDITION-EMPTY 01-a.md edition 2 with edition_date, but the text without its anchor lines is the same as at HEAD "
+            "(an edition names a rewrite and there is none)")
+
+
+def _nx(base_note, cur_note, name="01-a.md", base_name="01-a.md"):
+    """Run with the note `base_note` committed at HEAD as `base_name` and `cur_note` now as `name`."""
+    return go(notes={name: cur_note}, committed={base_name: base_note}, removed=[base_name] if base_name != name else [], base="HEAD", today=EN_DAY)
+
+
+@case("NX1a", "a list_title changed with no bump is one BYTE-DIFF naming the old and the new title as JSON, exit 1 (the title is author text, like a group's); "
+              "the same title is clean; a change of case is a change; with the text changed too the list_title finding comes first, then the text's; "
+              "the note is not counted as equal to REV")
+def _():
+    one = 'BYTE-DIFF 01-a.md list_title changed from "A title" to "New title"'
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B, title="New title"))
+    eq((r.f, r.rc), ([one], 1), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+    clean(_nx(NOTE(body=EN_B), NOTE(body=EN_B)))
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B, title="a title"))
+    eq((r.f, r.rc), (['BYTE-DIFF 01-a.md list_title changed from "A title" to "a title"'], 1), "case: " + r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body="First.\nSecond, changed.\nThird.\n", title="New title"))
+    eq((r.f, r.rc), ([one, _bd(7, 6, "'Second.\\n'", "'Second, changed.\\n'")], 1), "both: " + r.out)
+    r = _nx(NOTE(body=EN_B, title="A title"), NOTE(body=EN_B, title="A title"), "02-b.md", "01-a.md")
+    eq((r.f, r.rc), (["NOTE-RENAMED 01-a.md -> 02-b.md"], 0), "a rename keeps the title: " + r.out)
+
+
+@case("NX1b", "a bump whose only change is the list_title is NOT empty: one EDITION listing +1 -1, exit 0, no EDITION-EMPTY and no BYTE-DIFF; "
+              "with the title and one text line changed it counts +2 -2; a bump with neither is still EDITION-EMPTY")
+def _():
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B, title="New title", **EN_HDR))
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1)], 0), r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body="First.\nSecond, changed.\nThird.\n", title="New title", **EN_HDR))
+    eq((r.f, r.rc), ([EN_NEW.format(a=2, r=2)], 0), "title and text: " + r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body="First.\nSecond, changed.\nThird.\n", **EN_HDR))
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1)], 0), "text only, the control: " + r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B, **EN_HDR))
+    eq((r.f, r.rc), ([NX_EMPTY], 1), "neither: " + r.out)
+
+
+@case("NX1c", "at edition 2 at REV a list_title change is the ordinary refusal: one BYTE-DIFF, also beside EDITION-DOWN (which comes first) and "
+              "beside a changed edition_date; unchanged is clean")
+def _():
+    at2 = {"edition": 2, "edition_date": "2026-11-20"}
+    one = 'BYTE-DIFF 01-a.md list_title changed from "A title" to "New title"'
+    r = _nx(NOTE(body=EN_B, **at2), NOTE(body=EN_B, title="New title", **at2))
+    eq((r.f, r.rc), ([one], 1), r.out)
+    r = _nx(NOTE(body=EN_B, **at2), NOTE(body=EN_B, title="New title"))
+    eq((r.f, r.rc), (["EDITION-DOWN 01-a.md edition is 1, but it was 2 at HEAD (an edition is not lowered)", one], 1), "down: " + r.out)
+    r = _nx(NOTE(body=EN_B, **at2), NOTE(body=EN_B, title="New title", edition=2, edition_date="2026-11-21"))
+    eq((r.f, r.rc), (["EDITION-DATE-CHANGED 01-a.md edition_date 2026-11-21 differs from 2026-11-20 at HEAD", one], 1), "date: " + r.out)
+    clean(_nx(NOTE(body=EN_B, **at2), NOTE(body=EN_B, **at2)))
+
+
+PL_G = 'PLACEMENT-CHANGED 01-a.md group "g1" -> "g2"'
+PL_L = "PLACEMENT-CHANGED 01-a.md level 2 -> 1"
+
+
+@case("NX2a", "a change of group or level against REV is a PLACEMENT-CHANGED listing, one per field (group first), old and new as short JSON, exit 0; "
+              "both at once are two lines; neither is clean; the summary counts them: `placement changes: K`")
+def _():
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B, group="g2"))
+    eq((r.f, r.rc), ([PL_G], 0), r.out)
+    ok("placement changes: 1" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, "a listing is not a byte change: " + r.out)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "a listing is a warning")
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B, level=1))
+    eq((r.f, r.rc), ([PL_L], 0), r.out)
+    ok("placement changes: 1" in r.lines, r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B, group="g2", level=1))
+    eq((r.f, r.rc), ([PL_G, PL_L], 0), r.out)
+    ok("placement changes: 2" in r.lines, r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B))
+    clean(r)
+    ok("placement changes: 0" in r.lines, r.out)
+
+
+@case("NX2b", "a placement change is listed at any edition: at edition 2 at REV (beside nothing else), beside a bump with a text change (after the "
+              "EDITION line), and beside a BYTE-DIFF (the listing does not hide the refusal, and the refusal does not hide the listing)")
+def _():
+    at2 = {"edition": 2, "edition_date": "2026-11-20"}
+    r = _nx(NOTE(body=EN_B, **at2), NOTE(body=EN_B, group="g2", **at2))
+    eq((r.f, r.rc), ([PL_G], 0), r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body="First.\nSecond, changed.\nThird.\n", group="g2", **EN_HDR))
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1), PL_G], 0), "bump: " + r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body="First.\nSecond, changed.\nThird.\n", level=1))
+    eq((r.f, r.rc), ([_bd(7, 6, "'Second.\\n'", "'Second, changed.\\n'"), PL_L], 1), "byte-diff: " + r.out)
+
+
+@case("NX2c", "a note that is not at REV has no placement to compare (NEW-NOTE only); a header with no group or level at REV is compared as `none`")
+def _():
+    r = go(notes={"01-a.md": NOTE(), "02-b.md": NOTE(nid="02", group="g2")}, committed={"01-a.md": NOTE()}, base="HEAD", today=EN_DAY)
+    eq((r.f, r.rc), (["NEW-NOTE 02-b.md is not present at HEAD"], 0), r.out)
+    ok("placement changes: 0" in r.lines, r.out)
+    r = _nx(T0, NOTE(body="Some text.\nMore text.\n"))
+    eq((r.f, r.rc), (['PLACEMENT-CHANGED 01-a.md group none -> "g1"', "PLACEMENT-CHANGED 01-a.md level none -> 2"], 0), r.out)
+    ok("placement changes: 2" in r.lines, r.out)
+
+
+RP = "RE-POINTED 01-a.md {b} {o} -> {n}"
+
+
+@case("NX3a", "two anchors that swap their paragraphs are two RE-POINTED listings, in the order of the base, with the first words of the element each "
+              "pointed at and now points at, exit 0; the texts without anchors are equal, so there is no BYTE-DIFF; `re-pointed blocks: 2`")
+def _():
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"]))
+    swapped = _enb(("Para one.", ["01.b02"]), ("Para two.", ["01.b01"]))
+    r = _nx(NOTE(body=base), NOTE(body=swapped))
+    eq((r.f, r.rc), ([RP.format(b="01.b01", o="Para one.", n="Para two."), RP.format(b="01.b02", o="Para two.", n="Para one.")], 0), r.out)
+    ok("re-pointed blocks: 2" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+
+
+@case("NX3b", "one anchor moved to another element of the same kind is one RE-POINTED listing; moved from a paragraph to a list it is one too, "
+              "the list's first words starting at its marker; an anchor that stays is not listed")
+def _():
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", []), ("Para three.", ["01.b02"]))
+    cur = _enb(("Para one.", []), ("Para two.", ["01.b01"]), ("Para three.", ["01.b02"]))
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    eq((r.f, r.rc), ([RP.format(b="01.b01", o="Para one.", n="Para two.")], 0), r.out)
+    ok("re-pointed blocks: 1" in r.lines, r.out)
+    lst = "- item one\n- item two\n\n"
+    base = _enb(("Para one.", ["01.b01"])) + lst
+    cur = _enb(("Para one.", [])) + "- item one\n- item two\n" + BL("01.b01", decls=[R("A.B", "foo")], item=1) + "\n\n"
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    eq((r.f, r.rc), ([RP.format(b="01.b01", o="Para one.", n="- item one - item two")], 0), "kind: " + r.out)
+
+
+@case("NX3c", "only the first 8 words of the element count, with white space normalised: two paragraphs that share their first 8 words are the same "
+              "element for this listing, two that differ in the 8th are not; a paragraph that wraps over two lines reads as one line of words")
+def _():
+    w8 = "a b c d e f g h"
+    base = _enb((w8 + " one.", ["01.b01"]), (w8 + " two.", []))
+    cur = _enb((w8 + " one.", []), (w8 + " two.", ["01.b01"]))
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    clean(r)
+    ok("re-pointed blocks: 0" in r.lines, r.out)
+    w7 = "a b c d e f g"
+    base = _enb((w7 + " h one.", ["01.b01"]), (w7 + " i one.", []))
+    cur = _enb((w7 + " h one.", []), (w7 + " i one.", ["01.b01"]))
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    eq((r.f, r.rc), ([RP.format(b="01.b01", o="a b c d e f g h", n="a b c d e f g i")], 0), "the 8th word: " + r.out)
+    base = _enb(("a b c\nd e f g h x.", ["01.b01"]), ("z.", []))
+    cur = _enb(("a b c\nd e f g h x.", []), ("z.", ["01.b01"]))
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    eq((r.f, r.rc), ([RP.format(b="01.b01", o="a b c d e f g h", n="z.")], 0), "a wrapped paragraph: " + r.out)
+
+
+@case("NX3d", "a dated addition before an anchored element shifts its ordinal and is NOT a re-pointing: the ADDITION listing only; "
+              "a block only in the base and a block only in the current note are not listed")
+def _():
+    base = _enb(("Para one.", []), ("Para two.", ["01.b01"]))
+    cur = _enb(("Para one.", [])) + "## 2026-11-22 Added\n\nNew words.\n\n" + _enb(("Para two.", ["01.b01"]))
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    eq((r.f, r.rc), (["ADDITION 01-a.md:8 4 lines, heading 2026-11-22 Added"], 0), r.out)
+    ok("re-pointed blocks: 0" in r.lines, r.out)
+    r = _nx(NOTE(body=_enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"]))), NOTE(body=_enb(("Para one.", ["01.b01"]), ("Para two.", []))))
+    clean(r)
+    r = _nx(NOTE(body=_enb(("Para one.", ["01.b01"]), ("Para two.", []))), NOTE(body=_enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b09"]))))
+    clean(r)
+
+
+@case("NX3e", "a note whose current edition is 2 gets EDITION-BLOCK and NO RE-POINTED line for the same block (swapped anchors, bump with a text change); "
+              "`re-pointed blocks: 0`; at edition 1 after edition 2 (EDITION-DOWN) the RE-POINTED listing comes back")
+def _():
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"]))
+    swapped = _enb(("Para one.", ["01.b02"]), ("Para two, edited.", ["01.b01"]))
+    r = _nx(NOTE(body=base), NOTE(body=swapped, **EN_HDR))
+    eq((r.f, r.rc), ([EN_NEW.format(a=1, r=1), "EDITION-BLOCK 01-a.md 01.b01 element 3 paragraph -> 4 paragraph",
+                      "EDITION-BLOCK 01-a.md 01.b02 element 4 paragraph -> 3 paragraph"], 0), r.out)
+    ok("re-pointed blocks: 0" in r.lines, r.out)
+    at2 = {"edition": 2, "edition_date": "2026-11-20"}
+    r = _nx(NOTE(body=base, **at2), NOTE(body=_enb(("Para one.", ["01.b02"]), ("Para two.", ["01.b01"])), **at2))
+    eq((r.f, r.rc), (["EDITION-BLOCK 01-a.md 01.b01 element 3 paragraph -> 4 paragraph",
+                      "EDITION-BLOCK 01-a.md 01.b02 element 4 paragraph -> 3 paragraph"], 0), "at 2 at REV: " + r.out)
+    r = _nx(NOTE(body=base, **at2), NOTE(body=_enb(("Para one.", ["01.b02"]), ("Para two.", ["01.b01"]))))
+    eq((r.f, r.rc), (["EDITION-DOWN 01-a.md edition is 1, but it was 2 at HEAD (an edition is not lowered)",
+                      RP.format(b="01.b01", o="Para one.", n="Para two."), RP.format(b="01.b02", o="Para two.", n="Para one.")], 1), "down: " + r.out)
+
+
+@case("NX3f", "an anchor repair is not an edition: a bump whose only change is where the anchors point is EDITION-EMPTY (exit 1), beside the "
+              "EDITION-BLOCK listing and no RE-POINTED; the same change with no bump is a RE-POINTED listing and exit 0")
+def _():
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", []))
+    cur = _enb(("Para one.", []), ("Para two.", ["01.b01"]))
+    r = _nx(NOTE(body=base), NOTE(body=cur, **EN_HDR))
+    eq((r.f, r.rc), ([NX_EMPTY, "EDITION-BLOCK 01-a.md 01.b01 element 3 paragraph -> 4 paragraph"], 1), r.out)
+    ok("re-pointed blocks: 0" in r.lines, r.out)
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    eq((r.f, r.rc), ([RP.format(b="01.b01", o="Para one.", n="Para two.")], 0), "no bump: " + r.out)
+
+
+NG_B = NOTE(body=EN_B)
+
+
+@case("NX4a", "a note at REV that is not in the tree now is a NOTE-GONE listing (exit 0, counted as a warning, `notes gone: 1`); a note outside the glob "
+              "at REV is not looked at; with no --base nothing runs")
+def _():
+    r = go(notes={"01-a.md": NG_B}, committed={"01-a.md": NG_B, "02-b.md": NOTE(nid="02")}, removed=["02-b.md"], base="HEAD", today=EN_DAY)
+    eq((r.f, r.rc), (["NOTE-GONE 02-b.md"], 0), r.out)
+    ok("notes gone: 1" in r.lines and "notes renamed: 0" in r.lines, r.out)
+    eq(r.lines[-1], "1 notes, 0 findings, 1 warnings", "count line")
+    r = go(notes={"01-a.md": NG_B}, committed={"01-a.md": NG_B, "readme.md": "# R\n", "03-c.txt": "x\n"}, removed=["readme.md", "03-c.txt"],
+           base="HEAD", today=EN_DAY)
+    clean(r)
+    ok("notes gone: 0" in r.lines, r.out)
+    r = go(notes={"01-a.md": NG_B}, today=EN_DAY)
+    ok("notes gone: did not run, no --base given" in r.lines and "notes renamed: did not run, no --base given" in r.lines, r.out)
+
+
+@case("NX4b", "a note that is gone at one file name and present at another with the SAME header id is one NOTE-RENAMED listing (old -> new), no NEW-NOTE and "
+              "no NOTE-GONE, exit 0; `notes renamed: 1`, `notes gone: 0`; the renamed note, unchanged, counts as equal to REV; the new id is a new note")
+def _():
+    r = _nx(NG_B, NG_B, "02-b.md")
+    eq((r.f, r.rc), (["NOTE-RENAMED 01-a.md -> 02-b.md"], 0), r.out)
+    ok("notes renamed: 1" in r.lines and "notes gone: 0" in r.lines, r.out)
+    ok("byte check: 1 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+    r = _nx(NG_B, NOTE(nid="02", body=EN_B), "02-b.md")
+    eq((r.f, r.rc), (["NEW-NOTE 02-b.md is not present at HEAD", "NOTE-GONE 01-a.md"], 0), "another id: " + r.out)
+    ok("notes renamed: 0" in r.lines and "notes gone: 1" in r.lines, r.out)
+
+
+@case("NX4c", "the rules of the new note run against the base text of the OLD name: a rename with a rewrite and no bump is a BYTE-DIFF (exit 1) beside "
+              "NOTE-RENAMED; a rename with a bump is an EDITION listing, with no NEW-NOTE and no EDITION-NEW-NOTE; a rename with a bump and no change "
+              "is EDITION-EMPTY; a rename with a list_title change is the list_title BYTE-DIFF")
+def _():
+    changed = NOTE(body="First.\nSecond, changed.\nThird.\n")
+    r = _nx(NG_B, changed, "02-b.md")
+    eq((r.f, r.rc), (["NOTE-RENAMED 01-a.md -> 02-b.md",
+                      "BYTE-DIFF 02-b.md:7 line 7 differs (line 6 of the text without anchors): at HEAD (without anchors) 'Second.\\n', "
+                      "now (without anchors) 'Second, changed.\\n'"], 1), r.out)
+    r = _nx(NG_B, NOTE(body="First.\nSecond, changed.\nThird.\n", **EN_HDR), "02-b.md")
+    eq((r.f, r.rc), (["NOTE-RENAMED 01-a.md -> 02-b.md", "EDITION 02-b.md +1 -1 lines, edition 1 to 2, 2026-11-23"], 0), "bump: " + r.out)
+    r = _nx(NG_B, NOTE(body=EN_B, **EN_HDR), "02-b.md")
+    eq((r.f, r.rc), (["NOTE-RENAMED 01-a.md -> 02-b.md", NX_EMPTY.replace("01-a.md", "02-b.md")], 1), "empty bump: " + r.out)
+    r = _nx(NG_B, NOTE(body=EN_B, title="New title"), "02-b.md")
+    eq((r.f, r.rc), (["NOTE-RENAMED 01-a.md -> 02-b.md", 'BYTE-DIFF 02-b.md list_title changed from "A title" to "New title"'], 1), "title: " + r.out)
+    r = _nx(NG_B, NOTE(body=EN_B, group="g2"), "02-b.md")
+    eq((r.f, r.rc), (["NOTE-RENAMED 01-a.md -> 02-b.md", 'PLACEMENT-CHANGED 02-b.md group "g1" -> "g2"'], 0), "placement: " + r.out)
+
+
+@case("NX4d", "an ambiguous pairing is no pairing: two notes at REV with one id and one new note with it, or two new notes with the id of one gone note, "
+              "are NOTE-GONE and NEW-NOTE (each new note), never NOTE-RENAMED")
+def _():
+    r = go(notes={"03-c.md": NOTE(nid="01", body=EN_B)}, committed={"01-a.md": NG_B, "02-b.md": NOTE(nid="01", body=EN_B)},
+           removed=["01-a.md", "02-b.md"], base="HEAD", today=EN_DAY)
+    eq((r.f, r.rc), (["NEW-NOTE 03-c.md is not present at HEAD", "NOTE-GONE 01-a.md", "NOTE-GONE 02-b.md"], 0), "two gone: " + r.out)
+    ok("notes renamed: 0" in r.lines and "notes gone: 2" in r.lines, r.out)
+    r = go(notes={"02-b.md": NOTE(nid="01", body=EN_B), "03-c.md": NOTE(nid="01", body=EN_B)}, committed={"01-a.md": NG_B}, removed=["01-a.md"],
+           base="HEAD", today=EN_DAY)
+    eq((r.f, r.rc), (["NOTE-ID-DUPLICATE 02-b.md:2 note id '01' is used by 2 notes: 02-b.md, 03-c.md",
+                      "NEW-NOTE 02-b.md is not present at HEAD", "NEW-NOTE 03-c.md is not present at HEAD", "NOTE-GONE 01-a.md"], 1), "two new: " + r.out)
+    ok("notes renamed: 0" in r.lines, r.out)
+
+
+@case("NX4e", "several renames and a deletion in one run: each gone note is paired with the new note of its own id, whatever the file order; the summary "
+              "counts them (`notes gone: 1`, `notes renamed: 2`)")
+def _():
+    a, b, c = NOTE(nid="01", body=EN_B), NOTE(nid="02", body=EN_B), NOTE(nid="03", body=EN_B)
+    r = go(notes={"04-x.md": b, "05-y.md": a}, committed={"01-a.md": a, "02-b.md": b, "03-c.md": c},
+           removed=["01-a.md", "02-b.md", "03-c.md"], base="HEAD", today=EN_DAY)
+    eq((r.f, r.rc), (["NOTE-RENAMED 02-b.md -> 04-x.md", "NOTE-RENAMED 01-a.md -> 05-y.md", "NOTE-GONE 03-c.md"], 0), r.out)
+    ok("notes renamed: 2" in r.lines and "notes gone: 1" in r.lines, r.out)
+
+
+@case("NX5a", "a bump whose edition_date is a BAD-VALUE still prints the rule's own line (the BAD-VALUE stays, exit 1): a changed text is "
+              "`EDITION +A -R lines, edition 1 to 2, no usable date`, an equal text is EDITION-EMPTY; the date later than the day of the run, missing "
+              "and impossible all do it; the note is not counted as equal to REV")
+def _():
+    late = {"edition": 2, "edition_date": "2026-11-25"}
+    bad_late = "BAD-VALUE 01-a.md:2 edition_date 2026-11-25 is later than the day of the run, 2026-11-24"
+    ed = "EDITION 01-a.md +1 -1 lines, edition 1 to 2, no usable date"
+    changed = "First.\nSecond, changed.\nThird.\n"
+    r = _en(EN_B, changed, cur_hdr=late)
+    eq((r.f, r.rc), ([bad_late, ed], 1), r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+    ok("edition check: 2 groups compared to HEAD; 1 notes compared to HEAD" in r.lines, r.out)
+    r = _en(EN_B, EN_B, cur_hdr=late)
+    eq((r.f, r.rc), ([bad_late, NX_EMPTY], 1), "equal: " + r.out)
+    ok("byte check: 0 notes equal to HEAD, 0 new, 0 additions" in r.lines, r.out)
+    r = _en(EN_B, changed, cur_hdr={"edition": 2})
+    eq((r.f, r.rc), (["BAD-VALUE 01-a.md:2 edition_date: required when edition is 2", ed], 1), "missing: " + r.out)
+    r = _en(EN_B, changed, cur_hdr={"edition": 2, "edition_date": "2026-02-30"})
+    eq((r.f, r.rc), (["BAD-VALUE 01-a.md:2 edition_date: must be a date YYYY-MM-DD", ed], 1), "impossible: " + r.out)
+    r = _en(EN_B, EN_B, cur_hdr={"edition": 2, "edition_date": "2026-02-30"})
+    eq((r.f, r.rc), (["BAD-VALUE 01-a.md:2 edition_date: must be a date YYYY-MM-DD", NX_EMPTY], 1), "impossible and equal: " + r.out)
+    r = _nx(NOTE(body=EN_B), NOTE(body=EN_B, title="New title", **late))
+    eq((r.f, r.rc), ([bad_late, ed], 1), "only the title changed: " + r.out)
+
+
+@case("NX5b", "a bump with a bad date shows its blocks too: EDITION-BLOCK follows the EDITION line (the note is at edition 2 now), with no RE-POINTED beside it")
+def _():
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"]))
+    swapped = _enb(("Para one.", ["01.b02"]), ("Para two, edited.", ["01.b01"]))
+    r = _nx(NOTE(body=base), NOTE(body=swapped, edition=2, edition_date="2026-11-25"))
+    eq((r.f, r.rc), (["BAD-VALUE 01-a.md:2 edition_date 2026-11-25 is later than the day of the run, 2026-11-24",
+                      "EDITION 01-a.md +1 -1 lines, edition 1 to 2, no usable date",
+                      "EDITION-BLOCK 01-a.md 01.b01 element 3 paragraph -> 4 paragraph",
+                      "EDITION-BLOCK 01-a.md 01.b02 element 4 paragraph -> 3 paragraph"], 1), r.out)
+    ok("re-pointed blocks: 0" in r.lines, r.out)
+
+
+@case("NX6", "the summary lines of F52, in this order after `selector changes`: placement changes, re-pointed blocks, notes gone, notes renamed, then the "
+             "count line; each `did not run, no --base given` without --base; all 0 on a clean run with --base")
+def _():
+    r = go(notes={"01-a.md": NG_B}, committed={"01-a.md": NG_B}, base="HEAD", today=EN_DAY)
+    clean(r)
+    eq(r.lines[-6:], ["selector changes: 0", "placement changes: 0", "re-pointed blocks: 0", "notes gone: 0", "notes renamed: 0",
+                      "1 notes, 0 findings, 0 warnings"], "with --base")
+    r = go(notes={"01-a.md": NG_B}, today=EN_DAY)
+    eq(r.lines[-6:], ["selector changes: did not run, no --base given", "placement changes: did not run, no --base given",
+                      "re-pointed blocks: did not run, no --base given", "notes gone: did not run, no --base given",
+                      "notes renamed: did not run, no --base given", "1 notes, 0 findings, 0 warnings"], "without --base")
+
+
+@case("NX7", "the listings of F52 are deterministic: two runs in fresh interpreters under PYTHONHASHSEED 0 and 3 print the same bytes, with the literal lines "
+             "(a rename with swapped anchors and a changed group, and a note gone)")
+def _():
+    outs = []
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"]))
+    cur = _enb(("Para one.", ["01.b02"]), ("Para two.", ["01.b01"]))
+    for seed in ("0", "3"):
+        with tempfile.TemporaryDirectory() as d:
+            nd = os.path.join(d, "notes")
+            _git(d, "init", "-q")
+            _put(os.path.join(nd, "01-a.md"), NOTE(body=base))
+            _put(os.path.join(nd, "02-b.md"), NOTE(nid="02", body=EN_B))
+            _put(os.path.join(d, "outline.json"), json.dumps(OL(G("g1"), G("g2", order=2, premises=["g1"]))))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-q", "-m", "base")
+            os.remove(os.path.join(nd, "01-a.md"))
+            os.remove(os.path.join(nd, "02-b.md"))
+            _put(os.path.join(nd, "03-c.md"), NOTE(body=cur, group="g2"))
+            _put(os.path.join(d, "decls.tsv"), DECLS)
+            code = ("import importlib.util, sys\n"
+                    "spec = importlib.util.spec_from_file_location('nm_child', sys.argv[1])\n"
+                    "m = importlib.util.module_from_spec(spec)\nsys.modules['nm_child'] = m\nspec.loader.exec_module(m)\n"
+                    "sys.exit(m.run(sys.argv[2], sys.argv[3], sys.argv[4], base='HEAD', today='2026-11-24'))\n")
+            r = subprocess.run([sys.executable, "-I", "-c", code, os.path.abspath(__file__), nd, os.path.join(d, "outline.json"),
+                                os.path.join(d, "decls.tsv")], capture_output=True, text=True, env=dict(os.environ, PYTHONHASHSEED=seed))
+            outs.append((r.returncode, r.stdout, r.stderr))
+    eq(outs[0], outs[1], "the two seeds")
+    eq(outs[0][0], 0, "exit")
+    keys = ("NOTE-RENAMED", "NOTE-GONE", "PLACEMENT-CHANGED", "RE-POINTED", "NEW-NOTE")
+    got = [x for x in outs[0][1].splitlines() if x.split(" ")[0] in keys]
+    eq(got, ["NOTE-RENAMED 01-a.md -> 03-c.md", 'PLACEMENT-CHANGED 03-c.md group "g1" -> "g2"',
+             "RE-POINTED 03-c.md 01.b01 Para one. -> Para two.", "RE-POINTED 03-c.md 01.b02 Para two. -> Para one.",
+             "NOTE-GONE 02-b.md"], "the lines")
 
 
 # ---- the title of a group is printed author text (the heading of a card with no claim, of a definition card, the premise rows)
