@@ -152,8 +152,10 @@ CONTRACT (each line is a self-test case, written before the code)
  title reworded, or any other path with a value at REV that now differs, stays OUTLINE-CHANGED; the selectors keep their SELECTOR-CHANGED listings. Edition 2
  on the group (set now, or kept from REV) is EDITION-FIRST-CLAIM, `a first claim is not a rewrite; remove edition and edition_date` (a new group at edition 2
  stays EDITION-NEW-GROUP). A null-claim group at edition 2 at REV retires its mark in the same change: removing edition and edition_date is accepted (not
- EDITION-DOWN), the title staying or going, and the line reads `FIRST-CLAIM <id>, edition mark retired with the title`; an edition removed with no first claim
- is EDITION-DOWN as before. The summary has `first claims: K` directly after `selector changes` (`did not run` with the same reason where that line did not run).
+ EDITION-DOWN), the title staying or going, and the line reads `FIRST-CLAIM <id>, edition mark retired with the title` when the title was set at REV and is removed,
+ `FIRST-CLAIM <id>, edition mark retired` when it stays (a group at 1 at REV has no note); an edition removed with no first claim
+ is EDITION-DOWN as before. A first claim is listed and counted only when the check accepts it: one refused (EDITION-FIRST-CLAIM, or OUTLINE-CHANGED for text
+ beside it) prints its refusal alone and counts 0. The summary has `first claims: K` directly after `selector changes` (`did not run` with the same reason where that line did not run).
 
  Edition of a note (F44B; cases NE1a to NE11, B2g of rh_anchor). A note header may carry `edition` and `edition_date` under the rules of a group's
  (rh_anchor.header_problems; each problem is a BAD-VALUE on the header line, and `edition_date` later than the day of the run is one too).

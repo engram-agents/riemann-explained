@@ -76,8 +76,10 @@ that carries a claim is listed the same way. A first claim with edition 2 (set n
 (`a first claim is not a rewrite; remove edition and edition_date`); a title that is reworded beside the first claim, or any other text path that had a
 value at REV and now differs, is still `OUTLINE-CHANGED` (published text was altered; make it a separate change); the selectors keep their
 `SELECTOR-CHANGED` listings beside the `FIRST-CLAIM` line. A group at edition 2 at REV whose claim is null retires the mark in the same change: the first claim
-that removes `edition` and `edition_date` is accepted (it is not `EDITION-DOWN`), and its line reads `FIRST-CLAIM <id>, edition mark retired with the title`; the
-retirement is accepted whether or not the title is also removed, and an `edition_date` left behind is the ordinary `BAD-VALUE`. An edition removed with no first
+that removes `edition` and `edition_date` is accepted (it is not `EDITION-DOWN`), and its line reads `FIRST-CLAIM <id>, edition mark retired with the title` when the title was set at REV and is removed, and `FIRST-CLAIM <id>, edition mark retired` when
+the title stays (a group at edition 1 at REV has no such note); the
+retirement is accepted whether or not the title is also removed, and an `edition_date` left behind is the ordinary `BAD-VALUE`. A first claim is listed and counted
+(`first claims: K`) only when the check accepts it: a refused one (`EDITION-FIRST-CLAIM`, or `OUTLINE-CHANGED` for text beside it) prints its refusal alone and counts 0. An edition removed with no first
 claim is still `EDITION-DOWN`, and a group at edition 2 whose claim stays null keeps every rule above.
 `build_site.py` writes `edition` into each group file and into `data.js` (`null` at edition 1, else `{"number": 2, "date": "..."}`), counts
 the groups at edition 2 in `manifest.json`, says it once on the first screen (the latest date, and a link to the tree of the first edition)
