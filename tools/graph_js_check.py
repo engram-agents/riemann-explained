@@ -10,7 +10,7 @@ CONTRACT
     `test` or `__pycache__`, is read as UTF-8 (undecodable bytes are replaced, never skipped) and checked.
  G2 In ANY file these are refused, matched case-insensitively and tolerant of whitespace where code allows it:
     innerHTML, outerHTML, insertAdjacentHTML, `document . write`, DOMParser, createContextualFragment,
-    createElementNS, `eval (`, `new  Function`, a bare `Function (`, `import (`, setTimeout / setInterval whose first
+    createElementNS, `<svg`, `<canvas` (links are drawn as div strokes, so shipped graph code needs no SVG or canvas), `eval (`, `new  Function`, a bare `Function (`, `import (`, setTimeout / setInterval whose first
     argument is a string literal, and a PROTOCOL-RELATIVE string literal (a quote or backtick, optional spaces, then
     `//`); in .html also an UNQUOTED attribute value that starts with `//` (`src=//host/x.js`, `href=//h`).
  G2b URL schemes `http:` `https:` `javascript:` `data:` `blob:` `ws:` `wss:` `file:`, in any letter case, by file
@@ -33,6 +33,10 @@ CONTRACT
     comments included), a token under test/ to be ignored and counted, and an empty tree to be CHECKED NOTHING.
  LIMIT: substring and line-pattern checks over text. A token split across lines or built from pieces is not seen,
  nor is `(0, eval)(s)`; that is why the engine's own boundary test also forbids the APIs by name in each file.
+ `srcdoc`, `setHTMLUnsafe` and `parseHTMLUnsafe` are matched without word boundaries and `Worker(` case-insensitively,
+ so an unrelated identifier that contains one (`mySrcDoc`, a function named `worker()`) is refused; this is a
+ deliberate fail-closed cost, and the answer to such a refusal is a different name, only after a reviewer has
+ looked, never a narrower pattern.
  Comments count: a comment that names a forbidden token is refused too (the .js scheme and protocol-relative
  checks are the exception: they read literals only, so a scheme in a JS comment is not seen). The scanner does not
  know regex literals or `${}` nesting. KNOWN MISSES, each asserted as a miss by the self-test (MISSES); the list is
@@ -59,6 +63,11 @@ ANY_RE = [
     ("DOMParser", re.compile(r"DOMParser", I)),
     ("createContextualFragment", re.compile(r"createContextualFragment", I)),
     ("createElementNS", re.compile(r"createElementNS", I)),
+    # <svg and <canvas are refused BECAUSE the engine draws links as div bars (see INTERFACE.md, links; `stroke` in
+    # the sizes table). That is a consequence of the drawing path, not a standing rule: a change of drawing path
+    # reopens these two entries.
+    ("<svg", re.compile(r"<svg", I)),
+    ("<canvas", re.compile(r"<canvas", I)),
     ("setHTMLUnsafe", re.compile(r"setHTMLUnsafe", I)),
     ("parseHTMLUnsafe", re.compile(r"parseHTMLUnsafe", I)),
     ("srcdoc", re.compile(r"srcdoc", I)),
@@ -267,6 +276,10 @@ PLANTS = [
     ("a.js", "x.INNERHTML = s;", "innerHTML"),
     ("a.js", "d.createElementNS(ns, 'svg');", "createElementNS"),
     # round 3: the contract's remaining sinks
+    ("a.js", "const s = '<svg></svg>';", "<svg"),
+    ("a.html", "<SVG><path/></SVG>", "<svg"),
+    ("a.js", "const c = '<canvas>';", "<canvas"),
+    ("a.html", "<Canvas></Canvas>", "<canvas"),
     ("a.js", "e.setHTMLUnsafe(s);", "setHTMLUnsafe"),
     ("a.js", "Document.parseHTMLUnsafe(s);", "parseHTMLUnsafe"),
     ("a.js", "f.srcdoc = s;", "srcdoc"),
