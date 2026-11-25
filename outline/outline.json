@@ -702,8 +702,8 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "`Gm` is a weighted sum, over the family, of smoothed twisted von Mangoldt sums Σ Λ(n)χ(n)(y/n − 1) with the main term subtracted: y log y − (1+γ)y for the trivial character, and a term y·L′(χ,1)/L(χ,1) otherwise (L(χ,1) ≠ 0 for χ ≠ 1 is Mathlib's theorem, so the quotient is a real value).",
-     "The constant C is any real number; the windows are: for every Y₀ there is Y ≥ Y₀ with the bound on all of [Y, Y^(1+δ)]."
+     "$E_F$, the family's weighted error term, is a weighted sum, over the family, of smoothed twisted von Mangoldt sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with the main term subtracted: $y \\log y - (1+\\gamma)y$ for the trivial character, and a term $y \\cdot L'(\\chi,1)/L(\\chi,1)$ otherwise ($L(\\chi,1) \\ne 0$ for $\\chi \\ne 1$ is a theorem of the library Mathlib, so the quotient is well defined).",
+     "The constant $C$ is any real number; the windows are: for every $Y_0$ there is $Y \\ge Y_0$ with the bound on all of $[Y, Y^{1+\\delta}]$."
     ],
     "conventions_checked": [
      "a",
@@ -761,7 +761,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for 0 < θ < 1 and δ > 0: if the family's weighted error term `Gm` is at most a constant times y^θ for all y in windows [Y, Y^(1+δ)] lying beyond every starting point, then none of the family's L-functions vanishes for Re s > θ"
+    "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for $0 < \\theta < 1$ and $\\delta > 0$: if for every $Y_0$ there is $Y \\ge Y_0$ such that the family's weighted error term $E_F(y)$ is at most a constant times $y^\\theta$ for all $y$ in $[Y, Y^{1+\\delta}]$, then none of the family's $L$-functions vanishes for $\\operatorname{Re} s > \\theta$"
    },
    "id": "landau-step",
    "level": 4,
@@ -775,6 +775,8 @@
     }
    ],
    "root_role": "result",
+   "edition": 2,
+   "edition_date": "2026-11-25",
    "recognition": {
     "form": "variant",
     "result": "Landau's theorem on Dirichlet series with non-negative coefficients, in its error-term form",
