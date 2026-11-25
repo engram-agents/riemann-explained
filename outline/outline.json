@@ -24,7 +24,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Kepler",
-    "text": "If L(χ, s) ≠ 0 for every Dirichlet character χ and every s with Re s > 1/2, except a principal character at s = 1, then the Riemann Hypothesis holds (in Mathlib's formulation)"
+    "text": "If $L(\\chi, s) \\ne 0$ for every Dirichlet character $\\chi$ and every $s$ with $\\operatorname{Re} s > 1/2$, except a principal character at $s = 1$, then the Riemann Hypothesis holds (in Mathlib's formulation)"
    },
    "id": "rh-from-everycharacter",
    "level": 1,
@@ -52,10 +52,12 @@
       "opened_on": "2026-11-24"
      }
     ],
-    "difference": "The Riemann Hypothesis follows once $\\zeta$ has no zero with real part above $1/2$: by the functional equation, the zeros in the critical strip are symmetric about the critical line. The book states the symmetry of the zeros and states the Riemann Hypothesis; it does not write this implication down as a separate result, it is immediate from the symmetry. The library takes its hypothesis for every Dirichlet character and uses it for the character of modulus 1 only. Its conclusion is Mathlib's `RiemannHypothesis`, which is about zeros of $\\zeta$ other than the trivial zeros $-2, -4, \\dots$ and other than the point $1$, and the proof works with Mathlib's functional equation for $\\zeta$ itself, not with $\\xi$; it treats every $s$ with $\\operatorname{Re} s < 1/2$ at once, the trivial zeros showing up as zeros of the cosine factor, where the book's symmetry is stated for the zeros of $\\xi$.",
+    "difference": "The Riemann Hypothesis follows once $\\zeta$ has no zero with real part above $1/2$: by the functional equation, the zeros in the critical strip are symmetric about the critical line. The book states the symmetry of the zeros and states the Riemann Hypothesis; it does not write this implication down as a separate result, it is immediate from the symmetry. The library takes its hypothesis for every Dirichlet character and uses it for the character of modulus 1 only. Its conclusion is the Riemann Hypothesis as Mathlib defines it, which is about zeros of $\\zeta$ other than the trivial zeros $-2, -4, \\dots$ and other than the point $1$, and the proof works with Mathlib's functional equation for $\\zeta$ itself, not with $\\xi$; it treats every $s$ with $\\operatorname{Re} s < 1/2$ at once, the trivial zeros showing up as zeros of the cosine factor, where the book's symmetry is stated for the zeros of $\\xi$.",
     "reader": "Kepler",
     "date": "2026-11-24"
-   }
+   },
+   "edition": 2,
+   "edition_date": "2026-11-25"
   },
   {
    "claim": {
