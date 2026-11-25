@@ -483,7 +483,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "The theorem is stated for any type of families, any map from a family to its core data, and any one condition on a family at $x$. On the route of the release's main theorem these are the library's families, the map to their core data, and a condition on a family at $x$ (we have not opened its definition). The tied inequality with constants $c_D$ and $c_L$ says: for some further constants, the condition on the family holds at every large $x$ in the family's windows. Both conditions in the claim are defined through it. The window inequality says that for all $c_D$, $c_L$ and every $\\varepsilon > 0$, every family that satisfies a condition on the family at the level (we have not opened its definition) and the tied inequality with $c_D$, $c_L$ has $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$ at all large $x$ in its windows. The statement that the level has families at scale $\\lambda$ says that there are $c_D$, $c_L$ and $\\varepsilon_1 > 0$ such that for every $\\varepsilon$ with $0 < \\varepsilon < \\varepsilon_1$ some family satisfies the condition at the level, has windows at scale $\\lambda$, and satisfies the tied inequality with $c_D$, $c_L$. The library's construction of the level from a subgroup, the condition on the family at the level, and the family's data are not opened."
+     "The theorem is stated for any type of families, any map from a family to its core data, and any one condition on a family at $x$. On the route of the release's main theorem these are the library's families, the map to their core data, and a condition on a family at $x$ (we have not opened its definition). The tied inequality with constants $c_D$ and $c_L$ says: for some further constants, the condition on the family holds at every large $x$ in the family's windows. Both conditions in the claim are defined through it. The window inequality says that for all $c_D$, $c_L$ and every $\\varepsilon > 0$, every family that satisfies a condition on the family at the level (we have not opened its definition) and the tied inequality with $c_D$, $c_L$ has $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$ at all large $x$ in its windows, where $E_\\Lambda$ is the level's weighted error term. The statement that the level has families at scale $\\lambda$ says that there are $c_D$, $c_L$ and $\\varepsilon_1 > 0$ such that for every $\\varepsilon$ with $0 < \\varepsilon < \\varepsilon_1$ some family satisfies the condition at the level, has windows at scale $\\lambda$, and satisfies the tied inequality with $c_D$, $c_L$. The library's construction of the level from a subgroup, the condition on the family at the level, and the family's data are not opened."
     ],
     "conventions_checked": [
      "d",
@@ -694,7 +694,7 @@
      "name": "UpperTheory.Comparison₂.windowInequality_of_artinInputs"
     }
    ],
-   "title": "The window inequality at every level, from the library's inputs",
+   "title": "The window inequality at every level",
    "edition": 2,
    "edition_date": "2026-11-24"
   },
