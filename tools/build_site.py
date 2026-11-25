@@ -3791,7 +3791,7 @@ def _ws_recv(s):
             return msg.decode("utf-8")
 
 
-def _chrome_mobile_widths(chrome, pages):
+def _chrome_mobile_widths(chrome, pages, ticks=200):
     """For each page text in `pages` (written to a temporary file and opened by file URL in a Chromium with a 390 x 844 mobile device
     emulated): (innerWidth, scrollWidth of the document element), in the order of `pages`; the browser's version string is the last
     item. The browser is closed, killed and its temporary directory removed in a `finally`."""
@@ -3838,7 +3838,7 @@ def _chrome_mobile_widths(chrome, pages):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(text)
             call("Page.navigate", {"url": "file://" + path})
-            for _ in range(200):
+            for _ in range(ticks):
                 if value("document.readyState") == "complete" and value("location.href").endswith(f"page{i}.html"):
                     break
                 time.sleep(0.1)
@@ -8267,6 +8267,130 @@ def _selftest_cases():
         page = _base().page
         got = _chrome_mobile_widths(chrome, [page, page.replace(VPT + "\n", "", 1)])
         return _eq([got[0][0], got[1][0]], [390, 980])
+
+    # ---- F55 round 1: the build itself refuses a page whose head lacks a tag (presence and position), and two small things of the browser helper
+    def _hm_page(old, new):
+        """The built base page with its text `old` replaced by `new` once."""
+        return _base().page.replace(old, new, 1)
+
+    HM_HEAD = {"viewport": VPT + "\n", "robots": ROB + "\n"}
+    HM_PLANTS = [   # (name, how the page is made from the real one, the findings wanted: head_meta_problems, sorted)
+        ("both in the head", lambda: _base().page, []),
+        ("viewport missing", lambda: _hm_page(HM_HEAD["viewport"], ""), ["viewport missing"]),
+        ("robots missing", lambda: _hm_page(HM_HEAD["robots"], ""), ["robots missing"]),
+        ("both missing", lambda: _hm_page(HM_HEAD["viewport"] + HM_HEAD["robots"], ""), ["robots missing", "viewport missing"]),
+        ("robots in the body, the head one gone", lambda: _hm_page(HM_HEAD["robots"], "").replace("<body>", "<body>\n" + ROB, 1),
+         ["robots missing", "robots outside head"]),
+        ("robots in the body, the head one kept", lambda: _hm_page("<body>", "<body>\n" + ROB), ["robots outside head"]),
+        ("viewport in the body, the head one gone", lambda: _hm_page(HM_HEAD["viewport"], "").replace("<body>", "<body>\n" + VPT, 1),
+         ["viewport missing", "viewport outside head"]),
+        ("viewport in the body, the head one kept", lambda: _hm_page("<body>", "<body>\n" + VPT), ["viewport outside head"]),
+        ("both only in the body", lambda: _hm_page(HM_HEAD["viewport"] + HM_HEAD["robots"], "").replace("<body>", "<body>\n" + VPT + ROB, 1),
+         ["robots missing", "robots outside head", "viewport missing", "viewport outside head"]),
+    ]
+
+    @case("HM1", "F55 round 1: head_meta_problems(page), a function over the rendered page text, finds each tag missing from the head (`viewport missing`, "
+                 "`robots missing`) and each outside it (`viewport outside head`, `robots outside head`, a copy in the body, with the head one gone or "
+                 "kept); the built page with both in the head has none. It is not part of element_problems, whose cases feed it pages with only a charset tag")
+    def _():
+        return _eq([(n, head_meta_problems(mk())) for n, mk, _w in HM_PLANTS], [(n, w) for n, _mk, w in HM_PLANTS])
+
+    @case("HM2", "F55 round 1: the same plants through the build: each finding is `BUILD-ERROR HEAD-META <finding> in index.html`, exit 1, OUT_DIR absent, "
+                 "no traceback; the unchanged page builds. A robots tag in the body next to the head one is also `meta repeated` of the element check, "
+                 "which is not a HEAD-META line")
+    def _():
+        res = []
+        for n, mk, w in HM_PLANTS:
+            page = mk()
+            with _patched("_render_page", lambda *a, _p=page: _p):
+                b = _build()
+            res.append((n, b.rc, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR HEAD-META")], b.existed, "Traceback" in b.err))
+        want = [(n, 0 if not w else 1, [f"BUILD-ERROR HEAD-META {f} in index.html" for f in w], not w, False) for n, _mk, w in HM_PLANTS]
+        return _eq(res, want)
+
+    @case("HM3", "F55 round 1: the builder's own _render_page with a tag dropped does not ship: with META_VIEWPORT, with META_ROBOTS, or with both, replaced "
+                 "by nothing in the page it writes, the build is `BUILD-ERROR HEAD-META viewport missing` / `robots missing` / both, exit 1, OUT_DIR absent")
+    def _():
+        res = []
+        for patch in ({"META_VIEWPORT": ""}, {"META_ROBOTS": ""}, {"META_VIEWPORT": "", "META_ROBOTS": ""}):
+            with contextlib.ExitStack() as st:
+                for k, v in patch.items():
+                    st.enter_context(_patched(k, v))
+                b = _build()
+            res.append((b.rc, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR HEAD-META")], b.existed))
+        return _eq(res, [(1, ["BUILD-ERROR HEAD-META viewport missing in index.html"], False),
+                         (1, ["BUILD-ERROR HEAD-META robots missing in index.html"], False),
+                         (1, ["BUILD-ERROR HEAD-META robots missing in index.html", "BUILD-ERROR HEAD-META viewport missing in index.html"], False)])
+
+    @case("HD7", "F55 round 1: _ws_recv ignores a pong frame (opcode 10) that nobody asked for, as it answers a ping: given a pong carrying `zz` and then a "
+                 "text frame `hi`, it returns `hi`, and sends nothing")
+    def _():
+        class Stub:
+            def __init__(self, data):
+                self.data, self.sent = data, b""
+
+            def recv(self, k):
+                out, self.data = self.data[:k], self.data[k:]
+                return out
+
+            def sendall(self, b_):
+                self.sent += b_
+        s = Stub(bytes([0x8A, 2]) + b"zz" + bytes([0x81, 2]) + b"hi")
+        return _eq((_ws_recv(s), s.sent), ("hi", b""))
+
+    FAKE_DEVTOOLS = ("import base64, hashlib, json, os, socket, sys\n"
+                     "prof = [a.split('=', 1)[1] for a in sys.argv if a.startswith('--user-data-dir=')][0]\n"
+                     "srv = socket.socket(); srv.bind(('127.0.0.1', 0)); srv.listen(5)\n"
+                     "port = srv.getsockname()[1]\n"
+                     "os.makedirs(prof, exist_ok=True)\n"
+                     "open(os.path.join(prof, 'tmp'), 'w').write(f'{port}\\n/devtools/browser/x')\n"
+                     "os.replace(os.path.join(prof, 'tmp'), os.path.join(prof, 'DevToolsActivePort'))\n"
+                     "def need(c, k):\n"
+                     "    b = b''\n"
+                     "    while len(b) < k:\n"
+                     "        x = c.recv(k - len(b))\n"
+                     "        if not x: raise EOFError\n"
+                     "        b += x\n"
+                     "    return b\n"
+                     "while True:\n"
+                     "    c, _ = srv.accept()\n"
+                     "    h = b''\n"
+                     "    while b'\\r\\n\\r\\n' not in h: h += c.recv(1)\n"
+                     "    if b'/json/list' in h.split(b'\\r\\n')[0]:\n"
+                     "        body = json.dumps([{'type': 'page', 'webSocketDebuggerUrl': f'ws://127.0.0.1:{port}/devtools/page/1'}]).encode()\n"
+                     "        c.sendall(b'HTTP/1.0 200 OK\\r\\nContent-Length: ' + str(len(body)).encode() + b'\\r\\n\\r\\n' + body)\n"
+                     "        c.close(); continue\n"
+                     "    key = [l.split(b': ')[1] for l in h.split(b'\\r\\n') if l.lower().startswith(b'sec-websocket-key')][0]\n"
+                     "    acc = base64.b64encode(hashlib.sha1(key + b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest())\n"
+                     "    c.sendall(b'HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: ' + acc + b'\\r\\n\\r\\n')\n"
+                     "    try:\n"
+                     "        while True:\n"
+                     "            n = need(c, 2)[1] & 0x7F\n"
+                     "            n = int.from_bytes(need(c, 2), 'big') if n == 126 else n\n"
+                     "            m = need(c, 4); d =bytes(b ^ m[i % 4] for i, b in enumerate(need(c, n)))\n"
+                     "            r = json.dumps({'id': json.loads(d)['id'], 'result': {'result': {'value': 'loading'}, 'product': 'fake'}}).encode()\n"
+                     "            c.sendall(bytes([0x81, len(r)]) + r)\n"
+                     "    except (EOFError, OSError):\n"
+                     "        c.close()\n")
+
+    @case("HD8", "F55 round 1: a page that never reports readyState `complete` fails by name: with a stand-in for the browser (a small program of the standard "
+                 "library that writes DevToolsActivePort, serves /json/list and answers every Runtime.evaluate with `loading`) and 3 polls of 0.1 s, "
+                 "_chrome_mobile_widths raises OSError `the page did not finish loading in 3 polls of 0.1 s`, not a value; the stand-in is killed and its "
+                 "directory removed. The case needs no browser, so it runs everywhere")
+    def _():
+        tmp = tempfile.mkdtemp(prefix="rh-fake-")
+        try:
+            exe = os.path.join(tmp, "fake-browser")
+            with open(exe, "w") as f:
+                f.write("#!" + sys.executable + "\n" + FAKE_DEVTOOLS)
+            os.chmod(exe, 0o755)
+            try:
+                got = ("returned", _chrome_mobile_widths(exe, ["<p>x</p>"], ticks=3))
+            except OSError as e:
+                got = ("OSError", str(e))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        return _eq(got, ("OSError", "the page did not finish loading in 3 polls of 0.1 s"))
 
     @case("EL4", "nothing else: the elements and attributes the five fixture pages of EL2 hold are exactly the 28 elements and 17 pairs of the list outside "
                  "MathML (no entry nobody emits: `time` went with F37; F55 added `content` and `name` on `meta`); what the list holds besides is the MathML set the formula converter writes, 12 elements, "
