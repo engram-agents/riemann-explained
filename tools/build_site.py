@@ -1615,7 +1615,15 @@ CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family
        'mi[mathvariant="normal"] { font-style: normal; }\n'
        ".title-text { font-weight: normal; }\n"   # F47: the title is not in the claim's heading weight (the page's CSS has no colour)
        # a formula wider than the line scrolls inside itself (a phone); the vertical axis is clipped, or the engine draws a scroll control beside every short formula
-       "math { max-width: 100%; overflow-x: auto; overflow-y: clip; }")
+       # F51: and a soft shadow on the cut side only shows that it continues (a phone draws no scrollbar until touched): the scroll-shadow technique, two
+       # `scroll` shadows fixed to the box's edges and two `local` covers that move with the content, in the reader's own system colours (no colour of ours)
+       "math { max-width: 100%; overflow-x: auto; overflow-y: clip;\n"
+       "  background:\n"
+       "    linear-gradient(to right, Canvas 30%, transparent) left center / 1.5em 100% no-repeat local,\n"
+       "    linear-gradient(to left, Canvas 30%, transparent) right center / 1.5em 100% no-repeat local,\n"
+       "    linear-gradient(to right, color-mix(in srgb, CanvasText 35%, transparent), transparent) left center / 0.75em 100% no-repeat scroll,\n"
+       "    linear-gradient(to left, color-mix(in srgb, CanvasText 35%, transparent), transparent) right center / 0.75em 100% no-repeat scroll;\n"
+       "  background-color: Canvas; }")
 
 
 def _e(x):
@@ -7862,17 +7870,17 @@ def _selftest_cases():
                    (0, True, True, [], ["CODE-ON-SURFACE g1 zzz x1"], ["CODE-ON-SURFACE g1 zzz x1"]))
 
     @case("UD12", "F53 D3: a page whose sketches carry no `unexpanded_detail` is byte-equal to the page before this change: the sha256 of index.html of the "
-                  "four fixture pages (the base, the zoo, the sketch notes, the second base), literal, the ones ED4 pins from the tree before F44 "
-                  "changed anything for them, and the sketch notes page equals the one built with `unexpanded_detail` written as the empty list "
+                  "four fixture pages (the base, the zoo, the sketch notes, the second base), literal, the ones ED4 pins (the CSS text of F51 is the only change from the tree before F44 changed "
+                  "anything for them: F51DIG), and the sketch notes page equals the one built with `unexpanded_detail` written as the empty list "
                   "and none rendered")
     def _():
         import hashlib
         h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], _build(notes=_ud(d4=[], d5=[])).page == _sbase().page),
-                   (["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
-                     "e56476ab9fa257c33dfa1b2d70a6c64975873428d619a29805c0fae623a1ac52",
-                     "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
-                     "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"], True))
+                   (["bc7702e56ea5b666c27a305fc2799c470ba6dda3257d2760495cb5f33e8c66ee",
+                     "edb4f69f19ea426ba1b83e6e775c3619129663ee4a49864888b680244d9969f8",
+                     "295ca55365214f2b7df553279ff2b0ad1ff7606ff6abb4487a488a36d7db75bb",
+                     "72db9ea0663b991aed3d59dfb5ca715e71436baddeabada53da91e4b7c6c2713"], True))
 
     @case("UD13", "F53 D1 through the build: a detail that is not a list of non-empty strings (a string, an empty entry) in the anchor is a "
                   "BLOCK-PROBLEM of the checker, exit 1, OUT_DIR absent; the builder does not read it as characters")
@@ -8711,7 +8719,7 @@ def _selftest_cases():
                    (0, 1, [1, 1, 0, 0, 0, 0], [False, False, False, False], 2, True, True))
 
     @case("ED4", "F44: a page with no group at edition 2 is byte-equal to the page before this change (sha256 of index.html of the four fixture "
-                 "pages, literal, taken from the tree before it), and equal to a build with `edition: 1` written on every group")
+                 "pages, literal, re-pinned for the CSS text of F51, which is the only change: F51DIG), and equal to a build with `edition: 1` written on every group")
     def _():
         import hashlib
         one = _outline()
@@ -8720,10 +8728,10 @@ def _selftest_cases():
         e1 = _build(outline=one, strings=_strings())
         h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
-                   (["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
-                     "e56476ab9fa257c33dfa1b2d70a6c64975873428d619a29805c0fae623a1ac52",
-                     "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
-                     "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"], 0, True))
+                   (["bc7702e56ea5b666c27a305fc2799c470ba6dda3257d2760495cb5f33e8c66ee",
+                     "edb4f69f19ea426ba1b83e6e775c3619129663ee4a49864888b680244d9969f8",
+                     "295ca55365214f2b7df553279ff2b0ad1ff7606ff6abb4487a488a36d7db75bb",
+                     "72db9ea0663b991aed3d59dfb5ca715e71436baddeabada53da91e4b7c6c2713"], 0, True))
 
     @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (four keys, pinned here as "
                  "literals) and the two addresses; a case that compares with the wording file itself runs when RH_EDITION_WORDING_FILE names it "
@@ -9444,12 +9452,14 @@ def _selftest_cases():
                    (False, 1, ["BUILD-ERROR TITLE-MISSING fz needs a title and has none", "BUILD-ERROR TITLE-MISSING fn needs a title and has none"],
                     False, 0, [], ["titles: 6 of 6 cards that need one"], 1))
 
-    @case("TT13", "F47: the CSS holds one rule for the title text, normal weight and no colour (the page's CSS holds no colour at all), and it is in "
+    @case("TT13", "F47: the CSS holds one rule for the title text, normal weight and no colour (the page's CSS holds no colour of its own: outside the F51 rule, "
+                  "which names the reader's system colours only (F51COL), no `color` or `colour` at all), and it is in "
                   "the page's <style>; no other new rule; the page still passes the element and attribute list")
     def _():
         rule = ".title-text { font-weight: normal; }"
         b = _faces()
-        return _eq((rule in CSS, rule in b.page, CSS.count(".title-"), "color" in CSS.lower() or "colour" in CSS.lower(),
+        rest = CSS.replace(F51_NEW, "")
+        return _eq((rule in CSS, rule in b.page, CSS.count(".title-"), "color" in rest.lower() or "colour" in rest.lower(),
                     static_problems(b.page, b.text("data.js")), element_problems(b.page)),
                    (True, True, 1, False, [], []))
 
