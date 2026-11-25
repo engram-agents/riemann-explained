@@ -2379,6 +2379,7 @@ def _():
                  "editions: 0 of 3 notes and 0 of 2 groups at edition 2",
                  "selector changes: did not run, no --base given",
                  "first claims: did not run, no --base given",
+                 "short changes: did not run, no --base given",
                  "placement changes: did not run, no --base given",
                  "re-pointed blocks: did not run, no --base given",
                  "notes gone: did not run, no --base given",
@@ -3675,6 +3676,8 @@ def _():
 
 
 # ---- the closed-card line (SHT1 to SHT5): an optional author-written `short` on a group
+# every break `str.splitlines` knows besides LF, CR and CRLF (VT, FF, FS, GS, RS, NEL, LS, PS): each is a line break for a title and for a short
+LINE_BREAKS = ("\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029")
 SHORT_BAD = ": short must be a non-empty string of at most 50 characters with no line break"
 
 
@@ -3693,11 +3696,11 @@ def _():
 
 
 @case("SHT2", "a `short` that is not a string (a number, a float, a boolean, null, a list, an object), is empty or only spaces, holds a line "
-              "break (LF, CR, CRLF), or has a space at either end is BAD-VALUE naming the group and the key, one finding, on a group with a "
+              "break (LF, CR, CRLF, and VT, FF, FS, GS, RS, NEL, LS, PS: every break `str.splitlines` knows), or has a blank at either end is BAD-VALUE naming the group and the key, one finding, on a group with a "
               "null claim and on a group with a claim")
 def _():
     for bad in (3, 0, 1.5, True, False, None, ["x"], [], {"a": "b"}, {}, "", " ", "   ", "A\nB", "A\rB", "A\r\nB", "X\n", "\nX",
-                " X", "X ", " X "):
+                " X", "X ", " X ") + tuple("a" + c + "b" for c in LINE_BREAKS):
         fe(_ro(dict(G("g1"), short=bad)), [_fl("BAD-VALUE", SHORT_BAD)], 1)
         fe(_ro(dict(_rg("result"), short=bad)), [_fl("BAD-VALUE", SHORT_BAD)], 1)
 
@@ -3718,6 +3721,8 @@ def _():
               "of the outline; the count line is the same with and without shorts")
 def _():
     clean(_ro(dict(G("g1"), title="T" * 60)))
+    for c in LINE_BREAKS:   # the one rule of a line break is shared: a title refuses each of them as before
+        fe(_ro(dict(G("g1"), title="A" + c + "b")), [_fl("BAD-VALUE", TITLE_BAD)], 1)
     clean(_ro(dict(G("g1"), title="The title", short="the short")))
     fe(_ro(dict(G("g1"), title="")), [_fl("BAD-VALUE", TITLE_BAD)], 1)
     fe(_ro(dict(G("g1"), title="", short="")), [_fl("BAD-VALUE", TITLE_BAD), _fl("BAD-VALUE", SHORT_BAD)], 1)
@@ -6032,11 +6037,11 @@ def _():
 def _():
     r = go(notes={"01-a.md": NG_B}, committed={"01-a.md": NG_B}, base="HEAD", today=EN_DAY)
     clean(r)
-    eq(r.lines[-7:], ["selector changes: 0", "first claims: 0", "placement changes: 0", "re-pointed blocks: 0", "notes gone: 0", "notes renamed: 0",
-                      "1 notes, 0 findings, 0 warnings"], "with --base")
+    eq(r.lines[-8:], ["selector changes: 0", "first claims: 0", "short changes: 0", "placement changes: 0", "re-pointed blocks: 0", "notes gone: 0",
+                      "notes renamed: 0", "1 notes, 0 findings, 0 warnings"], "with --base")
     r = go(notes={"01-a.md": NG_B}, today=EN_DAY)
-    eq(r.lines[-7:], ["selector changes: did not run, no --base given", "first claims: did not run, no --base given",
-                      "placement changes: did not run, no --base given",
+    eq(r.lines[-8:], ["selector changes: did not run, no --base given", "first claims: did not run, no --base given",
+                      "short changes: did not run, no --base given", "placement changes: did not run, no --base given",
                       "re-pointed blocks: did not run, no --base given", "notes gone: did not run, no --base given",
                       "notes renamed: did not run, no --base given", "1 notes, 0 findings, 0 warnings"], "without --base")
 
@@ -6117,20 +6122,80 @@ def _():
     fe(_edc(_tg3("Old title", ed="2026-11-20"), _tg3("Old title", ed="2026-11-20")), [], 0)
 
 
-@case("SHT6", "`short` is not edition-checked yet: adding one, changing it and removing it on a group with no bump, at edition 1, are each "
-              "no finding and exit 0 (no OUTLINE-CHANGED, no EDITION, no SELECTOR-CHANGED), and the summary counts no selector change; "
-              "on a group at edition 2 at REV the same three are also clean; a bad `short` is still BAD-VALUE beside --base")
+def _sc(gid, old, new):
+    return f"SHORT-CHANGED outline.json {gid} {old} -> {new}"
+
+
+def _no_short(o):
+    """The outline with no `short` on g1 (the base of an addition: nothing to remove, the key is absent)."""
+    _eof(o, "g1").pop("short", None)
+
+
+@case("SHT6", "`short` is not edition-checked: adding, changing and removing it on a group with no bump, at edition 1 and at edition 2 at REV, is "
+              "no OUTLINE-CHANGED, no EDITION and no SELECTOR-CHANGED, and the exit code stays 0; each change is the one SHORT-CHANGED "
+              "listing (SHT7)")
 def _():
     s1, s2 = _set("g1", "short", "One"), _set("g1", "short", "Two")
-    for cur, base in ((s1, None), (s2, s1), (None, s1), (s1, s1)):   # added, changed, removed, kept (None: the group has no `short` now)
+    e2 = _both(_set("g1", "edition", 2), _set("g1", "edition_date", "2026-11-20"))
+    for cur, base in ((s1, None), (s2, s1), (_no_short, s1)):
         r = _edc(cur, base)
-        fe(r, [], 0)
+        eq(r.rc, 0, "exit")
+        eq([x for x in r.f if x.split(" ")[0] != "SHORT-CHANGED"], [], "no other finding")
         ok("selector changes: 0" in r.lines and "first claims: 0" in r.lines and "edition check: 2 groups compared to HEAD; 1 notes compared to HEAD" in r.lines,
            "summary lines\n" + r.out)
-    e2 = _both(_set("g1", "edition", 2), _set("g1", "edition_date", "2026-11-20"))
     for cur, base in ((_both(e2, s1), e2), (_both(e2, s2), _both(e2, s1)), (e2, _both(e2, s1))):
-        fe(_edc(cur, base), [], 0)
-    fe(_edc(_set("g1", "short", "x" * 51), None), [_fl("BAD-VALUE", SHORT_BAD)], 1)
+        r = _edc(cur, base)
+        eq((r.rc, [x for x in r.f if x.split(" ")[0] != "SHORT-CHANGED"]), (0, []), "edition 2 at REV")
+    fe(_edc(_set("g1", "short", "x" * 51), None), [_fl("BAD-VALUE", SHORT_BAD), _sc("g1", "none", json.dumps("x" * 51))], 1)
+
+
+@case("SHT7", "with --base, a group present at REV whose `short` differs is one listing `SHORT-CHANGED <id> <old> -> <new>` (values as short JSON, "
+              "`none` when absent), exit 0, the warning count 1: added, changed, removed; an unchanged short or none at both is nothing; a "
+              "group not at REV prints nothing; a group at edition 2 at REV gets the same listing and no OUTLINE-CHANGED or EDITION; two "
+              "groups give two listings in the order of the outline; a bump with only a short change is still EDITION-EMPTY beside it")
+def _():
+    s1, s2 = _set("g1", "short", "One"), _set("g1", "short", "Two")
+    r = _edc(s1, None)
+    fe(r, [_sc("g1", "none", '"One"')], 0)
+    eq((r.lines[-1], "short changes: 1" in r.lines), ("1 notes, 0 findings, 1 warnings", True), "count")
+    fe(_edc(s2, s1), [_sc("g1", '"One"', '"Two"')], 0)
+    r = _edc(_no_short, s1)
+    fe(r, [_sc("g1", '"One"', "none")], 0)
+    ok("short changes: 1" in r.lines, r.out)
+    r = _edc(s1, s1)
+    fe(r, [], 0)
+    ok("short changes: 0" in r.lines, r.out)
+    fe(_edc(None, None), [], 0)
+    def new_g3(o):
+        _tg3(None)(o)
+        _eof(o, "g3")["short"] = "Brand new"
+    r = _edc(new_g3, None)
+    fe(r, ["FIRST-CLAIM outline.json g3"], 0)
+    ok("short changes: 0" in r.lines, r.out)
+    e2 = _both(_set("g1", "edition", 2), _set("g1", "edition_date", "2026-11-20"))
+    fe(_edc(_both(e2, s2), _both(e2, s1)), [_sc("g1", '"One"', '"Two"')], 0)
+    fe(_edc(_both(e2, s1), e2), [_sc("g1", "none", '"One"')], 0)
+    both = _both(_set("g1", "short", "G one"), _set("g2", "short", "G two"))
+    r = _edc(both, _both(_set("g1", "short", "Old one"), _set("g2", "short", "Old two")))
+    fe(r, [_sc("g1", '"Old one"', '"G one"'), _sc("g2", '"Old two"', '"G two"')], 0)
+    ok("short changes: 2" in r.lines and r.lines[-1] == "1 notes, 0 findings, 2 warnings", r.out)
+    fe(_edc(_both(_ed2(), s1), None),
+       ["EDITION-EMPTY outline.json group 'g1': edition 2 with edition_date, but no reader-facing text changed since HEAD", _sc("g1", "none", '"One"')], 1)
+    fe(_edc(_set("g1", "short", "Caf\u00e9"), s1), [_sc("g1", '"One"', '"Caf\u00e9"')], 0)   # non-ASCII is printed as written
+
+
+@case("SHT8", "the summary line `short changes: N` stands directly after `first claims` and before `placement changes`, with --base; without --base, "
+              "with an unusable base and with an outline that has no groups list it says `did not run` with the reason of the others")
+def _():
+    r = _edc()
+    i = r.lines.index("selector changes: 0")
+    eq(r.lines[i:i + 4], ["selector changes: 0", "first claims: 0", "short changes: 0", "placement changes: 0"], "order with --base")
+    r = go(outline=_epair(), today=ED_DAY)
+    ok("short changes: did not run, no --base given" in r.lines, r.out)
+    r = _edb(_epair(), None)
+    ok("short changes: did not run, the outline at HEAD could not be used" in r.lines, r.out)
+    r = go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD", raw_outline='{"release": "x"}', today=ED_DAY)
+    ok("short changes: did not run, the outline has no groups list" in r.lines, r.out)
 
 
 # ---- F63: a first claim is not an edition (an edition records a change to text that was published; a card with no claim published none)
@@ -6275,18 +6340,20 @@ def _():
 def _():
     r = _edc()
     i = r.lines.index("selector changes: 0")
-    eq(r.lines[i:i + 3], ["selector changes: 0", "first claims: 0", "placement changes: 0"], "order with --base")
+    eq(r.lines[i:i + 4], ["selector changes: 0", "first claims: 0", "short changes: 0", "placement changes: 0"], "order with --base")
     r = go(outline=_epair(), today=ED_DAY)
     i = r.lines.index("selector changes: did not run, no --base given")
-    eq(r.lines[i:i + 3], ["selector changes: did not run, no --base given", "first claims: did not run, no --base given",
-                          "placement changes: did not run, no --base given"], "no --base")
+    eq(r.lines[i:i + 4], ["selector changes: did not run, no --base given", "first claims: did not run, no --base given",
+                          "short changes: did not run, no --base given", "placement changes: did not run, no --base given"], "no --base")
     r = _edb(_epair(), None)
     i = r.lines.index("selector changes: did not run, the outline at HEAD could not be used")
-    eq(r.lines[i:i + 2], ["selector changes: did not run, the outline at HEAD could not be used",
-                          "first claims: did not run, the outline at HEAD could not be used"], "unusable base")
+    eq(r.lines[i:i + 3], ["selector changes: did not run, the outline at HEAD could not be used",
+                          "first claims: did not run, the outline at HEAD could not be used",
+                          "short changes: did not run, the outline at HEAD could not be used"], "unusable base")
     r = go(notes={"01-a.md": CUR}, committed={"01-a.md": T0}, base="HEAD", raw_outline='{"release": "x"}', today=ED_DAY)
     ok("selector changes: did not run, the outline has no groups list" in r.lines, r.out)
     ok("first claims: did not run, the outline has no groups list" in r.lines, r.out)
+    ok("short changes: did not run, the outline has no groups list" in r.lines, r.out)
 
 
 @case("F63j", "a null-claim group at edition 2 at the base that gains its first claim and RETIRES edition, edition_date and the title together: accepted "
