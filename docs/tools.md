@@ -68,6 +68,17 @@ byte check when they ran); a header's group may be `root` only at level 0.
 `where`, `source` and `source_date`, `established`, and the group's `title`, which is reader-facing text and is compared as text). Every field whose own text the page prints outside its Evidence section is in that list. The fields that only choose which sentence the page prints (`recognition.form`, `root_role`, `claim.basis`, a citation's `says_open`) and `premises` (what a step rests on) are not text: a change to one is a change of substance, not a rewrite for readers, so the check lists it, with or without a bump, as `SELECTOR-CHANGED <id> <path> <old> -> <new>` (exit code unchanged; the summary says `selector changes: K`) and never compares it as text. The compare is strict on purpose: text byte for byte (a space, a newline, NFC against NFD is a change), lists in order (a reorder or a duplicate is a change); an empty list and no value are equal. A change with the bump prints one `EDITION` line (none beside a bad `edition_date`) and does not fail the run; a change
 with no bump, a bump with no change, a second rewrite, an edition 3, a lowered edition and edition 2 on a new group are errors; a group
 that left the outline is a `GROUP-GONE` listing; an outline that cannot be read at REV (missing, not JSON, no groups list, or a groups list holding a non-object) is one `OUTLINE-BASE` listing and the rule does not run; `groups: []` at REV is legal and compares nothing.
+A first claim is not an edition (an edition records a change to text that was published, and a card with no claim published none). A group whose
+`claim` is null or absent at REV and an object now has gained a first claim: the text paths that were empty at REV and are set now (`claim.*`
+and `recognition.*` alike), and the removal of its `title`, need no bump, and the change is one listing `FIRST-CLAIM <id>` (a listing, exit code
+unchanged; the summary says `first claims: K`, directly after `selector changes`, and `did not run` where that line did not run). A new group
+that carries a claim is listed the same way. A first claim with edition 2 (set now, or kept from REV) is the refusal `EDITION-FIRST-CLAIM`
+(`a first claim is not a rewrite; remove edition and edition_date`); a title that is reworded beside the first claim, or any other text path that had a
+value at REV and now differs, is still `OUTLINE-CHANGED` (published text was altered; make it a separate change); the selectors keep their
+`SELECTOR-CHANGED` listings beside the `FIRST-CLAIM` line. A group at edition 2 at REV whose claim is null retires the mark in the same change: the first claim
+that removes `edition` and `edition_date` is accepted (it is not `EDITION-DOWN`), and its line reads `FIRST-CLAIM <id>, edition mark retired with the title`; the
+retirement is accepted whether or not the title is also removed, and an `edition_date` left behind is the ordinary `BAD-VALUE`. An edition removed with no first
+claim is still `EDITION-DOWN`, and a group at edition 2 whose claim stays null keeps every rule above.
 `build_site.py` writes `edition` into each group file and into `data.js` (`null` at edition 1, else `{"number": 2, "date": "..."}`), counts
 the groups at edition 2 in `manifest.json`, says it once on the first screen (the latest date, and a link to the tree of the first edition)
 and once in each rewritten card's Evidence section (that card's date, and a link to `outline/outline.json` of the first edition). The

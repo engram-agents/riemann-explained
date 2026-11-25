@@ -146,6 +146,14 @@ CONTRACT (each line is a self-test case, written before the code)
  root_role, claim.basis, recognition.citations[<i>].says_open, premises, in that order), with or without a bump, exit code unchanged; the
  summary has `selector changes: K` (or `did not run`). A base outline with `groups: []` compares nothing and says so; a groups list holding a
  non-object is OUTLINE-BASE `has no usable groups`. A bad edition_date prints its BAD-VALUE and no EDITION line.
+ A first claim is not an edition (F63; cases E23h, E24c, S6, F63a to F63l, NX6). A group whose `claim` is null or absent at REV and an object now has gained
+ a first claim: no bump. Each text path of EDITION_TEXT_FIELDS that was empty at REV and is set now (claim.* and recognition.* alike), and the removal of the
+ title, is accepted, and the group is the one listing `FIRST-CLAIM <id>` (exit code unchanged; a new group that carries a claim is listed the same way). A
+ title reworded, or any other path with a value at REV that now differs, stays OUTLINE-CHANGED; the selectors keep their SELECTOR-CHANGED listings. Edition 2
+ on the group (set now, or kept from REV) is EDITION-FIRST-CLAIM, `a first claim is not a rewrite; remove edition and edition_date` (a new group at edition 2
+ stays EDITION-NEW-GROUP). A null-claim group at edition 2 at REV retires its mark in the same change: removing edition and edition_date is accepted (not
+ EDITION-DOWN), the title staying or going, and the line reads `FIRST-CLAIM <id>, edition mark retired with the title`; an edition removed with no first claim
+ is EDITION-DOWN as before. The summary has `first claims: K` directly after `selector changes` (`did not run` with the same reason where that line did not run).
 
  Edition of a note (F44B; cases NE1a to NE11, B2g of rh_anchor). A note header may carry `edition` and `edition_date` under the rules of a group's
  (rh_anchor.header_problems; each problem is a BAD-VALUE on the header line, and `edition_date` later than the day of the run is one too).
