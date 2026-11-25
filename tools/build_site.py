@@ -240,7 +240,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      formula works). `\\$` is a literal dollar sign; an unescaped `$` with no partner on its line stays literal and is listed `FORMULA-UNPAIRED
      <where>`; `$$...$$` is not converted (stays as written, listed as unsupported). `<where>` is the block id (a group id for a claim, its conditions
      and the recognition, a note id for a list title). THE CONVERTER `formula_to_mathml` is a pure function over a closed subset of TeX named by
-     FORMULA_COMMANDS (70 commands) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
+     FORMULA_COMMANDS (70 commands, version `2`; \\ast is in it as the star's synonym, the same <mo>∗</mo> as `*` in every position) and FORMULA_VERSION; anything else (an unknown command, \\frac, an environment, an unbalanced brace, a backtick, a
      `$`, a character outside the tables) leaves the WHOLE formula as written, escaped, and lists `FORMULA-UNSUPPORTED <where> <the first 40 characters of the
      formula, marks included>` when the place is inside the Evidence section of a card; on the reader's surface (every author-text place rendered through the span rule outside Evidence; the first screen and the key are strings of the
      strings file, not author text: only FORMULA-CANDIDATE covers them) a formula the
