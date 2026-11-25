@@ -100,7 +100,7 @@ one added line of the `EDITION` listing, so a bump whose only change is the titl
 say where it is shown: a change against REV is the listing `PLACEMENT-CHANGED <note> <field> <old> -> <new>` (one per field, `group` first, at
 any edition, exit code unchanged). An anchor that now points at a different element than at REV is the listing `RE-POINTED <note> <block id>
 <old first words> -> <new first words>` (blocks matched by id; the element differs when its kind differs or its first 8 words differ, not when only
-its ordinal moved, so a dated addition above it is not a re-pointing; a note at edition 2 gets `EDITION-BLOCK` instead, not both). Re-pointing
+its ordinal moved, so a dated addition above it is not a re-pointing; when the first words are equal and only the kind differs, for example a table and a paragraph line that reads the same, the line ends with the two kinds, `(table -> paragraph)`; a note at edition 2 gets `EDITION-BLOCK` instead, not both). Re-pointing
 an anchor is a repair, not an edition: a bump whose only change is where anchors point is still `EDITION-EMPTY`. A note at REV that is not in
 the tree now is the listing `NOTE-GONE <note>`; if exactly one note is gone and exactly one new note has the same header `id`, it is
 `NOTE-RENAMED <old> -> <new>` instead, and the new note is checked against the text of the old name (a rename with a rewrite and no bump is

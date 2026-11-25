@@ -166,7 +166,7 @@ CONTRACT (each line is a self-test case, written before the code)
  is the title is NOT EDITION-EMPTY. A note's `group` and `level` are placement: a change against REV is one listing per field, `PLACEMENT-CHANGED
  <note> <group or level> <old> -> <new>` (short JSON, a missing value `none`; group first), at any edition. An anchor that now points at another
  element is the listing `RE-POINTED <note> <block id> <old first words> -> <new first words>`: blocks are matched by id, the element is the one
- the block anchors to (as EDITION-BLOCK finds it), and it differs when its KIND differs or its first 8 words (white space normalised) differ;
+ the block anchors to (as EDITION-BLOCK finds it), and it differs when its KIND differs or its first 8 words (white space normalised) differ (equal words: the line ends with the two kinds, `(table -> paragraph)`);
  its ordinal alone does not (a dated addition shifts it). A block only in one of the notes is not listed. A note whose current edition is 2 (with
  a base edition that is usable) gets EDITION-BLOCK and no RE-POINTED line. An anchor repair is not an edition: a bump whose only change is where
  anchors point stays EDITION-EMPTY. A note at REV that is not in the tree now is the listing `NOTE-GONE <note>`; when exactly one such note and
@@ -1483,7 +1483,8 @@ def _edition_blocks(name, base_text, text):
 
 def _repointed(name, base_text, text):
     """F52: the RE-POINTED listings of a note. Blocks are matched by id; a block that is in both and anchors an element of another kind, or one
-    whose first 8 words differ, shows the words of the element it anchored and of the one it anchors now. The ordinal alone is not a
+    whose first 8 words differ, shows the words of the element it anchored and of the one it anchors now. When the words are
+    equal and only the kind differs, the line ends with the two kinds, `(table -> paragraph)`. The ordinal alone is not a
     difference (a dated addition shifts it). A block that is only in one of the notes is not listed here."""
     now = {}
     for bid, _o, k, w in _block_targets(text):
@@ -1494,7 +1495,8 @@ def _repointed(name, base_text, text):
             continue
         seen.add(bid)
         if bid in now and now[bid] != (k, w):
-            out.append(_f("RE-POINTED", name, None, f"{bid} {w or NO_ELEMENT} -> {now[bid][1] or NO_ELEMENT}", LISTING))
+            kinds = f" ({k} -> {now[bid][0]})" if now[bid][1] == w else ""   # equal words: only the kind differs, so say which kinds
+            out.append(_f("RE-POINTED", name, None, f"{bid} {w or NO_ELEMENT} -> {now[bid][1] or NO_ELEMENT}{kinds}", LISTING))
     return out
 
 
@@ -5750,6 +5752,27 @@ def _():
     ok("re-pointed blocks: 0" in r.lines, r.out)
     r = _nx(NOTE(body=base), NOTE(body=cur))
     eq((r.f, r.rc), ([RP.format(b="01.b01", o="Para one.", n="Para two.")], 0), "no bump: " + r.out)
+
+
+@case("NX3g", "RE-POINTED compares the KIND of the element too: two anchors swapped between a table and a paragraph line with the same first 8 words, and between a "
+              "lean fence and a paragraph line with the same words, are two RE-POINTED listings each (exit 0, no bump), and since the words are equal "
+              "the line names the two kinds: `(table -> paragraph)`; a pair whose words differ prints no kinds")
+def _():
+    tbl = "| a | b |\n|---|---|\n| c | d |\n"
+    para_t = "| a | b | |---|---| | c\n"
+    base = tbl + BL("01.b01", decls=[R("A.B", "foo")]) + "\n\n" + para_t + BL("01.b02", decls=[R("A.B", "foo")]) + "\n\n"
+    cur = tbl + BL("01.b02", decls=[R("A.B", "foo")]) + "\n\n" + para_t + BL("01.b01", decls=[R("A.B", "foo")]) + "\n\n"
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    w = "| a | b | |---|---| | c"
+    eq((r.f, r.rc), ([RP.format(b="01.b01", o=w, n=w) + " (table -> paragraph)", RP.format(b="01.b02", o=w, n=w) + " (paragraph -> table)"], 0), "table: " + r.out)
+    ok("re-pointed blocks: 2" in r.lines, r.out)
+    fence = "```lean\nfoo bar\n```\n"
+    para_f = "```lean foo bar ```\n"
+    base = fence + BL("01.b01", decls=[R("A.B", "foo")]) + "\n\n" + para_f + BL("01.b02", decls=[R("A.B", "foo")]) + "\n\n"
+    cur = fence + BL("01.b02", decls=[R("A.B", "foo")]) + "\n\n" + para_f + BL("01.b01", decls=[R("A.B", "foo")]) + "\n\n"
+    r = _nx(NOTE(body=base), NOTE(body=cur))
+    w = "```lean foo bar ```"
+    eq((r.f, r.rc), ([RP.format(b="01.b01", o=w, n=w) + " (lean -> paragraph)", RP.format(b="01.b02", o=w, n=w) + " (paragraph -> lean)"], 0), "fence: " + r.out)
 
 
 NG_B = NOTE(body=EN_B)
