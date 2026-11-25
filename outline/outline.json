@@ -337,7 +337,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "Input 1 (a classification of the cuspidal functions on $GL_d$ over $\\mathbb{Z}/g$, $g$ prime, with an explicit value formula), the window supply for every primitive character, and one instance of the hypothesis package (closed under links, with the definite side condition) give: no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
+    "text": "Input 1 (a one-to-one correspondence between polynomials and the functions the library calls cuspidal, stated on its own card), the window supply for every primitive character (Input 2), and one instance of the hypothesis package (Input 3; closed under links, with the definite side condition) give: no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
    },
    "id": "three-inputs",
    "level": 1,
