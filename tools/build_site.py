@@ -3722,11 +3722,11 @@ _CUE_COLOURS = frozenset({"Canvas", "CanvasText", "transparent"})
 
 def _cue_colour_problems(rule):
     """The colour tokens of a CSS rule that are not one of Canvas, CanvasText and transparent: a hex colour, a function or a word that is not on
-    the rule's own list. The declarations (the text between the first `{` and the last `}`) are cut with one regular expression into hex colours,
+    the rule's own list, and a backslash (a CSS escape can spell any colour name). The declarations (the text between the first `{` and the last `}`) are cut with one regular expression into hex colours,
     names (a `(` kept when it follows), numbers with their unit, and single characters."""
     bad = []
     for tok in re.findall(r"#[0-9A-Za-z]+|[A-Za-z][A-Za-z0-9-]*\(?|[0-9.]+(?:[A-Za-z]+|%)?|\S", rule[rule.index("{") + 1:rule.rindex("}")]):
-        if tok[0] == "#" or (tok[0].isalpha() and tok not in _CUE_WORDS and tok not in _CUE_COLOURS):
+        if tok[0] in "#\\" or (tok[0].isalpha() and tok not in _CUE_WORDS and tok not in _CUE_COLOURS):
             bad.append(tok)
     return bad
 
@@ -8123,8 +8123,9 @@ def _selftest_cases():
     @case("F51COL", "F51: the `math` rule of the built page names no colour of its own. The declarations are cut into tokens with "
                     "`#[0-9A-Za-z]+` (a hex colour), a name with an optional `(` (a function or a word), a number with its unit, and any other single "
                     "character; every function and every word must be on the list of the rule's own non-colour words or be one of the three colour "
-                    "words `Canvas`, `CanvasText` and `transparent`. The rule of the page has no other token (and is the F51 rule); planted in it, "
-                    "a hex colour (`#fff`), a named colour (`red`), `rgba(`, `hsl(` and a lower-case `canvas` are each refused and named")
+                    "words `Canvas`, `CanvasText` and `transparent`; a backslash (a CSS escape, which could spell any colour) is refused too. The rule of the "
+                    "page has no other token (and is the F51 rule); planted in it, a hex colour (`#fff`), a named colour (`red`), `rgba(`, `hsl(`, a "
+                    "lower-case `canvas` and an escaped `red` are each refused and named")
     def _():
         b = _build(notes=_notes(arg_text="A $x$ and $\\Gamma$ here"))
         style = b.page.split("<style>")[1].split("</style>")[0]
@@ -8134,8 +8135,9 @@ def _selftest_cases():
         return _eq((rule == F51_NEW, _cue_colour_problems(rule),
                     plant("background-color: Canvas;", "background-color: #fff;"), plant("background-color: Canvas;", "background-color: red;"),
                     plant("background-color: Canvas;", "background-color: rgba(0, 0, 0, 0.3);"), plant("transparent) left center / 0.75em", "hsl(0 0% 0% / 0.3)) left center / 0.75em"),
-                    plant("background-color: Canvas;", "background-color: canvas;")),
-                   (True, [], ["#fff"], ["red"], ["rgba("], ["hsl("], ["canvas"]))
+                    plant("background-color: Canvas;", "background-color: canvas;"),
+                    plant("background-color: Canvas;", "background-color: \\72 \\65 \\64;")),
+                   (True, [], ["#fff"], ["red"], ["rgba("], ["hsl("], ["canvas"], ["\\", "\\", "\\"]))
 
     @case("F51DIG", "F51: a page with no formula is the page before F51 except for the CSS text: the sha256 of index.html of the four fixture pages "
                     "(the base, the zoo, the sketch notes, the second base) with the F51 rule put back to the old one-line rule is the literal digest "
