@@ -9541,6 +9541,19 @@ def _selftest_cases():
                     same.js("manifest.json")["counts"]["editions"], same.js("manifest.json")["counts"]["note_editions"]),
                    (0, 1, 2, 1, 3, 1, 2, 1, [{"note": "01-one.md", "edition": 2, "date": "2026-11-21"}], 1, 1))
 
+    @case("F63B", "F63: a card whose group has a claim and NO edition (a first claim carries none) prints no `edition_note_card` paragraph of its own, "
+                  "none above Evidence, and its `edition` is null; the paragraph of an edition-2 note the card draws on is printed as before (one "
+                  "paragraph, its own date and its own docs/<file> link), and the same card with its group at 2 prints both")
+    def _():
+        b = _nb(notes={"01-one.md": "2026-11-21"})
+        both = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21"})
+        own = lambda b_, g: _direct(_card(b_, g), "details", "evidence")[0]
+        return _eq((b.rc, b.js("group/g1.json")["edition"], "Claim one" in surface(_card(b, "g1")),
+                    len(own(b, "g1").find("p", "edition-note")), b.page.count("the text of this card was rewritten"),
+                    ED_SUMMARY + nd_card("2026-11-21", "docs/01-one.md") in b.page, "rewritten for readers" in surface(_card(b, "g1")),
+                    len(own(both, "g1").find("p", "edition-note")), both.page.count("the text of this card was rewritten")),
+                   (0, None, True, 1, 0, True, False, 2, 1))
+
     @case("N10", "F56: a card whose group is at 2 dated D with THREE edition-2 notes (two dated D, one dated another day) prints the group's paragraph "
                  "and then three note paragraphs, one per note, in note order, each with its own date and its own docs/<file> link, nothing above "
                  "Evidence: four edition paragraphs in that Evidence; no note is merged or dropped for sharing a date")
