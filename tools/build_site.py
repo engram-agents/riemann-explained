@@ -3354,19 +3354,22 @@ def _claim(text, date="2026-11-20", **kw):
     return dict({"text": text, "reader": "Reader One", "date": date, "defs_opened": [], "conventions_checked": ["a"]}, **kw)
 
 
-def _g(gid, level, parent, order, roots, claim=None, premises=()):
-    return {"id": gid, "level": level, "parent": parent, "order": order, "roots": roots, "claim": claim,
-            "premises": list(premises)}
+def _g(gid, level, parent, order, roots, claim=None, premises=(), short=None):
+    g = {"id": gid, "level": level, "parent": parent, "order": order, "roots": roots, "claim": claim,
+         "premises": list(premises)}
+    if short is not None:
+        g["short"] = short
+    return g
 
 
 def _outline():
     return {"release": "rel-1", "groups": [
-        _g("g3", 1, "root", 2, [CORGE], _claim("Claim four with é", basis="census"), ["g1", "g2"]),
+        _g("g3", 1, "root", 2, [CORGE], _claim("Claim four with é", basis="census"), ["g1", "g2"], short="Claim four with é"),
         _g("g1a1x", 4, "g1a1", 1, [QUX]),
-        _g("g1", 1, "root", 1, [FOO], _claim("Claim one", conditions=["Condition one holds."], basis="read"), ["g1a"]),
+        _g("g1", 1, "root", 1, [FOO], _claim("Claim one", conditions=["Condition one holds."], basis="read"), ["g1a"], short="Claim one"),
         _g("g2", 1, "root", 3, [QUUX, QUX]),
         _g("g1a", 2, "g1", 1, [BAR]),
-        _g("g1a1", 3, "g1a", 1, [BAZ], _claim("Claim three & <more>"))]}
+        _g("g1a1", 3, "g1a", 1, [BAZ], _claim("Claim three & <more>"), short="Claim three & <more>")]}
 
 
 # the wording of the recognition, the established line and the sketch: a fixture copy of the wording file's values
@@ -3739,7 +3742,17 @@ def _with_roles(outline, decls):
     return out
 
 
-def _plant(d, notes=None, outline=None, decls=DECLS, strings=None, src=None, roles=True):
+def _with_shorts(o):
+    """The outline with a `short` on every group that has a claim and neither a `short` nor a `title`. Since the graph build refuses a claim with no
+    face line (GRAPH-SHORT), a case that plants a claim for another reason gets one here; a case that tests the refusal builds with shorts=False."""
+    o = copy.deepcopy(o)
+    for g in o["groups"]:
+        if g.get("claim") is not None and "short" not in g and "title" not in g:
+            g["short"] = "Face of " + str(g["id"])
+    return o
+
+
+def _plant(d, notes=None, outline=None, decls=DECLS, strings=None, src=None, roles=True, shorts=True):
     """The fixture under directory d; the paths run() takes. `roles` False leaves the outline as given (for a case that needs a claim
     with no root_role and calls the model directly)."""
     for k, v in (_notes() if notes is None else notes).items():
@@ -3748,6 +3761,8 @@ def _plant(d, notes=None, outline=None, decls=DECLS, strings=None, src=None, rol
          "decls": os.path.join(d, "decls.tsv"), "strings": os.path.join(d, "strings.json"), "out": os.path.join(d, "out")}
     os.makedirs(p["notes"], exist_ok=True)
     o = _outline() if outline is None else outline
+    if shorts and isinstance(o, dict):
+        o = _with_shorts(o)
     _put(p["outline"], json.dumps(_with_roles(o, decls) if roles and isinstance(decls, str) else o))
     _put(p["decls"], decls)
     s = _strings() if strings is None else strings
@@ -4697,7 +4712,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 104))
+        return _eq((bad, len(STRING_KEYS)), ([], 107))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -5940,7 +5955,7 @@ def _selftest_cases():
             o["groups"][0]["claim"]["text"] = "Claim four\n" + second
             b = _build(outline=o, src=srcs)
             res.append((b.rc, sorted(ln.split(" ")[2] for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK "))))
-        return _eq(res, [(1, ["data.js", "graph/step/g3.json", "index.html", "level0.json", "level1.json"]), (0, [])])
+        return _eq(res, [(1, ["data.js", "index.html", "level0.json", "level1.json"]), (0, [])])
 
     @case("PJ5", "the run says what the second check ranged over: `source check (copied note text): K copied source lines, L "
                  "leaked; <the narrow claim>`, K counted by the tool (the base build: 4 titles + 1 argument line + 1 "
@@ -6192,8 +6207,8 @@ def _selftest_cases():
             o["groups"][0]["claim"]["text"] = text
             b = _build(outline=o, src=srcs)
             res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
-        return _eq(res, [(1, [leak_line(w) for w in ("data.js", "graph/step/g3.json", "level0.json", "level1.json")], False),
-                         (1, [leak_line(w) for w in ("data.js", "graph/step/g3.json", "index.html", "level0.json", "level1.json")], False)])
+        return _eq(res, [(1, [leak_line(w) for w in ("data.js", "level0.json", "level1.json")], False),
+                         (1, [leak_line(w) for w in ("data.js", "index.html", "level0.json", "level1.json")], False)])
 
     @case("SPAN2", "the same for a condition: a condition that is a release line inside single backticks is refused (data.js, level0.json, "
                    "level1.json), exit 1, OUT_DIR absent; unwrapped, also index.html")
@@ -6449,7 +6464,7 @@ def _selftest_cases():
         claimed = _build(outline=o2, src=src)
         got = sorted(ln.split(" ")[2] for ln in claimed.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK "))
         return _eq((named.rc, name in named.page, ", 0 leaked" in named.out, claimed.rc, got),
-                   (0, True, True, 1, ["data.js", "graph/step/g3.json", "index.html", "level0.json", "level1.json"]))
+                   (0, True, True, 1, ["data.js", "index.html", "level0.json", "level1.json"]))
 
     # ---- F24b: the recognition of a statement, on the card and in the JSON
     zd = {z[0]: z[3] for z in _ZOO}
@@ -11029,13 +11044,15 @@ def _selftest_cases():
     # ---- the graph data (G1): the symbol table (F38), graph/index.json, graph/step/<id>.json, and the refusals GRAPH-*. Every expectation is a literal.
     GR_WORDS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
                 "symbol_kind_structure": "Diamond: the part is a structure",
-                "symbol_state_read": "Filled: one of us read its statement",
-                "symbol_state_census": "Half filled: counted by a program, not read", "symbol_state_none": "Empty: not read yet"}
+                "sheet_statement_read": "Statement read", "sheet_statement_census": "Statement counted, not read",
+                "sheet_statement_not_read": "Statement not read yet",
+                "sheet_proof_read": "proof read", "sheet_proof_not_read": "proof not read yet", "sheet_proof_none": "no proof to read"}
     GR_LABEL = "No plain statement yet"   # the fixture's no_claim_label
     GR_ROLE = "This step gives a name to a statement. Steps that use the name take the statement as a hypothesis."   # the fixture's named_statement_use_line
 
-    def gr_row(rid, parent="root", order=1, premises=(), kind="theorem", state="read", title="T", **extra):
-        return dict({"id": rid, "parent": parent, "order": order, "premises": list(premises), "kind": kind, "state": state, "title": title}, **extra)
+    def gr_row(rid, parent="root", order=1, premises=(), kind="theorem", state="read", title="T", proof="read", **extra):
+        return dict({"id": rid, "parent": parent, "order": order, "premises": list(premises), "kind": kind, "state": state, "proof": proof, "title": title},
+                    **extra)
 
     def gr_codes(rows):
         return [(c, w, m) for c, w, m in _graph_files(rows, "c0", _strings())[0]]
@@ -11043,41 +11060,52 @@ def _selftest_cases():
     def gr_link(f, t, fp, tp):
         return {"from": f, "from_path": fp, "to": t, "to_path": tp}
 
-    @case("GR1", "G1 S1, F38: ONE symbol table GRAPH_SYMBOLS: 3 kinds (theorem, def, structure: the kind of the step's root, no `none` row) and 3 states (read, "
-                 "census, none), each row a css class token and a strings key; the 6 keys are in the strings fixture with the prototype's words; "
-                 "the table order is theorem, def, structure and read, census, none; GRAPH_MAX_CHILDREN is 40")
+    @case("GR1", "G1 S1, F38 (G1b S3): ONE symbol table GRAPH_SYMBOLS with three sections: 3 kinds (theorem, def, structure: the kind of the step's root, no "
+                 "`none` row), 3 proofs (read, not_read, none) and 3 states (read, census, none), each row a css class token and a strings key; the kinds keep "
+                 "symbol_kind_*, the states use sheet_statement_read, sheet_statement_census and sheet_statement_not_read, the proofs sheet_proof_read, "
+                 "sheet_proof_not_read and sheet_proof_none; the 9 keys are in the strings fixture with their words and no symbol_state_* key is; the table "
+                 "order is theorem, def, structure and read, not_read, none and read, census, none; GRAPH_MAX_CHILDREN is 40")
     def _():
         s = _strings()
-        return _eq(({k: dict(v) for k, v in GRAPH_SYMBOLS["kinds"].items()}, {k: dict(v) for k, v in GRAPH_SYMBOLS["states"].items()},
-                    list(GRAPH_SYMBOLS["kinds"]), list(GRAPH_SYMBOLS["states"]), {w: s.get(w) for w in GR_WORDS}, GRAPH_MAX_CHILDREN),
-                   ({"theorem": {"class": "kind-theorem", "words": "symbol_kind_theorem"}, "def": {"class": "kind-def", "words": "symbol_kind_def"},
+        t = lambda n: {k: dict(v) for k, v in GRAPH_SYMBOLS[n].items()}
+        return _eq((sorted(GRAPH_SYMBOLS), t("kinds"), t("proofs"), t("states"), [list(GRAPH_SYMBOLS[n]) for n in ("kinds", "proofs", "states")],
+                    {w: s.get(w) for w in GR_WORDS}, [k for k in s if k.startswith("symbol_state_")], GRAPH_MAX_CHILDREN),
+                   (["kinds", "proofs", "states"],
+                    {"theorem": {"class": "kind-theorem", "words": "symbol_kind_theorem"}, "def": {"class": "kind-def", "words": "symbol_kind_def"},
                      "structure": {"class": "kind-structure", "words": "symbol_kind_structure"}},
-                    {"read": {"class": "state-read", "words": "symbol_state_read"}, "census": {"class": "state-census", "words": "symbol_state_census"},
-                     "none": {"class": "state-none", "words": "symbol_state_none"}},
-                    ["theorem", "def", "structure"], ["read", "census", "none"], GR_WORDS, 40))
+                    {"read": {"class": "proof-read", "words": "sheet_proof_read"}, "not_read": {"class": "proof-not-read", "words": "sheet_proof_not_read"},
+                     "none": {"class": "proof-none", "words": "sheet_proof_none"}},
+                    {"read": {"class": "state-read", "words": "sheet_statement_read"}, "census": {"class": "state-census", "words": "sheet_statement_census"},
+                     "none": {"class": "state-none", "words": "sheet_statement_not_read"}},
+                    [["theorem", "def", "structure"], ["read", "not_read", "none"], ["read", "census", "none"]], GR_WORDS, [], 40))
 
-    @case("GR2", "G1 S3: graph/index.json holds exactly the keys assets, commit, format, max_children, rests_on, steps, strings, symbols, top; top is the "
-                 "top ids in `order` (g1, g3, g2); rests_on holds the two links between top steps (g3 rests on g1 and on g2, both paths []); symbols "
-                 "holds the whole table with the resolved words as `text` and the fixed `order` arrays, the kind `structure` and the state rows that no "
-                 "step uses included; steps is 6; assets and strings are empty objects; commit is the notes commit string as built (`unknown`)")
+    @case("GR2", "G1 S3 (G1b S3, S4): graph/index.json holds exactly the keys assets, commit, format, max_children, rests_on, steps, strings, symbols, top; top "
+                 "is the top ids in `order` (g1, g3, g2); rests_on holds the two links between top steps (g3 rests on g1 and on g2, both paths []); symbols "
+                 "holds exactly order (kinds, proofs, states), kinds, proofs and states, each row exactly class, text, words, with the resolved words as "
+                 "`text`, the kind `structure` and the state rows that no step uses included; strings is the object of the 9 words keys with their values; "
+                 "steps is 6; assets is an empty object; commit is the notes commit string as built (`unknown`)")
     def _():
         ix = _base().js("graph/index.json")
         row = lambda cls, key: {"class": cls, "text": GR_WORDS[key], "words": key}
         want = {"assets": {}, "commit": "unknown", "format": 1, "max_children": 40,
-                "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": {},
+                "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": dict(GR_WORDS),
                 "symbols": {"kinds": {"def": row("kind-def", "symbol_kind_def"),
                                       "structure": row("kind-structure", "symbol_kind_structure"), "theorem": row("kind-theorem", "symbol_kind_theorem")},
-                            "order": {"kinds": ["theorem", "def", "structure"], "states": ["read", "census", "none"]},
-                            "states": {"census": row("state-census", "symbol_state_census"), "none": row("state-none", "symbol_state_none"),
-                                       "read": row("state-read", "symbol_state_read")}},
+                            "order": {"kinds": ["theorem", "def", "structure"], "proofs": ["read", "not_read", "none"], "states": ["read", "census", "none"]},
+                            "proofs": {"none": row("proof-none", "sheet_proof_none"), "not_read": row("proof-not-read", "sheet_proof_not_read"),
+                                       "read": row("proof-read", "sheet_proof_read")},
+                            "states": {"census": row("state-census", "sheet_statement_census"), "none": row("state-none", "sheet_statement_not_read"),
+                                       "read": row("state-read", "sheet_statement_read")}},
                 "top": ["g1", "g3", "g2"]}
-        return _eq((ix, list(ix)), (want, sorted(want)))
+        return _eq((ix, list(ix), list(ix["symbols"])), (want, sorted(want), ["kinds", "order", "proofs", "states"]))
 
-    @case("GR3", "G1 S4: graph/step/<id>.json exists for EVERY step (a leaf too: 6 files), with exactly the keys card, children, commit, format, id, path, "
-                 "rests_on; g1 (a top step, path [], one child g1a that the step rests on: parent_rests_on true, rests_on empty); the closed card and the "
-                 "closed child have exactly the keys child_count, id, kind, path, state, title (plus role when the step has one, and on a child "
-                 "parent_rests_on); kind is the kind of the step's ROOT for every step (g1a, g1a1x and g2 have a null claim and are theorem; g1a1 is def); the "
-                 "leaf g1a1x has children [] and the path g1, g1a, g1a1; g3 is read as census and its title is the claim")
+    @case("GR3", "G1 S4 (G1b S1, S2, S5): graph/step/<id>.json exists for EVERY step (a leaf too: 6 files), with exactly the keys card, children, commit, "
+                 "format, id, path, rests_on; g1 (a top step, path [], one child g1a that the step rests on: parent_rests_on true, rests_on empty); the "
+                 "closed card and the closed child have exactly the keys child_count, id, kind, path, proof, state, title (plus role when the step has one, "
+                 "and on a child parent_rests_on); kind is the kind of the step's ROOT for every step (g1a, g1a1x and g2 have a null claim and are theorem; "
+                 "g1a1 is def); proof is read for g1, none for g1a1 (a definition: no proof to read) and not_read for g1a, g1a1x, g2 and g3; the title is the "
+                 "outline `short` (g1, g3, g1a1) or, for a step with no claim and no short or title, the no_claim_label (g1a, g1a1x, g2); the leaf g1a1x has "
+                 "children [] and the path g1, g1a, g1a1; g3 is read as census")
     def _():
         b = _base()
         g1 = b.js("graph/step/g1.json")
@@ -11085,30 +11113,34 @@ def _selftest_cases():
         g3 = b.js("graph/step/g3.json")
         return _eq((sorted(k for k in b.files if k.startswith("graph/")), g1,
                     leaf["path"], leaf["children"], leaf["card"], g3["card"], g3["children"], g3["rests_on"],
-                    b.js("graph/step/g2.json")["card"], b.js("graph/step/g1a1.json")["card"]),
+                    b.js("graph/step/g2.json")["card"], b.js("graph/step/g1a1.json")["card"], b.js("graph/step/g1a.json")["children"]),
                    (["graph/index.json"] + [f"graph/step/{i}.json" for i in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")],
-                    {"card": {"child_count": 1, "id": "g1", "kind": "theorem", "path": [], "state": "read", "title": "Claim one"},
-                     "children": [{"child_count": 1, "id": "g1a", "kind": "theorem", "parent_rests_on": True, "path": ["g1"], "state": "read",
-                                   "title": GR_LABEL}],
+                    {"card": {"child_count": 1, "id": "g1", "kind": "theorem", "path": [], "proof": "read", "state": "read", "title": "Claim one"},
+                     "children": [{"child_count": 1, "id": "g1a", "kind": "theorem", "parent_rests_on": True, "path": ["g1"], "proof": "not_read",
+                                   "state": "read", "title": GR_LABEL}],
                      "commit": "unknown", "format": 1, "id": "g1", "path": [], "rests_on": []},
                     ["g1", "g1a", "g1a1"], [],
-                    {"child_count": 0, "id": "g1a1x", "kind": "theorem", "path": ["g1", "g1a", "g1a1"], "state": "read", "title": GR_LABEL},
-                    {"child_count": 0, "id": "g3", "kind": "theorem", "path": [], "state": "census", "title": "Claim four with é"}, [], [],
-                    {"child_count": 0, "id": "g2", "kind": "theorem", "path": [], "state": "none", "title": GR_LABEL},
-                    {"child_count": 1, "id": "g1a1", "kind": "def", "path": ["g1", "g1a"], "role": GR_ROLE, "state": "read", "title": "Claim three & <more>"}))
+                    {"child_count": 0, "id": "g1a1x", "kind": "theorem", "path": ["g1", "g1a", "g1a1"], "proof": "not_read", "state": "read", "title": GR_LABEL},
+                    {"child_count": 0, "id": "g3", "kind": "theorem", "path": [], "proof": "not_read", "state": "census", "title": "Claim four with é"}, [], [],
+                    {"child_count": 0, "id": "g2", "kind": "theorem", "path": [], "proof": "not_read", "state": "none", "title": GR_LABEL},
+                    {"child_count": 1, "id": "g1a1", "kind": "def", "path": ["g1", "g1a"], "proof": "none", "role": GR_ROLE, "state": "read",
+                     "title": "Claim three & <more>"},
+                    [{"child_count": 1, "id": "g1a1", "kind": "def", "parent_rests_on": False, "path": ["g1", "g1a"], "proof": "none", "role": GR_ROLE,
+                      "state": "read", "title": "Claim three & <more>"}]))
 
-    @case("GR4", "G1 the card line, `_card_line(group, no_claim_label)`, four arms in this order: (1) `short`, (2) `title`, (3) the first sentence of the "
-                 "claim text (backticks of a span removed FIRST, then cut by `_first_sentence`), (4) the no_claim_label words; never the Lean name; every arm "
-                 "has its backticks removed; the BT8-shaped text `We apply `f. g` here. More.` gives `We apply f.` (no lone backtick); a stop inside a "
-                 "formula mark does not cut; a blank title or a blank short is no line")
+    @case("GR4", "G1b S1 the card line, `_card_line(group, no_claim_label)`, in this order: (1) `short`, (2) `title` (each with the backticks of its spans "
+                 "removed), (3) the no_claim_label words ONLY when the group has no claim, else NO LINE (None); the first sentence of the claim is NOT an arm "
+                 "(a claim with neither short nor title gives None, the BT8-shaped text too); never the Lean name; a blank title or a blank short is no line "
+                 "(an empty claim object is a claim)")
     def _():
         cl = lambda **g: _card_line(dict({"claim": None}, **g), "LBL")
         c = lambda t: {"text": t}
         return _eq([cl(short="A `sh` line", title="Title", claim=c("Claim one. More.")), cl(title="The `T` term", claim=c("Claim one. More.")),
                     cl(claim=c("Claim one. More.")), cl(), cl(title=None), cl(title="  ", claim=c("Only claim.")), cl(short="", title="Ti"),
-                    cl(claim=c("We apply `f. g` here. More.")), cl(claim=c("Let $a. b$ be. More.")), cl(claim=c("No stop here")),
-                    cl(title="Ti", roots=[{"name": "leanname"}]), cl(roots=[{"name": "leanname"}]), cl(short="  ", claim=c("Cl. X"))],
-                   ["A sh line", "The T term", "Claim one.", "LBL", "LBL", "Only claim.", "Ti", "We apply f.", "Let $a. b$ be.", "No stop here", "Ti", "LBL", "Cl."])
+                    cl(claim=c("We apply `f. g` here. More.")), cl(claim=c("No stop here")), cl(title="Ti", roots=[{"name": "leanname"}]),
+                    cl(roots=[{"name": "leanname"}]), cl(short="  ", claim=c("Cl. X")), cl(title="  "), cl(claim=c("")), cl(claim={}),
+                    cl(short="S", claim=c("")), cl(short="`x` and `y`")],
+                   ["A sh line", "The T term", None, "LBL", "LBL", None, "Ti", None, None, "Ti", "LBL", None, "LBL", None, None, "S", "x and y"])
 
     @case("GR5", "G1 S4, the real outline's shape (outline/outline.json, read from this checkout, kinds and states from its claims since the table of "
                  "declarations is not in the repository): 23 step files; top is rh-from-everycharacter, primitive-to-all, three-inputs; the widest step "
@@ -11183,19 +11215,26 @@ def _selftest_cases():
                     [("GRAPH-CYCLE", "a", "is on a cycle of parents"), ("GRAPH-CYCLE", "b", "is on a cycle of parents")],
                     [("GRAPH-CYCLE", "x", "is on a cycle of parents")], (1, False, ["BUILD-ERROR GRAPH-ID Up " + idm])))
 
-    @case("GR9", "G1 S2, F38 c: a kind or a state with no row in the table refuses, `GRAPH-SYMBOL <step id> kind|state <value>` (a kind `none` too: there is no "
-                 "such row); a table row that no step uses stays in `symbols` (the fixture has no structure); through the function (a fourth kind, a fourth "
-                 "state, both) and through a build whose declaration table makes g1's root an `instance` (exit 1, nothing written)")
+    @case("GR9", "G1 S2, F38 c (G1b S3, S6): a kind, a state or a proof with no row in the table refuses, `GRAPH-SYMBOL <step id> kind|state|proof <value>` "
+                 "(a kind `none` too: there is no such row); a kind outside the table says what is allowed, ` (allowed: theorem, lemma, def, structure)`, and "
+                 "a state or a proof does not; a table row that no step uses stays in `symbols` (the fixture has no structure); through the function (a fourth "
+                 "kind, a fourth state, a fourth proof, all three) and through a build whose declaration table makes g1's root an `instance` (exit 1, nothing "
+                 "written)")
     def _():
         b = _build(decls=_decls_kinds({"foo": "instance"}))
-        return _eq((gr_codes([gr_row("a", kind="lemma")]), gr_codes([gr_row("a", state="half")]),
+        al = " (allowed: theorem, lemma, def, structure)"
+        return _eq((gr_codes([gr_row("a", kind="lemma")]), gr_codes([gr_row("a", state="half")]), gr_codes([gr_row("a", proof="maybe")]),
                     gr_codes([gr_row("a", kind="lemma", state="half"), gr_row("b", kind="def", state="census")]),
-                    gr_codes([gr_row("a", kind="structure", state="none"), gr_row("b", kind="def", state="read")]), gr_codes([gr_row("a", kind="none")]),
+                    gr_codes([gr_row("a", kind="structure", state="none"), gr_row("b", kind="def", state="read", proof="none")]),
+                    gr_codes([gr_row("a", kind="none")]), gr_codes([gr_row("a", proof=None)]),
+                    gr_codes([gr_row("a", kind="x", state="y", proof="z")]),
                     (b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")]),
                     sorted(_base().js("graph/index.json")["symbols"]["kinds"])),
-                   ([("GRAPH-SYMBOL", "a", "kind lemma")], [("GRAPH-SYMBOL", "a", "state half")],
-                    [("GRAPH-SYMBOL", "a", "kind lemma"), ("GRAPH-SYMBOL", "a", "state half")], [], [("GRAPH-SYMBOL", "a", "kind none")],
-                    (1, False, ["BUILD-ERROR GRAPH-SYMBOL g1 kind instance"]), ["def", "structure", "theorem"]))
+                   ([("GRAPH-SYMBOL", "a", "kind lemma" + al)], [("GRAPH-SYMBOL", "a", "state half")], [("GRAPH-SYMBOL", "a", "proof maybe")],
+                    [("GRAPH-SYMBOL", "a", "kind lemma" + al), ("GRAPH-SYMBOL", "a", "state half")], [], [("GRAPH-SYMBOL", "a", "kind none" + al)],
+                    [("GRAPH-SYMBOL", "a", "proof None")],
+                    [("GRAPH-SYMBOL", "a", "kind x" + al), ("GRAPH-SYMBOL", "a", "state y"), ("GRAPH-SYMBOL", "a", "proof z")],
+                    (1, False, ["BUILD-ERROR GRAPH-SYMBOL g1 kind instance" + al]), ["def", "structure", "theorem"]))
 
     @case("GR10", "G1 S5: GRAPH-EDGE: a premise on a step that is neither a sibling nor the step's own child (an uncle, the parent, a grandchild, a "
                   "step that does not exist) is `GRAPH-EDGE <from> <to> crosses subtrees` or `names no step`; a cycle in rests_on among siblings (also "
@@ -11237,8 +11276,7 @@ def _selftest_cases():
 
     @case("GR12", "G1 (A) `short`: `_graph_short_errors(groups)` accepts a non-empty string of at most 50 characters with no line break (50 accepted, 51 "
                   "refused) and refuses, each naming the id with its own reason, a value that is not a string, an empty or blank one, one over 50, one "
-                  "with a line break; a group without `short` is fine. PENDING: the same through `run` (an outline group carrying `short`) is not "
-                  "built here, because the checker refuses the key `short` today (UNKNOWN-KEY); the checker slice adds that case")
+                  "with a line break; a group without `short` is fine. The same through a build (the checker accepts `short` now) is GR24")
     def _():
         sh = lambda v: [tuple(e) for e in _graph_short_errors([{"id": "a", "short": v}])]
         return _eq((sh("x" * 50), sh("x" * 51), sh(7), sh(None), sh(""), sh("  "), sh("a\nb"), sh("a\rb"), sh("`" + "x" * 48 + "`"),
@@ -11247,23 +11285,28 @@ def _selftest_cases():
                     [("GRAPH-SHORT", "a", "is not a string")], [("GRAPH-SHORT", "a", "is empty")], [("GRAPH-SHORT", "a", "is empty")],
                     [("GRAPH-SHORT", "a", "has a line break")], [("GRAPH-SHORT", "a", "has a line break")], [], []))
 
-    @case("GR13", "G1 S4 through a build: the title of a card is the card line (a no-claim titled card shows its title with the backticks removed; a "
-                  "definition card that has a claim and a title shows the title, not the claim; an untitled claim card shows the FIRST SENTENCE of its "
-                  "claim, not all of it; a no-claim untitled card shows the no_claim_label, never the Lean name)")
+    @case("GR13", "G1b S1 through a build: the title of a card is the face line: the outline `short` (g1: the claim's first sentence is NOT used, and g1's "
+                  "claim says something else), else the outline `title` with the backticks removed (g1a, a step with no claim; g1a1 when it has no short), "
+                  "`short` over `title` (g1a1 has both), else the no_claim_label for a step with no claim and neither (g1a1x, g2)")
     def _():
-        o = _outline()
-        for g in o["groups"]:
-            if g["id"] == "g1a":
-                g["title"] = "The `g1a` step"
-            if g["id"] == "g1a1":
-                g["title"] = "Circle thing"
-            if g["id"] == "g1":
-                g["claim"]["text"] = "First sentence of one. A second sentence follows."
-        b = _build(outline=o)
-        ttl = lambda gid, parent: next(c["title"] for c in b.js(f"graph/step/{parent}.json")["children"] if c["id"] == gid)
-        return _eq((b.rc, b.js("graph/step/g1.json")["card"]["title"], ttl("g1a", "g1"), ttl("g1a1", "g1a"), ttl("g1a1x", "g1a1"),
-                    b.js("graph/step/g2.json")["card"]["title"], b.js("graph/step/g1a1.json")["card"]["title"]),
-                   (0, "First sentence of one.", "The g1a step", "Circle thing", GR_LABEL, GR_LABEL, "Circle thing"))
+        def build(drop_short=False):
+            o = _outline()
+            for g in o["groups"]:
+                if g["id"] == "g1a":
+                    g["title"] = "The `g1a` step"
+                if g["id"] == "g1a1":
+                    g["title"] = "Circle thing"
+                    if drop_short:
+                        del g["short"]
+                if g["id"] == "g1":
+                    g["claim"]["text"] = "First sentence of one. A second sentence follows."
+            return _build(outline=o, shorts=False)
+        b, nb = build(), build(True)
+        ttl = lambda x, gid, parent: next(c["title"] for c in x.js(f"graph/step/{parent}.json")["children"] if c["id"] == gid)
+        return _eq((b.rc, b.js("graph/step/g1.json")["card"]["title"], ttl(b, "g1a", "g1"), ttl(b, "g1a1", "g1a"), ttl(b, "g1a1x", "g1a1"),
+                    b.js("graph/step/g2.json")["card"]["title"], b.js("graph/step/g1a1.json")["card"]["title"],
+                    nb.rc, ttl(nb, "g1a1", "g1a"), nb.js("graph/step/g1a1.json")["card"]["title"]),
+                   (0, "Claim one", "The g1a step", "Claim three & <more>", GR_LABEL, GR_LABEL, "Claim three & <more>", 0, "Circle thing", "Circle thing"))
 
     @case("GR14", "G1 S6: the graph files are byte-identical under PYTHONHASHSEED 1 and 2, their keys are sorted, and every existing output of the fixture "
                   "build is byte-equal to what main wrote (sha256 of level0.json, level1.json, data.js, index.html and the six group files, pinned)")
@@ -11301,42 +11344,42 @@ def _selftest_cases():
         return _eq(([n in m for n in names], all(m[n] == hashlib.sha256(b.files[n]).hexdigest() for n in names if n in m), len(b.files),
                     "built: 6 groups, 4 notes, 8 blocks, 18 files, 0 word notes" in b.out.splitlines()), ([True] * 7, True, 18, True))
 
-    @case("GR16", "G1 S7: the graph files go through the leak check and the static check like the others: a release line in a claim is SOURCE-LEAK and "
-                  "names graph/step/g1.json with the other files that hold it; fetch( in a claim is PAGE-STATIC `found in graph/step/g1.json` (the "
-                  "function `_graph_static_problems` reads each graph/*.json and nothing else); a `<script>` in a claim is escaped in the JSON "
+    @case("GR16", "G1 S7 (G1b S1): the graph files go through the leak check and the static check like the others: a release line in a `short` is "
+                  "SOURCE-LEAK and names graph/step/g1.json (the only file that holds a short: the card line is never the claim, so a release line in a CLAIM "
+                  "is not found in the graph files, PJ4 SPAN1 B1e); fetch( in a short is PAGE-STATIC `found in graph/step/g1.json` (the function "
+                  "`_graph_static_problems` reads each graph/*.json and nothing else); a `<script>` in a short is escaped in the JSON "
                   "(`\\u003cscript\\u003e`, no raw `<`, `>` or `&`) and its value reads back unchanged")
     def _():
-        def claim(text, **kw):
+        def short(text, **kw):
             o = _outline()
-            next(g for g in o["groups"] if g["id"] == "g1")["claim"]["text"] = text
+            next(g for g in o["groups"] if g["id"] == "g1")["short"] = text
             return _build(outline=o, **kw)
-        leak = claim(LEAK, src={"A/B.lean": LEAK + "\n"})
-        fet = claim("fetch(x) end. More.")
-        scr = claim("<script>x</script> & end. More.")
+        leak = short(LEAK, src={"A/B.lean": LEAK + "\n"})
+        fet = short("fetch(x) end.")
+        scr = short("<script>x</script> & end.")
         raw = scr.text("graph/step/g1.json")
         return _eq(([ln for ln in leak.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK")], leak.rc,
                     [ln for ln in fet.out.splitlines() if ln.startswith("BUILD-ERROR PAGE-STATIC") and "graph/" in ln], fet.rc,
                     [tuple(e) for e in _graph_static_problems({"graph/step/x.json": b'{"title": "fetch(a)"}', "level0.json": b"fetch(", "graph/index.json": b"{}"})],
                     scr.rc, "\\u003cscript\\u003ex\\u003c/script\\u003e \\u0026 end." in raw, any(ch in raw for ch in "<>&"),
                     scr.js("graph/step/g1.json")["card"]["title"]),
-                   (["BUILD-ERROR SOURCE-LEAK data.js holds a line of the release", "BUILD-ERROR SOURCE-LEAK graph/step/g1.json holds a line of the release",
-                     "BUILD-ERROR SOURCE-LEAK index.html holds a line of the release", "BUILD-ERROR SOURCE-LEAK level0.json holds a line of the release",
-                     "BUILD-ERROR SOURCE-LEAK level1.json holds a line of the release"], 1,
+                   (["BUILD-ERROR SOURCE-LEAK graph/step/g1.json holds a line of the release"], 1,
                     ["BUILD-ERROR PAGE-STATIC fetch( found in graph/step/g1.json"], 1,
                     [("PAGE-STATIC", "fetch(", "found in graph/step/x.json")], 0, True, False, "<script>x</script> & end."))
 
-    @case("GR17", "G1: the strings file of this checkout (site/strings.json) holds the six symbol keys (symbol_kind_theorem, def, structure and "
-                  "symbol_state_read, census, none) as non-empty strings with no placeholder, the prototype's words, and no symbol_kind_none; the builder's own "
-                  "check passes the file; and an existing "
+    @case("GR17", "G1 (G1b S3): the strings file of this checkout (site/strings.json) holds the nine words keys of the symbol table (symbol_kind_theorem, def, "
+                  "structure; sheet_statement_read, census, not_read; sheet_proof_read, not_read, none) as non-empty strings with no placeholder, and no "
+                  "symbol_kind_none and no symbol_state_* key; the builder's own check passes the file; and an existing "
                   "output directory that holds a graph/ folder of an earlier build is replaced, not merged, by --force")
     def _():
         with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
             real = json.load(f)
         old = lambda out: _put(os.path.join(out, "graph", "stale.json"), "old")
         b = _build(pre=old, force=True)
-        return _eq(({k: real.get(k) for k in GR_WORDS}, "symbol_kind_none" in real, "symbol_kind_none" in _strings(), _strings_problems(real), b.rc,
+        return _eq(({k: real.get(k) for k in GR_WORDS}, "symbol_kind_none" in real, "symbol_kind_none" in _strings(),
+                    [k for k in real if k.startswith("symbol_state_")], _strings_problems(real), b.rc,
                     "graph/stale.json" in b.files, "graph/index.json" in b.files),
-                   (GR_WORDS, False, False, [], 0, False, True))
+                   (GR_WORDS, False, False, [], [], 0, False, True))
 
     @case("GR19", "G1 (amendment) role: a closed card and a closed child carry an OPTIONAL `role`, the words the list page prints for the step's root_role "
                   "(the strings key named_statement_use_line, for root_role named_statement), and the key is ABSENT when there are no such words: never null, never "
@@ -11355,9 +11398,9 @@ def _selftest_cases():
                    ({"g1": None, "g1a": None, "g1a1": GR_ROLE, "g1a1x": None, "g2": None, "g3": None},
                     {"g1": False, "g1a": False, "g1a1": True, "g1a1x": False, "g2": False, "g3": False},
                     {"g1a": False, "g1a1": True, "g1a1x": False}, GR_ROLE,
-                    ["child_count", "id", "kind", "path", "role", "state", "title"],
-                    ["child_count", "id", "kind", "parent_rests_on", "path", "role", "state", "title"],
-                    ["child_count", "id", "kind", "path", "state", "title"], "Words", [False, False, True], [None, None, "Words"]))
+                    ["child_count", "id", "kind", "path", "proof", "role", "state", "title"],
+                    ["child_count", "id", "kind", "parent_rests_on", "path", "proof", "role", "state", "title"],
+                    ["child_count", "id", "kind", "path", "proof", "state", "title"], "Words", [False, False, True], [None, None, "Words"]))
 
     @case("GR20", "G1 (amendment) kind: the kind of a step is the kind of its ROOT, for every step (a null claim too): theorem or lemma gives theorem, def gives "
                   "def, structure gives structure; a root kind outside those (instance) refuses, `GRAPH-SYMBOL <id> kind <the root's kind>`; with several "
@@ -11380,6 +11423,183 @@ def _selftest_cases():
         facts = lambda x: {(k, v["commit"], v["format"]) for k, v in ((k, json.loads(x.files[k])) for k in x.files if k.startswith("graph/"))}
         return _eq((facts(_base()), facts(dirty), facts(b) == {(k, head, 1) for k in b.files if k.startswith("graph/")}, len(facts(b))),
                    ({(k, "unknown", 1) for k in _base().files if k.startswith("graph/")}, {(k, "dirty", 1) for k in dirty.files if k.startswith("graph/")}, True, 7))
+
+    # ---- G1b: the face line (section 8), the proof state, the symbols shape, the strings object, exact keys, the root fan-out
+    GR_REAL_LINES = [
+        ("rh-from-everycharacter", "From every character to the Riemann Hypothesis"),
+        ("rh-from-zeta-right", "From zeta right of 1/2 to the Riemann Hypothesis"),
+        ("primitive-to-all", "From primitive characters to all characters"),
+        ("zerofreeall", "Zero-freeness right of 1/2: primitive characters"),
+        ("three-inputs", "Three inputs give zero-freeness right of 1/2"),
+        ("families-from-topg", "Class statement and hosts give zero-freeness"),
+        ("topg", "The statement about classes of families"),
+        ("zeros-enter", "Three level properties exclude zeros right of 1/2"),
+        ("window-bound", "Near-square-root bound on a level's error term"),
+        ("good-pair", "For every large range, a good pair of primes"),
+        ("zero-density", "Few characters have a zero near the line Re s = 1"),
+        ("window-inequality", "The window inequality at every level"),
+        ("landau-step", "A one-sided bound on windows forbids zeros"),
+        ("landau-property", "The Landau property of a level at one scale"),
+        ("input-green", "Polynomials and the library's cuspidal functions"),
+        ("input-vwin", "The window supply (Input 2)"),
+        ("vwin-proof", "The library's proof of Input 2"),
+        ("hosts", "The window supply meets each host requirement"),
+        ("input-hypsalt", "The hypothesis package: data with conditions"),
+        ("linkn", "The link condition"),
+        ("literature-statements", "Three literature hypotheses in one structure"),
+        ("window-bound-every-level", "The same bound on every level's windows"),
+        ("landau-every-level", "Every level has the Landau property")]
+
+    @case("GR21", "G1b S1: the face line of each of the 23 steps of the REAL outline (outline/outline.json, read from this checkout), written out: 18 steps "
+                  "resolve by their `short` and 5 (topg, window-inequality, landau-property, vwin-proof, linkn) by their `title`, in the outline's order; "
+                  "none has no line, the longest is 49 characters, none holds a `$`, and the line errors of the whole outline are none")
+    def _():
+        with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
+            og = json.load(f)["groups"]
+        lines = [(g["id"], _card_line(g, "LBL")) for g in og]
+        return _eq((lines, len(lines), max(len(t) for _i, t in lines), sum(1 for g in og if "short" in g), sum(1 for g in og if "short" not in g and "title" in g),
+                    [i for i, t in lines if "$" in t], _graph_line_errors(og, "LBL")),
+                   (GR_REAL_LINES, 23, 49, 18, 5, [], []))
+
+    @case("GR22", "G1b S1 the refusals of the face line, `_graph_line_errors(groups, no_claim_label)` over the RESOLVED line of every step, each "
+                  "`GRAPH-SHORT <id> <reason> (<n> characters)`: no line (a claim and neither short nor title: 0 characters), a line over 50 characters AFTER the "
+                  "backticks of its spans are removed (50 accepted, 51 refused, the strip counted: a 50-character line inside backticks is accepted), a line "
+                  "holding `$`; a title of 60 characters on a step WITH a short is not looked at (the short is the line); a no-claim step gets the label, and a "
+                  "label over 50 refuses; the shape errors of a bad `short` (not a string, empty, a line break, over 50 raw) are reported once, not twice; one "
+                  "refusal per step, in the group order")
+    def _():
+        ln = lambda **g: [tuple(e) for e in _graph_line_errors([dict({"id": "a", "claim": None}, **g)], "LBL")]
+        cl = {"text": "A claim."}
+        no = "has no face line (a claim, and neither a short nor a title)"
+        lg = "face line is longer than 50 characters"
+        dl = "face line holds a dollar sign (TeX source)"
+        return _eq((ln(claim=cl), ln(claim=cl, title="x" * 50), ln(claim=cl, title="x" * 51), ln(claim=cl, short="x" * 50), ln(claim=cl, short="x" * 51),
+                    ln(claim=cl, title="`" + "x" * 50 + "`"), ln(claim=cl, title="`" + "x" * 51 + "`"), ln(claim=cl, title="a" * 60, short="Short"),
+                    ln(claim=cl, short="Has $x$ in it"), ln(claim=cl, title="Has $x$ in it"), ln(title="A" * 60), ln(), ln(claim=cl, short=7),
+                    ln(claim=cl, short="a\nb"), ln(claim=cl, short=""),
+                    [tuple(e) for e in _graph_line_errors([{"id": "a", "claim": cl}, {"id": "b", "claim": None, "title": "T"}, {"id": "c", "claim": cl, "title": "$"}], "LBL")],
+                    [tuple(e) for e in _graph_line_errors([{"id": "a", "claim": None}], "x" * 51)],
+                    [tuple(e) for e in _graph_line_errors([{"id": "a", "claim": None}], "x" * 50)]),
+                   ([("GRAPH-SHORT", "a", no + " (0 characters)")], [], [("GRAPH-SHORT", "a", lg + " (51 characters)")], [],
+                    [("GRAPH-SHORT", "a", "is longer than 50 characters")], [], [("GRAPH-SHORT", "a", lg + " (51 characters)")], [],
+                    [("GRAPH-SHORT", "a", dl + " (13 characters)")], [("GRAPH-SHORT", "a", dl + " (13 characters)")],
+                    [("GRAPH-SHORT", "a", lg + " (60 characters)")], [], [("GRAPH-SHORT", "a", "is not a string")], [("GRAPH-SHORT", "a", "has a line break")],
+                    [("GRAPH-SHORT", "a", "is empty")],
+                    [("GRAPH-SHORT", "a", no + " (0 characters)"), ("GRAPH-SHORT", "c", dl + " (1 characters)")],
+                    [("GRAPH-SHORT", "a", lg + " (51 characters)")], []))
+
+    @case("GR23", "G1b S1 through a build, the refusal of the face line is wired into the run (the surviving mutant of the first round, `return [], rows` "
+                  "in `_graph_rows`): a claim with neither short nor title (g1 loses its short), a title of 60 characters on a step with no short (g1a), 51 "
+                  "refused and 50 accepted, a `$` in a title (g1a) and in a short (g1), each exit 1, nothing written, the line `BUILD-ERROR GRAPH-SHORT <id> "
+                  "<reason> (<n> characters)` and no other GRAPH line; a title of 60 on a step that HAS a short (g1a1) builds; a short of 50 builds; a 50-character "
+                  "title inside backticks builds with the backticks removed")
+    def _():
+        def go(**edits):
+            o = _outline()
+            for gid, kv in edits.items():
+                g = next(g for g in o["groups"] if g["id"] == gid)
+                for k, v in kv.items():
+                    if v is None:
+                        del g[k]
+                    else:
+                        g[k] = v
+            b = _build(outline=o, shorts=False)
+            return (b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")]), b
+        e = lambda i, why: ["BUILD-ERROR GRAPH-SHORT " + i + " " + why]
+        none, _b = go(g1={"short": None})
+        l60, _b = go(g1a={"title": "A" + "x" * 59})
+        l51, _b = go(g1a={"title": "A" + "x" * 50})
+        l50, b50 = go(g1a={"title": "A" + "x" * 49})
+        dt, _b = go(g1a={"title": "A $x$ b"})
+        ds, _b = go(g1={"short": "Has $x$ in it"})
+        keep, bk = go(g1a1={"title": "A" + "x" * 59})
+        s50, bs = go(g1={"short": "A" + "x" * 49})
+        bt, bbt = go(g1a={"title": "`A" + "x" * 49 + "`"})
+        return _eq((none, l60, l51, l50, b50.js("graph/step/g1a.json")["card"]["title"], dt, ds, keep, bk.js("graph/step/g1a1.json")["card"]["title"],
+                    s50, bs.js("graph/step/g1.json")["card"]["title"], bt, bbt.js("graph/step/g1a.json")["card"]["title"]),
+                   ((1, False, e("g1", "has no face line (a claim, and neither a short nor a title) (0 characters)")),
+                    (1, False, e("g1a", "face line is longer than 50 characters (60 characters)")),
+                    (1, False, e("g1a", "face line is longer than 50 characters (51 characters)")), (0, True, []), "A" + "x" * 49,
+                    (1, False, e("g1a", "face line holds a dollar sign (TeX source) (7 characters)")),
+                    (1, False, e("g1", "face line holds a dollar sign (TeX source) (13 characters)")),
+                    (0, True, []), "Claim three & <more>", (0, True, []), "A" + "x" * 49, (0, True, []), "A" + "x" * 49))
+
+    @case("GR24", "G1b S2 the proof state: a closed card and a closed child carry `proof`, from the group's `proof_read` (the summary key of level1.json): "
+                  "True is `read`, False `not_read`, None `none`, by the one table `proofs`, through `_graph_proof`; on the fixture g1 is read, g1a, g1a1x, g2 "
+                  "and g3 are not_read and g1a1 (a definition) is none, the same value on the card and on the child entry; a row with proof `none` is "
+                  "accepted by the table")
+    def _():
+        b = _base()
+        l1 = {}
+
+        def walk(n):
+            l1[n["id"]] = n["proof_read"]
+            for c in n.get("children", []):
+                walk(c)
+        for st in b.js("level1.json")["steps"]:
+            walk(st)
+        cards = {i: b.js(f"graph/step/{i}.json")["card"]["proof"] for i in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")}
+        kids = {c["id"]: c["proof"] for i in ("g1", "g1a", "g1a1") for c in b.js(f"graph/step/{i}.json")["children"]}
+        return _eq(([_graph_proof(True), _graph_proof(False), _graph_proof(None)], l1, cards, kids,
+                    gr_codes([gr_row("a", proof="none"), gr_row("b", proof="not_read"), gr_row("c", proof="read")])),
+                   (["read", "not_read", "none"], {"g1": True, "g1a": False, "g1a1": None, "g1a1x": False, "g3": False, "g2": False},
+                    {"g1": "read", "g1a": "not_read", "g1a1": "none", "g1a1x": "not_read", "g2": "not_read", "g3": "not_read"},
+                    {"g1a": "not_read", "g1a1": "none", "g1a1x": "not_read"}, []))
+
+    @case("GR25", "G1b S3, S4 the strings object: index.json `strings` is {key: text} for exactly the 9 `words` keys of the symbols rows (3 kinds, 3 states, "
+                  "3 proofs) with the strings file's values and no other key (the runtime keys of the page are a later slice); every `words` of every row is a "
+                  "key of `strings`; `text` of every row is `strings[words]`; a value with `{n}` in it stays literal in both places")
+    def _():
+        ix = _base().js("graph/index.json")
+        st = ix["strings"]
+        rows = [r for t in ("kinds", "proofs", "states") for r in ix["symbols"][t].values()]
+        sj = _strings()
+        sj["sheet_proof_read"] = "{n} proofs read"
+        ix2 = _graph_files([gr_row("a")], "c0", sj)[1]["graph/index.json"]
+        return _eq((sorted(st), sorted(r["words"] for r in rows), len(rows), all(r["words"] in st for r in rows), all(r["text"] == st[r["words"]] for r in rows),
+                    st == GR_WORDS, ix2["strings"]["sheet_proof_read"], ix2["symbols"]["proofs"]["read"]["text"], sorted(ix2["strings"]) == sorted(GR_WORDS)),
+                   (sorted(GR_WORDS), sorted(GR_WORDS), 9, True, True, True, "{n} proofs read", "{n} proofs read", True))
+
+    @case("GR26", "G1b S5 exact keys and paths: the keys of index.json, of a step file, of a closed card (with and without role) and of a child; a link of a "
+                  "depth-4 step (rows a > b > c > d > e, f; f rests on e): from_path and to_path are the ancestors plus the parent, [a, b, c, d]; the "
+                  "path of d is [a, b, c] and of f [a, b, c, d] and the id itself is never in a path; a step file's `commit` is index.json's `commit`, on a "
+                  "build with a full notes commit")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1), gr_row("c", "b", 1), gr_row("d", "c", 1), gr_row("e", "d", 1), gr_row("f", "d", 2, ["e"], role="R")]
+        errs, objs = _graph_files(rows, "c0", _strings())
+        d, f = objs["graph/step/d.json"], objs["graph/step/f.json"]
+        b, head = f60_build(F60_BLOB)
+        steps = [json.loads(b.files[k]) for k in sorted(b.files) if k.startswith("graph/step/")]
+        return _eq((errs, d["rests_on"], d["path"], f["path"], d["children"][1]["path"], d["children"][1]["parent_rests_on"], sorted(objs["graph/index.json"]),
+                    sorted(d), sorted(d["card"]), sorted(d["children"][0]), sorted(d["children"][1]), sorted(f["card"]),
+                    len(steps), {st["commit"] for st in steps}, json.loads(b.files["graph/index.json"])["commit"] == head, {st["commit"] for st in steps} == {head}),
+                   ([], [{"from": "f", "from_path": ["a", "b", "c", "d"], "to": "e", "to_path": ["a", "b", "c", "d"]}], ["a", "b", "c"], ["a", "b", "c", "d"],
+                    ["a", "b", "c", "d"], False,
+                    ["assets", "commit", "format", "max_children", "rests_on", "steps", "strings", "symbols", "top"],
+                    ["card", "children", "commit", "format", "id", "path", "rests_on"],
+                    ["child_count", "id", "kind", "path", "proof", "state", "title"],
+                    ["child_count", "id", "kind", "parent_rests_on", "path", "proof", "state", "title"],
+                    ["child_count", "id", "kind", "parent_rests_on", "path", "proof", "role", "state", "title"],
+                    ["child_count", "id", "kind", "path", "proof", "role", "state", "title"], 6, {head}, True, True))
+
+    @case("GR27", "G1b S6 (c): the root's own children are counted for the fan-out too: 40 top steps are accepted, 41 refuse, `GRAPH-FANOUT root has 41 "
+                  "children (more than 40)`, through the function; with a step that also has 41 children, both are named, the root first; and through a build "
+                  "of the fixture with 40 and with 41 top steps (exit 0; exit 1, nothing written, the line names root)")
+    def _():
+        tops = lambda n: [gr_row(f"t{i:02d}", "root", i) for i in range(n)]
+
+        def big(n):
+            o = _outline()
+            o["groups"] += [_g(f"t{i:02d}", 1, "root", 10 + i, [FOO]) for i in range(n)]
+            return o
+        both = [gr_row("p", "root", 0)] + [gr_row(f"k{i:02d}", "p", i) for i in range(41)] + tops(40)
+        b40, b41 = _build(outline=big(37)), _build(outline=big(38))
+        return _eq((gr_codes(tops(40)), gr_codes(tops(41)), gr_codes(tops(39)), gr_codes(both),
+                    (b40.rc, len(b40.js("graph/index.json")["top"])),
+                    (b41.rc, b41.existed, [ln for ln in b41.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")])),
+                   ([], [("GRAPH-FANOUT", "root", "has 41 children (more than 40)")], [],
+                    [("GRAPH-FANOUT", "root", "has 41 children (more than 40)"), ("GRAPH-FANOUT", "p", "has 41 children (more than 40)")],
+                    (0, 40), (1, False, ["BUILD-ERROR GRAPH-FANOUT root has 41 children (more than 40)"])))
 
     @case("SHORT1", "the optional outline group key `short` goes through the builder's own call of the checker: a valid one on a group builds (exit 0, "
                     "the files are written); one of 51 characters is the checker's BAD-VALUE on stdout, exit 1, `REFUSED: notes_meta found errors; "
