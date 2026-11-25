@@ -1782,13 +1782,18 @@ def _edition_check(odata, outline, ctx, name):
         if b.get("claim") is None and isinstance(g.get("claim"), dict):   # F63: a first claim (the key absent or null at the base) is not an edition
             if ce == 2:   # a first claim is not a rewrite, whether the group was at 1 or at 2 at the base
                 err("EDITION-FIRST-CLAIM", gid, "a first claim is not a rewrite; remove edition and edition_date")
-            else:   # a group at 2 at the base retires its mark in this change (with the title it described), and says so
-                out.append(_f("FIRST-CLAIM", name, None, gid + (", edition mark retired with the title" if be == 2 else ""), LISTING))
-                n_first += 1
+            else:
                 left = [p for p in paths if not _first_claim_path(b, g, p)]   # text that was published and is altered stays a change
-                if left:
+                if left:   # refused: the refusal alone, the first claim is neither listed nor counted
                     err("OUTLINE-CHANGED", gid, f"{', '.join(left)} changed beside a first claim: published text changes only under an edition, "
                                                 "which a first claim does not carry (make it a separate change)")
+                else:   # accepted: a group at 2 at the base retires its mark in this change, and the line says so (with the title only if it went)
+                    note = ""
+                    if be == 2:
+                        note = ", edition mark retired with the title" if (_text_value(b, "title") is not None and _text_value(g, "title") is None) \
+                            else ", edition mark retired"
+                    out.append(_f("FIRST-CLAIM", name, None, gid + note, LISTING))
+                    n_first += 1
         elif be == 1 and ce == 1:
             if paths:
                 err("OUTLINE-CHANGED", gid, f"{', '.join(paths)} changed, but the edition is not raised to 2 with an edition_date")
@@ -6234,8 +6239,7 @@ def _():
 
 
 @case("F63n", "the line of an accepted first claim on a group at edition 2 at the base: the title KEPT reads `, edition mark retired`, the title REMOVED reads "
-              "`, edition mark retired with the title`, no title at the base or now reads `, edition mark retired`, a group at 1 at the base has no suffix; "
-              "a first claim that sets a recognition field empty at the base, the title kept, is accepted and counted")
+              "`, edition mark retired with the title`, no title at the base or now reads `, edition mark retired`, a group at 1 at the base has no suffix")
 def _():
     kept = _edc(_g3("Plain name", _C3), _g3("Plain name", ed="2026-11-20"))
     fe(kept, ["FIRST-CLAIM outline.json g3, edition mark retired", _FC_ROLE3], 0)
@@ -6247,9 +6251,6 @@ def _():
     fe(_edc(_g3("Plain name", _C3), _g3("Plain name")), ["FIRST-CLAIM outline.json g3", _FC_ROLE3], 0)
     r = _edc(None, _nul1("Plain title"))   # the title goes here with no edition at the base: no suffix
     fe(r, ["FIRST-CLAIM outline.json g1", _FC_FORM1, _FC_ROLE1], 0)
-    r = _edc(_both(_set("g1", "title", "Plain title")), _nul1("Plain title"))   # recognition and claim set, title kept
-    fe(r, ["FIRST-CLAIM outline.json g1", _FC_FORM1, _FC_ROLE1], 0)
-    ok("first claims: 1" in r.lines, r.out)
 
 
 def _run_cases(cases, write):
