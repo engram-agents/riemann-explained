@@ -691,7 +691,8 @@
      "module": "Development.AutomorphicArithmetic.MeanSquareBounds.pairEx",
      "name": "QH.pairEx"
     }
-   ]
+   ],
+   "title": "The good pair"
   },
   {
    "claim": null,
@@ -705,7 +706,8 @@
      "module": "Formalism.GL3MeanSquares.GenusMeanAsymptotics.JacobiCharacterSums.CountZAll",
      "name": "Formalism.HermitianLattices.Ext.PrimitiveCharacterCasts.ZD.zero_density_box"
     }
-   ]
+   ],
+   "title": "The zero-density box"
   },
   {
    "claim": null,
