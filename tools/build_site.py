@@ -446,7 +446,13 @@ notes; the builder has no rule of its own for it (the checker refuses first). WO
 claim, the conditions, the note titles and the text of argument and interpretation blocks, not the strings file's
 hrefs; it lists, it does not judge. The Evidence section shows a block's lines and file name together; a block with
 lines and no file shows `lines_missing` for both, because the lines name no file. The notes are the files NOTES_DIR matches by notes_meta's default pattern. The page's
-note links are the strings file's `note_href` with the note's file name filled in.
+note links are the strings file's `note_href` with the note's file name filled in, and (F60) the full notes commit where the template holds
+{commit}: the shipped value is https://github.com/engram-agents/riemann-explained/blob/{commit}/docs/{file}, a record at that commit and never
+`main`, because the website does not serve the notes' markdown. {commit} with no 40-hex notes commit (no --notes-commit, a dirty tree) is
+`NOTE-HREF-COMMIT note_href holds {commit}, ...`, exit 1, nothing written; a template without {commit} builds as before. A note anchor with an
+https link is written `<a class="note-link" href="...">` (helper `_note_open`, used at the five places a note anchor is written: the header list,
+the argument's read-more link, the corrections list, a card's notes list, the block line of Evidence); a relative link has no class. The static
+check exempts `<a class=note-link href=https://...>` by class TOKEN, the one exemption F60 added. Cases NL1 to NL9, NL5b, NL8b.
 
 LIMIT (F24b). The page trusts the checker's rules on roles and forms: a model that breaks them (open_in_literature on an object, an
 established on a result) is not guarded and may raise. A group with no root_role takes the class of its root's kind for the page.
@@ -2881,13 +2887,13 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     if errors:
         return _refuse(errors)
     dirty = n_dirty or tools_state[1]
-    if "{commit}" in sj["note_href"] and not _FULL_COMMIT.fullmatch(n_commit):   # F60: never a link to /blob/unknown/
-        return _refuse([("NOTE-HREF-COMMIT", "note_href", f"holds {{commit}}, but the build has no full notes commit (it is {n_commit}; "
-                                                          "give --notes-commit and --repo, and build from a clean tree)")])
     commits = {"notes": n_commit, "release": odata["release"], "tools": tools_state[0]}
     if dirty:
         commits = {k: "dirty" for k in commits}
-    m = _model(notes_dir, odata, _decl_rows(decls), sj, source_check, errors, n_commit)
+    if "{commit}" in sj["note_href"] and not _FULL_COMMIT.fullmatch(commits["notes"]):   # F60: never a link to /blob/unknown/ or /blob/dirty/
+        return _refuse([("NOTE-HREF-COMMIT", "note_href", f"holds {{commit}}, but the build has no full notes commit (it is {commits['notes']}; "
+                                                          "give --notes-commit and --repo, and build from a clean tree)")])
+    m = _model(notes_dir, odata, _decl_rows(decls), sj, source_check, errors, commits["notes"])
     word_notes = _word_notes(m, sj)
     for where, word in word_notes:
         print(f"WORD-NOTE {where} {word}")
@@ -10610,6 +10616,32 @@ def _selftest_cases():
                      for c in ("abcdef012345", "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "abcdef0123456789abcdef0123456789abcdef012")],
                     [0, 0, 0], 0,
                     [(True, "https://github.com/engram-agents/riemann-explained/blob/abcdef0123456789abcdef0123456789abcdef01/docs/00-whole.md")]))
+
+    @case("NL8b", "F60 (L2): a dirty build never pins a link: with {commit} in the template, a note edited after the commit (the notes id is stamped `dirty`) "
+                  "and a dirty tools tree with clean notes are each refused (`it is dirty`), exit 1, nothing written; the same dirty notes with a "
+                  "template without {commit} build (exit 0)")
+    def _():
+        if shutil.which("git") is None:
+            raise _SkipCase("no git program")
+        res = []
+        for tpl, edit, state in ((F60_BLOB, True, TOOLS_OK), (F60_BLOB, False, ("tools0", True)), ("notes/{file}", True, TOOLS_OK)):
+            st = _strings()
+            st["note_href"] = tpl
+            with tempfile.TemporaryDirectory() as d:
+                p = _plant(d, strings=st)
+                _git(d, "init", "-q")
+                _git(d, "add", "-A")
+                _git(d, "commit", "-q", "-m", "base")
+                if edit:
+                    with open(os.path.join(p["notes"], "02-two.md"), "a", encoding="utf-8") as f:
+                        f.write("\nMore.\n")
+                o, e = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+                    rc = run(p["notes"], p["outline"], p["decls"], p["strings"], p["out"], notes_commit="HEAD", repo=d, tools_state=state)
+                res.append((rc, [x for x in o.getvalue().splitlines() if x.startswith("BUILD-ERROR")], os.path.exists(p["out"])))
+        line = ("BUILD-ERROR NOTE-HREF-COMMIT note_href holds {commit}, but the build has no full notes commit (it is dirty; "
+                "give --notes-commit and --repo, and build from a clean tree)")
+        return _eq(res, [(1, [line], False), (1, [line], False), (0, [], True)])
 
     @case("NL9", "F60: the strings file of this checkout (site/strings.json) holds note_href as the blob address with {commit} and {file}, passes the "
                 "builder's own strings check (the placeholder tables accept it), and a build of the fixture out of a git repository with it gives "
