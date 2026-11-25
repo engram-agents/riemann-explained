@@ -702,7 +702,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "$E_F$, the family's weighted error term, is a weighted sum, over the family, of smoothed twisted von Mangoldt sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with the main term subtracted: $y \\log y - (1+\\gamma)y$ for the trivial character, and a term $y \\cdot L'(\\chi,1)/L(\\chi,1)$ otherwise ($L(\\chi,1) \\ne 0$ for $\\chi \\ne 1$ is a theorem of the library Mathlib, so the quotient is a real number).",
+     "$E_F$, the family's weighted error term, is a weighted sum, over the family, of smoothed twisted von Mangoldt sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with the main term subtracted: $y \\log y - (1+\\gamma)y$ for the trivial character, and a term $y \\cdot L'(\\chi,1)/L(\\chi,1)$ otherwise ($L(\\chi,1) \\ne 0$ for $\\chi \\ne 1$ is a theorem of the library Mathlib, so the quotient is well defined).",
      "The constant $C$ is any real number; the windows are: for every $Y_0$ there is $Y \\ge Y_0$ with the bound on all of $[Y, Y^{1+\\delta}]$."
     ],
     "conventions_checked": [
