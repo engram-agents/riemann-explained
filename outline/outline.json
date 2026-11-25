@@ -678,7 +678,7 @@
     "text": "For every level $\\Lambda$ (in the library's sense), all constants and every $\\varepsilon > 0$, there is $x_1$ such that for every $x \\ge x_1$ and every host (in the library's sense) satisfying two conditions of the library on the host at $x$ with those constants, the level's weighted error term satisfies $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$. The threshold $x_1$ depends on the level and the constants, not on the host."
    },
    "id": "window-bound",
-   "short": "Square-root bound on a level's error term",
+   "short": "Near-square-root bound on a level's error term",
    "level": 4,
    "order": 3,
    "parent": "zeros-enter",
@@ -843,7 +843,7 @@
     "text": "For every integer $M \\ge 1$, every $\\varepsilon$ with $0 < \\varepsilon < 1/52$ and every $A \\ge 1$, there is $Y_1$ such that for every $Y \\ge Y_1$ there are primes $q$ and $d$ that form a good pair for $M$, $\\varepsilon$ and the range from $Y$ to $Y^A$: the pair meets the four conditions listed below"
    },
    "id": "good-pair",
-   "short": "A good pair of primes for every large range",
+   "short": "For every large range, a good pair of primes",
    "level": 5,
    "order": 1,
    "parent": "window-bound",
@@ -888,7 +888,7 @@
     "text": "There is a constant $C$ such that for every $Q \\ge 3$, every finite set of primitive Dirichlet characters, each of modulus at most $Q$ and each with an L-function that has a zero $s$ with real part greater than $1 - 1/400$ and $|t| \\le Q$, where $t$ is the imaginary part of $s$, has at most $C Q^{1/4}$ members"
    },
    "id": "zero-density",
-   "short": "Few characters have a zero near 1",
+   "short": "Few characters have a zero near the line Re s = 1",
    "level": 5,
    "order": 2,
    "parent": "window-bound",
