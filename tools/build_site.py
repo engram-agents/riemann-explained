@@ -124,8 +124,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      none; manifest counts keep `editions` (the groups at 2) and gain `note_editions` (the notes at 2). The first-screen paragraph appears when any
      group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph (which is `edition_note_card`: the
      text of the card was rewritten), one `edition_note_card_note` paragraph (a sentence that
-     speaks of the note, not of the card) per edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
-     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6, NC1 to NC7.
+     speaks of the note, not of the card) per edition-2 note of the card, whatever the dates (F56: a note dated the same day as the group's edition gets its paragraph too: the group's
+     paragraph links the outline file and the note's links the note's file, two sentences and two files), {link} to `edition_href_blob` with
+     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND9, NC1 to NC7.
   F52 EDITION FIELDS THE BUILDER CANNOT USE. A group or note at edition 2 whose `edition_date` is missing or not a string is `BUILD-ERROR
      EDITION-DATE <id> edition 2 needs an edition_date`; an `edition` that is not the integer 1 or 2 (a boolean and 2.0 included) is
      `BUILD-ERROR EDITION-VALUE <id> edition must be 1 or 2`: exit 1, OUT_DIR not written, no traceback, every bad group then note in one
@@ -2458,9 +2459,7 @@ def _render_page(m, s, facts, dirty):
             o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], fl["edition"]["date"],
                                                                 _fill(s["edition_href_blob"], file=EDITION_OUTLINE_FILE),
                                                                 s["edition_link_label"]) + "</p>")
-        for ne in fl["editions"]:   # F44B: one paragraph per note at edition 2 whose date is not the group's own edition date
-            if fl["edition"] and ne["date"] == fl["edition"]["date"]:
-                continue
+        for ne in fl["editions"]:   # F44B, F56: one paragraph per note at edition 2, whatever its date (the group's paragraph links the outline file, this one the note's file)
             o.append('<p class="edition-note">' + _edition_html(s["edition_note_card_note"], ne["date"],
                                                                 _fill(s["edition_href_blob"], file=EDITION_NOTES_DIR + urllib.parse.quote(ne["note"], safe="")),
                                                                 s["edition_link_label"]) + "</p>")
