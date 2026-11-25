@@ -1,0 +1,1037 @@
+{
+ "commits": {
+  "notes": "d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1",
+  "release": "rh-2026-11-20",
+  "tools": "d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1"
+ },
+ "level": 1,
+ "steps": [
+  {
+   "children": [
+    {
+     "children": [],
+     "claim": {
+      "basis": "read",
+      "conditions": [],
+      "date": "2026-11-23",
+      "reader": "Kepler",
+      "text": "If ζ(s) ≠ 0 for every s with Re s > 1/2 and s ≠ 1, then the Riemann Hypothesis holds (in Mathlib's formulation)"
+     },
+     "claim_label": null,
+     "counts": {
+      "open_items": 0,
+      "roots": 1,
+      "roots_open_items": 0,
+      "roots_proof_applicable": 1,
+      "roots_proof_read": 0,
+      "roots_statement_read": 1
+     },
+     "id": "rh-from-zeta-right",
+     "lean_name": "Formalism.VW.rh_of_right",
+     "level": 2,
+     "notes": [],
+     "order": 1,
+     "parent": "rh-from-everycharacter",
+     "premises": [],
+     "proof_read": false,
+     "recognition": null,
+     "root_kind": "theorem",
+     "root_role": "result",
+     "roots_only": true,
+     "statement_by": {
+      "date": "2026-11-23",
+      "reader": "Kepler",
+      "source": "claim"
+     },
+     "statement_read": true,
+     "unread": false
+    }
+   ],
+   "claim": {
+    "basis": "read",
+    "conditions": [],
+    "date": "2026-11-23",
+    "reader": "Kepler",
+    "text": "If $L(\\chi, s) \\ne 0$ for every Dirichlet character $\\chi$ and every $s$ with $\\operatorname{Re} s > 1/2$, except a principal character at $s = 1$, then the Riemann Hypothesis holds (in Mathlib's formulation)"
+   },
+   "claim_label": null,
+   "counts": {
+    "open_items": 0,
+    "roots": 1,
+    "roots_open_items": 0,
+    "roots_proof_applicable": 1,
+    "roots_proof_read": 1,
+    "roots_statement_read": 1
+   },
+   "id": "rh-from-everycharacter",
+   "lean_name": "Formalism.VW.rh_of_every",
+   "level": 1,
+   "notes": [
+    {
+     "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/01-the-top-of-the-proof.md",
+     "list_title": "The top of the proof",
+     "note": "01"
+    },
+    {
+     "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/02-from-everycharacter-to-rh.md",
+     "list_title": "From the one statement to the Riemann Hypothesis, and one level down",
+     "note": "02"
+    }
+   ],
+   "order": 1,
+   "parent": "root",
+   "premises": [
+    "primitive-to-all"
+   ],
+   "proof_read": true,
+   "recognition": {
+    "citations": [
+     {
+      "opened_by": "Kepler",
+      "opened_on": "2026-11-24",
+      "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 10",
+      "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/14.0_pp_326_357_Analytic_properties_of_the_zeta_function_and_L-functions.pdf",
+      "where": "Section 10.1, p. 328 (if $\\rho$ is a zero of $\\xi(s)$ then so are $\\bar\\rho$, $1 - \\rho$ and $1 - \\bar\\rho$; the Riemann Hypothesis is stated on the same page)"
+     }
+    ],
+    "date": "2026-11-24",
+    "difference": "The Riemann Hypothesis follows once $\\zeta$ has no zero with real part above $1/2$: by the functional equation, the zeros in the critical strip are symmetric about the critical line. The book states the symmetry of the zeros and states the Riemann Hypothesis; it does not write this implication down as a separate result, it is immediate from the symmetry. The library takes its hypothesis for every Dirichlet character and uses it for the character of modulus 1 only. Its conclusion is the Riemann Hypothesis as Mathlib defines it, which is about zeros of $\\zeta$ other than the trivial zeros $-2, -4, \\dots$ and other than the point $1$, and the proof works with Mathlib's functional equation for $\\zeta$ itself, not with $\\xi$; it treats every $s$ with $\\operatorname{Re} s < 1/2$ at once, the trivial zeros showing up as zeros of the cosine factor, where the book's symmetry is stated for the zeros of $\\xi$.",
+    "form": "variant",
+    "reader": "Kepler",
+    "result": "the symmetry of the zeros of $\\zeta$ about the critical line, from the functional equation"
+   },
+   "root_kind": "theorem",
+   "root_role": "result",
+   "roots_only": true,
+   "statement_by": {
+    "date": "2026-11-23",
+    "reader": "Kepler",
+    "source": "claim"
+   },
+   "statement_read": true,
+   "unread": false
+  },
+  {
+   "children": [
+    {
+     "children": [],
+     "claim": {
+      "basis": "read",
+      "conditions": [
+       "At modulus 1 the only character is the trivial one; it counts as primitive and its $L$-function is $\\zeta$. The half-plane then contains $s = 1$, where $\\zeta$ has its pole and Lean gives $\\zeta(1)$ the defined value $(\\gamma - \\log 4\\pi)/2$, which is not $0$; so at that one point the statement asks for a nonzero value of a convention, not about a zero."
+      ],
+      "date": "2026-11-24",
+      "reader": "Halley",
+      "text": "for every primitive Dirichlet character $\\chi$, of any modulus $N \\ge 1$, $L(\\chi, s) \\ne 0$ whenever $\\operatorname{Re} s > 1/2$"
+     },
+     "claim_label": null,
+     "counts": {
+      "open_items": 0,
+      "roots": 1,
+      "roots_open_items": 0,
+      "roots_proof_applicable": 0,
+      "roots_proof_read": 0,
+      "roots_statement_read": 1
+     },
+     "id": "zerofreeall",
+     "lean_name": "Formalism.HC.ZeroFreeAll",
+     "level": 2,
+     "notes": [],
+     "order": 1,
+     "parent": "primitive-to-all",
+     "premises": [],
+     "proof_read": null,
+     "recognition": {
+      "citations": [
+       {
+        "opened_by": "Halley",
+        "opened_on": "2026-11-24",
+        "says_open": true,
+        "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 10",
+        "source_date": "2006",
+        "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/14.0_pp_326_357_Analytic_properties_of_the_zeta_function_and_L-functions.pdf",
+        "where": "Section 10.1, p. 333 (\"The conjecture that these latter zeros all lie on the critical line σ = 1/2 is the Generalized Riemann Hypothesis (GRH)\")"
+       }
+      ],
+      "date": "2026-11-24",
+      "difference": "The textbook statement is about primitive characters of modulus $q > 1$ and says that every non-trivial zero has real part $1/2$. The Lean statement says only that there is no zero with $\\operatorname{Re} s > 1/2$, and it includes modulus 1, that is $\\zeta$. With the functional equation, which the Lean statement does not contain, the two agree for $q > 1$ (a zero to the left of the line gives one to the right for $\\bar\\chi$, page 333 again), and modulus 1 is the Riemann Hypothesis.",
+      "established": "not_traced",
+      "form": "open_in_literature",
+      "reader": "Halley",
+      "result": "the Generalized Riemann Hypothesis for the $L$-functions of primitive Dirichlet characters"
+     },
+     "root_kind": "def",
+     "root_role": "named_statement",
+     "roots_only": true,
+     "statement_by": {
+      "date": "2026-11-24",
+      "reader": "Halley",
+      "source": "claim"
+     },
+     "statement_read": true,
+     "unread": false
+    }
+   ],
+   "claim": {
+    "basis": "read",
+    "conditions": [
+     "The hypothesis has no exception at $s = 1$, also for the character of modulus 1 (whose $L$-function is $\\zeta$): it holds there only because Lean gives $\\zeta(1)$ the defined value $(\\gamma - \\log 4\\pi)/2$, which is not $0$, where mathematics has a pole."
+    ],
+    "date": "2026-11-23",
+    "reader": "Halley",
+    "text": "If no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then $L(\\chi, s) \\ne 0$ for every Dirichlet character $\\chi$ and every $s$ with $\\operatorname{Re} s > 1/2$, except a principal character at $s = 1$"
+   },
+   "claim_label": null,
+   "counts": {
+    "open_items": 0,
+    "roots": 1,
+    "roots_open_items": 0,
+    "roots_proof_applicable": 1,
+    "roots_proof_read": 1,
+    "roots_statement_read": 1
+   },
+   "id": "primitive-to-all",
+   "lean_name": "UpperTheory.Top.imprimitive",
+   "level": 1,
+   "notes": [
+    {
+     "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/05-the-pivot.md",
+     "list_title": "The pivot: how three inputs become \"no zeros to the right of 1/2\"",
+     "note": "05"
+    }
+   ],
+   "order": 2,
+   "parent": "root",
+   "premises": [
+    "three-inputs",
+    "zerofreeall"
+   ],
+   "proof_read": true,
+   "recognition": {
+    "citations": [
+     {
+      "opened_by": "Kepler",
+      "opened_on": "2026-11-24",
+      "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 10",
+      "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/14.0_pp_326_357_Analytic_properties_of_the_zeta_function_and_L-functions.pdf",
+      "where": "Section 10.1, p. 334, equation (10.20) and the lines after it (\"Thus $L(s, \\chi)$ has all the zeros of $L(s, \\chi^*)$\", with further zeros only on the imaginary axis)"
+     }
+    ],
+    "date": "2026-11-24",
+    "difference": "The $L$-function of a Dirichlet character is the $L$-function of the primitive character that induces it, times a finite product of factors $1 - \\chi^*(p)\\,p^{-s}$ over the primes dividing the modulus; so the two have the same zeros off the imaginary axis. The book speaks of the zeros of the two functions. The library states non-vanishing: if no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then none of any character does, except that for the trivial character the point $s = 1$ is left out, where $\\zeta$ has its pole. The hypothesis itself leaves no point out (see this step's condition). The product runs over the primes dividing the modulus, as in the book; the library takes it from Mathlib's lemma for a change of modulus.",
+    "form": "variant",
+    "reader": "Kepler",
+    "result": "the factorisation of a Dirichlet $L$-function through the primitive character that induces it"
+   },
+   "root_kind": "theorem",
+   "root_role": "result",
+   "roots_only": true,
+   "statement_by": {
+    "date": "2026-11-23",
+    "reader": "Halley",
+    "source": "claim"
+   },
+   "statement_read": true,
+   "unread": false
+  },
+  {
+   "children": [
+    {
+     "children": [
+      {
+       "children": [],
+       "claim": null,
+       "claim_label": "(no plain-language statement written yet)",
+       "counts": {
+        "open_items": 0,
+        "roots": 1,
+        "roots_open_items": 0,
+        "roots_proof_applicable": 0,
+        "roots_proof_read": 0,
+        "roots_statement_read": 0
+       },
+       "id": "topg",
+       "lean_name": "UpperTheory.Top.TopG",
+       "level": 3,
+       "notes": [
+        {
+         "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/13-how-the-sha-bound-is-used.md",
+         "list_title": "How the Tate–Shafarevich bound is used: one error term in a chain of links",
+         "note": "13"
+        }
+       ],
+       "order": 1,
+       "parent": "families-from-topg",
+       "premises": [],
+       "proof_read": null,
+       "recognition": null,
+       "root_kind": null,
+       "root_role": null,
+       "roots_only": true,
+       "statement_by": null,
+       "statement_read": false,
+       "unread": true
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "claim": {
+          "basis": "read",
+          "conditions": [
+           "The bound is only as strong as the families that exist. Their existence is the statement that the level has families at some scale $\\lambda > 1$ (stated on the card this one supports). On the route of the release's main theorem it is supplied by a statement about classes of families and by the hosts. The library's host families, the condition on the family at the level, and the condition on a family at $x$ inside the tied inequality are not opened.",
+           "The tied inequality with constants $c_D$ and $c_L$ says: for some further constants, the condition on the family at $x$ holds at every large $x$ in the family's windows. The window inequality, which this theorem concludes, is defined through it."
+          ],
+          "date": "2026-11-23",
+          "reader": "Halley",
+          "text": "For every level $\\Lambda$ (in the library's sense), every $\\varepsilon > 0$, all constants $c_D$ and $c_L$, and every host family of the library (we have not opened its definition) that satisfies a condition on the family at that level (we have not opened its definition) and the tied inequality with constants $c_D$ and $c_L$ on its windows: the level's weighted error term satisfies $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$ for all large $x$ in the family's windows"
+         },
+         "claim_label": null,
+         "counts": {
+          "open_items": 0,
+          "roots": 1,
+          "roots_open_items": 0,
+          "roots_proof_applicable": 1,
+          "roots_proof_read": 0,
+          "roots_statement_read": 1
+         },
+         "id": "window-bound-every-level",
+         "lean_name": "UpperTheory.Comparison₂.level_gm_le_on_family_scales",
+         "level": 4,
+         "notes": [
+          {
+           "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/06-where-the-zeros-enter.md",
+           "list_title": "Where the zeros enter: a prime-sum bound on windows",
+           "note": "06"
+          }
+         ],
+         "order": 1,
+         "parent": "zeros-enter",
+         "premises": [
+          "window-inequality"
+         ],
+         "proof_read": false,
+         "recognition": null,
+         "root_kind": "theorem",
+         "root_role": "result",
+         "roots_only": true,
+         "statement_by": {
+          "date": "2026-11-23",
+          "reader": "Halley",
+          "source": "claim"
+         },
+         "statement_read": true,
+         "unread": false
+        },
+        {
+         "children": [],
+         "claim": null,
+         "claim_label": "(no plain-language statement written yet)",
+         "counts": {
+          "open_items": 0,
+          "roots": 1,
+          "roots_open_items": 0,
+          "roots_proof_applicable": 1,
+          "roots_proof_read": 0,
+          "roots_statement_read": 0
+         },
+         "id": "window-inequality",
+         "lean_name": "UpperTheory.Comparison₂.windowInequality_of_artinInputs",
+         "level": 4,
+         "notes": [],
+         "order": 2,
+         "parent": "zeros-enter",
+         "premises": [
+          "window-bound"
+         ],
+         "proof_read": false,
+         "recognition": null,
+         "root_kind": null,
+         "root_role": null,
+         "roots_only": true,
+         "statement_by": null,
+         "statement_read": false,
+         "unread": true
+        },
+        {
+         "children": [
+          {
+           "children": [],
+           "claim": null,
+           "claim_label": "(no plain-language statement written yet)",
+           "counts": {
+            "open_items": 0,
+            "roots": 1,
+            "roots_open_items": 0,
+            "roots_proof_applicable": 1,
+            "roots_proof_read": 0,
+            "roots_statement_read": 0
+           },
+           "id": "good-pair",
+           "lean_name": "QH.pairEx",
+           "level": 5,
+           "notes": [
+            {
+             "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/10-how-the-good-pair-is-found.md",
+             "list_title": "How the good pair is found: a large sieve, Siegel's theorem, and one excluded modulus",
+             "note": "10"
+            }
+           ],
+           "order": 1,
+           "parent": "window-bound",
+           "premises": [],
+           "proof_read": false,
+           "recognition": null,
+           "root_kind": null,
+           "root_role": null,
+           "roots_only": true,
+           "statement_by": null,
+           "statement_read": false,
+           "unread": true
+          },
+          {
+           "children": [],
+           "claim": null,
+           "claim_label": "(no plain-language statement written yet)",
+           "counts": {
+            "open_items": 0,
+            "roots": 1,
+            "roots_open_items": 0,
+            "roots_proof_applicable": 1,
+            "roots_proof_read": 0,
+            "roots_statement_read": 0
+           },
+           "id": "zero-density",
+           "lean_name": "Formalism.HermitianLattices.Ext.PrimitiveCharacterCasts.ZD.zero_density_box",
+           "level": 5,
+           "notes": [
+            {
+             "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/12-the-zero-density-box.md",
+             "list_title": "The zero-density box: few characters have a zero near Re s = 1",
+             "note": "12"
+            }
+           ],
+           "order": 2,
+           "parent": "window-bound",
+           "premises": [],
+           "proof_read": false,
+           "recognition": null,
+           "root_kind": null,
+           "root_role": null,
+           "roots_only": true,
+           "statement_by": null,
+           "statement_read": false,
+           "unread": true
+          }
+         ],
+         "claim": {
+          "basis": "read",
+          "conditions": [
+           "We have not opened the definitions of the two conditions on the host at $x$. Each depends on the host, a finite set $T$, $\\varepsilon$ and some of the constants, and the first also depends on the level. The constants $c_D$, $c_L$, $C$ and three further constants are real numbers with no condition on them. $c_D$, $c_L$ and the three further constants are arguments of the second condition, $C$ is an argument of the first, and $c_D$ and $c_L$ also set the exponent."
+          ],
+          "date": "2026-11-23",
+          "reader": "Halley",
+          "text": "For every level $\\Lambda$ (in the library's sense), all constants and every $\\varepsilon > 0$, there is $x_1$ such that for every $x \\ge x_1$ and every host (in the library's sense) satisfying two conditions of the library on the host at $x$ with those constants, the level's weighted error term satisfies $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$. The threshold $x_1$ depends on the level and the constants, not on the host."
+         },
+         "claim_label": null,
+         "counts": {
+          "open_items": 0,
+          "roots": 1,
+          "roots_open_items": 0,
+          "roots_proof_applicable": 1,
+          "roots_proof_read": 0,
+          "roots_statement_read": 1
+         },
+         "id": "window-bound",
+         "lean_name": "UpperTheory.Comparison₂.core_gm",
+         "level": 4,
+         "notes": [
+          {
+           "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/09-the-window-bound.md",
+           "list_title": "The window bound: $E_\\Lambda(x) \\le x^{1/2 + O(\\varepsilon)}$ on windows, and why we read it as not circular",
+           "note": "09"
+          }
+         ],
+         "order": 3,
+         "parent": "zeros-enter",
+         "premises": [],
+         "proof_read": false,
+         "recognition": null,
+         "root_kind": "theorem",
+         "root_role": "result",
+         "roots_only": true,
+         "statement_by": {
+          "date": "2026-11-23",
+          "reader": "Halley",
+          "source": "claim"
+         },
+         "statement_read": true,
+         "unread": false
+        },
+        {
+         "children": [],
+         "claim": {
+          "basis": "read",
+          "conditions": [
+           "Proved for every level, so it is a fact of the library, not an input. We have not opened the definitions of the set of characters a level keeps or of a lemma of the library this proof uses."
+          ],
+          "date": "2026-11-23",
+          "reader": "Halley",
+          "text": "Every level $\\Lambda$ (in the library's sense) has the Landau property: for every $\\lambda > 1$ and every $\\theta$ with $0 < \\theta < 1$, if for every $y$ there is $Y \\ge y$ such that the level's weighted error term satisfies $E_\\Lambda(x) \\le x^\\theta$ for all $x$ in $[Y, Y^\\lambda]$, then no $L$-function of a character the level keeps vanishes for $\\operatorname{Re} s > \\theta$"
+         },
+         "claim_label": null,
+         "counts": {
+          "open_items": 0,
+          "roots": 1,
+          "roots_open_items": 0,
+          "roots_proof_applicable": 1,
+          "roots_proof_read": 0,
+          "roots_statement_read": 1
+         },
+         "id": "landau-every-level",
+         "lean_name": "UpperTheory.Comparison₂.formB",
+         "level": 4,
+         "notes": [
+          {
+           "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/06-where-the-zeros-enter.md",
+           "list_title": "Where the zeros enter: a prime-sum bound on windows",
+           "note": "06"
+          }
+         ],
+         "order": 4,
+         "parent": "zeros-enter",
+         "premises": [
+          "landau-step"
+         ],
+         "proof_read": false,
+         "recognition": null,
+         "root_kind": "theorem",
+         "root_role": "result",
+         "roots_only": true,
+         "statement_by": {
+          "date": "2026-11-23",
+          "reader": "Halley",
+          "source": "claim"
+         },
+         "statement_read": true,
+         "unread": false
+        },
+        {
+         "children": [],
+         "claim": {
+          "basis": "read",
+          "conditions": [
+           "$E_F$, the family's weighted error term, is a weighted sum, over the family, of smoothed twisted von Mangoldt sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with the main term subtracted: $y \\log y - (1+\\gamma)y$ for the trivial character, and a term $y \\cdot L'(\\chi,1)/L(\\chi,1)$ otherwise ($L(\\chi,1) \\ne 0$ for $\\chi \\ne 1$ is a theorem of the library Mathlib, so the quotient is well defined).",
+           "The constant $C$ is any real number; the windows are: for every $Y_0$ there is $Y \\ge Y_0$ with the bound on all of $[Y, Y^{1+\\delta}]$."
+          ],
+          "date": "2026-11-23",
+          "reader": "Halley",
+          "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for $0 < \\theta < 1$ and $\\delta > 0$: if for every $Y_0$ there is $Y \\ge Y_0$ such that the family's weighted error term $E_F(y)$ is at most a constant times $y^\\theta$ for all $y$ in $[Y, Y^{1+\\delta}]$, then none of the family's $L$-functions vanishes for $\\operatorname{Re} s > \\theta$"
+         },
+         "claim_label": null,
+         "counts": {
+          "open_items": 0,
+          "roots": 1,
+          "roots_open_items": 0,
+          "roots_proof_applicable": 1,
+          "roots_proof_read": 1,
+          "roots_statement_read": 1
+         },
+         "id": "landau-step",
+         "lean_name": "Deduction.zeroFree_of_rpow_window",
+         "level": 4,
+         "notes": [
+          {
+           "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/08-the-landau-step.md",
+           "list_title": "The Landau step, read in the library's proof: a one-sided bound on windows forbids zeros",
+           "note": "08"
+          }
+         ],
+         "order": 5,
+         "parent": "zeros-enter",
+         "premises": [],
+         "proof_read": true,
+         "recognition": {
+          "citations": [
+           {
+            "opened_by": "Halley",
+            "opened_on": "2026-11-24",
+            "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 1",
+            "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/05.0_pp_1_34_Dirichlet_series_I.pdf",
+            "where": "Theorem 1.7 (Landau), p. 16"
+           },
+           {
+            "opened_by": "Halley",
+            "opened_on": "2026-11-24",
+            "source": "H. L. Montgomery and R. C. Vaughan, Multiplicative Number Theory I (Cambridge University Press, 2006), Chapter 15",
+            "url": "https://personal.science.psu.edu/rcv4/personal/Publications/MNTI/19.0_pp_463_485_Oscillations_of_error_terms.pdf",
+            "where": "Section 15.1, Lemma 15.1 (p. 463) and Theorem 15.2 with its proof (p. 464)"
+           }
+          ],
+          "date": "2026-11-24",
+          "difference": "In that form, a one-sided bound $x^\\theta$ on an error term rules out zeros to the right of $\\theta$. The book states this as an oscillation result for $\\zeta$ alone: Theorem 15.2 says $\\psi(x) - x = \\Omega_\\pm(x^{\\Theta - \\varepsilon})$ for every $\\varepsilon > 0$, where $\\Theta$ is the supremum of the real parts of the zeros of $\\zeta$, and the library's form is the contrapositive of its $\\Omega_+$ half. The book assumes the bound for all large $x$ and takes the error term $\\psi(x) - x$ of one function; the library assumes it only on windows $[Y, Y^{1+\\delta}]$ for arbitrarily large $Y$, for a weighted sum over a family of characters of the smoothed sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with main terms removed. The textbook proof also expands at a fixed point, but it sums the whole Taylor series and rearranges it, which uses the sign for all large $x$; the library's proof uses one coefficient of high order at a time, whose weight lies in a single window up to a small tail. The book's proof of Lemma 15.1 is one sentence: the proof of Theorem 1.7 \"can be adapted\".",
+          "form": "variant",
+          "reader": "Halley",
+          "result": "Landau's theorem on Dirichlet series with non-negative coefficients, in its error-term form"
+         },
+         "root_kind": "theorem",
+         "root_role": "result",
+         "roots_only": true,
+         "statement_by": {
+          "date": "2026-11-23",
+          "reader": "Halley",
+          "source": "claim"
+         },
+         "statement_read": true,
+         "unread": false
+        },
+        {
+         "children": [],
+         "claim": null,
+         "claim_label": "(no plain-language statement written yet)",
+         "counts": {
+          "open_items": 0,
+          "roots": 1,
+          "roots_open_items": 0,
+          "roots_proof_applicable": 0,
+          "roots_proof_read": 0,
+          "roots_statement_read": 0
+         },
+         "id": "landau-property",
+         "lean_name": "Formalism.HC.Level.FormBAt",
+         "level": 4,
+         "notes": [],
+         "order": 6,
+         "parent": "zeros-enter",
+         "premises": [],
+         "proof_read": null,
+         "recognition": null,
+         "root_kind": null,
+         "root_role": null,
+         "roots_only": true,
+         "statement_by": null,
+         "statement_read": false,
+         "unread": true
+        }
+       ],
+       "claim": {
+        "basis": "read",
+        "conditions": [
+         "The theorem is stated for any type of families, any map from a family to its core data, and any one condition on a family at $x$. On the route of the release's main theorem these are the library's families, the map to their core data, and a condition on a family at $x$ (we have not opened its definition). The tied inequality with constants $c_D$ and $c_L$ says: for some further constants, the condition on the family holds at every large $x$ in the family's windows. Both conditions in the claim are defined through it. The window inequality says that for all $c_D$, $c_L$ and every $\\varepsilon > 0$, every family that satisfies a condition on the family at the level (we have not opened its definition) and the tied inequality with $c_D$, $c_L$ has $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$ at all large $x$ in its windows, where $E_\\Lambda$ is the level's weighted error term. The statement that the level has families at scale $\\lambda$ says that there are $c_D$, $c_L$ and $\\varepsilon_1 > 0$ such that for every $\\varepsilon$ with $0 < \\varepsilon < \\varepsilon_1$ some family satisfies the condition at the level, has windows at scale $\\lambda$, and satisfies the tied inequality with $c_D$, $c_L$. The library's construction of the level from a subgroup, the condition on the family at the level, and the family's data are not opened."
+        ],
+        "date": "2026-11-23",
+        "reader": "Halley",
+        "text": "For a set $Q$ of primitive characters and one scale $\\lambda > 1$: if, for each $\\psi$ in $Q$, the level $\\Lambda_\\psi$ that the library builds from the powers of $\\psi$'s character satisfies the window inequality and has families at scale $\\lambda$, and has the Landau property, then $L(\\psi, s) \\ne 0$ for every $\\psi$ in $Q$ and every $s$ with $\\operatorname{Re} s > 1/2$"
+       },
+       "claim_label": null,
+       "counts": {
+        "open_items": 0,
+        "roots": 1,
+        "roots_open_items": 0,
+        "roots_proof_applicable": 1,
+        "roots_proof_read": 0,
+        "roots_statement_read": 1
+       },
+       "id": "zeros-enter",
+       "lean_name": "Formalism.HC.zeroFreeOn_of_tiedWin_cyc",
+       "level": 3,
+       "notes": [
+        {
+         "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/06-where-the-zeros-enter.md",
+         "list_title": "Where the zeros enter: a prime-sum bound on windows",
+         "note": "06"
+        }
+       ],
+       "order": 2,
+       "parent": "families-from-topg",
+       "premises": [
+        "window-bound-every-level",
+        "landau-every-level"
+       ],
+       "proof_read": false,
+       "recognition": null,
+       "root_kind": "theorem",
+       "root_role": "result",
+       "roots_only": true,
+       "statement_by": {
+        "date": "2026-11-23",
+        "reader": "Halley",
+        "source": "claim"
+       },
+       "statement_read": true,
+       "unread": false
+      }
+     ],
+     "claim": {
+      "basis": "read",
+      "conditions": [
+       "Met at scale $\\lambda$: for each $\\varepsilon$ with $0 < \\varepsilon < 1/52$ there are constants and a family of scales at $\\lambda$ (the library's notion; we have not opened its definition), such that every scale of the family with that $\\varepsilon$, beyond a starting point, has a host meeting the library's list of conditions on a host and the requirement.",
+       "The same $\\lambda$ serves every $\\psi$. On the route of the release's main theorem, $\\lambda = 3/2$. The statement about classes of families is about every host requirement: for every scale $\\lambda > 1$ and every requirement, if the requirement is met at scale $\\lambda$ and every family in the requirement's class at $\\lambda$ satisfies a condition (we have not opened its definition), then that class has a certain property (we have not opened its definition). Here it is used for the requirement of $\\psi$."
+      ],
+      "date": "2026-11-23",
+      "reader": "Halley",
+      "text": "If the statement about classes of families holds and, for one scale $\\lambda > 1$, the host requirement the library builds from each primitive character $\\psi$ is met at scale $\\lambda$, then no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
+     },
+     "claim_label": null,
+     "counts": {
+      "open_items": 0,
+      "roots": 1,
+      "roots_open_items": 0,
+      "roots_proof_applicable": 1,
+      "roots_proof_read": 0,
+      "roots_statement_read": 1
+     },
+     "id": "families-from-topg",
+     "lean_name": "UpperTheory.Top.zeroFreeAll_of_topG",
+     "level": 2,
+     "notes": [
+      {
+       "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/11-hosts-requirements-families.md",
+       "list_title": "Hosts, requirements, families: the proof in three movements",
+       "note": "11"
+      }
+     ],
+     "order": 1,
+     "parent": "three-inputs",
+     "premises": [
+      "topg",
+      "hosts"
+     ],
+     "proof_read": false,
+     "recognition": null,
+     "root_kind": "theorem",
+     "root_role": "result",
+     "roots_only": true,
+     "statement_by": {
+      "date": "2026-11-23",
+      "reader": "Halley",
+      "source": "claim"
+     },
+     "statement_read": true,
+     "unread": false
+    },
+    {
+     "children": [],
+     "claim": {
+      "basis": "read",
+      "conditions": [
+       "The product is over $i = 1, \\dots, d - 1$ and is computed in $\\mathbb{C}$, so there is no truncated subtraction. The formula's sign $(-1)^{d-1}$ uses natural-number subtraction, which is safe only because Input 1 assumes $0 < d$.",
+       "We have not opened the library's definitions of \"cuspidal\", of the term the explicit formula sums, or of two further objects used in this statement."
+      ],
+      "date": "2026-11-23",
+      "reader": "Halley",
+      "text": "for each prime $g$, each label datum (a datum of the library; we have not opened its definition) and each $d \\ge 1$, a one-to-one correspondence between the monic irreducible polynomials of degree $d$ over $\\mathbb{Z}/g$ with nonzero constant term and the functions on the group the library uses here, which note 3 reads as $GL_d(\\mathbb{F}_g)$ (we have not opened the library's definition of the group), that the library calls cuspidal. Each function is given by an explicit formula from the label datum on elements with irreducible characteristic polynomial, and has value $\\prod (g^i - 1)$ at $1$."
+     },
+     "claim_label": null,
+     "counts": {
+      "open_items": 0,
+      "roots": 1,
+      "roots_open_items": 0,
+      "roots_proof_applicable": 0,
+      "roots_proof_read": 0,
+      "roots_statement_read": 1
+     },
+     "id": "input-green",
+     "lean_name": "GlobalTheory.GLq.Green",
+     "level": 2,
+     "notes": [],
+     "order": 2,
+     "parent": "three-inputs",
+     "premises": [],
+     "proof_read": null,
+     "recognition": null,
+     "root_kind": "def",
+     "root_role": "named_statement",
+     "roots_only": true,
+     "statement_by": {
+      "date": "2026-11-23",
+      "reader": "Halley",
+      "source": "claim"
+     },
+     "statement_read": true,
+     "unread": false
+    },
+    {
+     "children": [
+      {
+       "children": [],
+       "claim": null,
+       "claim_label": "(no plain-language statement written yet)",
+       "counts": {
+        "open_items": 0,
+        "roots": 1,
+        "roots_open_items": 0,
+        "roots_proof_applicable": 1,
+        "roots_proof_read": 0,
+        "roots_statement_read": 0
+       },
+       "id": "vwin-proof",
+       "lean_name": "UpperTheory.One.vwin_of_row",
+       "level": 3,
+       "notes": [],
+       "order": 1,
+       "parent": "input-vwin",
+       "premises": [],
+       "proof_read": false,
+       "recognition": null,
+       "root_kind": null,
+       "root_role": null,
+       "roots_only": true,
+       "statement_by": null,
+       "statement_read": false,
+       "unread": true
+      }
+     ],
+     "claim": null,
+     "claim_label": "(no plain-language statement written yet)",
+     "counts": {
+      "open_items": 0,
+      "roots": 1,
+      "roots_open_items": 0,
+      "roots_proof_applicable": 0,
+      "roots_proof_read": 0,
+      "roots_statement_read": 0
+     },
+     "id": "input-vwin",
+     "lean_name": "UpperTheory.Top.VWin",
+     "level": 2,
+     "notes": [],
+     "order": 3,
+     "parent": "three-inputs",
+     "premises": [],
+     "proof_read": null,
+     "recognition": null,
+     "root_kind": null,
+     "root_role": null,
+     "roots_only": true,
+     "statement_by": null,
+     "statement_read": false,
+     "unread": true
+    },
+    {
+     "children": [],
+     "claim": {
+      "basis": "read",
+      "conditions": [],
+      "date": "2026-11-23",
+      "reader": "Halley",
+      "text": "For each primitive character $\\psi$, the window supply of $\\psi$ with constant 401 (stated on the card for the window supply) gives that $\\psi$'s host requirement is met at scale $\\lambda = 3/2$ (in the sense stated on the card this one supports)"
+     },
+     "claim_label": null,
+     "counts": {
+      "open_items": 0,
+      "roots": 1,
+      "roots_open_items": 0,
+      "roots_proof_applicable": 1,
+      "roots_proof_read": 0,
+      "roots_statement_read": 1
+     },
+     "id": "hosts",
+     "lean_name": "UpperTheory.Top.supplyChi",
+     "level": 2,
+     "notes": [],
+     "order": 4,
+     "parent": "three-inputs",
+     "premises": [
+      "input-vwin"
+     ],
+     "proof_read": false,
+     "recognition": null,
+     "root_kind": "theorem",
+     "root_role": "result",
+     "roots_only": true,
+     "statement_by": {
+      "date": "2026-11-23",
+      "reader": "Halley",
+      "source": "claim"
+     },
+     "statement_read": true,
+     "unread": false
+    },
+    {
+     "children": [
+      {
+       "children": [],
+       "claim": null,
+       "claim_label": "(no plain-language statement written yet)",
+       "counts": {
+        "open_items": 0,
+        "roots": 1,
+        "roots_open_items": 0,
+        "roots_proof_applicable": 0,
+        "roots_proof_read": 0,
+        "roots_statement_read": 0
+       },
+       "id": "linkn",
+       "lean_name": "Formalism.MainNotions.LinkN",
+       "level": 3,
+       "notes": [
+        {
+         "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/14-where-linkn-comes-from.md",
+         "list_title": "Where the link condition comes from",
+         "note": "14"
+        }
+       ],
+       "order": 1,
+       "parent": "input-hypsalt",
+       "premises": [],
+       "proof_read": null,
+       "recognition": null,
+       "root_kind": null,
+       "root_role": null,
+       "roots_only": true,
+       "statement_by": null,
+       "statement_read": false,
+       "unread": true
+      },
+      {
+       "children": [],
+       "claim": {
+        "basis": "read",
+        "conditions": [],
+        "date": "2026-11-23",
+        "reader": "Halley",
+        "text": "three hypotheses bundled in one structure of the library, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
+       },
+       "claim_label": null,
+       "counts": {
+        "open_items": 0,
+        "roots": 1,
+        "roots_open_items": 0,
+        "roots_proof_applicable": 0,
+        "roots_proof_read": 0,
+        "roots_statement_read": 1
+       },
+       "id": "literature-statements",
+       "lean_name": "UpperTheory.LiteratureTheorems.OpenLiteratureStatements",
+       "level": 3,
+       "notes": [
+        {
+         "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/15-literature-statements.md",
+         "list_title": "Where do the three literature statements enter the proof of the link condition, and what do they do there?",
+         "note": "15"
+        }
+       ],
+       "order": 2,
+       "parent": "input-hypsalt",
+       "premises": [],
+       "proof_read": null,
+       "recognition": null,
+       "root_kind": "structure",
+       "root_role": "named_statement",
+       "roots_only": true,
+       "statement_by": {
+        "date": "2026-11-23",
+        "reader": "Halley",
+        "source": "claim"
+       },
+       "statement_read": true,
+       "unread": false
+      }
+     ],
+     "claim": {
+      "basis": "census",
+      "conditions": [
+       "Counted by a text-pattern search over the structure's field lines, not by a parse of the code: 46 field lines, 16 of them containing the library's name for \"closed\".",
+       "That the package holds means that such data exist, and a step that uses it takes those conditions as hypotheses."
+      ],
+      "date": "2026-11-23",
+      "reader": "Halley",
+      "text": "a structure of the library that holds data (a family class, a selection, two functions and a number) together with conditions on that data"
+     },
+     "claim_label": null,
+     "counts": {
+      "open_items": 0,
+      "roots": 1,
+      "roots_open_items": 0,
+      "roots_proof_applicable": 0,
+      "roots_proof_read": 0,
+      "roots_statement_read": 0
+     },
+     "id": "input-hypsalt",
+     "lean_name": "GlobalTheory.Fc.HypsAlt",
+     "level": 2,
+     "notes": [
+      {
+       "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/04-the-third-input.md",
+       "list_title": "The third input: the hypothesis package and the definite side condition",
+       "note": "04"
+      }
+     ],
+     "order": 5,
+     "parent": "three-inputs",
+     "premises": [],
+     "proof_read": null,
+     "recognition": null,
+     "root_kind": "structure",
+     "root_role": "named_statement",
+     "roots_only": true,
+     "statement_by": {
+      "date": "2026-11-23",
+      "reader": "Halley",
+      "source": "census"
+     },
+     "statement_read": false,
+     "unread": true
+    }
+   ],
+   "claim": {
+    "basis": "read",
+    "conditions": [
+     "\"One instance of the hypothesis package\" means the statement assumes that an instance exists. Three things in that phrase were not opened for this claim: what \"closed\" requires, the link condition, and the definite side condition. Note 13 states the definition of the first and the per-index inequality the second is built from; note 4 states the shape of the third and does not open any of the notions it uses."
+    ],
+    "date": "2026-11-23",
+    "reader": "Halley",
+    "text": "Input 1 (a one-to-one correspondence between polynomials and the functions the library calls cuspidal, stated on its own card), the window supply for every primitive character (Input 2), and one instance of the hypothesis package (Input 3; closed under links, with the definite side condition) give: no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
+   },
+   "claim_label": null,
+   "counts": {
+    "open_items": 0,
+    "roots": 1,
+    "roots_open_items": 0,
+    "roots_proof_applicable": 1,
+    "roots_proof_read": 1,
+    "roots_statement_read": 1
+   },
+   "id": "three-inputs",
+   "lean_name": "UpperTheory.Top.zero_free_all_of_green_v_win",
+   "level": 1,
+   "notes": [
+    {
+     "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/03-vwin-and-green.md",
+     "list_title": "Two of the inputs: the window supply (Input 2) and Input 1",
+     "note": "03"
+    },
+    {
+     "link": "https://github.com/engram-agents/riemann-explained/blob/d28ee8b5aae8c3ff44d0278ca7fabaf9806ef3d1/docs/05-the-pivot.md",
+     "list_title": "The pivot: how three inputs become \"no zeros to the right of 1/2\"",
+     "note": "05"
+    }
+   ],
+   "order": 3,
+   "parent": "root",
+   "premises": [
+    "input-green",
+    "input-vwin",
+    "input-hypsalt"
+   ],
+   "proof_read": true,
+   "recognition": {
+    "date": "2026-11-24",
+    "form": "not_recognised",
+    "note": "This step is the release's own composition of three inputs, Input 1, the window supply and the hypothesis package, into the statement that no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$; we found no textbook result that draws this conclusion from these hypotheses.",
+    "reader": "Halley"
+   },
+   "root_kind": "theorem",
+   "root_role": "result",
+   "roots_only": true,
+   "statement_by": {
+    "date": "2026-11-23",
+    "reader": "Halley",
+    "source": "claim"
+   },
+   "statement_read": true,
+   "unread": false
+  }
+ ]
+}
