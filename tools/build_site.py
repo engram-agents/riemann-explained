@@ -11114,7 +11114,7 @@ def _selftest_cases():
                  "declarations is not in the repository): 23 step files; top is rh-from-everycharacter, primitive-to-all, three-inputs; the widest step "
                  "(zeros-enter) has 6 children; the path of a depth-5 step (good-pair) is three-inputs, families-from-topg, zeros-enter, window-bound (4 "
                  "ancestors); 14 premise edges: 7 sibling rests_on links (2 in index.json, 5 in the step files: three-inputs 2, zeros-enter 3), 7 "
-                 "parent_rests_on true, 0 across subtrees; state read 14, census 1, none 8; 4 steps (root_role named_statement) carry a role, on the card and on the child")
+                 "parent_rests_on true, 0 across subtrees; state read 16, census 1, none 6 (main gave two steps a claim after the first measure, 14 / 1 / 8); 4 steps (root_role named_statement) carry a role, on the card and on the child")
     def _():
         with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
             og = json.load(f)["groups"]
@@ -11135,7 +11135,7 @@ def _selftest_cases():
                     (sum(1 for v in steps.values() if "role" in v["card"]), sum(1 for c in kids if "role" in c))),
                    ([], 23, 23, ["rh-from-everycharacter", "primitive-to-all", "three-inputs"], 6, 6,
                     ["three-inputs", "families-from-topg", "zeros-enter", "window-bound"], 4, 2, [("three-inputs", 2), ("zeros-enter", 3)],
-                    7, 13, 7, [14, 1, 8], (4, 4)))
+                    7, 13, 7, [16, 1, 6], (4, 4)))
 
     @case("GR6", "G1 S4: the links of a step file are among ITS children only, with paths (from_path and to_path are the children's own paths); a "
                  "premise on the step's own child is parent_rests_on true on that child and NOT in rests_on; the direction is `from` rests on `to` "
