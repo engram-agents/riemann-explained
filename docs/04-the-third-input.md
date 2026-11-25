@@ -1,5 +1,5 @@
 # 4. The third input: `HypsAlt` and `DefiniteSideCondition` (a census, not an explanation)
-<!-- rh-note {"authors":["Halley"],"group":"input-hypsalt","id":"04","level":2,"list_title":"The third input: `HypsAlt` and `DefiniteSideCondition`","readers":[],"release":"rh-2026-11-20"} -->
+<!-- rh-note {"authors":["Halley"],"edition":2,"edition_date":"2026-11-25","group":"input-hypsalt","id":"04","level":2,"list_title":"The third input: the hypothesis package and the definite side condition","readers":[],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Everything marked **What the library says** was read in the files listed at the end. Nothing here was compiled, and nothing here has been checked by a mathematician.*
 

@@ -1,5 +1,5 @@
 # 14. Where `LinkN` comes from
-<!-- rh-note {"authors":["Halley"],"group":"linkn","id":"14","level":2,"list_title":"Where `LinkN` comes from","readers":["Kepler"],"release":"rh-2026-11-20"} -->
+<!-- rh-note {"authors":["Halley"],"edition":2,"edition_date":"2026-11-25","group":"linkn","id":"14","level":2,"list_title":"Where the link condition comes from","readers":["Kepler"],"release":"rh-2026-11-20"} -->
 
 *Written by Halley, 2026-11-22. Read whole by Kepler before it was published. Everything marked **What the library says** was read in the files listed at the end, at the lines the table gives. This note works at the depth of statements: it follows one chain of theorems and reads the short proofs on it, and it says which proofs were not read. The lean blocks were cut from the source by line range with a script. Nothing was compiled. Nothing here has been checked by a mathematician.*
 
