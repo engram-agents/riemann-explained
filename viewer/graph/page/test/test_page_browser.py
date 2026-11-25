@@ -758,6 +758,79 @@ def c_face_mutant(b):
         assert red, "MUTANT SURVIVED: a 30 px shorter face (%s)" % engine
 
 
+# ------------------------------------------------- the first fit: every face text at its size AT FIT, no allowance (P1)
+
+FIT_CAMERA_JS = """(() => { const stage = document.getElementById('graph');
+  /* the engine's own camera: it writes `scale(k)` on its world element (the handle exposes no camera; the engine's files are
+     not ours to change). The test double has no camera: its scale is 1 by construction. */
+  const worlds = [...stage.querySelectorAll('.ge-world')];
+  let k = 1, from = 'none (the double draws at scale 1)';
+  if (worlds.length) { const m = /scale\\(([-0-9.e]+)\\)/.exec(worlds[0].getAttribute('style') || ''); if (!m) throw new Error('the world has no scale'); k = parseFloat(m[1]); from = 'ge-world style'; }
+  const texts = [];
+  for (const f of stage.querySelectorAll('.face')) {
+    const w = document.createTreeWalker(f, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode())) { if (!n.textContent.trim()) continue; const e = n.parentElement;
+      texts.push({cls: e.className, title: !!e.closest('.face-title'), size: parseFloat(getComputedStyle(e).fontSize)}); }
+  }
+  const nodes = [...stage.querySelectorAll('[data-node]')].map(n => { const r = n.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; });
+  const strokes = [...stage.querySelectorAll('.ge-link, .ge-head')].map(n => { const r = n.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; });
+  return {k, from, texts, nodes, strokes}; })()"""
+
+
+def overlaps(a, b, e=0.5):
+    return min(a[2], b[2]) - max(a[0], b[0]) > e and min(a[3], b[3]) - max(a[1], b[1]) > e
+
+
+def c_first_fit_size(b, S0, engine, tol=0.0, mutate=None, print_it=True):
+    """At the first fit, 390 x 844: effective size = computed font-size x the engine's camera scale. The title >= 15, every other
+    face text >= 14, with NO allowance (tol is 0 except in the control that shows what an allowance hides). No node overlaps another,
+    and no link stroke runs through a node."""
+    root = tempfile.mkdtemp(prefix="pg-fit1-")
+    assemble.assemble(root, engine, mutate=mutate)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+        r = pg.ev(FIT_CAMERA_JS)
+        assert len(r["nodes"]) == 3, r["nodes"]
+        low = []
+        for t in r["texts"]:
+            eff = t["size"] * r["k"]
+            need = 15.0 if t["title"] else 14.0
+            if print_it and t["title"]:
+                print("   first fit (%s): title font %.1f px x camera %.3f (%s) = %.2f px" % (engine, t["size"], r["k"], r["from"], eff))
+            if eff < need - tol:
+                low.append((t["cls"], round(eff, 2), need))
+        assert not low, ("face text below its size at the first fit", low, r["k"])
+        for i, a in enumerate(r["nodes"]):
+            for c in r["nodes"][i + 1:]:
+                assert not overlaps(a, c), ("two cards overlap", a, c)
+            for st in r["strokes"]:
+                assert not overlaps(a, st), ("a link stroke runs through a card", a, st)
+        if engine == "real":
+            assert r["strokes"], "the links were drawn (the overlap check is not vacuous)"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_first_fit_mutant(b):
+    """Control for the strict first-fit case. Row gaps the engine's default way (76: scale 0.966) and an in-between 70 (scale
+    0.986, text 14.8 px) both fail it. The 0.5 allowance the old case carried passes the 70 run: it is what hid the shortfall."""
+    def gap(n):
+        return lambda text: text.replace("gapY: 56", "gapY: %d" % n)
+    for n in (76, 70):
+        red = False
+        try:
+            c_first_fit_size(b, None, "real", mutate={os.path.join("page", "app.js"): gap(n)}, print_it=False)
+        except Exception as e:  # noqa: BLE001
+            red = True
+            print("   first-fit mutant red (gapY %d): %s" % (n, repr(e)[:100]))
+        assert red, "MUTANT SURVIVED: the strict case passed with gapY %d" % n
+    c_first_fit_size(b, None, "real", tol=0.5, mutate={os.path.join("page", "app.js"): gap(70)}, print_it=False)   # the allowance lets it through
+    print("   with the old 0.5 allowance the gapY 70 build passes (that is what the strict case is for)")
+
+
 # ------------------------------------------------------------------------- cases that need the REAL engine (camera, gestures)
 
 def center(pg, sel):
@@ -795,12 +868,6 @@ def c_real_first_frame_390(b, S):
     for f in nodes:
         assert f[1] >= stage[0] - 1 and f[3] <= stage[2] + 1 and f[2] >= stage[1] - 1 and f[4] <= stage[3] + 1, ("a top card is not inside the first frame", f, stage)
     assert pg.ev("document.documentElement.scrollWidth") <= 390
-    # text size at the first fit: font size times the camera's scale (measured from the title's rendered height)
-    m = pg.ev("""(() => { const t = document.querySelector('[data-node="goal-chain"] .face-title'); const r = t.getBoundingClientRect();
-        return [parseFloat(getComputedStyle(t).fontSize), r.height / t.offsetHeight]; })()""")
-    eff = m[0] * m[1]
-    print("   first-fit text: font %.1f px x scale %.3f = %.1f px" % (m[0], m[1], eff))
-    assert eff >= 15 - 0.5, "closed-card text is %.1f CSS px at the first fit (spec: at least 15)" % eff
     pg.csp_clean()
     pg.close()
 
@@ -1048,6 +1115,7 @@ def main():
                 run("one fixed closed size: a 50-character title (wide glyphs, then plain), role word and a two-digit parts count all fit, nothing clipped", c_face_fits_both, eng)
                 run("the sheet's tools sit in the bar beside Close; the article is the body's one child and starts with its claim", c_tools_in_bar)
                 run("the comment script's details.rc-section row is an ordinary closed 44 px sheet row and goes home", c_rc_section_row, eng)
+                run("first fit at 390 x 844: title >= 15 px and other face text >= 14 px at the engine's camera scale, no allowance; nothing overlaps", c_first_fit_size, eng)
                 run("after a fallback: a hash change, a premise link click and the keys move nothing", c_dead_after_fallback, eng)
                 run("after a fallback: a step load that was in flight moves nothing when it resolves", c_dead_inflight, eng)
                 run("a failed load (404) leaves the reader's open card open and shows the notice", c_failed_load_keeps_card)
@@ -1063,6 +1131,7 @@ def main():
             case("hostile: 6 payloads x title, role, runtime words, key, crumb, status", c_hostile, br)
             case("hostile: kind and state payloads are refusals", c_hostile_kind_state, br)
             case("R7 MUTANT (innerHTML text path) turns the hostile cells red", c_mutant, br)
+            case("first-fit MUTANT: row gaps that leave the text under 15 px at fit turn the strict case red; the old 0.5 allowance would pass one", c_first_fit_mutant, br)
             case("face MUTANT: a fixed closed height 30 px shorter turns the fit case red", c_face_mutant, br)
             case("sheet MUTANTS: each plausible-wrong sheet turns its case red; the first-frame case stays green", c_sheet_mutants, br)
         if only is None or "markers" in only:

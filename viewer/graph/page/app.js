@@ -19,9 +19,11 @@ export const CLOSE_ROUTES = Object.freeze([
 /* ONE fixed closed size, chosen by measuring in the browser (the browser case "one fixed closed size"): a 50-character title of
    the widest glyphs takes three lines at 15 px in the engine's default 300 px width, and with the role word and the foot at
    14 px the face needs 138 px for every kind and state frame (measured on both engines; 136 clips the title in the thicker
-   census frame). 140 leaves 2 px. Taller faces lower the first fit's scale (text 14.67 px at 140). The engine's other sizes
-   stay at its defaults. */
-const CARD_SIZES = Object.freeze({ nodeH: 140 });
+   census frame). 140 leaves 2 px. At a 390 x 844 phone the first fit is limited by the HEIGHT of the three stacked top cards
+   (3 x nodeH + 2 x gapY against the stage), so with the engine's default row gap (76) the fit scale was 0.966 and the title
+   14.49 px at fit. gapY 56 (still room for the link arrow, 20 px) takes the world from 572 to 532 px high and the scale to
+   1.038. The engine's other sizes stay at its defaults. */
+const CARD_SIZES = Object.freeze({ nodeH: 140, gapY: 56 });
 
 const SHELL = ["graph-layer", "graph", "graph-sheet", "graph-crumbs", "graph-sheet-tools", "graph-sheet-body", "graph-sheet-close",
   "graph-show-all", "graph-key", "graph-about-open", "graph-fallback", "graph-cards", "graph-notice", "graph-about"];
