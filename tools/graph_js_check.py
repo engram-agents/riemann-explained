@@ -2,58 +2,158 @@
 """Grep gate for the graph view's shipped sources (Borges, 2026-11-25; rules R1-R7 of F65).
 
 Refuses any file under viewer/graph/ that contains one of the tokens that would let a data string become markup,
-code or an address. A file under a directory named `test` is not shipped and is not read.
+code or an address. A file under a directory named `test` is not shipped (the builder's copy rule) and is not
+read; the run says how many files it skipped that way.
 
 CONTRACT
  G1 Every file under DIR (default: viewer/graph next to this tool's repo), except under a directory named
     `test` or `__pycache__`, is read as UTF-8 (undecodable bytes are replaced, never skipped) and checked.
- G2 In ANY file these are refused: innerHTML, outerHTML, insertAdjacentHTML, document.write, DOMParser,
-    createContextualFragment, `eval(`, `new Function`, `http:`, `https:`, and setTimeout / setInterval whose first
-    argument is a string literal.
+ G2 In ANY file these are refused, matched case-insensitively and tolerant of whitespace where code allows it:
+    innerHTML, outerHTML, insertAdjacentHTML, `document . write`, DOMParser, createContextualFragment,
+    createElementNS, `eval (`, `new  Function`, a bare `Function (`, `import (`, setTimeout / setInterval whose first
+    argument is a string literal, and any URL scheme `http:` `https:` `javascript:` `data:` `blob:` `ws:` `wss:`
+    `file:` in any letter case, and a PROTOCOL-RELATIVE string literal (a quote or backtick, optional spaces, then
+    `//`; in .js this is read with a small scanner so a `//` line comment, even one after a closing quote, is not it).
  G3 In a .html file these are also refused: an `on...=` attribute, `<style`, and `style=`.
- G4 Each refusal prints `REFUSED path:line TOKEN`. The run ends with `N files checked, M refused`.
+ G3b In a .css file these are also refused: `@import` and `url(` with anything.
+ G3c In a shipped file (.js .mjs .html) an import specifier (`from '..'`, `import '..'`, `import('..')`, and a
+    <script>/<link> src or href) that resolves, from the file's own folder, into a path with a `test` segment is
+    refused (`import of a test path`): a shipped file may not reach around the skip rule into what is not shipped.
+ G4 Each refusal prints `REFUSED path:line TOKEN`. The run ends with
+    `N files checked, M refused, S skipped as test files`.
  G5 Exit 0 only if at least one file was checked and none refused. Exit 1 on a refusal, or on `CHECKED NOTHING`
     (no file to read: a gate over nothing must not pass). Exit 2 usage / DIR is not a directory.
  G6 A normal run first runs its own self-test and refuses (exit 4) if it fails. --selftest plants each token
-    in a temporary tree and expects its refusal, a clean file to pass, a token under test/ to be ignored, and an
-    empty tree to be CHECKED NOTHING.
- LIMIT: substring and line-pattern checks over text. A token split across lines or built from pieces is not seen;
- that is why the engine's own boundary test also forbids the APIs by name in each file. Comments count: a comment
- that names a forbidden token is refused too.
+    and each variant in a temporary tree and expects its refusal, clean files to pass (a JS file whose only `//` are
+    comments included), a token under test/ to be ignored and counted, and an empty tree to be CHECKED NOTHING.
+ LIMIT: substring and line-pattern checks over text. A token split across lines or built from pieces is not seen,
+ nor is `(0, eval)(s)`; that is why the engine's own boundary test also forbids the APIs by name in each file.
+ Comments count: a comment that names a forbidden token is refused too (the protocol-relative scanner is the one
+ exception: it skips comments). The scanner does not know regex literals or `${}` nesting; a quote inside a regex
+ literal can mislead it for the rest of that line. An import specifier built at run time is not resolved; a dynamic
+ `import (` is refused outright instead. A `__pycache__` folder is skipped without a count.
 
 usage: graph_js_check.py [DIR]
        graph_js_check.py --selftest
 """
-import os, re, sys, tempfile
+import os, posixpath, re, sys, tempfile
 
-ANY = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "DOMParser", "createContextualFragment",
-       "eval(", "new Function", "http:", "https:"]
-ANY_RE = [("setTimeout/setInterval with a string", re.compile(r"set(?:Timeout|Interval)\s*\(\s*[\"'`]"))]
-HTML_RE = [("on...= attribute", re.compile(r"<[^>]*\son[a-z]+\s*=", re.I)),
-           ("<style", re.compile(r"<style", re.I)),
-           ("style=", re.compile(r"\sstyle\s*=", re.I))]
+I = re.I
+# (token the refusal names, pattern): every one is matched case-insensitively, per line, in ANY file
+ANY_RE = [
+    ("innerHTML", re.compile(r"innerHTML", I)),
+    ("outerHTML", re.compile(r"outerHTML", I)),
+    ("insertAdjacentHTML", re.compile(r"insertAdjacentHTML", I)),
+    ("document.write", re.compile(r"document\s*\.\s*write", I)),
+    ("DOMParser", re.compile(r"DOMParser", I)),
+    ("createContextualFragment", re.compile(r"createContextualFragment", I)),
+    ("createElementNS", re.compile(r"createElementNS", I)),
+    ("eval(", re.compile(r"eval\s*\(", I)),
+    ("new Function", re.compile(r"new\s+Function", I)),
+    ("Function(", re.compile(r"\bFunction\s*\(", I)),
+    ("import(", re.compile(r"\bimport\s*\(", I)),
+    ("setTimeout/setInterval with a string", re.compile(r"set(?:Timeout|Interval)\s*\(\s*[\"'`]", I)),
+    ("http:", re.compile(r"\bhttp:", I)),
+    ("https:", re.compile(r"\bhttps:", I)),
+    ("javascript:", re.compile(r"\bjavascript:", I)),
+    ("data:", re.compile(r"\bdata:", I)),
+    ("blob:", re.compile(r"\bblob:", I)),
+    ("ws:", re.compile(r"\bws:", I)),
+    ("wss:", re.compile(r"\bwss:", I)),
+    ("file:", re.compile(r"\bfile:", I)),
+]
+HTML_RE = [("on...= attribute", re.compile(r"<[^>]*\son[a-z]+\s*=", I)),
+           ("<style", re.compile(r"<style", I)),
+           ("style=", re.compile(r"\sstyle\s*=", I))]
+CSS_RE = [("@import", re.compile(r"@import", I)),
+          ("url(", re.compile(r"url\s*\(", I))]
+PROTO = "protocol-relative URL"
+PROTO_RE = re.compile(r"[\"'`]\s*//")            # for files that are not scanned as JS (.html, .css, .md ...)
+TESTIMP = "import of a test path"
+IMPORT_RES = [re.compile(r"""\bfrom\s*["']([^"']+)["']"""),
+              re.compile(r"""\bimport\s*["']([^"']+)["']"""),
+              re.compile(r"""\bimport\s*\(\s*["']([^"']+)["']""")]
+SRC_RE = re.compile(r"""\b(?:src|href)\s*=\s*["']([^"']+)["']""", I)
+JS_EXT = (".js", ".mjs")
+SHIP_IMPORT_EXT = (".js", ".mjs", ".html")
 SKIP_DIRS = {"test", "__pycache__"}
+TEST_DIR = "test"        # the builder's copy rule: a path with a directory segment named exactly this is not shipped
 
 
 def default_dir():
     return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "viewer", "graph")
 
 
-def files_under(d):
+def files_under(d, skipped=None):
+    """Yield every file to check. A directory named `test` is pruned; the files in it are counted into
+    skipped[0] when a list is given, so the skip is never silent. (`__pycache__` is pruned without a count.)"""
     for base, dirs, names in os.walk(d):
-        dirs[:] = sorted(x for x in dirs if x not in SKIP_DIRS)
+        keep = []
+        for x in sorted(dirs):
+            if x == TEST_DIR and skipped is not None:
+                skipped[0] += sum(len(fs) for _, _, fs in os.walk(os.path.join(base, x)))
+            if x not in SKIP_DIRS:
+                keep.append(x)
+        dirs[:] = keep
         for n in sorted(names):
             yield os.path.join(base, n)
 
 
-def check_file(path):
-    """Return [(line, token)] for every refusal in one file."""
+def js_protocol_relative(text):
+    """Lines where a string literal OPENS with optional spaces and `//`. Skips line and block comments, so
+    `const b = 'x'; // note` (a closing quote then a comment) is not a hit."""
+    hits, i, n, line, state = [], 0, len(text), 1, None      # state: None | "//" | "/*" | the open quote
+    while i < n:
+        c = text[i]
+        if c == "\n":
+            line += 1
+            if state in ("//", "'", '"'):
+                state = None
+            i += 1
+        elif state is None:
+            if text.startswith("//", i):
+                state = "//"; i += 2
+            elif text.startswith("/*", i):
+                state = "/*"; i += 2
+            elif c in "'\"`":
+                state = c; i += 1
+                j = i
+                while j < n and text[j] in " \t":
+                    j += 1
+                if text.startswith("//", j):
+                    hits.append(line)
+            else:
+                i += 1
+        elif state == "/*":
+            if text.startswith("*/", i):
+                state = None; i += 2
+            else:
+                i += 1
+        elif state == "//":
+            i += 1
+        elif c == "\\":
+            if i + 1 < n and text[i + 1] == "\n":
+                line += 1
+            i += 2
+        elif c == state:
+            state = None; i += 1
+        else:
+            i += 1
+    return hits
+
+
+def into_test(rel, spec):
+    """True if the specifier, resolved from the folder of the file at `rel`, has a segment named `test`."""
+    joined = posixpath.normpath(posixpath.join(posixpath.dirname(rel.replace(os.sep, "/")), spec))
+    return TEST_DIR in joined.split("/") or TEST_DIR in spec.split("/")
+
+
+def check_file(path, rel=None):
+    """Return [(line, token)] for every refusal in one file. `rel` is the path under DIR (used to resolve imports)."""
+    rel = rel or os.path.basename(path)
     text = open(path, "rb").read().decode("utf8", errors="replace")
     hits = []
     for i, line in enumerate(text.split("\n"), 1):
-        for t in ANY:
-            if t in line:
-                hits.append((i, t))
         for name, rx in ANY_RE:
             if rx.search(line):
                 hits.append((i, name))
@@ -61,20 +161,34 @@ def check_file(path):
             for name, rx in HTML_RE:
                 if rx.search(line):
                     hits.append((i, name))
-    return hits
+        if path.endswith(".css"):
+            for name, rx in CSS_RE:
+                if rx.search(line):
+                    hits.append((i, name))
+        if not path.endswith(JS_EXT) and PROTO_RE.search(line):
+            hits.append((i, PROTO))
+    if path.endswith(JS_EXT):
+        hits.extend((ln, PROTO) for ln in js_protocol_relative(text))
+    if path.endswith(SHIP_IMPORT_EXT):
+        for rx in IMPORT_RES + ([SRC_RE] if path.endswith(".html") else []):
+            for m in rx.finditer(text):
+                if into_test(rel, m.group(1)):
+                    hits.append((text.count("\n", 0, m.start()) + 1, TESTIMP))
+    return sorted(set(hits))
 
 
 def run(d, out):
     n = refused = 0
-    for p in files_under(d):
+    skipped = [0]
+    for p in files_under(d, skipped):
         n += 1
-        for line, tok in check_file(p):
+        for line, tok in check_file(p, os.path.relpath(p, d)):
             refused += 1
             print("REFUSED %s:%d %s" % (os.path.relpath(p, d), line, tok), file=out)
     if n == 0:
-        print("CHECKED NOTHING: no file under " + d, file=out)
+        print("CHECKED NOTHING: no file under %s (%d skipped as test files)" % (d, skipped[0]), file=out)
         return 1
-    print("%d files checked, %d refused" % (n, refused), file=out)
+    print("%d files checked, %d refused, %d skipped as test files" % (n, refused, skipped[0]), file=out)
     return 1 if refused else 0
 
 
@@ -98,12 +212,51 @@ PLANTS = [
     ("p.html", "<style>a{}</style>", "<style"),
     ("p.html", "<div style=\"color:red\">x</div>", "style="),
     ("sub/deep/b.js", "x.innerHTML = s;", "innerHTML"),
+    # round 2 (F6): whitespace and letter case do not defeat a token
+    ("a.js", "eval (s);", "eval("),
+    ("a.js", "EVAL\t(s);", "eval("),
+    ("a.js", "const f = new  Function('return 1');", "new Function"),
+    ("a.js", "const f = NEW FUNCTION('x');", "new Function"),
+    ("a.js", "const f = Function('return 1');", "Function("),
+    ("a.js", "setTimeout ( `go()`, 10);", "setTimeout/setInterval with a string"),
+    ("a.js", "SETINTERVAL (  \"go()\", 10);", "setTimeout/setInterval with a string"),
+    ("a.js", "const m = import ('./x.js');", "import("),
+    ("a.js", "document . write(s);", "document.write"),
+    ("a.js", "x.INNERHTML = s;", "innerHTML"),
+    ("a.js", "d.createElementNS(ns, 'svg');", "createElementNS"),
+    ("a.js", "const u = 'HTTPS://example.org/';", "https:"),
+    ("a.js", "const u = 'Http://example.org/';", "http:"),
+    ("a.js", "const u = 'JAVASCRIPT:alert(1)';", "javascript:"),
+    ("a.js", "const u = 'Data:text/html,x';", "data:"),
+    ("a.js", "const u = 'BLOB:null/x';", "blob:"),
+    ("a.js", "const u = 'ws://host/x';", "ws:"),
+    ("a.js", "const u = 'WSS://host/x';", "wss:"),
+    ("a.js", "const u = 'FILE:///etc/x';", "file:"),
+    # a protocol-relative string literal (an opening quote or backtick, optional spaces, then //)
+    ("a.js", "const u = '//host/x.js';", "protocol-relative URL"),
+    ("a.js", "const u = \"  //host/x.js\";", "protocol-relative URL"),
+    ("a.js", "const u = `//host/x.js`;", "protocol-relative URL"),
+    ("a.html", "<script src=\"//host/x.js\"></script>", "protocol-relative URL"),
+    # css: @import and url( with anything
+    ("a.css", "@import url(//host/a.css);", "@import"),
+    ("a.css", "@IMPORT 'x.css';", "@import"),
+    ("a.css", "a { background: url(x.png); }", "url("),
+    ("a.css", "a { background: URL (x.png); }", "url("),
+    # F7: a shipped file that reaches into a test path
+    ("a.js", "import { x } from './test/x.js';", "import of a test path"),
+    ("sub/b.js", "import '../test/y.js';", "import of a test path"),
+    ("sub/c.js", "export * from \"./deep/../test/z.js\";", "import of a test path"),
+    ("a.html", "<script type=\"module\" src=\"./test/page.js\"></script>", "import of a test path"),
 ]
 CLEAN = [
     ("ok.js", "el.style.transform = 'none'; setTimeout(() => go(), 10); const s = el.textContent;"),
     ("ok.html", "<!doctype html><script type=\"module\" src=\"app.js\"></script><link rel=\"stylesheet\" href=\"a.css\"><p class=\"x\">done</p>"),
     ("ok.css", ".a { color: red; }"),
     ("a.js", "x.style='nothing here'; // style= in a .js is not a refusal"),
+    # F6: a JS file whose only // are comments (after a closing quote too) is not a protocol-relative URL
+    ("c.js", "const a = 1; // a line comment\nconst b = 'x';  // after a closing quote\nconst c = \"y\" // and again\nconst d = a / 2 / 3; /* it's a block comment // not a URL */\nconst e = { rows: 1, profile: 2, tests: 3 };"),
+    # F7: a shipped file may import a sibling that merely has `test` inside a name
+    ("d.js", "import { q } from './contest/q.js'; import { r } from './latest.js';"),
 ]
 
 
@@ -126,17 +279,18 @@ def selftest():
         open(os.path.join(d, name), "w").write(text + "\n")
     buf = io.StringIO()
     rc = run(d, buf)
-    if rc != 0 or "4 files checked, 0 refused" not in buf.getvalue():
+    if rc != 0 or ("%d files checked, 0 refused, 0 skipped as test files" % len(CLEAN)) not in buf.getvalue():
         ok = False
         notes.append("clean files were refused or miscounted: " + buf.getvalue())
     d = tempfile.mkdtemp()
-    os.makedirs(os.path.join(d, "engine", "test"))
+    os.makedirs(os.path.join(d, "engine", "test", "deep"))
     open(os.path.join(d, "engine", "test", "t.js"), "w").write("x.innerHTML = 1; fetch('http://x')\n")
+    open(os.path.join(d, "engine", "test", "deep", "u.js"), "w").write("eval(s)\n")
     open(os.path.join(d, "engine", "i.js"), "w").write("export const a = 1;\n")
     buf = io.StringIO()
-    if run(d, buf) != 0 or "1 files checked, 0 refused" not in buf.getvalue():
+    if run(d, buf) != 0 or "1 files checked, 0 refused, 2 skipped as test files" not in buf.getvalue():
         ok = False
-        notes.append("a token under test/ was read: " + buf.getvalue())
+        notes.append("a token under test/ was read, or the skipped files were not counted aloud: " + buf.getvalue())
     d = tempfile.mkdtemp()
     buf = io.StringIO()
     if run(d, buf) != 1 or "CHECKED NOTHING" not in buf.getvalue():

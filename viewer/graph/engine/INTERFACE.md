@@ -8,7 +8,7 @@ and holds only what is visible plus a bounded cache. It knows nothing about any 
 no text, fetches nothing, imports nothing outside this folder, and keeps no state outside the handle it returns.
 Two graphs on one page work: each lives under its own container.
 
-**Visible** has one meaning in this file: a node is visible when every one of its ancestors is open (a top-level node
+**Visible** has one meaning in this document: a node is visible when every one of its ancestors is open (a top-level node
 always is). It says nothing about the camera: a visible node may be off the screen, and `select` and `visible` follow
 this definition, not what is on screen.
 
