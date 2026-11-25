@@ -4667,7 +4667,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 105 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 104 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -4680,7 +4680,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 105))
+        return _eq((bad, len(STRING_KEYS)), ([], 104))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -11012,13 +11012,13 @@ def _selftest_cases():
     # ---- the graph data (G1): the symbol table (F38), graph/index.json, graph/step/<id>.json, and the refusals GRAPH-*. Every expectation is a literal.
     GR_WORDS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
                 "symbol_kind_structure": "Diamond: the part is a structure",
-                "symbol_kind_none": "Dashed: the step has no single named Lean result",   # PLACEHOLDER words: the wording seat replaces them
                 "symbol_state_read": "Filled: one of us read its statement",
                 "symbol_state_census": "Half filled: counted by a program, not read", "symbol_state_none": "Empty: not read yet"}
     GR_LABEL = "No plain statement yet"   # the fixture's no_claim_label
+    GR_ROLE = "This step gives a name to a statement. Steps that use the name take the statement as a hypothesis."   # the fixture's named_statement_use_line
 
-    def gr_row(rid, parent="root", order=1, premises=(), kind="theorem", state="read", title="T"):
-        return {"id": rid, "parent": parent, "order": order, "premises": list(premises), "kind": kind, "state": state, "title": title}
+    def gr_row(rid, parent="root", order=1, premises=(), kind="theorem", state="read", title="T", **extra):
+        return dict({"id": rid, "parent": parent, "order": order, "premises": list(premises), "kind": kind, "state": state, "title": title}, **extra)
 
     def gr_codes(rows):
         return [(c, w, m) for c, w, m in _graph_files(rows, "c0", _strings())[0]]
@@ -11026,19 +11026,18 @@ def _selftest_cases():
     def gr_link(f, t, fp, tp):
         return {"from": f, "from_path": fp, "to": t, "to_path": tp}
 
-    @case("GR1", "G1 S1, F38: ONE symbol table GRAPH_SYMBOLS: 4 kinds (theorem, def, structure, none) and 3 states (read, census, none), each row a css class "
-                 "token and a strings key; the 7 keys are in the strings fixture with the prototype's words (the kind `none` row's words are a PLACEHOLDER); "
-                 "the table order is theorem, def, structure, none and read, census, none; GRAPH_MAX_CHILDREN is 40")
+    @case("GR1", "G1 S1, F38: ONE symbol table GRAPH_SYMBOLS: 3 kinds (theorem, def, structure: the kind of the step's root, no `none` row) and 3 states (read, "
+                 "census, none), each row a css class token and a strings key; the 6 keys are in the strings fixture with the prototype's words; "
+                 "the table order is theorem, def, structure and read, census, none; GRAPH_MAX_CHILDREN is 40")
     def _():
         s = _strings()
         return _eq(({k: dict(v) for k, v in GRAPH_SYMBOLS["kinds"].items()}, {k: dict(v) for k, v in GRAPH_SYMBOLS["states"].items()},
                     list(GRAPH_SYMBOLS["kinds"]), list(GRAPH_SYMBOLS["states"]), {w: s.get(w) for w in GR_WORDS}, GRAPH_MAX_CHILDREN),
                    ({"theorem": {"class": "kind-theorem", "words": "symbol_kind_theorem"}, "def": {"class": "kind-def", "words": "symbol_kind_def"},
-                     "structure": {"class": "kind-structure", "words": "symbol_kind_structure"},
-                     "none": {"class": "kind-none", "words": "symbol_kind_none"}},
+                     "structure": {"class": "kind-structure", "words": "symbol_kind_structure"}},
                     {"read": {"class": "state-read", "words": "symbol_state_read"}, "census": {"class": "state-census", "words": "symbol_state_census"},
                      "none": {"class": "state-none", "words": "symbol_state_none"}},
-                    ["theorem", "def", "structure", "none"], ["read", "census", "none"], GR_WORDS, 40))
+                    ["theorem", "def", "structure"], ["read", "census", "none"], GR_WORDS, 40))
 
     @case("GR2", "G1 S3: graph/index.json holds exactly the keys assets, commit, format, max_children, rests_on, steps, strings, symbols, top; top is the "
                  "top ids in `order` (g1, g3, g2); rests_on holds the two links between top steps (g3 rests on g1 and on g2, both paths []); symbols "
@@ -11049,9 +11048,9 @@ def _selftest_cases():
         row = lambda cls, key: {"class": cls, "text": GR_WORDS[key], "words": key}
         want = {"assets": {}, "commit": "unknown", "format": 1, "max_children": 40,
                 "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": {},
-                "symbols": {"kinds": {"def": row("kind-def", "symbol_kind_def"), "none": row("kind-none", "symbol_kind_none"),
+                "symbols": {"kinds": {"def": row("kind-def", "symbol_kind_def"),
                                       "structure": row("kind-structure", "symbol_kind_structure"), "theorem": row("kind-theorem", "symbol_kind_theorem")},
-                            "order": {"kinds": ["theorem", "def", "structure", "none"], "states": ["read", "census", "none"]},
+                            "order": {"kinds": ["theorem", "def", "structure"], "states": ["read", "census", "none"]},
                             "states": {"census": row("state-census", "symbol_state_census"), "none": row("state-none", "symbol_state_none"),
                                        "read": row("state-read", "symbol_state_read")}},
                 "top": ["g1", "g3", "g2"]}
@@ -11059,8 +11058,9 @@ def _selftest_cases():
 
     @case("GR3", "G1 S4: graph/step/<id>.json exists for EVERY step (a leaf too: 6 files), with exactly the keys card, children, commit, format, id, path, "
                  "rests_on; g1 (a top step, path [], one child g1a that the step rests on: parent_rests_on true, rests_on empty); the closed card and the "
-                 "closed child have exactly the keys child_count, id, kind, path, state, title (a child also parent_rests_on); the leaf g1a1x has "
-                 "children [] and the path g1, g1a, g1a1; g3 is read as census and its title is the claim")
+                 "closed child have exactly the keys child_count, id, kind, path, state, title (plus role when the step has one, and on a child "
+                 "parent_rests_on); kind is the kind of the step's ROOT for every step (g1a, g1a1x and g2 have a null claim and are theorem; g1a1 is def); the "
+                 "leaf g1a1x has children [] and the path g1, g1a, g1a1; g3 is read as census and its title is the claim")
     def _():
         b = _base()
         g1 = b.js("graph/step/g1.json")
@@ -11071,14 +11071,14 @@ def _selftest_cases():
                     b.js("graph/step/g2.json")["card"], b.js("graph/step/g1a1.json")["card"]),
                    (["graph/index.json"] + [f"graph/step/{i}.json" for i in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")],
                     {"card": {"child_count": 1, "id": "g1", "kind": "theorem", "path": [], "state": "read", "title": "Claim one"},
-                     "children": [{"child_count": 1, "id": "g1a", "kind": "none", "parent_rests_on": True, "path": ["g1"], "state": "read",
+                     "children": [{"child_count": 1, "id": "g1a", "kind": "theorem", "parent_rests_on": True, "path": ["g1"], "state": "read",
                                    "title": GR_LABEL}],
                      "commit": "unknown", "format": 1, "id": "g1", "path": [], "rests_on": []},
                     ["g1", "g1a", "g1a1"], [],
-                    {"child_count": 0, "id": "g1a1x", "kind": "none", "path": ["g1", "g1a", "g1a1"], "state": "read", "title": GR_LABEL},
+                    {"child_count": 0, "id": "g1a1x", "kind": "theorem", "path": ["g1", "g1a", "g1a1"], "state": "read", "title": GR_LABEL},
                     {"child_count": 0, "id": "g3", "kind": "theorem", "path": [], "state": "census", "title": "Claim four with é"}, [], [],
-                    {"child_count": 0, "id": "g2", "kind": "none", "path": [], "state": "none", "title": GR_LABEL},
-                    {"child_count": 1, "id": "g1a1", "kind": "def", "path": ["g1", "g1a"], "state": "read", "title": "Claim three & <more>"}))
+                    {"child_count": 0, "id": "g2", "kind": "theorem", "path": [], "state": "none", "title": GR_LABEL},
+                    {"child_count": 1, "id": "g1a1", "kind": "def", "path": ["g1", "g1a"], "role": GR_ROLE, "state": "read", "title": "Claim three & <more>"}))
 
     @case("GR4", "G1 the card line, `_card_line(group, no_claim_label)`, four arms in this order: (1) `short`, (2) `title`, (3) the first sentence of the "
                  "claim text (backticks of a span removed FIRST, then cut by `_first_sentence`), (4) the no_claim_label words; never the Lean name; every arm "
@@ -11097,12 +11097,13 @@ def _selftest_cases():
                  "declarations is not in the repository): 23 step files; top is rh-from-everycharacter, primitive-to-all, three-inputs; the widest step "
                  "(zeros-enter) has 6 children; the path of a depth-5 step (good-pair) is three-inputs, families-from-topg, zeros-enter, window-bound (4 "
                  "ancestors); 14 premise edges: 7 sibling rests_on links (2 in index.json, 5 in the step files: three-inputs 2, zeros-enter 3), 7 "
-                 "parent_rests_on true, 0 across subtrees; state read 14, census 1, none 8; kind none 8")
+                 "parent_rests_on true, 0 across subtrees; state read 14, census 1, none 8; 4 steps (root_role named_statement) carry a role, on the card and on the child")
     def _():
         with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
             og = json.load(f)["groups"]
-        rows = [gr_row(g["id"], g["parent"], g["order"], g["premises"], "none" if g["claim"] is None else "theorem",
-                       "none" if g["claim"] is None else g["claim"].get("basis", "read"), "t") for g in og]
+        rows = [gr_row(g["id"], g["parent"], g["order"], g["premises"], "theorem",
+                       "none" if g["claim"] is None else g["claim"].get("basis", "read"), "t",
+                       **({"role": "R"} if g.get("root_role") == "named_statement" else {})) for g in og]
         errs, objs = _graph_files(rows, "c0", _strings())
         steps = {k: v for k, v in objs.items() if k.startswith("graph/step/")}
         kids = [c for v in steps.values() for c in v["children"]]
@@ -11114,10 +11115,10 @@ def _selftest_cases():
                     sum(1 for c in kids if c["parent_rests_on"]), sum(1 for c in kids if not c["parent_rests_on"]),
                     sum(len(v["rests_on"]) for v in steps.values()) + len(ix["rests_on"]),
                     [sum(1 for v in steps.values() if v["card"]["state"] == s) for s in ("read", "census", "none")],
-                    sum(1 for v in steps.values() if v["card"]["kind"] == "none")),
+                    (sum(1 for v in steps.values() if "role" in v["card"]), sum(1 for c in kids if "role" in c))),
                    ([], 23, 23, ["rh-from-everycharacter", "primitive-to-all", "three-inputs"], 6, 6,
                     ["three-inputs", "families-from-topg", "zeros-enter", "window-bound"], 4, 2, [("three-inputs", 2), ("zeros-enter", 3)],
-                    7, 13, 7, [14, 1, 8], 8))
+                    7, 13, 7, [14, 1, 8], (4, 4)))
 
     @case("GR6", "G1 S4: the links of a step file are among ITS children only, with paths (from_path and to_path are the children's own paths); a "
                  "premise on the step's own child is parent_rests_on true on that child and NOT in rests_on; the direction is `from` rests on `to` "
@@ -11165,19 +11166,19 @@ def _selftest_cases():
                     [("GRAPH-CYCLE", "a", "is on a cycle of parents"), ("GRAPH-CYCLE", "b", "is on a cycle of parents")],
                     [("GRAPH-CYCLE", "x", "is on a cycle of parents")], (1, False, ["BUILD-ERROR GRAPH-ID Up " + idm])))
 
-    @case("GR9", "G1 S2, F38 c: a kind or a state with no row in the table refuses, `GRAPH-SYMBOL <step id> kind|state <value>`; a table row that no step "
-                 "uses stays in `symbols` (the fixture has no structure); through the function (a fifth kind, a fourth state, both) and through a build "
-                 "whose declaration table makes g1's root a `lemma` (exit 1, nothing written)")
+    @case("GR9", "G1 S2, F38 c: a kind or a state with no row in the table refuses, `GRAPH-SYMBOL <step id> kind|state <value>` (a kind `none` too: there is no "
+                 "such row); a table row that no step uses stays in `symbols` (the fixture has no structure); through the function (a fourth kind, a fourth "
+                 "state, both) and through a build whose declaration table makes g1's root an `instance` (exit 1, nothing written)")
     def _():
-        b = _build(decls=_decls_kinds({"foo": "lemma"}))
+        b = _build(decls=_decls_kinds({"foo": "instance"}))
         return _eq((gr_codes([gr_row("a", kind="lemma")]), gr_codes([gr_row("a", state="half")]),
                     gr_codes([gr_row("a", kind="lemma", state="half"), gr_row("b", kind="def", state="census")]),
-                    gr_codes([gr_row("a", kind="structure", state="none"), gr_row("b", kind="none", state="read")]),
+                    gr_codes([gr_row("a", kind="structure", state="none"), gr_row("b", kind="def", state="read")]), gr_codes([gr_row("a", kind="none")]),
                     (b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")]),
                     sorted(_base().js("graph/index.json")["symbols"]["kinds"])),
                    ([("GRAPH-SYMBOL", "a", "kind lemma")], [("GRAPH-SYMBOL", "a", "state half")],
-                    [("GRAPH-SYMBOL", "a", "kind lemma"), ("GRAPH-SYMBOL", "a", "state half")], [],
-                    (1, False, ["BUILD-ERROR GRAPH-SYMBOL g1 kind lemma"]), ["def", "none", "structure", "theorem"]))
+                    [("GRAPH-SYMBOL", "a", "kind lemma"), ("GRAPH-SYMBOL", "a", "state half")], [], [("GRAPH-SYMBOL", "a", "kind none")],
+                    (1, False, ["BUILD-ERROR GRAPH-SYMBOL g1 kind instance"]), ["def", "structure", "theorem"]))
 
     @case("GR10", "G1 S5: GRAPH-EDGE: a premise on a step that is neither a sibling nor the step's own child (an uncle, the parent, a grandchild, a "
                   "step that does not exist) is `GRAPH-EDGE <from> <to> crosses subtrees` or `names no step`; a cycle in rests_on among siblings (also "
@@ -11307,17 +11308,51 @@ def _selftest_cases():
                     ["BUILD-ERROR PAGE-STATIC fetch( found in graph/step/g1.json"], 1,
                     [("PAGE-STATIC", "fetch(", "found in graph/step/x.json")], 0, True, False, "<script>x</script> & end."))
 
-    @case("GR17", "G1: the strings file of this checkout (site/strings.json) holds the seven symbol keys (symbol_kind_theorem, def, structure, none and "
-                  "symbol_state_read, census, none) as non-empty strings with no placeholder; the first six are the prototype's words and "
-                  "symbol_kind_none is the PLACEHOLDER words the wording seat replaces; the builder's own check passes the file; and an existing "
+    @case("GR17", "G1: the strings file of this checkout (site/strings.json) holds the six symbol keys (symbol_kind_theorem, def, structure and "
+                  "symbol_state_read, census, none) as non-empty strings with no placeholder, the prototype's words, and no symbol_kind_none; the builder's own "
+                  "check passes the file; and an existing "
                   "output directory that holds a graph/ folder of an earlier build is replaced, not merged, by --force")
     def _():
         with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
             real = json.load(f)
         old = lambda out: _put(os.path.join(out, "graph", "stale.json"), "old")
         b = _build(pre=old, force=True)
-        return _eq(({k: real.get(k) for k in GR_WORDS}, _strings_problems(real), b.rc, "graph/stale.json" in b.files, "graph/index.json" in b.files),
-                   (GR_WORDS, [], 0, False, True))
+        return _eq(({k: real.get(k) for k in GR_WORDS}, "symbol_kind_none" in real, "symbol_kind_none" in _strings(), _strings_problems(real), b.rc,
+                    "graph/stale.json" in b.files, "graph/index.json" in b.files),
+                   (GR_WORDS, False, False, [], 0, False, True))
+
+    @case("GR19", "G1 (amendment) role: a closed card and a closed child carry an OPTIONAL `role`, the words the list page prints for the step's root_role "
+                  "(the strings key named_statement_use_line, for root_role named_statement), and the key is ABSENT when there are no such words: never null, never "
+                  "empty. In the fixture g1a1 (a definition with a claim, root_role named_statement) has it on its card and on its entry in g1a's file; g1 and g3 "
+                  "(result), g1a, g1a1x and g2 (no claim, no root_role) have no `role` key anywhere. A row with role None or empty gets none, one with a text gets it")
+    def _():
+        b = _base()
+        cards = {i: b.js(f"graph/step/{i}.json")["card"] for i in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")}
+        kids = {c["id"]: c for i in ("g1", "g1a", "g1a1") for c in b.js(f"graph/step/{i}.json")["children"]}
+        objs = _graph_files([gr_row("a", role="Words"), gr_row("b", "a", 1, role=None), gr_row("c", "a", 2, role=""), gr_row("d", "a", 3, role="Words")],
+                            "c0", _strings())[1]
+        a = objs["graph/step/a.json"]
+        return _eq(({i: c.get("role") for i, c in cards.items()}, {i: "role" in c for i, c in cards.items()}, {i: "role" in c for i, c in kids.items()},
+                    kids["g1a1"].get("role"), sorted(cards["g1a1"]), sorted(kids["g1a1"]), sorted(cards["g1"]),
+                    a["card"]["role"], [("role" in c) for c in a["children"]], [c.get("role") for c in a["children"]]),
+                   ({"g1": None, "g1a": None, "g1a1": GR_ROLE, "g1a1x": None, "g2": None, "g3": None},
+                    {"g1": False, "g1a": False, "g1a1": True, "g1a1x": False, "g2": False, "g3": False},
+                    {"g1a": False, "g1a1": True, "g1a1x": False}, GR_ROLE,
+                    ["child_count", "id", "kind", "path", "role", "state", "title"],
+                    ["child_count", "id", "kind", "parent_rests_on", "path", "role", "state", "title"],
+                    ["child_count", "id", "kind", "path", "state", "title"], "Words", [False, False, True], [None, None, "Words"]))
+
+    @case("GR20", "G1 (amendment) kind: the kind of a step is the kind of its ROOT, for every step (a null claim too): theorem or lemma gives theorem, def gives "
+                  "def, structure gives structure; a root kind outside those (instance) refuses, `GRAPH-SYMBOL <id> kind <the root's kind>`; with several "
+                  "roots the first root decides (g2: quux then qux); the fixture builds with g1's root a lemma (theorem) and with the null-claim g1a rooted on a "
+                  "def and g2 on a structure")
+    def _():
+        lem = _build(decls=_decls_kinds({"foo": "lemma"}))
+        ds = _build(decls=_decls_kinds({"bar": "def", "quux": "structure"}))
+        kinds = lambda x: {i: x.js(f"graph/step/{i}.json")["card"]["kind"] for i in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")}
+        return _eq(((lem.rc, kinds(lem)), (ds.rc, kinds(ds))),
+                   ((0, {"g1": "theorem", "g1a": "theorem", "g1a1": "def", "g1a1x": "theorem", "g2": "theorem", "g3": "theorem"}),
+                    (0, {"g1": "theorem", "g1a": "def", "g1a1": "def", "g1a1x": "theorem", "g2": "structure", "g3": "theorem"})))
 
     @case("GR18", "G1: every graph file carries `commit` (the notes commit, as a string) and `format` 1: `unknown` on the base build, `dirty` on a build from a dirty "
                   "tools tree, and the full notes commit on a build with --notes-commit (the same 40 hex characters the other files carry in commits.notes)")
