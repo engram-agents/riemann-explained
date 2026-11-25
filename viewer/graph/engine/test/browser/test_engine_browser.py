@@ -214,6 +214,34 @@ def main():
             page.keyboard.press("Enter"); settle()
             keyed = ev("T.taps2")
             assert len(keyed) == 1 and keyed[0]["id"] == "n0" and keyed[0]["key"] == "Enter", keyed
+            # G2: pan/zoom keys pressed on a control inside the face are the face's own: the camera does not move, no tap
+            for sel in ("#c .t-inner", "#c .t-plain"):
+                ev("T.taps2.length = 0")
+                ev("document.querySelector('" + sel + "').focus()")
+                cam0 = ev("T.cam('c')")
+                for key in ("ArrowLeft", "ArrowUp", "+", "-", "0"):
+                    page.keyboard.press(key); settle(30)
+                    assert ev("T.cam('c')") == cam0, ("a key on the face's own control moved the camera", sel, key, cam0, ev("T.cam('c')"))
+                assert ev("T.taps2") == [], ("no tap from keys on the face's own control", sel, ev("T.taps2"))
+            # and the same keys on the engine's own focused stage DO pan and zoom
+            ev("document.querySelector('#c .ge-stage').focus()")
+            before = ev("T.cam('c')")
+            page.keyboard.press("ArrowLeft"); settle(30)
+            after = ev("T.cam('c')")
+            assert after["tx"] != before["tx"] and after["k"] == before["k"], ("ArrowLeft on the stage pans", before, after)
+            page.keyboard.press("ArrowUp"); settle(30)
+            assert ev("T.cam('c')")["ty"] != after["ty"], "ArrowUp on the stage pans"
+            before = ev("T.cam('c')")
+            page.keyboard.press("+"); settle(30)
+            plus = ev("T.cam('c')")
+            assert plus["k"] > before["k"], ("+ on the stage zooms in", before, plus)
+            page.keyboard.press("-"); settle(30)
+            minus = ev("T.cam('c')")
+            assert minus["k"] < plus["k"], ("- on the stage zooms out", plus, minus)
+            page.keyboard.press("ArrowRight"); page.keyboard.press("ArrowRight"); settle(30)
+            moved = ev("T.cam('c')")
+            page.keyboard.press("0"); settle(30)
+            assert ev("T.cam('c')") != moved, ("0 on the stage fits", moved, ev("T.cam('c')"))
             ev("T.destroy('c')")
         case("a face's own data-node attribute never names a node: a tap taps the owner, a key press on its button is not navigation", c_foreign_attr)
 
