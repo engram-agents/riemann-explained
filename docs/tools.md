@@ -108,12 +108,14 @@ a `BYTE-DIFF`; a rename with a bump is an `EDITION` listing; no `NEW-NOTE`). Two
 listings are read by the gate and never change the exit code. The summary prints `placement changes: K`, `re-pointed blocks: K`, `notes gone: K`
 and `notes renamed: K` (each `did not run, no --base given` without `--base`).
 `build_site.py` writes `editions` into each group file and into `data.js`: a list of `{"note": "<file>", "edition": 2, "date": "..."}` for the
-notes of that card (the header's `group`) at edition 2, in note order, `[]` when none; `manifest.json` keeps `editions` as the number of groups at
+notes of that card at edition 2, in note order, `[]` when none (the notes of a card, for this list and for the paragraphs below, are the notes whose
+header `group` is the card and the notes of which the card shows at least one block, whichever group the note's header names; a note is listed once,
+however many of its blocks the card shows and whether or not it is also the card's header-group note, and a level-0 note is never listed); `manifest.json` keeps `editions` as the number of groups at
 edition 2 and adds `note_editions`, the number of notes at edition 2. The first-screen sentence appears when a group or a note is at edition 2,
 with the latest date over both. A card's Evidence section gets, after the group's own paragraph (the group's sentence is `edition_note_card`,
 which says the text of the card was rewritten), one `edition_note_card_note` paragraph (the note's sentence: it says a note the card
 draws on was rewritten, because a card prints only the blocks of a note and the edition check compares the whole note file)
-for each edition-2 note of the card, whatever the dates (a note dated the same day as the group's edition gets its paragraph too: the group's paragraph links the outline file and the note's links the note's own file, two sentences and two files, so the second is not a repetition of the first), each with the
+for each edition-2 note of the card (header group or shown block, as above: a card that shows a block of another group's edition-2 note prints that note's paragraph, linking the note's own file), whatever the dates (a note dated the same day as the group's edition gets its paragraph too: the group's paragraph links the outline file and the note's links the note's own file, two sentences and two files, so the second is not a repetition of the first), each with the
 note's date and a link made from `edition_href_blob` with `{file}` = `docs/<note file>` (the file name percent-encoded as the note's own
 link is). A level-0 note (a note about the whole proof) gets no card paragraph, even when its header names a real card as its group: it is
 not in that card's `editions`, but it is counted in `note_editions` and its date counts for the first screen. The page (`index.html`) of a

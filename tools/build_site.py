@@ -120,13 +120,14 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      check exempts `<a class=edition-link href=https://...>` by class token. A page with no group at edition 2 is byte-equal to before. Cases
      ED1 to ED11 (ED10 and ED11: the marker case that ties notes_meta's EDITION_TEXT_FIELDS to what the page prints).
   F44B EDITION OF A NOTE. A note header may carry `edition` 2 and `edition_date` (checked by notes_meta). group/<id>.json and data.js carry per card
-     `editions`, a list of {note: file, edition: 2, date} for the notes of the card (header group, level not 0) at edition 2 in note order, [] when
-     none; manifest counts keep `editions` (the groups at 2) and gain `note_editions` (the notes at 2). The first-screen paragraph appears when any
+     `editions`, a list of {note: file, edition: 2, date} for the notes of the card at edition 2 in note order, [] when none (F59: the notes of a card
+     are the notes whose header group is the card AND the notes of which the card shows at least one block; each note once, however many blocks
+     and whether or not it is also the header-group note; a level-0 note never; the page prints one paragraph per record); manifest counts keep `editions` (the groups at 2) and gain `note_editions` (the notes at 2). The first-screen paragraph appears when any
      group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph (which is `edition_note_card`: the
      text of the card was rewritten), one `edition_note_card_note` paragraph (a sentence that
      speaks of the note, not of the card) per edition-2 note of the card, whatever the dates (F56: a note dated the same day as the group's edition gets its paragraph too: the group's
      paragraph links the outline file and the note's links the note's file, two sentences and two files), {link} to `edition_href_blob` with
-     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND9, N10 and N11 (two same-date notes on one card; an encoded name on a same-date card), NC1 to NC7.
+     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND9, N10 and N11 (two same-date notes on one card; an encoded name on a same-date card), NC1 to NC7, NB1 to NB10 (F59).
   F52 EDITION FIELDS THE BUILDER CANNOT USE. A group or note at edition 2 whose `edition_date` is missing or not a string is `BUILD-ERROR
      EDITION-DATE <id> edition 2 needs an edition_date`; an `edition` that is not the integer 1 or 2 (a boolean and 2.0 included) is
      `BUILD-ERROR EDITION-VALUE <id> edition must be 1 or 2`: exit 1, OUT_DIR not written, no traceback, every bad group then note in one
@@ -9089,7 +9090,7 @@ def _selftest_cases():
         return _build(outline=_eo(*groups), notes=_nnotes(notes, new, ones), strings=_strings() if strings is None else strings)
 
     @case("ND1", "F44B: group/<id>.json and data.js carry `editions` per card: a list of {note: file, edition: 2, date: edition_date} of the notes of that "
-                 "card (the header group) at edition 2 in note order, [] when none (a note written edition 1 included); level0 and level1 carry none; "
+                 "card (its header group, and since F59 the notes whose block it shows) at edition 2 in note order, [] when none (a note written edition 1 included); level0 and level1 carry none; "
                  "manifest.json keeps `editions` as the groups at 2 and adds `note_editions`, the notes at 2")
     def _():
         b = _nb(notes={"01-one.md": "2026-11-21", "03-three.md": "2026-11-22"},
@@ -9097,7 +9098,8 @@ def _selftest_cases():
         data = json.loads(b.text("data.js")[len("window.RH_DATA = "):-2])
         e = lambda f, d: {"date": d, "edition": 2, "note": f}
         want = {"g1": [e("01-one.md", "2026-11-21"), e("05-five.md", "2026-11-20")], "g3": [e("03-three.md", "2026-11-22")], "g2": [],
-                "g1a": [], "g1a1": [], "g1a1x": [e("04-four.md", "2026-11-23")]}
+                "g1a": [e("01-one.md", "2026-11-21")], "g1a1": [], "g1a1x": [e("04-four.md", "2026-11-23")]}   # F59: g1a and g2 show a block of note 01
+        want["g2"] = [e("01-one.md", "2026-11-21")]
         got = {g: b.js(f"group/{g}.json")["editions"] for g in want}
         return _eq((got, {g: data["groups"][g]["editions"] for g in want}, b.js("manifest.json")["counts"],
                     any("editions" in x for x in b.js("level0.json")["steps"] + b.js("level1.json")["steps"]),
@@ -9144,7 +9146,7 @@ def _selftest_cases():
                     nest.page.count(ED_SUMMARY + nd_card("2026-11-23", "docs/04-four.md")),
                     outside(same), outside(diff), outside(two), outside(nest), [ev(x) for x in (same, diff, two, nest)],
                     [x.rc for x in (same, diff, two, nest)]),
-                   ([3, 0, 0], 1, 1, [2, 0], 1, [0, 2, 0], 1, 0, [0, 0, 0, 1], 1,
+                   ([3, 1, 0], 1, 3, [2, 0], 1, [0, 2, 0], 1, 0, [0, 0, 0, 1], 1,
                     [False] * 6, [False] * 6, [False] * 6, [False] * 6, [[], [], [], []], [0, 0, 0, 0]))
 
     @case("ND4", "F44B: the card link of a note is the edition_href_blob key with {file} = docs/<note file> (the tag name lives in the strings, not in "
@@ -9177,7 +9179,7 @@ def _selftest_cases():
             r1 = _child(os.path.join(d, "args.json"), os.path.join(d, "o1"), 0)
             r2 = _child(os.path.join(d, "args.json"), os.path.join(d, "o2"), 3)
             t1, t2 = _tree(os.path.join(d, "o1")), _tree(os.path.join(d, "o2"))
-            return _eq((r1[0], r2[0], len(t1), t1 == t2, t1["index.html"].decode().count('<p class="edition-note">')), (0, 0, 11, True, 4))
+            return _eq((r1[0], r2[0], len(t1), t1 == t2, t1["index.html"].decode().count('<p class="edition-note">')), (0, 0, 11, True, 6))
 
     @case("ND7", "F44B: the file part of a note's card link is percent-encoded like the note_href link (quote with safe=''): a note whose file name holds "
                  "`#`, `?`, `%` and a space gives `%23`, `%3F`, `%25` and `%20` in the href, and the prefix `docs/` stays as it is")
@@ -9225,7 +9227,7 @@ def _selftest_cases():
                     diff.page.count(ED_SUMMARY + lit("2026-11-22")), len(own(diff, "g1").find("p", "edition-note")),
                     same.page.count(nd_first("2026-11-21")), same.js("group/g1.json")["editions"],
                     same.js("manifest.json")["counts"]["editions"], same.js("manifest.json")["counts"]["note_editions"]),
-                   (0, 1, 2, 1, 1, 1, 2, 1, [{"note": "01-one.md", "edition": 2, "date": "2026-11-21"}], 1, 1))
+                   (0, 1, 2, 1, 3, 1, 2, 1, [{"note": "01-one.md", "edition": 2, "date": "2026-11-21"}], 1, 1))
 
     @case("N10", "F56: a card whose group is at 2 dated D with THREE edition-2 notes (two dated D, one dated another day) prints the group's paragraph "
                  "and then three note paragraphs, one per note, in note order, each with its own date and its own docs/<file> link, nothing above "
@@ -9240,7 +9242,7 @@ def _selftest_cases():
                                  + nd_card("2026-11-21", "docs/02-same.md") + "\n" + nd_card("2026-11-20", "docs/03-other.md")),
                     [b.page.count(blob + f) for f in ("docs/01-one.md", "docs/02-same.md", "docs/03-other.md", "outline/outline.json")],
                     "rewritten for readers" in surface(_card(b, "g1")), [x["note"] for x in b.js("group/g1.json")["editions"]]),
-                   (0, 4, 1, [1, 1, 1, 1], False, ["01-one.md", "02-same.md", "03-other.md"]))
+                   (0, 4, 1, [3, 1, 1, 1], False, ["01-one.md", "02-same.md", "03-other.md"]))
 
     @case("N11", "F56: a note on a same-date card (group at 2 dated D, note at 2 dated D) whose file name holds `#`, `?`, `%` and a space gives a note "
                  "paragraph whose href has %23, %3F, %25 and %20 for them (the group's paragraph keeps the outline file), while the data file's "
@@ -9494,7 +9496,7 @@ def _selftest_cases():
                     diff.page.count(NC_GROUP), diff.page.count(NC_NOTE),
                     same.rc, same.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-21", "docs/01-one.md")),
                     same.page.count(NC_GROUP), same.page.count(NC_NOTE)),
-                   (0, 1, 1, 1, 0, 1, 1, 1))
+                   (0, 1, 1, 3, 0, 1, 1, 3))   # F59: the note sentence is also on g1a and g2, which show blocks of note 01
 
     @case("NC4", "F54: a card whose group is at 1 with two edition-2 notes prints the note sentence twice, once per note, each with its own date and "
                  "file, in note order, and never the card sentence")
@@ -9502,7 +9504,7 @@ def _selftest_cases():
         b = _nb(notes={"01-one.md": "2026-11-21"}, new={"05-five.md": ("05", "g1", "2026-11-20")})
         return _eq((b.rc, b.page.count(ED_SUMMARY + nd_card("2026-11-21", "docs/01-one.md") + "\n" + nd_card("2026-11-20", "docs/05-five.md")),
                     b.page.count(NC_NOTE), b.page.count(NC_GROUP)),
-                   (0, 1, 2, 0))
+                   (0, 1, 4, 0))   # F59: two of the four sentences are on g1a and g2, which show blocks of note 01
 
     @case("NC5", "F54: a level-0 note still prints no note sentence on any card (the neighbour of NC1: ND8 pins the same by the file name)")
     def _():
