@@ -7189,13 +7189,13 @@ def _selftest_cases():
            ("[", "[", PRE_), ("]", "]", POST_), (",", ",", ""), (";", ";", ""), (":", ":", ""), ("!", "!", ""), ("|", "|", NS_), (".", ".", ""),
            ("*", "∗", "")]
 
-    @case("CV0", "the subset is a named constant: FORMULA_COMMANDS holds 69 commands (37 Greek letters, 13 symbols, sum prod int, max min log cos, "
+    @case("CV0", "the subset is a named constant: FORMULA_COMMANDS holds 70 commands (37 Greek letters, 13 symbols, sum prod int, ast, max min log cos, "
                  "bar mathrm operatorname bigl bigr big, mathbb and mathcal (S4, was 67), and the four spacing commands `,` `;` `!` and the space), "
-                 "FORMULA_VERSION is `1`, and every name of the tables of these cases is in it")
+                 "FORMULA_VERSION is `2`, and every name of the tables of these cases is in it")
     def _():
-        tabled = {n for n, _c in GREEK} | {n for n, _c, _a in SYMBOLS} | {"max", "min", "log", "cos", "bar", "mathrm", "operatorname", "bigl", "bigr",
+        tabled = {n for n, _c in GREEK} | {n for n, _c, _a in SYMBOLS} | {"ast", "max", "min", "log", "cos", "bar", "mathrm", "operatorname", "bigl", "bigr",
                                                                        "big", "mathbb", "mathcal", ",", ";", "!", " "}
-        return _eq((len(FORMULA_COMMANDS), FORMULA_VERSION, tabled == set(FORMULA_COMMANDS)), (69, "1", True))
+        return _eq((len(FORMULA_COMMANDS), FORMULA_VERSION, tabled == set(FORMULA_COMMANDS)), (70, "2", True))
 
     @case("CV1", "converter, tokens: a letter is <mi>, a run of digits (with one decimal point between digits) one <mn>, `3.` is <mn>3</mn> then "
                  "<mo>.</mo>, each of the operators and punctuation `+ - = < > / ( ) [ ] , ; : ! | . *` is <mo> (the minus is U+2212, `<` is "
@@ -7420,6 +7420,68 @@ def _selftest_cases():
         r = _frw(outline=_cond("$\\mathbb{R}$ holds"))
         return _eq((b.rc, b.page.count(f"<mi>{BBC}</mi><mi>{BBF}</mi><mi>{BBZ}</mi><mi>{CALH}</mi>"), element_problems(b.page), r),
                    (0, 1, [], (1, ["BUILD-ERROR FORMULA-RAW g1 outline/outline.json group g1: $\\mathbb{R}$"], False)))
+
+    @case("AS1", "converter, `\\ast` is the star's synonym: in every position the output is the output of the same formula with `*` in its place "
+                 "(alone, between letters, as a subscript, as a superscript braceless and in braces, on a Greek letter, before a fence, as a base), "
+                 "each pair equal and each literal; `\\ast` alone is <math><mo>∗</mo></math>")
+    def _():
+        pairs = [("\\ast", "*", M_("<mo>∗</mo>")),
+                 ("a\\ast b", "a*b", M_("<mrow><mi>a</mi><mo>∗</mo><mi>b</mi></mrow>")),
+                 ("x_\\ast", "x_*", M_("<msub><mi>x</mi><mo>∗</mo></msub>")),
+                 ("x^\\ast", "x^*", M_("<msup><mi>x</mi><mo>∗</mo></msup>")),
+                 ("x^{\\ast}", "x^{*}", M_("<msup><mi>x</mi><mrow><mo>∗</mo></mrow></msup>")),
+                 ("\\chi^\\ast", "\\chi^*", M_("<msup><mi>χ</mi><mo>∗</mo></msup>")),
+                 ("\\chi^{\\ast}", "\\chi^{*}", M_("<msup><mi>χ</mi><mrow><mo>∗</mo></mrow></msup>")),
+                 ("f^\\ast(s)", "f^*(s)", M_('<mrow><msup><mi>f</mi><mo>∗</mo></msup><mo stretchy="false" form="prefix">(</mo><mi>s</mi>'
+                                              '<mo stretchy="false" form="postfix">)</mo></mrow>')),
+                 ("\\ast^2", "*^2", M_("<msup><mo>∗</mo><mn>2</mn></msup>"))]
+        return _eq([(cv(a), cv(b)) for a, b, _w in pairs], [(w, w) for _a, _b, w in pairs])
+
+    @case("AS2", "converter, the neighbours of `\\ast` stay refused (None): `\\star`, `a\\star b`, `x^\\star`, `\\Ast`, `\\asts`, `\\astx`, `\\ast_`, `\\AST`; "
+                 "and `\\ast2` is TeX's `\\ast` then `2`, the same output as `*2` (a command name is letters only, as `\\alpha2` is `\\alpha` then `2`)")
+    def _():
+        bad = ("\\star", "a\\star b", "x^\\star", "\\Ast", "\\asts", "\\astx", "\\ast_", "\\AST")
+        return _eq(([cv(x) for x in bad], cv("\\ast2"), cv("\\ast2") == cv("*2")),
+                   ([None] * len(bad), M_("<mrow><mo>∗</mo><mn>2</mn></mrow>"), True))
+
+    @case("AS3", "converter, the 69 commands of before `\\ast` convert as they did: one formula per command kind (a Greek small and a capital letter, a "
+                 "symbol, a large operator, a named function, bar braceless and braced, mathrm, operatorname with the space after it, bigl bigr, big, "
+                 "mathbb, mathcal, and the four spacing commands), with the MathML of the converter before this change")
+    def _():
+        want = [("\\alpha", M_("<mi>α</mi>")), ("\\Omega", M_('<mi mathvariant="normal">Ω</mi>')), ("\\le", M_("<mo>≤</mo>")),
+                ("a\\cdot b", M_("<mrow><mi>a</mi><mo>⋅</mo><mi>b</mi></mrow>")), ("\\sum", M_("<mo>∑</mo>")),
+                ("\\max", M_('<mi mathvariant="normal">max</mi>')),
+                ("\\bar x", M_('<mover accent="true"><mi>x</mi><mo stretchy="true">―</mo></mover>')),
+                ("\\bar{\\chi}", M_('<mover accent="true"><mrow><mi>χ</mi></mrow><mo stretchy="true">―</mo></mover>')),
+                ("\\mathrm{ab}", M_('<mi mathvariant="normal">ab</mi>')),
+                ("\\operatorname{li}x", M_('<mrow><mi mathvariant="normal">li</mi><mspace width="0.167em"></mspace><mi>x</mi></mrow>')),
+                ("\\bigl(x\\bigr)", M_('<mrow><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo></mrow>')),
+                ("\\big|", M_('<mo stretchy="false">|</mo>')), ("\\mathbb{C}", M_("<mi>ℂ</mi>")), ("\\mathcal{H}", M_("<mi>ℋ</mi>")),
+                ("a\\,b", M_('<mrow><mi>a</mi><mspace width="0.167em"></mspace><mi>b</mi></mrow>')),
+                ("a\\;b", M_('<mrow><mi>a</mi><mspace width="0.278em"></mspace><mi>b</mi></mrow>')),
+                ("a\\!b", M_('<mrow><mi>a</mi><mspace width="-0.167em"></mspace><mi>b</mi></mrow>')),
+                ("a\\ b", M_('<mrow><mi>a</mi><mspace width="0.222em"></mspace><mi>b</mi></mrow>')),
+                ("\\alpha2", M_("<mrow><mi>α</mi><mn>2</mn></mrow>"))]
+        return _eq([(f, cv(f)) for f, _w in want], want)
+
+    @case("AS4", "the subset moved: FORMULA_VERSION is `2`, FORMULA_COMMANDS holds 70 commands and has `ast` of kind `mo` with the character of the star "
+                 "(U+2217), the same as the entry of `*` in the operator table; the build's run line says `own-subset-2 (70 commands)` (the cases CV0, "
+                 "RL1 and FRW2 pin it in full)")
+    def _():
+        b = _build(notes=_notes(arg_text="A $x$ here"))
+        line = [ln for ln in b.out.splitlines() if ln.startswith("formulas: ")]
+        return _eq((FORMULA_VERSION, len(FORMULA_COMMANDS), FORMULA_COMMANDS.get("ast"), FORMULA_COMMANDS.get("ast", ("", ""))[1] == _FOPS["*"], line),
+                   ("2", 70, ("mo", "∗"), True, ["formulas: 2 converted, 0 unsupported, 0 unpaired, of 2 marks, converter own-subset-2 (70 commands)"]))
+
+    @case("AS5", "a page with `$\\chi^{\\ast}$` builds clean (exit 0), the formula counted as converted, and its MathML is the one of `$\\chi^{*}$` "
+                 "in the same place: the build output of the two spellings differs only by the formula text the author wrote, not by the MathML")
+    def _():
+        a = _build(outline=_cond("$\\chi^{\\ast}$ holds"))
+        b = _build(outline=_cond("$\\chi^{*}$ holds"))
+        mm = '<math><msup><mi>χ</mi><mrow><mo>∗</mo></mrow></msup></math>'
+        pick = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith("formulas: ")]
+        page = lambda b_: b_.files.get("index.html", b"").decode("utf-8")   # a refused build writes nothing: a mismatch, not a KeyError
+        return _eq((a.rc, page(a).count(mm), page(b).count(mm), pick(a) == pick(b), element_problems(page(a))), (0, 1, 1, True, []))
 
     @case("CV13", "the converter is deterministic: the conversions of a sample and the page of a build that holds formulas are the same text under "
                   "PYTHONHASHSEED 0 and 3 (a fresh interpreter each)")
@@ -7682,7 +7744,7 @@ def _selftest_cases():
         return _eq((b.rc, pick(b), pick(_base())), (0, [], []))
 
     @case("RL1", "the run line, in the output after `sketches:`: `formulas: N converted, U unsupported, P unpaired, of T marks, converter "
-                 "own-subset-1 (69 commands)`; the base build is `0 converted, 0 unsupported, 0 unpaired, of 0 marks`; the counts are of renderings "
+                 "own-subset-2 (70 commands)`; the base build is `0 converted, 0 unsupported, 0 unpaired, of 0 marks`; the counts are of renderings "
                  "(the card's first sentence and the evidence text both count; moved by S1, since a formula the converter cannot convert may not be in "
                  "the first sentence, which is on the surface): `A $x$ and \\$ here. Then $\\frac{1}{2}$ and a $ here` is 2 converted (the first "
                  "sentence and Evidence), 1 unsupported, 1 unpaired, of 3")
@@ -7691,8 +7753,8 @@ def _selftest_cases():
         b = _build(notes=_notes(arg_text="A $x$ and \\$ here. Then $\\frac{1}{2}$ and a $ here"))
         idx = b.out.splitlines()
         return _eq((line(_base()), line(b), idx.index(line(b)[0]) > next(i for i, x in enumerate(idx) if x.startswith("sketches: "))),
-                   (["formulas: 0 converted, 0 unsupported, 0 unpaired, of 0 marks, converter own-subset-1 (69 commands)"],
-                    ["formulas: 2 converted, 1 unsupported, 1 unpaired, of 3 marks, converter own-subset-1 (69 commands)"], True))
+                   (["formulas: 0 converted, 0 unsupported, 0 unpaired, of 0 marks, converter own-subset-2 (70 commands)"],
+                    ["formulas: 2 converted, 1 unsupported, 1 unpaired, of 3 marks, converter own-subset-2 (70 commands)"], True))
 
     @case("RL2", "the sum N + U = T (code FORMULA-SUM) is asserted on the pure counting function: `formula_counts` of a log with a mark that has no "
                  "result is (0, 0, 0, 1) and `formula_sum_errors` of it is FORMULA-SUM; a log that adds up gives none; a build whose counting "
@@ -7760,7 +7822,7 @@ def _selftest_cases():
                      (1, ["BUILD-ERROR FORMULA-RAW 01.b02 01-one.md line 10: $$y$$"], False)], 0, True,
                     ["FORMULA-UNSUPPORTED 01.b02 $\\foo$", "FORMULA-UNSUPPORTED 01.b02 $$y$$", "FORMULA-UNPAIRED 01.b02",
                      "FORMULA-UNSUPPORTED 01.b03 $\\bar$"],
-                    ["formulas: 0 converted, 3 unsupported, 1 unpaired, of 3 marks, converter own-subset-1 (69 commands)"]))
+                    ["formulas: 0 converted, 3 unsupported, 1 unpaired, of 3 marks, converter own-subset-2 (70 commands)"]))
 
     @case("FRW3", "S1: a literal dollar sign written `\\$` is no formula and is never refused (a claim, a first sentence); a formula inside a code "
                   "span is no formula either; the same formula both on the surface (the first sentence) and in Evidence (the whole text) is one "
