@@ -9253,6 +9253,136 @@ def _selftest_cases():
                         "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/docs/07-a%23b%3Fc%25d%20e.md"],
                     False, False, [{"note": name, "edition": 2, "date": "2026-11-21"}]))
 
+    # ---- F59: the notes of a card for the edition paragraph are the notes of its header group AND the notes of which it shows a block.
+    # Fixture: in the base fixture g1 shows block 02.b02 (decl foo) of note 02 (header group g2), g1a1x shows 02.b01 (decl qux) of note 02, g2
+    # owns note 02 and shows 01.b05 of note 01, g1a shows 01.b04 of note 01, g1a1 and g3 show no block.
+    def _fnote(nid, gid, date, decls, level=2):
+        """A note with one reading block per decl in `decls` (block ids <nid>.b01, ...), at edition 2 when a date is given."""
+        return ("# Note " + nid + "\n" + _h(id=nid, group=gid, list_title="Note " + nid, level=level,
+                                            **({"edition": 2, "edition_date": date} if date else {})) + "\n\n## Body\n\n"
+                + "".join("Reading " + nid + " " + str(i) + ".\n" + _b(id=nid + ".b%02d" % i, kind="reading", decls=[d], reader="Reader Two",
+                                                                       date="2026-11-23") + "\n\n" for i, d in enumerate(decls, 1)))
+
+    def _nbk(groups=(), notes=None, extra=None, ones=()):
+        """_nb with the notes `extra` (file -> text) added or replacing the fixture file."""
+        n = _nnotes(notes, None, ones)
+        n.update(extra or {})
+        return _build(outline=_eo(*groups), notes=n, strings=_strings())
+
+    NB_GROUPS = ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")
+    nb_eds = lambda b_: {g: [(x["note"], x["date"]) for x in b_.js(f"group/{g}.json")["editions"]] for g in NB_GROUPS}
+    nb_paras = lambda b_: {g: len(_direct(_direct(_card(b_, g), "details", "evidence")[0], "p", "edition-note")) for g in NB_GROUPS}
+
+    @case("NB1", "F59: a card that shows a block of another group's edition-2 note prints that note's paragraph (link: the note's own file at edition 1) "
+                 "and its `editions` carries it: with note 02 (header group g2) at 2, g1 (block 02.b02), g1a1x (block 02.b01) and g2 (its own note) each get "
+                 "one paragraph and one record; g1a (shows only note 01's block), g1a1 and g3 get none")
+    def _():
+        b = _nb(notes={"02-two.md": "2026-11-22"})
+        e = [("02-two.md", "2026-11-22")]
+        own = lambda g: _direct(_card(b, g), "details", "evidence")[0]
+        return _eq((b.rc, nb_eds(b), nb_paras(b), b.page.count(ED_SUMMARY + nd_card("2026-11-22", "docs/02-two.md")),
+                    b.page.count(nd_card("2026-11-22", "docs/02-two.md")), "docs/02-two.md" in surface(_card(b, "g1")),
+                    [len(own(g).find("p", "edition-note")) for g in ("g1", "g1a1x", "g2")]),
+                   (0, {"g1": e, "g1a": [], "g1a1": [], "g1a1x": e, "g2": e, "g3": []},
+                    {"g1": 1, "g1a": 0, "g1a1": 0, "g1a1x": 1, "g2": 1, "g3": 0}, 3, 3, False, [1, 1, 1]))
+
+    @case("NB2", "F59: the same cards when note 02 is at edition 1 (written, not 2) have no paragraph and an empty `editions`; with no edition field at all "
+                 "the same")
+    def _():
+        one = _nbk(ones=("02-two.md",))
+        none = _nb()
+        return _eq((one.rc, nb_eds(one), nb_paras(one), "edition-note" in one.page, nb_eds(none), nb_paras(none), none.page == _base().page),
+                   (0, {g: [] for g in NB_GROUPS}, {g: 0 for g in NB_GROUPS}, False, {g: [] for g in NB_GROUPS}, {g: 0 for g in NB_GROUPS}, True))
+
+    @case("NB3", "F59: a note that is both the header-group note and the note of shown blocks is listed once, on the page and in the data: note 01 (header "
+                 "group g1; g1 shows four of its blocks) at 2 gives g1 one paragraph and one record, g1a (block 01.b04) and g2 (block 01.b05) one each as a "
+                 "shown note; and note 02 at 2 gives g2, its own header group that also shows 02.b01, one")
+    def _():
+        a = _nb(notes={"01-one.md": "2026-11-21"})
+        c = _nb(notes={"02-two.md": "2026-11-22"})
+        e = [("01-one.md", "2026-11-21")]
+        return _eq((a.rc, nb_eds(a), nb_paras(a), a.page.count(nd_card("2026-11-21", "docs/01-one.md")),
+                    nb_eds(c)["g2"], nb_paras(c)["g2"], c.page.count("docs/02-two.md"),
+                    sorted(len(x["editions"]) for x in json.loads(a.text("data.js")[len("window.RH_DATA = "):-2])["groups"].values())),
+                   (0, {"g1": e, "g1a": e, "g1a1": [], "g1a1x": [], "g2": e, "g3": []},
+                    {"g1": 1, "g1a": 1, "g1a1": 0, "g1a1x": 0, "g2": 1, "g3": 0}, 3,
+                    [("02-two.md", "2026-11-22")], 1, 3, [0, 0, 0, 1, 1, 1]))
+
+    @case("NB4", "F59: a card that shows TWO blocks of one foreign note prints that note once, page and data: note 07 (group g3, edition 2, two blocks of "
+                 "foo) is shown by g1 with both blocks")
+    def _():
+        b = _nbk(extra={"07-seven.md": _fnote("07", "g3", "2026-11-19", [FOO, FOO])})
+        e = [("07-seven.md", "2026-11-19")]
+        g1 = b.js("group/g1.json")
+        return _eq((b.rc, [x["block"] for x in g1["blocks"] if x["note"] == "07"], nb_eds(b), nb_paras(b),
+                    b.page.count(nd_card("2026-11-19", "docs/07-seven.md"))),
+                   (0, ["07.b01", "07.b02"], {"g1": e, "g1a": [], "g1a1": [], "g1a1x": [], "g2": [], "g3": e},
+                    {"g1": 1, "g1a": 0, "g1a1": 0, "g1a1x": 0, "g2": 0, "g3": 1}, 2))
+
+    @case("NB5", "F59: the notes of a card come in note order (by note id, the order of the notes, not by file name or by block), each once, own and shown "
+                 "notes mixed, each with its own date, one equal to the group's: g1 at 2 on 2026-11-21 with own notes 01 (2026-11-21) and 05 (shows no "
+                 "block), shown notes 02 (2026-11-20), 0b (file 09-nine.md) and 0c (file 04-four.md), the last two with a block of foo: "
+                 "01, 02, 05, 0b, 0c on the page and in the data")
+    def _():
+        b = _nbk(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21", "02-two.md": "2026-11-20"},
+                 extra={"09-nine.md": _fnote("0b", "g3", "2026-11-18", [FOO]), "04-four.md": _fnote("0c", "g3", "2026-11-17", [FOO]),
+                        "05-five.md": _fnote("05", "g1", "2026-11-16", [])})
+        order = [("01-one.md", "2026-11-21"), ("02-two.md", "2026-11-20"), ("05-five.md", "2026-11-16"), ("09-nine.md", "2026-11-18"),
+                 ("04-four.md", "2026-11-17")]
+        return _eq((b.rc, nb_eds(b)["g1"], nb_paras(b)["g1"],
+                    b.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-21", "docs/01-one.md") + "\n"
+                                 + nd_card("2026-11-20", "docs/02-two.md") + "\n" + nd_card("2026-11-16", "docs/05-five.md") + "\n"
+                                 + nd_card("2026-11-18", "docs/09-nine.md") + "\n" + nd_card("2026-11-17", "docs/04-four.md"))),
+                   (0, order, 6, 1))
+
+    @case("NB6", "F59: a level-0 note stays out: the builder anchors no block of a level-0 note to any card (so a card never shows one), and a level-0 note "
+                 "at 2 that names g1 gives no paragraph and no record on any card (also with a block of foo in it); `note_editions` counts it, the "
+                 "first-screen sentence carries its date")
+    def _():
+        b = _nbk(extra={"00-whole.md": _fnote("00", "g1", "2026-11-22", [FOO], level=0)})
+        return _eq((b.rc, [x["block"] for g in NB_GROUPS for x in b.js(f"group/{g}.json")["blocks"] if x["note"] == "00"], nb_eds(b), nb_paras(b),
+                    "docs/00-whole.md" in b.page, b.js("manifest.json")["counts"]["note_editions"], b.page.count(nd_first("2026-11-22"))),
+                   (0, [], {g: [] for g in NB_GROUPS}, {g: 0 for g in NB_GROUPS}, False, 1, 1))
+
+    @case("NB7", "F59: a note at 2 that a card neither owns nor shows gives that card nothing: note 03 (group g3, no blocks) at 2 is on g3 only; note 01 at 2 "
+                 "is on g1, g1a (block 01.b04) and g2 (block 01.b05) and NOT on g1a1, g1a1x or g3")
+    def _():
+        t = _nb(notes={"03-three.md": "2026-11-22"})
+        o = _nb(notes={"01-one.md": "2026-11-21"})
+        return _eq((t.rc, {g: v for g, v in nb_eds(t).items() if v}, {g: v for g, v in nb_paras(o).items() if v}),
+                   (0, {"g3": [("03-three.md", "2026-11-22")]}, {"g1": 1, "g1a": 1, "g2": 1}))
+
+    @case("NB8", "F59: the manifest counts are unchanged by a card that shows a foreign note: with note 02 at 2 `editions` is 0 (groups at 2) and "
+                 "`note_editions` 1, the counts of the base otherwise, and the first-screen sentence is said once")
+    def _():
+        b = _nb(notes={"02-two.md": "2026-11-22"})
+        g = _nb(groups=[("g1", "2026-11-21")], notes={"02-two.md": "2026-11-22"})
+        return _eq((b.rc, b.js("manifest.json")["counts"], b.page.count(nd_first("2026-11-22")),
+                    g.js("manifest.json")["counts"], g.page.count(nd_first("2026-11-22"))),
+                   (0, {"blocks": 8, "editions": 0, "groups": 6, "note_editions": 1, "notes": 4}, 1,
+                    {"blocks": 8, "editions": 1, "groups": 6, "note_editions": 1, "notes": 4}, 1))
+
+    @case("NB9", "F59: the group files, data.js and the page agree on `editions` of a card that shows a foreign note, level0.json and level1.json carry none: "
+                 "note 02 at 2, g1's group file, its data.js entry and the paragraph of its card are one record")
+    def _():
+        b = _nb(notes={"02-two.md": "2026-11-22"})
+        data = json.loads(b.text("data.js")[len("window.RH_DATA = "):-2])
+        rec = [{"date": "2026-11-22", "edition": 2, "note": "02-two.md"}]
+        return _eq((b.rc, {g: b.js(f"group/{g}.json")["editions"] for g in ("g1", "g1a1x", "g1a")},
+                    {g: data["groups"][g]["editions"] for g in ("g1", "g1a1x", "g1a")},
+                    any("editions" in x for x in b.js("level0.json")["steps"] + b.js("level1.json")["steps"]),
+                    b.page.count(nd_card("2026-11-22", "docs/02-two.md"))),
+                   (0, {"g1": rec, "g1a1x": rec, "g1a": []}, {"g1": rec, "g1a1x": rec, "g1a": []}, False, 3))
+
+    @case("NB10", "F59: only the card's OWN blocks count, never those of a nested child card: note 06 (group g3, at 2) has a block of bar (root of g1a) and "
+                  "note 08 (group g3, at 2) a block of baz (root of g1a1, child of g1a, itself child of g1); g1a gets 06 only, g1a1 gets 08 only, g1 neither")
+    def _():
+        b = _nbk(extra={"06-six.md": _fnote("06", "g3", "2026-11-19", [BAR]), "08-eight.md": _fnote("08", "g3", "2026-11-18", [BAZ])})
+        return _eq((b.rc, [x["block"] for x in b.js("group/g1.json")["blocks"] if x["note"] in ("06", "08")],
+                    [x["block"] for x in b.js("group/g1a.json")["blocks"] if x["note"] in ("06", "08")], nb_eds(b)),
+                   (0, [], ["06.b01"], {"g1": [], "g1a": [("06-six.md", "2026-11-19")], "g1a1": [("08-eight.md", "2026-11-18")], "g1a1x": [],
+                                        "g2": [], "g3": [("06-six.md", "2026-11-19"), ("08-eight.md", "2026-11-18")]}))
+
     # ---- F52: the builder refuses an edition field it cannot use, with a message and no traceback. The checker (notes_meta) refuses the same
     # inputs first, so these cases run with the checker stubbed to pass; the last case runs the real one.
     @contextlib.contextmanager
