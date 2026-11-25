@@ -1536,8 +1536,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                         "root_role": role, "root_kind": root_kind, "recognition": copy.deepcopy(recognition), "sketches": sketches,
                         "edition": {"number": 2, "date": g["edition_date"]} if g.get("edition") == 2 else None,   # F44
                         "editions": [{"note": n["name"], "edition": 2, "date": n["edition"]} for n in m.notes   # F44B, F59: the notes of this card at edition 2:
-                                     if n["level"] != 0 and n["edition"]   # header group = this card, or a block of the note shown here; once each, note order
-                                     and (n["group"] == gid or n["id"] in {b["note"] for b in brecs})],
+                                     if n["level"] != 0 and n["edition"] and n["id"] in ids],   # `ids` is the card's notes set above (header group, or a block of the note shown here); once each, note order
                         "title": g.get("title"),
                         "blocks": brecs,
                         "open_items": [{"block": b["block"], "needs": b["needs"], "note": b["note"], "roots": b["roots"]}
