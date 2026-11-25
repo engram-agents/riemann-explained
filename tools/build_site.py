@@ -10556,6 +10556,24 @@ def _selftest_cases():
         controls = ['<a class="note-link" href="https://x.invalid/">x</a>', '<a class="extra note-link more" href="https://x.invalid/">x</a>']
         return _eq(([sp(h, "") for h, _w in planted], [sp(h, "") for h in controls]), ([w for _h, w in planted], [[], []]))
 
+    @case("NL5c", "F60: the `note-link` exemption is not more permissive than the `edition-link` one, on every spelling of the address and of the class list: "
+                 "for each plant the two tokens give the SAME answer, and the answer is the literal one. Refused: `HTTPS://`, and a space, a tab or a "
+                 "newline before `https://` (the exemption tests the value as written, not folded or stripped), the token in the EARLIER of two class "
+                 "attributes (the parser keeps the later one); passed: the token in the later of two class attributes; `https:/x` is not an address "
+                 "of the first check, so it gives [] under both tokens")
+    def _():
+        sp = static_problems
+        plants = [('<a class="{c}" href="HTTPS://x.invalid/">x</a>', ["href=http"]),
+                  ('<a class="{c}" href=" https://x.invalid/">x</a>', ["href=http"]),
+                  ('<a class="{c}" href="\thttps://x.invalid/">x</a>', ["href=http"]),
+                  ('<a class="{c}" href="\nhttps://x.invalid/">x</a>', ["href=http"]),
+                  ('<a class="{c}" class="x" href="https://x.invalid/">x</a>', ["href=http"]),
+                  ('<a class="x" class="{c}" href="https://x.invalid/">x</a>', []),
+                  ('<a class="{c}" href="https:/x">x</a>', []),
+                  ('<a class="{c}" href="https://x.invalid/">x</a>', [])]
+        got = [(sp(h.format(c="note-link"), ""), sp(h.format(c="edition-link"), "")) for h, _w in plants]
+        return _eq(got, [(w, w) for _h, w in plants])
+
     @case("NL5b", "F60 (j): a note anchor with an https href and NO `note-link` token is refused: static_problems says href=http, and the build refuses a "
                  "page that holds one (a builder that wrote the anchor without the class: PAGE-STATIC href=http, exit 1, nothing written)")
     def _():
@@ -10658,6 +10676,19 @@ def _selftest_cases():
                     f60_sites(b.page)["header"], none.rc),
                    (F60_BLOB, [], {"file", "commit"}, None, 0,
                     [(True, "https://github.com/engram-agents/riemann-explained/blob/" + head + "/docs/00-whole.md")], 1))
+
+    @case("NL10", "F60: the link is escaped where it is written: a note_href that is otherwise legal and holds `&` and a double quote (the strings check "
+                  "refuses no character of an https address but a brace outside the two placeholders) gives `&amp;` and `&quot;` in every note "
+                  "anchor of the page, never a raw `&` or `\"` inside the href, and the page passes the element and static checks")
+    def _():
+        tpl = 'https://x.invalid/a&b"c/{file}'
+        st = _strings()
+        st["note_href"] = tpl
+        b = _build(strings=st)
+        hrefs = re.findall(r'<a class="note-link" href="([^"]*)">', b.page)
+        return _eq((_strings_problems(st), b.rc, len(hrefs), sorted(set(h.rsplit("/", 1)[0] for h in hrefs)), re.findall(r'href="https://x\.invalid/a&(?!amp;)', b.page),
+                    element_problems(b.page), static_problems(b.page, b.text("data.js"))),
+                   ([], 0, 19, ["https://x.invalid/a&amp;b&quot;c"], [], [], []))
 
     return cases
 
