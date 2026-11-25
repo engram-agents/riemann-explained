@@ -3657,6 +3657,74 @@ def _():
     fe(r, [_fl("TITLE-WITH-CLAIM", TITLE_CLAIM, "g1"), _fl("TITLE-WITH-CLAIM", TITLE_CLAIM, "g2")], 1)
 
 
+# ---- the closed-card line (SHT1 to SHT5): an optional author-written `short` on a group
+SHORT_BAD = ": short must be a non-empty string of at most 50 characters with no line break"
+
+
+@case("SHT1", "a group may carry the optional key `short`: a valid one gives no finding (no UNKNOWN-KEY), on a group with a null claim and on "
+              "a group with a claim; a backtick pair, non-ASCII text and a lowercase first letter are accepted; a misspelt key is still UNKNOWN-KEY")
+def _():
+    clean(_ro(dict(G("g1"), short="A step")))
+    clean(_ro(dict(_rg("result"), short="The top result")))
+    clean(_ro(dict(_rg("named_statement", root=("A.C", "baz")), short="A definition")))
+    clean(_ro(dict(G("g1"), short="The `foo` step")))
+    clean(_ro(dict(G("g1"), short="Étale — 中文 ζ")))
+    clean(_ro(dict(G("g1"), short="the step with a lowercase start")))
+    clean(_ro(dict(G("g1"), short="A  double blank inside")))
+    fe(_ro(dict(G("g1"), shorts="x")), [_fl("UNKNOWN-KEY", ": unknown key 'shorts'")], 1)
+    fe(_ro(dict(G("g1"), Short="x")), [_fl("UNKNOWN-KEY", ": unknown key 'Short'")], 1)
+
+
+@case("SHT2", "a `short` that is not a string (a number, a float, a boolean, null, a list, an object), is empty or only spaces, holds a line "
+              "break (LF, CR, CRLF), or has a space at either end is BAD-VALUE naming the group and the key, one finding, on a group with a "
+              "null claim and on a group with a claim")
+def _():
+    for bad in (3, 0, 1.5, True, False, None, ["x"], [], {"a": "b"}, {}, "", " ", "   ", "A\nB", "A\rB", "A\r\nB", "X\n", "\nX",
+                " X", "X ", " X "):
+        fe(_ro(dict(G("g1"), short=bad)), [_fl("BAD-VALUE", SHORT_BAD)], 1)
+        fe(_ro(dict(_rg("result"), short=bad)), [_fl("BAD-VALUE", SHORT_BAD)], 1)
+
+
+@case("SHT3", "the length is counted in Python characters, `len(s)`: 50 is accepted and 51 refused, 49 accepted, 50 and 51 non-ASCII characters "
+              "(two bytes each) the same, 50 characters with a backtick pair accepted; the number of characters is not the number of bytes")
+def _():
+    for ok_ in ("x" * 49, "x" * 50, "é" * 50, "中" * 50, "`" + "x" * 48 + "`", "A" + "`ab`" * 12 + "z"):
+        eq(len(ok_) <= 50, True, "fixture")
+        clean(_ro(dict(G("g1"), short=ok_)))
+    for bad in ("x" * 51, "é" * 51, "中" * 51, "`" + "x" * 49 + "`", "x" * 200):
+        fe(_ro(dict(G("g1"), short=bad)), [_fl("BAD-VALUE", SHORT_BAD)], 1)
+    eq((len("x" * 50), len("x" * 51)), (50, 51), "the boundary")
+
+
+@case("SHT4", "the rest is unchanged by the key: a title is not held to the length of a short (a 60-character title is clean) and a short is not "
+              "held to the capital rule of a title; a bad title and a bad short are each their own finding, the title's first, in the order "
+              "of the outline; the count line is the same with and without shorts")
+def _():
+    clean(_ro(dict(G("g1"), title="T" * 60)))
+    clean(_ro(dict(G("g1"), title="The title", short="the short")))
+    fe(_ro(dict(G("g1"), title="")), [_fl("BAD-VALUE", TITLE_BAD)], 1)
+    fe(_ro(dict(G("g1"), title="", short="")), [_fl("BAD-VALUE", TITLE_BAD), _fl("BAD-VALUE", SHORT_BAD)], 1)
+    fe(_ro(dict(G("g1"), title="the lowercase", short="x" * 51)), [_fl("BAD-VALUE", TITLE_CAP), _fl("BAD-VALUE", SHORT_BAD)], 1)
+    fe(_ro(G("g1"), dict(G("g2", order=2), short="")), [_fl("BAD-VALUE", SHORT_BAD, "g2")], 1)
+    want = "outline: 2 groups, 0 claimed, 2 null, 2 roots resolved, 0 defs_opened resolved, 0 premise links"
+    plain = _ro(G("g1"), G("g2", order=2))
+    shorted = _ro(dict(G("g1"), short="One"), dict(G("g2", order=2), short="Two"))
+    eq(([want in x.lines for x in (plain, shorted)], plain.f, shorted.f, plain.lines[-1], shorted.lines[-1]),
+       ([True, True], [], [], "2 notes, 0 findings, 0 warnings", "2 notes, 0 findings, 0 warnings"), "count line")
+    r = _ro(dict(G("g1"), short="x" * 51))
+    eq(r.lines[-1], "1 notes, 1 findings, 0 warnings", "a bad short is an error")
+
+
+@case("SHT5", "GROUP_OPTIONAL is a literal tuple in a fixed order, `short` last, and `short` is not in EDITION_TEXT_FIELDS (its changes are not "
+              "edition-checked yet)")
+def _():
+    eq(GROUP_OPTIONAL, ("recognition", "root_role", "title", "edition", "edition_date", "short"), "GROUP_OPTIONAL")
+    eq("short" in EDITION_TEXT_FIELDS, False, "short is not an edition text field")
+    eq(EDITION_TEXT_FIELDS, ("claim.text", "claim.conditions", "recognition.result", "recognition.difference", "recognition.note",
+                             "recognition.citations[].where", "recognition.citations[].source", "recognition.citations[].source_date",
+                             "recognition.established", "title"), "EDITION_TEXT_FIELDS is as before")
+
+
 @case("REC1b", "recognition on a group whose claim is null is RECOGNITION-NULL-CLAIM (BRIEF 18e); control: with a claim it is clean")
 def _():
     fe(_ro(_rg("result", rec=REC, claim=None, root=("A.B", "foo"))),
@@ -6030,6 +6098,26 @@ def _():
     fe(_edc(_tg3("New title", ed="2026-11-20"), _tg3("Old title", ed="2026-11-20")),
        ["OUTLINE-CHANGED outline.json group 'g3': title changed after edition 2 was set at HEAD (a third edition needs a ruling)"], 1)
     fe(_edc(_tg3("Old title", ed="2026-11-20"), _tg3("Old title", ed="2026-11-20")), [], 0)
+
+
+@case("SHT6", "`short` is not edition-checked yet: adding one, changing it and removing it on a group with no bump, at edition 1, are each "
+              "no finding and exit 0 (no OUTLINE-CHANGED, no EDITION, no SELECTOR-CHANGED), and the summary counts no selector change; "
+              "on a group at edition 2 at REV the same three are also clean; a bad `short` is still BAD-VALUE beside --base")
+def _():
+    def drop_short(gid):
+        def f(o):
+            del _eof(o, gid)["short"]
+        return f
+    s1, s2 = _set("g1", "short", "One"), _set("g1", "short", "Two")
+    for cur, base in ((s1, None), (s2, s1), (drop_short("g1"), s1), (s1, s1)):
+        r = _edc(cur, base)
+        fe(r, [], 0)
+        ok("selector changes: 0" in r.lines and "first claims: 0" in r.lines and "edition check: 2 groups compared to HEAD" in r.lines,
+           "summary lines\n" + r.out)
+    e2 = _both(_set("g1", "edition", 2), _set("g1", "edition_date", "2026-11-20"))
+    for cur, base in ((_both(e2, s1), e2), (_both(e2, s2), _both(e2, s1)), (e2, _both(e2, s1))):
+        fe(_edc(cur, base), [], 0)
+    fe(_edc(_set("g1", "short", "x" * 51), None), [_fl("BAD-VALUE", SHORT_BAD)], 1)
 
 
 # ---- F63: a first claim is not an edition (an edition records a change to text that was published; a card with no claim published none)

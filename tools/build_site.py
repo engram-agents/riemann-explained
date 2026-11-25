@@ -10763,6 +10763,20 @@ def _selftest_cases():
                     element_problems(b.page), static_problems(b.page, b.text("data.js"))),
                    ([], 0, 19, ["https://x.invalid/a&amp;b&quot;c"], [], [], []))
 
+    @case("SHORT1", "the optional outline group key `short` goes through the builder's own call of the checker: a valid one on a group builds (exit 0, "
+                    "the files are written); one of 51 characters is the checker's BAD-VALUE on stdout, exit 1, `REFUSED: notes_meta found errors; "
+                    "nothing written` on stderr and no OUT_DIR; one of exactly 50 builds")
+    def _():
+        def with_short(text):
+            o = _outline()
+            next(g for g in o["groups"] if g["id"] == "g1")["short"] = text
+            return o
+        good, edge, bad = _build(outline=with_short("A valid line")), _build(outline=with_short("x" * 50)), _build(outline=with_short("x" * 51))
+        want = "BAD-VALUE outline.json group 'g1': short must be a non-empty string of at most 50 characters with no line break"
+        return _eq((good.rc, "index.html" in good.files, edge.rc, "index.html" in edge.files,
+                    bad.rc, want in bad.out.splitlines(), "REFUSED: notes_meta found errors; nothing written" in bad.err, bad.existed, bad.files),
+                   (0, True, 0, True, 1, True, True, False, {}))
+
     return cases
 
 
