@@ -24,7 +24,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Kepler",
-    "text": "If L(χ, s) ≠ 0 for every Dirichlet character χ and every s with Re s > 1/2, except a principal character at s = 1, then the Riemann Hypothesis holds (in Mathlib's formulation)"
+    "text": "If $L(\\chi, s) \\ne 0$ for every Dirichlet character $\\chi$ and every $s$ with $\\operatorname{Re} s > 1/2$, except a principal character at $s = 1$, then the Riemann Hypothesis holds (in Mathlib's formulation)"
    },
    "id": "rh-from-everycharacter",
    "level": 1,
@@ -52,10 +52,12 @@
       "opened_on": "2026-11-24"
      }
     ],
-    "difference": "The Riemann Hypothesis follows once $\\zeta$ has no zero with real part above $1/2$: by the functional equation, the zeros in the critical strip are symmetric about the critical line. The book states the symmetry of the zeros and states the Riemann Hypothesis; it does not write this implication down as a separate result, it is immediate from the symmetry. The library takes its hypothesis for every Dirichlet character and uses it for the character of modulus 1 only. Its conclusion is Mathlib's `RiemannHypothesis`, which is about zeros of $\\zeta$ other than the trivial zeros $-2, -4, \\dots$ and other than the point $1$, and the proof works with Mathlib's functional equation for $\\zeta$ itself, not with $\\xi$; it treats every $s$ with $\\operatorname{Re} s < 1/2$ at once, the trivial zeros showing up as zeros of the cosine factor, where the book's symmetry is stated for the zeros of $\\xi$.",
+    "difference": "The Riemann Hypothesis follows once $\\zeta$ has no zero with real part above $1/2$: by the functional equation, the zeros in the critical strip are symmetric about the critical line. The book states the symmetry of the zeros and states the Riemann Hypothesis; it does not write this implication down as a separate result, it is immediate from the symmetry. The library takes its hypothesis for every Dirichlet character and uses it for the character of modulus 1 only. Its conclusion is the Riemann Hypothesis as Mathlib defines it, which is about zeros of $\\zeta$ other than the trivial zeros $-2, -4, \\dots$ and other than the point $1$, and the proof works with Mathlib's functional equation for $\\zeta$ itself, not with $\\xi$; it treats every $s$ with $\\operatorname{Re} s < 1/2$ at once, the trivial zeros showing up as zeros of the cosine factor, where the book's symmetry is stated for the zeros of $\\xi$.",
     "reader": "Kepler",
     "date": "2026-11-24"
-   }
+   },
+   "edition": 2,
+   "edition_date": "2026-11-25"
   },
   {
    "claim": {
@@ -90,7 +92,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "The hypothesis has no exception at s = 1, also for the character of modulus 1 (whose L-function is ζ): it holds there only because Lean gives ζ(1) the defined value (γ − log 4π)/2, which is not 0, where mathematics has a pole."
+     "The hypothesis has no exception at $s = 1$, also for the character of modulus 1 (whose $L$-function is $\\zeta$): it holds there only because Lean gives $\\zeta(1)$ the defined value $(\\gamma - \\log 4\\pi)/2$, which is not $0$, where mathematics has a pole."
     ],
     "conventions_checked": [
      "a",
@@ -139,7 +141,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "If no L-function of a primitive character vanishes for Re s > 1/2, then L(χ, s) ≠ 0 for every Dirichlet character χ and every s with Re s > 1/2, except a principal character at s = 1"
+    "text": "If no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then $L(\\chi, s) \\ne 0$ for every Dirichlet character $\\chi$ and every $s$ with $\\operatorname{Re} s > 1/2$, except a principal character at $s = 1$"
    },
    "id": "primitive-to-all",
    "level": 1,
@@ -168,16 +170,18 @@
       "opened_on": "2026-11-24"
      }
     ],
-    "difference": "The $L$-function of a Dirichlet character is the $L$-function of the primitive character that induces it, times a finite product of factors $1 - \\chi^*(p)\\,p^{-s}$ over the primes dividing the modulus; so the two have the same zeros off the imaginary axis. The book speaks of the zeros of the two functions. The library states non-vanishing: if no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then none of any character does, except that for the trivial character the point $s = 1$ is left out, where $\\zeta$ has its pole. The hypothesis itself leaves no point out (see this step's condition). The product runs over the primes dividing the modulus, as in the book; the library takes it from Mathlib's `LFunction_changeLevel`.",
+    "difference": "The $L$-function of a Dirichlet character is the $L$-function of the primitive character that induces it, times a finite product of factors $1 - \\chi^*(p)\\,p^{-s}$ over the primes dividing the modulus; so the two have the same zeros off the imaginary axis. The book speaks of the zeros of the two functions. The library states non-vanishing: if no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then none of any character does, except that for the trivial character the point $s = 1$ is left out, where $\\zeta$ has its pole. The hypothesis itself leaves no point out (see this step's condition). The product runs over the primes dividing the modulus, as in the book; the library takes it from Mathlib's lemma for a change of modulus.",
     "reader": "Kepler",
     "date": "2026-11-24"
-   }
+   },
+   "edition": 2,
+   "edition_date": "2026-11-25"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "At modulus 1 the only character is the trivial one; it counts as primitive and its L-function is ζ. The half-plane then contains s = 1, where ζ has its pole and Lean gives ζ(1) the defined value (γ − log 4π)/2, which is not 0; so at that one point the statement asks for a nonzero value of a convention, not about a zero."
+     "At modulus 1 the only character is the trivial one; it counts as primitive and its $L$-function is $\\zeta$. The half-plane then contains $s = 1$, where $\\zeta$ has its pole and Lean gives $\\zeta(1)$ the defined value $(\\gamma - \\log 4\\pi)/2$, which is not $0$; so at that one point the statement asks for a nonzero value of a convention, not about a zero."
     ],
     "conventions_checked": [
      "a",
@@ -226,7 +230,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "For every primitive Dirichlet character χ, of any modulus N ≥ 1, L(χ, s) ≠ 0 whenever Re s > 1/2"
+    "text": "for every primitive Dirichlet character $\\chi$, of any modulus $N \\ge 1$, $L(\\chi, s) \\ne 0$ whenever $\\operatorname{Re} s > 1/2$"
    },
    "id": "zerofreeall",
    "level": 2,
@@ -258,13 +262,16 @@
     "established": "not_traced",
     "reader": "Halley",
     "date": "2026-11-24"
-   }
+   },
+   "title": "Zero-freeness to the right of 1/2 for every primitive character",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "'A `HypsAlt` structure' means the statement assumes `Nonempty (HypsAlt …)`: one inhabitant exists. `Closed`, `LinkN` and `DefiniteSideCondition` are not opened and keep the library's names."
+     "\"One instance of the hypothesis package\" means the statement assumes that an instance exists. Three things in that phrase were not opened for this claim: what \"closed\" requires, the link condition, and the definite side condition. Note 13 states the definition of the first and the per-index inequality the second is built from; note 4 states the shape of the third and does not open any of the notions it uses."
     ],
     "conventions_checked": [
      "e"
@@ -332,7 +339,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "`Green`, `VWin` and a `HypsAlt` structure (closed under `LinkN`, with the library's definite side condition) give: no L-function of a primitive character vanishes for Re s > 1/2"
+    "text": "Input 1 (a one-to-one correspondence between polynomials and the functions the library calls cuspidal, stated on its own card), the window supply for every primitive character (Input 2), and one instance of the hypothesis package (Input 3; closed under links, with the definite side condition) give: no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
    },
    "id": "three-inputs",
    "level": 1,
@@ -354,15 +361,17 @@
     "form": "not_recognised",
     "reader": "Halley",
     "date": "2026-11-24",
-    "note": "This step is the release's own composition of three inputs, `Green`, `VWin` and the `HypsAlt` structure, into `ZeroFreeAll`; we found no textbook result that draws this conclusion from these hypotheses."
-   }
+    "note": "This step is the release's own composition of three inputs, Input 1, the window supply and the hypothesis package, into the statement that no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$; we found no textbook result that draws this conclusion from these hypotheses."
+   },
+   "edition": 2,
+   "edition_date": "2026-11-25"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "`HostExW la`: for each ε with 0 < ε < 1/52 there are constants and an `la`-family of scales (the library's notion) such that every scale of the family with that ε, beyond a starting point, has a host meeting `HostGood` and the requirement.",
-     "The same `la` serves every ψ; on `Main`'s route `la = 3/2`. `TopG` is a statement about every requirement; here it is used for `GChi ψ`."
+     "Met at scale $\\lambda$: for each $\\varepsilon$ with $0 < \\varepsilon < 1/52$ there are constants and a family of scales at $\\lambda$ (the library's notion; we have not opened its definition), such that every scale of the family with that $\\varepsilon$, beyond a starting point, has a host meeting the library's list of conditions on a host and the requirement.",
+     "The same $\\lambda$ serves every $\\psi$. On the route of the release's main theorem, $\\lambda = 3/2$. The statement about classes of families is about every host requirement: for every scale $\\lambda > 1$ and every requirement, if the requirement is met at scale $\\lambda$ and every family in the requirement's class at $\\lambda$ satisfies a condition (we have not opened its definition), then that class has a certain property (we have not opened its definition). Here it is used for the requirement of $\\psi$."
     ],
     "conventions_checked": [
      "d",
@@ -439,7 +448,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "If `TopG` holds and, for one `la > 1`, the host requirement the library builds from each primitive character ψ (`GChi ψ`) is met in the sense `HostExW la`, then no L-function of a primitive character vanishes for Re s > 1/2"
+    "text": "If the statement about classes of families holds and, for one scale $\\lambda > 1$, the host requirement the library builds from each primitive character $\\psi$ is met at scale $\\lambda$, then no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
    },
    "id": "families-from-topg",
    "level": 2,
@@ -455,7 +464,9 @@
      "name": "UpperTheory.Top.zeroFreeAll_of_topG"
     }
    ],
-   "root_role": "result"
+   "root_role": "result",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": null,
@@ -469,13 +480,16 @@
      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ZeroFreeAllOfTopG",
      "name": "UpperTheory.Top.TopG"
     }
-   ]
+   ],
+   "title": "The statement about classes of families",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "The theorem is generic in a family type (`Fam`), in a map from a family to its core data (`core`) and in one family condition (`Tied`); on `Main`'s route they are `FamP`, the map `Fm.toFamCore` and `ChainTied` (`ZeroFreeAllOfTopG.lean` 28). Both named conditions are defined through `ChebyshevInequalityOnFamilyWindows` (`TopWin` 23-33). `Level.ofSub`, `EFamC` and the family fields are not opened, so the level and the two conditions keep the library's names."
+     "The theorem is stated for any type of families, any map from a family to its core data, and any one condition on a family at $x$. On the route of the release's main theorem these are the library's families, the map to their core data, and a condition on a family at $x$ (we have not opened its definition). The tied inequality with constants $c_D$ and $c_L$ says: for some further constants, the condition on the family holds at every large $x$ in the family's windows. Both conditions in the claim are defined through it. The window inequality says that for all $c_D$, $c_L$ and every $\\varepsilon > 0$, every family that satisfies a condition on the family at the level (we have not opened its definition) and the tied inequality with $c_D$, $c_L$ has $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$ at all large $x$ in its windows, where $E_\\Lambda$ is the level's weighted error term. The statement that the level has families at scale $\\lambda$ says that there are $c_D$, $c_L$ and $\\varepsilon_1 > 0$ such that for every $\\varepsilon$ with $0 < \\varepsilon < \\varepsilon_1$ some family satisfies the condition at the level, has windows at scale $\\lambda$, and satisfies the tied inequality with $c_D$, $c_L$. The library's construction of the level from a subgroup, the condition on the family at the level, and the family's data are not opened."
     ],
     "conventions_checked": [
      "d",
@@ -569,7 +583,7 @@
      "Subgroup.zpowers (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For a set Q of primitive characters and one `la > 1`: if, for each ψ in Q, the level the library builds from the powers of ψ's character satisfies the two conditions the library names `ChebyshevInequalityOnWindows` and `ChebyshevInequalityAtWindowScale` (the second at scale `la`), and the Landau property `FormB`, then L(ψ, s) ≠ 0 for every ψ in Q and every s with Re s > 1/2"
+    "text": "For a set $Q$ of primitive characters and one scale $\\lambda > 1$: if, for each $\\psi$ in $Q$, the level $\\Lambda_\\psi$ that the library builds from the powers of $\\psi$'s character satisfies the window inequality and has families at scale $\\lambda$, and has the Landau property, then $L(\\psi, s) \\ne 0$ for every $\\psi$ in $Q$ and every $s$ with $\\operatorname{Re} s > 1/2$"
    },
    "id": "zeros-enter",
    "level": 3,
@@ -585,13 +599,15 @@
      "name": "Formalism.HC.zeroFreeOn_of_tiedWin_cyc"
     }
    ],
-   "root_role": "result"
+   "root_role": "result",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "`EAtH` and `CoreAtH` are the library's names for two conditions at x, each on the host, a finite set `TT`, ε and some of the constants (`EAtH` also on the level); they are not opened here. `eD`, `eL`, `K`, `cHH`, `eK` and `C` are real constants with no condition on them; `eD`, `eL`, `K`, `cHH` and `eK` are arguments of `CoreAtH`, `C` of `EAtH`, and `eD` and `eL` also set the exponent."
+     "We have not opened the definitions of the two conditions on the host at $x$. Each depends on the host, a finite set $T$, $\\varepsilon$ and some of the constants, and the first also depends on the level. The constants $c_D$, $c_L$, $C$ and three further constants are real numbers with no condition on them. $c_D$, $c_L$ and the three further constants are arguments of the second condition, $C$ is an argument of the first, and $c_D$ and $c_L$ also set the exponent."
     ],
     "conventions_checked": [
      "d"
@@ -652,7 +668,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For every level (in the library's sense), all constants and every ε > 0, there is x1 such that for every x ≥ x1 and every host (in the library's sense) satisfying the library's conditions `EAtH` and `CoreAtH` at x with those constants, the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε); the threshold x1 depends on the level and the constants, not on the host"
+    "text": "For every level $\\Lambda$ (in the library's sense), all constants and every $\\varepsilon > 0$, there is $x_1$ such that for every $x \\ge x_1$ and every host (in the library's sense) satisfying two conditions of the library on the host at $x$ with those constants, the level's weighted error term satisfies $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$. The threshold $x_1$ depends on the level and the constants, not on the host."
    },
    "id": "window-bound",
    "level": 4,
@@ -665,7 +681,39 @@
      "name": "UpperTheory.Comparison₂.core_gm"
     }
    ],
-   "root_role": "result"
+   "root_role": "result",
+   "edition": 2,
+   "edition_date": "2026-11-24"
+  },
+  {
+   "claim": null,
+   "id": "good-pair",
+   "level": 5,
+   "order": 1,
+   "parent": "window-bound",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Development.AutomorphicArithmetic.MeanSquareBounds.pairEx",
+     "name": "QH.pairEx"
+    }
+   ],
+   "title": "The good pair"
+  },
+  {
+   "claim": null,
+   "id": "zero-density",
+   "level": 5,
+   "order": 2,
+   "parent": "window-bound",
+   "premises": [],
+   "roots": [
+    {
+     "module": "Formalism.GL3MeanSquares.GenusMeanAsymptotics.JacobiCharacterSums.CountZAll",
+     "name": "Formalism.HermitianLattices.Ext.PrimitiveCharacterCasts.ZD.zero_density_box"
+    }
+   ],
+   "title": "The zero-density box"
   },
   {
    "claim": null,
@@ -681,14 +729,17 @@
      "module": "Development.AutomorphicArithmetic.PrimitiveCosets.WindowInequalityOfArtinInputs",
      "name": "UpperTheory.Comparison₂.windowInequality_of_artinInputs"
     }
-   ]
+   ],
+   "title": "The window inequality at every level",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "`Gm` is a weighted sum, over the family, of smoothed twisted von Mangoldt sums Σ Λ(n)χ(n)(y/n − 1) with the main term subtracted: y log y − (1+γ)y for the trivial character, and a term y·L′(χ,1)/L(χ,1) otherwise (L(χ,1) ≠ 0 for χ ≠ 1 is Mathlib's theorem, so the quotient is a real value).",
-     "The constant C is any real number; the windows are: for every Y₀ there is Y ≥ Y₀ with the bound on all of [Y, Y^(1+δ)]."
+     "$E_F$, the family's weighted error term, is a weighted sum, over the family, of smoothed twisted von Mangoldt sums $\\sum \\Lambda(n)\\chi(n)(y/n - 1)$ with the main term subtracted: $y \\log y - (1+\\gamma)y$ for the trivial character, and a term $y \\cdot L'(\\chi,1)/L(\\chi,1)$ otherwise ($L(\\chi,1) \\ne 0$ for $\\chi \\ne 1$ is a theorem of the library Mathlib, so the quotient is well defined).",
+     "The constant $C$ is any real number; the windows are: for every $Y_0$ there is $Y \\ge Y_0$ with the bound on all of $[Y, Y^{1+\\delta}]$."
     ],
     "conventions_checked": [
      "a",
@@ -746,7 +797,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for 0 < θ < 1 and δ > 0: if the family's weighted error term `Gm` is at most a constant times y^θ for all y in windows [Y, Y^(1+δ)] lying beyond every starting point, then none of the family's L-functions vanishes for Re s > θ"
+    "text": "For a finite family of Dirichlet characters with positive weights, none of them a principal character of modulus above 1, and for $0 < \\theta < 1$ and $\\delta > 0$: if for every $Y_0$ there is $Y \\ge Y_0$ such that the family's weighted error term $E_F(y)$ is at most a constant times $y^\\theta$ for all $y$ in $[Y, Y^{1+\\delta}]$, then none of the family's $L$-functions vanishes for $\\operatorname{Re} s > \\theta$"
    },
    "id": "landau-step",
    "level": 4,
@@ -760,6 +811,8 @@
     }
    ],
    "root_role": "result",
+   "edition": 2,
+   "edition_date": "2026-11-25",
    "recognition": {
     "form": "variant",
     "result": "Landau's theorem on Dirichlet series with non-negative coefficients, in its error-term form",
@@ -796,14 +849,17 @@
      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Window",
      "name": "Formalism.HC.Level.FormBAt"
     }
-   ]
+   ],
+   "title": "The Landau property of a level at one scale",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "The product is over i = 1, …, d − 1 and is computed in ℂ, so there is no truncated subtraction; the formula's sign (−1)^(d−1) uses natural-number subtraction, which is safe only because `Green` assumes 0 < d.",
-     "`IsCusp`, `Gn`, `thetaOf`, `rootsBar` and `Mt` are not opened."
+     "The product is over $i = 1, \\dots, d - 1$ and is computed in $\\mathbb{C}$, so there is no truncated subtraction. The formula's sign $(-1)^{d-1}$ uses natural-number subtraction, which is safe only because Input 1 assumes $0 < d$.",
+     "We have not opened the library's definitions of \"cuspidal\", of the term the explicit formula sums, or of two further objects used in this statement."
     ],
     "conventions_checked": [
      "b",
@@ -841,7 +897,7 @@
      "Polynomial.Monic, Irreducible (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "Input 1 (`Green`): for each prime g, label datum and d ≥ 1, a one-to-one correspondence between the monic irreducible degree-d polynomials over Z/g with nonzero constant term and the functions on `Gn g d` that the library calls cuspidal, each given by an explicit formula from the label datum on elements with irreducible characteristic polynomial, and with value ∏(g^i − 1) at 1"
+    "text": "for each prime $g$, each label datum (a datum of the library; we have not opened its definition) and each $d \\ge 1$, a one-to-one correspondence between the monic irreducible polynomials of degree $d$ over $\\mathbb{Z}/g$ with nonzero constant term and the functions on the group the library uses here, which note 3 reads as $GL_d(\\mathbb{F}_g)$ (we have not opened the library's definition of the group), that the library calls cuspidal. Each function is given by an explicit formula from the label datum on elements with irreducible characteristic polynomial, and has value $\\prod (g^i - 1)$ at $1$."
    },
    "id": "input-green",
    "level": 2,
@@ -854,7 +910,10 @@
      "name": "GlobalTheory.GLq.Green"
     }
    ],
-   "root_role": "named_statement"
+   "root_role": "named_statement",
+   "title": "Input 1",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": null,
@@ -868,7 +927,10 @@
      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ExistsPageN",
      "name": "UpperTheory.Top.VWin"
     }
-   ]
+   ],
+   "title": "The window supply for every primitive character (Input 2)",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": null,
@@ -882,7 +944,10 @@
      "module": "Development.AutomorphicArithmetic.AutomorphicVarieties.ModularityArgument.ThresholdArguments.DenseThresholdCases.VwinOfRow",
      "name": "UpperTheory.One.vwin_of_row"
     }
-   ]
+   ],
+   "title": "The library's proof of Input 2",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
@@ -943,7 +1008,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "For each primitive character ψ, `VWinAt ψ 401` gives ψ's host requirement at `la = 3/2` (`HostExW`)"
+    "text": "For each primitive character $\\psi$, the window supply of $\\psi$ with constant 401 (stated on the card for the window supply) gives that $\\psi$'s host requirement is met at scale $\\lambda = 3/2$ (in the sense stated on the card this one supports)"
    },
    "id": "hosts",
    "level": 2,
@@ -958,14 +1023,16 @@
      "name": "UpperTheory.Top.supplyChi"
     }
    ],
-   "root_role": "result"
+   "root_role": "result",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
     "basis": "census",
     "conditions": [
-     "Counted by a regex over the structure's field lines, not by a parse: 46 field lines, 16 of them containing `Closed`.",
-     "`HypsAlt` is a structure that holds data (a family class, a selection, the functions `cT` and `c30`, and the number `cIc`) together with conditions on that data; that the structure holds means that such data exist, and a step that uses it takes those conditions as hypotheses."
+     "Counted by a text-pattern search over the structure's field lines, not by a parse of the code: 46 field lines, 16 of them containing the library's name for \"closed\".",
+     "That the package holds means that such data exist, and a step that uses it takes those conditions as hypotheses."
     ],
     "conventions_checked": [
      "e"
@@ -983,7 +1050,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "Input 3: the structure the library names `HypsAlt`; a regex count over its field lines finds 46, of which 16 contain the name `Closed`"
+    "text": "a structure of the library that holds data (a family class, a selection, two functions and a number) together with conditions on that data"
    },
    "id": "input-hypsalt",
    "level": 2,
@@ -996,7 +1063,10 @@
      "name": "GlobalTheory.Fc.HypsAlt"
     }
    ],
-   "root_role": "named_statement"
+   "root_role": "named_statement",
+   "title": "The hypothesis package (Input 3)",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": null,
@@ -1010,7 +1080,10 @@
      "module": "Formalism.SharpRestriction.GlobalTheoremInputs",
      "name": "Formalism.MainNotions.LinkN"
     }
-   ]
+   ],
+   "title": "The link condition",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
@@ -1031,7 +1104,7 @@
     ],
     "mathlib_read": [],
     "reader": "Halley",
-    "text": "Three hypotheses bundled in one structure that the library names `OpenLiteratureStatements`, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
+    "text": "three hypotheses bundled in one structure of the library, whose field names cite Caraiani's local-global duality, the existence of local Langlands, and Galois representations of polarized pairs"
    },
    "id": "literature-statements",
    "level": 3,
@@ -1044,14 +1117,17 @@
      "name": "UpperTheory.LiteratureTheorems.OpenLiteratureStatements"
     }
    ],
-   "root_role": "named_statement"
+   "root_role": "named_statement",
+   "title": "The bundle of the three literature statements",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "The bound is only as strong as the families that exist; their existence is `ChebyshevInequalityAtWindowScale`, supplied on `Main`'s route by `TopG` and the hosts. `FamP`, `EFamC` and `ChainTied` are not opened.",
-     "'`ChainTied` on its windows, with constants `eD` and `eL`' is the library's `ChebyshevInequalityOnFamilyWindows` (`TopWin` 23-24): for some further constants `K`, `cHH`, `eK` and `CL`, `ChainTied` holds at every large x in the family's windows. `ChebyshevInequalityOnWindows`, which this theorem concludes, is defined through it (`TopWin` 26-28)."
+     "The bound is only as strong as the families that exist. Their existence is the statement that the level has families at some scale $\\lambda > 1$ (stated on the card this one supports). On the route of the release's main theorem it is supplied by a statement about classes of families and by the hosts. The library's host families, the condition on the family at the level, and the condition on a family at $x$ inside the tied inequality are not opened.",
+     "The tied inequality with constants $c_D$ and $c_L$ says: for some further constants, the condition on the family at $x$ holds at every large $x$ in the family's windows. The window inequality, which this theorem concludes, is defined through it."
     ],
     "conventions_checked": [
      "d",
@@ -1137,7 +1213,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "For every level (in the library's sense), every ε > 0 and every host family (in the library's sense, `FamP`) that satisfies the conditions the library names `EFamC` for that level and `ChainTied` on its windows (in the library's sense), with constants `eD` and `eL`: the level's error term `Gm(x)` is at most x^(1/2 + (`eD` + `eL` + 7)ε) for all large x in the family's windows"
+    "text": "For every level $\\Lambda$ (in the library's sense), every $\\varepsilon > 0$, all constants $c_D$ and $c_L$, and every host family of the library (we have not opened its definition) that satisfies a condition on the family at that level (we have not opened its definition) and the tied inequality with constants $c_D$ and $c_L$ on its windows: the level's weighted error term satisfies $E_\\Lambda(x) \\le x^{1/2 + (c_D + c_L + 7)\\varepsilon}$ for all large $x$ in the family's windows"
    },
    "id": "window-bound-every-level",
    "level": 4,
@@ -1152,13 +1228,15 @@
      "name": "UpperTheory.Comparison₂.level_gm_le_on_family_scales"
     }
    ],
-   "root_role": "result"
+   "root_role": "result",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   },
   {
    "claim": {
     "basis": "read",
     "conditions": [
-     "Proved for every level (`Imports.lean` 8-19), so it is a fact of the library, not an input. `KSet` / `Level.KEPT` and `level_family` are not opened."
+     "Proved for every level, so it is a fact of the library, not an input. We have not opened the definitions of the set of characters a level keeps or of a lemma of the library this proof uses."
     ],
     "conventions_checked": [
      "d",
@@ -1252,7 +1330,7 @@
      "Real.eulerMascheroniConstant (by standard meaning)"
     ],
     "reader": "Halley",
-    "text": "Every level (in the library's sense) has the Landau property: for every `la > 1` and every θ with 0 < θ < 1, if the level's error term `Gm` satisfies `Gm(x)` ≤ x^θ for all x in windows [Y, Y^`la`] lying beyond every point, then no L-function of a character the level keeps vanishes for Re s > θ"
+    "text": "Every level $\\Lambda$ (in the library's sense) has the Landau property: for every $\\lambda > 1$ and every $\\theta$ with $0 < \\theta < 1$, if for every $y$ there is $Y \\ge y$ such that the level's weighted error term satisfies $E_\\Lambda(x) \\le x^\\theta$ for all $x$ in $[Y, Y^\\lambda]$, then no $L$-function of a character the level keeps vanishes for $\\operatorname{Re} s > \\theta$"
    },
    "id": "landau-every-level",
    "level": 4,
@@ -1267,7 +1345,9 @@
      "name": "UpperTheory.Comparison₂.formB"
     }
    ],
-   "root_role": "result"
+   "root_role": "result",
+   "edition": 2,
+   "edition_date": "2026-11-24"
   }
  ],
  "release": "rh-2026-11-20"
