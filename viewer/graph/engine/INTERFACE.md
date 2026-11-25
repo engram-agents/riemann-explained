@@ -8,6 +8,10 @@ and holds only what is visible plus a bounded cache. It knows nothing about any 
 no text, fetches nothing, imports nothing outside this folder, and keeps no state outside the handle it returns.
 Two graphs on one page work: each lives under its own container.
 
+**Visible** has one meaning in this file: a node is visible when every one of its ancestors is open (a top-level node
+always is). It says nothing about the camera: a visible node may be off the screen, and `select` and `visible` follow
+this definition, not what is on screen.
+
 Files: `index.js` (an ES module), `engine.css` (structure and states only; link it with a stylesheet link).
 
 ## Exports
@@ -62,7 +66,8 @@ Sizes and zoom values are numbers in CSS pixels and scales. All are checked; a b
 
 - `id` is unique in the whole tree and matches `^[a-z0-9][a-z0-9._-]*$`. It is the engine's key and the only text of
   the caller that ever reaches the page by the engine's hand (as a data attribute).
-- `childCount` is a non-negative integer: how many children `loadChildren` will return. 0 means a leaf.
+- `childCount` is a non-negative integer: how many children `loadChildren` will return. 0 means a leaf. An answer of
+  any other length is refused whole (`invalid-spec`, see **Refusals**), so it is a promise the engine checks, not a hint.
 - `path` runs from a top-level node down to this node INCLUDING it. For a top-level node it is `[id]`; for a child it is
   its parent's path plus its own id. Every element matches the id pattern.
 - `links` says "this node rests on `to`". `toPath` is the path of `to`, in the same form. The engine finds the end of a
@@ -86,9 +91,9 @@ The object `createGraph` returns. Frozen.
 
 | member | promises |
 |---|---|
-| `open(id)` | Promise of true when the node is open on return (already open counts), false when it is not (unknown id, a leaf, refused, load failed, closed again while loading). The node stays open against zoom-out until the caller closes it. |
-| `close(id)` | true if a node was closed, else false. Releases every descendant's element and state; the node's own children are kept in the cache. Closing a node that is still loading cancels the load. A node closed this way is not reopened by zoom until it is zoomed well out first. |
-| `reveal(path)` | Promise of true. Opens each ancestor in order, loading as needed, then frames the node on screen. An unknown step is an `error` event (`path-not-found`), a bad path a `refused` event (`invalid-path`). |
+| `open(id)` | Promise of true when the node is open on return (already open counts), false when it is not (unknown id, a leaf, refused, load failed, closed again while loading). The node stays open against zoom-out until the caller closes it. An `open` issued after a load was cancelled by `close`, while that first answer is still on its way, starts a fresh load (the loader is called again) and resolves when that load lands. |
+| `close(id)` | true if a node was closed, else false. Releases every descendant's element and state; the node's own children are kept in the cache. Closing a node that is still loading cancels the load: its answer is discarded whenever it arrives, and never drawn. A node closed this way is not reopened by zoom until it is zoomed well out first. |
+| `reveal(path)` | Promise of a boolean: true when the node was framed on screen, false when it was not (a bad path, an unknown step, an ancestor that did not open, the graph destroyed). Opens each ancestor in order, loading as needed, then frames the node. An unknown step is an `error` event (`path-not-found`), a bad path a `refused` event (`invalid-path`); an ancestor that does not open says why through its own event. |
 | `fit()` | frames the whole drawing. |
 | `select(id)` | marks one visible node (class `ge-selected`) and its links; `select(null)` clears. Returns false for an id that is not visible. |
 | `destroy()` | removes every listener the engine added and every element it made, drops all state. Safe to call twice; after it every method does nothing. |
@@ -111,10 +116,10 @@ Listeners are called synchronously, in the order added. `node` below is a plain 
 
 | event | arguments |
 |---|---|
-| `tap(node, detail)` | one pointer, moved at most `tapSlopPx`, released within `tapMs`; or Enter/Space on a focused node. `node` is null for a tap on empty stage. `detail` is `{target, clientX, clientY, pointerType}` (or `{target, key}`); `target` is the element that was pressed, so a caller can tell a tap on its own control inside a face. A drag or a pinch never taps. |
+| `tap(node, detail)` | one pointer, moved at most `tapSlopPx`, released within `tapMs`; or Enter/Space on a focused node. `node` is null for a tap on empty stage. `detail` is `{target, clientX, clientY, pointerType}` (or `{target, key}`); `target` is the element that was pressed, so a caller can tell a tap on its own control inside a face. A drag or a pinch never taps. The node is found from `target` upward, as the first element the engine itself made for a node; an attribute in a face (a `data-node` of its own included) is never read. Keys act only on the stage and on the engine's node elements; a key pressed on a control inside a face is the face's own. |
 | `open(node)` | the node's children are now drawn. |
 | `close(node)` | the node's children were released. |
-| `visible(nodes)` | after every change, the array of every visible node. |
+| `visible(nodes)` | after every change, the array of every visible node (every node whose ancestors are all open). |
 | `loading(node)` | `loadChildren` was called for this node. |
 | `error(node, reason, detail)` | `load-failed`, `bad-result`, `path-not-found`, `face-failed`, `bad-face`. `node` is null when no node is meant. |
 | `refused(node, reason, detail)` | the data was not drawn. `node` is the parent whose children were refused, null for the roots. |
@@ -124,7 +129,8 @@ Listeners are called synchronously, in the order added. `node` below is a plain 
 A refusal is an event, never a throw, and nothing of the refused data reaches the page. Reasons: `fan-out` (more than
 `maxChildren` children, by `childCount` or by what the loader returned), `invalid-id` (an `id` or a link's `to` fails the
 pattern), `invalid-path` (a `path` or `toPath` element fails the pattern, `path` does not end at `id`, or does not run through
-the parent), `invalid-spec` (a wrong shape: `childCount`, `links`, `parentLinksTo`), `duplicate-id`. A batch is refused whole.
+the parent), `invalid-spec` (a wrong shape: `childCount`, `links`, `parentLinksTo`; or a loader answer whose length is not the node's `childCount`, the detail naming both numbers), `duplicate-id`. A batch is refused whole.
+A child list that is served from the cache when a node is opened again is checked like a fresh answer, against the nodes held at that moment, and refused the same way.
 A node whose children were refused stays closed and says so (class `ge-refused`) and is not asked again.
 
 ## What the engine does
@@ -141,5 +147,5 @@ A node whose children were refused stays closed and says so (class `ge-refused`)
 ## Classes and attributes the engine sets (for the caller's stylesheet)
 
 On the node element: `ge-node`, and as state `ge-open`, `ge-loading`, `ge-refused`, `ge-selected`, `ge-parent` (has
-children), `ge-direct` (its parent rests on it); attribute `data-node` (the id), `aria-expanded` on a node with children.
+children), `ge-direct` (its parent rests on it); attribute `data-node` (the id; for the caller's stylesheet and tests, the engine never reads it back), `aria-expanded` on a node with children.
 The face is inside an element with class `ge-face`. Links are drawn as right-angled strokes: thin `div` bars (class `ge-link`, plus `ge-stem` for a stem and `ge-link-sel` next to the selected node) and a small `div` arrowhead (`ge-head`), placed only through element.style numbers computed from node geometry, inside the transformed world so they scale with the camera. The engine draws no vector graphics and no canvas.

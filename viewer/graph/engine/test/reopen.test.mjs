@@ -127,3 +127,16 @@ test("F3: a count that matches is accepted", async () => {
   await ctl.ready;
   assert.equal(await ctl.open("p"), true);
 });
+
+test("F5: reveal resolves to a boolean as INTERFACE.md says: true when framed, false (with its event) otherwise", async () => {
+  const view = recordingView();
+  const ctl = createController({ roots: [spec("p", { childCount: 1 })], loadChildren: async () => [kid("p", "k")], fitOnStart: false }, view);
+  const log = collect(ctl); await ctl.ready;
+  assert.equal(await ctl.reveal(["p", "k"]), true);
+  assert.equal(await ctl.reveal(["p", "zz"]), false);
+  assert.equal(await ctl.reveal(["Bad Id"]), false);
+  assert.deepEqual(log.filter((e) => e[0] === "refused").map((e) => e[2]), ["invalid-path"]);
+  assert.deepEqual(log.filter((e) => e[0] === "error").map((e) => e[2]), ["path-not-found"]);
+  ctl.destroy();
+  assert.equal(await ctl.reveal(["p"]), false);
+});
