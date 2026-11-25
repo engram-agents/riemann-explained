@@ -11,9 +11,14 @@ CONTRACT
  G2 In ANY file these are refused, matched case-insensitively and tolerant of whitespace where code allows it:
     innerHTML, outerHTML, insertAdjacentHTML, `document . write`, DOMParser, createContextualFragment,
     createElementNS, `eval (`, `new  Function`, a bare `Function (`, `import (`, setTimeout / setInterval whose first
-    argument is a string literal, and any URL scheme `http:` `https:` `javascript:` `data:` `blob:` `ws:` `wss:`
-    `file:` in any letter case, and a PROTOCOL-RELATIVE string literal (a quote or backtick, optional spaces, then
-    `//`; in .js this is read with a small scanner so a `//` line comment, even one after a closing quote, is not it).
+    argument is a string literal, and a PROTOCOL-RELATIVE string literal (a quote or backtick, optional spaces, then
+    `//`).
+ G2b URL schemes `http:` `https:` `javascript:` `data:` `blob:` `ws:` `wss:` `file:`, in any letter case, by file
+    type. In .js / .mjs a small scanner reads the file and a scheme counts ONLY inside a string or template
+    literal (a `//` or block comment is skipped; an object key or identifier followed by `:`, as in `data: null`,
+    is code and is clean); the protocol-relative test is made on the same literals, so a `//` comment, even one
+    after a closing quote, is not one. In .css and .html a scheme is refused anywhere. In .md (never shipped) schemes
+    are not checked; every other check applies to .md as to any file.
  G3 In a .html file these are also refused: an `on...=` attribute, `<style`, and `style=`.
  G3b In a .css file these are also refused: `@import` and `url(` with anything.
  G3c In a shipped file (.js .mjs .html) an import specifier (`from '..'`, `import '..'`, `import('..')`, and a
@@ -28,9 +33,10 @@ CONTRACT
     comments included), a token under test/ to be ignored and counted, and an empty tree to be CHECKED NOTHING.
  LIMIT: substring and line-pattern checks over text. A token split across lines or built from pieces is not seen,
  nor is `(0, eval)(s)`; that is why the engine's own boundary test also forbids the APIs by name in each file.
- Comments count: a comment that names a forbidden token is refused too (the protocol-relative scanner is the one
- exception: it skips comments). The scanner does not know regex literals or `${}` nesting; a quote inside a regex
- literal can mislead it for the rest of that line. An import specifier built at run time is not resolved; a dynamic
+ Comments count: a comment that names a forbidden token is refused too (the .js scheme and protocol-relative
+ checks are the exception: they read literals only, so a scheme in a JS comment is not seen). The scanner does not
+ know regex literals or `${}` nesting; a quote inside a regex literal can mislead it for the rest of that line, and
+ a quote inside a `${ }` of a template is read as part of the template. An import specifier built at run time is not resolved; a dynamic
  `import (` is refused outright instead. A `__pycache__` folder is skipped without a count.
 
 usage: graph_js_check.py [DIR]
@@ -53,6 +59,10 @@ ANY_RE = [
     ("Function(", re.compile(r"\bFunction\s*\(", I)),
     ("import(", re.compile(r"\bimport\s*\(", I)),
     ("setTimeout/setInterval with a string", re.compile(r"set(?:Timeout|Interval)\s*\(\s*[\"'`]", I)),
+]
+# URL schemes, any letter case. In .css and .html they are refused anywhere in the text; in .js / .mjs only inside a
+# string or template literal (a key such as `data: null` is code); in .md (never shipped) not checked at all.
+SCHEME_RE = [
     ("http:", re.compile(r"\bhttp:", I)),
     ("https:", re.compile(r"\bhttps:", I)),
     ("javascript:", re.compile(r"\bjavascript:", I)),
@@ -75,6 +85,7 @@ IMPORT_RES = [re.compile(r"""\bfrom\s*["']([^"']+)["']"""),
               re.compile(r"""\bimport\s*\(\s*["']([^"']+)["']""")]
 SRC_RE = re.compile(r"""\b(?:src|href)\s*=\s*["']([^"']+)["']""", I)
 JS_EXT = (".js", ".mjs")
+MD_EXT = (".md",)
 SHIP_IMPORT_EXT = (".js", ".mjs", ".html")
 SKIP_DIRS = {"test", "__pycache__"}
 TEST_DIR = "test"        # the builder's copy rule: a path with a directory segment named exactly this is not shipped
@@ -99,15 +110,19 @@ def files_under(d, skipped=None):
             yield os.path.join(base, n)
 
 
-def js_protocol_relative(text):
-    """Lines where a string literal OPENS with optional spaces and `//`. Skips line and block comments, so
-    `const b = 'x'; // note` (a closing quote then a comment) is not a hit."""
-    hits, i, n, line, state = [], 0, len(text), 1, None      # state: None | "//" | "/*" | the open quote
+def js_literals(text):
+    """[(line, content)] for every string and template literal in JS text, `line` being the line it OPENS on and
+    `content` what is between its quotes. Line and block comments are skipped, so `const b = 'x'; // note` (a
+    closing quote then a comment) opens nothing. An unterminated ' or " literal ends at the end of its line."""
+    out, i, n, line, state = [], 0, len(text), 1, None      # state: None | "//" | "/*" | the open quote
+    start, begin = 0, 0
     while i < n:
         c = text[i]
         if c == "\n":
             line += 1
-            if state in ("//", "'", '"'):
+            if state in ("'", '"'):
+                out.append((begin, text[start:i])); state = None
+            elif state == "//":
                 state = None
             i += 1
         elif state is None:
@@ -116,12 +131,7 @@ def js_protocol_relative(text):
             elif text.startswith("/*", i):
                 state = "/*"; i += 2
             elif c in "'\"`":
-                state = c; i += 1
-                j = i
-                while j < n and text[j] in " \t":
-                    j += 1
-                if text.startswith("//", j):
-                    hits.append(line)
+                state = c; i += 1; start = i; begin = line
             else:
                 i += 1
         elif state == "/*":
@@ -136,9 +146,24 @@ def js_protocol_relative(text):
                 line += 1
             i += 2
         elif c == state:
-            state = None; i += 1
+            out.append((begin, text[start:i])); state = None; i += 1
         else:
             i += 1
+    if state in ("'", '"', "`"):
+        out.append((begin, text[start:]))
+    return out
+
+
+def js_literal_hits(text):
+    """Refusals found inside JS literals: a URL scheme anywhere in the content, or a protocol-relative start."""
+    hits = []
+    for ln, content in js_literals(text):
+        for name, rx in SCHEME_RE:
+            m = rx.search(content)
+            if m:
+                hits.append((ln + content.count("\n", 0, m.start()), name))
+        if content.lstrip(" \t").startswith("//"):
+            hits.append((ln, PROTO))
     return hits
 
 
@@ -157,6 +182,10 @@ def check_file(path, rel=None):
         for name, rx in ANY_RE:
             if rx.search(line):
                 hits.append((i, name))
+        if not path.endswith(JS_EXT + MD_EXT):          # .css .html and anything else: schemes anywhere
+            for name, rx in SCHEME_RE:
+                if rx.search(line):
+                    hits.append((i, name))
         if path.endswith(".html"):
             for name, rx in HTML_RE:
                 if rx.search(line):
@@ -168,7 +197,7 @@ def check_file(path, rel=None):
         if not path.endswith(JS_EXT) and PROTO_RE.search(line):
             hits.append((i, PROTO))
     if path.endswith(JS_EXT):
-        hits.extend((ln, PROTO) for ln in js_protocol_relative(text))
+        hits.extend(js_literal_hits(text))
     if path.endswith(SHIP_IMPORT_EXT):
         for rx in IMPORT_RES + ([SRC_RE] if path.endswith(".html") else []):
             for m in rx.finditer(text):
@@ -228,6 +257,9 @@ PLANTS = [
     ("a.js", "const u = 'Http://example.org/';", "http:"),
     ("a.js", "const u = 'JAVASCRIPT:alert(1)';", "javascript:"),
     ("a.js", "const u = 'Data:text/html,x';", "data:"),
+    ("a.js", "const u = `javascript:${x}`;", "javascript:"),
+    ("a.js", "const u = \"HTTPS://h\";", "https:"),
+    ("a.html", "<a href=\"data:x\">x</a>", "data:"),
     ("a.js", "const u = 'BLOB:null/x';", "blob:"),
     ("a.js", "const u = 'ws://host/x';", "ws:"),
     ("a.js", "const u = 'WSS://host/x';", "wss:"),
@@ -255,6 +287,10 @@ CLEAN = [
     ("a.js", "x.style='nothing here'; // style= in a .js is not a refusal"),
     # F6: a JS file whose only // are comments (after a closing quote too) is not a protocol-relative URL
     ("c.js", "const a = 1; // a line comment\nconst b = 'x';  // after a closing quote\nconst c = \"y\" // and again\nconst d = a / 2 / 3; /* it's a block comment // not a URL */\nconst e = { rows: 1, profile: 2, tests: 3 };"),
+    # URL schemes in .js count only inside a string or template literal: a key or identifier then ':' is code
+    ("e.js", "const s = { data: null, file: 1, ws: 2, blob: 3 };\nconst t = (a) ? data : 0; // see https://example.org/ in a comment"),
+    # .md never ships and is not checked for schemes
+    ("e.md", "data: any\nin this file: a node\nsee https://example.org/ and javascript: here"),
     # F7: a shipped file may import a sibling that merely has `test` inside a name
     ("d.js", "import { q } from './contest/q.js'; import { r } from './latest.js';"),
 ]
