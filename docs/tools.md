@@ -80,7 +80,7 @@ https `href` through, by class token, as it does a citation anchor. A page with 
 shape and `notes_meta.py` reports each bad value as a `BAD-VALUE` on the header line (edition 3 or more says `edition 3 needs a ruling`).
 With `--base REV`, `notes_meta.py` compares the note without its anchor lines against the note at REV (a base with no header, or no
 `edition`, is edition 1; so is a base whose header cannot be used for any reason other than an unusable `edition` value, which is the
-`EDITION-BASE` listing below). A note is found at REV by its file name, so a note renamed since REV is a new note. A bump to edition 2 on a note whose text changed is one `EDITION` listing, `EDITION <note> +A -R lines, edition 1
+`EDITION-BASE` listing below). A note is found at REV by its file name; a note renamed since REV is paired with its old name by its header `id` (see F52 below). A bump to edition 2 on a note whose text changed is one `EDITION` listing, `EDITION <note> +A -R lines, edition 1
 to 2, <date>`, where A and R are the lines added and removed by `difflib.SequenceMatcher` over the lines (a replaced run counts on both
 sides, a moved run counts on both); the note then has no `BYTE-DIFF` and no `ADDITION`. A bump with the text unchanged is `EDITION-EMPTY`
 (an error). A note at edition 2 at REV follows the ordinary rules (a dated addition is legal, any other change is `BYTE-DIFF`); edition 1 or
@@ -89,7 +89,24 @@ none after edition 2 is `EDITION-DOWN`, a changed `edition_date` is `EDITION-DAT
 note at edition 2, `EDITION-BLOCK <note> <block id> element <n> <kind> -> <n> <kind>` lists each block (matched by id) whose target element
 changed its place in the note (the n-th element, headings counted) or its kind, and `EDITION-BLOCK <note> <block id> gone` a block that is
 no longer there; these are listings and say nothing about wording. The run prints `edition check: N groups compared to REV; K notes compared
-to REV` and `editions: K of N notes and J of M groups at edition 2`.
+to REV` and `editions: K of N notes and J of M groups at edition 2`. A bump whose `edition_date` is missing, not a real date or later than
+the day of the run keeps its `BAD-VALUE` (an error) and the rule still prints its own line, `EDITION <note> +A -R lines, edition 1 to 2, no usable
+date`, or `EDITION-EMPTY` when nothing changed, so the text change is not hidden behind the bad date.
+
+**What no bump covers in a note (F52).** With `--base REV`, `notes_meta.py` also compares the parts of a note that are not its text.
+A note's `list_title` is author text (the heading of its link on the page) and is compared like a group's title: a change with no bump is
+`BYTE-DIFF <note> list_title changed from <old> to <new>` (an error; also at edition 2 at REV), and under a bump it counts as one removed and
+one added line of the `EDITION` listing, so a bump whose only change is the title is not `EDITION-EMPTY`. A note's `group` and `level`
+say where it is shown: a change against REV is the listing `PLACEMENT-CHANGED <note> <field> <old> -> <new>` (one per field, `group` first, at
+any edition, exit code unchanged). An anchor that now points at a different element than at REV is the listing `RE-POINTED <note> <block id>
+<old first words> -> <new first words>` (blocks matched by id; the element differs when its kind differs or its first 8 words differ, not when only
+its ordinal moved, so a dated addition above it is not a re-pointing; a note at edition 2 gets `EDITION-BLOCK` instead, not both). Re-pointing
+an anchor is a repair, not an edition: a bump whose only change is where anchors point is still `EDITION-EMPTY`. A note at REV that is not in
+the tree now is the listing `NOTE-GONE <note>`; if exactly one note is gone and exactly one new note has the same header `id`, it is
+`NOTE-RENAMED <old> -> <new>` instead, and the new note is checked against the text of the old name (a rename with a rewrite and no bump is
+a `BYTE-DIFF`; a rename with a bump is an `EDITION` listing; no `NEW-NOTE`). Two notes with one id on either side is no pairing. The four
+listings are read by the gate and never change the exit code. The summary prints `placement changes: K`, `re-pointed blocks: K`, `notes gone: K`
+and `notes renamed: K` (each `did not run, no --base given` without `--base`).
 `build_site.py` writes `editions` into each group file and into `data.js`: a list of `{"note": "<file>", "edition": 2, "date": "..."}` for the
 notes of that card (the header's `group`) at edition 2, in note order, `[]` when none; `manifest.json` keeps `editions` as the number of groups at
 edition 2 and adds `note_editions`, the number of notes at edition 2. The first-screen sentence appears when a group or a note is at edition 2,
@@ -99,7 +116,10 @@ note's date and a link made from `edition_href_blob` with `{file}` = `docs/<note
 link is). A level-0 note (a note about the whole proof) gets no card paragraph, even when its header names a real card as its group: it is
 not in that card's `editions`, but it is counted in `note_editions` and its date counts for the first screen. The page (`index.html`) of a
 build with no group and no note at edition 2 anywhere is byte-equal to a page built before; the data files (each group file, `data.js`,
-`manifest.json`) still gain `editions` (`[]`) and `note_editions` (`0`).
+`manifest.json`) still gain `editions` (`[]`) and `note_editions` (`0`). The checker refuses a bad edition first; if one reaches the builder
+(F52) it refuses with a message and writes nothing, never a traceback: a group or note at edition 2 whose `edition_date` is missing or not a
+string is `BUILD-ERROR EDITION-DATE <id> edition 2 needs an edition_date`, and an `edition` that is not the integer 1 or 2 (a boolean and 2.0
+included) is `BUILD-ERROR EDITION-VALUE <id> edition must be 1 or 2`; every bad group (outline order), then note (file order), is listed.
 
 **`tools/note_cite.py NOTE DECLS_TSV --at LINE --decl FULL.NAME --kind KIND`** writes one block anchor, so nobody
 types the JSON. It finds the declaration's module in `decls.tsv` (`--module` picks one when the name is in several),

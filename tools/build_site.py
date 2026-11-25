@@ -125,6 +125,10 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph, one `edition_note_card` paragraph per
      edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
      {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6.
+  F52 EDITION FIELDS THE BUILDER CANNOT USE. A group or note at edition 2 whose `edition_date` is missing or not a string is `BUILD-ERROR
+     EDITION-DATE <id> edition 2 needs an edition_date`; an `edition` that is not the integer 1 or 2 (a boolean and 2.0 included) is
+     `BUILD-ERROR EDITION-VALUE <id> edition must be 1 or 2`: exit 1, OUT_DIR not written, no traceback, every bad group then note in one
+     refusal. The checker refuses these first and is unchanged; the cases stub it to pass. Cases ER1 to ER5.
   F28 BLOCK TEXT GOES THROUGH THE SAME RULE. The text of an argument or interpretation block (the evidence list) and the first
      sentence of an argument block (the card) are rendered by the span rule, the frame staying escaped text. The block text is
      ONE paragraph, its source lines joined by spaces before the rule is applied, so a span that runs over a source line break

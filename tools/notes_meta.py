@@ -160,6 +160,26 @@ CONTRACT (each line is a self-test case, written before the code)
  ordinal (the n-th element of the note, headings counted) or kind, and `EDITION-BLOCK <note> <id> gone` one that is no longer there (a block
  that is only new is not listed); all listings, exit code unchanged.
 
+ What no bump covers in a note (F52; cases NX1a to NX7). A note's `list_title` is author text, compared like a group's title. With --base REV: a
+ change with no bump is `BYTE-DIFF <note> list_title changed from <old JSON> to <new JSON>` (an error; also at edition 2 at REV, and beside
+ EDITION-DOWN); under a bump (base 1, now 2) it is one removed and one added line of the EDITION listing's `+A -R`, so a bump whose only change
+ is the title is NOT EDITION-EMPTY. A note's `group` and `level` are placement: a change against REV is one listing per field, `PLACEMENT-CHANGED
+ <note> <group or level> <old> -> <new>` (short JSON, a missing value `none`; group first), at any edition. An anchor that now points at another
+ element is the listing `RE-POINTED <note> <block id> <old first words> -> <new first words>`: blocks are matched by id, the element is the one
+ the block anchors to (as EDITION-BLOCK finds it), and it differs when its KIND differs or its first 8 words (white space normalised) differ;
+ its ordinal alone does not (a dated addition shifts it). A block only in one of the notes is not listed. A note whose current edition is 2 (with
+ a base edition that is usable) gets EDITION-BLOCK and no RE-POINTED line. An anchor repair is not an edition: a bump whose only change is where
+ anchors point stays EDITION-EMPTY. A note at REV that is not in the tree now is the listing `NOTE-GONE <note>`; when exactly one such note and
+ exactly one new note (in the tree, not at REV) have the same header `id`, the pair is the listing `NOTE-RENAMED <old> -> <new>` instead, and the
+ byte and edition rules of the new note run against the text at REV of the OLD name (so a rename with a rewrite and no bump is a BYTE-DIFF, a
+ rename with a bump is an EDITION listing, and neither NEW-NOTE nor EDITION-NEW-NOTE is said); any other pairing (two notes at REV or two new
+ notes with one id) is no pairing: NOTE-GONE, and NEW-NOTE for each new note. A base with no header has no list_title, group or level to compare.
+ PLACEMENT-CHANGED, RE-POINTED, NOTE-GONE and NOTE-RENAMED are listings the gate reads: the exit code does not change. The run prints
+ `placement changes: K`, `re-pointed blocks: K`, `notes gone: K` and `notes renamed: K` after `selector changes` (each `did not run, no --base
+ given` without --base). A bump whose edition_date is missing, not a real date or later than the day of the run keeps its BAD-VALUE (exit 1) and
+ the rule prints its own line too: EDITION-EMPTY when the text and title are equal, else `EDITION <note> +A -R lines, edition 1 to 2, no usable
+ date`, and the EDITION-BLOCK listings; the note is counted as compared, not as equal to REV.
+
  Root role and recognition (cases RR1 to RR4, REC1b to REC4, NOTE1 to NOTE4, CIT1, WORD1 to WORD5, EST1 EST2, RUN1 RUN2, LIST1). A group may carry the
  optional keys `root_role` and `recognition`; any other key is still UNKNOWN-KEY, and a group without them is unchanged.
   F1 root_role is `result`, `named_statement` or `object` (any other value, or a non-string, is ROOT-ROLE) and belongs to a claim (on
