@@ -211,7 +211,7 @@ export function createData(fetchLike) {
     return v;
   }
 
-  function linksFrom(rests, from, withPathOf) {
+  function linksFrom(rests, from) {
     return rests.filter((l) => l.from === from).map((l) => ({ to: l.to, toPath: l.to_path.concat(l.to) }));
   }
 

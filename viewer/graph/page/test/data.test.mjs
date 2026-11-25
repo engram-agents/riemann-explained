@@ -255,3 +255,15 @@ test("the module source has no sink, no URL literal, no reader-facing sentence l
   for (const s of ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "DOMParser", "createElementNS", "eval(", "new Function", "http:", "https:", "import("])
     assert.ok(!src.includes(s), "data.js contains " + s);
 });
+
+test("INDEX LINKS: the contract gives top steps the empty path, so an index rests_on entry with a non-empty from_path or to_path is refused", () => {
+  const idx = JSON.parse(readFileSync(path.join(FIX, "real", "index.json"), "utf8"));
+  validateIndex(idx);                                            // the real one (empty paths) is accepted
+  for (const field of ["from_path", "to_path"]) {
+    for (const value of [["goal-chain"], ["x"], ["goal-chain", "a1"]]) {
+      const bad = JSON.parse(JSON.stringify(idx));
+      bad.rests_on[0][field] = value;
+      assert.throws(() => validateIndex(bad), (e) => e instanceof DataError && e.code === "bad-link", field + " = " + JSON.stringify(value));
+    }
+  }
+});
