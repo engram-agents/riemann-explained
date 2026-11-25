@@ -71,8 +71,8 @@ that left the outline is a `GROUP-GONE` listing; an outline that cannot be read 
 `build_site.py` writes `edition` into each group file and into `data.js` (`null` at edition 1, else `{"number": 2, "date": "..."}`), counts
 the groups at edition 2 in `manifest.json`, says it once on the first screen (the latest date, and a link to the tree of the first edition)
 and once in each rewritten card's Evidence section (that card's date, and a link to `outline/outline.json` of the first edition). The
-wording and the two addresses are the strings keys `edition_note_first_screen`, `edition_note_card`, `edition_link_label`, `edition_href_tree`
-and `edition_href_blob`; the addresses must be https and are not sentences. The static check lets an `<a class="edition-link">` with an
+wording and the two addresses are the strings keys `edition_note_first_screen`, `edition_note_card` (the sentence of a group at edition 2),
+`edition_note_card_note` (the sentence of a note, see below), `edition_link_label`, `edition_href_tree` and `edition_href_blob`; the addresses must be https and are not sentences. The static check lets an `<a class="edition-link">` with an
 https `href` through, by class token, as it does a citation anchor. A page with no group at edition 2 is byte-equal to a page built before.
 
 **Editions of a note (F44B).** A note's header may carry `edition` (the integer 1 or 2; absent is 1) and `edition_date` (a real date
@@ -93,8 +93,10 @@ to REV` and `editions: K of N notes and J of M groups at edition 2`.
 `build_site.py` writes `editions` into each group file and into `data.js`: a list of `{"note": "<file>", "edition": 2, "date": "..."}` for the
 notes of that card (the header's `group`) at edition 2, in note order, `[]` when none; `manifest.json` keeps `editions` as the number of groups at
 edition 2 and adds `note_editions`, the number of notes at edition 2. The first-screen sentence appears when a group or a note is at edition 2,
-with the latest date over both. A card's Evidence section gets, after the group's own paragraph, one `edition_note_card` paragraph for each
-edition-2 note of the card whose date differs from the group's date at edition 2 (all of them when the group is at edition 1), each with the
+with the latest date over both. A card's Evidence section gets, after the group's own paragraph (the group's sentence is `edition_note_card`,
+which says the text of the card was rewritten), one `edition_note_card_note` paragraph (the note's sentence: it says a note the card
+draws on was rewritten, because a card prints only the blocks of a note and the edition check compares the whole note file)
+for each edition-2 note of the card whose date differs from the group's date at edition 2 (all of them when the group is at edition 1), each with the
 note's date and a link made from `edition_href_blob` with `{file}` = `docs/<note file>` (the file name percent-encoded as the note's own
 link is). A level-0 note (a note about the whole proof) gets no card paragraph, even when its header names a real card as its group: it is
 not in that card's `editions`, but it is counted in `note_editions` and its date counts for the first screen. The page (`index.html`) of a

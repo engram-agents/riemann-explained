@@ -122,9 +122,10 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   F44B EDITION OF A NOTE. A note header may carry `edition` 2 and `edition_date` (checked by notes_meta). group/<id>.json and data.js carry per card
      `editions`, a list of {note: file, edition: 2, date} for the notes of the card (header group, level not 0) at edition 2 in note order, [] when
      none; manifest counts keep `editions` (the groups at 2) and gain `note_editions` (the notes at 2). The first-screen paragraph appears when any
-     group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph, one `edition_note_card` paragraph per
-     edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
-     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6.
+     group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph (which is `edition_note_card`: the
+     text of the card was rewritten), one `edition_note_card_note` paragraph (a sentence that
+     speaks of the note, not of the card) per edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
+     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6, NC1 to NC7.
   F28 BLOCK TEXT GOES THROUGH THE SAME RULE. The text of an argument or interpretation block (the evidence list) and the first
      sentence of an argument block (the card) are rendered by the span rule, the frame staying escaped text. The block text is
      ONE paragraph, its source lines joined by spaces before the rule is applied, so a span that runs over a source line break
