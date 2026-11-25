@@ -1,0 +1,13 @@
+/* The engine's own look: structure and states only. A page styles the faces it supplies. No remote font, image or asset. */
+.ge-stage { cursor: grab; outline-offset: -2px; user-select: none; -webkit-user-select: none; }
+.ge-stage.ge-panning { cursor: grabbing; }
+.ge-node { outline-offset: 2px; }
+.ge-face { overflow: hidden; box-sizing: border-box; }
+.ge-node.ge-open { border: 1px dashed currentColor; border-radius: 10px; }
+.ge-node.ge-loading { opacity: 0.7; }
+.ge-node.ge-refused { outline: 2px dashed currentColor; }
+.ge-node.ge-selected { outline: 3px solid currentColor; }
+.ge-links { pointer-events: none; }
+.ge-link, .ge-head { position: absolute; background: currentColor; opacity: 0.55; }
+.ge-link.ge-stem { opacity: 0.4; }
+.ge-link.ge-link-sel, .ge-head.ge-link-sel { opacity: 1; }
