@@ -198,17 +198,19 @@ def main():
 
         def c_fitmin():
             # host #c is a 70px strip: the natural fit of the one card is far below 1
-            ev("T.create('c', { zoom: { fitMin: 1 } })")
-            assert ev("T.ready('c')") is True
-            settle()
-            cam = ev("T.cam('c')")
-            assert cam and abs(cam["k"] - 1) < 1e-9 and abs(cam["ty"] - 20) < 1e-6, cam   # start scale 1, top at fitPad
-            host_top = ev("document.getElementById('c').getBoundingClientRect().top")
-            node_top = ev("document.querySelector('#c [data-node]').getBoundingClientRect().top")
-            assert 0 <= node_top - host_top <= 30, (host_top, node_top)    # the top node is in view at the top
-            ev("T.fit('c')")
-            assert ev("T.cam('c')")["k"] < 1, ev("T.cam('c')")
-            ev("T.destroy('c')")
+            try:
+                ev("T.create('c', { zoom: { fitMin: 1 } })")
+                assert ev("T.ready('c')") is True
+                settle()
+                cam = ev("T.cam('c')")
+                assert cam and abs(cam["k"] - 1) < 1e-9 and abs(cam["ty"] - 20) < 1e-6, cam   # start scale 1, top at fitPad
+                host_top = ev("document.getElementById('c').getBoundingClientRect().top")
+                node_top = ev("document.querySelector('#c [data-node]').getBoundingClientRect().top")
+                assert 0 <= node_top - host_top <= 30, (host_top, node_top)    # the top node is in view at the top
+                ev("T.fit('c')")
+                assert ev("T.cam('c')")["k"] < 1, ev("T.cam('c')")
+            finally:
+                ev("T.destroy('c')")
         case("zoom.fitMin 1: the start camera is scale 1 with the top node in view; fit() then goes below 1", c_fitmin)
 
         def c_foreign_attr():
