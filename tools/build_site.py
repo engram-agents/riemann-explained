@@ -8267,8 +8267,8 @@ def _selftest_cases():
             theirs = json.load(f)
         return _eq({k: theirs.get(k) for k in want}, want) if ok_[0] else ok_
 
-    @case("ED6", "F44: the strings checks for the edition keys: each of the five is required (P1a); the two addresses must be https (STRINGS-KEY "
-                 "`must be an https URL`); {date} and {link} are required in the two sentences, {file} in the blob address, and no other "
+    @case("ED6", "F44: the strings checks for the edition keys: each of the six is required (P1a); the two addresses must be https (STRINGS-KEY "
+                 "`must be an https URL`); {date} and {link} are required in the three sentences, {file} in the blob address, and no other "
                  "placeholder is allowed (a `{file}` in the tree address, `{x}` anywhere is refused); a forbidden word in a sentence is refused")
     def _():
         def one(key, value):
