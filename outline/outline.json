@@ -686,7 +686,154 @@
    "edition_date": "2026-11-24"
   },
   {
-   "claim": null,
+   "claim": {
+    "basis": "read",
+    "conditions": [
+     "Sizes and classes. $q$ leaves remainder 3 on division by 8, and $Y^{\\varepsilon/5}/2 < \\log q \\le Y^{\\varepsilon/5}$. $d$ leaves remainder 7 on division by 16, and $Y^{\\varepsilon/5} (\\log Y)^2/2 < \\log d \\le Y^{\\varepsilon/5} (\\log Y)^2$. $q$ divides $d + 1$, and so does every odd prime $p \\le Y^{\\varepsilon/5}$.",
+     "$M$ is coprime to $qd$.",
+     "Square-root bounds. Write $J_q(a)$ for the Jacobi symbol of $a$ over $q$. Take any Dirichlet character $\\xi$ modulo $M$ and exponents $i$ and $j$, each 0 or 1 and not both 0, and any primitive Dirichlet character $\\chi$ with $\\chi(a) = \\xi(a) J_q(a)^i J_d(a)^j$ for every natural number $a$ coprime to $2Mqd$. Then for every $y$ with $Y \\le y \\le Y^A$: $|g_\\chi(y)| \\le y^{1/2 + \\varepsilon/2}$ and $|L'(1, \\chi)/L(1, \\chi)| \\le 4 \\log y$.",
+     "Notation for the square-root bounds. For $\\chi$ other than the trivial character of modulus 1, $g_\\chi(y) = \\sum_{n \\le y} \\Lambda(n) \\chi(n) (y/n - 1) + y L'(1, \\chi)/L(1, \\chi)$, with $\\Lambda$ the von Mangoldt function. Here and in the next condition $L(s, \\chi)$ is the Dirichlet L-function continued analytically, so it is defined at $s = 1$ and to the left of the line of real part 1.",
+     "Zero-free boxes. Take any real primitive Dirichlet character $\\rho$ whose modulus divides $8M$, exponents $i$ and $j$ as above, and any primitive $\\chi$ with $\\chi(a) = \\rho(a) J_q(a)^i J_d(a)^j$ for every natural number $a$ coprime to $2Mqd$. Then $L(s, \\chi)$ has no zero $s$ with real part greater than $1 - 1/400$ and $|t| \\le H_j$, where $t$ is the imaginary part of $s$, $H_0 = 8M e^{Y^{\\varepsilon/5}}$ and $H_1 = H_0 e^{Y^{\\varepsilon/5} (\\log Y)^2}$.",
+     "A note on reading, not a condition. Order of choices: $Y_1$ depends on $M$, $\\varepsilon$ and $A$ only; $q$ and $d$ are chosen after $Y$. In the square-root bounds the library defines $g_\\chi$ by a different formula when $\\chi$ is the trivial character of modulus 1; the statement does not exclude that case in words, but the case cannot arise. By the first two conditions $q$ and $d$ are different odd primes that do not divide $M$, so, because $i$ and $j$ are not both 0, by the Chinese remainder theorem some $a$ coprime to $2Mqd$ has $\\xi(a) J_q(a)^i J_d(a)^j = -1$, and a character taking the value $-1$ is not trivial (our argument, not read in the release). The release's proof also derives it for the pair it builds (the proof file, line 157)."
+    ],
+    "conventions_checked": [
+     "a",
+     "c",
+     "d",
+     "e"
+    ],
+    "date": "2026-11-25",
+    "defs_opened": [
+     {
+      "lines": [
+       28,
+       30
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.PairGood",
+      "name": "UpperTheory.Top.PairEx"
+     },
+     {
+      "lines": [
+       18,
+       26
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.PairGood",
+      "name": "UpperTheory.Top.PairGood"
+     },
+     {
+      "lines": [
+       9,
+       10
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.PairGood",
+      "name": "UpperTheory.Top.tw"
+     },
+     {
+      "lines": [
+       12,
+       13
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.PairGood",
+      "name": "UpperTheory.Top.ZeroBox"
+     },
+     {
+      "lines": [
+       15,
+       16
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.PairGood",
+      "name": "UpperTheory.Top.height"
+     },
+     {
+      "lines": [
+       27,
+       37
+      ],
+      "module": "Development.AutomorphicArithmetic.CharacterBoxes.ExistsPageN",
+      "name": "UpperTheory.Top.WinPair"
+     },
+     {
+      "lines": [
+       26,
+       27
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.Induces"
+     },
+     {
+      "lines": [
+       23,
+       24
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.gChi"
+     },
+     {
+      "lines": [
+       18,
+       19
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.sumLamChi"
+     },
+     {
+      "lines": [
+       11,
+       12
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.logDerivativeAtOne"
+     },
+     {
+      "lines": [
+       9,
+       9
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.abelian₂"
+     },
+     {
+      "lines": [
+       14,
+       16
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.Analytic",
+      "name": "Formalism.HC.An.G"
+     },
+     {
+      "lines": [
+       7,
+       11
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.PrimePairSizeCondition",
+      "name": "Formalism.HC.PChar"
+     },
+     {
+      "lines": [
+       17,
+       17
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.PrimePairSizeCondition",
+      "name": "Formalism.HC.PChar.val"
+     },
+     {
+      "lines": [
+       35,
+       35
+      ],
+      "module": "Formalism.SharpRestriction.RamificationFrobenius.TotientGaloisClasses.PrimePairSizeCondition",
+      "name": "Formalism.HC.PChar.IsReal"
+     }
+    ],
+    "mathlib_read": [
+     "jacobiSym (by standard meaning)",
+     "DirichletCharacter.LFunction (by standard meaning)",
+     "DirichletCharacter.IsPrimitive (by standard meaning)",
+     "ArithmeticFunction.vonMangoldt (by standard meaning)"
+    ],
+    "reader": "Kepler",
+    "text": "For every integer $M \\ge 1$, every $\\varepsilon$ with $0 < \\varepsilon < 1/52$ and every $A \\ge 1$, there is $Y_1$ such that for every $Y \\ge Y_1$ there are primes $q$ and $d$ that form a good pair for $M$, $\\varepsilon$ and the range from $Y$ to $Y^A$: the pair meets the four conditions listed below"
+   },
    "id": "good-pair",
    "level": 5,
    "order": 1,
@@ -698,7 +845,7 @@
      "name": "QH.pairEx"
     }
    ],
-   "title": "The good pair"
+   "root_role": "result"
   },
   {
    "claim": {
