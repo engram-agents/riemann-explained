@@ -90,7 +90,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "The hypothesis has no exception at s = 1, also for the character of modulus 1 (whose L-function is ζ): it holds there only because Lean gives ζ(1) the defined value (γ − log 4π)/2, which is not 0, where mathematics has a pole."
+     "The hypothesis has no exception at $s = 1$, also for the character of modulus 1 (whose $L$-function is $\\zeta$): it holds there only because Lean gives $\\zeta(1)$ the defined value $(\\gamma - \\log 4\\pi)/2$, which is not $0$, where mathematics has a pole."
     ],
     "conventions_checked": [
      "a",
@@ -139,7 +139,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "If no L-function of a primitive character vanishes for Re s > 1/2, then L(χ, s) ≠ 0 for every Dirichlet character χ and every s with Re s > 1/2, except a principal character at s = 1"
+    "text": "If no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then $L(\\chi, s) \\ne 0$ for every Dirichlet character $\\chi$ and every $s$ with $\\operatorname{Re} s > 1/2$, except a principal character at $s = 1$"
    },
    "id": "primitive-to-all",
    "level": 1,
@@ -168,10 +168,12 @@
       "opened_on": "2026-11-24"
      }
     ],
-    "difference": "The $L$-function of a Dirichlet character is the $L$-function of the primitive character that induces it, times a finite product of factors $1 - \\chi^*(p)\\,p^{-s}$ over the primes dividing the modulus; so the two have the same zeros off the imaginary axis. The book speaks of the zeros of the two functions. The library states non-vanishing: if no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then none of any character does, except that for the trivial character the point $s = 1$ is left out, where $\\zeta$ has its pole. The hypothesis itself leaves no point out (see this step's condition). The product runs over the primes dividing the modulus, as in the book; the library takes it from Mathlib's `LFunction_changeLevel`.",
+    "difference": "The $L$-function of a Dirichlet character is the $L$-function of the primitive character that induces it, times a finite product of factors $1 - \\chi^*(p)\\,p^{-s}$ over the primes dividing the modulus; so the two have the same zeros off the imaginary axis. The book speaks of the zeros of the two functions. The library states non-vanishing: if no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$, then none of any character does, except that for the trivial character the point $s = 1$ is left out, where $\\zeta$ has its pole. The hypothesis itself leaves no point out (see this step's condition). The product runs over the primes dividing the modulus, as in the book; the library takes it from Mathlib's lemma for a change of modulus.",
     "reader": "Kepler",
     "date": "2026-11-24"
-   }
+   },
+   "edition": 2,
+   "edition_date": "2026-11-25"
   },
   {
    "claim": {
@@ -267,7 +269,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "'A `HypsAlt` structure' means the statement assumes `Nonempty (HypsAlt …)`: one inhabitant exists. `Closed`, `LinkN` and `DefiniteSideCondition` are not opened and keep the library's names."
+     "\"One instance of the hypothesis package\" means the statement assumes that an instance exists. Three things in that phrase were not opened for this claim: what \"closed\" requires, the link condition, and the definite side condition. Each is named here by its role only (we have not opened its definition)."
     ],
     "conventions_checked": [
      "e"
@@ -335,7 +337,7 @@
      "DirichletCharacter.LFunction (by standard meaning; docstring not re-read today)"
     ],
     "reader": "Halley",
-    "text": "`Green`, `VWin` and a `HypsAlt` structure (closed under `LinkN`, with the library's definite side condition) give: no L-function of a primitive character vanishes for Re s > 1/2"
+    "text": "Input 1 (a classification of the cuspidal functions on $GL_d$ over $\\mathbb{Z}/g$, $g$ prime, with an explicit value formula), the window supply for every primitive character, and one instance of the hypothesis package (closed under links, with the definite side condition) give: no $L$-function of a primitive character vanishes for $\\operatorname{Re} s > 1/2$"
    },
    "id": "three-inputs",
    "level": 1,
@@ -358,7 +360,9 @@
     "reader": "Halley",
     "date": "2026-11-24",
     "note": "This step is the release's own composition of three inputs, `Green`, `VWin` and the `HypsAlt` structure, into `ZeroFreeAll`; we found no textbook result that draws this conclusion from these hypotheses."
-   }
+   },
+   "edition": 2,
+   "edition_date": "2026-11-25"
   },
   {
    "claim": {
