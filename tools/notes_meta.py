@@ -5775,6 +5775,17 @@ def _():
     eq((r.f, r.rc), ([RP.format(b="01.b01", o=w, n=w) + " (lean -> paragraph)", RP.format(b="01.b02", o=w, n=w) + " (paragraph -> lean)"], 0), "fence: " + r.out)
 
 
+@case("NX3h", "a base whose edition is not usable (EDITION-BASE) with a current edition of 2: the edition rule did not run, so EDITION-BLOCK did not either, and "
+              "RE-POINTED lists the swapped anchors (after the EDITION-BASE line), exit 0")
+def _():
+    base = _enb(("Para one.", ["01.b01"]), ("Para two.", ["01.b02"]))
+    swapped = _enb(("Para one.", ["01.b02"]), ("Para two.", ["01.b01"]))
+    r = _nx(NOTE(body=base, edition="x"), NOTE(body=swapped, **EN_HDR))
+    eq((r.f, r.rc), (["EDITION-BASE 01-a.md the note at HEAD has an edition that is not usable, so the edition check did not run for it",
+                      RP.format(b="01.b01", o="Para one.", n="Para two."), RP.format(b="01.b02", o="Para two.", n="Para one.")], 0), r.out)
+    ok("re-pointed blocks: 2" in r.lines, r.out)
+
+
 NG_B = NOTE(body=EN_B)
 
 
