@@ -2593,6 +2593,39 @@ def _formula_locator(m):
     return locate
 
 
+def _edition_problem(d):
+    """F52: None, or (code, message) when the `edition` and `edition_date` of a group or a note header (a dict) cannot be built from: `edition`
+    present and not the integer 1 or 2 (a boolean or 2.0 is not one) is EDITION-VALUE; edition 2 with an edition_date that is missing or not a
+    string is EDITION-DATE. The checker refuses the same inputs first; this is the builder saying so itself, never with a KeyError."""
+    if "edition" in d:
+        e = d["edition"]
+        if isinstance(e, bool) or not isinstance(e, int) or e not in (1, 2):
+            return "EDITION-VALUE", "edition must be 1 or 2"
+        if e == 2 and not isinstance(d.get("edition_date"), str):
+            return "EDITION-DATE", "edition 2 needs an edition_date"
+    return None
+
+
+def _edition_errors(notes_dir, odata):
+    """F52: the BUILD-ERROR tuples of the groups (in the outline's order), then of the notes (in file order)."""
+    out = []
+    for g in odata["groups"]:
+        p = _edition_problem(g) if isinstance(g, dict) else None
+        if p:
+            out.append((p[0], g.get("id"), p[1]))
+    for name in sorted(n for n in os.listdir(notes_dir) if fnmatch.fnmatchcase(n, nm.DEFAULT_GLOB) and os.path.isfile(os.path.join(notes_dir, n))):
+        try:
+            with open(os.path.join(notes_dir, name), "rb") as fh:
+                headers = rh.parse_note(fh.read().decode("utf-8"))[0]
+        except (OSError, UnicodeDecodeError):
+            continue
+        p = _edition_problem(headers[0].data) if headers else None
+        if p:
+            nid = headers[0].data.get("id")
+            out.append((p[0], nid if isinstance(nid, str) else name, p[1]))
+    return out
+
+
 def _refuse(lines, code=1):
     for code_, where, msg in lines:
         print(f"BUILD-ERROR {code_} {where} {msg}")
@@ -2740,6 +2773,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     for k, v in sorted(low.items()):
         if len(v) > 1:
             errors.append(("GROUP-ID-UNSAFE", ", ".join(sorted(v)), "differ only in case, so they could share a file"))
+    errors += _edition_errors(notes_dir, odata)   # F52: before the model, which reads edition_date of a group at edition 2
     if errors:
         return _refuse(errors)
     dirty = n_dirty or tools_state[1]
