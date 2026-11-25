@@ -133,10 +133,12 @@ test("F5: reveal resolves to a boolean as INTERFACE.md says: true when framed, f
   const ctl = createController({ roots: [spec("p", { childCount: 1 })], loadChildren: async () => [kid("p", "k")], fitOnStart: false }, view);
   const log = collect(ctl); await ctl.ready;
   assert.equal(await ctl.reveal(["p", "k"]), true);
-  assert.equal(await ctl.reveal(["p", "zz"]), false);
+  assert.equal(await ctl.reveal(["p", "zz"]), false, "an unknown last step");
+  assert.equal(await ctl.reveal(["zz", "k"]), false, "an unknown ancestor step");
+  assert.equal(await ctl.reveal(["p", "k", "x"]), false, "an ancestor (a leaf) that does not open");
   assert.equal(await ctl.reveal(["Bad Id"]), false);
   assert.deepEqual(log.filter((e) => e[0] === "refused").map((e) => e[2]), ["invalid-path"]);
-  assert.deepEqual(log.filter((e) => e[0] === "error").map((e) => e[2]), ["path-not-found"]);
+  assert.deepEqual(log.filter((e) => e[0] === "error").map((e) => e[2]), ["path-not-found", "path-not-found"]);
   ctl.destroy();
   assert.equal(await ctl.reveal(["p"]), false);
 });
