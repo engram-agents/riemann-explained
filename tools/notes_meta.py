@@ -5019,7 +5019,7 @@ def _():
 
 
 @case("E23l", "a group that is not in the outline at REV has no comparison; edition 2 on it is EDITION-NEW-GROUP (there is no edition 1 to rewrite), "
-              "edition 1 on it is nothing")
+              "edition 1 on it that carries a claim is the listing FIRST-CLAIM (F63), not an edition")
 def _():
     def add(o):
         o["groups"].append(_rg(gid="g3", order=3, root=("A.B", "foo"), claim=dict(CLAIM, text="T3")))
@@ -6027,7 +6027,8 @@ def _():
 
 # ---- F63: a first claim is not an edition (an edition records a change to text that was published; a card with no claim published none)
 _FC_MSG = "a first claim is not a rewrite; remove edition and edition_date"
-_FC_RET = ", edition mark retired with the title"
+_FC_RET = ", edition mark retired with the title"   # the title went with the mark
+_FC_KEPT = ", edition mark retired"                  # the mark went and the title stayed
 _FC_ROLE1 = _sel("g1", "root_role", "none", '"result"')
 _FC_FORM1 = _sel("g1", "recognition.form", "none", '"variant"')
 
@@ -6073,13 +6074,14 @@ def _():
     ok("first claims: 1" in r.lines, r.out)
 
 
-@case("F63b", "a title REWORDED beside a first claim stays OUTLINE-CHANGED naming title (published text was altered), exit 1; the first claim is still listed; "
+@case("F63b", "a title REWORDED beside a first claim stays OUTLINE-CHANGED naming title (published text was altered), exit 1, and that refusal is printed ALONE: "
+              "no FIRST-CLAIM line and `first claims: 0` (a first claim is listed and counted only when accepted); "
               "with a bump the refusal is EDITION-FIRST-CLAIM alone (one refusal; the bump is not a way to carry the reword)")
 def _():
-    fe(_edc(_g3("New name", _C3), _g3("Old name")),
-       ["FIRST-CLAIM outline.json g3",
-        "OUTLINE-CHANGED outline.json group 'g3': title changed beside a first claim: published text changes only under an edition, "
-        "which a first claim does not carry (make it a separate change)", _FC_ROLE3], 1)
+    r = _edc(_g3("New name", _C3), _g3("Old name"))
+    fe(r, ["OUTLINE-CHANGED outline.json group 'g3': title changed beside a first claim: published text changes only under an edition, "
+           "which a first claim does not carry (make it a separate change)", _FC_ROLE3], 1)
+    ok("first claims: 0" in r.lines, r.out)
     r = _edc(_g3("New name", _C3, ed="2026-11-23"), _g3("Old name"))
     fe(r, ["EDITION-FIRST-CLAIM outline.json group 'g3': " + _FC_MSG, _FC_ROLE3], 1)
     ok("first claims: 0" in r.lines, r.out)
@@ -6181,13 +6183,13 @@ def _():
 
 @case("F63j", "a null-claim group at edition 2 at the base that gains its first claim and RETIRES edition, edition_date and the title together: accepted "
               "(not EDITION-DOWN), FIRST-CLAIM names it with `edition mark retired with the title`, exit 0, counted; the retirement is accepted also when the title "
-              "is KEPT (the card carries no edition afterwards); edition removed but edition_date left is the shape check's BAD-VALUE and the retirement line still stands")
+              "is KEPT (the card carries no edition afterwards), and then the line reads `edition mark retired` without `with the title`; edition removed but edition_date left is the shape check's BAD-VALUE and the retirement line still stands")
 def _():
     r = _edc(None, _nul1(ed="2026-11-20"))
     fe(r, ["FIRST-CLAIM outline.json g1" + _FC_RET, _FC_FORM1, _FC_ROLE1], 0)
     ok("first claims: 1" in r.lines, r.out)
     ok("editions: 0 of 1 notes and 0 of 2 groups at edition 2" in r.lines, r.out)
-    fe(_edc(_g3("Plain name", _C3), _g3("Plain name", ed="2026-11-20")), ["FIRST-CLAIM outline.json g3" + _FC_RET, _FC_ROLE3], 0)
+    fe(_edc(_g3("Plain name", _C3), _g3("Plain name", ed="2026-11-20")), ["FIRST-CLAIM outline.json g3" + _FC_KEPT, _FC_ROLE3], 0)
 
     def date_stays(o):
         _eof(o, "g1")["edition_date"] = "2026-11-20"
@@ -6214,6 +6216,40 @@ def _():
     base = _g3("The statement about classes", ed="2026-11-24")
     fe(_edc(_g3(None, _C3), base), ["FIRST-CLAIM outline.json g3" + _FC_RET, _FC_ROLE3], 0)
     fe(_edc(_g3(None, _C3, ed="2026-11-24"), base), ["EDITION-FIRST-CLAIM outline.json group 'g3': " + _FC_MSG, _FC_ROLE3], 1)
+
+
+@case("F63m", "a group with recognition text but a NULL claim at the base: the recognition text is published text, so changing it (no bump) is OUTLINE-CHANGED "
+              "naming it, exit 1, with no FIRST-CLAIM line and `first claims: 0` (a recognition field that has a value at the base is not a first-claim path)")
+def _():
+    def base(o):
+        g = _eof(o, "g1")
+        g["claim"] = None
+    def head(o):
+        g = _eof(o, "g1")
+        g["recognition"]["difference"] = "D1b"
+    r = _edc(head, base)
+    fe(r, ["OUTLINE-CHANGED outline.json group 'g1': recognition.difference changed beside a first claim: published text changes only under an edition, "
+           "which a first claim does not carry (make it a separate change)"], 1)
+    ok("first claims: 0" in r.lines, r.out)
+
+
+@case("F63n", "the line of an accepted first claim on a group at edition 2 at the base: the title KEPT reads `, edition mark retired`, the title REMOVED reads "
+              "`, edition mark retired with the title`, no title at the base or now reads `, edition mark retired`, a group at 1 at the base has no suffix; "
+              "a first claim that sets a recognition field empty at the base, the title kept, is accepted and counted")
+def _():
+    kept = _edc(_g3("Plain name", _C3), _g3("Plain name", ed="2026-11-20"))
+    fe(kept, ["FIRST-CLAIM outline.json g3, edition mark retired", _FC_ROLE3], 0)
+    ok("first claims: 1" in kept.lines, kept.out)
+    gone = _edc(_g3(None, _C3), _g3("Plain name", ed="2026-11-20"))
+    fe(gone, ["FIRST-CLAIM outline.json g3, edition mark retired with the title", _FC_ROLE3], 0)
+    ok("first claims: 1" in gone.lines, gone.out)
+    fe(_edc(_g3(None, _C3), _g3(None, ed="2026-11-20")), ["FIRST-CLAIM outline.json g3, edition mark retired", _FC_ROLE3], 0)
+    fe(_edc(_g3("Plain name", _C3), _g3("Plain name")), ["FIRST-CLAIM outline.json g3", _FC_ROLE3], 0)
+    r = _edc(None, _nul1("Plain title"))   # the title goes here with no edition at the base: no suffix
+    fe(r, ["FIRST-CLAIM outline.json g1", _FC_FORM1, _FC_ROLE1], 0)
+    r = _edc(_both(_set("g1", "title", "Plain title")), _nul1("Plain title"))   # recognition and claim set, title kept
+    fe(r, ["FIRST-CLAIM outline.json g1", _FC_FORM1, _FC_ROLE1], 0)
+    ok("first claims: 1" in r.lines, r.out)
 
 
 def _run_cases(cases, write):
