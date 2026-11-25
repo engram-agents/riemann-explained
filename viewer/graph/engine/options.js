@@ -17,6 +17,7 @@ export const DEFAULTS = deepFreeze({
   zoom: {
     min: 0.06, max: 3,
     fitMax: 1.1, fitPad: 20,       // fit(): the largest scale, and the margin
+    fitMin: null,                  // the START fit never goes below this; null = zoom.min (fit() and the reader's zoom are not bound by it)
     frameMaxOpen: 1.25, frameMaxClosed: 1.15, framePadOpen: 24, framePadClosed: 60,   // reveal / semantic-open framing
   },
   semantic: {
@@ -46,7 +47,7 @@ export function normalizeOptions(raw) {
       if (r === null || typeof r !== "object" || Array.isArray(r)) fail(k + " must be an object");
       for (const sub of Object.keys(r)) if (!Object.hasOwn(DEFAULTS[k], sub)) fail("unknown option " + k + "." + sub);
       o[k] = { ...DEFAULTS[k], ...r };
-      for (const [sub, v] of Object.entries(o[k])) num(k, sub, v, 0);
+      for (const [sub, v] of Object.entries(o[k])) if (!(k === "zoom" && sub === "fitMin" && v === null && !Object.hasOwn(r, sub))) num(k, sub, v, 0);
     } else o[k] = raw[k] === undefined ? DEFAULTS[k] : raw[k];
   }
   if (!Array.isArray(o.roots)) fail("roots must be an array");
@@ -59,6 +60,10 @@ export function normalizeOptions(raw) {
   if (typeof o.fitOnStart !== "boolean") fail("fitOnStart must be a boolean");
   for (const k of ["nodeW", "nodeH", "head"]) if (!(o.sizes[k] > 0)) fail("sizes." + k + " must be > 0");
   if (!(o.zoom.min > 0 && o.zoom.max > o.zoom.min)) fail("zoom.min must be > 0 and below zoom.max");
+  if (Object.hasOwn(raw.zoom || {}, "fitMin")) {
+    const f = o.zoom.fitMin;
+    if (!(f > 0 && f >= o.zoom.min && f <= o.zoom.fitMax)) fail("zoom.fitMin must be a number > 0 with zoom.min <= zoom.fitMin <= zoom.fitMax");
+  } else o.zoom.fitMin = o.zoom.min;   // resolved after the merge: a caller who sets only zoom.min gets fitMin = that min
   if (!(o.semantic.closePx > 0 && o.semantic.openPx > o.semantic.closePx)) fail("semantic.openPx must be above semantic.closePx (the gap is what stops flicker)");
   return o;
 }
