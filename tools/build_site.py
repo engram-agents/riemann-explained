@@ -224,7 +224,9 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      see it. The second is the builder's own instruction not to index: the site is served byte for byte, so no server adds one. The checks
      take the three tags as WHOLE literal tags (`_META_TAGS`, not "any name and content"): another meta is `PAGE-STATIC meta not listed`,
      a name that is neither `meta name not listed`, a viewport or robots content that differs `meta viewport content differs` or `meta
-     robots content differs`, and a tag twice `meta repeated`. Cases HD1 to HD5; HD6 emulates a 390 x 844 mobile device in a real
+     robots content differs`, and a tag twice `meta repeated`. The build also refuses a page whose head lacks either tag, or that holds one
+     outside the head: `BUILD-ERROR HEAD-META <viewport|robots> <missing|outside head> in index.html`, exit 1, nothing written
+     (head_meta_problems over the rendered text, called in run() beside element_problems, not part of it; cases HM1 to HM3). Cases HD1 to HD5; HD6 emulates a 390 x 844 mobile device in a real
      Chromium over the DevTools protocol (a minimal standard-library WebSocket client) and reads innerWidth 390 with the tag and 980 with
      the tag removed; it runs only when the environment variable RH_CHROME names a headless Chromium binary and is SKIPPED otherwise.
      No real device was used.
