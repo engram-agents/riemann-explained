@@ -126,7 +126,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      text of the card was rewritten), one `edition_note_card_note` paragraph (a sentence that
      speaks of the note, not of the card) per edition-2 note of the card, whatever the dates (F56: a note dated the same day as the group's edition gets its paragraph too: the group's
      paragraph links the outline file and the note's links the note's file, two sentences and two files), {link} to `edition_href_blob` with
-     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND9, NC1 to NC7.
+     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND9, N10 and N11 (two same-date notes on one card; an encoded name on a same-date card), NC1 to NC7.
   F52 EDITION FIELDS THE BUILDER CANNOT USE. A group or note at edition 2 whose `edition_date` is missing or not a string is `BUILD-ERROR
      EDITION-DATE <id> edition 2 needs an edition_date`; an `edition` that is not the integer 1 or 2 (a boolean and 2.0 included) is
      `BUILD-ERROR EDITION-VALUE <id> edition must be 1 or 2`: exit 1, OUT_DIR not written, no traceback, every bad group then note in one
