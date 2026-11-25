@@ -121,12 +121,17 @@ CONTRACT (each line is a self-test case, written before the code)
  on a definition or structure card; a group with a claim whose root is a result and a title is TITLE-WITH-CLAIM (an error), because the page
  would ignore a title there and the author must choose. The ONE predicate `definition_card(role, kinds)` decides (build_site loads it too): a usable root_role decides, else the kinds of ALL the
  roots (no root a theorem or lemma, at least one root; an unknown kind is a definition card); a root with no row, or with several, is not judged. A bad title is BAD-VALUE alone.
- Short (cases SHT1 to SHT6). A group may carry the optional key `short`: the one line the closed card of the graph view shows, author text written by hand
+ Short (cases SHT1 to SHT8). A group may carry the optional key `short`: the one line the closed card of the graph view shows, author text written by hand
  (nothing makes it from the claim or the title). A string of 1 to 50 characters (`len(s)`, not bytes: 50 is accepted, 51 refused), with no blank at
- either end (so not empty, not only blanks) and no LF or CR; anything else, a number, a boolean, null, a list or an object included, is BAD-VALUE
+ either end (so not empty, not only blanks) and no line break of any kind (the one rule `_one_line`, shared with the title: LF, CR, CRLF, VT, FF, FS, GS,
+ RS, NEL, LS and PS, every break `str.splitlines` knows); anything else, a number, a boolean, null, a list or an object included, is BAD-VALUE
  naming the group and the key (`short must be a non-empty string of at most 50 characters with no line break`). A backtick pair and non-ASCII text
- are accepted, and no capital is asked for. A group without `short` is unchanged. It is NOT in EDITION_TEXT_FIELDS and not a selector: a change to it
- (added, changed, removed) is not seen by the edition check, with or without --base, and is not edition-checked yet.
+ are accepted, and no capital is asked for. A group without `short` is unchanged. It is NOT in EDITION_TEXT_FIELDS and not a selector: it is not
+ edition-checked yet, so a change to it never needs an edition and is never OUTLINE-CHANGED or EDITION. With --base REV, a group present at REV whose
+ `short` differs (added where absent, changed, removed) is the listing `SHORT-CHANGED <id> <old> -> <new>` (values as short JSON, `none` when absent;
+ any edition; a warning, never a refusal, exit code unchanged); a group not at REV with a short prints nothing, and an invalid short is still
+ BAD-VALUE, beside the listing. The summary has `short changes: K` directly after `first claims` (`did not run` with the same reason where that
+ line did not run).
 
  Edition of a rewritten text (F44, Q6; cases E21a to E21c, E22, E23a to E23t). A group may carry `edition` (the integer 1 or 2; absent is 1)
  and `edition_date`. `edition` of 0, a negative, a boolean, a string or a float is BAD-VALUE naming the group and the key, and 3 or more is
