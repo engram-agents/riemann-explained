@@ -182,8 +182,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      title only; its reader and date are in the Evidence block list (the who-span of its block). Cases PV1 to PV12, and the cases that
      moved with it (R6 B7a B7c B7f F1b H1 C1 C1b RDR1 PRF1 PRF2 PH1 PHR1 PHR2 PHR4 PHR5 PHR6 PHR7 BT2 RD1 RD2 RD3 RL1 RE1 RS3 PB1 PB3 DF1
      DF3 DF4 SK2 SK8 LK1 LK2 LK3 ESC1 MK1).
-  F26B-E THE ELEMENTS OF THE PAGE. One module-level list, ALLOWED_ELEMENTS (40 elements, 53 element-attribute pairs), names every element
-     and attribute NAME the built page may hold, and no other element or attribute name is allowed: the 28 elements and 15 pairs the builder
+  F26B-E THE ELEMENTS OF THE PAGE. One module-level list, ALLOWED_ELEMENTS (40 elements, 55 element-attribute pairs), names every element
+     and attribute NAME the built page may hold, and no other element or attribute name is allowed: the 28 elements and 17 pairs the builder
      emits (measured over the five self-test fixture pages, which EL4 pins; an entry no path emits is not kept, as `<time>` went with F37) and the
      MathML set the formula converter writes (F26B; 12 elements: math mrow mi mn mo msub msup msubsup mover munder
      munderover mspace; attributes mathvariant, stretchy and form on those only, width on mspace alone and accent on mover alone).
@@ -217,6 +217,17 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      hand-picked pool of the allowed start tags and five end tags, one to three tokens before the payload; a second search put comment,
      CDATA, processing-instruction and doctype tokens in front of an <img onerror> after the real <body>) and is not part of this
      repository. Cases EL1 to EL9.
+  F55 THE HEAD. After `<meta charset="utf-8">` and before `<title>` the head holds exactly two more lines, byte for byte:
+     `<meta name="viewport" content="width=device-width, initial-scale=1">` and `<meta name="robots" content="noindex">`, each once, and
+     no other meta. The first makes a phone lay the page out at the width of its screen (without it a phone lays out at 980 px and scales
+     the page down to about 40 percent); a plain narrow desktop window ignores that tag, so a browser read at 390 px in such a window cannot
+     see it. The second is the builder's own instruction not to index: the site is served byte for byte, so no server adds one. The checks
+     take the three tags as WHOLE literal tags (`_META_TAGS`, not "any name and content"): another meta is `PAGE-STATIC meta not listed`,
+     a name that is neither `meta name not listed`, a viewport or robots content that differs `meta viewport content differs` or `meta
+     robots content differs`, and a tag twice `meta repeated`. Cases HD1 to HD5; HD6 emulates a 390 x 844 mobile device in a real
+     Chromium over the DevTools protocol (a minimal standard-library WebSocket client) and reads innerWidth 390 with the tag and 980 with
+     the tag removed; it runs only when the environment variable RH_CHROME names a headless Chromium binary and is SKIPPED otherwise.
+     No real device was used.
   F26B FORMULAS. A formula `$...$` on ONE line (after the code spans are masked and the link targets taken out; a `$` in a span or a target is
      no mark) is MathML, inline, in every place `_rich` renders author text: claim, conditions, list titles (card, notes, level-0 and
      corrections lists), the first sentence and the text of an argument or interpretation block, a sketch's paragraphs, items, sub-items and
@@ -750,14 +761,22 @@ def static_problems(page, js):
 
 _HTML_ELEMENTS = {"a": ("class", "href"), "article": ("class", "id"), "aside": (), "body": (), "code": (), "dd": (), "details": ("class",),
                   "div": ("class",), "dl": ("class",), "dt": (), "h1": (), "h2": (), "h3": ("class",), "head": (), "header": (), "html": ("lang",),
-                  "li": ("class",), "main": (), "meta": ("charset",), "ol": (), "p": ("class",), "section": ("class",), "span": ("class",),
+                  "li": ("class",), "main": (), "meta": ("charset", "content", "name"), "ol": (), "p": ("class",), "section": ("class",), "span": ("class",),
                   "strong": (), "style": (), "summary": (), "title": (), "ul": ("class",)}
+# F55: the head's two meta tags, as full literal tags. The attribute list of `meta` above lets the NAMES charset, content and name stand on a
+# meta; _META_TAGS says which WHOLE tags the page may hold (the charset tag and these two, attribute by attribute, value by value, in this
+# order), so no other meta passes and element_problems refuses a repeated one. It is not "any name and content".
+META_VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">'
+META_ROBOTS = '<meta name="robots" content="noindex">'
+_META_TAGS = ((("charset", "utf-8"),), (("name", "viewport"), ("content", "width=device-width, initial-scale=1")),
+              (("name", "robots"), ("content", "noindex")))
+_META_CONTENT = {"viewport": "width=device-width, initial-scale=1", "robots": "noindex"}
 _MATHML_ELEMENTS = ("math", "mrow", "mi", "mn", "mo", "msub", "msup", "msubsup", "mover", "munder", "munderover", "mspace")
 _MATHML_ATTRIBUTES = ("mathvariant", "stretchy", "form")
 # Every element and attribute NAME the built page may hold (values and <style> text are not checked), and no other: the 28 elements and
-# 15 pairs the builder emits (measured over the five self-test fixture pages, pinned by EL4, not guessed; an entry no path emits is
+# 17 pairs the builder emits (measured over the five self-test fixture pages, pinned by EL4, not guessed; an entry no path emits is
 # removed, EL4) and the 12 of MathML Core the formula converter writes (a page with a formula holds them; the fixture pages do not), with mathvariant, stretchy and form on
-# the MathML elements only, width on <mspace> alone and accent on <mover> alone. 40 elements, 53 element-attribute pairs.
+# the MathML elements only, width on <mspace> alone and accent on <mover> alone. 40 elements, 55 element-attribute pairs.
 ALLOWED_ELEMENTS = dict(_HTML_ELEMENTS, **{t: _MATHML_ATTRIBUTES for t in _MATHML_ELEMENTS})
 ALLOWED_ELEMENTS["mover"] = _MATHML_ATTRIBUTES + ("accent",)   # the overline of \\bar
 ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element that may carry a width: the spacing commands of a formula
@@ -778,7 +797,10 @@ def element_problems(page):
     """What the BUILT page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list,
     `attribute <name> on <element>` for each attribute an allowed element may not carry, and `element <name> outside head` for an element of
     HIDING_ELEMENTS (style, title) after the opening run of the page. The BUILT page is read with html.parser, start tags and attribute NAMES; the
-    one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one). Every comment is `comment`
+    one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one). A `meta` is one of three
+    whole tags (F55: `_META_TAGS`, the charset tag, the viewport tag and the robots tag, each attribute and value literal, in order); any
+    other is `meta viewport content differs`, `meta robots content differs`, `meta name not listed` (a name that is neither) or `meta not
+    listed` (any other shape), and one of the three more than once is `meta repeated`. Every comment is `comment`
     (an ordinary one too: stricter than a browser needs, because html.parser and a browser disagree where `<!-->` ends), every processing
     instruction is `processing instruction`, and every declaration but ONE `<!doctype html>` before the first start tag (compared lower-cased and
     stripped) and every unknown declaration (`<![CDATA[`) is `declaration`. Markup html.parser still holds back at the end of the page (an
@@ -814,13 +836,28 @@ def element_problems(page):
                 found.add("element " + tag)
             else:
                 found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in ALLOWED_ELEMENTS[tag])
+            if tag == "meta":
+                metas.append(tuple(attrs))
 
         def handle_endtag(self, tag):
             if tag == "head":
                 run[0] = False
 
+    metas = []
     parser = P(convert_charrefs=True)
     parser.feed(page)
+    for t in metas:   # F55: a meta is one of the three whole tags of _META_TAGS, else it has a finding of its own
+        if t in _META_TAGS:
+            continue
+        d = dict(t)
+        name = d.get("name")
+        if "charset" not in d and name in _META_CONTENT and d.get("content") != _META_CONTENT[name]:
+            found.add(f"meta {name} content differs")
+        elif "charset" not in d and "name" in d and name not in _META_CONTENT:
+            found.add("meta name not listed")
+        else:
+            found.add("meta not listed")
+    found.update("meta repeated" for t in _META_TAGS if metas.count(t) > 1)
     if "<" in parser.rawdata:   # what html.parser still holds back (an unterminated comment, CDATA, tag or style): it reports none of it
         found.add("unterminated markup")   # no close(): it would flush the held text and report it a second way
     return sorted(found)
@@ -2251,7 +2288,8 @@ def _edition_html(template, date, href, label):
 def _render_page(m, s, facts, dirty):
     lab, kinds = s["labels"], s["labels"]["kinds"]
     files = m.files
-    out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', f"<title>{_e(s['page_title'])}</title>",
+    out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', META_VIEWPORT, META_ROBOTS,
+           f"<title>{_e(s['page_title'])}</title>",
            "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>"]
     out += [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
     ed_dates = [f["edition"]["date"] for f in files.values() if f["edition"]] + [n["edition"] for n in m.notes if n["edition"]]   # groups and notes (F44B)
@@ -7893,17 +7931,17 @@ def _selftest_cases():
                    (0, True, True, [], ["CODE-ON-SURFACE g1 zzz x1"], ["CODE-ON-SURFACE g1 zzz x1"]))
 
     @case("UD12", "F53 D3: a page whose sketches carry no `unexpanded_detail` is byte-equal to the page before this change: the sha256 of index.html of the "
-                  "four fixture pages (the base, the zoo, the sketch notes, the second base), literal, the ones ED4 pins from the tree before F44 "
-                  "changed anything for them, and the sketch notes page equals the one built with `unexpanded_detail` written as the empty list "
+                  "four fixture pages (the base, the zoo, the sketch notes, the second base), literal, the ones ED4 pins (moved by F55's two meta lines; "
+                  "HD2 pins the earlier ones, from the tree before F44 changed anything for them), and the sketch notes page equals the one built with `unexpanded_detail` written as the empty list "
                   "and none rendered")
     def _():
         import hashlib
         h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], _build(notes=_ud(d4=[], d5=[])).page == _sbase().page),
-                   (["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
-                     "e56476ab9fa257c33dfa1b2d70a6c64975873428d619a29805c0fae623a1ac52",
-                     "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
-                     "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"], True))
+                   (["5bd3d3aa953a3025302078cd884bb4f3d6f0f2cafc10bd806812a08c6f02aa48",
+                     "4f0c02e1f477d4721bd446460973e4962ca2420bd775d28a62d9a51038895d3f",
+                     "c4fa8de37f6a2f46c5835d8c3f4bde492ab96d206dc736caca0dad42247a32a4",
+                     "88d07a3a4902ce42b15630dac501d5c455d84cd0adf25c616cc89dba2196ee83"], True))
 
     @case("UD13", "F53 D1 through the build: a detail that is not a list of non-empty strings (a string, an empty entry) in the anchor is a "
                   "BLOCK-PROBLEM of the checker, exit 1, OUT_DIR absent; the builder does not read it as characters")
@@ -8108,15 +8146,15 @@ def _selftest_cases():
                     '<msub><mi>a</mi><mi>b</mi></msub><msup><mi>a</mi><mi>b</mi></msup><mspace></mspace><mspace width="0.167em"></mspace></mrow></math>']
         return _eq(([ep(h) for h, _w in planted], [ep(h) for h in controls]), ([w for _h, w in planted], [[]] * 5))
 
-    @case("EL2", "the allow-list: 40 elements (the 28 the builder emits and the 12 of MathML the formula converter writes) and 53 element-attribute pairs "
-                 "(15 of the page, 36 of mathvariant, stretchy and form on the 12 MathML elements, `width` on <mspace> and `accent` on <mover>); the built page of "
+    @case("EL2", "the allow-list: 40 elements (the 28 the builder emits and the 12 of MathML the formula converter writes) and 55 element-attribute pairs "
+                 "(17 of the page, 36 of mathvariant, stretchy and form on the 12 MathML elements, `width` on <mspace> and `accent` on <mover>); the built page of "
                  "the base fixture, the zoo, the sketch fixture, the definition fixture and one with bold and a nested sub-item is clean under it")
     def _():
         bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
         pages = [_base().page, _zbase().page, _sbase().page, _bbase().page, bold.page]
         return _eq(([element_problems(x) for x in pages], len(ALLOWED_ELEMENTS), sum(len(v) for v in ALLOWED_ELEMENTS.values()),
                      "<strong>" in bold.page, "<ul><li>" in bold.page.replace("\n", "")),
-                   ([[]] * 5, 40, 53, True, True))
+                   ([[]] * 5, 40, 55, True, True))
 
     @case("EL3", "the check runs on the BUILT page and refuses like the other static findings: a page with an <iframe> added is "
                  "`BUILD-ERROR PAGE-STATIC element iframe found in index.html`, one with an `onclick` on a <p> is `attribute onclick on p`; "
@@ -8230,8 +8268,8 @@ def _selftest_cases():
         got = _chrome_mobile_widths(chrome, [page, page.replace(VPT + "\n", "", 1)])
         return _eq([got[0][0], got[1][0]], [390, 980])
 
-    @case("EL4", "nothing else:the elements and attributes the five fixture pages of EL2 hold are exactly the 28 elements and 15 pairs of the list outside "
-                 "MathML (no entry nobody emits: `time` went with F37); what the list holds besides is the MathML set the formula converter writes, 12 elements, "
+    @case("EL4", "nothing else: the elements and attributes the five fixture pages of EL2 hold are exactly the 28 elements and 17 pairs of the list outside "
+                 "MathML (no entry nobody emits: `time` went with F37; F55 added `content` and `name` on `meta`); what the list holds besides is the MathML set the formula converter writes, 12 elements, "
                  "mathvariant, stretchy and form on all 12, `width` on <mspace> alone and `accent` on <mover> alone")
     def _():
         bold = _build(notes=_notes_s(para="A **bold** word.", item="Item two.\n   - a sub item"))
@@ -8253,7 +8291,7 @@ def _selftest_cases():
         html_tags = ["a", "article", "aside", "body", "code", "dd", "details", "div", "dl", "dt", "h1", "h2", "h3", "head", "header", "html", "li",
                      "main", "meta", "ol", "p", "section", "span", "strong", "style", "summary", "title", "ul"]
         html_pairs = ["a[class]", "a[href]", "article[class]", "article[id]", "details[class]", "div[class]", "dl[class]", "h3[class]", "html[lang]",
-                      "li[class]", "meta[charset]", "p[class]", "section[class]", "span[class]", "ul[class]"]
+                      "li[class]", "meta[charset]", "meta[content]", "meta[name]", "p[class]", "section[class]", "span[class]", "ul[class]"]
         return _eq((sorted(emitted - set(mathml)), sorted(p for p in pairs if p.split("[")[0] not in mathml), sorted(outside),
                     sorted(f"{t}[{k}]" for t, a in outside.items() for k in a), sorted(t for t in mathml if t in ALLOWED_ELEMENTS),
                     {k: sorted(v) for k, v in sorted(by_attr.items())}),
@@ -8763,7 +8801,7 @@ def _selftest_cases():
                    (0, 1, [1, 1, 0, 0, 0, 0], [False, False, False, False], 2, True, True))
 
     @case("ED4", "F44: a page with no group at edition 2 is byte-equal to the page before this change (sha256 of index.html of the four fixture "
-                 "pages, literal, taken from the tree before it), and equal to a build with `edition: 1` written on every group")
+                 "pages, literal, taken from the tree before it; F55 moved them by the two meta lines, and HD2 pins the old ones against the page without those lines), and equal to a build with `edition: 1` written on every group")
     def _():
         import hashlib
         one = _outline()
@@ -8772,10 +8810,10 @@ def _selftest_cases():
         e1 = _build(outline=one, strings=_strings())
         h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
-                   (["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
-                     "e56476ab9fa257c33dfa1b2d70a6c64975873428d619a29805c0fae623a1ac52",
-                     "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
-                     "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"], 0, True))
+                   (["5bd3d3aa953a3025302078cd884bb4f3d6f0f2cafc10bd806812a08c6f02aa48",
+                     "4f0c02e1f477d4721bd446460973e4962ca2420bd775d28a62d9a51038895d3f",
+                     "c4fa8de37f6a2f46c5835d8c3f4bde492ab96d206dc736caca0dad42247a32a4",
+                     "88d07a3a4902ce42b15630dac501d5c455d84cd0adf25c616cc89dba2196ee83"], 0, True))
 
     @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (four keys, pinned here as "
                  "literals) and the two addresses; a case that compares with the wording file itself runs when RH_EDITION_WORDING_FILE names it "
@@ -8847,13 +8885,13 @@ def _selftest_cases():
 
     @case("ED8", "F44: the page with editions is clean under both checks and nothing of the allow-list changed: no PAGE-STATIC finding, "
                  "element_problems is [] (a `p` with a class and an `a` with class and href were allowed already), ALLOWED_ELEMENTS still has "
-                 "40 elements and 53 pairs, and `p` and `a` allow exactly the attributes they did")
+                 "40 elements and 55 pairs (53 before F55 added `content` and `name` on `meta`), and `p` and `a` allow exactly the attributes they did")
     def _():
         b = _eb(("g1", "2026-11-21"), ("g3", "2026-11-22"))
         pairs = sum(len(v) for v in ALLOWED_ELEMENTS.values())
         return _eq((b.rc, static_problems(b.page, b.text("data.js")), element_problems(b.page), len(ALLOWED_ELEMENTS), pairs,
                     ALLOWED_ELEMENTS["p"], ALLOWED_ELEMENTS["a"], b.page.count('<a class="edition-link" href="https://')),
-                   (0, [], [], 40, 53, ("class",), ("class", "href"), 3))
+                   (0, [], [], 40, 55, ("class",), ("class", "href"), 3))
 
     @case("ED9", "F44: the origin of a PAGE-STATIC `href=http` finding names the string that holds the offending address, not an edition address "
                  "(like the reaction templates, the two edition addresses are legal holders): note_href `http://...` is blamed with the edition "
