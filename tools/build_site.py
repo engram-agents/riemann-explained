@@ -3762,12 +3762,15 @@ def _png_lum(img, x0, x1, y0, y1):
     return tot / ((x1 - x0) * (y1 - y0))
 
 
-def _cue_measure(chrome, page, old_rule, new_rule, width=390):
+def _cue_measure(chrome, page, old_rule, width=390):
     """Open `page` (the built index.html text) at `width` px in the headless Chromium `chrome`, every <details> open (a COPY), and measure by
     pixels. Returns [(overflows, {state: (left, right)})] for every <math>, state `start` and `end` (every overflowing <math> scrolled to its
-    end), each strip the mean luminance DROP of the last 0.75em of that edge against the same page built with `old_rule` instead of `new_rule`
+    end), each strip the mean luminance DROP of the last 0.75em of that edge against the same page with `old_rule` instead of the page's own rule that scrolls sideways
     (the formula's own ink is in both, so the drop is the shadow alone), then the boxes the probe reported, and the page background luminance."""
     base = re.sub(r"<details\b", "<details open", page)
+    own = re.findall(r"[^{}\n]*\{[^}]*overflow-x[^}]*\}", base)   # the page's own rule (any selector), found and not compared with a literal, so a changed rule is still measured
+    if len(own) != 1:
+        raise ValueError(f"the page holds {len(own)} rules that scroll sideways, not one")
     with tempfile.TemporaryDirectory() as d:
         def run(name, html_text, flag, extra):
             path = os.path.join(d, name + ".html")
@@ -3784,7 +3787,7 @@ def _cue_measure(chrome, page, old_rule, new_rule, width=390):
         m = re.search(r'<pre id="rh-cue">(.*?)</pre>', rep, re.S)
         height, boxes = json.loads(html.unescape(m.group(1)))
         shots = {}
-        for ref, text in (("new", base), ("old", base.replace(new_rule, old_rule))):
+        for ref, text in (("new", base), ("old", base.replace(own[0], old_rule))):
             for st in ("start", "end"):
                 png = os.path.join(d, f"{ref}-{st}.png")
                 run(f"{ref}-{st}", variant(text, st == "end", False), "--screenshot=" + png, ["--window-size=%d,%d" % (width, height + 20)])
@@ -8124,7 +8127,7 @@ def _selftest_cases():
         long1 = "+".join("a_{%d}" % i for i in range(1, 41))
         long2 = "+".join("b_{%d}" % i for i in range(1, 31))
         b = _build(notes=_notes(arg_text=f"Short $x$ and $y+z$ here. Long ${long1}$ there. Another ${long2}$ end."))
-        res, boxes, bg = _cue_measure(chrome, b.page, F51_OLD, F51_NEW)
+        res, boxes, bg = _cue_measure(chrome, b.page, F51_OLD)
         dark, clean = (lambda v: v is not None and v >= 10), (lambda v: v is not None and v < 5)
         over, fit = [r for r in res if r[0]], [r for r in res if not r[0]]
         ends = [bx[3] + bx[2] >= bx[1] - 1 for bx in boxes if bx[0]]
