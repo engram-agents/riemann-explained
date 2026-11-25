@@ -12,10 +12,7 @@ export function attachInput(view, ctl, o) {
 
   const local = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const two = () => { const [a, b] = [...pts.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; };
-  const nodeIdOf = (t) => {
-    const n = t && t.closest ? t.closest("[data-node]") : null;
-    return n && stage.contains(n) ? n.getAttribute("data-node") : null;
-  };
+  const nodeIdOf = (t) => view.nodeIdOf(t);          // through the view's own element -> node map; never an attribute
 
   view.listen(stage, "pointerdown", (e) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -73,7 +70,10 @@ export function attachInput(view, ctl, o) {
   }, { passive: false });
 
   view.listen(stage, "keydown", (e) => {
-    const id = e.target && e.target.hasAttribute && e.target.hasAttribute("data-node") ? nodeIdOf(e.target) : null;
+    // keys act only on what the engine made: the stage or one of its node elements. A key pressed in a caller's face
+    // (a button, a text field) is the face's own and is left alone.
+    if (e.target !== stage && !view.isNodeEl(e.target)) return;
+    const id = view.isNodeEl(e.target) ? nodeIdOf(e.target) : null;
     if (id && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ctl.tap(id, { target: e.target, key: e.key }); return; }
     const v = view.viewport(), cx = v.w / 2, cy = v.h / 2;
     if (e.key === "+" || e.key === "=") ctl.zoomAt(cx, cy, I.keyZoom, true);

@@ -196,6 +196,27 @@ def main():
             ev("T.destroy('c')")
         case("an invalid id leaves nothing in the DOM and emits refused", c_invalid)
 
+        def c_foreign_attr():
+            assert ev("T.foreign('c')") is True
+            settle(120)
+            r = center("#c .t-inner")
+            assert r[2] > 0 and r[3] > 0, ("the inner button has no size", r)
+            ev("T.taps2.length = 0")
+            page.mouse.move(r[0], r[1]); page.mouse.down(); page.mouse.up(); settle()
+            taps = ev("T.taps2")
+            assert taps == [{"id": "n0", "target": "t-inner", "key": None}], ("a tap on a face's own data-node element taps the OWNING node", taps)
+            ev("T.taps2.length = 0")
+            ev("document.querySelector('#c .t-inner').focus()")
+            page.keyboard.press("Enter"); page.keyboard.press("Space"); settle()
+            assert ev("T.taps2") == [], ("a key press on the face's own button is not node navigation", ev("T.taps2"))
+            # the engine's own node element still takes Enter: key handling acts on what the engine made
+            ev("document.querySelector('#c [data-node=n0]').focus()")
+            page.keyboard.press("Enter"); settle()
+            keyed = ev("T.taps2")
+            assert len(keyed) == 1 and keyed[0]["id"] == "n0" and keyed[0]["key"] == "Enter", keyed
+            ev("T.destroy('c')")
+        case("a face's own data-node attribute never names a node: a tap taps the owner, a key press on its button is not navigation", c_foreign_attr)
+
         def c_destroy():
             ev("T.create('c')")
             n_live = ev("window.__ls.live()")

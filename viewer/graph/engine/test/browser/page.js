@@ -23,6 +23,24 @@ const T = {
     for (const t of ["tap", "open", "close", "loading", "error", "refused"]) h.on(t, (n, r) => T.log.push([name, t, n ? n.id : null, r === undefined ? null : r]));
     return Object.keys(h);
   },
+  /* F4: a face that carries its own data-node attribute on a focusable button, to prove the engine never reads it */
+  foreign(name) {
+    const host = document.getElementById(name);
+    const h = createGraph(host, {
+      roots: [spec(0)],
+      renderFace: (s) => {
+        const d = document.createElement("div"); d.className = "t-face";
+        const b = document.createElement("button"); b.className = "t-inner"; b.setAttribute("data-node", "other-id"); b.textContent = "inner";
+        const q = document.createElement("button"); q.className = "t-plain"; q.textContent = "plain";
+        d.appendChild(b); d.appendChild(q);
+        return d;
+      },
+    });
+    T.handles[name] = h;
+    T.taps2 = [];
+    h.on("tap", (n, d) => T.taps2.push({ id: n ? n.id : null, target: d.target.className, key: d.key === undefined ? null : d.key }));
+    return h.ready;
+  },
   ready(name) { return T.handles[name].ready; },
   fit(name) { T.handles[name].fit(); },
   destroy(name) { T.handles[name].destroy(); },

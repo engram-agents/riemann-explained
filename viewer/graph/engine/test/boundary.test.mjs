@@ -57,3 +57,10 @@ test("elements are made in one place: createElement, createElementNS and setAttr
   assert.ok(d.includes("createElement(") && d.includes("setAttribute") && !/svg|<path|createElementNS/i.test(d), "one tag table: div only");
   assert.ok(!d.includes("createTextNode") && !d.includes("textContent"), "the engine writes no text");
 });
+test("F4: no engine file reads an attribute or queries the DOM to identify a node (the element->node map is the only way)", () => {
+  for (const p of FILES.filter((f) => f.endsWith(".js"))) {
+    const t = src(p);
+    for (const tok of ["getAttribute", ".closest(", "querySelector", ".matches(", "dataset"]) assert.ok(!t.includes(tok), relative(ENGINE, p) + " contains " + tok);
+    if (!p.endsWith("/dom.js") && !p.endsWith("/view.js")) assert.ok(!t.includes("data-node"), relative(ENGINE, p) + " names data-node");
+  }
+});

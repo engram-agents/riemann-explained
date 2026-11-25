@@ -9,6 +9,7 @@ export function createView(container, o, hooks) {
   const doc = container.ownerDocument;
   const listeners = [];
   const els = new Map();            // node id -> {el, face, last}
+  const owned = new WeakMap();      // element the engine made for a node -> that node's id; the ONLY way an element names a node
   const S = o.sizes;
 
   const rootEl = el(doc, "div", { "class": C.root });
@@ -29,6 +30,14 @@ export function createView(container, o, hooks) {
   const view = {
     stage,
     listen(target, type, fn, opts) { target.addEventListener(type, fn, opts); listeners.push({ target, type, fn, opts }); },
+    /* The id of the node an event target belongs to: walk up from the target to the first element THIS view made for a
+       node. No attribute is read, so markup a caller's face carries (a data-node of its own included) names nothing. */
+    nodeIdOf(t) {
+      for (let e = t; e && e !== stage; e = e.parentNode) if (owned.has(e)) return stage.contains(e) ? owned.get(e) : null;
+      return null;
+    },
+    /* true for an element the engine made as a node (not one inside a face) */
+    isNodeEl(e) { return owned.has(e); },
     setPanning(on) { stage.classList.toggle(C.panning, on); },
 
     mount(n) {
@@ -42,6 +51,7 @@ export function createView(container, o, hooks) {
       const node = el(doc, "div", { "class": C.node, "data-node": n.id, tabindex: "0", role: "group" }, [holder]);
       Object.assign(node.style, { position: "absolute", left: "0", top: "0", transformOrigin: "0 0", boxSizing: "border-box", zIndex: String(n.depth) });
       nodesEl.appendChild(node);
+      owned.set(node, n.id);
       els.set(n.id, { el: node, holder, last: "" });
     },
     unmount(n) {
