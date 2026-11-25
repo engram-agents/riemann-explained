@@ -269,7 +269,7 @@
    "claim": {
     "basis": "read",
     "conditions": [
-     "\"One instance of the hypothesis package\" means the statement assumes that an instance exists. Three things in that phrase were not opened for this claim: what \"closed\" requires, the link condition, and the definite side condition. Each is named here by its role only (we have not opened its definition)."
+     "\"One instance of the hypothesis package\" means the statement assumes that an instance exists. Three things in that phrase were not opened for this claim: what \"closed\" requires, the link condition, and the definite side condition. Note 13 states the definitions of the first two; note 4 states the shape of the third and read none of the notions it uses."
     ],
     "conventions_checked": [
      "e"
