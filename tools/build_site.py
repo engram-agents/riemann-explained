@@ -10595,14 +10595,14 @@ def _selftest_cases():
         return _eq((b.rc, sorted(set(hrefs)), "07-a#b" in b.page, "c%d e" in b.page),
                    (0, ["https://github.com/engram-agents/riemann-explained/blob/" + head + "/docs/07-a%23b%3Fc%25d%20e.md"], False, False))
 
-    @case("NL8", "F60 (L2): a notes commit that is not 40 lower-case hex is refused when the template holds {commit}: a 12-character id, an upper-case id "
-                "and 41 characters (the state of the notes taken from a stub) each give the NOTE-HREF-COMMIT line naming the id, exit 1, nothing "
+    @case("NL8", "F60 (L2): a notes commit that is not 40 lower-case hex is refused when the template holds {commit}: a 12-character id, an upper-case id, "
+                "39 characters and 41 characters (the state of the notes taken from a stub) each give the NOTE-HREF-COMMIT line naming the id, exit 1, nothing "
                 "written; the same ids with a template without {commit} build; a 40-hex lower-case id builds")
     def _():
         st = _strings()
         st["note_href"] = F60_BLOB
         res, plain = [], []
-        for cid in ("abcdef012345", "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "abcdef0123456789abcdef0123456789abcdef012"):
+        for cid in ("abcdef012345", "abcdef0123456789abcdef0123456789abcdef0", "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "abcdef0123456789abcdef0123456789abcdef012"):
             with _patched("_notes_state", lambda repo, rev, paths, c=cid: (c, False)):
                 b = _build(strings=st, notes_commit="HEAD")
                 ok = _build(notes_commit="HEAD")
@@ -10613,8 +10613,8 @@ def _selftest_cases():
         return _eq((res, plain, good.rc, f60_sites(good.page)["header"]),
                    ([(1, ["BUILD-ERROR NOTE-HREF-COMMIT note_href holds {commit}, but the build has no full notes commit (it is " + c
                           + "; give --notes-commit and --repo, and build from a clean tree)"], False)
-                     for c in ("abcdef012345", "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "abcdef0123456789abcdef0123456789abcdef012")],
-                    [0, 0, 0], 0,
+                     for c in ("abcdef012345", "abcdef0123456789abcdef0123456789abcdef0", "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "abcdef0123456789abcdef0123456789abcdef012")],
+                    [0, 0, 0, 0], 0,
                     [(True, "https://github.com/engram-agents/riemann-explained/blob/abcdef0123456789abcdef0123456789abcdef01/docs/00-whole.md")]))
 
     @case("NL8b", "F60 (L2): a dirty build never pins a link: with {commit} in the template, a note edited after the commit (the notes id is stamped `dirty`) "
