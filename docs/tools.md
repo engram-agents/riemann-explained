@@ -113,7 +113,7 @@ edition 2 and adds `note_editions`, the number of notes at edition 2. The first-
 with the latest date over both. A card's Evidence section gets, after the group's own paragraph (the group's sentence is `edition_note_card`,
 which says the text of the card was rewritten), one `edition_note_card_note` paragraph (the note's sentence: it says a note the card
 draws on was rewritten, because a card prints only the blocks of a note and the edition check compares the whole note file)
-for each edition-2 note of the card whose date differs from the group's date at edition 2 (all of them when the group is at edition 1), each with the
+for each edition-2 note of the card, whatever the dates (a note dated the same day as the group's edition gets its paragraph too: the group's paragraph links the outline file and the note's links the note's own file, two sentences and two files, so the second is not a repetition of the first), each with the
 note's date and a link made from `edition_href_blob` with `{file}` = `docs/<note file>` (the file name percent-encoded as the note's own
 link is). A level-0 note (a note about the whole proof) gets no card paragraph, even when its header names a real card as its group: it is
 not in that card's `editions`, but it is counted in `note_editions` and its date counts for the first screen. The page (`index.html`) of a
