@@ -3695,6 +3695,130 @@ def _real_strings_facts(path):
     return _strings_problems(real), isinstance(v, str), isinstance(v, str) and "{" not in v and "}" not in v
 
 
+# ---- F55: a mobile page width measured in a real Chromium, over the DevTools protocol, with a minimal WebSocket client (RFC 6455) of the
+# standard library: socket, the handshake, masked text frames. Nothing here runs unless RH_CHROME names a headless Chromium binary.
+
+def _ws_open(host, port, path, timeout=20):
+    import base64
+    import socket
+    s = socket.create_connection((host, port), timeout=timeout)
+    key = base64.b64encode(os.urandom(16)).decode()
+    s.sendall((f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+    head = b""
+    while b"\r\n\r\n" not in head:
+        chunk = s.recv(1)
+        if not chunk:
+            raise OSError("the DevTools socket closed during the handshake")
+        head += chunk
+    if not head.startswith(b"HTTP/1.1 101"):
+        raise OSError("the DevTools handshake was refused: " + head.split(b"\r\n")[0].decode("latin-1"))
+    return s
+
+
+def _ws_send(s, text):
+    data = text.encode("utf-8")
+    n = len(data)
+    head = bytes([0x81]) + (bytes([0x80 | n]) if n < 126 else bytes([0x80 | 126]) + n.to_bytes(2, "big") if n < 65536
+                            else bytes([0x80 | 127]) + n.to_bytes(8, "big"))
+    mask = os.urandom(4)
+    s.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+
+def _ws_recv(s):
+    """The next text message (frames of one message joined); a ping is answered, a close raises."""
+    def need(k):
+        buf = b""
+        while len(buf) < k:
+            chunk = s.recv(k - len(buf))
+            if not chunk:
+                raise OSError("the DevTools socket closed")
+            buf += chunk
+        return buf
+    msg = b""
+    while True:
+        b0, b1 = need(2)
+        n = b1 & 0x7F
+        n = int.from_bytes(need(2), "big") if n == 126 else int.from_bytes(need(8), "big") if n == 127 else n
+        data = need(n)   # a server frame is not masked
+        op = b0 & 0x0F
+        if op == 8:
+            raise OSError("the DevTools socket was closed by the browser")
+        if op == 9:
+            mask = os.urandom(4)
+            s.sendall(bytes([0x8A, 0x80 | len(data)]) + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+            continue
+        msg += data
+        if b0 & 0x80:
+            return msg.decode("utf-8")
+
+
+def _chrome_mobile_widths(chrome, pages):
+    """For each page text in `pages` (written to a temporary file and opened by file URL in a Chromium with a 390 x 844 mobile device
+    emulated): (innerWidth, scrollWidth of the document element), in the order of `pages`; the browser's version string is the last
+    item. The browser is closed, killed and its temporary directory removed in a `finally`."""
+    import time
+    tmp = tempfile.mkdtemp(prefix="rh-chrome-")
+    proc = None
+    sock = None
+    try:
+        proc = subprocess.Popen([chrome, "--headless", "--no-sandbox", "--disable-gpu", "--remote-debugging-port=0",
+                                 "--user-data-dir=" + os.path.join(tmp, "profile"), "about:blank"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        active = os.path.join(tmp, "profile", "DevToolsActivePort")
+        for _ in range(200):
+            if os.path.isfile(active) and len(open(active).read().split("\n")) >= 2:
+                break
+            time.sleep(0.1)
+        else:
+            raise OSError("the browser wrote no DevToolsActivePort")
+        port = int(open(active).read().split("\n")[0])
+        import urllib.request
+        targets = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=20).read().decode())
+        page = [t for t in targets if t.get("type") == "page"][0]
+        sock = _ws_open("127.0.0.1", port, page["webSocketDebuggerUrl"].split(str(port), 1)[1])
+        ident = [0]
+
+        def call(method, params=None):
+            ident[0] += 1
+            _ws_send(sock, json.dumps({"id": ident[0], "method": method, "params": params or {}}))
+            while True:
+                m = json.loads(_ws_recv(sock))
+                if m.get("id") == ident[0]:
+                    if "error" in m:
+                        raise OSError(f"{method}: {m['error']}")
+                    return m["result"]
+
+        def value(expr):
+            return call("Runtime.evaluate", {"expression": expr, "returnByValue": True})["result"]["value"]
+
+        call("Page.enable")
+        call("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": True})
+        out = []
+        for i, text in enumerate(pages):
+            path = os.path.join(tmp, f"page{i}.html")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            call("Page.navigate", {"url": "file://" + path})
+            for _ in range(200):
+                if value("document.readyState") == "complete" and value("location.href").endswith(f"page{i}.html"):
+                    break
+                time.sleep(0.1)
+            out.append((value("innerWidth"), value("document.documentElement.scrollWidth")))
+        out.append(call("Browser.getVersion")["product"])
+        return out
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+        if proc is not None:
+            proc.kill()
+            proc.wait()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _selftest_cases():
     cases = []
 
@@ -8007,7 +8131,106 @@ def _selftest_cases():
         return _eq(res, [(1, ["BUILD-ERROR PAGE-STATIC element iframe found in index.html"], False),
                          (1, ["BUILD-ERROR PAGE-STATIC attribute onclick on p found in index.html"], False), (0, [], True)])
 
-    @case("EL4", "nothing else: the elements and attributes the five fixture pages of EL2 hold are exactly the 28 elements and 15 pairs of the list outside "
+    # ---- F55: the two meta tags of the head
+    VPT = '<meta name="viewport" content="width=device-width, initial-scale=1">'
+    ROB = '<meta name="robots" content="noindex">'
+    HEAD2 = '<meta charset="utf-8">\n' + VPT + "\n" + ROB + "\n<title>"
+
+    def head_ok(page):
+        """The F55 contract of a built page, read as text: the three lines in this order and nothing else, each once, no other meta."""
+        return (HEAD2 in page and page.count(VPT) == 1 and page.count(ROB) == 1 and page.count("<meta") == 3
+                and page.index(HEAD2) < page.index("</head>") and page.count("<title>") == 1)
+
+    @case("HD1", "F55 M1: every built index.html (the four fixture pages, the real strings page) holds in its head, after `<meta charset=\"utf-8\">` and "
+                 "before `<title>`, exactly the lines `<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">` then "
+                 "`<meta name=\"robots\" content=\"noindex\">`, each once, and no other meta (three in all)")
+    def _():
+        pages = [x.page for x in (_base(), _zbase(), _sbase(), _bbase())]
+        return _eq(([p.count("<meta") for p in pages], [p.count(VPT) for p in pages], [p.count(ROB) for p in pages],
+                    [p.startswith('<!DOCTYPE html>\n<html lang="en">\n<head>\n' + HEAD2) for p in pages]),
+                   ([3] * 4, [1] * 4, [1] * 4, [True] * 4))
+
+    @case("HD2", "F55 M1: the rest of the page is byte-equal to before: the four fixture pages with the two lines removed have the sha256 that ED4 and UD12 "
+                 "pinned before F55 (literal)")
+    def _():
+        import hashlib
+        h = lambda p: hashlib.sha256(p.replace(VPT + "\n" + ROB + "\n", "", 1).encode("utf-8")).hexdigest()
+        pages = [x.page for x in (_base(), _zbase(), _sbase(), _bbase())]
+        return _eq(([VPT + "\n" + ROB + "\n" in p for p in pages], [h(p) for p in pages]),
+                   ([True] * 4, ["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
+                                 "e56476ab9fa257c33dfa1b2d70a6c64975873428d619a29805c0fae623a1ac52",
+                                 "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
+                                 "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"]))
+
+    @case("HD3", "F55 M3: the head predicate of HD1 is itself discriminating: true on the built page, false for each of these planted pages: viewport tag "
+                 "missing, robots tag missing, both missing, viewport content `width=device-width` only, `initial-scale=1.0`, robots content "
+                 "`noindex, nofollow`, `none`, name `Viewport`, name `Robots`, the two tags after the title, before the charset, in the other order, "
+                 "the viewport tag twice, the robots tag twice, an extra meta")
+    def _():
+        p = _base().page
+        wrong =[p.replace(VPT + "\n", ""), p.replace(ROB + "\n", ""), p.replace(VPT + "\n" + ROB + "\n", ""),
+                 p.replace("width=device-width, initial-scale=1", "width=device-width"),
+                 p.replace("initial-scale=1", "initial-scale=1.0"), p.replace('content="noindex"', 'content="noindex, nofollow"'),
+                 p.replace('content="noindex"', 'content="none"'), p.replace('name="viewport"', 'name="Viewport"'),
+                 p.replace('name="robots"', 'name="Robots"'),
+                 p.replace(VPT + "\n" + ROB + "\n", "").replace("</title>", "</title>\n" + VPT + "\n" + ROB, 1),
+                 p.replace(VPT + "\n" + ROB + "\n", "").replace('<meta charset="utf-8">\n', VPT + "\n" + ROB + '\n<meta charset="utf-8">\n', 1),
+                 p.replace(VPT + "\n" + ROB + "\n", ROB + "\n" + VPT + "\n"),
+                 p.replace(VPT + "\n", VPT + "\n" + VPT + "\n"), p.replace(ROB + "\n", ROB + "\n" + ROB + "\n"),
+                 p.replace(ROB + "\n", ROB + '\n<meta name="description" content="x">\n')]
+        return _eq((head_ok(p), [head_ok(w) for w in wrong], len(set(wrong)), [w == p for w in wrong].count(True)),
+                   (True, [False] * 15, 15, 0))
+
+    @case("HD4", "F55 M2: element_problems accepts a head with the charset tag and the two F55 tags, and refuses each of these with its own code: "
+                 "a viewport tag whose content differs (`meta viewport content differs`), a robots tag whose content differs (`meta robots content "
+                 "differs`), a meta whose name is neither (`meta name not listed`, also `Viewport`), the robots tag twice and the viewport tag twice "
+                 "(`meta repeated`), a meta of any other shape (`meta not listed`: http-equiv, a charset of another value, a name tag with its "
+                 "attributes in another order, a bare meta), each with the attribute finding it adds (`attribute http-equiv on meta`)")
+    def _():
+        ep = element_problems
+        pre = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        post = "<title>T</title></head><body><p>a</p></body></html>"
+        run = lambda *tags: ep(pre + "".join(tags) + post)
+        return _eq([run(VPT, ROB), run(), run(VPT),
+                    run(VPT, ROB, '<meta name="description" content="x">'), run('<meta name="viewport" content="width=device-width">', ROB),
+                    run(VPT, '<meta name="robots" content="noindex, nofollow">'), run('<meta name="Viewport" content="width=device-width, initial-scale=1">', ROB),
+                    run(VPT, ROB, ROB), run(VPT, VPT, ROB), run(VPT, ROB, '<meta http-equiv="refresh" content="0;url=https://x.org/">'),
+                    run(VPT, ROB, '<meta charset="latin-1">'), run('<meta content="noindex" name="robots">', VPT),
+                    run(VPT, ROB, "<meta>"), run(VPT, ROB, '<meta charset="utf-8">'), run(VPT, ROB, '<meta name="viewport" content="width=device-width, initial-scale=1" x="1">')],
+                   [[], [], [], ["meta name not listed"], ["meta viewport content differs"], ["meta robots content differs"], ["meta name not listed"],
+                    ["meta repeated"], ["meta repeated"], ["attribute http-equiv on meta", "meta not listed"], ["meta not listed"], ["meta not listed"],
+                    ["meta not listed"], ["meta repeated"], ["attribute x on meta", "meta not listed"]])
+
+    @case("HD5", "F55 M2 through the build: a built page with a third meta (`<meta http-equiv=\"refresh\">`) is `BUILD-ERROR PAGE-STATIC meta not listed found "
+                 "in index.html` (and the attribute), the robots tag twice is `meta repeated`, a viewport tag with another content is `meta viewport "
+                 "content differs`: exit 1, OUT_DIR absent; the unchanged page builds")
+    def _():
+        real = _render_page
+        res = []
+        for old, new in ((ROB, ROB), (ROB, ROB + '\n<meta http-equiv="refresh" content="0">'), (ROB, ROB + "\n" + ROB),
+                         ("initial-scale=1", "initial-scale=2")):
+            with _patched("_render_page", lambda *a, _o=old, _n=new: real(*a).replace(_o, _n, 1)):
+                b = _build()
+            res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR PAGE-STATIC")), b.existed))
+        return _eq(res, [(0, [], True),
+                         (1, ["BUILD-ERROR PAGE-STATIC attribute http-equiv on meta found in index.html",
+                              "BUILD-ERROR PAGE-STATIC meta not listed found in index.html"], False),
+                         (1, ["BUILD-ERROR PAGE-STATIC meta repeated found in index.html"], False),
+                         (1, ["BUILD-ERROR PAGE-STATIC meta viewport content differs found in index.html"], False)])
+
+    @case("HD6", "F55 M4: in a Chromium that emulates a 390 x 844 mobile device (DevTools protocol, a minimal WebSocket client of the standard library), the "
+                 "built page lays out at innerWidth 390 and the same page with the viewport tag removed at 980, the control that shows the case sees the "
+                 "tag (a plain 390 px desktop window ignores the tag and cannot). The binary is named by the environment variable RH_CHROME (SKIPPED, "
+                 "with that reason, when it is not set to a file: no host path is read otherwise; docs/tools.md says how to run it)")
+    def _():
+        chrome = os.environ.get("RH_CHROME")
+        if not chrome or not os.path.isfile(chrome):
+            raise _SkipCase("RH_CHROME is not set to a headless Chromium binary: the page width on a mobile device was not measured")
+        page = _base().page
+        got = _chrome_mobile_widths(chrome, [page, page.replace(VPT + "\n", "", 1)])
+        return _eq([got[0][0], got[1][0]], [390, 980])
+
+    @case("EL4", "nothing else:the elements and attributes the five fixture pages of EL2 hold are exactly the 28 elements and 15 pairs of the list outside "
                  "MathML (no entry nobody emits: `time` went with F37); what the list holds besides is the MathML set the formula converter writes, 12 elements, "
                  "mathvariant, stretchy and form on all 12, `width` on <mspace> alone and `accent` on <mover> alone")
     def _():
