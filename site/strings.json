@@ -56,7 +56,7 @@
  "root_only_note_single": "These two lines are about this step only, not about anything it uses.",
  "dirty_note": "This page was built from changes that are not yet committed, so it may not match the published notes.",
  "shared_note": "This result is also part of: {groups}",
- "note_href": "notes/{file}",
+ "note_href": "https://github.com/engram-agents/riemann-explained/blob/{commit}/docs/{file}",
  "forbidden_words": [
   "verified",
   "explained",

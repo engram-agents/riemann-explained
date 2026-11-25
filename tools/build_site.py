@@ -594,7 +594,7 @@ PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_st
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
-                "shared_note": {"groups"}, "note_href": {"file"},
+                "shared_note": {"groups"}, "note_href": {"file", "commit"},
                 "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_note_card_note": {"date", "link"},
                 "edition_href_blob": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
@@ -747,8 +747,9 @@ def _fact_flags(items, key):
 
 def static_problems(page, js):
     """What the page or data.js holds that could make a request: a sorted list of ids from fetch(, XMLHttpRequest, WebSocket,
-    sendBeacon, import(, @import, src=http, href=http (a reaction anchor excepted, and an <a class=citation> or <a class=edition-link>
-    whose href starts `https://`, a source or an earlier edition the reader may open; the class is a TOKEN of the class list), url( to a URL."""
+    sendBeacon, import(, @import, src=http, href=http (a reaction anchor excepted, and an <a class=citation>, <a class=edition-link> or
+    <a class=note-link> whose href starts `https://`, a source, an earlier edition or a note's file the reader may open; the class is a TOKEN
+    of the class list; `note-link` is the one exemption F60 added), url( to a URL."""
     found = set()
     for text in (page, js):
         found.update(tok for tok in _API if tok in text)
@@ -765,7 +766,8 @@ def static_problems(page, js):
                 if k in ("src", "srcset", "poster"):
                     found.add("src=http")
                 elif k in ("href", "action", "formaction", "xlink:href") and not (
-                        tag == "a" and ("reaction" in classes or (k == "href" and ("citation" in classes or "edition-link" in classes)
+                        tag == "a" and ("reaction" in classes or (k == "href" and ("citation" in classes or "edition-link" in classes
+                                                                                    or "note-link" in classes)
                                                                   and v.startswith("https://")))):
                     found.add("href=http")
 
@@ -1377,9 +1379,11 @@ def _sketch(text, lines, anchor_line, d):
             "unexpanded_detail": list(d.get("unexpanded_detail", [])), "blocks": blocks, "_depth": depth}, src
 
 
-def _load_notes(notes_dir, strings):
-    """The notes in name order: id, title, level, group, link, and each block's record (its decls kept apart)."""
+def _load_notes(notes_dir, strings, notes_commit="unknown"):
+    """The notes in name order: id, title, level, group, link, and each block's record (its decls kept apart). The link is `note_href` with
+    {file} (percent-encoded) and, F60, {commit} (the full notes commit of the build) filled in."""
     notes = []
+    commit_kw = {"commit": notes_commit} if _FULL_COMMIT.fullmatch(notes_commit) else {}   # F60: {commit} is filled with a full id only
     for name in sorted(n for n in os.listdir(notes_dir) if fnmatch.fnmatchcase(n, nm.DEFAULT_GLOB)
                        and os.path.isfile(os.path.join(notes_dir, n))):
         with open(os.path.join(notes_dir, name), "rb") as fh:
@@ -1388,7 +1392,7 @@ def _load_notes(notes_dir, strings):
         h = headers[0].data
         lines = _LINE_SPLIT.split(text)
         note = {"name": name, "id": h["id"], "title": h["list_title"], "level": h["level"], "group": h["group"],
-                "link": _fill(strings["note_href"], file=urllib.parse.quote(name, safe="")), "blocks": [],
+                "link": _fill(strings["note_href"], file=urllib.parse.quote(name, safe=""), **commit_kw), "blocks": [],
                 # F44B: the edition_date of a note at edition 2, else None
                 "edition": h.get("edition_date") if h.get("edition") == 2 else None,
                 "_anchors": {b.data["id"]: b.line for b in blocks}}   # the line of each block's anchor, for an error that names it
@@ -1416,6 +1420,15 @@ def _block_key(rec):
     return rec["note"], int(rec["block"].rsplit(".b", 1)[1])
 
 
+_FULL_COMMIT = re.compile(r"[0-9a-f]{40}")   # F60: a full commit id, as git writes it
+
+
+def _note_open(link):
+    """F60: the opening tag of a note anchor. An https link (the strings file's blob address) carries `class="note-link"`, the class token the
+    static check lets through; a relative link is written with no class, as before. Every place that writes a note anchor calls this."""
+    return f'<a class="note-link" href="{_e(link)}">' if link.startswith("https://") else f'<a href="{_e(link)}">'
+
+
 def _note_ref(n):
     return {"link": n["link"], "list_title": n["title"], "note": n["id"]}
 
@@ -1424,10 +1437,10 @@ class _Model:
     pass
 
 
-def _model(notes_dir, odata, rows, strings, src_root, errors):
+def _model(notes_dir, odata, rows, strings, src_root, errors, notes_commit="unknown"):
     m = _Model()
     m.release = odata["release"]
-    m.notes = _load_notes(notes_dir, strings)
+    m.notes = _load_notes(notes_dir, strings, notes_commit)
     groups = {}
     for g in odata["groups"]:
         groups.setdefault(g["id"], g)
@@ -2346,7 +2359,7 @@ def _render_page(m, s, facts, dirty):
             f'<p class="mapped">{_e(s["mapped_line"])}</p>']
     if m.header_notes:
         out += ['<section class="whole">', f"<h2>{_e(lab['level0_notes'])}</h2>", "<ul>"]
-        out += [f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"], where=n["note"])}</a></li>' for n in m.header_notes]
+        out += [f'<li>{_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>' for n in m.header_notes]
         out += ["</ul>", "</section>"]
     out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
 
@@ -2509,7 +2522,7 @@ def _render_page(m, s, facts, dirty):
             b = args[0]
             link = next(n["link"] for n in sm["notes"] if n["note"] == b["note"])
             sent = f" {_rich(b['first_sentence'], True, b['block'])}" if b.get("first_sentence") else ""
-            o.append(f'<p class="argument">{frames(b, fl["roots"])}{sent} <a href="{_e(link)}">{_e(lab["read_more"])}</a></p>')
+            o.append(f'<p class="argument">{frames(b, fl["roots"])}{sent} {_note_open(link)}{_e(lab["read_more"])}</a></p>')
         for sk in fl["sketches"]:
             o += sketch(sk)
         if not fl["sketches"] and sm["proof_read"] is True:   # a card whose proof is read and that has no sketch says so
@@ -2520,11 +2533,11 @@ def _render_page(m, s, facts, dirty):
             for b in corr:
                 n = next(n for n in sm["notes"] if n["note"] == b["note"])
                 # F37: the kind and the title (what was wrong) stay; the reader and the date are in the Evidence block list
-                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> <a href="{_e(n["link"])}">{_rich(n["list_title"], where=n["note"])}</a></li>')
+                o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> {_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>')
             o.append("</ul>")
         if sm["notes"]:
             o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
-                     + "".join(f'<li><a href="{_e(n["link"])}">{_rich(n["list_title"], where=n["note"])}</a></li>' for n in sm["notes"]) + "</ul>")
+                     + "".join(f'<li>{_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>' for n in sm["notes"]) + "</ul>")
         o.append('<ul class="reactions">')
         for r in s["reactions"]:
             href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
@@ -2579,7 +2592,7 @@ def _render_page(m, s, facts, dirty):
             for b in fl["blocks"]:
                 n = next(n for n in sm["notes"] if n["note"] == b["note"])
                 who = " ".join(_e(x) for x in (b.get("reader"), b.get("date")) if x)
-                o.append(f'<li><a href="{_e(n["link"])}"><code>{_e(b["note"])}</code></a> <code>{_e(b["block"])}</code> '
+                o.append(f'<li>{_note_open(n["link"])}<code>{_e(b["note"])}</code></a> <code>{_e(b["block"])}</code> '
                          f'<span class="kind">{_e(kinds[b["kind"]])}</span> {who}')
                 if b["kind"] == "argument" and b.get("text"):
                     o.append(f'<p class="argument">{frames(b, fl["roots"])} {_rich(b["text"], True, b["block"])}</p>')
@@ -2868,10 +2881,13 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     if errors:
         return _refuse(errors)
     dirty = n_dirty or tools_state[1]
+    if "{commit}" in sj["note_href"] and not _FULL_COMMIT.fullmatch(n_commit):   # F60: never a link to /blob/unknown/
+        return _refuse([("NOTE-HREF-COMMIT", "note_href", f"holds {{commit}}, but the build has no full notes commit (it is {n_commit}; "
+                                                          "give --notes-commit and --repo, and build from a clean tree)")])
     commits = {"notes": n_commit, "release": odata["release"], "tools": tools_state[0]}
     if dirty:
         commits = {k: "dirty" for k in commits}
-    m = _model(notes_dir, odata, _decl_rows(decls), sj, source_check, errors)
+    m = _model(notes_dir, odata, _decl_rows(decls), sj, source_check, errors, n_commit)
     word_notes = _word_notes(m, sj)
     for where, word in word_notes:
         print(f"WORD-NOTE {where} {word}")
@@ -8817,6 +8833,7 @@ def _selftest_cases():
             raise _SkipCase("no real strings file in this checkout")
         with open(path, encoding="utf-8") as f:
             real = json.load(f)
+        real["note_href"] = "notes/{file}"   # F60: the shipped address needs a notes commit; this case reads the proof lines, and a build here has none
         line = lambda kinds, g: _card(_build(decls=_decls_kinds(kinds), strings=real), g).find("p", "proof")[0].text()
         return _eq((line({"quux": "def", "qux": "def"}, "g2"), line({"corge": "def"}, "g3"), line({"corge": "axiom"}, "g3")),
                    (F41_PROOF_LINES["proof_not_applicable_line"], F49_NAMED_LINE, F41_PROOF_LINES["proof_none_other_line"]))
@@ -9987,6 +10004,7 @@ def _selftest_cases():
             raise _SkipCase("no real strings file in this checkout")
         with open(path, encoding="utf-8") as f:
             real = json.load(f)
+        real["note_href"] = "notes/{file}"   # F60: the shipped address needs a notes commit; this case reads three proof lines, and a build here has none
         mk = _marked(_strings())
         ks = ("named_statement_use_line", "proof_not_applicable_named_line", "proof_not_applicable_line")
         pages = [(_faces(strings=mk), tuple("MARK-" + k for k in ks)), (_build(outline=_zoo(), strings=mk), tuple("MARK-" + k for k in ks)),
@@ -10266,6 +10284,7 @@ def _selftest_cases():
             raise _SkipCase("no real strings file in this checkout")
         with open(path, encoding="utf-8") as f:
             real = json.load(f)
+        real["note_href"] = "notes/{file}"   # F60: the shipped address needs a notes commit; this case reads the shared-root note, and a build here has none
         b = _build(strings=real)
         return _eq((b.rc, shared_lines(b, "g2"), b.js("group/g2.json")["roots"][1]["shared_with"]),
                    (0, ['<p class="shared">This result is also part of: <a href="#g1a1x"><code>qux</code></a></p>'], ["g1a1x"]))
@@ -10481,7 +10500,10 @@ def _selftest_cases():
     def _():
         known, head = f60_build("notes/{file}")
         none = _build()
-        norm = lambda files: {k: v.decode().replace(head, "unknown") for k, v in files.items()}
+        def norm(files):   # the manifest's `files` holds the digest of each file, which moves with the id inside it: left out
+            out = {k: v.decode().replace(head, "unknown") for k, v in files.items() if k != "manifest.json"}
+            out["manifest.json"] = {k: v for k, v in json.loads(files["manifest.json"].decode().replace(head, "unknown")).items() if k != "files"}
+            return out
         plain = "https://github.com/engram-agents/riemann-explained/blob/main/docs/{file}"
         st = _strings()
         st["note_href"] = plain
