@@ -10405,6 +10405,206 @@ def _selftest_cases():
         return _eq((PROOF_KINDS == frozenset(nm.RESULT_KINDS), "nm.definition_card(" in src, "PROOF_KINDS" in src, "nm.needs_title(" in src),
                    (True, True, False, True))
 
+    # ---- F60: a note link points at the note's file on GitHub, at the notes commit of the build
+    F60_BLOB = "https://github.com/engram-agents/riemann-explained/blob/{commit}/docs/{file}"
+    F60_ANCHOR = re.compile(r'<a (?:class="note-link" )?href="((?:notes/|https://)[^"]*)">')
+    F60_SITES = {"header": 1, "argument": 1, "corrections": 1, "notes": 7, "blocks": 9}   # the note anchors of the fixture page, by place
+
+    def f60_sites(page):
+        """{place: [(class written, href)]} of the note anchors of a page: the places are the header list, the argument's read-more link,
+        the corrections list, a card's notes list and the block line of the Evidence section."""
+        hdr, out = page.index("</header>"), {}
+        for mt in F60_ANCHOR.finditer(page):
+            if mt.start() < hdr:
+                k = "header"
+            elif page.startswith("<code>", mt.end()):
+                k = "blocks"
+            elif page.startswith("Read the note", mt.end()):
+                k = "argument"
+            elif page[:mt.start()].endswith("Correction</span> "):
+                k = "corrections"
+            else:
+                k = "notes"
+            out.setdefault(k, []).append(('class="note-link"' in mt.group(0), mt.group(1)))
+        return out
+
+    def f60_build(tpl, notes=None, state_patch=None):
+        """A build of the fixture out of a real git repository, `tpl` as note_href: (the build, the id of HEAD)."""
+        if shutil.which("git") is None:
+            raise _SkipCase("no git program")
+        st = _strings()
+        st["note_href"] = tpl
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d, strings=st, **({"notes": notes} if notes else {}))
+            _git(d, "init", "-q")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-q", "-m", "base")
+            head = _git(d, "rev-parse", "HEAD")
+            rc, o, e = _go(p, notes_commit="HEAD", repo=d)
+            return _B(rc, o, e, os.path.exists(p["out"]), _tree(p["out"]) if os.path.isdir(p["out"]) else {}), head
+
+    F60_NOTE_FILES = ["00-whole.md", "01-one.md", "02-two.md", "03-three.md"]
+
+    @case("NL1", "F60: note_href may hold {commit}; with the blob address of the strings file a build out of a git repository fills it with the "
+                "FULL notes commit (40 lower-case hex, the `commits.notes` of every JSON file): every note anchor of the page (19, in the five "
+                "places) and every `link` of every group file, level file and data.js is `https://github.com/engram-agents/riemann-explained/blob/<id>/docs/<file>`")
+    def _():
+        b, head = f60_build(F60_BLOB)
+        addr = {f: F60_BLOB.replace("{commit}", head).replace("{file}", f) for f in F60_NOTE_FILES}
+        sites = f60_sites(b.page)
+        links = {k: sorted(set(re.findall(r'"link": "([^"]+)"', v.decode()))) for k, v in b.files.items() if k != "index.html"}
+        ids = {json.dumps(json.loads(v)["commits"]["notes"]) for k, v in b.files.items() if k.endswith(".json")}
+        want_links = {"data.js": sorted(addr.values()), "group/g1.json": [addr["01-one.md"], addr["02-two.md"]],
+                      "group/g1a.json": [addr["01-one.md"]], "group/g1a1.json": [], "group/g1a1x.json": [addr["02-two.md"]],
+                      "group/g2.json": [addr["01-one.md"], addr["02-two.md"]], "group/g3.json": [addr["03-three.md"]],
+                      "level0.json": sorted(addr.values()), "level1.json": [addr["01-one.md"], addr["02-two.md"], addr["03-three.md"]],
+                      "manifest.json": []}
+        return _eq((b.rc, bool(re.fullmatch(r"[0-9a-f]{40}", head)), ids, {k: len(v) for k, v in sites.items()},
+                    all(c and h in addr.values() for v in sites.values() for c, h in v), '<a href="https://' in b.page,
+                    links, "{commit}" in b.page),
+                   (0, True, {json.dumps(head)}, F60_SITES, True, False, want_links, False))
+
+    @case("NL2", "F60: a template that holds {commit} and a build with no notes commit (no --notes-commit) is refused naming the key, exit 1, nothing "
+                "written, no traceback: `BUILD-ERROR NOTE-HREF-COMMIT note_href holds {commit}, but the build has no full notes commit (it is "
+                "unknown; give --notes-commit and --repo, and build from a clean tree)`")
+    def _():
+        st = _strings()
+        st["note_href"] = F60_BLOB
+        b = _build(strings=st)
+        return _eq((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed, "Traceback" in b.err, b.err.strip()),
+                   (1, ["BUILD-ERROR NOTE-HREF-COMMIT note_href holds {commit}, but the build has no full notes commit (it is unknown; "
+                        "give --notes-commit and --repo, and build from a clean tree)"], False, False, "REFUSED: nothing written"))
+
+    @case("NL3", "F60: a template WITHOUT {commit} builds as it did, whatever the commit is: the relative `notes/{file}` built from a git repository "
+                "equals the build with no commit once the commit id is read as `unknown`; no `note-link` class and no `https://github.com` "
+                "on the page; an https template without {commit} builds with a known commit and with none")
+    def _():
+        known, head = f60_build("notes/{file}")
+        none = _build()
+        norm = lambda files: {k: v.decode().replace(head, "unknown") for k, v in files.items()}
+        plain = "https://github.com/engram-agents/riemann-explained/blob/main/docs/{file}"
+        st = _strings()
+        st["note_href"] = plain
+        no_commit = _build(strings=st)
+        known_plain, _h2 = f60_build(plain)
+        return _eq((known.rc, none.rc, norm(known.files) == norm(none.files), "note-link" in known.page, "github.com" in known.page,
+                    no_commit.rc, known_plain.rc, no_commit.page.count('<a class="note-link" href="https://github.com/engram-agents/riemann-explained/blob/main/docs/'),
+                    known_plain.page.count('<a class="note-link" href="https://github.com/engram-agents/riemann-explained/blob/main/docs/')),
+                   (0, 0, True, False, False, 0, 0, 19, 19))
+
+    @case("NL4", "F60: the https rule still holds for the new value: `http://x.invalid/{commit}/{file}` is refused naming PAGE-STATIC href=http found in "
+                "strings key note_href; {commit} twice in a template fills both; an unknown placeholder {sha} is still refused naming the key")
+    def _():
+        bad, _h1 = f60_build("http://x.invalid/{commit}/{file}")
+        twice, head = f60_build("https://x.invalid/{commit}/a/{commit}/{file}")
+        sha = _strings()
+        sha["note_href"] = "https://x.invalid/{sha}/{file}"
+        s = _build(strings=sha)
+        return _eq((bad.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in bad.out.splitlines(), bad.existed,
+                    twice.rc, sorted({h for v in f60_sites(twice.page).values() for _c, h in v}),
+                    s.rc, [x for x in s.out.splitlines() if x.startswith("BUILD-ERROR")], s.existed),
+                   (1, True, False, 0, ["https://x.invalid/" + head + "/a/" + head + "/" + f for f in F60_NOTE_FILES],
+                    1, ["BUILD-ERROR STRINGS-KEY note_href has an unknown placeholder {sha}"], False))
+
+    @case("NL5", "F60: static_problems and the `note-link` class (the fourth exemption, `href` of an <a> that starts https://, the class a TOKEN): "
+                "controls (an https anchor, also among other tokens) pass; refused each: http://, //, a space before https, the token only as part of "
+                "another class (`note-linkx`, `xnote-link`), on an img src, on a form action, on a <link> href, on a <div> href, and an <a> with it on "
+                "xlink:href, action or formaction")
+    def _():
+        sp = static_problems
+        planted = [('<a class="note-link" href="http://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="note-link" href="//x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="note-link" href=" https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="note-linkx" href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="xnote-link" href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="note-link-x" href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<img class="note-link" src="https://x.invalid/a.png">', ["src=http"]),
+                   ('<form class="note-link" action="https://x.invalid/">x</form>', ["href=http"]),
+                   ('<link class="note-link" href="https://x.invalid/a.css">', ["href=http"]),
+                   ('<div class="note-link" href="https://x.invalid/">x</div>', ["href=http"]),
+                   ('<a class="note-link" xlink:href="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="note-link" action="https://x.invalid/">x</a>', ["href=http"]),
+                   ('<a class="note-link" formaction="https://x.invalid/">x</a>', ["href=http"])]
+        controls = ['<a class="note-link" href="https://x.invalid/">x</a>', '<a class="extra note-link more" href="https://x.invalid/">x</a>']
+        return _eq(([sp(h, "") for h, _w in planted], [sp(h, "") for h in controls]), ([w for _h, w in planted], [[], []]))
+
+    @case("NL5b", "F60 (j): a note anchor with an https href and NO `note-link` token is refused: static_problems says href=http, and the build refuses a "
+                 "page that holds one (a builder that wrote the anchor without the class: PAGE-STATIC href=http, exit 1, nothing written)")
+    def _():
+        plain = lambda link: f'<a href="{_e(link)}">'
+        with _patched("_note_open", plain):
+            b, _head = f60_build(F60_BLOB)
+        return _eq((static_problems('<a href="https://x.invalid/">x</a>', ""), static_problems('<a class="note" href="https://x.invalid/">x</a>', ""),
+                    b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR PAGE-STATIC href=http found in")], b.existed),
+                   (["href=http"], ["href=http"], 1, ["BUILD-ERROR PAGE-STATIC href=http found in strings key note_href"], False))
+
+    @case("NL6", "F60 (L4): an https note link is written `<a class=\"note-link\" href=\"https://...\">` at EVERY place the page shows one (the header "
+                "list, the argument's read-more link, the corrections list, a card's notes list, the block line of the Evidence section: the "
+                "default fixture page reaches all five, 1, 1, 1, 7 and 9 anchors); a relative link carries no class and the page has no `note-link`")
+    def _():
+        b, head = f60_build(F60_BLOB)
+        rel = _base().page
+        want = lambda f: "https://github.com/engram-agents/riemann-explained/blob/" + head + "/docs/" + f
+        https_sites = f60_sites(b.page)
+        rel_sites = f60_sites(rel)
+        return _eq(({k: len(v) for k, v in https_sites.items()}, all(c for v in https_sites.values() for c, _h in v),
+                    {k: len(v) for k, v in rel_sites.items()}, any(c for v in rel_sites.values() for c, _h in v), "note-link" in rel,
+                    b.page.count('<a class="note-link" href="' + want("")),
+                    '<a class="note-link" href="' + want("01-one.md") + '">Note one</a>' in b.page,
+                    '<a class="note-link" href="' + want("00-whole.md") + '">Whole one</a>' in b.page,
+                    '<a class="note-link" href="' + want("01-one.md") + '">Read the note</a>' in b.page,
+                    '<a class="note-link" href="' + want("01-one.md") + '"><code>01</code></a>' in b.page,
+                    "</span> " + '<a class="note-link" href="' + want("01-one.md") + '">Note one</a></li>' in b.page),
+                   (F60_SITES, True, F60_SITES, False, False, 19, True, True, True, True, True))
+
+    @case("NL7", "F60: the file part of the https note link is percent-encoded as before (quote with safe=''): a note whose file name holds `#`, `?`, `%` and "
+                "a space gives `%23`, `%3F`, `%25` and `%20` after `/docs/`, and the commit part is not encoded")
+    def _():
+        notes = _notes()
+        notes["07-a#b?c%d e.md"] = "# Note seven\n" + _h(id="07", group="g3", list_title="Note seven") + "\n\n## Body\n\nText seven.\n"
+        b, head = f60_build(F60_BLOB, notes=notes)
+        hrefs = re.findall(r'<a class="note-link" href="([^"]+)">Note seven</a>', b.page)
+        return _eq((b.rc, sorted(set(hrefs)), "07-a#b" in b.page, "c%d e" in b.page),
+                   (0, ["https://github.com/engram-agents/riemann-explained/blob/" + head + "/docs/07-a%23b%3Fc%25d%20e.md"], False, False))
+
+    @case("NL8", "F60 (L2): a notes commit that is not 40 lower-case hex is refused when the template holds {commit}: a 12-character id, an upper-case id "
+                "and 41 characters (the state of the notes taken from a stub) each give the NOTE-HREF-COMMIT line naming the id, exit 1, nothing "
+                "written; the same ids with a template without {commit} build; a 40-hex lower-case id builds")
+    def _():
+        st = _strings()
+        st["note_href"] = F60_BLOB
+        res, plain = [], []
+        for cid in ("abcdef012345", "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "abcdef0123456789abcdef0123456789abcdef012"):
+            with _patched("_notes_state", lambda repo, rev, paths, c=cid: (c, False)):
+                b = _build(strings=st, notes_commit="HEAD")
+                ok = _build(notes_commit="HEAD")
+            res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+            plain.append(ok.rc)
+        with _patched("_notes_state", lambda repo, rev, paths: ("abcdef0123456789abcdef0123456789abcdef01", False)):
+            good = _build(strings=st, notes_commit="HEAD")
+        return _eq((res, plain, good.rc, f60_sites(good.page)["header"]),
+                   ([(1, ["BUILD-ERROR NOTE-HREF-COMMIT note_href holds {commit}, but the build has no full notes commit (it is " + c
+                          + "; give --notes-commit and --repo, and build from a clean tree)"], False)
+                     for c in ("abcdef012345", "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "abcdef0123456789abcdef0123456789abcdef012")],
+                    [0, 0, 0], 0,
+                    [(True, "https://github.com/engram-agents/riemann-explained/blob/abcdef0123456789abcdef0123456789abcdef01/docs/00-whole.md")]))
+
+    @case("NL9", "F60: the strings file of this checkout (site/strings.json) holds note_href as the blob address with {commit} and {file}, passes the "
+                "builder's own strings check (the placeholder tables accept it), and a build of the fixture out of a git repository with it gives "
+                "https blob addresses at the fixture commit; with no commit it is refused naming the key")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        b, head = f60_build(real["note_href"])
+        none = _build(strings=dict(_strings(), note_href=real["note_href"]))
+        return _eq((real["note_href"], _strings_problems(real), PLACEHOLDERS["note_href"], REQUIRED_PLACEHOLDERS.get("note_href"), b.rc,
+                    f60_sites(b.page)["header"], none.rc),
+                   (F60_BLOB, [], {"file", "commit"}, None, 0,
+                    [(True, "https://github.com/engram-agents/riemann-explained/blob/" + head + "/docs/00-whole.md")], 1))
+
     return cases
 
 
