@@ -589,7 +589,9 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "argument_frame_no_proof", "evidence_statement_read_line", "evidence_statement_census_line", "evidence_proof_read_line",
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
             "evidence_sketch_build_line", "title_label", "definition_label", "definition_join", "edition_note_first_screen", "edition_note_card",
-            "edition_note_card_note", "edition_link_label", "edition_href_tree", "edition_href_blob")
+            "edition_note_card_note", "edition_link_label", "edition_href_tree", "edition_href_blob",
+             "symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure", "symbol_kind_none", "symbol_state_read", "symbol_state_census",
+             "symbol_state_none")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -1693,6 +1695,213 @@ def _nest(m, gid):
     return out
 
 
+# ---- the graph data (G1): the symbol table (F38), graph/index.json and graph/step/<id>.json
+
+GRAPH_FORMAT = 1
+GRAPH_MAX_CHILDREN = 40   # a step with more children is refused (GRAPH-FANOUT); the page reads the number from graph/index.json
+GRAPH_SHORT_MAX = 50      # the longest `short` (author text) a group may carry, in characters
+GRAPH_ID = re.compile(r"[a-z0-9][a-z0-9-]*")   # a step id; narrower than SAFE_ID, so every graph id is also a file name of the build
+# F38: THE symbol table. Each row is a css class token and the strings key whose words explain the symbol; graph/index.json `symbols` is built from
+# this table and from nothing else, and the page reads the key from there. The order of the rows is the order of the key.
+GRAPH_SYMBOLS = {
+    "kinds": {"theorem": {"class": "kind-theorem", "words": "symbol_kind_theorem"},
+              "def": {"class": "kind-def", "words": "symbol_kind_def"},
+              "structure": {"class": "kind-structure", "words": "symbol_kind_structure"},
+              "none": {"class": "kind-none", "words": "symbol_kind_none"}},
+    "states": {"read": {"class": "state-read", "words": "symbol_state_read"},
+               "census": {"class": "state-census", "words": "symbol_state_census"},
+               "none": {"class": "state-none", "words": "symbol_state_none"}}}
+assert {row["words"] for table in GRAPH_SYMBOLS.values() for row in table.values()} <= set(TEXT_KEYS)   # every row's words are a required strings key
+
+
+def _card_line(group, no_claim_label):
+    """The one line a graph card carries as its `title`, from the outline group: its `short` (author text), else its `title`, else the first sentence
+    of its claim (the backticks of a span removed FIRST, then cut by `_first_sentence`, so no lone backtick is left), else the strings file's
+    no_claim_label words; never the Lean name. A blank `short` or `title` is no line. Every arm has the backticks of its spans removed."""
+    for key in ("short", "title"):
+        v = group.get(key)
+        if isinstance(v, str) and v.strip():
+            return _unspan(v)
+    claim = group.get("claim")
+    if isinstance(claim, dict) and isinstance(claim.get("text"), str) and claim["text"].strip():
+        return _first_sentence(_unspan(claim["text"]))
+    return no_claim_label
+
+
+def _graph_short_errors(groups):
+    """[(GRAPH-SHORT, id, reason)] for the groups (outline dicts) whose `short` is not a non-empty string of at most GRAPH_SHORT_MAX characters
+    with no line break. A group that has no `short` is fine."""
+    out = []
+    for g in groups:
+        if "short" not in g:
+            continue
+        v = g["short"]
+        if not isinstance(v, str):
+            why = "is not a string"
+        elif not v.strip():
+            why = "is empty"
+        elif "\n" in v or "\r" in v:
+            why = "has a line break"
+        elif len(v) > GRAPH_SHORT_MAX:
+            why = f"is longer than {GRAPH_SHORT_MAX} characters"
+        else:
+            continue
+        out.append(("GRAPH-SHORT", str(g.get("id")), why))
+    return out
+
+
+def _graph_rows(m, strings):
+    """([GRAPH-SHORT errors], the rows `_graph_files` takes) from the model: one row per group, in the outline's order, with its kind (the builder's
+    root_kind, `none` when the step has no single named root), its state (`read` when its statement is read, `census` when it is not and its claim's
+    basis is census, else `none`) and its card line."""
+    groups = list(m.groups.values())
+    rows = []
+    for gid, g in m.groups.items():
+        sm = m.summary[gid]
+        state = "read" if sm["statement_read"] else ("census" if sm["claim"] is not None and sm["claim"]["basis"] == "census" else "none")
+        rows.append({"id": gid, "parent": g["parent"], "order": g["order"], "premises": list(g["premises"]), "kind": sm["root_kind"] or "none",
+                     "state": state, "title": _card_line(g, strings["no_claim_label"])})
+    return _graph_short_errors(groups), rows
+
+
+def _graph_count_errors(objs):
+    """[(GRAPH-COUNT, where, what)] for the graph objects (relative name -> object): child_count is the number of children on every card and on every
+    child entry (of that child's own file), `steps` is the number of step files, and every id in top and in any children has its step file."""
+    out = []
+    files = {k[len("graph/step/"):-len(".json")]: v for k, v in objs.items() if k.startswith("graph/step/")}
+    for i in sorted(files):
+        n = len(files[i]["children"])
+        if files[i]["card"]["child_count"] != n:
+            out.append(("GRAPH-COUNT", i, f"card child_count {files[i]['card']['child_count']} is not the {n} children listed"))
+        for c in files[i]["children"]:
+            if c["id"] in files and c["child_count"] != len(files[c["id"]]["children"]):
+                out.append(("GRAPH-COUNT", i, f"child {c['id']} child_count {c['child_count']} is not the {len(files[c['id']]['children'])} "
+                                              "children of its step file"))
+    ix = objs["graph/index.json"]
+    if ix["steps"] != len(files):
+        out.append(("GRAPH-COUNT", "index", f"steps {ix['steps']} is not the {len(files)} step files"))
+    for i in dict.fromkeys(list(ix["top"]) + [c["id"] for k in sorted(files) for c in files[k]["children"]]):
+        if i not in files:
+            out.append(("GRAPH-COUNT", i, "is listed but has no step file"))
+    return out
+
+
+def _graph_files(rows, commit, strings):
+    """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, title; the parent of a
+    top step is `root`). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
+    four stop the run, since what follows needs a tree), then GRAPH-FANOUT, GRAPH-SYMBOL and GRAPH-EDGE together, then GRAPH-COUNT."""
+    errors = []
+    seen = set()
+    for r in rows:
+        i = r["id"]
+        if not (isinstance(i, str) and GRAPH_ID.fullmatch(i)) or i == "root":
+            errors.append(("GRAPH-ID", str(i), "is not a step id (lower-case letters, digits and `-`, not starting with `-`)"))
+        if i in seen:
+            errors.append(("GRAPH-DUP", str(i), "is the id of more than one group"))
+        seen.add(i)
+    if errors:
+        return errors, {}
+    by = {r["id"]: r for r in rows}
+    for r in rows:
+        if r["parent"] != "root" and r["parent"] not in by:
+            errors.append(("GRAPH-PARENT", r["id"], f"has parent {r['parent']}, which is not a step"))
+    if errors:
+        return errors, {}
+    on_cycle = set()
+    for r in rows:
+        walk, at, i = {}, [], r["id"]
+        while i != "root" and i not in walk:
+            walk[i] = len(at)
+            at.append(i)
+            i = by[i]["parent"]
+        if i != "root":
+            on_cycle.update(at[walk[i]:])
+    errors += [("GRAPH-CYCLE", i, "is on a cycle of parents") for i in sorted(on_cycle)]
+    if errors:
+        return errors, {}
+    kids = {}
+    for r in rows:
+        kids.setdefault(r["parent"], []).append(r)
+    for k in kids:
+        kids[k].sort(key=lambda r: r["order"])
+    for r in rows:
+        n = len(kids.get(r["id"], []))
+        if n > GRAPH_MAX_CHILDREN:
+            errors.append(("GRAPH-FANOUT", r["id"], f"has {n} children (more than {GRAPH_MAX_CHILDREN})"))
+    for r in rows:
+        for field, table in (("kind", GRAPH_SYMBOLS["kinds"]), ("state", GRAPH_SYMBOLS["states"])):
+            if r[field] not in table:
+                errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}"))
+    edges = {}   # sibling links, from -> [to]: the premises of a step that name a sibling
+    for r in rows:
+        for p in dict.fromkeys(r["premises"]):
+            if p not in by:
+                errors.append(("GRAPH-EDGE", f"{r['id']} {p}", "names no step"))
+            elif by[p]["parent"] == r["parent"]:
+                edges.setdefault(r["id"], []).append(p)
+            elif by[p]["parent"] != r["id"]:   # a premise on the step's own child is parent_rests_on, stored on that child
+                errors.append(("GRAPH-EDGE", f"{r['id']} {p}", "crosses subtrees"))
+    color = {}
+    for start in by:
+        if color.get(start):
+            continue
+        color[start] = 1
+        stack = [(start, iter(edges.get(start, [])))]
+        while stack:
+            node, it = stack[-1]
+            for nxt in it:
+                if color.get(nxt) == 1:
+                    errors.append(("GRAPH-EDGE", f"{node} {nxt}", "cycle in rests_on"))
+                elif not color.get(nxt):
+                    color[nxt] = 1
+                    stack.append((nxt, iter(edges.get(nxt, []))))
+                    break
+            else:
+                color[node] = 2
+                stack.pop()
+    if errors:
+        return errors, {}
+    path = {}
+    for r in rows:
+        p, i = [], r["parent"]
+        while i != "root":
+            p.append(i)
+            i = by[i]["parent"]
+        path[r["id"]] = p[::-1]
+
+    def closed(r):
+        return {"child_count": len(kids.get(r["id"], [])), "id": r["id"], "kind": r["kind"], "path": list(path[r["id"]]), "state": r["state"],
+                "title": r["title"]}
+
+    def links(step):   # the premises of the children of `step` that name another child of it: `from` rests on `to`
+        return [{"from": c["id"], "from_path": list(path[c["id"]]), "to": p, "to_path": list(path[p])}
+                for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
+    objs = {"graph/index.json": {
+        "assets": {}, "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
+        "strings": {},
+        "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
+                         for name, table in GRAPH_SYMBOLS.items()},
+                        order={name: list(table) for name, table in GRAPH_SYMBOLS.items()}),
+        "top": [r["id"] for r in kids.get("root", [])]}}
+    for r in rows:
+        objs[f"graph/step/{r['id']}.json"] = {
+            "card": closed(r), "children": [dict(closed(c), parent_rests_on=c["id"] in r["premises"]) for c in kids.get(r["id"], [])],
+            "commit": commit, "format": GRAPH_FORMAT, "id": r["id"], "path": list(path[r["id"]]), "rests_on": links(r["id"])}
+    errors = _graph_count_errors(objs)
+    return errors, ({} if errors else objs)
+
+
+def _graph_bytes(objs):
+    """The graph objects as the bytes of their files: keys sorted, `<`, `>`, `&` written as \\uXXXX like data.js, one line break at the end."""
+    return {rel: (_js_safe(_dump(o)) + "\n").encode("utf-8") for rel, o in objs.items()}
+
+
+def _graph_static_problems(files):
+    """[(PAGE-STATIC, token, where)] from the static check run over each graph/*.json of `files` (relative name -> bytes), the way data.js is."""
+    return [("PAGE-STATIC", pb, f"found in {rel}") for rel in sorted(files) if rel.startswith("graph/") and rel.endswith(".json")
+            for pb in static_problems("", files[rel].decode("utf-8"))]
+
+
 # ---- the page
 
 CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family: serif; line-height: 1.45; }\n"
@@ -2773,14 +2982,15 @@ def _assemble(m, s, commits):
     return errors, line, level0, level1, groups, facts
 
 
-def _output_files(level0, level1, groups, page, commits, m, release_id, archive):
-    """Every file of the build as bytes, the manifest last (it holds the hash of all the others)."""
+def _output_files(level0, level1, groups, page, commits, m, release_id, archive, graph=None):
+    """Every file of the build as bytes, the manifest last (it holds the hash of all the others). `graph` is the bytes of the graph files."""
     files = {"level0.json": level0, "level1.json": level1}
     files.update({f"group/{gid}.json": g for gid, g in groups.items()})
     data = "window.RH_DATA = " + _js_safe(_dump({"groups": groups, "level0": level0, "level1": level1})) + ";\n"
     out = {k: (_dump(v) + "\n").encode("utf-8") for k, v in files.items()}
     out["data.js"] = data.encode("utf-8")
     out["index.html"] = page.encode("utf-8")
+    out.update(graph or {})
     manifest = {"commits": commits, "counts": {"blocks": m.totals["blocks"], "editions": sum(1 for g in groups.values() if g["edition"]),
                                                "note_editions": sum(1 for n in m.notes if n["edition"]),
                                                "groups": m.totals["groups"], "notes": m.totals["notes"]},
@@ -2813,7 +3023,7 @@ def _publish(out, files):
         _write_files(tmp, files)
         if os.path.isdir(out):
             for name in os.listdir(out):
-                if name in _OUT_NAMES or name == "group":
+                if name in _OUT_NAMES or name in ("group", "graph"):
                     continue
                 src, dst = os.path.join(out, name), os.path.join(tmp, name)
                 if os.path.isdir(src) and not os.path.islink(src):
@@ -2937,9 +3147,14 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     errors += formula_sum_errors(fcounts)
     errors += formula_raw_errors(flog, _formula_locator(m))
     errors += formula_page_errors(fcounts, len(re.findall(r"<math[ >]", page)))
-    files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha)
+    g_errors, g_rows = _graph_rows(m, sj)
+    g_more, g_objs = _graph_files(g_rows, commits["notes"], sj)
+    errors += g_errors + g_more
+    graph = _graph_bytes(g_objs)
+    files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha, graph)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
+    errors += _graph_static_problems(graph)
     for pb in element_problems(page):
         errors.append(("PAGE-STATIC", pb, "found in index.html"))
     for pb in head_meta_problems(page):
@@ -3186,6 +3401,12 @@ F48_STRINGS = {"title_label": "What this step is:", "definition_label": "Definit
 F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this step does not claim its statement is true."}
 # F53: the heading of the per-file list inside Evidence (no placeholder). The same literal is in site/strings.json.
 F53_STRINGS = {"unexpanded_detail_heading": "In the Lean files, file by file: the automation used and where, as we found it:"}
+# F38, G1: the words of the seven rows of the symbol table (GRAPH_SYMBOLS), no placeholder; the first six are the prototype's, and
+# symbol_kind_none is a PLACEHOLDER the wording seat replaces. The same literals are in site/strings.json.
+F38_STRINGS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
+               "symbol_kind_structure": "Diamond: the part is a structure", "symbol_kind_none": "Dashed: the step has no single named Lean result",
+               "symbol_state_read": "Filled: one of us read its statement", "symbol_state_census": "Half filled: counted by a program, not read",
+               "symbol_state_none": "Empty: not read yet"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
@@ -3261,6 +3482,7 @@ def _strings():
     s.update(F48_STRINGS)
     s.update(F49_STRINGS)
     s.update(F53_STRINGS)
+    s.update(F38_STRINGS)
     return s
 
 
@@ -3759,7 +3981,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING) + list(F38_STRINGS)
 
 
 def _no_edition(rel, data):
@@ -4263,7 +4485,8 @@ def _selftest_cases():
                  "shared_with": ["g1a1x"], "statement_read": True, "proof_read": False},
                 [{"block": "01.b04", "date": "2026-11-23", "item": 2, "kind": "reading", "note": "01", "reader": "Reader One",
                   "roots": [{"module": "A.B", "name": "bar"}]}],
-                ["data.js", "group/g1.json", "group/g1a.json", "group/g1a1.json", "group/g1a1x.json", "group/g2.json",
+                ["data.js", "graph/index.json", "graph/step/g1.json", "graph/step/g1a.json", "graph/step/g1a1.json", "graph/step/g1a1x.json",
+                 "graph/step/g2.json", "graph/step/g3.json", "group/g1.json", "group/g1a.json", "group/g1a1.json", "group/g1a1x.json", "group/g2.json",
                  "group/g3.json", "index.html", "level0.json", "level1.json", "manifest.json"])
         return _eq(got, want)
 
@@ -4289,7 +4512,10 @@ def _selftest_cases():
         for k, v in _base().files.items():
             if k.endswith(".json"):
                 t = v.decode("utf-8")
-                if t != json.dumps(json.loads(t), sort_keys=True, indent=1, ensure_ascii=False) + "\n" or "\r" in t:
+                want = json.dumps(json.loads(t), sort_keys=True, indent=1, ensure_ascii=False)
+                if k.startswith("graph/"):   # G1: the graph files write `<`, `>` and `&` as \uXXXX, like data.js
+                    want = _js_safe(want)
+                if t != want + "\n" or "\r" in t:
                     bad.append(k)
         return _eq((bad, "Claim four with é" in _base().text("level0.json")), ([], True))
 
@@ -4310,7 +4536,7 @@ def _selftest_cases():
             r1 = _child(os.path.join(d, "args.json"), os.path.join(d, "o1"), 1)
             r2 = _child(os.path.join(d, "args.json"), os.path.join(d, "o2"), 2)
             t1, t2 = _tree(os.path.join(d, "o1")), _tree(os.path.join(d, "o2"))
-            return _eq((r1[0], r2[0], len(t1), t1 == t2), (0, 0, 11, True))
+            return _eq((r1[0], r2[0], len(t1), t1 == t2), (0, 0, 18, True))
 
     @case("B3", "note 02 (header group g2, a block anchoring foo and one anchoring qux) is listed under g1, g1a1x and g2 and counted "
                 "once in the totals; note 01 under g1, g1a (its list block) and g2 (its not_read block); note 03 has a header "
@@ -4340,7 +4566,7 @@ def _selftest_cases():
     def _():
         b = _base()
         want = {"notes": "unknown", "release": "rel-1", "tools": "tools0"}
-        got = {k: v for k, v in ((k, json.loads(b.text(k))["commits"]) for k in b.files if k.endswith(".json"))}
+        got = {k: v for k, v in ((k, json.loads(b.text(k))["commits"]) for k in b.files if k.endswith(".json") and not k.startswith("graph/"))}   # G1: the graph files carry `commit`, GR3 and GR18
         data = json.loads(b.text("data.js")[len("window.RH_DATA = "):-2])
         return _eq((all(v == want for v in got.values()), len(got), data["level0"]["commits"], data["groups"]["g2"]["commits"]),
                    (True, 9, want, want))
@@ -4349,7 +4575,7 @@ def _selftest_cases():
                  "(the strings file's dirty_note, inside the header); control: the clean page does not")
     def _():
         b = _build(state=("tools0", True))
-        ids = {json.dumps(json.loads(v)["commits"], sort_keys=True) for k, v in b.files.items() if k.endswith(".json")}
+        ids = {json.dumps(json.loads(v)["commits"], sort_keys=True) for k, v in b.files.items() if k.endswith(".json") and not k.startswith("graph/")}
         note = "This page was built from changes not yet committed."
         in_header = [p.text() for p in _dom(b.page).find("header")[0].find("p")]
         return _eq((ids, note in in_header, note in _base().page), ({'{"notes": "dirty", "release": "dirty", "tools": "dirty"}'},
@@ -4421,7 +4647,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 98 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 105 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -4434,7 +4660,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 98))
+        return _eq((bad, len(STRING_KEYS)), ([], 105))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -4931,7 +5157,7 @@ def _selftest_cases():
             same = _tree(p["out"]) == old
             rc2 = _go(p, force=True)[0]
             return _eq((rc0, rc, out, err.count("\n"), same, _left(d), rc2, sorted(_tree(p["out"]))[:2]),
-                       (0, 2, "", 1, True, [], 0, ["data.js", "group/g1.json"]))
+                       (0, 2, "", 1, True, [], 0, ["data.js", "graph/index.json"]))
 
     @case("W6", "the last step fails (the rename of the new tree into place, injected once) under --force, after the old tree was set "
                 "aside: the old build and the foreign file are back byte-identical, no temporary directory is left, exit 2 with one line")
@@ -4996,10 +5222,10 @@ def _selftest_cases():
         o["groups"][0]["claim"]["text"] = "A verified claim covering 50% of the proof"
         b = _build(outline=o)
         notes = [ln for ln in b.out.splitlines() if ln.startswith("WORD-NOTE")]
-        return _eq((b.rc, notes, "built: 6 groups, 4 notes, 8 blocks, 11 files, 2 word notes" in b.out.splitlines(),
+        return _eq((b.rc, notes, "built: 6 groups, 4 notes, 8 blocks, 18 files, 2 word notes" in b.out.splitlines(),
                     "A verified claim covering 50% of the proof" in b.page,
                     [ln for ln in _base().out.splitlines() if ln.startswith("WORD-NOTE")],
-                    "built: 6 groups, 4 notes, 8 blocks, 11 files, 0 word notes" in _base().out.splitlines()),
+                    "built: 6 groups, 4 notes, 8 blocks, 18 files, 0 word notes" in _base().out.splitlines()),
                    (0, ["WORD-NOTE g3.claim verified", "WORD-NOTE g3.claim of the proof"], True, True, [], True))
 
     @case("WN2", "the other texts of the notes and the outline are listed too, never edited: a condition (g1), a claim with only a "
@@ -5677,7 +5903,7 @@ def _selftest_cases():
             o["groups"][0]["claim"]["text"] = "Claim four\n" + second
             b = _build(outline=o, src=srcs)
             res.append((b.rc, sorted(ln.split(" ")[2] for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK "))))
-        return _eq(res, [(1, ["data.js", "index.html", "level0.json", "level1.json"]), (0, [])])
+        return _eq(res, [(1, ["data.js", "graph/step/g3.json", "index.html", "level0.json", "level1.json"]), (0, [])])
 
     @case("PJ5", "the run says what the second check ranged over: `source check (copied note text): K copied source lines, L "
                  "leaked; <the narrow claim>`, K counted by the tool (the base build: 4 titles + 1 argument line + 1 "
@@ -5929,8 +6155,8 @@ def _selftest_cases():
             o["groups"][0]["claim"]["text"] = text
             b = _build(outline=o, src=srcs)
             res.append((b.rc, sorted(ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK ")), b.existed))
-        return _eq(res, [(1, [leak_line(w) for w in ("data.js", "level0.json", "level1.json")], False),
-                         (1, [leak_line(w) for w in ("data.js", "index.html", "level0.json", "level1.json")], False)])
+        return _eq(res, [(1, [leak_line(w) for w in ("data.js", "graph/step/g3.json", "level0.json", "level1.json")], False),
+                         (1, [leak_line(w) for w in ("data.js", "graph/step/g3.json", "index.html", "level0.json", "level1.json")], False)])
 
     @case("SPAN2", "the same for a condition: a condition that is a release line inside single backticks is refused (data.js, level0.json, "
                    "level1.json), exit 1, OUT_DIR absent; unwrapped, also index.html")
@@ -6163,10 +6389,10 @@ def _selftest_cases():
                      if ln.startswith("BUILD-ERROR SOURCE-LEAK ") and not ln.startswith("BUILD-ERROR SOURCE-LEAK note "))
         return _eq((b.rc, got, b.existed, _base_src().rc), (1, ["data.js", "group/g1.json", "index.html"], False, 0))
 
-    @case("B1d", "the run says what it ranged over: `source check: 1 release files, 40 release lines, 11 output files, N output "
+    @case("B1d", "the run says what it ranged over: `source check: 1 release files, 40 release lines, 18 output files, N output "
                  "lines, 0 leaked`")
     def _():
-        m = re.findall(r"^source check: 1 release files, 40 release lines, 11 output files, (\d+) output lines, 0 leaked$",
+        m = re.findall(r"^source check: 1 release files, 40 release lines, 18 output files, (\d+) output lines, 0 leaked$",
                        _base_src().out, re.M)
         return _eq((len(m), bool(m) and int(m[0]) > 20), (1, True))
 
@@ -6186,7 +6412,7 @@ def _selftest_cases():
         claimed = _build(outline=o2, src=src)
         got = sorted(ln.split(" ")[2] for ln in claimed.out.splitlines() if ln.startswith("BUILD-ERROR SOURCE-LEAK "))
         return _eq((named.rc, name in named.page, ", 0 leaked" in named.out, claimed.rc, got),
-                   (0, True, True, 1, ["data.js", "index.html", "level0.json", "level1.json"]))
+                   (0, True, True, 1, ["data.js", "graph/step/g3.json", "index.html", "level0.json", "level1.json"]))
 
     # ---- F24b: the recognition of a statement, on the card and in the JSON
     zd = {z[0]: z[3] for z in _ZOO}
@@ -8297,7 +8523,7 @@ def _selftest_cases():
         def digest(b_):
             h = hashlib.sha256()
             for k in sorted(b_.files):
-                if (k.endswith(".json") and k != "manifest.json") or k == "data.js":
+                if ((k.endswith(".json") and k != "manifest.json") or k == "data.js") and not k.startswith("graph/"):   # G1: the digests are of the files that were there
                     h.update(k.encode() + b"\0" + _no_edition(k, b_.files[k]) + b"\0")
             return h.hexdigest()
 
@@ -9066,7 +9292,7 @@ def _selftest_cases():
         def dig(b_):
             h = hashlib.sha256()
             for k in sorted(b_.files):
-                if k not in ("index.html", "manifest.json"):
+                if k not in ("index.html", "manifest.json") and not k.startswith("graph/"):   # G1: the digests are of the files that were there
                     h.update(k.encode() + b"\0" + hashlib.sha256(_no_edition(k, b_.files[k])).digest())
             return h.hexdigest()
         outs = [f37(), f37(outline=_zoo()), f37(notes=_notes_s()), f37(outline=_outline_b(), notes=_notes_b()),
@@ -9108,7 +9334,7 @@ def _selftest_cases():
         ev = lambda g, bid: blk(b, g, bid).text()
         h = hashlib.sha256()
         for k in sorted(b.files):
-            if k not in ("index.html", "manifest.json"):
+            if k not in ("index.html", "manifest.json") and not k.startswith("graph/"):   # G1: the digest is of the files that were there
                 h.update(k.encode() + b"\0" + hashlib.sha256(_no_edition(k, b.files[k])).digest())
         js = lambda g, bid: next((x["reader"], x["date"]) for x in b.js(f"group/{g}.json")["blocks"] if x["block"] == bid)
         return _eq((b.rc, lis("g1"), lis("g1a1"), lis("g3"), len(_direct(_card(b, "g1a"), "ul", "corrections")),
@@ -9491,7 +9717,7 @@ def _selftest_cases():
             r1 = _child(os.path.join(d, "args.json"), os.path.join(d, "o1"), 0)
             r2 = _child(os.path.join(d, "args.json"), os.path.join(d, "o2"), 3)
             t1, t2 = _tree(os.path.join(d, "o1")), _tree(os.path.join(d, "o2"))
-            return _eq((r1[0], r2[0], len(t1), t1 == t2, t1["index.html"].decode().count('<p class="edition-note">')), (0, 0, 11, True, 6))
+            return _eq((r1[0], r2[0], len(t1), t1 == t2, t1["index.html"].decode().count('<p class="edition-note">')), (0, 0, 18, True, 6))
 
     @case("ND7", "F44B: the file part of a note's card link is percent-encoded like the note_href link (quote with safe=''): a note whose file name holds "
                  "`#`, `?`, `%` and a space gives `%23`, `%3F`, `%25` and `%20` in the href, and the prefix `docs/` stays as it is")
@@ -10552,8 +10778,8 @@ def _selftest_cases():
         b, head = f60_build(F60_BLOB)
         addr = {f: F60_BLOB.replace("{commit}", head).replace("{file}", f) for f in F60_NOTE_FILES}
         sites = f60_sites(b.page)
-        links = {k: sorted(set(re.findall(r'"link": "([^"]+)"', v.decode()))) for k, v in b.files.items() if k != "index.html"}
-        ids = {json.dumps(json.loads(v)["commits"]["notes"]) for k, v in b.files.items() if k.endswith(".json")}
+        links = {k: sorted(set(re.findall(r'"link": "([^"]+)"', v.decode()))) for k, v in b.files.items() if k != "index.html" and not k.startswith("graph/")}
+        ids = {json.dumps(json.loads(v)["commits"]["notes"]) for k, v in b.files.items() if k.endswith(".json") and not k.startswith("graph/")}
         want_links = {"data.js": sorted(addr.values()), "group/g1.json": [addr["01-one.md"], addr["02-two.md"]],
                       "group/g1a.json": [addr["01-one.md"]], "group/g1a1.json": [], "group/g1a1x.json": [addr["02-two.md"]],
                       "group/g2.json": [addr["01-one.md"], addr["02-two.md"]], "group/g3.json": [addr["03-three.md"]],
@@ -11072,6 +11298,27 @@ def _selftest_cases():
         b = _build(pre=old, force=True)
         return _eq(({k: real.get(k) for k in GR_WORDS}, _strings_problems(real), b.rc, "graph/stale.json" in b.files, "graph/index.json" in b.files),
                    (GR_WORDS, [], 0, False, True))
+
+    @case("GR18", "G1: every graph file carries `commit` (the notes commit, as a string) and `format` 1: `unknown` on the base build, `dirty` on a build from a dirty "
+                  "tools tree, and the full notes commit on a build with --notes-commit (the same 40 hex characters the other files carry in commits.notes)")
+    def _():
+        dirty = _build(state=("tools0", True))
+        b, head = f60_build(F60_BLOB)
+        facts = lambda x: {(k, v["commit"], v["format"]) for k, v in ((k, json.loads(x.files[k])) for k in x.files if k.startswith("graph/"))}
+        return _eq((facts(_base()), facts(dirty), facts(b) == {(k, head, 1) for k in b.files if k.startswith("graph/")}, len(facts(b))),
+                   ({(k, "unknown", 1) for k in _base().files if k.startswith("graph/")}, {(k, "dirty", 1) for k in dirty.files if k.startswith("graph/")}, True, 7))
+
+    # G1: the older cases below plant data the graph cannot hold, to test something else: a premise on a step that is neither a sibling nor the step's own
+    # child (the premises line, PL*, PRM*), or a root kind outside the symbol table (the proof facts, PRK*, NONE1, F41b, F49*). The graph refuses both (GRAPH-EDGE,
+    # GRAPH-SYMBOL: GR9, GR10), so these cases run with the graph step switched off and keep every literal they had; GR* are the graph's own cases.
+    no_graph_cases = ("PL1", "PL2", "PL3", "PRM1", "PRM2", "PRM3", "PRK1", "PRK2", "NONE1", "F41b", "F49b", "F49c")
+
+    def without_graph(fn):
+        def run_():
+            with _patched("_graph_files", lambda rows, commit, strings: ([], {})):
+                return fn()
+        return run_
+    cases[:] = [(cid, desc, without_graph(fn) if cid in no_graph_cases else fn) for cid, desc, fn in cases]
 
     return cases
 
