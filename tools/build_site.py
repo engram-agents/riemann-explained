@@ -122,9 +122,10 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   F44B EDITION OF A NOTE. A note header may carry `edition` 2 and `edition_date` (checked by notes_meta). group/<id>.json and data.js carry per card
      `editions`, a list of {note: file, edition: 2, date} for the notes of the card (header group, level not 0) at edition 2 in note order, [] when
      none; manifest counts keep `editions` (the groups at 2) and gain `note_editions` (the notes at 2). The first-screen paragraph appears when any
-     group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph, one `edition_note_card` paragraph per
-     edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
-     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6.
+     group or note is at 2, {date} the latest over both. A card's Evidence gets, after the group's paragraph (which is `edition_note_card`: the
+     text of the card was rewritten), one `edition_note_card_note` paragraph (a sentence that
+     speaks of the note, not of the card) per edition-2 note whose date differs from the group's date at edition 2 (all of them when the group is at 1), {link} to `edition_href_blob` with
+     {file} = docs/<note file>. A page with no group and no note at 2 is byte-equal to before. Cases ND1 to ND6, NC1 to NC7.
   F52 EDITION FIELDS THE BUILDER CANNOT USE. A group or note at edition 2 whose `edition_date` is missing or not a string is `BUILD-ERROR
      EDITION-DATE <id> edition 2 needs an edition_date`; an `edition` that is not the integer 1 or 2 (a boolean and 2.0 included) is
      `BUILD-ERROR EDITION-VALUE <id> edition must be 1 or 2`: exit 1, OUT_DIR not written, no traceback, every bad group then note in one
@@ -151,7 +152,7 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      when its proof is read and it has none; a sketch never sets proof_read; the run prints `sketches: S of P steps with a proof read`
      (level-1 steps; SUM-SKETCH). The formula listing covers sketch text. Cases SK1 to SK8 FR3 FR5.
   F35 BOLD AND NESTED ITEMS IN BLOCK TEXT. Where block text is rendered with links (argument, interpretation, the first sentence, sketch
-     paragraphs, items and sub-items; not claims, conditions, titles or `unexpanded`), a pair of `**` on one line around text is
+     paragraphs, items and sub-items; not claims, conditions, titles, `unexpanded` or `unexpanded_detail`), a pair of `**` on one line around text is
      <strong>, its content through the span rule; a span wins, links are taken out first; empty pairs, runs of three or more
      asterisks and pairs over a line break that remains after the paragraph join (source lines are joined by spaces first, as for
      spans, F28) stay literal. A leftover `**` is listed `BOLD-UNPAIRED <block id>` (once per block, before
@@ -171,7 +172,12 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
      the span rule) and the established line of a named statement (`evidence_established_line`; none for `not_traced`); in each
      block `<li>` of the block list, after its text: for an argument or sketch block a `<dl class="block-source">` with the File
      (base name) and Lines labels (`not given` when it has none), then one `<p class="second-reader">` per second reader of the block
-     (any kind) and, for a sketch built from a compiled part, `<p class="sketch-build">`. The data (group files, level files,
+     (any kind) and, for a sketch built from a compiled part, `<p class="sketch-build">`; then, for a sketch block whose `unexpanded_detail` (F53) is
+     not empty, `<p class="unexpanded-detail-heading">` (the key `unexpanded_detail_heading`, no placeholder) and `<ul class="unexpanded-detail">`
+     with one `<li>` per entry in the order written, each through the span rule (`_rich`, no links). The detail list is in Evidence ONLY,
+     never on the surface, whatever `unexpanded` holds; an empty or absent list prints nothing, and a page whose sketches carry none is
+     byte-equal to the page before F53. The leak and span checks of `unexpanded` apply to each entry (SOURCE-LEAK; a formula in it is listed
+     in Evidence, never FORMULA-RAW; a code span in it is not counted by CODE-ON-SURFACE). Cases UD1 to UD14. The data (group files, level files,
      data.js) is unchanged: every reader, date, second reader, file and line range stays. A correction on a card shows its kind and its
      title only; its reader and date are in the Evidence block list (the who-span of its block). Cases PV1 to PV12, and the cases that
      moved with it (R6 B7a B7c B7f F1b H1 C1 C1b RDR1 PRF1 PRF2 PH1 PHR1 PHR2 PHR4 PHR5 PHR6 PHR7 BT2 RD1 RD2 RD3 RL1 RE1 RS3 PB1 PB3 DF1
@@ -430,10 +436,10 @@ note links are the strings file's `note_href` with the note's file name filled i
 LIMIT (F24b). The page trusts the checker's rules on roles and forms: a model that breaks them (open_in_literature on an object, an
 established on a result) is not guarded and may raise. A group with no root_role takes the class of its root's kind for the page.
 The source check ranges, besides what is stated above, over the recognition's result, difference, note, citation source and where, a
-sketch's paragraphs, list items and unexpanded entries (as written, span backticks removed and, for sketch text, each link as its text
+sketch's paragraphs, list items and unexpanded and unexpanded_detail entries (as written, span backticks removed and, for sketch text, each link as its text
 and each link target as a line); WORD-NOTE does not read them. A link is `[text](target)` with a text of no bracket and a target of no
 parenthesis or white space; a link text that holds `. ` is cut by the first-sentence rule (a known limit). Links in the recognition and
-in the `unexpanded` entries are not rewritten. The strings rule R3 refuses `of the proof` in any value, so a wording that holds it (a
+in the `unexpanded` and `unexpanded_detail` entries are not rewritten. The strings rule R3 refuses `of the proof` in any value, so a wording that holds it (a
 compiled part of the proof) is refused until the rule or the wording changes. A sketch belongs to the group named in its note's header, the group notes_meta checks it against (SKETCH-NO-ARGUMENT, SKETCH-DUPLICATE), and
 shows on that group's card and in its JSON only: a root of another group among the sketch's further decls does not give that group the
 sketch, and the sketch block is not in that group's block list either. A sketch whose header names a group that does not own a root of its
@@ -548,11 +554,11 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "recognition_object_not_recognised_line", "recognition_not_written_line", "recognition_label_line",
              "recognition_citation_line", "recognition_citation_dated_line", "recognition_citation_open_line",
              "named_statement_use_line", "established_by_line", "established_not_traced_line", "sketch_frame",
-             "sketch_basis_source", "sketch_basis_compiled", "sketch_note", "sketch_missing_line", "unexpanded_heading",
+             "sketch_basis_source", "sketch_basis_compiled", "sketch_note", "sketch_missing_line", "unexpanded_heading", "unexpanded_detail_heading",
              "argument_frame_no_proof", "evidence_statement_read_line", "evidence_statement_census_line", "evidence_proof_read_line",
              "evidence_second_reader_line", "evidence_recognition_line", "evidence_citation_line", "evidence_established_line",
             "evidence_sketch_build_line", "title_label", "definition_label", "definition_join", "edition_note_first_screen", "edition_note_card",
-            "edition_link_label", "edition_href_tree", "edition_href_blob")
+            "edition_note_card_note", "edition_link_label", "edition_href_tree", "edition_href_blob")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -564,7 +570,8 @@ PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_st
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
                 "shared_note": {"groups"}, "note_href": {"file"},
-                "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_href_blob": {"file"},
+                "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_note_card_note": {"date", "link"},
+                "edition_href_blob": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
                 "frames.interpretation": {"reader", "date"},
                 "recognition_result_known_line": {"result"},
@@ -602,7 +609,7 @@ REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "ev
                          "recognition_citation_open_line": ("source", "where", "source_date"),
                          "established_by_line": ("name",),
                          "sketch_frame": ("basis",),
-                         "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"),
+                         "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"), "edition_note_card_note": ("date", "link"),
                          "edition_href_blob": ("file",)}
 PROOF_KINDS = frozenset(nm.RESULT_KINDS)   # the table kinds that HAVE a proof; any other kind has none (F22): the checker's list, not a copy
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
@@ -971,7 +978,7 @@ def _value_lines(obj, seen=False, key=None):
     of their spans removed (`seen` is True); the text of a block, a first sentence and a paragraph or item of a sketch are compared
     as written, with the backticks removed, as the reader sees them (each link as its text) and by each link target as a line
     (`seen` is "block"); the other author text of the F24b outputs (the recognition's result, difference, citation source and
-    where, a sketch's unexpanded entries) as written and with the backticks removed (`seen` is "both"), because a release line may
+    where, a sketch's unexpanded and unexpanded_detail entries) as written and with the backticks removed (`seen` is "both"), because a release line may
     itself hold a span; the JSON itself keeps them."""
     if isinstance(obj, str):
         variants = ([obj] if seen in ("both", "block") else []) + [_unspan(obj) if seen else obj] + ([_shown(obj)] if seen == "block" else [])
@@ -991,7 +998,7 @@ def _value_lines(obj, seen=False, key=None):
                 if k == "first_sentence" or (k in ("text", "items") and key in ("blocks", "items")):
                     mode = "block"
                 elif (k in ("result", "difference", "note") and key == "recognition") or (k in ("source", "where") and key == "citations") \
-                        or k == "unexpanded":
+                        or k in ("unexpanded", "unexpanded_detail"):
                     mode = "both"
                 else:
                     mode = k in ("conditions", "list_title") or (k == "text" and key == "claim")
@@ -1264,7 +1271,7 @@ def _indent(line):
 
 
 def _sketch(text, lines, anchor_line, d):
-    """({basis, build, unexpanded, blocks}, the source lines it copies) for a sketch block: its blocks are the elements rh_anchor.run_at
+    """({basis, build, unexpanded, unexpanded_detail, blocks}, the source lines it copies) for a sketch block: its blocks are the elements rh_anchor.run_at
     gives for the anchor on `anchor_line`, a paragraph as its lines joined by spaces and a list as its items, each item its lines joined
     by spaces with the list marker taken off its first (the anchor lines of the note left out). A run the checker would refuse is empty."""
     run = rh.run_at(text, anchor_line, d.get("span", 1))
@@ -1296,8 +1303,8 @@ def _sketch(text, lines, anchor_line, d):
             own = " ".join(x for x in own if x)
             items.append({"text": own, "items": [" ".join(x) for x in subs]} if subs else " ".join(parts))
         blocks.append({"type": "list", "ordered": re.match(r"[ \t]*\d{1,9}[.)]", lines[spans[0][0] - 1]) is not None, "items": items})
-    return {"basis": d.get("basis"), "build": d.get("build"), "unexpanded": list(d.get("unexpanded", [])), "blocks": blocks,
-            "_depth": depth}, src
+    return {"basis": d.get("basis"), "build": d.get("build"), "unexpanded": list(d.get("unexpanded", [])),
+            "unexpanded_detail": list(d.get("unexpanded_detail", [])), "blocks": blocks, "_depth": depth}, src
 
 
 def _load_notes(notes_dir, strings):
@@ -1394,7 +1401,7 @@ def _model(notes_dir, odata, rows, strings, src_root, errors):
                 sk = rec["_sk"]
                 sketches.append({"note": rec["note"], "block": rec["block"], "reader": rec["reader"], "date": rec["date"],
                                  "basis": sk["basis"], "build": sk["build"], "unexpanded": list(sk["unexpanded"]),
-                                 "roots": out["roots"], "blocks": sk["blocks"]})
+                                 "unexpanded_detail": list(sk["unexpanded_detail"]), "roots": out["roots"], "blocks": sk["blocks"]})
         root_rows = []
         for mod, name in roots:
             kind, first, last = rows[(mod, name)]
@@ -2454,7 +2461,7 @@ def _render_page(m, s, facts, dirty):
         for ne in fl["editions"]:   # F44B: one paragraph per note at edition 2 whose date is not the group's own edition date
             if fl["edition"] and ne["date"] == fl["edition"]["date"]:
                 continue
-            o.append('<p class="edition-note">' + _edition_html(s["edition_note_card"], ne["date"],
+            o.append('<p class="edition-note">' + _edition_html(s["edition_note_card_note"], ne["date"],
                                                                 _fill(s["edition_href_blob"], file=EDITION_NOTES_DIR + urllib.parse.quote(ne["note"], safe="")),
                                                                 s["edition_link_label"]) + "</p>")
         for r in fl["roots"]:
@@ -2509,6 +2516,9 @@ def _render_page(m, s, facts, dirty):
                     sk = next(x for x in fl["sketches"] if x["block"] == b["block"])
                     if sk["basis"] == "compiled":
                         o.append(f'<p class="sketch-build">{_e(_fill(s["evidence_sketch_build_line"], build=sk["build"]))}</p>')
+                    if sk["unexpanded_detail"]:   # F53: the per-file entries, in Evidence only, never on the surface
+                        o.append(f'<p class="unexpanded-detail-heading">{_e(s["unexpanded_detail_heading"])}</p><ul class="unexpanded-detail">'
+                                 + "".join(f"<li>{_rich(x, where=sk['block'])}</li>" for x in sk["unexpanded_detail"]) + "</ul>")
                 if b["kind"] == "interpretation" and b.get("text"):
                     fr = s["interpretation_frame"]
                     o.append(f'<aside><p class="interpretation"><span class="frame">{_e(fr)}</span> {_rich(b["text"], True, b["block"])}</p></aside>')
@@ -3073,6 +3083,8 @@ F41_PROOF_LINES = {
 F48_STRINGS = {"title_label": "What this step is:", "definition_label": "Definition.", "definition_join": "is defined as:"}
 # F49: the no-proof line of a card that also prints named_statement_use_line (the fixture's value, then the real file's literal, pinned)
 F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this step does not claim its statement is true."}
+# F53: the heading of the per-file list inside Evidence (no placeholder). The same literal is in site/strings.json.
+F53_STRINGS = {"unexpanded_detail_heading": "In the Lean files, file by file: the automation used and where, as we found it:"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
@@ -3147,6 +3159,7 @@ def _strings():
     s.update(EDITION_WORDING)
     s.update(F48_STRINGS)
     s.update(F49_STRINGS)
+    s.update(F53_STRINGS)
     return s
 
 
@@ -3154,6 +3167,7 @@ def _strings():
 EDITION_WORDING = {
     "edition_note_first_screen": "These notes were rewritten for readers, most recently on {date}: where they showed names used inside the Lean code, or formulas as raw code, they now use plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
     "edition_note_card": "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
+    "edition_note_card_note": "On {date} a note this card draws on was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text of that note is kept here: {link}.",
     "edition_link_label": "first edition",
     "edition_href_tree": "https://github.com/engram-agents/riemann-explained/tree/notes-edition-1",
     "edition_href_blob": "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}",
@@ -3165,11 +3179,35 @@ EDITION_WORDING = {
 N06 = ("# Note six\n" + _h(id="06", group="g3", list_title="Note six") + "\n\n## Body\n\n"
        "Corge argument sentence. Second corge sentence.\n"
        + _b(id="06.b01", kind="argument", decls=[CORGE], reader="Reader One", date="2026-11-23") + "\n")
-N05 = ("# Note five\n" + _h(id="05", group="g1a", list_title="Note five") + "\n\n## Body\n\n"
-       "Bar argument sentence. Second bar sentence.\n"
-       + _b(id="05.b01", kind="argument", decls=[BAR], reader="Reader Two", date="2026-11-23") + "\n\n"
-       "Opening paragraph of the bar sketch.\n\n- Bullet one.\n- Bullet two.\n\nClosing paragraph of the bar sketch.\n"
-       + _b(id="05.b02", kind="sketch", decls=[BAR], reader="Reader Two", date="2026-11-24", basis="source", span=3) + "\n")
+def _n05(unexpanded_detail=None, second_readers=None):
+    """Note five: an argument and a sketch (basis source) for the root of g1a; F53: the sketch may carry unexpanded_detail and second readers."""
+    kw = ({} if unexpanded_detail is None else {"unexpanded_detail": list(unexpanded_detail)}) | (
+        {} if second_readers is None else {"second_readers": second_readers})
+    return ("# Note five\n" + _h(id="05", group="g1a", list_title="Note five") + "\n\n## Body\n\n"
+            "Bar argument sentence. Second bar sentence.\n"
+            + _b(id="05.b01", kind="argument", decls=[BAR], reader="Reader Two", date="2026-11-23") + "\n\n"
+            "Opening paragraph of the bar sketch.\n\n- Bullet one.\n- Bullet two.\n\nClosing paragraph of the bar sketch.\n"
+            + _b(id="05.b02", kind="sketch", decls=[BAR], reader="Reader Two", date="2026-11-24", basis="source", span=3, **kw) + "\n")
+
+
+N05 = _n05()
+
+
+def _n11(first=None, second=None):
+    """F53: a note on g2 (two roots, QUUX and QUX) with an argument and a sketch on each root; the sketches may carry unexpanded_detail:
+    the first (11.b03, basis source) on QUUX, the second (11.b04, basis compiled) on QUX."""
+    k1 = {} if first is None else {"unexpanded_detail": list(first)}
+    k2 = {} if second is None else {"unexpanded_detail": list(second)}
+    return ("# Note eleven\n" + _h(id="11", group="g2", list_title="Note eleven") + "\n\n## Body\n\n"
+            "Quux argument sentence. Second quux sentence.\n"
+            + _b(id="11.b01", kind="argument", decls=[QUUX], reader="Reader Two", date="2026-11-23") + "\n\n"
+            "Qux argument sentence. Second qux sentence.\n"
+            + _b(id="11.b02", kind="argument", decls=[QUX], reader="Reader Two", date="2026-11-23") + "\n\n"
+            "Quux sketch paragraph.\n"
+            + _b(id="11.b03", kind="sketch", decls=[QUUX], reader="Reader Two", date="2026-11-24", basis="source", span=1, **k1) + "\n\n"
+            "Qux sketch paragraph.\n"
+            + _b(id="11.b04", kind="sketch", decls=[QUX], reader="Reader Two", date="2026-11-24", basis="compiled", build="lake build A.E",
+                 span=1, **k2) + "\n")
 N07 = ("# Note seven\n" + _h(id="07", group="g1a1", list_title="Note seven") + "\n\n## Body\n\n"
        "Def argument sentence. Second def sentence.\n"
        + _b(id="07.b01", kind="argument", decls=[BAZ], reader="Reader One", date="2026-11-23", file="A/C.lean", lines=[5, 9]) + "\n\n"
@@ -3180,12 +3218,14 @@ N07 = ("# Note seven\n" + _h(id="07", group="g1a1", list_title="Note seven") + "
 
 def _n04(para="First sketch paragraph with `a span`.", item="Ordered item `two` here.",
          last="Last sketch paragraph, see [note 6](06-x.md).", unexpanded=("Closed by `omega` automation.", "A last `simp` call."),
-         build="lake build A.B", decls=None):
+         build="lake build A.B", decls=None, unexpanded_detail=None, second_readers=None):
     """Note four: a sketch of three elements (a paragraph, an ordered list, a paragraph) for the root of g1."""
     return ("# Note four\n" + _h(id="04", group="g1", list_title="Note four") + "\n\n## Body\n\n"
             + para + "\n\n1) Ordered item one.\n2) " + item + "\n\n" + last + "\n"
             + _b(id="04.b01", kind="sketch", decls=decls or [FOO], reader="Reader Two", date="2026-11-24", basis="compiled", build=build,
-                 unexpanded=list(unexpanded), span=3) + "\n")
+                 unexpanded=list(unexpanded), span=3,
+                 **({} if unexpanded_detail is None else {"unexpanded_detail": list(unexpanded_detail)}),
+                 **({} if second_readers is None else {"second_readers": second_readers})) + "\n")
 
 
 def _notes_s(**kw):
@@ -3618,16 +3658,22 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(EDITION_WORDING)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING)
 
 
 def _no_edition(rel, data):
-    """The bytes of a group file or of data.js as the builder wrote them before F44 added `edition`: the key of each group removed, the
+    """The bytes of a group file or of data.js as the builder wrote them before F44 added `edition` and F53 added `unexpanded_detail`: the
+    key of each group removed, and the key of each sketch entry removed when it is the empty list (a sketch with no detail), the
     file written again the way the builder writes it. Any other file is returned as it is. Used by the cases that pin those bytes."""
+    def sketches_(g):
+        for sk in g.get("sketches", []):
+            if sk.get("unexpanded_detail") == []:
+                del sk["unexpanded_detail"]
     if rel.startswith("group/") and rel.endswith(".json"):
         d = json.loads(data.decode("utf-8"))
         d.pop("edition", None)
         d.pop("editions", None)
+        sketches_(d)
         return (_dump(d) + "\n").encode("utf-8")
     if rel == "data.js":
         pre = "window.RH_DATA = "
@@ -3635,6 +3681,7 @@ def _no_edition(rel, data):
         for g in d["groups"].values():
             g.pop("edition", None)
             g.pop("editions", None)
+            sketches_(g)
         return (pre + _js_safe(_dump(d)) + ";\n").encode("utf-8")
     return data
 
@@ -4015,7 +4062,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 96 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 98 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -4028,7 +4075,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 96))
+        return _eq((bad, len(STRING_KEYS)), ([], 98))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -4823,17 +4870,17 @@ def _selftest_cases():
                          ("`x Foo.bar y`", True, False)])
 
     @case("PHR4", "the keys that must hold their placeholders (the counts and the open-items lines, the recognition lines, the citation lines, "
-                  "established_by_line, sketch_frame, the eight Evidence keys of F37 and the three edition keys of F44) are exactly the 30 listed, each declares exactly the "
+                  "established_by_line, sketch_frame, the eight Evidence keys of F37 and the four edition keys of F44) are exactly the 31 listed, each declares exactly the "
                   "placeholders it must hold; the card keys of F37 (the read lines, the frames, the label line, the compiled basis) and the "
                   "retired second_reader_frame declare none and require none")
     def _():
         keys = ["statement_count_line", "proof_count_line", "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
-        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_href_blob"]
+        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_note_card_note", "edition_href_blob"]
         none_keys = ["statement_read_line", "statement_census_line", "proof_read_line", "argument_frame", "argument_frame_no_proof",
                      "interpretation_frame", "recognition_label_line", "sketch_basis_compiled", "second_reader_frame", "frames.argument"]
         return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys + new],
                     [PLACEHOLDERS.get(k, set()) for k in none_keys], [k in REQUIRED_PLACEHOLDERS for k in none_keys]),
-                   (sorted(keys + new), [True] * 30, [set()] * 10, [False] * 10))
+                   (sorted(keys + new), [True] * 31, [set()] * 10, [False] * 10))
 
     _REQ = (("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
@@ -6213,12 +6260,12 @@ def _selftest_cases():
         g1, g1a = b.js("group/g1.json"), b.js("group/g1a.json")
         want1 = [{"basis": "compiled", "block": "04.b01", "build": "lake build A.B", "date": "2026-11-24", "note": "04",
                   "reader": "Reader Two", "roots": [{"module": "A.B", "name": "foo"}],
-                  "unexpanded": ["Closed by `omega` automation.", "A last `simp` call."],
+                  "unexpanded": ["Closed by `omega` automation.", "A last `simp` call."], "unexpanded_detail": [],
                   "blocks": [{"type": "paragraph", "text": "First sketch paragraph with `a span`."},
                              {"type": "list", "ordered": True, "items": ["Ordered item one.", "Ordered item `two` here."]},
                              {"type": "paragraph", "text": "Last sketch paragraph, see [note 6](06-x.md)."}]}]
         want2 = [{"basis": "source", "block": "05.b02", "build": None, "date": "2026-11-24", "note": "05", "reader": "Reader Two",
-                  "roots": [{"module": "A.B", "name": "bar"}], "unexpanded": [],
+                  "roots": [{"module": "A.B", "name": "bar"}], "unexpanded": [], "unexpanded_detail": [],
                   "blocks": [{"type": "paragraph", "text": "Opening paragraph of the bar sketch."},
                              {"type": "list", "ordered": False, "items": ["Bullet one.", "Bullet two."]},
                              {"type": "paragraph", "text": "Closing paragraph of the bar sketch."}]}]
@@ -7535,6 +7582,240 @@ def _selftest_cases():
     def _crun2(b_):
         return [ln for ln in b_.out.splitlines() if ln.startswith("code on surface: ")]
 
+    # ---- F53: unexpanded_detail, the per-file list printed inside Evidence only
+    UD_D = ("File `A/B.lean`: `omega` at line 12.", "File `A/B.lean`: `simp` at line 31.", "File `A/C.lean`: `decide` at line 7.")
+    UD_T = ["File A/B.lean : omega at line 12.", "File A/B.lean : simp at line 31.", "File A/C.lean : decide at line 7."]   # text() puts a space around each <code>
+    UD_H = "In the Lean files, file by file: the automation used and where, as we found it:"
+    UD_BUILD = "Proof sketch from a compiled part of the release: lake build A.B."
+    UD_RD = [{"reader": "Reader Three", "date": "2026-11-25"}]
+    UD_RD_T = "Read again by Reader Three on 2026-11-25."
+
+    def _ud(d4=None, d5=None, r4=None, r5=None, g2=None, **sk):
+        """The sketch notes with unexpanded_detail on the sketch of g1 (note four), of g1a (note five), and a note eleven on g2 when `g2` is
+        a pair (the detail of its first and of its second sketch); None leaves the key out of the anchor."""
+        n = _notes_s(**({} if d4 is None else {"unexpanded_detail": d4}), **({} if r4 is None else {"second_readers": r4}), **sk) | {
+            "05-bar.md": _n05(d5, r5)}
+        if g2 is not None:
+            n["11-two.md"] = _n11(*g2)
+        return n
+
+    def _ev1(b, gid):
+        return _direct(_card(b, gid), "details", "evidence")[0]
+
+    def _skli(b, gid, block):
+        return [li for li in _ev1(b, gid).find("ul", "blocks")[0].elems() if block in [c.text() for c in li.find("code")]][0]
+
+    def _after_dl(li):
+        """The elements of a block's <li> after its block-source list, as (tag, classes, text or the texts of the <li> of a list)."""
+        els = li.elems()
+        i = [(k.tag, " ".join(k.cls)) for k in els].index(("dl", "block-source"))
+        return [(k.tag, " ".join(k.cls), [x.text() for x in k.elems()] if k.tag == "ul" else k.text()) for k in els[i + 1:]]
+
+    def _ev_owner(n):
+        """The id of the card whose Evidence section is the nearest <details class=evidence> around n, None when n is outside every one."""
+        p = n.parent
+        while p is not None and not (p.tag == "details" and "evidence" in p.cls):
+            p = p.parent
+        a = p.parent if p is not None else None
+        while a is not None and a.tag != "article":
+            a = a.parent
+        return a.attrs.get("id") if a is not None else None
+
+    def _udnodes(b):
+        return [(n.tag, " ".join(n.cls), _ev_owner(n)) for n in _dom(b.page).nodes() if {"unexpanded-detail-heading", "unexpanded-detail"} & set(n.cls)]
+
+    @case("UD1", "F53 D2: the sketch record of group/<id>.json and of data.js carries `unexpanded_detail`, a list as written (backticks kept), "
+                 "for the sketch of g1 (compiled) and of g1a (source); [] when the key is absent and when it is the empty list; nothing else is new: "
+                 "the sketch entry has the nine keys it had and this one, the group file keeps its keys, level0.json and level1.json do not carry it, "
+                 "and `unexpanded` is unchanged")
+    def _():
+        b = _build(notes=_ud(d4=UD_D, d5=UD_D[:1]))
+        g1, g1a = b.js("group/g1.json"), b.js("group/g1a.json")
+        dj = json.loads(b.text("data.js")[len("window.RH_DATA = "):-2])["groups"]
+        sb, e = _sbase(), _build(notes=_ud(d4=[], d5=[]))
+        flat = lambda b_: [s["unexpanded_detail"] for g in ("g1", "g1a") for s in b_.js(f"group/{g}.json")["sketches"]]
+        return _eq((g1["sketches"][0]["unexpanded_detail"], g1a["sketches"][0]["unexpanded_detail"],
+                    dj["g1"]["sketches"] == g1["sketches"], dj["g1a"]["sketches"] == g1a["sketches"], flat(sb), flat(e),
+                    sorted(g1["sketches"][0]), sorted(g1), g1["sketches"][0]["unexpanded"], g1a["sketches"][0]["unexpanded"],
+                    ["unexpanded_detail" in b.text(f) for f in ("level0.json", "level1.json")], "unexpanded_detail" in b.text("group/g2.json")),
+                   (list(UD_D), list(UD_D[:1]), True, True, [[], []], [[], []],
+                    ["basis", "block", "blocks", "build", "date", "note", "reader", "roots", "unexpanded", "unexpanded_detail"],
+                    ["blocks", "commits", "edition", "editions", "id", "level", "notes", "open_items", "parent", "premises", "recognition",
+                     "root_kind", "root_role", "roots", "sketches", "title"],
+                    ["Closed by `omega` automation.", "A last `simp` call."], [], [False, False], False))
+
+    @case("UD2", "F53 D3: a card with both lists shows `unexpanded` outside Evidence, as before, and the detail list inside its Evidence only: the "
+                 "heading `In the Lean files, file by file: the automation used and where, as we found it:` and one <ul class=unexpanded-detail> in "
+                 "the <li> of the sketch block, after its build line, one <li> per entry in the order written, and no node of the detail list has "
+                 "any other nearest Evidence section than the card's own (parsed with html.parser); the sketch on the surface has no detail node")
+    def _():
+        b = _build(notes=_ud(d4=UD_D))
+        sk = _direct(_card(b, "g1"), "div", "sketch")[0]
+        return _eq((_udnodes(b), [li.text() for li in sk.find("ul", "unexpanded")[0].find("li")],
+                    [(p_.text()) for p_ in sk.find("p", "unexpanded-heading")], len(sk.find(None, "unexpanded-detail")),
+                    len(sk.find(None, "unexpanded-detail-heading")),
+                    _after_dl(_skli(b, "g1", "04.b01"))),
+                   ([("p", "unexpanded-detail-heading", "g1"), ("ul", "unexpanded-detail", "g1")],
+                    ["Closed by omega automation.", "A last simp call."],
+                    ["Places where Lean finishes the proof by automation we have not opened up:"], 0, 0,
+                    [("p", "sketch-build", UD_BUILD), ("p", "unexpanded-detail-heading", UD_H), ("ul", "unexpanded-detail", UD_T)]))
+
+    @case("UD3", "F53 D3: a card with a detail list and NO `unexpanded` shows no unexpanded heading and no unexpanded list on its surface (the sketch "
+                 "div is the one a build with neither key shows), and the detail list is in its Evidence")
+    def _():
+        b = _build(notes=_ud(d4=UD_D, unexpanded=()))
+        n = _build(notes=_ud(unexpanded=()))
+        sk = _direct(_card(b, "g1"), "div", "sketch")[0]
+        return _eq((len(sk.find("p", "unexpanded-heading")), len(sk.find("ul", "unexpanded")), skd(_card(b, "g1")) == skd(_card(n, "g1")),
+                    b.page.count('class="unexpanded-heading"'), b.page.count('class="unexpanded"'), _udnodes(b),
+                    _after_dl(_skli(b, "g1", "04.b01"))[-1], _udnodes(n)),
+                   (0, 0, True, 0, 0, [("p", "unexpanded-detail-heading", "g1"), ("ul", "unexpanded-detail", "g1")],
+                    ("ul", "unexpanded-detail", UD_T), []))
+
+    @case("UD4", "F53 D3: the literal markup of the detail list: the heading in its own <p>, then the <ul> with one <li> per entry through the span rule "
+                 "(a backticked tactic name is <code>, the file name too, and a formula is MathML), one after the other, directly after the build "
+                 "line of the block")
+    def _():
+        b = _build(notes=_ud(d4=(UD_D[0], "Closed with $x$ here.")))
+        i = b.page.index('<p class="sketch-build">')
+        return _eq((b.page[i:b.page.index("</ul>", i) + 5]),
+                   ('<p class="sketch-build">' + UD_BUILD + '</p>\n<p class="unexpanded-detail-heading">' + UD_H + '</p>'
+                    '<ul class="unexpanded-detail"><li>File <code>A/B.lean</code>: <code>omega</code> at line 12.</li>'
+                    '<li>Closed with ' + X_ + ' here.</li></ul>'))
+
+    @case("UD5", "F53 D3: an empty list and an absent key print nothing, and the two pages are byte-equal (no heading, no list; with a marker for "
+                 "every strings value the detail heading marker is absent), while the same build with one entry holds the heading marker once")
+    def _():
+        mk = _marked(_strings())
+        absent, empty = _build(notes=_ud(), strings=mk), _build(notes=_ud(d4=[], d5=[], g2=([], [])), strings=mk)
+        absent2 = _build(notes=_ud(g2=(None, None)), strings=mk)
+        one = _build(notes=_ud(d4=["x"]), strings=mk)
+        return _eq((empty.page == absent2.page, _build(notes=_ud(d4=[], d5=[])).page == _build(notes=_ud(), strings=_strings()).page,
+                    empty.page.count("MARK-unexpanded_detail_heading"), empty.page.count("unexpanded-detail"),
+                    absent.page.count("unexpanded-detail"), one.page.count("MARK-unexpanded_detail_heading"), one.page.count("unexpanded-detail-heading")),
+                   (True, True, 0, 0, 0, 1, 1))
+
+    @case("UD6", "F53 D3: basis compiled places the list after the build line, and after the second readers and the build line when the block has "
+                 "readers: second reader, build line, heading, list; the list is of the sketch block it was written on")
+    def _():
+        plain = _build(notes=_ud(d4=["One."]))
+        rd = _build(notes=_ud(d4=["One."], r4=UD_RD))
+        return _eq((_after_dl(_skli(plain, "g1", "04.b01")), _after_dl(_skli(rd, "g1", "04.b01")), _udnodes(rd)),
+                   ([("p", "sketch-build", UD_BUILD), ("p", "unexpanded-detail-heading", UD_H), ("ul", "unexpanded-detail", ["One."])],
+                    [("p", "second-reader", UD_RD_T), ("p", "sketch-build", UD_BUILD), ("p", "unexpanded-detail-heading", UD_H),
+                     ("ul", "unexpanded-detail", ["One."])],
+                    [("p", "unexpanded-detail-heading", "g1"), ("ul", "unexpanded-detail", "g1")]))
+
+    @case("UD7", "F53 D3: basis source (no build line) places the list directly after the block-source list, and after the second readers when the "
+                 "block has them: second reader, heading, list; no build line is printed for it")
+    def _():
+        plain = _build(notes=_ud(d5=["Five."]))
+        rd = _build(notes=_ud(d5=["Five."], r5=UD_RD))
+        return _eq((_after_dl(_skli(plain, "g1a", "05.b02")), _after_dl(_skli(rd, "g1a", "05.b02")), _udnodes(rd)),
+                   ([("p", "unexpanded-detail-heading", UD_H), ("ul", "unexpanded-detail", ["Five."])],
+                    [("p", "second-reader", UD_RD_T), ("p", "unexpanded-detail-heading", UD_H), ("ul", "unexpanded-detail", ["Five."])],
+                    [("p", "unexpanded-detail-heading", "g1a"), ("ul", "unexpanded-detail", "g1a")]))
+
+    @case("UD8", "F53 D3: two sketch blocks in one card (g2: 11.b03 basis source, 11.b04 basis compiled) each get their own list under their own "
+                 "block, in block order; a block with no key, or the empty list, gets none while the other keeps its own")
+    def _():
+        A, B = ("File `A/F.lean`: `simp` at line 3.",), ("File `A/E.lean`: `omega` at line 2.", "File `A/E.lean`: `rfl` at line 4.")
+        both, only2, only1 = _build(notes=_ud(g2=(A, B))), _build(notes=_ud(g2=(None, B))), _build(notes=_ud(g2=(A, [])))
+        t = lambda b_, blk: _after_dl(_skli(b_, "g2", blk))
+        H = ("p", "unexpanded-detail-heading", UD_H)
+        sb = ("p", "sketch-build", "Proof sketch from a compiled part of the release: lake build A.E.")
+        return _eq(([t(both, "11.b03"), t(both, "11.b04")], [t(only2, "11.b03"), t(only2, "11.b04")], [t(only1, "11.b03"), t(only1, "11.b04")],
+                    [len(_ev1(x, "g2").find("ul", "unexpanded-detail")) for x in (both, only2, only1)], _udnodes(both)),
+                   ([[H, ("ul", "unexpanded-detail", ["File A/F.lean : simp at line 3."])],
+                     [sb, H, ("ul", "unexpanded-detail", ["File A/E.lean : omega at line 2.", "File A/E.lean : rfl at line 4."])]],
+                    [[], [sb, H, ("ul", "unexpanded-detail", ["File A/E.lean : omega at line 2.", "File A/E.lean : rfl at line 4."])]],
+                    [[H, ("ul", "unexpanded-detail", ["File A/F.lean : simp at line 3."])], [sb]],
+                    [2, 1, 1], [("p", "unexpanded-detail-heading", "g2"), ("ul", "unexpanded-detail", "g2"),
+                                ("p", "unexpanded-detail-heading", "g2"), ("ul", "unexpanded-detail", "g2")]))
+
+    @case("UD9", "F53 D4: a release line inside single backticks in a detail entry is SOURCE-LEAK (data.js and group/g1.json), exit 1, OUT_DIR absent; "
+                 "doubled backticks (compared as written) and an unrelated text build, exit 0; the entry of a sketch on g1a is checked as well")
+    def _():
+        src = {"A/B.lean": "x\n" + LEAK + "\n"}
+        files = lambda b_: sorted(ln.split(" ")[2] for ln in b_.out.splitlines()
+                                  if ln.startswith("BUILD-ERROR SOURCE-LEAK ") and not ln.startswith("BUILD-ERROR SOURCE-LEAK note "))
+        res, want = [], []
+        for name, v in (("wrapped", "`" + LEAK + "`"), ("doubled", "``" + LEAK + "``"), ("plain", "An unrelated sentence of ours here.")):
+            for where_, notes, f5 in (("g1", _ud(d4=(v,)), ["data.js", "group/g1.json"]), ("g1a", _ud(d5=(v,)), ["data.js", "group/g1a.json"])):
+                b = _build(notes=notes, src=src)
+                res.append((where_, name, b.rc, files(b), b.existed))
+                want.append((where_, name, *((1, f5, False) if name == "wrapped" else (0, [], True))))
+        return _eq(res, want)
+
+    @case("UD10", "F53 D4: a formula in an entry follows the Evidence rule: one outside the subset is listed `FORMULA-UNSUPPORTED 04.b01 $\\foo$` and an "
+                  "unpaired `$` is `FORMULA-UNPAIRED 04.b01`, exit 0, never FORMULA-RAW; the same formula in an `unexpanded` entry (the surface) refuses "
+                  "the build, as before")
+    def _():
+        on = _build(notes=_ud(d4=("Uses $\\foo$ here.", "A bare $ sign.")))
+        surf = _build(notes=_ud(unexpanded=("Uses $\\foo$ here.",)))
+        pick = lambda b_: [ln for ln in b_.out.splitlines() if ln.startswith(("FORMULA-", "BUILD-ERROR"))]
+        return _eq((on.rc, pick(on), surf.rc, pick(surf), surf.existed),
+                   (0, ["FORMULA-UNSUPPORTED 04.b01 $\\foo$", "FORMULA-UNPAIRED 04.b01"], 1,
+                    ["BUILD-ERROR FORMULA-RAW 04.b01 04-sketch.md line 12: $\\foo$"], False))
+
+    @case("UD11", "F53 D4: a code span in a detail entry is Evidence, so CODE-ON-SURFACE does not count it: the lines and the run line equal those of the "
+                  "build with no detail; control: the same span in an `unexpanded` entry is counted (`CODE-ON-SURFACE g1 zzz x1`)")
+    def _():
+        d = _build(notes=_ud(d4=UD_D, d5=("Five `zzz`.",), g2=(("Quux `zzz`.",), ("Qux `zzz`.",))))
+        n = _build(notes=_ud(g2=(None, None)))
+        c = _build(notes=_ud(unexpanded=("Surface `zzz` entry.",)))
+        return _eq((d.rc, _code(d) == _code(n), _crun2(d) == _crun2(n), [ln for ln in _code(d) if "zzz" in ln],
+                    [ln for ln in _code(c) if "zzz" in ln], sorted(set(_code(c)) - set(_code(n)))),
+                   (0, True, True, [], ["CODE-ON-SURFACE g1 zzz x1"], ["CODE-ON-SURFACE g1 zzz x1"]))
+
+    @case("UD12", "F53 D3: a page whose sketches carry no `unexpanded_detail` is byte-equal to the page before this change: the sha256 of index.html of the "
+                  "four fixture pages (the base, the zoo, the sketch notes, the second base), literal, the ones ED4 pins from the tree before F44 "
+                  "changed anything for them, and the sketch notes page equals the one built with `unexpanded_detail` written as the empty list "
+                  "and none rendered")
+    def _():
+        import hashlib
+        h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
+        return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], _build(notes=_ud(d4=[], d5=[])).page == _sbase().page),
+                   (["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
+                     "e56476ab9fa257c33dfa1b2d70a6c64975873428d619a29805c0fae623a1ac52",
+                     "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
+                     "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"], True))
+
+    @case("UD13", "F53 D1 through the build: a detail that is not a list of non-empty strings (a string, an empty entry) in the anchor is a "
+                  "BLOCK-PROBLEM of the checker, exit 1, OUT_DIR absent; the builder does not read it as characters")
+    def _():
+        res = []
+        for bad in ('"x"', '[""]'):
+            n = _notes_s()
+            n["04-sketch.md"] = _n04(unexpanded_detail=["a"]).replace('"unexpanded_detail":["a"]', '"unexpanded_detail":' + bad)
+            b = _build(notes=n)
+            res.append((b.rc, [ln for ln in b.out.splitlines() if ln.startswith("BLOCK-PROBLEM")], b.existed))
+        want = ("BLOCK-PROBLEM 04-sketch.md:12 block '04.b01': unexpanded_detail: must be a list of non-empty strings", )
+        return _eq(res, [(1, list(want), False)] * 2)
+
+    @case("UD14", "F53 D5: the key unexpanded_detail_heading is required (P1a), is in STRING_KEYS and TEXT_KEYS, holds no placeholder (a placeholder or a "
+                  "lone brace is refused), is under the forbidden-words check and may not be empty; the fixture and site/strings.json hold the literal "
+                  "`In the Lean files, file by file: the automation used and where, as we found it:`")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings.json")
+        if not os.path.isfile(path):
+            raise _SkipCase("no real strings file in this checkout")
+        with open(path, encoding="utf-8") as f:
+            real = json.load(f)
+        key = "unexpanded_detail_heading"
+        res, want = [], []
+        for v, msg in (("has {n} here", f"BUILD-ERROR STRINGS-KEY {key} has an unknown placeholder {{n}}"),
+                       ("a { brace", f"BUILD-ERROR STRINGS-KEY {key} holds a brace, and this key declares no placeholder"),
+                       ("holds the word verified", f"BUILD-ERROR STRINGS-FORBIDDEN {key} holds the word 'verified', which the page never says"),
+                       ("", f"BUILD-ERROR STRINGS-KEY {key} must be a non-empty string")):
+            st = _strings()
+            st[key] = v
+            b = _build(strings=st)
+            res.append((b.rc, [x for x in b.out.splitlines() if x.startswith("BUILD-ERROR")], b.existed))
+            want.append((1, [msg], False))
+        return _eq((res, real.get(key), _strings()[key], key in STRING_KEYS and key in TEXT_KEYS, _strings_problems(real)),
+                   (want, UD_H, UD_H, True, []))
+
     @case("CS1", "S3: the base build lists the five spans of its surface in page order, one line per card and text, `CODE-ON-SURFACE <card> <text> x<n>`, "
                  "exit 0, and its run line is `code on surface: 5 spans (3 distinct) in 5 cards`. THIS IS THE ONE CASE THE FLIP PR EDITS: it pins the value "
                  "the constant CODE_ON_SURFACE_REFUSES has in the file (`_CODE_FLAG_AT_START`, read before the self-test pins it to False for every case), "
@@ -8273,21 +8554,25 @@ def _selftest_cases():
                      "bca2eb492684a938304d584b08e3e2e21e14f6b2e914043dbe75cc5785867890",
                      "bb7f0f5066f3592b59aede9c255108cb15cbfa4cd4b5106621078261de0d35e7"], 0, True))
 
-    @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (three keys, pinned here as "
+    @case("ED5", "F44: the edition wording of the strings fixture and of site/strings.json is the wording seat's file (four keys, pinned here as "
                  "literals) and the two addresses; a case that compares with the wording file itself runs when RH_EDITION_WORDING_FILE names it "
                  "(SKIPPED otherwise: the file lives outside this checkout)")
     def _():
         want = {"edition_note_first_screen": EDITION_WORDING["edition_note_first_screen"],
-                "edition_note_card": EDITION_WORDING["edition_note_card"], "edition_link_label": "first edition"}
+                "edition_note_card": EDITION_WORDING["edition_note_card"],
+                "edition_note_card_note": EDITION_WORDING["edition_note_card_note"], "edition_link_label": "first edition"}
         lit = ("These notes were rewritten for readers, most recently on {date}: where they showed names used inside the Lean code, or formulas "
                "as raw code, they now use plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
                "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw "
-               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.")
+               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
+               "On {date} a note this card draws on was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw "
+               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text of that note is kept here: {link}.")
         with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
             real = json.load(f)
         got = (EDITION_WORDING["edition_note_first_screen"], EDITION_WORDING["edition_note_card"], real["edition_note_first_screen"],
-               real["edition_note_card"], real["edition_link_label"], real["edition_href_tree"], real["edition_href_blob"])
-        ok_ = _eq(got, (lit[0], lit[1], lit[0], lit[1], "first edition", EDITION_TREE,
+               real["edition_note_card"], EDITION_WORDING["edition_note_card_note"], real["edition_note_card_note"],
+               real["edition_link_label"], real["edition_href_tree"], real["edition_href_blob"])
+        ok_ = _eq(got, (lit[0], lit[1], lit[0], lit[1], lit[2], lit[2], "first edition", EDITION_TREE,
                         "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}"))
         env = os.environ.get("RH_EDITION_WORDING_FILE")
         if not env:
@@ -8298,8 +8583,8 @@ def _selftest_cases():
             theirs = json.load(f)
         return _eq({k: theirs.get(k) for k in want}, want) if ok_[0] else ok_
 
-    @case("ED6", "F44: the strings checks for the edition keys: each of the five is required (P1a); the two addresses must be https (STRINGS-KEY "
-                 "`must be an https URL`); {date} and {link} are required in the two sentences, {file} in the blob address, and no other "
+    @case("ED6", "F44: the strings checks for the edition keys: each of the six is required (P1a); the two addresses must be https (STRINGS-KEY "
+                 "`must be an https URL`); {date} and {link} are required in the three sentences, {file} in the blob address, and no other "
                  "placeholder is allowed (a `{file}` in the tree address, `{x}` anywhere is refused); a forbidden word in a sentence is refused")
     def _():
         def one(key, value):
@@ -8358,9 +8643,9 @@ def _selftest_cases():
         return _eq((b.rc, "BUILD-ERROR PAGE-STATIC href=http found in strings key note_href" in b.out.splitlines()), (1, True))
 
     # ---- F44B: the edition of a note on the page, in the JSON and in the checks
-    NE_CARD = ('<p class="edition-note">On @D the text of this card was rewritten for readers: where it showed names used inside the '
+    NE_CARD = ('<p class="edition-note">On @D a note this card draws on was rewritten for readers: where it showed names used inside the '
                'Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the '
-               'earlier text is kept here: <a class="edition-link" href="https://github.com/engram-agents/riemann-explained/blob/'
+               'earlier text of that note is kept here: <a class="edition-link" href="https://github.com/engram-agents/riemann-explained/blob/'
                'notes-edition-1/@F">first edition</a>.</p>')
     NE_FIRST = ED_FIRST.replace("2026-11-23", "@D")
     nd_card = lambda date, file: NE_CARD.replace("@D", date).replace("@F", file)
@@ -8424,7 +8709,7 @@ def _selftest_cases():
                     [x.rc for x in (only, note_later, group_later, whole, none)], whole.js("manifest.json")["counts"]["note_editions"]),
                    ((1, 1), (1, 1), (1, 1), (1, 1), True, 0, False, True, [0, 0, 0, 0, 0], 1))
 
-    @case("ND3", "F44B: each card's Evidence gets, after the group's own paragraph, one `edition_note_card` paragraph per edition-2 note of the card whose "
+    @case("ND3", "F44B: each card's Evidence gets, after the group's own paragraph, one `edition_note_card_note` paragraph per edition-2 note of the card whose "
                  "date DIFFERS from the group's date at edition 2 (the same date: only the group's paragraph); a card whose group is at 1 gets one per "
                  "edition-2 note, in note order; a nested card gets its own; nothing above Evidence; the page is clean under both checks")
     def _():
@@ -8591,6 +8876,78 @@ def _selftest_cases():
         return _eq(([x.rc for x in (g, n)], [x.existed for x in (g, n)], ["BUILD-ERROR EDITION" in x.out for x in (g, n)],
                     ["required when edition is 2" in x.out for x in (g, n)], ["REFUSED: notes_meta found errors" in x.err for x in (g, n)]),
                    ([1, 1], [False, False], [False, False], [True, True], [True, True]))
+
+    # ---- F54: a note of a card has its own sentence, `edition_note_card_note`; the group keeps `edition_note_card`
+    NC_NOTE = "a note this card draws on was rewritten for readers"
+    NC_GROUP = "the text of this card was rewritten for readers"
+
+    @case("NC1", "F54: the paragraph of an edition-2 note of a card is `edition_note_card_note` (markup unchanged: `<p class=\"edition-note\">`, own date, an "
+                 "`edition-link` anchor to docs/<file>, right after the summary) and NOT `edition_note_card`; the first-screen sentence is unchanged")
+    def _():
+        b = _nb(notes={"03-three.md": "2026-11-22"})
+        return _eq((b.rc, b.page.count(ED_SUMMARY + nd_card("2026-11-22", "docs/03-three.md")), b.page.count(NC_NOTE), b.page.count(NC_GROUP),
+                    b.page.count(nd_first("2026-11-22"))),
+                   (0, 1, 1, 0, 1))
+
+    @case("NC2", "F54: a group at edition 2 keeps `edition_note_card` (once, with the group's date) and carries NOT the note sentence")
+    def _():
+        b = _eb(("g1", "2026-11-21"))
+        return _eq((b.rc, b.page.count(ED_SUMMARY + nd_group("2026-11-21")), b.page.count(NC_GROUP), b.page.count(NC_NOTE)),
+                   (0, 1, 1, 0))
+
+    @case("NC3", "F54: a card whose group is at 2 and whose note is at 2 on a DIFFERENT date prints both sentences, each once, the group's first and the "
+                 "note's after it; the same date prints the group's only")
+    def _():
+        diff = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-22"})
+        same = _nb(groups=[("g1", "2026-11-21")], notes={"01-one.md": "2026-11-21"})
+        return _eq((diff.rc, diff.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n" + nd_card("2026-11-22", "docs/01-one.md")),
+                    diff.page.count(NC_GROUP), diff.page.count(NC_NOTE),
+                    same.rc, same.page.count(ED_SUMMARY + nd_group("2026-11-21") + "\n<"), same.page.count(NC_GROUP), same.page.count(NC_NOTE)),
+                   (0, 1, 1, 1, 0, 1, 1, 0))
+
+    @case("NC4", "F54: a card whose group is at 1 with two edition-2 notes prints the note sentence twice, once per note, each with its own date and "
+                 "file, in note order, and never the card sentence")
+    def _():
+        b = _nb(notes={"01-one.md": "2026-11-21"}, new={"05-five.md": ("05", "g1", "2026-11-20")})
+        return _eq((b.rc, b.page.count(ED_SUMMARY + nd_card("2026-11-21", "docs/01-one.md") + "\n" + nd_card("2026-11-20", "docs/05-five.md")),
+                    b.page.count(NC_NOTE), b.page.count(NC_GROUP)),
+                   (0, 1, 2, 0))
+
+    @case("NC5", "F54: a level-0 note still prints no note sentence on any card (the neighbour of NC1: ND8 pins the same by the file name)")
+    def _():
+        notes = _nnotes()
+        notes["00-whole.md"] = _nset(N00.replace('"group":"root"', '"group":"g1"'), 2, "2026-11-22")
+        b = _build(outline=_eo(), notes=notes, strings=_strings())
+        return _eq((b.rc, b.page.count(NC_NOTE), b.page.count(NC_GROUP), b.page.count(nd_first("2026-11-22"))), (0, 0, 0, 1))
+
+    @case("NC6", "F54: the key `edition_note_card_note` is in EDITION_WORDING and STRING_KEYS and TEXT_KEYS, declares and requires {date} and {link} only, "
+                 "and its value, in the builder and in site/strings.json, is the literal below")
+    def _():
+        lit = ("On {date} a note this card draws on was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw "
+               "code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text of that note is kept here: {link}.")
+        k = "edition_note_card_note"
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        return _eq((EDITION_WORDING.get(k), real.get(k), _strings().get(k), k in STRING_KEYS, k in TEXT_KEYS, PLACEHOLDERS.get(k),
+                    REQUIRED_PLACEHOLDERS.get(k), _strings_problems(real)),
+                   (lit, lit, lit, True, True, {"date", "link"}, ("date", "link"), []))
+
+    @case("NC7", "F54: the strings checks for the key `edition_note_card_note`: without {link} it is refused (missing the placeholder), without {date} "
+                 "too, with `{x}` it has an unknown placeholder, a missing key is refused; the control passes")
+    def _():
+        def one(value):
+            s = _strings()
+            if value is None:
+                del s["edition_note_card_note"]
+            else:
+                s["edition_note_card_note"] = value
+            return [(c, p, m) for c, p, m in _strings_problems(s)]
+        got = [one("On {date} it was rewritten."), one("A note was rewritten: {link}."), one("On {date} {link} {x}."), one(None),
+               _strings_problems(_strings())]
+        return _eq(got, [[("STRINGS-KEY", "edition_note_card_note", "is missing the placeholder {link}")],
+                         [("STRINGS-KEY", "edition_note_card_note", "is missing the placeholder {date}")],
+                         [("STRINGS-KEY", "edition_note_card_note", "has an unknown placeholder {x}")],
+                         [("STRINGS-KEY", "edition_note_card_note", "missing")], []])
 
     # ---- F44 (Q6) the marker case: every field of a group the page prints as words outside Evidence is in EDITION_TEXT_FIELDS
     def _marker_build():
