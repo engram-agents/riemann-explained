@@ -73,9 +73,10 @@ CONTRACT (each line is a self-test case, written before the code)
     and refused at edition 1 or absent (the bound `not later than the day of the run` is the checker's). Cases B2a-B2g, SR1-SR3, LN1.
  B2s A sketch (F25a) needs reader and date (non-empty strings), a non-empty decls list (each entry checked as an argument's),
     basis `source` or `compiled`, and `build`, a non-empty string, required when basis is compiled and refused when it is
-    source; `unexpanded` (if present) is a list of non-empty strings, the list may be empty; `span` (if present) is an int >= 1,
+    source; `unexpanded` (if present) is a list of non-empty strings, the list may be empty; `unexpanded_detail` (F53, if present, a
+    sketch only) is the same: a list of non-empty strings, the list may be empty, the page prints it inside Evidence alone; `span` (if present) is an int >= 1,
     a bool is not one. Only a sketch may carry `span`: any other kind with the key is a problem, span 1 too. No kind has a
-    whitelist of keys, and none is added. Cases SK1-SK4.
+    whitelist of keys, and none is added. Cases SK1-SK4, UD1.
  B3r run_at(text, line, span): the run is the `span` elements that end at the target of the anchor on `line` (target_at's
     element). A run may hold paragraphs and lists (a display formula alone on its lines is a paragraph). A reason string, never
     an exception, when: the line is not an anchor line, or no element lies before it; span is not an int >= 1; the run holds a
@@ -669,6 +670,10 @@ def problems(block, note_id=None):
             ue = block["unexpanded"]
             if not (isinstance(ue, list) and all(_str(x) for x in ue)):
                 out.append("unexpanded: must be a list of non-empty strings")
+        if "unexpanded_detail" in block:
+            ud = block["unexpanded_detail"]
+            if not (isinstance(ud, list) and all(_str(x) for x in ud)):
+                out.append("unexpanded_detail: must be a list of non-empty strings")
     elif kind in ("argument", "interpretation"):
         for f in ("reader", "date"):
             if not _str(block.get(f)):
@@ -1832,6 +1837,27 @@ def _():
     smsg = "span: must be an integer of 1 or more"
     for bad in (0, -1, "1", True, False, 1.5, None, [1]):
         eq(problems(SKB(span=bad)), [smsg], repr(bad))
+
+
+@case("UD1", "F53: unexpanded_detail on a sketch, when present, is a list of non-empty strings (the list may be empty; absent is legal), "
+             "else the one problem `unexpanded_detail: must be a list of non-empty strings`; a bool, a string, a number, None, a dict, an "
+             "empty string or a non-string entry is refused; the key is read only on a sketch (another kind that carries it has no problem); "
+             "the key beside a valid or an invalid `unexpanded` adds nothing to it and takes nothing from it")
+def _():
+    msg = "unexpanded_detail: must be a list of non-empty strings"
+    for v in (SKB(), SKB(unexpanded_detail=[]), SKB(unexpanded_detail=["a"]), SKB(unexpanded_detail=["a", "b c"]),
+              SKB(basis="compiled", build="lake build A.B", unexpanded_detail=["x"]), SKB(unexpanded=["u"], unexpanded_detail=["d"])):
+        eq(problems(v), [], repr(v))
+        eq(problems(v, "15"), [], repr(v) + " with note")
+    for bad in ("a", "", None, True, False, 3, {"a": 1}, [""], [1], ["a", ""], ["a", None], ["a", 2], [["a"]], [True]):
+        eq(problems(SKB(unexpanded_detail=bad)), [msg], repr(bad))
+    eq(problems(SKB(unexpanded=5, unexpanded_detail=["d"])), ["unexpanded: must be a list of non-empty strings"], "bad unexpanded alone")
+    eq(problems(SKB(unexpanded=["u"], unexpanded_detail=5)), [msg], "bad detail alone")
+    eq(problems(SKB(unexpanded=5, unexpanded_detail=5)), ["unexpanded: must be a list of non-empty strings", msg], "both bad, the two problems in order")
+    for v in [MF(), vb(), vb(kind="interpretation", reader="R", date="2026-11-23"), vb(kind="correction"),
+              vb(kind="not_read", needs="callers"), vb(kind="argument", reader="R", date="2026-11-23", decls=[DECL])]:
+        for bad in (5, "", [""], [], ["x"]):
+            eq(problems(dict(v, unexpanded_detail=bad)), [], v["kind"] + " ignores the key " + repr(bad))
 
 
 @case("SK4", "span belongs to the sketch kind alone: any other kind that carries the key is refused, span 1 too")

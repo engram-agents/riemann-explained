@@ -126,6 +126,7 @@
  "sketch_note": "A sketch for a reader, not a proof: it leaves steps out and may hide the hard part.",
  "sketch_missing_line": "Proof sketch: not written yet.",
  "unexpanded_heading": "Places where Lean finishes the proof by automation we have not opened up:",
+ "unexpanded_detail_heading": "In the Lean files, file by file: the automation used and where, as we found it:",
  "edition_note_first_screen": "These notes were rewritten for readers, most recently on {date}: where they showed names used inside the Lean code, or formulas as raw code, they now use plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
  "edition_note_card": "On {date} the text of this card was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text is kept here: {link}.",
  "edition_note_card_note": "On {date} a note this card draws on was rewritten for readers: where it showed names used inside the Lean code, or formulas as raw code, it now uses plain words and typeset formulas; we meant to change no claim, and the earlier text of that note is kept here: {link}.",
