@@ -83,7 +83,7 @@ was read is a record at that commit, and a link that follows `main` could show t
 `link` of every note in the group files, `level0.json`, `level1.json` and `data.js`, and the `href` of every note anchor on the page. A template that holds
 `{commit}` when the build has no full notes commit (no `--notes-commit`, a tree with uncommitted changes, which stamps `dirty`, or any id that is not
 40 lower-case hex) is refused: `BUILD-ERROR NOTE-HREF-COMMIT note_href holds {commit}, but the build has no full notes commit (it is <id>; give
---notes-commit and --repo, and build from a clean tree)`, exit 1, nothing written. A template without `{commit}` builds exactly as before whatever the
+--notes-commit and --repo, and build from a clean tree)`, exit 1, nothing written. A build from an unclean tree is refused because the stamped notes id is `dirty`, so to preview uncommitted notes, build with a copy of the strings file whose `note_href` is the relative `notes/{file}`. A template without `{commit}` builds exactly as before whatever the
 commit is (both placeholders are optional). The static check lets an `<a class="note-link">` with an `https://` `href` through, by class token, as it does a
 citation or an edition anchor; it is the one new exemption, and nothing else changed (`note-link` with `http://` or `//`, as part of another class word, on an
 `img`, a form, a `<link>`, or on `src`, `action`, `formaction` or `xlink:href` is still refused, and so is an https note anchor with no `note-link`). The
