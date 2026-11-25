@@ -482,6 +482,14 @@ constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISS
 constant is False. F48WORD1 compares definition_label and definition_join with the wording file named by the environment variable
 RH_F48_WORDING and is skipped when it is not set.
 
+F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
+until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
+no attribute, no script). It follows from the scroll-shadow technique: two `scroll` shadows are fixed to the box's edges and two `local` covers move
+with the content, so a formula that fits shows nothing. Every colour is Canvas, CanvasText or transparent, the reader's own system colours, so the
+cue follows the reader's scheme and the page has no colour of its own (F51COL); the page declares no color-scheme. Not measured: Firefox, Safari and a
+forced high-contrast mode. F51BROWSER measures it by pixels in a real headless Chromium and runs only when the environment variable RH_CHROME names
+that binary (SKIPPED, with the reason, otherwise); docs/tools.md has the numbers and the method.
+
 usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX]
                      [--notes-commit REV --repo DIR] [--force]
        build_site.py --selftest [--only ID,ID]
