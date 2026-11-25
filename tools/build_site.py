@@ -1748,7 +1748,14 @@ GRAPH_SYMBOLS = {
     "states": {"read": {"class": "state-read", "words": "sheet_statement_read"},
                "census": {"class": "state-census", "words": "sheet_statement_census"},
                "none": {"class": "state-none", "words": "sheet_statement_not_read"}}}
-GRAPH_KIND_WORDS = "(allowed: theorem, lemma, def, structure)"   # what a root kind outside the table is told (the checker's RESULT_KINDS: theorem, lemma)
+
+
+def graph_kind_words():
+    """What a root kind outside the table is told: every kind that is accepted, from its two sources (the checker's RESULT_KINDS, whose lemma the
+    table has no row for because a lemma is drawn as a theorem, then the table's own kinds), read at the call, not copied."""
+    return "(allowed: " + ", ".join(dict.fromkeys([*nm.RESULT_KINDS, *GRAPH_SYMBOLS["kinds"]])) + ")"
+
+
 assert {row["words"] for table in GRAPH_SYMBOLS.values() for row in table.values()} <= set(TEXT_KEYS)   # every row's words are a required strings key
 
 
@@ -1910,7 +1917,7 @@ def _graph_files(rows, commit, strings):
     for r in rows:
         for field, table in (("kind", GRAPH_SYMBOLS["kinds"]), ("state", GRAPH_SYMBOLS["states"]), ("proof", GRAPH_SYMBOLS["proofs"])):
             if r[field] not in table:
-                errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}" + (f" {GRAPH_KIND_WORDS}" if field == "kind" else "")))
+                errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}" + (f" {graph_kind_words()}" if field == "kind" else "")))
     edges = {}   # sibling links, from -> [to]: the premises of a step that name a sibling
     for r in rows:
         for p in dict.fromkeys(r["premises"]):
