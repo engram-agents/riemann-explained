@@ -11367,9 +11367,10 @@ def _selftest_cases():
         lem = _build(decls=_decls_kinds({"foo": "lemma"}))
         ds = _build(decls=_decls_kinds({"bar": "def", "quux": "structure"}))
         kinds = lambda x: {i: x.js(f"graph/step/{i}.json")["card"]["kind"] for i in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3")}
-        return _eq(((lem.rc, kinds(lem)), (ds.rc, kinds(ds))),
-                   ((0, {"g1": "theorem", "g1a": "theorem", "g1a1": "def", "g1a1x": "theorem", "g2": "theorem", "g3": "theorem"}),
-                    (0, {"g1": "theorem", "g1a": "def", "g1a1": "def", "g1a1x": "theorem", "g2": "structure", "g3": "theorem"})))
+        roles = lambda x: [i for i in ("g1", "g1a", "g1a1", "g1a1x", "g2", "g3") if "role" in x.js(f"graph/step/{i}.json")["card"]]   # the kind never gives a role
+        return _eq(((lem.rc, kinds(lem), roles(lem)), (ds.rc, kinds(ds), roles(ds))),
+                   ((0, {"g1": "theorem", "g1a": "theorem", "g1a1": "def", "g1a1x": "theorem", "g2": "theorem", "g3": "theorem"}, ["g1a1"]),
+                    (0, {"g1": "theorem", "g1a": "def", "g1a1": "def", "g1a1x": "theorem", "g2": "structure", "g3": "theorem"}, ["g1a1"])))
 
     @case("GR18", "G1: every graph file carries `commit` (the notes commit, as a string) and `format` 1: `unknown` on the base build, `dirty` on a build from a dirty "
                   "tools tree, and the full notes commit on a build with --notes-commit (the same 40 hex characters the other files carry in commits.notes)")
