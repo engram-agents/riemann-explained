@@ -236,7 +236,7 @@
     "text": "for every primitive Dirichlet character $\\chi$, of any modulus $N \\ge 1$, $L(\\chi, s) \\ne 0$ whenever $\\operatorname{Re} s > 1/2$"
    },
    "id": "zerofreeall",
-   "short": "Primitive L-functions are zero-free right of 1/2",
+   "short": "Zero-freeness right of 1/2: primitive characters",
    "level": 2,
    "order": 1,
    "parent": "primitive-to-all",
