@@ -35,10 +35,13 @@ CONTRACT
  nor is `(0, eval)(s)`; that is why the engine's own boundary test also forbids the APIs by name in each file.
  Comments count: a comment that names a forbidden token is refused too (the .js scheme and protocol-relative
  checks are the exception: they read literals only, so a scheme in a JS comment is not seen). The scanner does not
- know regex literals or `${}` nesting. DOCUMENTED MISSES, each asserted as a miss by the self-test (MISSES): a quote
+ know regex literals or `${}` nesting. KNOWN MISSES, each asserted as a miss by the self-test (MISSES); the list is
+ NOT exhaustive, it holds the misses we have found and nothing more: a quote
  inside a regex literal before a URL; `//` inside a regex character class, which hides the rest of that line;
  `/*` inside a regex character class, which hides the REST OF THE FILE until a `*/`; a template literal nested
- inside `${}`; backslash-u and backslash-x escapes inside a literal, and String.fromCharCode; and piece-building by concatenation. An import specifier built at run time is not resolved; a dynamic
+ inside `${}`; backslash-u and backslash-x escapes inside a literal, and String.fromCharCode; piece-building by concatenation; in html, an attribute value that starts on the line after `href=` (the check
+ is per line), an entity-encoded value (`href=&#47;&#47;h`), and an unquoted `//` value in a `.htm` or `.svg` file
+ (that check reads `.html` only). An import specifier built at run time is not resolved; a dynamic
  `import (` is refused outright instead. A `__pycache__` folder is skipped without a count.
 
 usage: graph_js_check.py [DIR]
@@ -305,7 +308,7 @@ CLEAN = [
     # an html attribute that merely contains // later in its value, or a single slash, is not protocol-relative
     ("ok2.html", "<a href=/docs/x.html>x</a><a href=\"a//b\">y</a>"),
 ]
-# DOCUMENTED MISSES: each of these hides a refusable token from the scanner TODAY (the LIMIT text lists them).
+# KNOWN MISSES (not exhaustive): each of these hides a refusable token from the scanner TODAY (the LIMIT text lists them).
 # The self-test asserts every one is NOT refused, so a change that starts catching one fails here and the list
 # must be edited on purpose: (what is missed, file name, text; every line below carries a scheme or `//` that a
 # perfect reader would refuse).
@@ -318,6 +321,9 @@ MISSES = [
     ("a \\u escape", "m6.js", "const u = '\\u0068ttps://h/x';"),
     ("String.fromCharCode", "m7.js", "const u = String.fromCharCode(104, 116, 116, 112, 115, 58);"),
     ("piece-building by concatenation", "m8.js", "const u = 'java' + 'script:' + x;"),
+    ("html: an attribute value on the line after `href=` (the check is per line)", "m9.html", "<a href=\n//h>x</a>"),
+    ("html: an entity-encoded value", "m10.html", "<a href=&#47;&#47;h>x</a>"),
+    ("html: an unquoted `//` value in a `.htm` file (the check reads `.html` only)", "m11.htm", "<a href=//h>x</a>"),
 ]
 
 

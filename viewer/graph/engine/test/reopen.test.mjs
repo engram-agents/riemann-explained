@@ -18,10 +18,10 @@ const deferred = () => { let resolve, reject; const promise = new Promise((a, b)
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 test("F1: a duplicate id served from the cache on reopen is refused like a fresh one (exact order from the review)", async () => {
-  const view = recordingView();
+  const view = recordingView(), calls = [];
   const ctl = createController({
     roots: [spec("a", { childCount: 1 }), spec("b", { childCount: 1 })],
-    loadChildren: async (id) => [kid(id, "x")],
+    loadChildren: async (id) => { calls.push(id); return [kid(id, "x")]; },
     fitOnStart: false,
   }, view);
   const log = collect(ctl); await ctl.ready;
@@ -46,6 +46,15 @@ test("F1: a duplicate id served from the cache on reopen is refused like a fresh
   assert.equal(ctl.node("x"), undefined, "closing b leaves no x in the map");
   assert.equal(view.mounted.has("x"), false, "and none on the page");
   assert.equal(view.mounted.size, ctl.stats().visible);
+  // a refused node stays refused: the blocked flag is read before the cache, so the conflict being gone changes nothing
+  const callsBefore = calls.length, mountsAfter = view.mountCalls, refusedBefore = log.filter((e) => e[0] === "refused").length;
+  assert.equal(await ctl.open("a"), false, "a is opened again after the conflicting node closed: still refused");
+  assert.equal(calls.length, callsBefore, "the loader was not called again");
+  assert.equal(ctl.node("a").blocked, "duplicate-id", "a is still blocked, with the same reason");
+  assert.equal(ctl.node("a").open, false);
+  assert.equal(view.mountCalls, mountsAfter, "nothing new was drawn");
+  assert.equal(view.mounted.size, ctl.stats().visible);
+  assert.equal(log.filter((e) => e[0] === "refused").length, refusedBefore + 1, "the refusal is reported again (refused earlier), not silently dropped");
 });
 
 test("F1: a valid cached list still reopens from the cache without a second load", async () => {
