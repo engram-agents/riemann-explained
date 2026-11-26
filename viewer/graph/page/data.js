@@ -54,7 +54,13 @@ const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]
 export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label",
   "link_refused", "parts_failed_notice", "key_kinds_heading", "key_states_heading"]);
 /* Strings keys the page reads when the builder supplies them and ignores otherwise (the live map has none): allowed in `strings`, never required. */
-export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note"]);
+export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text"]);
+/* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
+   `edge_basis.words` names. They are neither fixed nor optional: validateIndex adds them to the required set when edge_basis is there, and
+   without it they are not read, so their presence is an extra-string (the page reads exactly what it draws). */
+export const EDGE_BASIS_HEADING = "key_lines_heading";
+/* The one basis value this page knows for an index's links: the names written in the source, from the compiled index. */
+export const EDGE_BASIS = "names-written-in-source-from-compiled-index";
 
 /* An optional strings key that is present but empty is refused under its own code (a required key that is absent or empty is
    "missing-string"). The rule is keyed to the set it is handed, never to a name. */
@@ -123,8 +129,22 @@ function orderOf(list, names, where, mayBeEmpty) {
 /* A short, bounded rendering of a refused value for a DataError's reason (never reaches the page: no string from an exception does). */
 const shown = (v) => { let t; try { t = JSON.stringify(v); } catch (e) { t = undefined; } return t === undefined ? String(typeof v) : t.slice(0, 60); };
 
+/* `edge_basis` (data contract section 25): exactly {basis, words}. `basis` is the one value this page knows; `words` is the name of a key
+   PRESENT in `strings` (the key prints strings[words], and the page never names that key itself). Any other shape is bad-edge-basis. */
+function edgeBasisOf(v, strings) {
+  if (!isObj(v) || Object.keys(v).length !== 2 || !has(v, "basis") || !has(v, "words"))
+    throw new DataError("bad-edge-basis", "index edge_basis is not exactly {basis, words}");
+  if (v.basis !== EDGE_BASIS) throw new DataError("bad-edge-basis", "index edge_basis basis is not the one this page knows: " + shown(v.basis));
+  if (!isStr(v.words) || v.words === "" || !has(strings, v.words))
+    throw new DataError("bad-edge-basis", "index edge_basis words is not the name of a key in strings: " + shown(v.words));
+  return { basis: v.basis, words: v.words };
+}
+
 /* A link may carry `weight` (a positive integer, the distinct names used) and `in_reduction` (a boolean, the link is in the transitive
-   reduction of its set): BOTH or NEITHER (data contract section 20). The live map's links have neither. */
+   reduction of its set): BOTH or NEITHER (data contract section 20). The live map's links have neither.
+   ERROR ORDER, pinned for a link with two faults: the key set is checked first, so an unknown key beside a bad flag is `extra-key`; only a
+   link whose keys are all known reaches the flag checks, where one flag without the other, or a weight that is not a positive integer,
+   is `bad-link-flags`. */
 function linkOf(l, expectPathFrom, expectPathTo, where) {
   exactKeys(l, ["from", "to", "from_path", "to_path"], ["weight", "in_reduction"], where);
   const flagged = has(l, "weight") || has(l, "in_reduction");
@@ -145,7 +165,7 @@ function linkOf(l, expectPathFrom, expectPathTo, where) {
 }
 
 export function validateIndex(raw) {
-  exactKeys(raw, ["format", "commit", "max_children", "top", "rests_on", "steps", "symbols", "assets", "strings"], ["sibling_layout", "open_scale_floor"], "index");
+  exactKeys(raw, ["format", "commit", "max_children", "top", "rests_on", "steps", "symbols", "assets", "strings"], ["sibling_layout", "open_scale_floor", "edge_basis"], "index");
   if (raw.format !== 1) throw new DataError("bad-format", "index format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "index commit is not a non-empty string");
   if (!isInt(raw.max_children) || raw.max_children < 1) throw new DataError("bad-type", "index max_children is not a positive integer");
@@ -171,15 +191,24 @@ export function validateIndex(raw) {
     if (!has(raw.strings, k)) throw new DataError("missing-card-words", "index strings lacks the card word " + k);
   for (const k of Object.values(symbols.countWords).flatMap((c) => [c.one, c.many]))
     if (!has(raw.strings, k)) throw new DataError("missing-count-words", "index strings lacks the count word " + k);
+  /* The set the strings check uses depends on edge_basis: present, the key's line heading and the key edge_basis.words names are read too
+     (required, an empty one is empty-string); absent, neither is read, so key_lines_heading and key_lines_text are extra-string like any other. */
+  const edgeBasis = has(raw, "edge_basis") ? edgeBasisOf(raw.edge_basis, raw.strings) : null;
+  const edgeStrings = edgeBasis ? [EDGE_BASIS_HEADING, edgeBasis.words] : [];
   const need = requiredStrings(symbols);
   for (const k of need) {
     if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("missing-string", "index strings lacks the runtime key " + k);
   }
+  for (const k of edgeStrings) {
+    if (!has(raw.strings, k)) throw new DataError("missing-string", "index strings lacks the edge basis key " + k);
+    if (raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty edge basis key " + k);
+  }
   refuseEmptyOptional(raw.strings, OPTIONAL_STRINGS);
   for (const k of Object.keys(raw.strings)) {
-    if (!need.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
+    if (!need.includes(k) && !edgeStrings.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   }
   const out = { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
+  if (edgeBasis) out.edgeBasis = edgeBasis;
   /* The two optional per-map keys (data contract sections 15 and 24), each absent on the live map and then absent from the record too.
      `sibling_layout`: the only value is "column". `open_scale_floor`: a finite number above 0 (the engine checks its upper bound). */
   if (has(raw, "sibling_layout")) {
@@ -269,6 +298,8 @@ export function validateStep(raw, ctx) {
     if (!seen.has(k.from) || !seen.has(k.to)) throw new DataError("bad-link", "step.rests_on names an id that is not a child of this step");
     return k;
   });
+  /* `rests_on` keeps every link as the data gives it (a link flagged in_reduction false included); only the set handed to the engine
+     (linksFrom in createData) drops in_reduction false. */
   const out = { id: raw.id, path, card, children, rests_on: rests };
   if (has(raw, "index_rows")) out.index_rows = indexRowsOf(raw.index_rows);
   if (has(raw, "spine_rows")) out.spine_rows = spineRowsOf(raw.spine_rows);

@@ -437,7 +437,8 @@ test("F3 key_kinds_note is an OPTIONAL strings key: accepted present, accepted a
 
 test("F3 the skeleton fixture carries none of the old placeholder words", () => {
   const text = readFileSync(path.join(FIX, "skeleton", "index.json"), "utf8");
-  for (const old of ["folder", "Colour and shape: what Lean declares", "a top-level folder of the repository", "a folder inside a part", "one Lean file"])
+  /* the bare word "folder" is no longer on the list: the Lean map's own key_scope_text says "the folder New" and "the folder Lib" (PR 98 round 2) */
+  for (const old of ["Colour and shape: what Lean declares", "a top-level folder of the repository", "a folder inside a part", "one Lean file"])
     assert.ok(!text.includes(old), old);
   const idx = skIndex();
   assert.equal(idx.strings.key_kinds_heading, "What a box is");

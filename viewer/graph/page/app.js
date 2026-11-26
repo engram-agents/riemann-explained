@@ -10,7 +10,7 @@
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
 import { createGraph } from "../engine/index.js";
 import { el, isId } from "./dom.js";
-import { createData, DataError, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS } from "./data.js";
+import { createData, DataError, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING } from "./data.js";
 import { makeRenderFace } from "./face.js";
 import { createSheet } from "./sheet.js";
 
@@ -40,14 +40,20 @@ function hashId(doc) {
 
 /* The key: one row per kind, then per state, as the builder's symbols.order lists them (the rows that occur on this map), each
    with its label strings[row.words]. A states section whose order is empty is absent whole, heading included: the builder says
-   what the key shows. (Proofs have no section in the key: a proof shows only in the sheet's status line.) */
+   what the key shows. (Proofs have no section in the key: a proof shows only in the sheet's status line.) Two optional additions, each absent
+   on the live map: `key_scope_text` is the key's FIRST child (one paragraph), and when the index carries `edge_basis` the key ends with a
+   section after everything else: an h2 with `key_lines_heading` and one paragraph holding strings[edge_basis.words]. The page prints the
+   key `words` names and never names that key itself. Every one of them is a single text node, backticks and all. */
 function buildKey(index) {
   const s = index.strings, w = index.symbols.words;
   const kindRows = index.symbols.order.kinds.map((k) => el("li", {}, [el("span", { class: "swatch " + KIND_CLASS[k] }), el("span", {}, [s[w.kinds[k]]])]));
   const stateRows = index.symbols.order.states.map((st) => el("li", {}, [el("span", { class: "swatch k-theorem " + STATE_CLASS[st] }), el("span", {}, [s[w.states[st]]])]));
-  const parts = [el("h2", {}, [s.key_kinds_heading]), el("ul", {}, kindRows)];
+  const parts = [];
+  if (typeof s.key_scope_text === "string") parts.push(el("p", { class: "key-scope" }, [s.key_scope_text]));   // optional: the key's first paragraph
+  parts.push(el("h2", {}, [s.key_kinds_heading]), el("ul", {}, kindRows));
   if (typeof s.key_kinds_note === "string") parts.push(el("p", { class: "key-note" }, [s.key_kinds_note]));   // optional: one plain line under the kind rows
   if (stateRows.length > 0) parts.push(el("h2", {}, [s.key_states_heading]), el("ul", {}, stateRows));
+  if (index.edgeBasis) parts.push(el("h2", {}, [s[EDGE_BASIS_HEADING]]), el("p", { class: "key-lines" }, [s[index.edgeBasis.words]]));
   return el("div", { class: "key-content" }, parts);
 }
 
