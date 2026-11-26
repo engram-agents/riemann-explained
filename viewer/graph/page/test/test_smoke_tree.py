@@ -346,6 +346,178 @@ def t16_runner_counts_skips_apart(tmp):
     assert "3 cases, 1 passed, 1 skipped, 1 failed" in text, text
 
 
+def fetch(site, reqs):
+    """Serve `site` in-process and answer each (method, raw path) with (status, body); returns (answers, the OUTSIDE list as it ended)."""
+    import http.client, smoke_tree as S
+    S.OUTSIDE.clear()
+    srv, base = S.serve(site)
+    got = {}
+    try:
+        for method, path in reqs:
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
+            c.putrequest(method, path, skip_accept_encoding=True)
+            c.endheaders()
+            try:
+                r = c.getresponse()
+                got[(method, path)] = (r.status, r.read())
+            except Exception as e:  # noqa: BLE001
+                got[(method, path)] = ("ERR", repr(e))
+            c.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    return got, list(S.OUTSIDE)
+
+
+def secret_outside(tmp):
+    d = os.path.join(tmp, "elsewhere")
+    os.makedirs(d, exist_ok=True)
+    p = os.path.join(d, "secret.html")
+    open(p, "w").write("<p>SECRET</p>")
+    return p
+
+
+def t17_root_index_linked_out(tmp):
+    """C2a: `GET /` and `HEAD /` where the root index.html is a symlink out: 403, recorded as containment; and the tool exits 1 on a flat tree."""
+    site = os.path.join(tmp, "site")
+    os.makedirs(site)
+    os.symlink(secret_outside(tmp), os.path.join(site, "index.html"))
+    got, outside = fetch(site, [("GET", "/"), ("HEAD", "/")])
+    assert got[("GET", "/")][0] == 403 and got[("HEAD", "/")][0] == 403, got
+    assert b"SECRET" not in got[("GET", "/")][1], got
+    assert outside, outside
+    flat = flatten(build(tmp, name="flat"))
+    real = os.path.join(flat, "index.html")
+    shutil.copyfile(real, os.path.join(tmp, "elsewhere", "copy.html"))
+    os.remove(real)
+    os.symlink(os.path.join(tmp, "elsewhere", "copy.html"), real)
+    code, o = run_tool(flat, "--no-note", "--only-viewport", "1280x900")
+    assert code == 1 and lines(o, "FAIL", "containment"), (code, o)
+    assert "SMOKE PASS" not in o, o
+
+
+def t18_subdir_index_linked_out(tmp):
+    """C2b: the reviewer's case: `GET /d/` and `HEAD /d/` where d/index.html is a symlink out: 403 and recorded (the explicit /d/index.html too)."""
+    site = os.path.join(tmp, "site")
+    os.makedirs(os.path.join(site, "d"))
+    os.symlink(secret_outside(tmp), os.path.join(site, "d", "index.html"))
+    got, outside = fetch(site, [(m, p) for m in ("GET", "HEAD") for p in ("/d/", "/d/index.html")])
+    for k, (status, body) in got.items():
+        assert status == 403 and b"SECRET" not in body, (k, got)
+    assert outside, outside
+
+
+def t19_end_to_end_graph_index_linked_out(tmp):
+    """C2c: the real tree with graph/index.html linked outside: the tool exits 1 naming containment, never SMOKE PASS."""
+    out = build(tmp)
+    real = os.path.join(out, "graph", "index.html")
+    outside = os.path.join(tmp, "outside-index.html")
+    shutil.copyfile(real, outside)
+    os.remove(real)
+    os.symlink(outside, real)
+    code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
+    assert code == 1, (code, o)
+    assert lines(o, "FAIL", "containment"), o
+    assert "SMOKE PASS" not in o, o
+
+
+def t20_prefix_boundary(tmp):
+    """C2d: a sibling folder whose name extends the site folder's name (site, site2) is outside: a link into it is refused. A string-prefix
+    test without a separator would call it inside."""
+    site = os.path.join(tmp, "site")
+    os.makedirs(site)
+    sib = os.path.join(tmp, "site2")
+    os.makedirs(sib)
+    open(os.path.join(sib, "x.txt"), "w").write("SIBLING")
+    os.symlink(os.path.join(sib, "x.txt"), os.path.join(site, "x.txt"))
+    open(os.path.join(site, "ok.txt"), "w").write("INSIDE")
+    got, outside = fetch(site, [(m, p) for m in ("GET", "HEAD") for p in ("/x.txt", "/ok.txt")])
+    assert got[("GET", "/x.txt")][0] == 403 and got[("HEAD", "/x.txt")][0] == 403, got
+    assert got[("GET", "/ok.txt")] == (200, b"INSIDE") and got[("HEAD", "/ok.txt")][0] == 200, got
+    assert outside, outside
+
+
+def t21_require_floor_needs_phone_viewport(tmp):
+    """C3: --require-floor with --only-viewport 1280x900 never checks the floor (it runs at 390x844 only): a usage error, exit 2, saying so."""
+    out = build(tmp)
+    code, o = run_tool(out, "--no-note", "--require-floor", "--only-viewport", "1280x900")
+    assert code == 2, (code, o)
+    assert "390x844" in o and "floor" in o, o
+    assert "SMOKE PASS" not in o, o
+
+
+def t22_blank_note_text_fails(tmp):
+    """C4: a note whose text is empty after whitespace collapse FAILs ('note text empty') even when the sheet draws some .note-body; never a pass on an empty want."""
+    import contextlib, io, smoke_tree as S
+    class V:
+        def ev(self, expr):
+            return "a body the sheet drew"
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        S.note_check(V(), "390x844", {"id": "f1", "note": {"text": "  \n\t  "}}, False, True, False)
+    text = buf.getvalue()
+    assert lines(text, "FAIL", "note") and "note text empty" in text, text
+    assert not lines(text, "PASS", "note"), text
+
+
+def t23_state_reset_per_run(tmp):
+    """C5: module state is reset at the start of each run (main calls the one reset function): leftovers from an earlier run do not leak."""
+    import contextlib, io, smoke_tree as S
+    S.OUTSIDE.append("/left-over")
+    S.FAILED[0] = 3
+    S.SKIPPED.append("note")
+    d = os.path.join(tmp, "neither")
+    os.makedirs(d)
+    with contextlib.redirect_stdout(io.StringIO()):
+        code = S.main(["smoke_tree.py", d])
+    assert code == 2, code
+    assert S.OUTSIDE == [] and S.FAILED == [0] and S.SKIPPED == [], (S.OUTSIDE, S.FAILED, S.SKIPPED)
+    assert not hasattr(S, "LINES"), "the dead LINES list is gone"
+
+
+def t24_nul_in_path_is_400(tmp):
+    """C5: a NUL in the request path answers 400 (GET and HEAD) without a traceback in the handler thread, and the server keeps serving."""
+    import contextlib, io
+    site = os.path.join(tmp, "site")
+    os.makedirs(site)
+    open(os.path.join(site, "s.txt"), "w").write("S")
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        got, _ = fetch(site, [("GET", "/s.txt%00.js"), ("HEAD", "/s.txt%00.js"), ("GET", "/s.txt")])
+    assert got[("GET", "/s.txt%00.js")][0] == 400 and got[("HEAD", "/s.txt%00.js")][0] == 400, got
+    assert got[("GET", "/s.txt")] == (200, b"S"), got
+    assert "Traceback" not in err.getvalue(), err.getvalue()
+
+
+def t25_ordinary_tree_served(tmp):
+    """C2e: an ordinary tree is served whole: both entry directories and a file answer 200 to GET and HEAD, nothing recorded as outside, and
+    a link that stays inside is served."""
+    site = os.path.join(tmp, "site")
+    os.makedirs(os.path.join(site, "d"))
+    open(os.path.join(site, "index.html"), "w").write("ROOT")
+    open(os.path.join(site, "d", "index.html"), "w").write("SUB")
+    open(os.path.join(site, "a.txt"), "w").write("A")
+    os.symlink(os.path.join(site, "a.txt"), os.path.join(site, "back.txt"))
+    got, outside = fetch(site, [(m, p) for m in ("GET", "HEAD") for p in ("/", "/d/", "/a.txt", "/back.txt")])
+    for (m, p), (status, body) in got.items():
+        assert status == 200, (m, p, got)
+    assert got[("GET", "/")][1] == b"ROOT" and got[("GET", "/d/")][1] == b"SUB" and got[("GET", "/back.txt")][1] == b"A", got
+    assert outside == [], outside
+    code, o = run_tool(build(tmp, name="whole"), "--no-note", "--only-viewport", "1280x900")      # the tool's end to end on an ordinary tree: T1 covers both viewports
+    assert code == 0 and lines(o, "PASS", "containment"), (code, o)
+
+
+def t26_no_directory_listing(tmp):
+    """C1: a directory with no index file is never listed: 403 or 404 to GET and HEAD, with no entry name in the body."""
+    site = os.path.join(tmp, "site")
+    os.makedirs(os.path.join(site, "bare"))
+    open(os.path.join(site, "bare", "entry-name-xyz.txt"), "w").write("E")
+    got, _ = fetch(site, [(m, p) for m in ("GET", "HEAD") for p in ("/bare/", "/bare")])
+    for k, (status, body) in got.items():
+        assert status in (301, 403, 404) and b"entry-name-xyz" not in body, (k, got)
+    assert got[("GET", "/bare/")][0] in (403, 404) and got[("HEAD", "/bare/")][0] in (403, 404), got
+
+
 CASES = [
     ("T1 the real fixture (--no-note): exit 0, SMOKE PASS, three ids, the checks named", t1_real_fixture),
     ("T1b the flat shape (A1): TREE flat, exit 0", t1b_flat_shape),
@@ -371,6 +543,16 @@ CASES = [
     ("T14 P3: a one-viewport run says it was partial", t14_partial_run_says_so),
     ("T15 P4: HEAD is refused outside the folder as GET is", t15_head_is_contained_like_get),
     ("T16 P5: the case runner counts a skip apart from a pass", t16_runner_counts_skips_apart),
+    ("T17 C2a: a root index.html linked outside: GET / and HEAD / refused, the tool exits 1 (flat)", t17_root_index_linked_out),
+    ("T18 C2b: a sub-directory's index.html linked outside: GET /d/ and HEAD /d/ refused", t18_subdir_index_linked_out),
+    ("T19 C2c: graph/index.html linked outside: the tool exits 1 naming containment, never SMOKE PASS", t19_end_to_end_graph_index_linked_out),
+    ("T20 C2d: a sibling folder named like the site plus a suffix is outside (the prefix boundary)", t20_prefix_boundary),
+    ("T21 C3: --require-floor with --only-viewport 1280x900 is a usage error", t21_require_floor_needs_phone_viewport),
+    ("T22 C4: a note whose text is blank after collapse FAILs, never passes on an empty want", t22_blank_note_text_fails),
+    ("T23 C5: module state is reset at the start of each run", t23_state_reset_per_run),
+    ("T24 C5: a NUL in the request path answers 400 with no traceback", t24_nul_in_path_is_400),
+    ("T25 C2e: an ordinary tree is served whole and passes", t25_ordinary_tree_served),
+    ("T26 C1: a directory with no index is never listed", t26_no_directory_listing),
 ]
 
 
