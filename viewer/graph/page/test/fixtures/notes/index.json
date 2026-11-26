@@ -1,0 +1,117 @@
+{
+ "assets": {},
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "max_children": 40,
+ "rests_on": [],
+ "steps": 10,
+ "strings": {
+  "card_kind_file": "File",
+  "card_kind_group": "Group",
+  "card_kind_part": "Part",
+  "claim_less": "Show less",
+  "claim_more": "Show the whole claim",
+  "close_parts": "Close its parts",
+  "count_file_many": "{n} files",
+  "count_file_one": "{n} file",
+  "count_group_many": "{n} groups",
+  "count_group_one": "{n} group",
+  "crumb_label": "Where this step sits",
+  "key_kinds_heading": "What a box is",
+  "key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+  "key_states_heading": "Frame: what we have read",
+  "link_refused": "That address does not name a step on this map.",
+  "note_label": "From the repository, unchanged",
+  "note_source": "Source file: {source} · version {commit} of lsernau/grh-lean",
+  "open_parts": "Open its parts",
+  "part_one": "1 part",
+  "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+  "parts_n": "{n} parts",
+  "sheet_proof_none": "No proof to read",
+  "sheet_proof_not_read": "Proof: not read yet.",
+  "sheet_proof_read": "Proof read",
+  "sheet_statement_census": "Statement counted by a program",
+  "sheet_statement_not_read": "Statement not read",
+  "sheet_statement_read": "Statement read",
+  "symbol_kind_file": "Lean file",
+  "symbol_kind_group": "Group of files",
+  "symbol_kind_part": "Part of the argument"
+ },
+ "symbols": {
+  "kinds": {
+   "file": {
+    "card_words": "card_kind_file",
+    "class": "builder-file",
+    "count_words": {
+     "many": "count_file_many",
+     "one": "count_file_one"
+    },
+    "text": "Lean file",
+    "words": "symbol_kind_file"
+   },
+   "group": {
+    "card_words": "card_kind_group",
+    "class": "builder-group",
+    "count_words": {
+     "many": "count_group_many",
+     "one": "count_group_one"
+    },
+    "text": "Group of files",
+    "words": "symbol_kind_group"
+   },
+   "part": {
+    "card_words": "card_kind_part",
+    "class": "builder-part",
+    "text": "Part of the argument",
+    "words": "symbol_kind_part"
+   }
+  },
+  "order": {
+   "kinds": [
+    "part",
+    "group",
+    "file"
+   ],
+   "proofs": [],
+   "states": []
+  },
+  "proofs": {
+   "none": {
+    "class": "builder-none",
+    "text": "No proof to read",
+    "words": "sheet_proof_none"
+   },
+   "not_read": {
+    "class": "builder-not_read",
+    "text": "Proof: not read yet.",
+    "words": "sheet_proof_not_read"
+   },
+   "read": {
+    "class": "builder-read",
+    "text": "Proof read",
+    "words": "sheet_proof_read"
+   }
+  },
+  "states": {
+   "census": {
+    "class": "builder-census",
+    "text": "Statement counted by a program",
+    "words": "sheet_statement_census"
+   },
+   "none": {
+    "class": "builder-none",
+    "text": "Statement not read",
+    "words": "sheet_statement_not_read"
+   },
+   "read": {
+    "class": "builder-read",
+    "text": "Statement read",
+    "words": "sheet_statement_read"
+   }
+  }
+ },
+ "top": [
+  "sk-part",
+  "sk-part-2"
+ ]
+}

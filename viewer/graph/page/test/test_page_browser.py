@@ -2023,6 +2023,179 @@ def c_hostile_kind_state(b):
                 S.stop()
 
 
+# ---------------------------------------------------------------- the repository's note on the sheet (fixtures/notes)
+
+NOTE_KIDS_JS = """(() => { const a = document.querySelector('#graph-sheet-body article');
+  return [...a.children].map(e => e.tagName + '.' + e.className); })()"""
+NOTE_BODY_JS = """(() => { const b = document.querySelector('#graph-sheet-body .note-body'); if (!b) return null;
+  const all = [...b.querySelectorAll('*')], sheet = document.getElementById('graph-sheet-body');
+  return { tags: [...new Set(all.map(e => e.tagName))].sort(),
+           attrs: [...new Set(all.flatMap(e => [...e.attributes].map(a => e.tagName + ':' + a.name)))].sort(),
+           text: b.textContent, kids: [...b.children].map(e => e.tagName),
+           stray: sheet.querySelectorAll('img, script, a, iframe, b, u, i, em, strong, style, svg').length,
+           handlers: [...sheet.querySelectorAll('*')].filter(e => [...e.attributes].some(a => /^on/i.test(a.name))).length }; })()"""
+
+
+def _notes_site(engine, **edits):
+    root = tempfile.mkdtemp(prefix="pg-notes-")
+    assemble.assemble(root, engine, fix="notes", **edits)
+    return Served(root)
+
+
+def c_note_sheet(b, S0, engine):
+    """N12/N14/N2: opening a file card with a note shows, after the kind word line, the label, the source line ({source} as text, {commit} the
+    first 8 characters of the step's commit) and then the rendered note, in that order; the note's first '# ' line is kept (as an h3.note-h)
+    even though it equals the card title; a card without a note shows none of them; closing puts the card's markup back."""
+    S = _notes_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        before = pg.ev("document.getElementById('graph-cards').outerHTML")
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-1'", 6000)
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        kids = pg.ev(NOTE_KIDS_JS)
+        assert kids[:5] == ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "DIV.note-body"], kids
+        assert kids[5] == "P.note", kids          # the builder's own line is still there, after ours
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-label').textContent") == "From the repository, unchanged"
+        src = pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent")
+        assert src == "Source file: grh/src/New/Reduction/OneSidedBound.lean \u00b7 version 01234567 of lsernau/grh-lean", src
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-source *, #graph-sheet-body .note-label *').length") == 0, "text only, never a link"
+        body = pg.ev(NOTE_BODY_JS)
+        assert body["kids"] == ["H3", "P", "P", "UL"], body["kids"]
+        assert body["tags"] == ["CODE", "H3", "LI", "P", "UL"], body["tags"]
+        assert body["attrs"] == ["H3:class"], body["attrs"]
+        assert "Here \u03bb(n) = \u039b(n) (1 - chiK d n) for n \u2261 1 modulo q and 0 otherwise" in body["text"], body["text"][-400:]
+        assert body["stray"] == 0 and body["handlers"] == 0, body
+        # N14: the first '# ' line equals the card title and is KEPT, with the note heading class
+        h = pg.ev("""(() => { const hs = [...document.querySelectorAll('#graph-sheet-body h3')];
+          return hs.map(e => [e.className, e.textContent]); })()""")
+        title = "The one-sided bound, and the theorem in half-plane form"
+        assert h == [["claim", title], ["note-h", title]], h
+        # a card without a note shows none of it
+        at_hash(pg, "sk-file-3")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
+        kids3 = pg.ev(NOTE_KIDS_JS)
+        assert kids3[:3] == ["H3.claim", "P.sheet-status", "P.note"], kids3
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-h').length") == 0
+        # closing puts the markup back: no note element is left in any article
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-h').length") == 0
+        after = pg.ev("document.getElementById('graph-cards').outerHTML")
+        assert after.replace(' open=""', "") == before.replace(' open=""', ""), "closing must put the markup back"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_note_tap_and_hostile(b, S0, engine):
+    """N9 in the browser, and the TAP route: a tap on a card whose step file has not been fetched yet loads it, then shows its note. The
+    hostile note renders as visible text: only the allowed elements, the only attributes are the heading class and `start`, no element
+    from the payloads exists, no dialog, no CSP violation."""
+    S = _notes_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        Handler.seen.clear()
+        tap(pg, "sk-file-2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-2'", 6000)
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        assert "/graph/step/sk-file-2.json" in Handler.seen, Handler.seen
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body').length") == 1
+        body = pg.ev(NOTE_BODY_JS)
+        assert body["tags"] == ["CODE", "H3", "LI", "OL", "P", "PRE", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"], body["tags"]
+        assert body["attrs"] == ["H3:class", "OL:start"], body["attrs"]
+        assert body["stray"] == 0 and body["handlers"] == 0, body
+        for want in ("<script>alert(1)</script>", "<img src=x onerror=1> &amp;lt; javascript:alert(1) [x](javascript:y) <b>bold</b>", "<img src=x onerror=2>",
+                     "javascript:void(0)", "[y](javascript:z)", "<iframe src=javascript:alert(3)></iframe>", "<b>h</b>", "&lt;"):
+            assert want in body["text"], (want, body["text"])
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-body ol').getAttribute('start')") == "3"
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent") == \
+            "Source file: grh/src/New/Hostile.lean \u00b7 version 01234567 of lsernau/grh-lean"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_note_strings(b, S0, engine):
+    """N13 in the browser: a map lacking either note key whose reader opens a step carrying a note gets the page's usual failure (the
+    fallback; no half-filled label); a note_source template with markup in it is text; the live map's sheet carries none of it."""
+    for drop in ("note_source", "note_label"):
+        S = _notes_site(engine, index_edit=lambda i, d=drop: i["strings"].pop(d))
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+            at_hash(pg, "sk-file-1")
+            pg.wait("!document.getElementById('graph-layer')", 6000)
+            assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards")
+            assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body').length") == 0
+            pg.close()
+        finally:
+            S.stop()
+    # the same map with a card that has no note: no failure at all
+    S = _notes_site(engine, index_edit=lambda i: i["strings"].pop("note_source"))
+    try:
+        pg = Pg(b, S.base + "graph/index.html#sk-file-3", 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
+        assert pg.ev("document.getElementById('graph-fallback').hidden")
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+    # a template with markup: filled and shown as text
+    S = _notes_site(engine, index_edit=lambda i: i["strings"].__setitem__("note_source", "<b>Source</b> {commit} &amp; {source} {source}"))
+    try:
+        pg = Pg(b, S.base + "graph/index.html#sk-file-1", 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body .note-source')", 6000)
+        t = pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent")
+        assert t == "<b>Source</b> 01234567 &amp; grh/src/New/Reduction/OneSidedBound.lean grh/src/New/Reduction/OneSidedBound.lean", t
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-source *').length") == 0
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_note_load_failure(b, S0, engine):
+    """A tap on a card whose step file cannot be loaded leaves the reader's open card exactly as it was and shows the page's notice
+    (the step is loaded BEFORE the open card is touched)."""
+    S = _notes_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        Handler.blocked = {"/graph/step/sk-file-2.json"}
+        tap(pg, "sk-file-2")
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert shown_id(pg) == "sk-file-1" and sheet_open(pg)
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body').length") == 1
+        assert pg.ev("document.getElementById('graph-fallback').hidden")
+        pg.csp_clean()
+        pg.close()
+    finally:
+        Handler.blocked = set()
+        S.stop()
+
+
+def c_note_live_unchanged(b, S, engine):
+    """N11: on the live real fixture no step carries a note, so a card's sheet holds no note label, source line or body, and its children
+    are the claim, the status line and the builder's own lines as before."""
+    for card in ("goal-chain", "a1-a-1-x"):
+        pg = Pg(b, S.base + "graph/index.html#" + card, 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-h').length") == 0, card
+        kids = pg.ev(NOTE_KIDS_JS)
+        assert kids[0] == "H3.claim" and kids[1] == "P.sheet-status", kids
+        assert not any(k.startswith(("DIV.note", "P.note-")) for k in kids), kids
+        pg.csp_clean()
+        pg.close()
+
+
+
 def c_mutant(b):
     """R7 MUTANT: a copy of dom.js whose text path uses innerHTML. The hostile cells must go red."""
     def mut(text):
@@ -2097,6 +2270,11 @@ def main():
                 run("module: A6 a backtick span in a title is a code element on the face (inside the clamp) and in the breadcrumb, no backtick shown", c_backtick_title, eng)
                 run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
                 run("module: P6/F1 part, group and file told by bar position over s-none and s-census; swatches match; the selection ring gap is 3 px", c_look_override, eng)
+                run("note: N12/N14/N2 the sheet shows the label, the source line and the rendered note in order; the first heading is kept; a card without a note shows none", c_note_sheet, eng)
+                run("note: N9 a tap loads the step file and shows its note; the hostile note is visible text and only allowed elements", c_note_tap_and_hostile, eng)
+                run("note: N13 a map lacking a note key is the page's failure when a note step opens; a template with markup is text", c_note_strings, eng)
+                run("note: a failed step load on a tap leaves the open card untouched", c_note_load_failure, eng)
+                run("note: N11 the live map's sheet carries no note", c_note_live_unchanged, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:

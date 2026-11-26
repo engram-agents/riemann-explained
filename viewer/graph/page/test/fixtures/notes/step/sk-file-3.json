@@ -1,0 +1,23 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-3",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "File sk-file-3"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-3",
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "rests_on": []
+}

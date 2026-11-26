@@ -5,13 +5,16 @@ real/        a small build shaped like the contract's section 6 measurement: 23 
              2 top-level rests_on, 5 step-file rests_on, 7 parent_rests_on true. Plus the card markup (nested like the
              list page: a child's article sits inside its parent's details.children) and the shell's word table.
 refusals/    one tiny build per refusal.
+notes/       the skeleton map plus the two optional strings `note_label` and `note_source`, and a top-level `note` on two file steps:
+             sk-file-1 carries the REAL note of OneSidedBound.lean (a committed input, note-onesidedbound.txt, the text between the first
+             /-! and -/ verbatim) under a card title equal to the note's own first heading; sk-file-2 carries a hostile note. sk-file-3 has none.
 skeleton/    the map of a Lean repository's parts, groups and files (data v3: sibling_layout, open_scale_floor, link flags on one group, index_rows and spine_rows on two files): kinds part, group, file, each a table row with `words` (the key's label)
              and `card_words` (the sheet's one line), the group and file rows with `count_words` (the foot's one/many); state "none", proof "none", no role on every step; symbols.order lists only
              the rows that occur (kinds [part, group, file], states [], proofs []) while the tables keep every row.
 
 Test-only. Never shipped (lives under test/).
 """
-import importlib.util, json, os, shutil, html
+import copy, importlib.util, json, os, shutil, html
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -182,7 +185,7 @@ def build():
     return index, steps, kids, parent, num
 
 
-def build_skeleton():
+def build_skeleton(titles=None):
     ids = [t[0] for t in SK_TREE]
     parent = {t[0]: t[1] for t in SK_TREE}
     pro = {t[0]: t[2] for t in SK_TREE}
@@ -197,7 +200,7 @@ def build_skeleton():
         return out
 
     def title(i):
-        return SK_TITLES.get(i, kind[i].capitalize() + " " + i)
+        return (SK_TITLES if titles is None else titles).get(i, kind[i].capitalize() + " " + i)
 
     def card(i):
         # a part, group or file asserts nothing: state none, proof none, and no role; a card with children names their kind
@@ -225,6 +228,37 @@ def build_skeleton():
              "symbols": SYMBOLS_SKELETON, "assets": {}, "strings": SKELETON_STRINGS,
              "sibling_layout": "column", "open_scale_floor": 1,      # data v3 (sections 15 and 24): both optional, both absent on the live map
              "edge_basis": {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}}   # data v3 (section 25): `words` names the strings key the key's line paragraph prints
+    return index, steps, kids, title
+
+
+NOTE_LABEL = "From the repository, unchanged"
+NOTE_SOURCE = "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean"
+REAL_NOTE_FILE = os.path.join(HERE, "note-onesidedbound.txt")     # a committed static input: the inner text of the first /-! ... -/ block, verbatim
+REAL_NOTE_SOURCE = "grh/src/New/Reduction/OneSidedBound.lean"
+REAL_NOTE_TITLE = "The one-sided bound, and the theorem in half-plane form"     # the note's own first heading, so the card title equals it (N14)
+HOSTILE_NOTE = (
+    "# <script>alert(1)</script>\n\n"
+    "<img src=x onerror=1> &amp;lt; javascript:alert(1) [x](javascript:y) <b>bold</b>\n\n"
+    "* <script>alert(2)</script>\n"
+    "* `<img src=x onerror=2>`\n\n"
+    "3. javascript:void(0)\n"
+    "4. [y](javascript:z)\n\n"
+    "    <iframe src=javascript:alert(3)></iframe>\n\n"
+    "| <b>h</b> | `<i>` |\n|---|---|\n| <u> | &lt; |\n")
+
+
+def notes_build():
+    """The skeleton map with notes: (index, steps, kids, title)."""
+    with open(REAL_NOTE_FILE, encoding="utf-8", newline="") as f:
+        real = f.read()
+    assert real.startswith("\n# " + REAL_NOTE_TITLE + "\n") and "\r" not in real
+    titles = dict(SK_TITLES, **{"sk-file-1": REAL_NOTE_TITLE})
+    index, steps, kids, title = build_skeleton(titles)
+    index = copy.deepcopy(index)
+    index["strings"]["note_label"] = NOTE_LABEL
+    index["strings"]["note_source"] = NOTE_SOURCE
+    steps["sk-file-1"]["note"] = {"text": real, "source": REAL_NOTE_SOURCE}
+    steps["sk-file-2"]["note"] = {"text": HOSTILE_NOTE, "source": "grh/src/New/Hostile.lean"}
     return index, steps, kids, title
 
 
@@ -362,7 +396,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 
 def main():
-    for sub in ("real", "refusals", "skeleton"):
+    for sub in ("real", "refusals", "skeleton", "notes"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -378,6 +412,14 @@ def main():
     parts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, skids, stitle) for t in sindex["top"]] + ["</ul>"]
     open(os.path.join(HERE, "skeleton", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + parts) + "\n")
+
+    nindex, nsteps, nkids, ntitle = notes_build()
+    write_json(os.path.join(HERE, "notes", "index.json"), nindex)
+    for i, st in nsteps.items():
+        write_json(os.path.join(HERE, "notes", "step", i + ".json"), st)
+    nparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, nkids, ntitle) for t in nindex["top"]] + ["</ul>"]
+    open(os.path.join(HERE, "notes", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + nparts) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)
 

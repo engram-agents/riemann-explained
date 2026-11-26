@@ -1,0 +1,14 @@
+
+# The one-sided bound, and the theorem in half-plane form
+
+For admissible data at an integer `x`, the main inequality and the prime number theorem at a much
+larger cut-off `x₁` give the bound `R_{q₀}(x) ≤ x ^ (-1/2 + ε)` for large `x`; the one-sided
+criterion turns it into the non-vanishing of all Dirichlet `L`-functions in `re s > 1/2`.
+
+Notions from other files:
+* `Parameters`: a multiple `q₀ = P.q₀` of `18480` and a prime `d = P.d ≡ q₀ / 2 - 1` modulo `q₀`.
+* `primeRemainder d q x`: the remainder `R_q(x) = ∑_{n ≤ x} λ(n) (1/n - 1/x) - log x / φ(q) - c_q`.
+  Here `λ(n) = Λ(n) (1 - chiK d n)` for `n ≡ 1` modulo `q` and `0` otherwise, with `chiK d` the
+  Legendre symbol modulo `d`; for odd `d` prime to `q`, `c_q` is the constant with `R_q(x) → 0`.
+* `Data P`: admissible data, among them the scales `x`, `x₁`, `b`, `a = x b`, the number of lifts
+  `m` and two finite sets of places of a number field, `Φ_a = D.aPlaces` and `Φ_b = D.bPlaces`.

@@ -1,0 +1,27 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-1",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "The one-sided bound, and the theorem in half-plane form"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-1",
+ "note": {
+  "source": "grh/src/New/Reduction/OneSidedBound.lean",
+  "text": "\n# The one-sided bound, and the theorem in half-plane form\n\nFor admissible data at an integer `x`, the main inequality and the prime number theorem at a much\nlarger cut-off `x₁` give the bound `R_{q₀}(x) ≤ x ^ (-1/2 + ε)` for large `x`; the one-sided\ncriterion turns it into the non-vanishing of all Dirichlet `L`-functions in `re s > 1/2`.\n\nNotions from other files:\n* `Parameters`: a multiple `q₀ = P.q₀` of `18480` and a prime `d = P.d ≡ q₀ / 2 - 1` modulo `q₀`.\n* `primeRemainder d q x`: the remainder `R_q(x) = ∑_{n ≤ x} λ(n) (1/n - 1/x) - log x / φ(q) - c_q`.\n  Here `λ(n) = Λ(n) (1 - chiK d n)` for `n ≡ 1` modulo `q` and `0` otherwise, with `chiK d` the\n  Legendre symbol modulo `d`; for odd `d` prime to `q`, `c_q` is the constant with `R_q(x) → 0`.\n* `Data P`: admissible data, among them the scales `x`, `x₁`, `b`, `a = x b`, the number of lifts\n  `m` and two finite sets of places of a number field, `Φ_a = D.aPlaces` and `Φ_b = D.bPlaces`.\n"
+ },
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "rests_on": []
+}

@@ -1,0 +1,75 @@
+{
+ "card": {
+  "child_count": 3,
+  "child_kind": "file",
+  "id": "sk-group-a",
+  "kind": "group",
+  "path": [
+   "sk-part"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Group sk-group-a"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "sk-file-1",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "sk-part",
+    "sk-group-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "The one-sided bound, and the theorem in half-plane form"
+  },
+  {
+   "child_count": 0,
+   "id": "sk-file-2",
+   "kind": "file",
+   "parent_rests_on": true,
+   "path": [
+    "sk-part",
+    "sk-group-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File sk-file-2"
+  },
+  {
+   "child_count": 0,
+   "id": "sk-file-3",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "sk-part",
+    "sk-group-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File sk-file-3"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-group-a",
+ "path": [
+  "sk-part"
+ ],
+ "rests_on": [
+  {
+   "from": "sk-file-1",
+   "from_path": [
+    "sk-part",
+    "sk-group-a"
+   ],
+   "to": "sk-file-2",
+   "to_path": [
+    "sk-part",
+    "sk-group-a"
+   ]
+  }
+ ]
+}

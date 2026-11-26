@@ -11,7 +11,29 @@ const HOSTILE = [
 ];
 
 test("el: tag table is exactly the R1 list", () => {
-  assert.deepEqual([...dom.TAGS].sort(), ["button", "code", "div", "h2", "li", "nav", "ol", "p", "span", "ul"]);
+  assert.deepEqual([...dom.TAGS].sort(), ["button", "code", "div", "h2", "h3", "h4", "h5", "li", "nav", "ol", "p", "pre", "span", "table", "tbody", "td", "th", "thead", "tr", "ul"]);
+});
+
+test("el: the note renderer's tags are in the one table and nothing near them is (no a, img, em, strong, h1, h6, tfoot, caption, col, br, hr)", () => {
+  const el = dom.makeEl(makeFakeDoc());
+  for (const t of ["h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"]) assert.equal(el(t).tagName, t.toUpperCase(), t);
+  for (const bad of ["a", "img", "em", "strong", "b", "i", "h1", "h6", "tfoot", "caption", "col", "colgroup", "br", "hr", "blockquote", "TABLE", "Pre"])
+    assert.throws(() => el(bad), /tag/i, "tag " + bad);
+});
+
+test("el: `start` is allowed on <ol> ONLY, and only as a decimal integer string of 1 to 9 digits", () => {
+  const el = dom.makeEl(makeFakeDoc());
+  assert.equal(el("ol", { start: "1" }).attrs.start, "1");
+  assert.equal(el("ol", { start: "12" }).attrs.start, "12");
+  assert.equal(el("ol", { start: "0" }).attrs.start, "0");
+  assert.equal(el("ol", { start: "123456789" }).attrs.start, "123456789");
+  for (const bad of ["1a", "-1", "", "1234567890", " 1", "1 ", "+1", "1.5", "0x1", "\u0661", "1\n", "a"])
+    assert.throws(() => el("ol", { start: bad }), /start|attribute/i, "start " + JSON.stringify(bad));
+  assert.throws(() => el("ol", { start: 3 }), /start|attribute|string/i, "a number is not a string");
+  for (const t of ["ul", "li", "div", "p", "span", "code", "pre", "table", "tr", "td", "th", "h3", "button", "nav"])
+    assert.throws(() => el(t, { start: "1" }), /attribute/i, "start on " + t);
+  // the rest of the attribute table is unchanged on <ol>
+  assert.equal(el("ol", { class: "a-b", start: "2", "aria-label": "x" }).attrs.class, "a-b");
 });
 
 test("el: every allowed tag is created; every other tag THROWS", () => {
