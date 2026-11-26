@@ -4,16 +4,12 @@
 usage: assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR]
        assemble_grh_site.py --selftest [--only ID,ID]
 
-PHASE 2 (this file now): the cases were written BEFORE the behaviour (contract-first tests: phase 1 wrote A1 to A17, phase 2 began with A18 and M-j, red); `run` is the behaviour. The ten
-mutation controls (M-a .. M-j) are live checks: each applies one wrong change to a temporary copy of tools/ and runs the A-cases on the copy in a subprocess; the set of red cases must be
-exactly the set the control specifies.
-
-The tool will write, from the data of `build_grh_skeleton.py` (index.json, spine.json, uses.json, step/<id>.json; DATA holds nothing else), the graph assets of `build_site._graph_assets`,
+The tool writes, from the data of `build_grh_skeleton.py` (index.json, spine.json, uses.json, step/<id>.json; DATA holds nothing else), the graph assets of `build_site._graph_assets`,
 and a page made by `build_site._graph_page`, the tree below, FLAT (the page loads its data and scripts relative to its own address):
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
-build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. The contract is /Users/leishi/luria-desk/assembler-contract-DRAFT.md, clauses A1 to A18
-(one self-test case each) and the controls M-a to M-j.
+build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A19 (A7b and A11b included), one self-test case each (A7b is four, A19 two), and the
+mutation controls M-a to M-l, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
