@@ -726,14 +726,15 @@ A16_IMPORTS = ("importlib.util", "json", "os", "re", "sys")   # `import X`, unal
 A16_FROM = {"html.parser": ("HTMLParser",)}                    # `from M import N`, unaliased, for exactly these and no others
 A16_OS = ("listdir", "path")                                   # the attributes of `os` the tool uses today
 A16_OS_PATH = ("abspath", "dirname", "exists", "isdir", "islink", "join", "lexists")   # and of `os.path`
-A16_NAMES = ("eval", "exec", "compile", "__import__", "getattr", "setattr", "delattr", "vars", "globals", "locals")   # names that reach anything by a string, in any use
+A16_NAMES = ("eval", "exec", "compile", "__import__", "getattr", "setattr", "delattr", "vars", "globals", "locals", "open", "__builtins__")   # names that reach anything by a string, or write a file the tool does not name (it opens files only through `_read_in` and `_publish`), in any use
 A16_MODULES = ("os", "subprocess", "sys", "ctypes", "pickle", "runpy", "marshal", "importlib")   # the restricted modules: reached only as the plain names imported at the top, never as an attribute of another object
+A16_DUNDER = ("__dict__", "__globals__", "__builtins__", "__class__", "__subclasses__", "__code__")   # attribute names that walk from an object to the namespaces and classes around it, on any base
 A16_ATTRS = re.compile(r"system|popen|exec\w*|spawn\w*|posix_spawn\w*|fork\w*|Popen|check_output|check_call|getoutput|getstatusoutput")   # attribute names that run a program, on any base
 
 
 def _scan_source(src, loader="_load"):
     """The findings of the A16 allowlist over the Python text `src`: an import that is not one of A16_IMPORTS / A16_FROM (or is aliased), a use of a name of A16_NAMES, an attribute that runs
-    a program, an attribute of `os` or `os.path` the tool does not use, `importlib` used outside the function `loader`. [] means clean."""
+    a program or one of A16_DUNDER, an attribute of `os` or `os.path` the tool does not use, `importlib` used outside the function `loader`. [] means clean."""
     tree = ast.parse(src)
     inside = set()
     for n in ast.walk(tree):
@@ -754,6 +755,8 @@ def _scan_source(src, loader="_load"):
             if n.attr == "exec_module" and id(n) in inside:   # the one place a module of this folder is executed: `_load`, which loads the two builders
                 continue
             if A16_ATTRS.fullmatch(n.attr):
+                found.append(f"line {n.lineno}: attribute .{n.attr}")
+            elif n.attr in A16_DUNDER:
                 found.append(f"line {n.lineno}: attribute .{n.attr}")
             elif n.attr in A16_MODULES:
                 found.append(f"line {n.lineno}: module {n.attr} reached as an attribute")
