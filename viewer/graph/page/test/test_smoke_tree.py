@@ -956,8 +956,8 @@ SHEET_PAGE = ('<!doctype html><html><head><meta charset="utf-8"><title>sheet</ti
 def t37_open_check_accepts_a_markup_card_or_a_made_card(tmp):
     """F1: the sheet is open on <id> when its body holds the markup's `article#<id>`, OR a card the page MADE from the data (the body's single child is
     a `.card` whose `.claim` is the step's card title, backticks dropped, whitespace collapsed). A made card of another step, a single child that is not
-    a `.card`, two children, and an article of another id are each a FAIL. Run through open_check on hand-built sheet pages (the page base of this
-    branch does not make cards; the made-card tree case is T38)."""
+    a `.card`, two children, and an article of another id are each a FAIL. Run through open_check on hand-built sheet pages (the check in isolation;
+    the whole-tree made-card case is T38)."""
     import contextlib, io, smoke_tree as S
     from playwright.sync_api import sync_playwright
     title = "Title of `step` a1"
@@ -1000,8 +1000,8 @@ def t37_open_check_accepts_a_markup_card_or_a_made_card(tmp):
 
 
 def t38_made_card_tree_opens(tmp):
-    """F1: the real tree with its card block emptied (the About section kept) and a page that makes the card from the data: the part, the group and the
-    file open. On a page that cannot make the card (this branch's base) this is a named SKIP, never a pass."""
+    """F1: the real tree with its card block emptied (the About section kept): the page makes each card from the data, and the part, the group and the file
+    open. A made-card regression reads FAIL here (there is no skip: main's page makes cards)."""
     def about_only(cards):
         m = re.search(r'<section id="graph-about">.*?</section>', cards, re.S)
         assert m, "the fixture's About section"
@@ -1010,9 +1010,9 @@ def t38_made_card_tree_opens(tmp):
     html = open(os.path.join(out, "graph", "index.html"), encoding="utf-8").read()
     assert "<article" not in html and 'id="graph-about"' in html, "the card block is empty and About is kept"
     code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
-    if not lines(o, "PASS", "open-part"):
-        raise Skip("this branch's page does not make a card from the data (the made-card page change), so the emptied tree cannot open a sheet")
-    assert code == 0 and lines(o, "PASS", "open-group") and lines(o, "PASS", "open-file"), (code, o)
+    assert code == 0, (code, o)
+    for what in ("open-part", "open-group", "open-file"):
+        assert [l for l in lines(o, "PASS", what) if "1280x900" in l], (what, o)
 
 
 def t39_note_compared_on_what_survives_rendering(tmp):
@@ -1220,7 +1220,7 @@ CASES = [
     ("T35c V3c: a console error on the credits page fails", t35c_credits_console_error_fails),
     ("T36 V3c: no credits/ is a named skip, a fail with --require-credits", t36_credits_absent_is_a_named_skip_or_a_required_fail),
     ("T37 F1: the sheet is open on a markup card of the id or a made card of the title; anything else fails", t37_open_check_accepts_a_markup_card_or_a_made_card),
-    ("T38 F1: a tree with no card articles and a page that makes the card opens (a named skip where the page cannot)", t38_made_card_tree_opens),
+    ("T38 F1: a tree with no card articles opens its part, group and file on the cards the page makes from the data", t38_made_card_tree_opens),
     ("T39 F2: the note is compared on lowercase letters and digits, contained in the rendered body", t39_note_compared_on_what_survives_rendering),
     ("T40 F3a: the scale floor is read on the opened box and the PASS line says so", t40_scale_floor_reads_the_opened_box),
     ("T40b F3b: a deep-link-only measurement is not what the floor check reads", t40b_a_deep_link_only_measurement_is_not_what_the_check_reads),
