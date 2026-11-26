@@ -55,10 +55,12 @@ export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts",
   "link_refused", "parts_failed_notice", "key_kinds_heading", "key_states_heading"]);
 /* Strings keys the page reads when the builder supplies them and ignores otherwise (the live map has none): allowed in `strings`, never required.
    note_label and note_source are the words round the repository's note on a sheet; a step that carries a `note` needs both (`bad-note-strings`).
+   note_more_one and note_more_many are the words of the one line under a note that tells how many further module-doc blocks the file holds ({n} is
+   filled as text): a note whose `later_blocks` is above 0 needs both (`bad-note-strings`), one with 0 or none needs neither.
    The four TYPESET_STRINGS are the words of the maths-face view of a note (its label, the line under the source line, the two button labels); the page
    sets formulas in the maths face and draws the line and the button ONLY when all four are present, and otherwise renders the note as it always did. */
 export const TYPESET_STRINGS = Object.freeze(["note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button"]);
-export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source", ...TYPESET_STRINGS]);
+export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source", ...TYPESET_STRINGS, "note_more_one", "note_more_many"]);
 /* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
    `edge_basis.words` names. They are neither fixed nor optional: validateIndex adds them to the required set when edge_basis is there, and
    without it they are not read, so their presence is an extra-string (the page reads exactly what it draws). */
@@ -295,19 +297,26 @@ function closedOf(c, ctx, isChild, where) {
    text only); source is a repository-root-relative path of 1 to 300 characters from [A-Za-z0-9._/-], with no leading '/' and no '..' segment (it is
    shown as text, never as a link). `review` is reserved: the only value accepted now is exactly {state: "converter"} (that key set, that value);
    anything else is `bad-review` naming the step. The page draws nothing from it. The later field `converter_version` is not accepted yet.
+   `later_blocks` is optional: when present it is an integer >= 0 (the number of further module-doc blocks in the file after the first; a float, a
+   string, a boolean, null or a negative is `bad-later-blocks` naming the step), and a build without it is accepted as before. Any other key is `bad-note`.
    The page does not look at the step's kind. */
 const NOTE_SOURCE = /^[A-Za-z0-9._/-]{1,300}$/;
 function noteOf(v, ctx, stepId) {
   const bad = (why) => new DataError("bad-note", "step.note " + why);
-  if (!isObj(v) || !has(v, "text") || !has(v, "source") || Object.keys(v).some((k) => k !== "text" && k !== "source" && k !== "review"))
-    throw bad("is not {text, source} with at most a review");
+  if (!isObj(v) || !has(v, "text") || !has(v, "source") || Object.keys(v).some((k) => k !== "text" && k !== "source" && k !== "review" && k !== "later_blocks"))
+    throw bad("is not {text, source} with at most a review and a later_blocks");
   if (!isStr(v.text) || v.text.length < 1 || v.text.length > 65536) throw bad("has a text that is not a string of 1 to 65536 characters");
   if (!isStr(v.source) || !NOTE_SOURCE.test(v.source) || v.source.charAt(0) === "/" || v.source.split("/").includes("..")) throw bad("has a source that is not a repository-relative path");
   if (has(v, "review") && (!isObj(v.review) || Object.keys(v.review).length !== 1 || v.review.state !== "converter"))
     throw new DataError("bad-review", "step " + stepId + " has a note.review that is not exactly {state: converter}");
+  if (has(v, "later_blocks") && !(Number.isInteger(v.later_blocks) && v.later_blocks >= 0))
+    throw new DataError("bad-later-blocks", "step " + stepId + " has a note.later_blocks that is not an integer of 0 or more");
   const s = ctx.strings || {};
   if (!has(s, "note_label") || !has(s, "note_source")) throw new DataError("bad-note-strings", "a step carries a note but the index strings lack note_label or note_source");
+  if (has(v, "later_blocks") && v.later_blocks > 0 && (!has(s, "note_more_one") || !has(s, "note_more_many")))
+    throw new DataError("bad-note-strings", "step " + stepId + " has a note.later_blocks above 0 but the index strings lack note_more_one or note_more_many");
   const out = { text: v.text, source: v.source };
+  if (has(v, "later_blocks")) out.later_blocks = v.later_blocks;
   if (has(v, "review")) out.review = { state: "converter" };
   return out;
 }

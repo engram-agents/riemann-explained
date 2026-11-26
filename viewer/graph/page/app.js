@@ -185,7 +185,10 @@ export async function start(doc, deps) {
         currentListed: cardWord === undefined,
         ...(step === undefined ? {} : {
           note: step.note ? { label: strings.note_label, text: step.note.text, typeset: typesetWords,
-            sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null }),
+            sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }),
+            /* the later-blocks line: only for a note that says it has more (the data layer checked both words are there); {n} filled as text */
+            moreParts: step.note.later_blocks > 0
+              ? templateParts(strings[step.note.later_blocks === 1 ? "note_more_one" : "note_more_many"], { n: String(step.note.later_blocks) }) : null } : null }),
         crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
       });
       if (ok) { hush(); handle.select(id); }
