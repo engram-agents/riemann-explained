@@ -1879,7 +1879,8 @@ def _graph_strings_errors(strings, symbols=None, edge_basis=None):
 
     The edge basis (`edge_basis`, the index's own, None when it has none; it counts as present when it is an object with a string `words`) decides two of the optional
     keys, as the page reads them: with one, key_lines_heading and the key `words` names are required (`missing`) and judged like every key the page reads; without one
-    key_lines_heading and key_lines_text are refused (`is not a key the page reads without an edge basis`, after the unread lines). spine_lines_text is not conditional:
+    key_lines_heading and key_lines_text are refused (`is not a key the page reads without an edge basis`, after the unread lines); with one that names another key
+    than key_lines_text only the heading and that key are read, so a key_lines_text beside it is refused (`is not a key the page reads: the edge basis names <words>`). spine_lines_text is not conditional:
     the page learns it with the Graph view."""
     want = set(_graph_strings_keys(symbols))
     eb = isinstance(edge_basis, dict) and isinstance(edge_basis.get("words"), str)
@@ -1887,7 +1888,8 @@ def _graph_strings_errors(strings, symbols=None, edge_basis=None):
     judged = ((want | set(GRAPH_OPTIONAL_KEYS)) - set(GRAPH_EDGE_ONLY_KEYS) | edge) & set(strings)
     return ([("GRAPH-STRINGS", k, "missing") for k in sorted((want | edge) - set(strings))]
             + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want - set(GRAPH_OPTIONAL_KEYS))]
-            + [("GRAPH-STRINGS", k, "is not a key the page reads without an edge basis") for k in sorted(set(GRAPH_EDGE_ONLY_KEYS) & set(strings)) if not eb]
+            + [("GRAPH-STRINGS", k, "is not a key the page reads without an edge basis" if not eb else f"is not a key the page reads: the edge basis names {edge_basis['words']}")
+               for k in sorted((set(GRAPH_EDGE_ONLY_KEYS) - edge) & set(strings))]
             + [("GRAPH-STRINGS", k, "is not a string" if not isinstance(strings[k], str) else "is empty")
                for k in sorted(judged) if not isinstance(strings[k], str) or strings[k] == ""]
             + [("GRAPH-STRINGS", gone, f"missing: {have} is present and the two words come together")
@@ -14126,7 +14128,7 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", "key_lines_heading", "is not a string")], [("GRAPH-STRINGS", "key_lines_text", "is not a string")], [], [],
                     [no_eb("key_lines_heading")], [no_eb("key_lines_text")], [no_eb("key_lines_heading"), no_eb("key_lines_text")], [], [], [],
                     [("GRAPH-STRINGS", "key_lines_heading", "is empty")],
-                    stray, [], [("GRAPH-STRINGS", "spine_lines_text", "is empty")], [miss("key_lines_heading")], [miss("key_lines_heading")] + stray,
+                    stray, [], [("GRAPH-STRINGS", "spine_lines_text", "is empty")], [miss("key_lines_heading")], [miss("key_lines_heading")],   # the early missing check returns first: the stray key surfaces once the heading is there
                     [no_eb("key_lines_heading")], [no_eb("key_lines_text")], [], []))
 
     @case("PGV1", "the builder and the page agree: for each shape of strings the written index.json (the one the builder would write, with the shape's strings and edge_basis) is judged "
