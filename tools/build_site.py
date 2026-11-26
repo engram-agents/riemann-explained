@@ -1808,8 +1808,9 @@ def _graph_assets(src):
     """(errors, {path under graph/: bytes}, the bytes of shell.html or None) for the source directory `src`: every .js and .css file whose path has no `test`
     directory segment is an asset (sorted by path, the bytes as they are); shell.html at the root of `src` is read apart, it is not an asset (the page
     assembly of a later slice uses it, and the sink gate reads it). A directory that is absent holds nothing. Refused, each (GRAPH-ASSET, path, reason): a
-    symlink anywhere (file or directory, test/ included: `symlink`), a path that does not match GRAPH_ASSET_NAME or holds `..` (`name`), an .html file other
-    than shell.html at the root and outside test/ (`html`), a file of more than GRAPH_ASSET_MAX bytes (`size`) or that is not UTF-8 (`encoding`). Errors are
+    symlink anywhere (file or directory, test/ included: `symlink`), a path that does not match GRAPH_ASSET_NAME or holds `..` (`name`), a path with a folder
+    the scanner skips without a word (its SKIP_DIRS but `test`: `skipped-dir`), a .js or .css (or the root shell.html) that is not a regular file (`not-regular`),
+    an .html file other than shell.html at the root and outside test/ (`html`), a file of more than GRAPH_ASSET_MAX bytes (`size`) or that is not UTF-8 (`encoding`). Errors are
     listed in path order; a file with one refusal is not read for another."""
     errors, assets, shell = [], {}, None
     if not os.path.isdir(src):
@@ -1831,13 +1832,19 @@ def _graph_assets(src):
             elif "test" in rel.split("/")[:-1]:
                 continue
             elif n.lower().endswith(".html"):
-                if rel == "shell.html":
+                if rel != "shell.html":
+                    errors.append(("GRAPH-ASSET", rel, "html"))
+                elif not os.path.isfile(full):   # a FIFO or a device is never opened: opening one can block for ever
+                    errors.append(("GRAPH-ASSET", rel, "not-regular"))
+                else:
                     with open(full, "rb") as f:
                         shell = f.read()
-                else:
-                    errors.append(("GRAPH-ASSET", rel, "html"))
             elif not n.endswith((".js", ".css")):
                 continue
+            elif set(rel.split("/")[:-1]) & (set(gjc.SKIP_DIRS) - {"test"}):   # the scanner prunes these folders without a word, so a file in one would ship unread
+                errors.append(("GRAPH-ASSET", rel, "skipped-dir"))
+            elif not os.path.isfile(full):
+                errors.append(("GRAPH-ASSET", rel, "not-regular"))
             elif ".." in rel or not GRAPH_ASSET_NAME.fullmatch(rel):
                 errors.append(("GRAPH-ASSET", rel, "name"))
             elif os.path.getsize(full) > GRAPH_ASSET_MAX:
@@ -1859,17 +1866,26 @@ def _graph_sink_errors(assets, shell, scanner=None):
     forbidden sinks, this file keeps none) run over the assembled tree: the assets, and shell.html under its own name when there is one, written into a
     temporary directory laid out as OUT_DIR/graph (removed afterwards). Nothing is called when there are no assets (the scanner answers 1 for a tree with
     nothing in it, which is not a refusal here). Any answer but 0 refuses: one error per REFUSED line, and when the scanner refused without one (it checked
-    nothing, or printed nothing) one error with the last line it printed. `scanner` is for the cases (a stand-in with a `run(dir, out)`); the build passes none."""
+    nothing, or printed nothing) one error with the last line it printed. Before the run the scanner's own quiet self-test must pass (`GRAPH-SINK graph scanner
+    self-test failed` otherwise, and the run is not made); after a run that answers 0 the number of files it says it checked must be the number it was given
+    (the assets plus shell.html): a scanner that skips a file passes a tree it did not read, so a different count is `GRAPH-SINK graph scanner checked N files
+    but M were assets` (M is the number of files in the tree, shell.html included). `scanner` is for the cases (a stand-in with `selftest_quiet()` and
+    `run(dir, out)`); the build passes none."""
     if not assets:
         return []
     scanner = gjc if scanner is None else scanner
+    if scanner.selftest_quiet() != 0:
+        return [("GRAPH-SINK", "graph", "scanner self-test failed")]
+    given = len(assets) + (0 if shell is None else 1)
     with tempfile.TemporaryDirectory() as tmp:
         g = os.path.join(tmp, "graph")
         _write_files(g, dict(assets, **({} if shell is None else {"shell.html": shell})))
         out = io.StringIO()
         rc = scanner.run(g, out)
     if rc == 0:
-        return []
+        said = re.search(r"^(\d+) files checked", out.getvalue(), re.M)
+        n = int(said.group(1)) if said else 0
+        return [] if n == given else [("GRAPH-SINK", "graph", f"scanner checked {n} files but {given} were assets")]
     lines = out.getvalue().splitlines()
     refused = [ln for ln in lines if ln.startswith("REFUSED ")]
     return [("GRAPH-SINK", "graph", ln) for ln in (refused or [next((ln for ln in reversed(lines) if ln.strip()), "the scanner exited non-zero and printed nothing")])]
@@ -3275,6 +3291,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         raise _Unreadable(f"SRC_ROOT is not a directory: {source_check}")
     if os.path.exists(out) and not os.path.isdir(out):
         raise _Unreadable(f"OUT_DIR is not a directory: {out}")
+    if graph_src is not None and not os.path.isdir(graph_src):   # a folder the caller NAMED must be there; the default one may be absent
+        raise _Unreadable(f"--graph-src is not a directory: {graph_src}")
     sj = _read_json(strings, "strings file")
     if os.path.isdir(out) and os.listdir(out) and not force:
         return _refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files; a fresh build would mix two builds; "
@@ -3403,7 +3421,9 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     for ln in count_lines:
         print(ln)
     print(f"titles: {sum(1 for _g_, has in census if has)} of {len(census)} cards that need one")
-    print(f"graph assets: {len(a_files)} files, {sum(len(v) for v in a_files.values())} bytes" if a_files else GRAPH_NO_ASSETS_LINE)
+    src_used = GRAPH_SRC if graph_src is None else graph_src
+    print(f"graph assets: {len(a_files)} files, {sum(len(v) for v in a_files.values())} bytes" if a_files
+          else (GRAPH_NO_ASSETS_LINE if not os.path.isdir(src_used) else f"graph assets: none (no .js or .css file under {src_used})"))
     for ln in formula_listing(flog):   # a formula outside the subset stays as written, an unpaired dollar sign stays literal: listed, never refused
         print(ln)
     for ln in candidate_lines(cands) + code_lines(spans):   # S2, S3: what the surface still holds that looks like a formula, and its code spans: listed
