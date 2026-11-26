@@ -10,17 +10,22 @@
                         runs close()
      claim-clamped      on the sheet body while the claim is clamped to 10 lines (graph.css)
      sheet-status, sheet-tool, crumbs, crumb, crumb-here, crumb-role   chrome this module creates
+     note-label, note-source, note-body   the repository's note, only when the card has one (info.note), directly after the status line
+     note-typeset-line, note-toggle   only when the page says the maths face is on (info.note.typeset): the line under the source line (told only of
+                        the maths-type view) and the button that swaps the rendering for the exact text and back (aria-pressed true = exact text);
+                        note-exact on the body while the exact text is shown. A card shown again always starts on the rendering.
 
    CLOSING: every way the sheet closes goes through close(), the ONE close function. It first dispatches a cancelable
    `sheetclose` event on the thing shown; if a listener cancels it, the sheet stays open and nothing moves. A
    bubbling `sheetcloserequest` from inside the sheet runs the same close(). */
 import { el, titleChildren } from "./dom.js";
+import { renderNote, exactNote } from "./note.js";
 
 export function createSheet(parts, strings, hooks, signal) {
   const { root, crumbs, tools, body, closeButton } = parts;
   const doc = root.ownerDocument;
   const win = doc.defaultView;
-  let cur = null;   // { node, home, details: [{d, open}], status, id (a card), parts, partsOpen }
+  let cur = null;   // { node, home, details: [{d, open}], status, noteEls, id (a card), parts, partsOpen }
 
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
@@ -31,6 +36,7 @@ export function createSheet(parts, strings, hooks, signal) {
   /* The restore half of close(): everything moved or added goes back, so the page's markup is as it was. */
   function release(rec) {
     if (rec.status && rec.status.parentNode) rec.status.parentNode.removeChild(rec.status);
+    for (const x of rec.noteEls || []) if (x.parentNode) x.parentNode.removeChild(x);
     restoreDetails(rec);
     if (rec.home) {
       if (rec.home.parentNode) {
@@ -103,6 +109,42 @@ export function createSheet(parts, strings, hooks, signal) {
       rec.status = el("p", { class: "sheet-status" }, [info.status]);
       if (claim && claim.parentNode) claim.parentNode.insertBefore(rec.status, claim.nextSibling);
       else article.insertBefore(rec.status, article.firstChild);
+    }
+    /* The repository's note, when the card has one: the label, the source line (text only, never a link), then the note rendered by note.js. They go
+       directly after the status line (after the claim when there is none), and the restore half of close takes them out again. */
+    if (info.note) {
+      const n = info.note, t = n.typeset || null;
+      const label = el("p", { class: "note-label" }, [t ? t.label : n.label]);
+      const source = el("p", { class: "note-source" }, n.sourceParts);
+      const noteBody = el("div", { class: "note-body" }, []);
+      noteBody.appendChild(renderNote(n.text, el, !!t));
+      const kids = [label, source];
+      if (t) {
+        /* The maths-face view: the line and the button, and one function that sets everything the two views differ in. */
+        const line = el("p", { class: "note-typeset-line" }, [t.line]);
+        const toggle = el("button", { type: "button", class: "note-toggle", "aria-pressed": "false" }, [t.exactButton]);
+        let exact = false;
+        const setView = (showExact) => {
+          exact = showExact;
+          clear(label); label.appendChild(doc.createTextNode(exact ? n.label : t.label));
+          clear(noteBody);
+          noteBody.appendChild(exact ? exactNote(n.text, el) : renderNote(n.text, el, true));
+          noteBody.classList.toggle("note-exact", exact);
+          clear(toggle); toggle.appendChild(doc.createTextNode(exact ? t.renderButton : t.exactButton));
+          toggle.setAttribute("aria-pressed", exact ? "true" : "false");
+          if (exact && line.parentNode) line.parentNode.removeChild(line);
+          else if (!exact && !line.parentNode && source.parentNode) source.parentNode.insertBefore(line, source.nextSibling);
+        };
+        toggle.addEventListener("click", () => setView(!exact), { signal });
+        kids.push(line, toggle);
+      }
+      kids.push(noteBody);
+      rec.noteEls = kids;
+      const first = article.firstChild;
+      let tail = rec.status || (claim && claim.parentNode ? claim : null);
+      for (const k of kids) {
+        if (tail) { tail.parentNode.insertBefore(k, tail.nextSibling); tail = k; } else article.insertBefore(k, first);
+      }
     }
     clear(tools);
     if (info.canParts) {

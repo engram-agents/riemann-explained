@@ -1,0 +1,27 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-2",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "File sk-file-2"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-2",
+ "note": {
+  "source": "grh/src/New/Hostile.lean",
+  "text": "# <script>alert(1)</script>\n\n<img src=x onerror=1> &amp;lt; javascript:alert(1) [x](javascript:y) <b>bold</b>\n\n* <script>alert(2)</script>\n* `<img src=x onerror=2>`\n\n3. javascript:void(0)\n4. [y](javascript:z)\n\n    <iframe src=javascript:alert(3)></iframe>\n\n| <b>h</b> | `<i>` |\n|---|---|\n| <u> | &lt; |\n"
+ },
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "rests_on": []
+}

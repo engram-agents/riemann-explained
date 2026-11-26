@@ -1,0 +1,40 @@
+
+# The polynomial map ζ, the datum Ψ^add and the series Υ; norm, degree and denominator of ζ
+
+Fix admissible data `D`, a tame character `ϑ` and an index `1 ≤ j ≤ m`. Write `E^n` for the standard
+definite space of rank `n`, V″ for the one on `New.Data.FirstFactorIndex` and
+W^add = E^{3m−j} ⊕ W♭ ⊕ E^{3m} for the one on `New.Data.AddedIndex`. Throughout, k = `D.k`,
+m = `D.m`, M = `D.M`, and W_j is the space on `D.RowIndex` with r₊ = `D.posRank j` = k + j − 1 plus
+signs. This file defines the constant rows 𝖼, the datum Ψ^add and the series Υ, which is built from
+theta kernels of definite spaces. It also defines the polynomial map ζ to the Weyl module of μ⁺ with
+P_V = P_{ζ(z)}(X). Here P_V has one determinant det(𝖼; X z) for each column of μ⁺, with variables X
+in the positive basis vectors of W_j and variables z in W^add. This file bounds the norm, the degree
+and the denominator of ζ.
+
+## Main definitions and results
+
+* `New.HasWeightNormSqLe`, `New.HasWeightNormSqLeIf`: "F has weight κ and squared norm at most b",
+  outright or under a condition. Under finite products the weights add and the bounds multiply.
+* `New.Data.constantRows`, `New.Data.stackedDetProdCoords`: the matrices 𝖼 of 2m constant rows, one
+  for each column of μ⁺ at each infinite place (`New.Data.DetIndex`), and the coordinates of ζ.
+* `New.Data.addedDatum`, `New.Data.leftSideSeries`: the datum Ψ^add on W^add and the series Υ.
+* `New.Data.toPoly_stackedDetProdCoords`, `New.Data.weylNormSq_comp_eval_stackedDetProdCoords_le`:
+  P_V is the polynomial of ζ, and when the entries of Y and the values of z are small, the squared
+  norm of ζ(z) is bounded.
+* `New.Data.exists_isHomogeneousOverEntries_smul_stackedDetProdCoords`: ζ is homogeneous of one
+  degree `d`, and one integer `H ≤ (d ^ d) ^ 3` clears its denominators.
+
+Notions from other files:
+* `New.toPoly`, `New.weylNormSq`: the polynomial of a coordinate vector of weight κ, and the squared
+  norm of the vector for the Gram matrix of κ. Here `κ τ h` counts the columns of height `h` at `τ`.
+* `New.Data.DetIndex`: the columns of μ⁺ at the place τ. The number of those of height h < r₊ is
+  `(untwistedDescentPair j).colsPlus τ h`, and Δ′ = `D.reducedHalfGap` have height r₊.
+* `New.Data.FirstFactorIndex`: the indices of W_j, (E^j)⁻, E^{3m−j} and W♭ = E^{6m+1}.
+* `New.Data.ChoiceIndex`: the choices, each a matrix Λ modulo ϖ² with a class h♭ of U(W♭) and rows
+  for the columns of height r₊ (`New.Data.RowChoice`).
+* `New.Data.TameChar`, `New.Data.twistModulus`: a character `ϑ` of U(1)(𝔸) of weight 0 with tame
+  part on a finite set Q = `ϑ.Q` of places, and the moduli ϖ^c Q.
+
+## Relation to the literature
+
+See `New.OneLift.ComparisonOperator.FirstFactors` for related work.

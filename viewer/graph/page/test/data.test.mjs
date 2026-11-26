@@ -382,7 +382,7 @@ test("P2/A2/F2 skeleton: the strings set is EXACTLY the fixed list, the words of
   const need = requiredStrings(v.symbols);
   assert.equal(need.length, 27);
   assert.deepEqual([...need].sort(), [...FIXED_STRINGS, ...rows, ...cards, ...counts].sort());
-  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note", "key_scope_text"]);
+  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note", "key_scope_text", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button"]);
   /* the edge basis (PR 98 round 2): key_lines_heading and the strings key edge_basis.words (key_lines_text) are read because edge_basis is present */
   assert.deepEqual(Object.keys(idx.strings).sort(), [...need, "key_kinds_note", "key_scope_text", "key_lines_heading", "key_lines_text"].sort());
   const extra = clone(idx);
@@ -762,4 +762,143 @@ test("S5: the sheet's proof class comes from a page-owned table keyed exactly li
   assert.deepEqual(Object.keys(SHEET_PROOF_CLASS), Object.keys(PROOF_CLASS));
   assert.deepEqual(Object.entries(SHEET_PROOF_CLASS).filter(([, v]) => v !== ""), [["none", "sheet-proof-none"]]);
   assert.ok(Object.isFrozen(SHEET_PROOF_CLASS));
+});
+
+
+/* ---------------------------------------------------------------------------------------------------------------------------------
+   The repository's note on a file step (contract: `note` {text, source} at the top level of graph/step/<id>.json).
+   Fixture: fixtures/notes (the skeleton map + note_label + note_source; sk-file-1 and sk-file-2 carry a note, sk-file-3 does not). */
+const noteIndex = () => JSON.parse(readFileSync(path.join(FIX, "notes", "index.json"), "utf8"));
+const noteStep = (id) => JSON.parse(readFileSync(path.join(FIX, "notes", "step", id + ".json"), "utf8"));
+const noteCtx = () => validateIndex(noteIndex());
+const withNote = (n) => { const s = noteStep("sk-file-1"); s.note = n; return s; };
+const isErr = (code) => (e) => e instanceof DataError && e.code === code;
+
+test("N13 strings: the live map's strings (neither note key) validate exactly as before; the skeleton's too; a map with both keys validates", () => {
+  const live = validateIndex(realIndex());
+  assert.ok(!("note_label" in live.strings) && !("note_source" in live.strings));
+  validateIndex(skIndex());
+  const v = noteCtx();
+  assert.equal(v.strings.note_label, "From the repository, unchanged");
+  assert.equal(v.strings.note_source, "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean");
+  assert.deepEqual([...OPTIONAL_STRINGS].sort(), ["key_kinds_note", "key_scope_text", "note_exact_button", "note_label", "note_label_typeset", "note_render_button", "note_source", "note_typeset_line"],
+    "one definition: the page's optional keys are exactly these (key_kinds_note, key_scope_text, the two note keys, the four maths-face keys)");
+});
+
+test("N13 strings: the note keys are optional as a pair (one alone is H1); an empty one is refused; any OTHER extra key is still refused", () => {
+  { const i = noteIndex(); delete i.strings.note_label; delete i.strings.note_source; validateIndex(i); }
+  for (const k of ["note_label", "note_source"]) {
+    const i = noteIndex(); i.strings[k] = "";
+    assert.throws(() => validateIndex(i), (e) => isErr("empty-string")(e) && e.message.includes(k), k);
+    const j = noteIndex(); j.strings[k] = 5;
+    assert.throws(() => validateIndex(j), isErr("bad-type"), k + " not a string");
+  }
+  for (const extra of ["note_title", "note_labels", "note", "note_source2", "key_kinds_notes", "bonus"]) {
+    const i = noteIndex(); i.strings[extra] = "x";
+    assert.throws(() => validateIndex(i), (e) => isErr("extra-string")(e) && e.message.includes(extra), extra);
+  }
+});
+
+test("N10 a step without `note` validates as before and carries no note key; with one, the step carries {text, source, commit}", () => {
+  const ctx = noteCtx();
+  const plain = validateStep(noteStep("sk-file-3"), ctx);
+  assert.ok(!("note" in plain));
+  assert.deepEqual(Object.keys(plain).sort(), ["card", "children", "id", "path", "rests_on"]);
+  const withIt = validateStep(noteStep("sk-file-1"), ctx);
+  assert.deepEqual(Object.keys(withIt.note).sort(), ["commit", "source", "text"]);
+  assert.equal(withIt.note.source, "grh/src/New/Reduction/OneSidedBound.lean");
+  assert.equal(withIt.note.commit, ctx.commit);
+  assert.ok(withIt.note.text.startsWith("\n# The one-sided bound"));
+  assert.equal(validateStep(noteStep("sk-file-2"), ctx).note.source, "grh/src/New/Hostile.lean");
+  // the page does not look at the step's kind: a note on a part validates the same way
+  const part = JSON.parse(readFileSync(path.join(FIX, "notes", "step", "sk-part.json"), "utf8"));
+  part.note = { text: "x", source: "a.lean" };
+  assert.equal(validateStep(part, ctx).note.text, "x");
+});
+
+test("N10 refusals: a note that is not an object, has an extra or a missing key, an empty or over-long text, or a source outside [A-Za-z0-9._/-] is `bad-note`", () => {
+  const ctx = noteCtx();
+  const ok = { text: "# T\n\nbody", source: "grh/src/New/A.lean" };
+  const bad = (what, n) => assert.throws(() => validateStep(withNote(n), ctx), isErr("bad-note"), what);
+  bad("a string", "text"); bad("an array", [ok.text, ok.source]); bad("null", null); bad("a number", 5); bad("a boolean", true);
+  bad("an empty object", {});
+  bad("an extra key", { ...ok, extra: "x" });
+  bad("an extra key that looks harmless", { ...ok, commit: "0123456789" });
+  bad("no source", { text: ok.text });
+  bad("no text", { source: ok.source });
+  bad("empty text", { text: "", source: ok.source });
+  bad("text not a string", { text: 5, source: ok.source });
+  bad("text of 65537 chars", { text: "x".repeat(65537), source: ok.source });
+  bad("empty source", { text: ok.text, source: "" });
+  bad("source not a string", { text: ok.text, source: ["a"] });
+  bad("source with a '..' segment", { text: ok.text, source: "grh/../x.lean" });
+  bad("source that is '..'", { text: ok.text, source: ".." });
+  bad("source ending in '/..'", { text: ok.text, source: "grh/src/.." });
+  bad("source starting '../'", { text: ok.text, source: "../grh/x.lean" });
+  bad("source with a leading '/'", { text: ok.text, source: "/grh/src/A.lean" });
+  bad("source with a space", { text: ok.text, source: "grh/src/A B.lean" });
+  bad("source with a tab", { text: ok.text, source: "grh/src/A\t.lean" });
+  bad("source with a newline", { text: ok.text, source: "grh/src/A.lean\n" });
+  bad("source with a backslash", { text: ok.text, source: "grh\\src\\A.lean" });
+  bad("source with a colon (a scheme)", { text: ok.text, source: "javascript:alert(1)" });
+  bad("source with '<'", { text: ok.text, source: "grh/<b>.lean" });
+  bad("source with a non-ASCII letter", { text: ok.text, source: "grh/\u00e9.lean" });
+  bad("a 301-character source", { text: ok.text, source: "a".repeat(301) });
+  // and the edges that ARE fine
+  validateStep(withNote({ text: "x", source: "a" }), ctx);
+  validateStep(withNote({ text: "x".repeat(65536), source: "a".repeat(300) }), ctx);
+  validateStep(withNote({ text: "\u03bb(n) \u2264 \u039b(n) <script>", source: "grh/src/New/A.b-c_d.lean" }), ctx);
+  validateStep(withNote({ text: "x", source: "a..b/c" }), ctx);     // '..' is refused as a SEGMENT, not as a substring
+});
+
+for (const [name, drop] of [["note_source alone", "note_label"], ["note_label alone", "note_source"]]) {
+  test("H1 validateIndex refuses a strings set holding " + name + " (`bad-note-strings`, both or neither)", () => {
+    const idx = noteIndex(); delete idx.strings[drop];
+    assert.throws(() => validateIndex(idx), (e) => e.code === "bad-note-strings" && /both or neither/.test(e.message), name);
+  });
+}
+
+test("H1 validateIndex accepts a strings set holding both note keys, and one holding neither", () => {
+  validateIndex(noteIndex());
+  const none = noteIndex(); delete none.strings.note_label; delete none.strings.note_source;
+  validateIndex(none);
+});
+
+test("N13 a step carrying `note` on a map lacking either note key is `bad-note-strings`; a step without one never is", () => {
+  for (const drop of [["note_label", "note_source"]]) {   // one key alone is refused at the index (H1 below); only a map with neither reaches the step check
+    const idx = noteIndex(); for (const k of drop) delete idx.strings[k];
+    const ctx = validateIndex(idx);
+    assert.throws(() => validateStep(noteStep("sk-file-1"), ctx), (e) => isErr("bad-note-strings")(e), drop.join("+"));
+    validateStep(noteStep("sk-file-3"), ctx);
+  }
+  // the shape is checked first: a malformed note on a map that lacks the keys is `bad-note`
+  const idx = noteIndex(); delete idx.strings.note_label; delete idx.strings.note_source;
+  assert.throws(() => validateStep(withNote("x"), validateIndex(idx)), isErr("bad-note"));
+});
+
+test("N13 through createData: loadStep of a note step on a map lacking the note keys rejects with `bad-note-strings`, and nothing partial is cached as good", async () => {
+  const idx = noteIndex(); delete idx.strings.note_source; delete idx.strings.note_label;
+  const f = dirFetch(path.join(FIX, "notes"), { "index.json": { ok: true, status: 200, json: async () => idx } });
+  const d = createData(f);
+  await assert.rejects(() => d.loadStep("sk-file-1"), isErr("bad-note-strings"));
+  await assert.rejects(() => d.loadStep("sk-file-1"), isErr("bad-note-strings"));
+  assert.equal((await d.loadStep("sk-file-3")).id, "sk-file-3");
+  assert.equal(d.meta("sk-file-1"), undefined, "a refused step is not noted");
+  const ok = createData(dirFetch(path.join(FIX, "notes")));
+  const v = await ok.loadStep("sk-file-1");
+  assert.equal(v.note.source, "grh/src/New/Reduction/OneSidedBound.lean");
+});
+
+test("N11 the live real fixture: no step carries a `note`, and no step file differs in shape (the live map is unchanged)", async () => {
+  const dir = path.join(FIX, "real", "step");
+  let n = 0;
+  for (const f of readdirSync(dir)) {
+    const raw = JSON.parse(readFileSync(path.join(dir, f), "utf8"));
+    assert.ok(!("note" in raw), f);
+    n++;
+  }
+  assert.equal(n, 23);
+  const d = createData(real());
+  await d.loadIndex();
+  for (const f of readdirSync(dir)) assert.ok(!("note" in (await d.loadStep(f.slice(0, -5)))), f);
 });

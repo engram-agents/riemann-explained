@@ -1,0 +1,30 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-3",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "The polynomial map ζ, the datum Ψ^add and the series Υ; norm, degree and denominator of ζ"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-3",
+ "note": {
+  "review": {
+   "state": "converter"
+  },
+  "source": "grh/src/New/OneLift/ComparisonOperator/LineCoordinates.lean",
+  "text": "\n# The polynomial map ζ, the datum Ψ^add and the series Υ; norm, degree and denominator of ζ\n\nFix admissible data `D`, a tame character `ϑ` and an index `1 ≤ j ≤ m`. Write `E^n` for the standard\ndefinite space of rank `n`, V″ for the one on `New.Data.FirstFactorIndex` and\nW^add = E^{3m−j} ⊕ W♭ ⊕ E^{3m} for the one on `New.Data.AddedIndex`. Throughout, k = `D.k`,\nm = `D.m`, M = `D.M`, and W_j is the space on `D.RowIndex` with r₊ = `D.posRank j` = k + j − 1 plus\nsigns. This file defines the constant rows 𝖼, the datum Ψ^add and the series Υ, which is built from\ntheta kernels of definite spaces. It also defines the polynomial map ζ to the Weyl module of μ⁺ with\nP_V = P_{ζ(z)}(X). Here P_V has one determinant det(𝖼; X z) for each column of μ⁺, with variables X\nin the positive basis vectors of W_j and variables z in W^add. This file bounds the norm, the degree\nand the denominator of ζ.\n\n## Main definitions and results\n\n* `New.HasWeightNormSqLe`, `New.HasWeightNormSqLeIf`: \"F has weight κ and squared norm at most b\",\n  outright or under a condition. Under finite products the weights add and the bounds multiply.\n* `New.Data.constantRows`, `New.Data.stackedDetProdCoords`: the matrices 𝖼 of 2m constant rows, one\n  for each column of μ⁺ at each infinite place (`New.Data.DetIndex`), and the coordinates of ζ.\n* `New.Data.addedDatum`, `New.Data.leftSideSeries`: the datum Ψ^add on W^add and the series Υ.\n* `New.Data.toPoly_stackedDetProdCoords`, `New.Data.weylNormSq_comp_eval_stackedDetProdCoords_le`:\n  P_V is the polynomial of ζ, and when the entries of Y and the values of z are small, the squared\n  norm of ζ(z) is bounded.\n* `New.Data.exists_isHomogeneousOverEntries_smul_stackedDetProdCoords`: ζ is homogeneous of one\n  degree `d`, and one integer `H ≤ (d ^ d) ^ 3` clears its denominators.\n\nNotions from other files:\n* `New.toPoly`, `New.weylNormSq`: the polynomial of a coordinate vector of weight κ, and the squared\n  norm of the vector for the Gram matrix of κ. Here `κ τ h` counts the columns of height `h` at `τ`.\n* `New.Data.DetIndex`: the columns of μ⁺ at the place τ. The number of those of height h < r₊ is\n  `(untwistedDescentPair j).colsPlus τ h`, and Δ′ = `D.reducedHalfGap` have height r₊.\n* `New.Data.FirstFactorIndex`: the indices of W_j, (E^j)⁻, E^{3m−j} and W♭ = E^{6m+1}.\n* `New.Data.ChoiceIndex`: the choices, each a matrix Λ modulo ϖ² with a class h♭ of U(W♭) and rows\n  for the columns of height r₊ (`New.Data.RowChoice`).\n* `New.Data.TameChar`, `New.Data.twistModulus`: a character `ϑ` of U(1)(𝔸) of weight 0 with tame\n  part on a finite set Q = `ϑ.Q` of places, and the moduli ϖ^c Q.\n\n## Relation to the literature\n\nSee `New.OneLift.ComparisonOperator.FirstFactors` for related work.\n"
+ },
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "rests_on": []
+}
