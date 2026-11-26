@@ -136,7 +136,11 @@ A node whose children were refused stays closed and says so (class `ge-refused`)
 ## What the engine does
 
 - Layout of one opened node from its own children: rows by dependency depth among siblings (a node sits below every
-  sibling that rests on it). Opening a node re-measures it and its ancestors only.
+  sibling that rests on it). Siblings with a link to or from another sibling are laid out in those rows; a set with no
+  such link at all is a column in the data's order, centred, and the unlinked siblings of a mixed set follow the rows as a
+  column. A premise naming the node itself or an id outside the set is not a link. Nothing is drawn between column
+  members, and only the top member of a column is a first-row child (it alone gets a stem from its parent).
+  Opening a node re-measures it and its ancestors only.
 - Camera: pan, zoom about a point, fit; pointer and touch (two pointers pinch), wheel, and keys on the focused stage (arrows,
   plus and minus, 0 to fit). The stage has `touch-action: none`.
 - Semantic zoom: after a user zoom, the deepest closed node under the focus opens when it is at least `semantic.openPx`

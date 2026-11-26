@@ -1,4 +1,15 @@
-// Layout of an open node from its OWN children: rows by dependency depth among siblings. Pure: no DOM.
+// Layout of an open node from its OWN children. Pure: no DOM.
+//
+// SIBLING SET = the `children` array of one open node, or the root's top list, in ARRAY ORDER (the data's order).
+// A LINK between siblings a and b exists when b.premises contains a.id or a.premises contains b.id, with a !== b.
+// A premise naming the node itself, or an id that is not in this sibling set, is NOT a link.
+// LINKED = siblings with at least one link. LOOSE = the others.
+//   - a set with no link at all is a COLUMN in array order, each sibling centred on the column axis; nothing is
+//     drawn between them (a drawn link means "rests on" and nothing else);
+//   - a set where every sibling is linked is laid out in ROWS by dependency depth, as before;
+//   - a MIXED set: the linked siblings are laid out in rows among themselves alone, and the loose ones follow below
+//     as a column in array order; the block and the column are both centred on the set's width.
+// A column member's `layer` is its row index (the linked block's rows come first), so only the top one is a first-row child.
 // Ported from the prototype's core.js (place / measure / position), with two differences: a node's measured size
 // is kept (`clean`), so opening one node re-measures it and its ancestors only; and the sizes are options.
 //
@@ -38,9 +49,8 @@ export function layoutTree(root, S) {
     n.clean = true;
   }
 
-  function place(kids) {
-    if (!kids.length) return { w: 0, h: 0 };
-    kids.forEach(measure);
+  /* The rows of a set of LINKED siblings: today's algorithm (fd42c540), unchanged. Sets rx (left edge at 0), ry, layer. */
+  function rowsBlock(kids) {
     layers(kids);
     const rows = [];
     for (const k of kids) (rows[k.layer] = rows[k.layer] || []).push(k);
@@ -71,7 +81,26 @@ export function layoutTree(root, S) {
       y += rowH + S.gapY;
     });
     for (const k of kids) k.rx -= minX;
-    return { w: maxX - minX, h: y - S.gapY };
+    return { w: maxX - minX, h: y - S.gapY, rows: rows.length };
+  }
+
+  function place(kids) {
+    if (!kids.length) return { w: 0, h: 0 };
+    kids.forEach(measure);
+    /* LINKED: at least one link to or from a sibling (self and foreign premises are not links). LOOSE: the others. */
+    const byId = new Map(kids.map((k) => [k.id, k]));
+    const linkedSet = new Set();
+    for (const k of kids) for (const p of k.premises) if (p !== k.id && byId.has(p)) { linkedSet.add(k); linkedSet.add(byId.get(p)); }
+    const linked = kids.filter((k) => linkedSet.has(k)), loose = kids.filter((k) => !linkedSet.has(k));
+    const block = linked.length ? rowsBlock(linked) : { w: 0, h: 0, rows: 0 };
+    if (!loose.length) return { w: block.w, h: block.h };
+    let colW = 0;
+    for (const k of loose) colW = Math.max(colW, k.w);
+    const W = Math.max(block.w, colW), shift = (W - block.w) / 2;
+    for (const k of linked) k.rx += shift;
+    let y = linked.length ? block.h + S.gapY : 0;
+    loose.forEach((k, i) => { k.rx = (W - k.w) / 2; k.ry = y; k.layer = block.rows + i; y += k.h + S.gapY; });
+    return { w: W, h: y - S.gapY };
   }
 
   function position(n) {
