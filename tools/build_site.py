@@ -3082,7 +3082,8 @@ def _page_parts(m, s, facts, dirty, map_rows=False):
     the chain of cards. The ONE place the list page's words and cards are written: _assemble_page puts the list page together from them and the graph page's About
     section and cards are made from the same two strings (G2b), so neither can drift from the other. With `map_rows` (G2c: the map page's cards, never the list page's) each of
     six sections of a card is wrapped in a closed `<details class="map-row map-row-<kind>">` whose summary is the label of the strings key `map_row_<kind>`; the section's own
-    markup is inside it unchanged, so the main part with every row replaced by its inner markup is the main part of the list page."""
+    markup is inside it unchanged, so the main part with every row replaced by its inner markup (the react row put back before the Evidence block, where the list page has its
+    reactions: on the map page it is the last of the card's own content) is the main part of the list page."""
     lab, kinds = s["labels"], s["labels"]["kinds"]
     files = m.files
     out = [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
@@ -3290,7 +3291,9 @@ def _page_parts(m, s, facts, dirty, map_rows=False):
         for r in s["reactions"]:
             href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
             lines.append(f'<li><a class="reaction" href="{_e(href)}">{_e(r["label"])}</a></li>')
-        o += row("react", lines + ["</ul>"])
+        react = lines + ["</ul>"]
+        if not map_rows:
+            o += react   # the list page: the reactions stay before the Evidence block
         global _IN_EVIDENCE
         _IN_EVIDENCE = True   # everything up to the closing tag below is Evidence: a formula logged now is listed, never refused (FORMULA-RAW)
         o += ['<details class="evidence">', f"<summary>{_e(s['evidence_label'])}</summary>"]
@@ -3369,6 +3372,8 @@ def _page_parts(m, s, facts, dirty, map_rows=False):
             o.append("</ul>")
         o.append("</details>")
         _IN_EVIDENCE = False
+        if map_rows:
+            o += row("react", react)   # the map page: the React row is the last of the card's own content, after the Evidence block, before the parts
         kids = m.children.get(gid, [])
         if kids:
             o += ['<details class="children">', f"<summary>{_e(lab['go_deeper'])}</summary>", '<ul class="children">']
