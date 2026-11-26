@@ -93,7 +93,12 @@ const BT = JSON.parse(readFileSync(new URL("./fixtures/backtick-titles.json", im
 
 test("A6 agreement: titleSegments equals the segments the builder's own regex finds, for EVERY fixture title (edge strings and the real span titles)", () => {
   assert.ok(BT.cases.length >= 16, "the edge strings are there");
-  for (const c of BT.cases) assert.deepEqual(dom.titleSegments(c.title).map((x) => [x.kind, x.text]), c.segments, JSON.stringify(c.title));
+  for (const c of BT.cases) {
+    assert.deepEqual(dom.titleSegments(c.title).map((x) => [x.kind, x.text]), c.segments, JSON.stringify(c.title));
+    // and what is DRAWN: a plain string for text, a code element for a span, with the same characters
+    const drawn = render(c.title).kids.map((k) => (typeof k === "string" ? ["text", k] : [k.tagName.toLowerCase() === "code" ? "code" : "other", flat(k)]));
+    assert.deepEqual(drawn, c.segments, "drawn: " + JSON.stringify(c.title));
+  }
   assert.ok(BT.cases.some((c) => c.title === "``" && c.segments.length === 1 && c.segments[0][0] === "text"), "an empty pair stays two literal backticks");
 });
 
