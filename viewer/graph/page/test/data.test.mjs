@@ -478,6 +478,49 @@ test("F2 child_kind refusals: a name the table does not have, and a card with no
   assert.throws(() => validateStep(leaf, v), (e) => e instanceof DataError && e.code === "bad-child-kind");
 });
 
+/* F3 (peer finding F1): a card's child_kind is checked against the kinds of the children its step file lists */
+const mismatch = (e, id, ck, firstBad) => e instanceof DataError && e.code === "child-kind-mismatch"
+  && e.message.includes(id) && e.message.includes(ck) && e.message.includes(firstBad);
+test("F3 (a) child_kind 'file' over children that are groups -> child-kind-mismatch naming step, declared kind, first differing child", () => {
+  const v = validateIndex(skIndex());
+  const a = skStep("sk-part");                         // children sk-group-a, sk-group-b: both groups
+  a.card.child_kind = "file";
+  assert.throws(() => validateStep(a, v), (e) => mismatch(e, "sk-part", "file", "sk-group-a"));
+});
+
+test("F3 (b) child_kind 'group' over children that are files -> child-kind-mismatch", () => {
+  const v = validateIndex(skIndex());
+  const b = skStep("sk-part-2");                       // child sk-file-6: a file
+  b.card.child_kind = "group";
+  assert.throws(() => validateStep(b, v), (e) => mismatch(e, "sk-part-2", "group", "sk-file-6"));
+});
+
+test("F3 (c) a mixed list [group, file] under child_kind 'group' (the first child agrees, the mismatch is NOT first) -> child-kind-mismatch naming the file", () => {
+  const v = validateIndex(skIndex());
+  const c = skStep("sk-part");
+  const odd = JSON.parse(JSON.stringify(skStep("sk-part-2").children[0]));
+  odd.id = "sk-file-odd"; odd.path = c.path.concat(c.id);
+  c.children[1] = odd;
+  assert.equal(c.card.child_kind, "group");
+  assert.equal(c.children[0].kind, "group");
+  assert.throws(() => validateStep(c, v), (e) => mismatch(e, "sk-part", "group", "sk-file-odd"));
+});
+
+test("F3 child_kind vs children: (d) every real step of the skeleton and of the real fixture validates; (e) a card with NO child_kind over mixed children still validates", () => {
+  const v = validateIndex(skIndex());
+  for (const f of readdirSync(path.join(FIX, "skeleton", "step"))) validateStep(skStep(f.replace(/\.json$/, "")), v);
+  const rv = validateIndex(JSON.parse(readFileSync(path.join(FIX, "real", "index.json"), "utf8")));
+  for (const f of readdirSync(path.join(FIX, "real", "step"))) validateStep(JSON.parse(readFileSync(path.join(FIX, "real", "step", f), "utf8")), rv);
+  const e = skStep("sk-part");
+  delete e.card.child_kind;
+  const odd = JSON.parse(JSON.stringify(skStep("sk-part-2").children[0]));
+  odd.id = "sk-file-odd"; odd.path = e.path.concat(e.id);
+  e.children[1] = odd;
+  const out = validateStep(e, v);
+  assert.equal("child_kind" in out.card, false);
+  assert.deepEqual(out.children.map((k) => k.kind), ["group", "file"]);
+});
+
 test("F2 count_words: {one, many}, exactly, each a strings key; kept by kind; both keys required; refusals have their own codes", () => {
   const v = validateIndex(skIndex());
   assert.deepEqual(v.symbols.countWords, { group: { one: "count_group_one", many: "count_group_many" }, file: { one: "count_file_one", many: "count_file_many" } });
@@ -689,7 +732,7 @@ test("K2: the notice arm is an explicit allow-list of KNOWN codes: a rejected fe
     assert.equal(isTransportCode(yes), true, yes);
   for (const no of ["http-200", "http-204", "http-299", "http-undefined", "http-", "http-0", "http-99", "http-600", "http-4040", "http-40x", "http-404 ", "HTTP-404",
     "fetch-failed ", "Fetch-failed", "fetch-failed2", "not-json", "bad-format", "bad-id", "bad-title", "unknown-kind", "unknown-proof", "missing-key", "extra-key", "id-mismatch",
-    "commit-mismatch", "child-count", "bad-link", "bad-path", "bad-order", "weird-code", "", "x", " "])
+    "commit-mismatch", "child-count", "child-kind-mismatch", "bad-link", "bad-path", "bad-order", "weird-code", "", "x", " "])
     assert.equal(isTransportCode(no), false, JSON.stringify(no));
   for (const notAString of [undefined, null, 404, {}, [], ["fetch-failed"], true])
     assert.equal(isTransportCode(notAString), false, String(notAString));

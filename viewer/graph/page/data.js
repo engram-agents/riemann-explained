@@ -212,6 +212,10 @@ export function validateStep(raw, ctx) {
     return k;
   });
   if (card.child_count !== children.length) throw new DataError("child-count", "child_count " + card.child_count + " is not the number of children " + children.length);
+  if (has(card, "child_kind")) {
+    const odd = children.find((k) => k.kind !== card.child_kind);
+    if (odd) throw new DataError("child-kind-mismatch", "step " + raw.id + " declares child_kind " + card.child_kind + " but child " + odd.id + " is a " + odd.kind);
+  }
   if (!Array.isArray(raw.rests_on)) throw new DataError("bad-type", "step.rests_on is not a list");
   const rests = raw.rests_on.map((l, i) => {
     const k = linkOf(l, here, here, "step.rests_on " + i);
