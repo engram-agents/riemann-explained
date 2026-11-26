@@ -220,6 +220,53 @@ test("R1 D4: a step carrying readings while the index has none is readings-misma
   refuses(() => validateStep(rStep("sk-file-1"), ctx), "readings-mismatch");
 });
 
+test("R1 D4 both directions (b): a step named by an index row but carrying no `readings` is readings-mismatch naming the id", () => {
+  const raw = rStep("sk-file-1");
+  delete raw.readings;
+  refuses(() => validateStep(raw, ctxOf()), "readings-mismatch", "a-first");
+  const other = rStep("sk-file-4");
+  delete other.readings;
+  refuses(() => validateStep(other, ctxOf()), "readings-mismatch", "e-single");
+});
+
+test("R1 D4 both directions (b): a step that lacks one of the ids the index names for it is readings-mismatch naming that id", () => {
+  for (const [gone, kept] of [["b-second", 2], ["a-first", 2], ["c-third", 2]]) {
+    const raw = rStep("sk-file-1");
+    raw.readings = raw.readings.filter((r) => r.id !== gone);
+    assert.equal(raw.readings.length, kept);
+    refuses(() => validateStep(raw, ctxOf()), "readings-mismatch", gone);
+  }
+});
+
+test("R1 D4 both directions (b): the refusal is made on a load through createData, the usual failure path (no silent step)", async () => {
+  const dir = path.join(FIX, "readings");
+  const bare = rStep("sk-file-1");
+  delete bare.readings;
+  const data = createData(dirFetch(dir, { "step/sk-file-1.json": bare }));
+  await assert.rejects(() => data.loadStep("sk-file-1"), (e) => e instanceof DataError && e.code === "readings-mismatch" && e.reason.includes("a-first"));
+});
+
+test("R1 D4 (b) control: a file step no row names, carrying no readings, still loads; the fixture's own steps still validate", () => {
+  assert.ok(validateStep(rStep("sk-file-3"), ctxOf()));
+  for (const sid of ["sk-file-1", "sk-file-2", "sk-file-4"]) assert.ok(validateStep(rStep(sid), ctxOf()), sid);
+});
+
+test("R1 the id rule's two sides, pinned on the page: '-x' is refused and 'x-' accepted, in the index row and on the step (the builder's rule starts with a-z or 0-9)", () => {
+  const rename = (id) => ({
+    idx: (i) => { i.readings.find((r) => r.id === "e-single").id = id; i.readings.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)); },
+    step: (s) => { s.readings[0].id = id; },
+  });
+  for (const id of ["-x", "x-"]) {
+    const bad = id === "-x";
+    const both = () => { const c = ctxOf(rename(id).idx); return validateStep((() => { const s = rStep("sk-file-4"); rename(id).step(s); return s; })(), c); };
+    if (bad) refuses(both, "bad-readings", id);
+    else assert.equal(both().readings[0].id, id);
+    if (bad) refuses(() => ctxOf(rename(id).idx), "bad-readings", id);
+    else assert.ok(ctxOf(rename(id).idx));
+    if (bad) refuses(() => stepWith("sk-file-4", rename(id).step), "bad-readings");
+  }
+});
+
 test("R1 D4: the check is made on a load through createData, and a good step still loads", async () => {
   const dir = path.join(FIX, "readings");
   const bad = rStep("sk-file-1");

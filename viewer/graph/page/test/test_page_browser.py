@@ -2966,9 +2966,9 @@ def _readings_open(pg, card):
 READINGS_JS = """(() => { const a = document.querySelector('#graph-sheet-body article'), r = a.querySelector('.readings'); if (!r) return null;
   return { kids: [...a.children].map(e => e.tagName + '.' + e.className),
     own: [...r.children].map(e => e.tagName + (e.getAttribute('data-id') ? '[' + e.getAttribute('data-id') + ']' : '')),
-    h4: r.children[0].textContent, about: r.children[1].textContent,
+    h4: r.querySelector(':scope > h4').textContent, about: r.querySelector(':scope > p').textContent,
     items: [...r.querySelectorAll('[data-id]')].map(e => ({ id: e.getAttribute('data-id'), kids: [...e.children].map(c => c.tagName),
-                                                             title: e.children[0].textContent, by: e.children[e.children.length - 1].textContent })),
+                                                             title: e.querySelector(':scope > h5').textContent, by: e.querySelector(':scope > .reading-by').textContent })),
     frame: r.querySelectorAll('.note-label, .note-source, .note-body, .note-typeset-line, .note-toggle, button, a, details').length,
     labels: a.querySelectorAll('.note-label').length }; })()"""
 
@@ -3089,9 +3089,9 @@ def c_readings_r5(b, S0, engine):
         S.stop()
 
 
-KEY_READINGS_JS = """(() => { const c = document.querySelector('#graph-sheet-body .key-content'), k = [...c.children], n = k.length;
-  return { tail: k.slice(-4).map(e => e.tagName), heading: k[n - 2].textContent,
-           items: [...k[n - 1].children].map(li => ({ tag: li.tagName, kids: [...li.children].map(x => x.tagName), type: li.children[0] && li.children[0].getAttribute('type'), text: li.textContent })),
+KEY_READINGS_JS = """(() => { const c = document.querySelector('#graph-sheet-body .key-content'), k = [...c.children], list = c.querySelector(':scope > ul.key-readings');
+  return { tail: k.slice(-4).map(e => e.tagName), heading: list.previousElementSibling.textContent,
+           items: [...list.querySelectorAll(':scope > li')].map(li => ({ tag: li.tagName, kids: [...li.children].map(x => x.tagName), type: li.querySelector(':scope > button').getAttribute('type'), text: li.textContent })),
            anchors: c.querySelectorAll('a').length, all: [...c.querySelectorAll('button')].length }; })()"""
 READING_TOP_JS = """(() => { const b = document.getElementById('graph-sheet-body'), e = b.querySelector('.readings [data-id=%s]');
   return e ? { off: e.getBoundingClientRect().top - b.getBoundingClientRect().top, st: b.scrollTop, max: b.scrollHeight - b.clientHeight } : null; })()"""
@@ -3270,6 +3270,33 @@ def c_readings_r10(b, S0, engine):
         S.stop()
 
 
+def c_readings_ws(b, S0, engine):
+    """R-WS: a reading whose body is only whitespace renders without throwing: the page is not the fallback, the section is drawn, and that reading's
+    element holds its title (h5), an empty body div and its byline, found by selector; its neighbours are unchanged."""
+    def blank_body(steps):
+        steps["sk-file-1"]["readings"][1]["text"] = "   \n\n  \t\n"
+    S = _readings_site(engine, step_edit=blank_body)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _readings_open(pg, "sk-file-1")
+        got = pg.ev("""(() => { const r = document.querySelector('#graph-sheet-body .readings'), e = r.querySelector('[data-id="b-second"]'), n = r.querySelector('[data-id="a-first"]');
+          const body = e.querySelector(':scope > .reading-body');
+          return { ids: [...r.querySelectorAll('[data-id]')].map(x => x.getAttribute('data-id')), title: e.querySelector(':scope > h5').textContent,
+                   body: body ? body.textContent : null, by: e.querySelector(':scope > .reading-by').textContent,
+                   nbody: n.querySelector(':scope > .reading-body').textContent.length,
+                   inside: !!e.closest('.readings'), fallback: !document.getElementById('graph-fallback').hidden }; })()""")
+        assert got["fallback"] is False, got
+        assert got["ids"] == ["a-first", "b-second", "c-third"], got["ids"]
+        assert got["title"] == "Second synthetic reading" and got["inside"], got
+        assert got["body"] is not None and got["body"].strip() == "", got["body"]
+        assert got["by"] == "Read by First Reader, checked by Second Reader, on 2026-11-20.", got["by"]
+        assert got["nbody"] > 0, "a neighbour keeps its body"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
 def c_mutant(b):
     """R7 MUTANT: a copy of dom.js whose text path uses innerHTML. The hostile cells must go red."""
     def mut(text):
@@ -3370,6 +3397,7 @@ def main():
                 run("readings R8: the live map has no readings section and its key is unchanged", c_readings_r8, eng)
                 run("readings R9: a reading's element is found by .readings [data-id]; no attribute in the section outside dom.js's allow-list", c_readings_r9, eng)
                 run("readings R10: readings with no note words: the step is loaded, the section is drawn, no repository-note frame", c_readings_r10, eng)
+                run("readings R-WS: a reading whose body is only whitespace renders inside the section with its title and byline, no throw", c_readings_ws, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:
