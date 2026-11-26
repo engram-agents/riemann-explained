@@ -118,8 +118,10 @@ export async function start(doc, deps) {
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
       if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
       const w = index.symbols.words;
-      /* A module asserts nothing, so its sheet has no status line (ruled): null, and the card's own content is first under the title. */
-      const status = m.kind === "module" ? null : [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
+      /* The sheet's one line. A kind whose table row has `card_words` (a folder or file asserts nothing) shows that word and nothing from
+         state or proof; every other kind shows the state and the proof, as before. The TABLE's row decides, never the kind's name. */
+      const cardWord = index.symbols.cardWords[m.kind];
+      const status = cardWord !== undefined ? strings[cardWord] : [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
       const ok = sheet.showCard(art, {
         id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
         crumbs: anc.concat(m).map((x) => ({ id: x.id, title: x.title, role: x.role })),

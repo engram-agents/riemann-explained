@@ -93,8 +93,8 @@ export function createSheet(parts, strings, hooks, signal) {
     clear(crumbs);
     crumbs.appendChild(crumbList(info.crumbs));
     const claim = article.querySelector(".claim");
-    /* The status line is built only for a non-empty status: a card that asserts nothing (a module) passes null and gets no element,
-       so the release step finds rec.status null and the card's own content is the first thing under the title. */
+    /* The status line is built only for a non-empty status: a null or empty status gets no element (the page's
+       own path always passes a string today), so the release step finds rec.status null and the card's own content is first under the title. */
     if (typeof info.status === "string" && info.status !== "") {
       rec.status = el("p", { class: "sheet-status" }, [info.status]);
       if (claim && claim.parentNode) claim.parentNode.insertBefore(rec.status, claim.nextSibling);

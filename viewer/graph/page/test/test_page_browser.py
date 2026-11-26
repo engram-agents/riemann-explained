@@ -934,7 +934,9 @@ def c_skeleton_map(b, S0, engine):
             assert nxt == "sheet-status", (card, nxt)
         pg.page.click("#graph-sheet-close")
         wait_sheet(pg, False)
-        assert pg.ev("document.getElementById('graph-cards').outerHTML") == before, "closing must put the markup back"
+        # a deep link reveals its parents, which opens their parts on the List page's details (the live map does the same): only that attribute may differ
+        after = pg.ev("document.getElementById('graph-cards').outerHTML")
+        assert after.replace(' open=""', "") == before.replace(' open=""', ""), "closing must put the markup back"
         pg.page.click("#graph-key")
         wait_sheet(pg, True)
         heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")

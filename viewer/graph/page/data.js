@@ -6,7 +6,7 @@ import { isId, stepPath } from "./dom.js";
 /* The enumerated class tables (R3): a kind, state or proof reaches a class name only through these. One that the
    contract's `symbols` lists but that is not here is a refusal, never a blank. The `class` the builder writes in a
    symbols row is checked as a string and IGNORED. */
-export const KIND_CLASS = Object.freeze({ theorem: "k-theorem", def: "k-def", structure: "k-structure", module: "k-module" });
+export const KIND_CLASS = Object.freeze({ theorem: "k-theorem", def: "k-def", structure: "k-structure", part: "k-part", group: "k-group", file: "k-file" });
 export const STATE_CLASS = Object.freeze({ read: "s-read", census: "s-census", none: "s-none" });
 export const PROOF_CLASS = Object.freeze({ read: "p-read", not_read: "p-not-read", none: "p-none" });
 /* The class the SHEET takes from the shown card's `proof` (never from any text): only `none` has one, because a card with no proof
@@ -58,6 +58,7 @@ const TABLES = Object.freeze([["kinds", KIND_CLASS, "unknown-kind"], ["proofs", 
 export function requiredStrings(symbols) {
   const out = FIXED_STRINGS.slice();
   for (const [t] of TABLES) for (const name of symbols.names[t]) out.push(symbols.words[t][name]);
+  for (const name of Object.keys(symbols.cardWords)) out.push(symbols.cardWords[name]);
   return out;
 }
 
@@ -66,11 +67,12 @@ export function requiredStrings(symbols) {
    (what a card's kind, state and proof are checked against, and whose `words` are all required) and `order[t]` is the builder's
    key list (what the key draws, in that order). An `order` list is a subset of the table's names with no duplicates; the builder
    lists exactly the rows that occur on the map, so states and proofs may be empty and kinds may not. `class` and `text` are
-   strings and otherwise ignored; `words` is a string (that it is a key of `strings` is checked with the strings). */
+   strings and otherwise ignored; `words` is a string (that it is a key of `strings` is checked with the strings). A kinds row may
+   also carry `card_words`, a non-empty string (the sheet's one line for that kind); `cardWords` maps the kind to it. */
 function symbolsOf(v) {
   exactKeys(v, ["order", "kinds", "proofs", "states"], [], "symbols");
   exactKeys(v.order, ["kinds", "proofs", "states"], [], "symbols.order");
-  const out = { words: {}, names: {}, order: {} };
+  const out = { words: {}, names: {}, order: {}, cardWords: {} };
   for (const [t, table, code] of TABLES) {
     const rows = v[t];
     if (!isObj(rows) || Object.keys(rows).length === 0) throw new DataError("bad-type", "symbols." + t + " is not a non-empty object");
@@ -78,10 +80,14 @@ function symbolsOf(v) {
     out.words[t] = {};
     for (const n of names) {
       if (!has(table, n)) throw new DataError(code, "symbols." + t + " names a value this page cannot draw");
-      exactKeys(rows[n], ["class", "text", "words"], [], "symbols." + t + " row");
+      exactKeys(rows[n], ["class", "text", "words"], t === "kinds" ? ["card_words"] : [], "symbols." + t + " row");
       if (!isStr(rows[n].class) || !isStr(rows[n].text) || !isStr(rows[n].words))
         throw new DataError("bad-type", "symbols." + t + " row has a class, text or words that is not a string");
       out.words[t][n] = rows[n].words;
+      if (has(rows[n], "card_words")) {
+        if (!isStr(rows[n].card_words) || rows[n].card_words === "") throw new DataError("bad-card-words", "symbols.kinds row has a card_words that is not a non-empty string");
+        out.cardWords[n] = rows[n].card_words;
+      }
     }
     out.names[t] = names;
     out.order[t] = orderOf(v.order[t], names, "symbols.order." + t, t !== "kinds");
@@ -130,6 +136,8 @@ export function validateIndex(raw) {
   }
   if (!isObj(raw.strings)) throw new DataError("bad-type", "index strings is not an object");
   for (const k of Object.keys(raw.strings)) if (!isStr(raw.strings[k])) throw new DataError("bad-type", "index strings holds a non-string");
+  for (const k of Object.values(symbols.cardWords))
+    if (!has(raw.strings, k)) throw new DataError("missing-card-words", "index strings lacks the card word " + k);
   const need = requiredStrings(symbols);
   for (const k of need) {
     if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("missing-string", "index strings lacks the runtime key " + k);
