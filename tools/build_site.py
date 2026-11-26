@@ -13479,6 +13479,52 @@ def _selftest_cases():
                    ([], ["theorem", "def", "structure", "module"], {"class": "kind-module", "text": "Module words", "words": "symbol_kind_module"}, 21, True,
                     "module", [("GRAPH-SYMBOL", "a")], {}, 20, ["theorem", "def", "structure"], True))
 
+    @case("GRO1", "`_graph_files(orders=)`: the default is the full permutation of each table (a call with no argument and a call with those lists give the same bytes, and "
+                  "symbols.order.kinds|states|proofs are the whole tables, as today); a caller's lists are written exactly as given into symbols.order while the tables "
+                  "keep all their rows")
+    def _():
+        plain = [gr_row("a"), gr_row("b", "a", 1)]
+        full = {"kinds": ["theorem", "def", "structure"], "proofs": ["read", "not_read", "none"], "states": ["read", "census", "none"]}
+        a = _graph_files(plain, "c0", _strings())[1]
+        b = _graph_files(plain, "c0", _strings(), orders=dict(full))[1]
+        mod = {"kinds": ["theorem"], "states": [], "proofs": []}
+        c = _graph_files(plain, "c0", _strings(), orders=mod)
+        ix = c[1]["graph/index.json"]["symbols"]
+        return _eq((_graph_bytes(a) == _graph_bytes(b), a["graph/index.json"]["symbols"]["order"], c[0], ix["order"], sorted(ix["states"]), sorted(ix["kinds"])),
+                   (True, full, [], mod, ["census", "none", "read"], ["def", "structure", "theorem"]))
+
+    @case("GRO2", "GRAPH-ORDER <kind|state|proof> <value>: a row that occurs on a card and is missing from its order list is refused; a `state` or `proof` occurs only on a "
+                  "card whose kind is not `module` (a module card hides the status), so the same state on a module card is accepted with states []; a kind occurs "
+                  "whenever a card has it")
+    def _():
+        extra = dict(GRAPH_SYMBOLS, kinds=dict(GRAPH_SYMBOLS["kinds"], module={"class": "kind-module", "words": "symbol_kind_module"}))
+        st = dict(_strings(), symbol_kind_module="Module words")
+        mod = {"kinds": ["theorem", "module"], "states": [], "proofs": []}
+        thm = [gr_row("a", state="read", proof="read")]
+        on_module = [gr_row("a", kind="module", state="read", proof="read")]
+        no_kind = {"kinds": ["def"], "states": [], "proofs": []}
+        two = [gr_row("a", state="read"), gr_row("b", "a", 1, state="read", proof="none")]
+        return _eq(([tuple(e) for e in _graph_files(thm, "c0", st, symbols=extra, orders=mod)[0]],
+                    _graph_files(on_module, "c0", st, symbols=extra, orders=mod)[0],
+                    [tuple(e) for e in _graph_files(thm, "c0", st, symbols=extra, orders=no_kind)[0]],
+                    [tuple(e) for e in _graph_files(two, "c0", st, symbols=extra, orders=dict(mod, states=["read"]))[0]]),
+                   ([("GRAPH-ORDER", "state", "read"), ("GRAPH-ORDER", "proof", "read")], [],
+                    [("GRAPH-ORDER", "kind", "theorem"), ("GRAPH-ORDER", "state", "read"), ("GRAPH-ORDER", "proof", "read")],
+                    [("GRAPH-ORDER", "proof", "read"), ("GRAPH-ORDER", "proof", "none")]))
+
+    @case("GRO3", "an order list that is not a subset of its table in the table's key order, with no duplicate, or an empty kinds list, is refused GRAPH-ORDER with a reason")
+    def _():
+        rows = [gr_row("a")]
+
+        def bad(**lists):
+            lists = dict({"kinds": ["theorem"], "states": [], "proofs": []}, **lists)
+            return [tuple(e) for e in _graph_files(rows, "c0", _strings(), orders=lists)[0]]
+        return _eq((bad(kinds=[]), bad(kinds=["theorem", "theorem"]), bad(kinds=["def", "theorem"]), bad(kinds=["theorem", "zeta"]), bad(states=["none", "read"]),
+                    bad(proofs=["read", "read"]), bad(kinds=["theorem", "def"], states=["read"], proofs=["read", "not_read"])),
+                   ([("GRAPH-ORDER", "kinds", "is empty")], [("GRAPH-ORDER", "kinds", "lists theorem twice")],
+                    [("GRAPH-ORDER", "kinds", "is not in the key order of its table")], [("GRAPH-ORDER", "kinds", "lists zeta, which is not a row of its table")],
+                    [("GRAPH-ORDER", "states", "is not in the key order of its table")], [("GRAPH-ORDER", "proofs", "lists read twice")], []))
+
     return cases
 
 

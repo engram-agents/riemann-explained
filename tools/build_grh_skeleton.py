@@ -435,6 +435,7 @@ PIN = "0123456789abcdef0123456789abcdef01234567"
 HEAD = "# Contents\n\nIntro.\n\n## New\n\n"   # the body of a fixture CONTENTS starts on line 7
 TAIL = "\n## Lib\n\n- `Lib/Other/File` (1): Not read\n"
 MODULE_ROW = {"class": "kind-module", "words": "symbol_kind_module"}
+ORDERS = {"kinds": ["module"], "states": [], "proofs": []}
 
 
 def _lean(decl="theorem t : True := trivial", note="", imports=()):
@@ -673,7 +674,7 @@ def _selftest_cases():
                    ([("GRAPH-EDGE", "lean-s-b lean-s-a", "cycle in rests_on")], {}, ["GRAPH-EDGE"], True, {}))
 
     @case("SK5", "kind: EVERY step is `module` whatever the file holds (a theorem, a def, a structure, a note naming a ghost, an empty file): no declaration is read, "
-                 "so no file is refused for having none; state and proof are `none` on every step; the symbol table of this tool has the row kinds.module and index.json `strings` "
+                 "so no file is refused for having none; state and proof are `none` on every step; the symbol table of this tool has the row kinds.module, its order lists are exactly kinds [module], states [] and proofs [], and index.json `strings` "
                  "holds 21 keys; site/strings.json holds symbol_kind_module with its placeholder wording")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n- `New/S/C` (1): c\n- `New/S/D` (1): d\n- `New/S/E` (1): e\n"
@@ -682,9 +683,9 @@ def _selftest_cases():
         with _tmp() as d:
             errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
             ix = _j(files, "graph/index.json")
-        return _eq((errs, sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), len(rows), ix["symbols"]["order"]["kinds"], ix["symbols"]["kinds"]["module"],
+        return _eq((errs, sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), len(rows), ix["symbols"]["order"], ix["symbols"]["kinds"]["module"],
                     len(ix["strings"]), ix["strings"]["symbol_kind_module"], _strings(extra=False)["symbol_kind_module"]),
-                   ([], [ALL_MODULE], 7, ["theorem", "def", "structure", "module"],
+                   ([], [ALL_MODULE], 7, ORDERS,
                     {"class": "kind-module", "text": "Module words", "words": "symbol_kind_module"}, 21, "Module words",
                     "A folder or file of the Lean code, shown as it is"))
 
@@ -846,7 +847,7 @@ def _selftest_cases():
         rows = [row("lean-s", "root", 0, [], "S part"), row("lean-s--g", "lean-s", 0, [], "G"),
                 row("lean-s-a", "lean-s--g", 0, [], "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "b")]
         table = dict(bs.GRAPH_SYMBOLS, kinds=dict(bs.GRAPH_SYMBOLS["kinds"], module=MODULE_ROW))
-        want_errs, want_objs = bs._graph_files(rows, PIN, _strings(), symbols=table)
+        want_errs, want_objs = bs._graph_files(rows, PIN, _strings(), symbols=table, orders=ORDERS)
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -970,9 +971,10 @@ def _selftest_cases():
         first3 = [re.fullmatch(r"- `New/[^`]+` \(\d+\): (.*)", ln).group(1).replace("`", "") for ln in [x for x in lines[j:] if x.startswith("- `New/")][:3]]
         gid = next(r["id"] for r in rows if r["parent"] == "lean-reduction")
         kids = _j(files, f"graph/step/{gid}.json")["children"][:3]
-        return _eq((errs, len(live), rep["steps"], sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
+        order = _j(files, "graph/index.json")["symbols"]["order"]
+        return _eq((errs, order, len(live), rep["steps"], sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
                     rep["not_drawn"], max(len(r["id"]) for r in rows), len(rep["cut"]), [c["title"] for c in kids] == first3, len(first3), len(files)),
-                   ([], 23, 352, [ALL_MODULE],
+                   ([], ORDERS, 23, 352, [ALL_MODULE],
                     ["lean-reduction", "lean-derivatives", "lean-upper-bound", "lean-spanning", "lean-determinant", "lean-one-lift", "lean-congruences", "lean-appendix",
                      "lean-main"], 23, 3, 298, 226, 64, 3, True, 3, 354))
 
