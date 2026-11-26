@@ -3076,6 +3076,7 @@ def _selftest_cases():
             out.append((errs, ix["key_scope_text"]))
         with _tmp() as d:
             g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            os.remove(os.path.join(g, "README.md"))   # no key and no README: the build must not look for one
             errs, files, rows, rep = bld(g, PIN, _strings())
         return _eq((out, errs, "key_scope_text" in _j(files, "graph/index.json")["strings"]),
                    ([([], 'Scope: "`a` and b", and no more.'), ([], 'Scope: "another line", and no more.')], [], False))
@@ -3262,6 +3263,184 @@ def _selftest_cases():
                      "lean-the-last-file"], 23, 3, 733, 1402, 64, 3,
                     ["lean-congruences--lifting-crystalline-extension-classes-i-07869b", "lean-congruences-galois-representations-rows-and-columns-7a36a5",
                      "lean-one-lift--hecke-l-values-as-squared-norms-and-their-25fb42"], True, 3, 356, True, True, 353, 22, []))
+
+    @case("RB1", "structure of the tool above the self-test section (read with `ast` from this file's own text, everything before the self-test header): exactly ONE call of `os.open` and it is in `_read_bounded` "
+                 "(no allow-list of other sites), no call of the builtin `open` (the tool's own writes go through build_site's `_publish`, which is another module; the writes of this file's fixtures are "
+                 "below the header and are not counted), and no other way to open a file for reading (`io.open`, `Path.open`, `read_text`, `read_bytes`, `os.fdopen`)")
+    def _():
+        import ast
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            text = f.read()
+        above = text[:text.index("# ---------------------------------------------------------------- self-test")]
+        sites = {"os.open": [], "open": [], "other": []}
+
+        def walk(node, fn):
+            for child in ast.iter_child_nodes(node):
+                name = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else fn
+                if isinstance(child, ast.Call):
+                    f = child.func
+                    if isinstance(f, ast.Name) and f.id == "open":
+                        sites["open"].append(name)
+                    elif isinstance(f, ast.Attribute) and f.attr == "open" and isinstance(f.value, ast.Name) and f.value.id == "os":
+                        sites["os.open"].append(name)
+                    elif isinstance(f, ast.Attribute) and f.attr in ("open", "read_text", "read_bytes", "fdopen"):
+                        sites["other"].append(name)
+                walk(child, name)
+        walk(ast.parse(above), None)
+        return _eq(sites, {"os.open": ["_read_bounded"], "open": [], "other": []})
+
+    ILV_BODY = "### S part\n\n**G**\n\n- `New/S/B` (1): b\n- `New/S/A` (1): a\n"   # B is listed before A: sorted order is not the order of CONTENTS
+    MISSING = object()   # a fixture version: the key is removed
+
+    def ilv_ileans(**versions):
+        """The .ilean objects of ILV_BODY (key: path as in CONTENTS) with the `version` of each given (MISSING removes the key)."""
+        out = {}
+        for n in "AB":
+            obj = _ilean("New/S/" + n, {})
+            if n in versions:
+                if versions[n] is MISSING:
+                    del obj["version"]
+                else:
+                    obj["version"] = versions[n]
+            out["New/S/" + n] = obj
+        return out
+
+    def ilv_build(**versions):
+        with _tmp() as d:
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ilv_ileans(**versions))
+            r = bld(g, PIN, _strings())
+        return r[0], r[1] == {}
+
+    @case("ILV1", "an .ilean whose `version` is missing or is not exactly the integer 5 (`ILEAN_VERSIONS`) is refused `SKEL-ILEAN-VERSION <path under --ilean-dir> <the value as JSON text, or `missing`>`, nothing written: "
+                  "4, 6, the string \"5\" (`\"5\"`), true (`true`), null (`null`), the float 5.0 (`5.0`; 5.0 == 5 in Python, so equality alone would take it) and a missing key (`missing`); a bool is told from an "
+                  "int by `type(v) is int` (a bool is an int to isinstance); version 5 builds")
+    def _():
+        out = {}
+        for label, v in (("4", 4), ("6", 6), ("str", "5"), ("true", True), ("null", None), ("5.0", 5.0), ("missing", MISSING), ("5", 5)):
+            out[label] = ilv_build(A=v)
+        return _eq(out, {"4": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")], True), "6": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "6")], True),
+                         "str": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", '"5"')], True), "true": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "true")], True),
+                         "null": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "null")], True), "5.0": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "5.0")], True),
+                         "missing": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "missing")], True), "5": ([], False)})
+
+    @case("ILV2", "every file with a bad version is reported, sorted by path (not in the order of CONTENTS: B is listed first and A is reported first); a bad version is named before any other fault of the same "
+                  "file (a version-4 file whose module is also wrong is `SKEL-ILEAN-VERSION`, not `module-mismatch`) and is reported together with the other faults of the same stage (a missing .ilean); "
+                  "on the command line: exit 1, the lines on stdout, OUT_DIR not written")
+    def _():
+        two = ilv_build(A=4, B="x")
+        with _tmp() as d:
+            ile = ilv_ileans(A=4)
+            ile["New/S/A"]["module"] = "New.S.Other"
+            ile["New/S/B"] = None
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ile)
+            both = bld(g, PIN, _strings())[0]
+        with _tmp() as d:
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ilv_ileans(A=4, B=MISSING))
+            sp, ol = _strings_file(d), _outline_file(d)
+            rc, out, err = _cli(_args(g, os.path.join(d, "out"), sp, ol))
+            written = os.path.exists(os.path.join(d, "out"))
+        return _eq((two, both, rc, out.splitlines(), "REFUSED" in err, written),
+                   (([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4"), ("SKEL-ILEAN-VERSION", "New/S/B.ilean", '"x"')], True),
+                    [("SKEL-USES", "New/S/B", "missing-ilean"), ("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")], 1,
+                    ["SKEL-ILEAN-VERSION New/S/A.ilean 4", "SKEL-ILEAN-VERSION New/S/B.ilean missing"], True, False))
+
+    @case("ILV3", "the other two places an .ilean is loaded check the version too: the index of declared names (`_ilean_index`, which reads every .ilean under --ilean-dir, a file of Lib as well) refuses a "
+                  "Lib file of version 6 or with no version, all such files sorted; the spine's file load (`_spine_and_index`, reached on its own here because the uses stage refuses a bad file of New before it) "
+                  "refuses the file a spine row names; a Lib file of version 5 builds")
+    def _():
+        with _tmp() as d:
+            ile = ilv_ileans()
+            ile["Lib/Z/Y"] = dict(_ilean("Lib/Z/Y", {}), version=6)
+            ile["Lib/X/W"] = _ilean("Lib/X/W", {})
+            del ile["Lib/X/W"]["version"]
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ile)
+            lib = bld(g, PIN, _strings())[:2]
+        with _tmp() as d:
+            ile = ilv_ileans()
+            ile["Lib/Z/Y"] = _ilean("Lib/Z/Y", {})
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ile)
+            fine = bld(g, PIN, _strings())[0]
+        with _tmp() as d:
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ilv_ileans(A=4), index=_index([_srow("`x`", "`New/S/A`", "c")]))
+            spine = _spine_and_index(g, _ildir(g), {"New/S/A": "lean-s-a"}, [], {})
+        return _eq((lib, fine, spine),
+                   (([("SKEL-ILEAN-VERSION", "Lib/X/W.ilean", "missing"), ("SKEL-ILEAN-VERSION", "Lib/Z/Y.ilean", "6")], {}), [], [("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")]))
+
+    @case("ILVR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): all 803 .ilean files under --ilean-dir carry `version` 5 (read here, independently of the builder), so the "
+                  "real build is not refused by the version check, and `ILEAN_VERSIONS` is (5,)")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        seen = {}
+        for r, _d, fs in os.walk(_ILEAN_FOR_SK13):
+            for n in fs:
+                if n.endswith(".ilean"):
+                    with open(os.path.join(r, n), encoding="utf-8") as f:
+                        v = json.load(f).get("version", "missing")
+                    seen[repr(v)] = seen.get(repr(v), 0) + 1
+        return _eq((seen, ILEAN_VERSIONS), ({"5": 803}, (5,)))
+
+    @case("KSP", "after `{readme_quote}` is filled, a written key_scope_text that carries a placeholder name the format declares for another key (build_site's PLACEHOLDERS, the union of the declared names "
+                 "without readme_quote) is refused `SKEL-README key_scope_text placeholder <name>`, nothing written: a README line 15 with `{source}`, with `{n}`, and with both (one line each, sorted); a "
+                 "template of the wording seat that itself holds one is refused the same; a line 15 with no placeholder builds")
+    def _():
+        out = []
+        for line15 in ("see {source}:", "{n} files:", "{source} and {n}:", "plain words:"):
+            with _tmp() as d:
+                r = bld(readme_fixture(d, line15), PIN, dict(_strings(), key_scope_text=KS_T))
+            out.append((r[0], r[1] == {}))
+        with _tmp() as d:
+            r = bld(readme_fixture(d, "x:"), PIN, dict(_strings(), key_scope_text='Scope: "{readme_quote}" in {commit}'))
+        out.append((r[0], r[1] == {}))
+        return _eq(out, [([("SKEL-README", "key_scope_text", "placeholder source")], True), ([("SKEL-README", "key_scope_text", "placeholder n")], True),
+                         ([("SKEL-README", "key_scope_text", "placeholder n"), ("SKEL-README", "key_scope_text", "placeholder source")], True), ([], False),
+                         ([("SKEL-README", "key_scope_text", "placeholder commit")], True)])
+
+    @case("KSB", "the README read of key_scope_text is bounded and contained, each reason by its name: a README of exactly the limit (1 MiB) with a good line 15 builds, one byte over is `too-large`; bytes that are "
+                 "not UTF-8 are `not-utf-8`; a directory named README.md is `not-a-regular-file`; a FIFO named README.md is `not-a-regular-file` and the build does NOT block (the command line is run as a "
+                 "child with a timeout; a hang is reported as such); a README that is a symlink to a file outside grh is `symlink` (also KS2). `outside` is not tested: a README that is not a symlink "
+                 "cannot have a real path outside grh, so the reason cannot be reached through the README")
+    def _():
+        out = {}
+        head = "".join("l%d\n" % i for i in range(2, 15))   # lines 2 to 14; line 1 is the filler that brings the file to the limit
+        fill = SOURCE_READ_LIMIT - len((head + "ok:\n").encode("utf-8")) - 1
+        at_limit = ("z" * fill + "\n" + head + "ok:\n").encode("utf-8")
+        assert len(at_limit) == SOURCE_READ_LIMIT
+        for label, data in (("at-limit", at_limit), ("over", at_limit + b"z"), ("not-utf-8", (head + "\xff\xfe:\n").encode("latin-1"))):
+            with _tmp() as d:
+                g = readme_fixture(d, "x:")
+                with open(os.path.join(g, "README.md"), "wb") as f:
+                    f.write(data)
+                r = bld(g, PIN, dict(_strings(), key_scope_text=KS_T))
+            out[label] = (r[0], r[1] == {})
+        with _tmp() as d:
+            g = readme_fixture(d, "x:")
+            os.remove(os.path.join(g, "README.md"))
+            os.mkdir(os.path.join(g, "README.md"))
+            r = bld(g, PIN, dict(_strings(), key_scope_text=KS_T))
+        out["directory"] = (r[0], r[1] == {})
+        with _tmp() as d:
+            g = readme_fixture(d, "x:")
+            os.remove(os.path.join(g, "README.md"))
+            os.mkfifo(os.path.join(g, "README.md"))
+            sp, ol = _strings_file(d, dict(_strings(), key_scope_text=KS_T)), _outline_file(d)
+            empty = os.path.join(d, "empty.json")
+            with open(empty, "w") as f:
+                f.write("{}")
+            try:
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, os.path.join(d, "out"), sp, ol, overlay=empty), capture_output=True, text=True, timeout=30)
+                out["fifo"] = (r.returncode, r.stdout.splitlines(), os.path.exists(os.path.join(d, "out")))
+            except subprocess.TimeoutExpired:
+                out["fifo"] = "HANG"
+        with _tmp() as d:
+            g = readme_fixture(d, "x:")
+            os.rename(os.path.join(g, "README.md"), os.path.join(d, "real.md"))
+            os.symlink(os.path.join(d, "real.md"), os.path.join(g, "README.md"))
+            r = bld(g, PIN, dict(_strings(), key_scope_text=KS_T))
+        out["symlink"] = (r[0], r[1] == {})
+        return _eq(out, {"at-limit": ([], False), "over": ([("SKEL-README", "README.md", "too-large")], True), "not-utf-8": ([("SKEL-README", "README.md", "not-utf-8")], True),
+                         "directory": ([("SKEL-README", "README.md", "not-a-regular-file")], True), "fifo": (1, ["SKEL-README README.md not-a-regular-file"], False),
+                         "symlink": ([("SKEL-README", "README.md", "symlink")], True)})
 
     return cases
 
