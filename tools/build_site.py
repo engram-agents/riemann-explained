@@ -889,6 +889,11 @@ ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element
 # checks attribute NAMES only, so the value is held by the static check and the escaping of the assembly alone.
 GRAPH_PAGE_EXTRA = {"aside": ("class", "hidden", "id", "role"), "button": ("class", "id", "type"), "div": ("hidden", "id"), "header": ("class",),
                     "link": ("href", "rel"), "nav": ("class",), "p": ("hidden", "id", "role"), "script": ("src", "type"), "section": ("data-page-feedback", "id")}
+# The VALUES the graph page reads of an attribute whose value matters, {(element, name): the values}: `_graph_page(section_attrs=)` refuses any other value, comparing
+# the raw value (before escaping, exactly: no case folding, no trimming, no prefix). GRAPH_PAGE_EXTRA stays a list of names; this map is the value rule. The page
+# reads `data-page-feedback="off"` and nothing else. WIDENING RULE: a consumer that reads a second value is a new ruling that names the consumer, not a quiet
+# addition to a tuple here. Every key must be an (element, name) pair the graph page's allow-list permits (case GH6).
+GRAPH_PAGE_ATTR_VALUES = {("section", "data-page-feedback"): ("off",)}
 
 
 def _graph_allowed():
@@ -2545,13 +2550,15 @@ def _graph_page(shell, assets, strings, about, cards, shell_keys=GRAPH_SHELL_KEY
         refused.append(("GRAPH-PAGE", "section_attrs", "is not a tuple of (name, value) pairs of strings"))
     else:
         section_ok, named = _graph_allowed()["section"], set()
-        for name, _value in section_attrs:
+        for name, value in section_attrs:
             if name == "id":
                 refused.append(("GRAPH-PAGE", "section attribute id", "is already set"))
             elif name in named:
                 refused.append(("GRAPH-PAGE", "section attribute " + name, "is repeated"))
             elif name not in section_ok:
                 refused.append(("GRAPH-PAGE", "section attribute " + name, "not allowed"))
+            elif ("section", name) in GRAPH_PAGE_ATTR_VALUES and value not in GRAPH_PAGE_ATTR_VALUES[("section", name)]:   # the raw value, never echoed
+                refused.append(("GRAPH-PAGE", "section attribute " + name, "has a value the page does not read"))
             named.add(name)
     if refused:
         return list(dict.fromkeys(refused)), None
@@ -13191,8 +13198,8 @@ def _selftest_cases():
                  "`GRAPH-PAGE section_attrs is not a tuple of (name, value) pairs of strings`; never a silent drop")
     def _():
         plain = gh_page(GA_SHELL)[1]
-        errs, page = gh_page(GA_SHELL, section_attrs=(("class", 'x"y'), ("data-page-feedback", "A <b> & 'c'")))
-        head = '<section id="graph-about" class="x&quot;y" data-page-feedback="A &lt;b&gt; &amp; &#x27;c&#x27;">\n'
+        errs, page = gh_page(GA_SHELL, section_attrs=(("class", "A <b> & 'c' \"d\""), ("data-page-feedback", "off")))
+        head = '<section id="graph-about" class="A &lt;b&gt; &amp; &#x27;c&#x27; &quot;d&quot;" data-page-feedback="off">\n'
         no = lambda *lines: (list(lines), None)
         refused = lambda attrs: gh_page(GA_SHELL, section_attrs=attrs)
         shape = no(("GRAPH-PAGE", "section_attrs", "is not a tuple of (name, value) pairs of strings"))
@@ -13254,8 +13261,17 @@ def _selftest_cases():
         allowed = _graph_allowed()
         return _eq(([g == want for g in got], any("evil" in repr(g) or "javascript" in repr(g) for g in got), errs, page is not None and '<section id="graph-about" data-page-feedback="off">\n' in page,
                     isinstance(GRAPH_PAGE_ATTR_VALUES, dict), [k for k in GRAPH_PAGE_ATTR_VALUES if not (isinstance(k, tuple) and len(k) == 2 and k[1] in allowed.get(k[0], ()))],
-                    GRAPH_PAGE_ATTR_VALUES.get(("section", "data-page-feedback")), all(isinstance(n, str) for v in GRAPH_PAGE_EXTRA.values() for n in v)),
-                   ([True] * 10, False, [], True, True, [], ("off",), True))
+                    GRAPH_PAGE_ATTR_VALUES, all(isinstance(n, str) for v in GRAPH_PAGE_EXTRA.values() for n in v)),
+                   ([True] * 10, False, [], True, True, [], {("section", "data-page-feedback"): ("off",)}, True))
+
+    @case("GH7", "the hooks: the graph page the fixture shell builds is the bytes it was before the value rule: with `section_attrs` at its default and with (`data-page-feedback`, `off`) given, "
+                 "the page text (fixture shell GA_SHELL, the fixture strings, empty about and cards) has the sha256 the head before the value rule produced (literals read off that head, "
+                 "not derived from this code), and the second is the first with ` data-page-feedback=\"off\"` on the About section alone")
+    def _():
+        plain, off = gh_page(GA_SHELL)[1], gh_page(GA_SHELL, section_attrs=(("data-page-feedback", "off"),))[1]
+        sha = lambda t: hashlib.sha256(t.encode("utf-8")).hexdigest()
+        return _eq((sha(plain), sha(off), off == plain.replace('<section id="graph-about">', '<section id="graph-about" data-page-feedback="off">')),
+                   ("eb6a82b551e03ffa1bda95451f373f3bb9b0dccbbca24f6e08c4987c423f7007", "db6fa37459b98dc6e82c8ca8d182cc660abe7cd670efdea2770edf960969e896", True))
 
     # ---- G2c: the map page's closed rows, the list links, the robots meta of the shell, the list page's link back to the map, and the pins left out of the first
     # round of the graph page cases. Every expectation is a literal. The notes below give the fixture its sections: conditions (three, one of them with a literal
