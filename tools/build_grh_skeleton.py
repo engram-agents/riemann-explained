@@ -3402,6 +3402,21 @@ def _selftest_cases():
         return _eq((lib, fine, spine),
                    (([("SKEL-ILEAN-VERSION", "Lib/X/W.ilean", "missing"), ("SKEL-ILEAN-VERSION", "Lib/Z/Y.ilean", "6")], {}), [], [("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")]))
 
+    @case("ILV4", "a bool is not an int for the version check, and a float is not an int: with ILEAN_VERSIONS set to (1,) for the case (the real tuple is (5,), and true == 1 != 5, so on it a "
+                  "bool taken as an int would still be refused and the first assertion of ILV1 could not tell), `true` is refused `true`, `1.0` is refused `1.0`, and `1` builds; the tuple is restored")
+    def _():
+        global ILEAN_VERSIONS
+        keep, out = ILEAN_VERSIONS, {}
+        ILEAN_VERSIONS = (1,)
+        try:
+            for label, v in (("true", True), ("1.0", 1.0), ("1", 1)):
+                out[label] = ilv_build(A=v, B=v)
+        finally:
+            ILEAN_VERSIONS = keep
+        return _eq((out, ILEAN_VERSIONS),
+                   ({"true": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "true"), ("SKEL-ILEAN-VERSION", "New/S/B.ilean", "true")], True),
+                     "1.0": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "1.0"), ("SKEL-ILEAN-VERSION", "New/S/B.ilean", "1.0")], True), "1": ([], False)}, (5,)))
+
     @case("ILVR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): all 803 .ilean files under --ilean-dir carry `version` 5 (read here, independently of the builder), so the "
                   "real build is not refused by the version check, and `ILEAN_VERSIONS` is (5,)")
     def _():
