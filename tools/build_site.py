@@ -560,8 +560,8 @@ Refused, `GRAPH-PAGE <reason>`, exit 1, nothing written (`_graph_page`): no doct
 that is not a shell key is unknown too); a token in an attribute or inside a script or style; a `{{` left, in the shell or brought by a value; a script that is not type="module" with a relative `src` that is a
 key of `assets`, or that has text; a link that is not rel="stylesheet" with a relative `href` that is a key of `assets`; an on* attribute, a style attribute, an inline style element; an <a> whose address is
 not a relative path or a #fragment (absolute, protocol-relative, root-relative, `javascript:`, `data:`, in any letter case and with the characters a browser drops); any element or attribute outside
-ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 20 pairs, pinned by GP7; with it 44 elements and 75 pairs:`element_problems(page, allowed)` takes the table, `graph_element_problems` passes
-`_graph_allowed()`, the list page keeps ALLOWED_ELEMENTS alone). The built page passes the static check, the element check with that list and, when CODE_ON_SURFACE_REFUSES is True, the code count
+ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 20 pairs, pinned by GP7; with it 44 elements and 75 pairs: `element_problems(page, allowed, values)` takes the table and the value map, `graph_element_problems` passes
+`_graph_allowed()` and GRAPH_PAGE_ATTR_VALUES, the list page keeps ALLOWED_ELEMENTS alone). The built page passes the static check, the element check with that list and, when CODE_ON_SURFACE_REFUSES is True, the code count
 (`CODE-ON-SURFACE graph/index.html:<card> ...`); the leak check reads it as any output file. The self-test cases that give the build a source folder use a valid shell (GA_SHELL).
 The COPY SET is the scanner's own JS extensions (gjc.JS_EXT, read at the call: .js and .mjs) plus the one literal GRAPH_CSS_EXT (.css: the scanner has no constant for stylesheets), compared as
 written; a file outside test/ whose lower-cased extension is in gjc.JS_EXT, gjc.SHIP_IMPORT_EXT or is .css but is not in the copy set (X.JS, A.Mjs, X.CSS) is `GRAPH-ASSET <path> not-an-asset-extension`,
@@ -885,11 +885,12 @@ ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element
 # G2b: what the graph page (graph/index.html) may hold BEYOND ALLOWED_ELEMENTS: exactly what the page layer's shell (viewer/graph/shell.html) needs, a pinned literal
 # (case GP7: 9 entries, 20 element-attribute pairs; nav, button, link and script are new elements, aside, div, header, p and section get more attributes). The list
 # page does not get it: element_problems(page) still uses ALLOWED_ELEMENTS alone. With it the graph page's list is 44 elements and 75 pairs (_graph_allowed).
-# `data-page-feedback` on a section is the one `data-*` name the page allows, for the About section the assembler marks (`_graph_page(section_attrs=)`); the allow-list
-# checks attribute NAMES only, so the value is held by the static check and the escaping of the assembly alone.
+# `data-page-feedback` on a section is the one `data-*` name the page allows, for the About section the assembler marks (`_graph_page(section_attrs=)`); this table
+# is names only, and the value is held by the declared map GRAPH_PAGE_ATTR_VALUES below.
 GRAPH_PAGE_EXTRA = {"aside": ("class", "hidden", "id", "role"), "button": ("class", "id", "type"), "div": ("hidden", "id"), "header": ("class",),
                     "link": ("href", "rel"), "nav": ("class",), "p": ("hidden", "id", "role"), "script": ("src", "type"), "section": ("data-page-feedback", "id")}
-# The VALUES the graph page reads of an attribute whose value matters, {(element, name): the values}: `_graph_page(section_attrs=)` refuses any other value, comparing
+# The VALUES the graph page reads of an attribute whose value matters, {(element, name): the values}: the ONE definition, read at two sites, `_graph_page(section_attrs=)`
+# (an early refusal) and `graph_element_problems` (the shell before assembly, the assembled page in the build), each refusing any other value, comparing
 # the raw value (before escaping, exactly: no case folding, no trimming, no prefix). GRAPH_PAGE_EXTRA stays a list of names; this map is the value rule. The page
 # reads `data-page-feedback="off"` and nothing else. WIDENING RULE: a consumer that reads a second value is a new ruling that names the consumer, not a quiet
 # addition to a tuple here. Every key must be an (element, name) pair the graph page's allow-list permits (case GH6).
@@ -912,9 +913,11 @@ HIDING_ELEMENTS = frozenset(set(html.parser.HTMLParser.CDATA_CONTENT_ELEMENTS)
 _OPENING_RUN = frozenset({"html", "head", "meta"}) | HIDING_ELEMENTS
 
 
-def element_problems(page, allowed=None):
+def element_problems(page, allowed=None, values=None):
     """What the BUILT page holds outside ALLOWED_ELEMENTS (or outside `allowed`, an element -> attribute names table: the graph page passes _graph_allowed()): a sorted list of `element <name>` for each start tag of an element not in the list,
-    `attribute <name> on <element>` for each attribute an allowed element may not carry, and `element <name> outside head` for an element of
+    `attribute <name> on <element>` for each attribute an allowed element may not carry, `attribute <name> on <element> has a value the page does not read` for each
+    attribute the `values` map ({(element, name): the values}, default none; the graph page passes GRAPH_PAGE_ATTR_VALUES) gives a value list and whose raw value, as html.parser
+    reads it (None when it has none), is not in it, and `element <name> outside head` for an element of
     HIDING_ELEMENTS (style, title) after the opening run of the page. The BUILT page is read with html.parser, start tags and attribute NAMES; the
     one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one). A `meta` is one of three
     whole tags (F55: `_META_TAGS`, the charset tag, the viewport tag and the robots tag, each attribute and value literal, in order); any
@@ -927,6 +930,7 @@ def element_problems(page, allowed=None):
     `unterminated markup`. It is a name check on the tags as html.parser sees them, not a
     browser-grade parse."""
     allowed = ALLOWED_ELEMENTS if allowed is None else allowed
+    values = {} if values is None else values
     found = set()
     run = [True]   # the page is still in its opening run
     seen = {"start": False, "decl": False}   # a start tag has been seen; a declaration has been seen
@@ -956,6 +960,7 @@ def element_problems(page, allowed=None):
                 found.add("element " + tag)
             else:
                 found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in allowed[tag])
+                found.update(f"attribute {k} on {tag} has a value the page does not read" for k, v in attrs if k in allowed[tag] and (tag, k) in values and v not in values[(tag, k)])
             if tag == "meta":
                 metas.append(tuple(attrs))
 
@@ -984,8 +989,8 @@ def element_problems(page, allowed=None):
 
 
 def graph_element_problems(page):
-    """element_problems of the graph page: the same check with the allow-list of ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA together."""
-    return element_problems(page, _graph_allowed())
+    """element_problems of the graph page: the same check with the allow-list of ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA together and the value map GRAPH_PAGE_ATTR_VALUES."""
+    return element_problems(page, _graph_allowed(), GRAPH_PAGE_ATTR_VALUES)
 
 
 _HEAD_TAGS = (("viewport", META_VIEWPORT), ("robots", META_ROBOTS))   # fixed at load: the check does not follow a change of the two names above
@@ -2533,7 +2538,8 @@ def _graph_page(shell, assets, strings, about, cards, shell_keys=GRAPH_SHELL_KEY
     file`; `section_attrs` (a tuple of (name, value) pairs of str, default empty) is written on `<section id="graph-about">` in the order given, each value escaped, each
     name one the graph page's allow-list permits on a section (not `id`, which the section has, and no name twice) or `GRAPH-PAGE section attribute <name> not allowed`
     (`is already set`, `is repeated`); an argument that is not of that shape is `GRAPH-PAGE shell_keys ...` / `GRAPH-PAGE section_attrs ...`, never a fall back to the
-    default. The page is the shell with each `{{S:key}}` of `shell_keys`, in element content only, replaced by the escaped value of that strings key, and its one `{{CARDS}}`, in the content of a div, main, section or body,
+    default; a value of a section attribute that GRAPH_PAGE_ATTR_VALUES gives a value list and that is not in it is `GRAPH-PAGE section attribute <name> has a value the page does not
+    read` (the value not echoed), here and, for a shell that holds one, in the element check below. The page is the shell with each `{{S:key}}` of `shell_keys`, in element content only, replaced by the escaped value of that strings key, and its one `{{CARDS}}`, in the content of a div, main, section or body,
     replaced by the cards markup: `<section id="graph-about">` holding the list page's front words (about: its header without the h1) and the list page's
     root_only_note_single sentence in one `p.roots-only` as the last child, then the list page's main (the h2 and the chain, with every card byte for byte). Refused (each
     (GRAPH-PAGE, what, reason), none of the page written): no doctype or no charset meta; a {{CARDS}} count other than 1 or one that is not element content; an unknown
@@ -2605,7 +2611,8 @@ def _graph_page(shell, assets, strings, about, cards, shell_keys=GRAPH_SHELL_KEY
     for f in graph_element_problems(raw):
         if f.startswith("element style") or (f.startswith("attribute ") and (f.split()[1], f.split()[3]) in scan.reported):
             continue   # said above, by its own line
-        errors.append(("GRAPH-PAGE", f, "is not allowed in the shell"))
+        value_line = re.fullmatch(r"attribute (\S+) on (\S+) (has a value the page does not read)", f)   # the value rule, in the words of the section_attrs refusal
+        errors.append(("GRAPH-PAGE", f"{value_line.group(2)} attribute {value_line.group(1)}", value_line.group(3)) if value_line else ("GRAPH-PAGE", f, "is not allowed in the shell"))
     errors = list(dict.fromkeys(head + errors))
     if errors:
         return errors, None
