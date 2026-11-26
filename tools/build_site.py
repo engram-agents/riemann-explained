@@ -13017,6 +13017,41 @@ def _selftest_cases():
             got = "IndexError"
         return _eq((got, _build(graph_src=_GRAPH_SRC_AT_START).rc), ("IndexError", 0))
 
+    @case("GM8", "G2c-5 (a) the address check trims what a browser trims before it looks at the first characters: an <a href> of ` //evil.example` (a leading space) and of a leading "
+                 "tab `//evil.example` is protocol-relative and refused (`is not a relative path or #fragment`), exit 1, nothing written; neighbours that build: ` list/` "
+                 "with a leading space and a trailing tab")
+    def _():
+        def go(h):
+            rc, existed, lines, _b2 = gp_go(gp_swap(("</h1>", f'</h1>\n<p><a href="{h}">x</a></p>')))
+            return rc, existed, lines
+        no = lambda line: (1, False, [line])
+        return _eq([go(" //evil.example"), go("\t//evil.example"), go(" \t //evil.example"), go(" list/"), go("list/\t")],
+                   [no(" //evil.example is not a relative path or #fragment"), no("\t//evil.example is not a relative path or #fragment"),
+                    no(" \t //evil.example is not a relative path or #fragment"), (0, True, []), (0, True, [])])
+
+    @case("GM9", "G2c-5 (b) the sentinel guard of the assembly: a shell that holds U+FDD0 in an attribute (class of the header) or once in text is refused, `GRAPH-PAGE shell.html holds "
+                 "U+FDD0, which the assembly keeps for the cards`, exit 1, nothing written (the cards markup would otherwise be put in at every one of them); control: the fixture builds")
+    def _():
+        def go(s):
+            rc, existed, lines, _b2 = gp_go(s)
+            return rc, existed, lines
+        line = ["shell.html holds U+FDD0, which the assembly keeps for the cards"]
+        return _eq([go(GA_SHELL), go(gp_swap(("<body>", '<body>\n<header class="a﷐b"></header>'))), go(gp_swap(("<h1>{{S:title}}</h1>", "<h1>{{S:title}}﷐</h1>")))],
+                   [(0, True, []), (1, False, line), (1, False, line)])
+
+    @case("GM10", "G2c-5 (c) the elements that may hold `{{CARDS}}` are the content of a div, main, section or body and no other: `{{CARDS}}` in a p and in a span is refused, `{{CARDS}} is not in "
+                  "element-content position`, exit 1, nothing written; neighbours that build: in a section and directly in the body, and the constant is exactly those four")
+    def _():
+        def go(s):
+            rc, existed, lines, _b2 = gp_go(s)
+            return rc, existed, lines
+        out = ("{{CARDS}}\n</div>", "x\n</div>")
+        no = (1, False, ["{{CARDS}} is not in element-content position"])
+        return _eq((sorted(_GRAPH_CARD_PARENTS), go(gp_swap(out, ("</h1>", "</h1>\n<p>{{CARDS}}</p>"))), go(gp_swap(out, ("</h1>", "</h1>\n<p><span>{{CARDS}}</span></p>"))),
+                    go(gp_swap(('<div id="graph-cards">\n{{CARDS}}\n</div>', '<section id="graph-cards">\n{{CARDS}}\n</section>'))),
+                    go(gp_swap(('<div id="graph-cards">\n{{CARDS}}\n</div>', "{{CARDS}}")))),
+                   (["body", "div", "main", "section"], no, no, (0, True, []), (0, True, [])))
+
     @case("GA19", "G2a the gate and the copy rule agree on the scanner's skipped folders: a .js or .css under a `__pycache__` folder (any depth) is refused, "
                   "`GRAPH-ASSET <path> skipped-dir`, by the folder names the scanner itself prunes (its SKIP_DIRS, minus `test`, which is skipped without refusal), "
                   "and still so with the name rule loosened to any path; and a structural assert in the gate: a scanner that reports fewer files checked than the "
