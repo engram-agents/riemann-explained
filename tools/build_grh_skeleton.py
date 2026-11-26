@@ -1269,7 +1269,7 @@ class _SkipCase(Exception):
 
 _GRH_FOR_SK13 = None   # the folder given to `--selftest --grh`; SK13 reads it
 _ILEAN_FOR_SK13 = None   # the folder given to `--selftest --ilean-dir`; SK13 reads it with the one above
-_NOTES_FOR_RD = None   # the folder given to `--selftest --notes-lean-dir` (the ten notes); RDR reads it with the two above
+_NOTES_FOR_RD = None   # the folder given to `--selftest --notes-lean-dir` (the eleven notes); RDR reads it with the two above
 
 
 def _eq(actual, expected):
@@ -3590,7 +3590,7 @@ def _selftest_cases():
                     [("SKEL-READING-ID", "a.md", "Bad"), ("SKEL-READING-DATE", "a.md", "2026-99-99"), ("SKEL-READING-BY", "a.md", "by and second_read_by are the same"),
                      ("SKEL-READING-MISSING", "b.md", "date")]))
 
-    @case("RD4", "contributed notes, the front-matter grammar, each refusal `SKEL-READING-FRONT <file> <reason>`: no opening `---`; no closing `---`; CRLF line ends (a carriage return in the front matter); a "
+    @case("RD4", "contributed notes, the front-matter grammar, each refusal `SKEL-READING-FRONT <file> <reason>`: no opening `---`; no closing `---`; CRLF line ends (a carriage return in the front matter, in the first line or in any later one); a "
                  "line that is neither `key: value` nor blank (`line <n> is not key: value`, n counted from the opening `---` as line 1; `key:value`, an upper-case key and plain words are such lines); a key "
                  "twice; an unknown key; a key out of the fixed order; a list where text is expected and text where a list is expected (each of title, by, attaches, about); a malformed list "
                  "(unclosed, an empty item, brackets inside, a `# ...` tail after the list); an empty `about` list. A `#` tail on a TEXT value is part of the value (no comment). Strict bytes, "
@@ -3606,15 +3606,15 @@ def _selftest_cases():
             good.replace("by: Halley", "by: [Halley]"), good.replace("title: A title", "title: [A, B]"), good.replace("attaches: [lean-s-a]", "attaches: lean-s-a"),
             good.replace("about: [New.S.alpha]", "about: New.S.alpha"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a,]"),
             good.replace("attaches: [lean-s-a]", "attaches: [[lean-s-a]]"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a] # the first file"),
-            good.replace("about: [New.S.alpha]", "about: []"), "---\nid: x\n---\n")]
+            good.replace("about: [New.S.alpha]", "about: []"), "---\nid: x\n---\n", good.replace("id: n-one\n", "id: n-one\r\n"))]
         hashtail = rd_build({"n.md": rd_note(title="Plain # not a comment")})
         enc = [rd_build({"n.md": b})[0] for b in (b"\xef\xbb\xbf" + rd_note(), rd_note(body="a\x00b\n"), rd_note().replace(b"A title", b"A\x00title"), rd_note(body="x\n").replace(b"x\n", b"\xff\xfe\n"),
                                                   rd_note().replace(b"A title", b"A \xc3 title"))]
-        return _eq((front[:17], front[17], front[18][0][:2], hashtail[0], hashtail[1]["graph/step/lean-s-a.json"].count(b"Plain # not a comment"), enc),
+        return _eq((front[:17], front[17], front[18][0][:2], front[19], hashtail[0], hashtail[1]["graph/step/lean-s-a.json"].count(b"Plain # not a comment"), enc),
                    ([fm("no opening ---"), fm("no closing ---"), fm("carriage return"), fm("line 3 is not key: value"), fm("line 3 is not key: value"), fm("line 3 is not key: value"),
                      fm("duplicate key id"), fm("unknown key tags"), fm("key by is out of order"), fm("by is a list, not text"), fm("title is a list, not text"), fm("attaches is text, not a list"),
                      fm("about is text, not a list"), fm("attaches is a malformed list"), fm("attaches is a malformed list"), fm("attaches is a malformed list"), fm("attaches is a malformed list")],
-                    fm("about is an empty list"), ("SKEL-READING-MISSING", "n.md"), [], 1,
+                    fm("about is an empty list"), ("SKEL-READING-MISSING", "n.md"), fm("carriage return"), [], 1,
                     [[("SKEL-READING-ENCODING", "n.md", "bom")], [("SKEL-READING-ENCODING", "n.md", "nul")], [("SKEL-READING-ENCODING", "n.md", "nul")], [("SKEL-READING-ENCODING", "n.md", "not-utf-8")],
                      [("SKEL-READING-ENCODING", "n.md", "not-utf-8")]]))
 
@@ -3705,8 +3705,9 @@ def _selftest_cases():
                    ([], [("SKEL-READING-INVARIANT", "a", "index step s2 has no such reading"), ("SKEL-READING-INVARIANT", "a", "reading on s1 is not in the index list")],
                     [("SKEL-READING-INVARIANT", "b", "reading on s1 is not in the index list")], [("SKEL-READING-INVARIANT", "z", "index step s1 has no such reading")]))
 
-    @case("RDR", "the real source and the ten notes (give `--selftest --grh DIR --ilean-dir DIR --notes-lean-dir DIR`; otherwise SKIPPED; the folder holds exactly the ten notes): the build is accepted with the "
-                 "pin 72fead10..., 10 readings on 7 distinct file steps, 3 on lean-reduction-one-sided-bound and 2 on lean-reduction-zeros-criterion, index.json `readings` has 10 rows (every row's "
+    @case("RDR", "the real source and the eleven notes (give `--selftest --grh DIR --ilean-dir DIR --notes-lean-dir DIR`; otherwise SKIPPED; the folder holds exactly the eleven numbered notes): the build is accepted with the "
+                 "pin 72fead10..., 11 readings on 7 distinct file steps: one-sided-bound 07, 09, 10; zeros-criterion 01, 03; main-inequality 04, 11 (note-id order); bad-types 02; short-and-enough 05; "
+                 "twist-long-forms 06; prime-sums 08; index.json `readings` has 11 rows (every row's "
                  "step carries the reading), every text equals the body bytes of its file after the closing `---` line (read here by a separate cut), 356 files as without notes, and exactly "
                  "the 7 attached step files and index.json differ from the build without notes, each only by the key `readings`")
     def _():
@@ -3726,11 +3727,15 @@ def _selftest_cases():
         got = {r["id"]: r["text"] for rs in steps.values() for r in rs}
         changed = sorted(k for k in on[1] if on[1][k] != off[1].get(k))
         strip = lambda o: {k: v for k, v in o.items() if k != "readings"}
-        return _eq((on[0], off[0], len(on[1]), len(off[1]), sum(len(v) for v in steps.values()), len(steps), len(steps["graph/step/lean-reduction-one-sided-bound.json"]),
-                    len(steps["graph/step/lean-reduction-zeros-criterion.json"]), len(ix["readings"]), all(r["id"] in {x["id"] for x in steps[f"graph/step/{r['step']}.json"]} for r in ix["readings"]),
+        return _eq((on[0], off[0], len(on[1]), len(off[1]), sum(len(v) for v in steps.values()), len(steps),
+                    {k[len("graph/step/"):-len(".json")]: [r["id"] for r in v] for k, v in steps.items()}, len(ix["readings"]), all(r["id"] in {x["id"] for x in steps[f"graph/step/{r['step']}.json"]} for r in ix["readings"]),
                     got == want, len(want), [r["id"] for r in ix["readings"]] == sorted(want), changed == sorted(["graph/index.json"] + list(steps)),
                     all(strip(_j(on[1], k)) == _j(off[1], k) for k in changed), bs._graph_static_problems(on[1])),
-                   ([], [], 356, 356, 10, 7, 3, 2, 10, True, True, 10, True, True, True, []))
+                   ([], [], 356, 356, 11, 7,
+                    {"lean-reduction-one-sided-bound": ["lean-note-07", "lean-note-09", "lean-note-10"], "lean-reduction-zeros-criterion": ["lean-note-01", "lean-note-03"],
+                     "lean-reduction-main-inequality": ["lean-note-04", "lean-note-11"], "lean-spanning-main-term-bad-types": ["lean-note-02"], "lean-reduction-short-and-enough": ["lean-note-05"],
+                     "lean-determinant-twist-long-forms": ["lean-note-06"], "lean-reduction-prime-sums": ["lean-note-08"]},
+                    11, True, True, 11, True, True, True, []))
 
     return cases
 
