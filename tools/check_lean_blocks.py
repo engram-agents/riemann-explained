@@ -98,7 +98,12 @@ def check_note(src_root, path):
 
 
 def selftest():
-    d = tempfile.mkdtemp()
+    """Its folder is removed when it returns, on every path (a pass, a failure, an exception)."""
+    with tempfile.TemporaryDirectory() as d:
+        return _selftest(d)
+
+
+def _selftest(d):
     os.makedirs(os.path.join(d, "src", "A"))
     src = "theorem foo (n : Nat) : n = n := by\n  rfl\n\ntheorem bar : True := trivial\n"
     open(os.path.join(d, "src", "A", "F.lean"), "w").write(src)

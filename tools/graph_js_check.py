@@ -355,10 +355,16 @@ MISSES = [
 
 
 def selftest():
+    """Every folder it plants lives under ONE root that is removed when it returns, on every path (a pass, a failure, an exception)."""
+    with tempfile.TemporaryDirectory() as root:
+        return _selftest(root)
+
+
+def _selftest(root):
     import io
     ok, notes = True, []
     for name, text, token in PLANTS:
-        d = tempfile.mkdtemp()
+        d = tempfile.mkdtemp(dir=root)
         p = os.path.join(d, name)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         open(p, "w").write(text + "\n")
@@ -368,7 +374,7 @@ def selftest():
         if not good:
             ok = False
             notes.append("not refused: %s in %s -> rc %d %r" % (token, name, rc, buf.getvalue()))
-    d = tempfile.mkdtemp()
+    d = tempfile.mkdtemp(dir=root)
     for name, text in CLEAN:
         open(os.path.join(d, name), "w").write(text + "\n")
     buf = io.StringIO()
@@ -376,7 +382,7 @@ def selftest():
     if rc != 0 or ("%d files checked, 0 refused, 0 skipped as test files" % len(CLEAN)) not in buf.getvalue():
         ok = False
         notes.append("clean files were refused or miscounted: " + buf.getvalue())
-    d = tempfile.mkdtemp()
+    d = tempfile.mkdtemp(dir=root)
     os.makedirs(os.path.join(d, "engine", "test", "deep"))
     open(os.path.join(d, "engine", "test", "t.js"), "w").write("x.innerHTML = 1; fetch('http://x')\n")
     open(os.path.join(d, "engine", "test", "deep", "u.js"), "w").write("eval(s)\n")
@@ -385,13 +391,13 @@ def selftest():
     if run(d, buf) != 0 or "1 files checked, 0 refused, 2 skipped as test files" not in buf.getvalue():
         ok = False
         notes.append("a token under test/ was read, or the skipped files were not counted aloud: " + buf.getvalue())
-    d = tempfile.mkdtemp()
+    d = tempfile.mkdtemp(dir=root)
     buf = io.StringIO()
     if run(d, buf) != 1 or "CHECKED NOTHING" not in buf.getvalue():
         ok = False
         notes.append("an empty tree was not CHECKED NOTHING")
     for what, name, text in MISSES:           # documented misses: each is NOT refused today
-        d = tempfile.mkdtemp()
+        d = tempfile.mkdtemp(dir=root)
         open(os.path.join(d, name), "w").write(text + "\n")
         buf = io.StringIO()
         if run(d, buf) != 0:
