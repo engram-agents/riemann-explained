@@ -68,6 +68,9 @@ def sub_once(old, new):
 
 # A page that ignores the map's open_scale_floor (it does not hand it to the engine as the floor of an opened node's framing): the defect the scale-floor check exists to catch.
 IGNORE_FLOOR = sub_once("...(index.openScaleFloor !== undefined ? { frameMin: index.openScaleFloor } : {})", "")
+# A page whose open sheet offers no parts button (the sheet's `canParts` block is never reached), and a page whose open-parts route opens nothing.
+NO_PARTS_BUTTON = sub_once("    if (info.canParts) {", "    if (false && info.canParts) {")
+PARTS_NEVER_OPEN = sub_once("if (m && await viaRoute(t, path, () => handle.open(id))) {", "if (false && m && await viaRoute(t, path, () => handle.open(id))) {")
 # A page whose sheet draws no note (the note section is never built), whatever the data carries.
 NO_NOTE_BODY = sub_once("    if (info.note) {\n      const n = info.note, t", "    if (false && info.note) {\n      const n = info.note, t")
 
@@ -1098,6 +1101,62 @@ def t40b_a_deep_link_only_measurement_is_not_what_the_check_reads(tmp):
     assert k < floor <= closed, ("the check must have read the opened box's scale, not the deep link's", k, floor, closed)
 
 
+
+def real_top(fix_dir=None):
+    return json.load(open(os.path.join(HERE, "fixtures", "real", "index.json")))["top"]
+
+
+def childless(*ids):
+    """step_edit: each id becomes a step with no children (a part that is a leaf)."""
+    def edit(steps):
+        for i in ids:
+            steps[i]["children"] = []
+            steps[i]["card"]["child_count"] = 0
+            steps[i]["card"].pop("child_kind", None)
+    return edit
+
+
+def t41_floor_check_names_a_missing_parts_button(tmp):
+    """F3 (a): the part the floor check opens has parts, but its open sheet offers no parts button (a COPY of the page never builds it): FAIL
+    `scale-floor no parts button on <id>`, by name, never a crash and never a pass."""
+    out = build(tmp, index_edit=with_floor(0.6), mutate={"page/sheet.js": NO_PARTS_BUTTON})
+    part = real_top()[0]
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 1, (code, o)
+    assert [l for l in lines(o, "FAIL", "scale-floor") if l.startswith("FAIL 390x844 scale-floor no parts button on %s" % part)], o
+    assert not lines(o, "PASS", "scale-floor") and "Traceback" not in o, o
+
+
+def t41b_floor_check_names_parts_that_did_not_open(tmp):
+    """F3 (b): the button is pressed and no part opens within the timeout (a COPY of the page's open-parts route opens nothing): FAIL
+    `scale-floor parts did not open on <id>`, by name."""
+    out = build(tmp, index_edit=with_floor(0.6), mutate={"page/app.js": PARTS_NEVER_OPEN})
+    part = real_top()[0]
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 1, (code, o)
+    assert [l for l in lines(o, "FAIL", "scale-floor") if l.startswith("FAIL 390x844 scale-floor parts did not open on %s" % part)], o
+    assert not lines(o, "PASS", "scale-floor") and "Traceback" not in o, o
+
+
+def t41c_part_is_the_first_top_part_with_children(tmp):
+    """F3: the part the checks open is the first top part that HAS children (a parts button to open), so a leaf in front of it does not end the run."""
+    top = real_top()
+    out = build(tmp, index_edit=with_floor(0.6), step_edit=childless(top[0]))
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 0, (code, o)
+    assert [l for l in lines(o, "ID") if l.startswith("ID part %s (first id of index top that has children)" % top[1])], o
+    assert [l for l in lines(o, "PASS", "scale-floor") if "390x844" in l], o
+
+
+def t41d_no_top_part_with_children_is_a_named_fail(tmp):
+    """F3: a tree in which no top part has children has no box to open and no group to open either: the run FAILs by name at the ids (it cannot reach the
+    floor check, so there is no scale-floor SKIP to name here), never a crash and never a pass."""
+    out = build(tmp, index_edit=with_floor(0.6), step_edit=childless(*real_top()))
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 1 and [l for l in lines(o, "FAIL", "ids") if "no top part has children" in l], (code, o)
+    assert "Traceback" not in o and "SMOKE PASS" not in o, o
+
+
 CASES = [
     ("T1 the real fixture (--no-note): exit 0, SMOKE PASS, three ids, the checks named", t1_real_fixture),
     ("T1b the flat shape (A1): TREE flat, exit 0", t1b_flat_shape),
@@ -1154,6 +1213,10 @@ CASES = [
     ("T39 F2: the note is compared on lowercase letters and digits, contained in the rendered body", t39_note_compared_on_what_survives_rendering),
     ("T40 F3a: the scale floor is read on the opened box and the PASS line says so", t40_scale_floor_reads_the_opened_box),
     ("T40b F3b: a deep-link-only measurement is not what the floor check reads", t40b_a_deep_link_only_measurement_is_not_what_the_check_reads),
+    ("T41 F3a: a sheet with no parts button is a named FAIL of the floor check", t41_floor_check_names_a_missing_parts_button),
+    ("T41b F3b: parts that do not open are a named FAIL of the floor check", t41b_floor_check_names_parts_that_did_not_open),
+    ("T41c F3: the part opened is the first top part that has children", t41c_part_is_the_first_top_part_with_children),
+    ("T41d F3: no top part with children is a named FAIL at the ids", t41d_no_top_part_with_children_is_a_named_fail),
 ]
 
 # The cases that start a browser (the tool's whole run, or the page suite's). The rest speak plain HTTP to the tool's server or call its functions,
@@ -1166,7 +1229,9 @@ NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_st
                  t35_credits_page_answers_and_links_back_to_the_map, t35b_credits_link_that_does_not_reach_the_map_fails, t35c_credits_console_error_fails,
                  t36_credits_absent_is_a_named_skip_or_a_required_fail,
                  t37_open_check_accepts_a_markup_card_or_a_made_card, t38_made_card_tree_opens,
-                 t40_scale_floor_reads_the_opened_box, t40b_a_deep_link_only_measurement_is_not_what_the_check_reads}
+                 t40_scale_floor_reads_the_opened_box, t40b_a_deep_link_only_measurement_is_not_what_the_check_reads,
+                 t41_floor_check_names_a_missing_parts_button, t41b_floor_check_names_parts_that_did_not_open,
+                 t41c_part_is_the_first_top_part_with_children, t41d_no_top_part_with_children_is_a_named_fail}
 
 
 def run_cases(cases, only, no_browser=False):
