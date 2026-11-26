@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The one-command acceptance test of a BUILT site tree: the merge seat's check before any deploy of the Lean map.
 
-  ~/.engram/venv/bin/python3 viewer/graph/page/test/smoke_tree.py SITE_DIR [--no-note] [--only-viewport 390x844|1280x900]
+  python3 viewer/graph/page/test/smoke_tree.py SITE_DIR [--no-note | --require-note] [--require-floor] [--only-viewport 390x844|1280x900]
+  (run it with a Python that has playwright)
 
 SITE_DIR is the folder a web server would serve. Either shape is accepted and the one found is printed:
   `TREE flat`     index.html beside index.json, step/, engine/, page/ at the folder's root (the Lean map assembler's)
@@ -9,8 +10,9 @@ SITE_DIR is the folder a web server would serve. Either shape is accepted and th
 A folder with neither is refused with exit 2.
 
 The tool serves SITE_DIR read-only on 127.0.0.1 (a random port) with the page browser suite's own server class, so the
-Content-Security-Policy and the other headers are the suite's, never a copy. Every request, and every file the tool itself reads, is
-resolved and must stay inside SITE_DIR; one that leaves it (a symlink pointing out) is a FAIL named `containment`.
+Content-Security-Policy and the other headers are the suite's, never a copy. Every request by every method the server serves (GET and
+HEAD, through one guard), and every file the tool itself reads, is resolved and must stay inside SITE_DIR; one that leaves it (a
+symlink pointing out) is a FAIL named `containment`.
 
 In Chromium, for each viewport (390x844 mobile with touch; 1280x900):
   boot          #graph-layer visible, #graph-fallback and #graph-notice hidden, within 15 s (S1)
@@ -22,17 +24,20 @@ In Chromium, for each viewport (390x844 mobile with touch; 1280x900):
                 ids picked FROM THE DATA (printed with the rule that picked each); opened by deep link `#<id>`: the sheet opens and
                 its heading equals the card title in the step file (S3, S4)
   note          for the file: the sheet's .note-body holds the first 40 characters of THAT step's note.text, whitespace collapsed
-                (A2). An absent or empty .note-body is a FAIL; no file step carries a note, or --no-note, is a SKIP, never a pass.
+                (A2). An absent or empty .note-body is a FAIL; no file step carries a note, or --no-note, is a SKIP, never a pass
+                (and a FAIL with --require-note: the merge seat's run that must have the real check).
   scale-floor   390x844 only: after the part is opened, the engine world's rendered scale is >= index.json open_scale_floor (A3).
-                No such key in the data: SKIP, never a pass. (Opened by deep link, the path every tree has; a tap on the card needs
+                No such key in the data: SKIP, never a pass (a FAIL with --require-floor). (Opened by deep link, the path every tree has; a tap on the card needs
                 the engine's pointer path, which a tree without its engine cannot offer.)
 
 The heading of a sheet is the title shown in its breadcrumb's current entry (the .crumb-here, role word left out) when the sheet has
 one, else the card's own .claim line (a skeleton card says its title there). Both sides are compared as TEXT with backticks dropped
-(a backtick span is a <code> element in the page) and whitespace collapsed.
+(a backtick span is a <code> element in the page) and whitespace collapsed. An empty heading, or an empty card title, is a FAIL.
 
-Output: one line per check `PASS|FAIL|SKIP <viewport> <check> <detail>`, and a last line `SMOKE PASS` or `SMOKE FAIL (<n> failed)`.
-Exit 0 only if every check passed in every viewport; 1 if any failed; 2 if SITE_DIR is neither tree shape.
+Output: one line per check `PASS|FAIL|SKIP <viewport> <check> <detail>`, and a last line `SMOKE FAIL (<n> failed)` or `SMOKE PASS`.
+The PASS line names what the run did not do: `SMOKE PASS (2 skipped: note, scale-floor)` when any check skipped, `(partial: 390x844 only)`
+with --only-viewport, the two joined by `;`. A plain `SMOKE PASS` means a whole run with nothing skipped.
+Exit 0 only if every check passed in every viewport; 1 if any failed; 2 if SITE_DIR is neither tree shape, or on a usage error.
 When the page's fallback ran, its reason is not exposed by the page (start() returns it and nothing keeps it, and nothing is logged),
 so the tool re-runs the page's own data layer (page/data.js loadIndex) in that page and prints the DataError code it gets; a refusal
 that comes from a step file rather than the index is named by the failed request and the deep-link checks instead.
@@ -46,18 +51,42 @@ sys.path.insert(0, HERE)
 import test_page_browser as T  # noqa: E402  (the suite's server class and its CSP constant: the one copy)
 from playwright.sync_api import sync_playwright  # noqa: E402
 
+LAUNCH_ARGS = ["--no-sandbox"]       # the page browser suite's own launch args (its main() writes them inline, so they are copied here)
 VIEWPORTS = {"390x844": (390, 844, True), "1280x900": (1280, 900, False)}
 BOOT_TIMEOUT_MS = 15000
 OUTSIDE = []                      # every request path or tool read that resolved outside SITE_DIR
 LINES = []
 FAILED = [0]
+SKIPPED = []                      # the check name of every SKIP, once each (the verdict line sorts them)
 
 
 def out(kind, vp, check, detail=""):
     if kind == "FAIL":
         FAILED[0] += 1
     LINES.append(kind)
+    if kind == "SKIP" and check not in SKIPPED:
+        SKIPPED.append(check)
     print(("%s %s %s %s" % (kind, vp, check, detail)).rstrip(), flush=True)
+
+
+def skip_or_fail(vp, check, why, required, flag):
+    """A check that cannot run: a SKIP, or a FAIL when the run was told (by `flag`) that this check must happen."""
+    if required:
+        out("FAIL", vp, check, "%s (%s: the check is required)" % (why, flag))
+    else:
+        out("SKIP", vp, check, "(%s)" % why)
+
+
+def verdict(failed, skipped, only):
+    """The last line. FAIL names the count; PASS names what the run did not do, so a partial or skipping run cannot read as a whole one."""
+    if failed:
+        return "SMOKE FAIL (%d failed)" % failed
+    notes = []
+    if only:
+        notes.append("partial: %s only" % only)
+    if skipped:
+        notes.append("%d skipped: %s" % (len(skipped), ", ".join(sorted(skipped))))
+    return "SMOKE PASS" + (" (%s)" % "; ".join(notes) if notes else "")
 
 
 def collapse(s):
@@ -87,14 +116,23 @@ def tree_shape(site):
 
 
 class SmokeHandler(T.Handler):
-    """The suite's own handler (its headers come from its end_headers), plus: a request whose path resolves outside the root is refused."""
-    def do_GET(self):
+    """The suite's own handler (its headers come from its end_headers), plus: a request whose path resolves outside the root is refused,
+    whatever the method (GET and HEAD are the methods it serves; both go through _guard)."""
+    def _guard(self):
         path = self.path.split("?")[0].split("#")[0]
-        if not inside(self.root_real, self.translate_path(path)):
-            OUTSIDE.append(path)
-            self.send_error(403)
-            return
-        super().do_GET()
+        if inside(self.root_real, self.translate_path(path)):
+            return True
+        OUTSIDE.append(path)
+        self.send_error(403)
+        return False
+
+    def do_GET(self):
+        if self._guard():
+            super().do_GET()
+
+    def do_HEAD(self):
+        if self._guard():
+            super().do_HEAD()
 
 
 def serve(site):
@@ -215,6 +253,9 @@ def open_check(v, vp, what, p):
     head = v.ev("""(() => { const c = document.querySelector('#graph-sheet .crumb-here');
         if (c) { const k = c.cloneNode(true); k.querySelectorAll('.crumb-role').forEach((e) => e.remove()); return {from: 'crumb', text: k.textContent}; }
         const q = document.querySelector('#graph-sheet-body .claim'); return {from: 'claim', text: q ? q.textContent : ''}; })()""")
+    if plain(p["title"]) == "" or plain(head["text"]) == "":
+        out("FAIL", vp, check, "#%s: empty heading (the sheet's is %r from the %s, the card title in the step file is %r)" % (p["id"], collapse(head["text"]), head["from"], collapse(p["title"])))
+        return False
     if plain(head["text"]) != plain(p["title"]):
         out("FAIL", vp, check, "#%s: heading %r (%s) is not the card title %r" % (p["id"], collapse(head["text"]), head["from"], collapse(p["title"])))
         return False
@@ -222,13 +263,18 @@ def open_check(v, vp, what, p):
     return True
 
 
-def note_check(v, vp, p, no_note):
+def note_check(v, vp, p, no_note, opened, require_note):
+    """The one decision about the file's note: skipped (--no-note, or no step carries one), failed (required and none; or the sheet did not
+    open; or the sheet shows none), or passed."""
     n = p.get("note")
     if no_note:
         out("SKIP", vp, "note", "(--no-note)")
         return
     if not n:
-        out("SKIP", vp, "note", "(no file step carries note)")
+        skip_or_fail(vp, "note", "no file step carries a note", require_note, "--require-note")
+        return
+    if not opened:
+        out("FAIL", vp, "note", "#%s: the sheet did not open, so its note was not checked" % p["id"])
         return
     want = collapse(n["text"])[:40]
     got = v.ev("(() => { const b = document.querySelector('#graph-sheet-body .note-body'); return b ? b.textContent : null; })()")
@@ -242,9 +288,9 @@ def note_check(v, vp, p, no_note):
         out("PASS", vp, "note", "#%s .note-body holds %r" % (p["id"], want))
 
 
-def scale_check(v, vp, index):
+def scale_check(v, vp, index, require_floor):
     if "open_scale_floor" not in index:
-        out("SKIP", vp, "scale-floor", "(not in data)")
+        skip_or_fail(vp, "scale-floor", "the index has no open_scale_floor", require_floor, "--require-floor")
         return
     floor = index["open_scale_floor"]
     v.page.wait_for_timeout(900)           # the engine's camera settles after the open
@@ -258,7 +304,7 @@ def scale_check(v, vp, index):
         out("PASS", vp, "scale-floor", "world scale %.3f >= open_scale_floor %s (part opened by deep link)" % (k, floor))
 
 
-def run_viewport(browser, vp, base, site, index, picked, no_note):
+def run_viewport(browser, vp, base, site, index, picked, no_note, require_note, require_floor):
     shared = {"console": [], "requests": []}
     csp_events = []
     boot = View(browser, base, vp, shared)
@@ -281,15 +327,10 @@ def run_viewport(browser, vp, base, site, index, picked, no_note):
     for what, p in zip(names, picked):
         v = View(browser, base + "#" + p["id"], vp, shared)
         opened = open_check(v, vp, what, p)
-        if what == "file" and opened:
-            note_check(v, vp, p, no_note)
-        elif what == "file":
-            if not no_note and p.get("note"):
-                out("FAIL", vp, "note", "#%s: the sheet did not open, so its note was not checked" % p["id"])
-            else:
-                note_check(v, vp, p, no_note)
+        if what == "file":
+            note_check(v, vp, p, no_note, opened, require_note)
         if what == "part" and vp == "390x844":
-            scale_check(v, vp, index)
+            scale_check(v, vp, index, require_floor)
         v.page.wait_for_timeout(200)
         csp_events += v.ev("window.__csp || []") or []
         v.close()
@@ -310,10 +351,11 @@ def main(argv):
         if only not in VIEWPORTS:
             print("--only-viewport takes 390x844 or 1280x900", file=sys.stderr)
             return 2
-    no_note = "--no-note" in args
-    args = [a for a in args if a != "--no-note"]
-    if len(args) != 1 or args[0].startswith("-"):
-        print("usage: smoke_tree.py SITE_DIR [--no-note] [--only-viewport 390x844|1280x900]", file=sys.stderr)
+    flags = ("--no-note", "--require-note", "--require-floor")
+    no_note, require_note, require_floor = (f in args for f in flags)
+    args = [a for a in args if a not in flags]
+    if len(args) != 1 or args[0].startswith("-") or (no_note and require_note):
+        print("usage: smoke_tree.py SITE_DIR [--no-note | --require-note] [--require-floor] [--only-viewport 390x844|1280x900]", file=sys.stderr)
         return 2
     site = os.path.abspath(args[0])
     sub, shape = tree_shape(site)
@@ -337,9 +379,9 @@ def main(argv):
     base = host + (sub + "/" if sub else "")
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(executable_path=T.SHELL[0]) if T.SHELL else p.chromium.launch()
+            browser = p.chromium.launch(executable_path=T.SHELL[0], args=LAUNCH_ARGS) if T.SHELL else p.chromium.launch(args=LAUNCH_ARGS)
             for vp in ([only] if only else list(VIEWPORTS)):
-                run_viewport(browser, vp, base, base_dir, index, picked, no_note)
+                run_viewport(browser, vp, base, base_dir, index, picked, no_note, require_note, require_floor)
             browser.close()
     finally:
         srv.shutdown()
@@ -347,7 +389,7 @@ def main(argv):
         out("FAIL", "all", "containment", "request outside SITE_DIR refused: " + ", ".join(sorted(set(OUTSIDE)))[:300])
     else:
         out("PASS", "all", "containment", "every request and read stayed inside SITE_DIR")
-    print("SMOKE PASS" if FAILED[0] == 0 else "SMOKE FAIL (%d failed)" % FAILED[0])
+    print(verdict(FAILED[0], SKIPPED, only))
     return 0 if FAILED[0] == 0 else 1
 
 
