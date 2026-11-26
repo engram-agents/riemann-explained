@@ -560,8 +560,8 @@ Refused, `GRAPH-PAGE <reason>`, exit 1, nothing written (`_graph_page`): no doct
 that is not a shell key is unknown too); a token in an attribute or inside a script or style; a `{{` left, in the shell or brought by a value; a script that is not type="module" with a relative `src` that is a
 key of `assets`, or that has text; a link that is not rel="stylesheet" with a relative `href` that is a key of `assets`; an on* attribute, a style attribute, an inline style element; an <a> whose address is
 not a relative path or a #fragment (absolute, protocol-relative, root-relative, `javascript:`, `data:`, in any letter case and with the characters a browser drops); any element or attribute outside
-ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 19 pairs, pinned by GP7; with it 44 elements and 74 pairs: `element_problems(page, allowed)` takes the table, `graph_element_problems` passes
-`_graph_allowed()`, the list page keeps ALLOWED_ELEMENTS alone). The built page passes the static check, the element check with that list and, when CODE_ON_SURFACE_REFUSES is True, the code count
+ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 20 pairs, pinned by GP7; with it 44 elements and 75 pairs: `element_problems(page, allowed, values)` takes the table and the value map, `graph_element_problems` passes
+`_graph_allowed()` and GRAPH_PAGE_ATTR_VALUES, the list page keeps ALLOWED_ELEMENTS alone). The built page passes the static check, the element check with that list and, when CODE_ON_SURFACE_REFUSES is True, the code count
 (`CODE-ON-SURFACE graph/index.html:<card> ...`); the leak check reads it as any output file. The self-test cases that give the build a source folder use a valid shell (GA_SHELL).
 The COPY SET is the scanner's own JS extensions (gjc.JS_EXT, read at the call: .js and .mjs) plus the one literal GRAPH_CSS_EXT (.css: the scanner has no constant for stylesheets), compared as
 written; a file outside test/ whose lower-cased extension is in gjc.JS_EXT, gjc.SHIP_IMPORT_EXT or is .css but is not in the copy set (X.JS, A.Mjs, X.CSS) is `GRAPH-ASSET <path> not-an-asset-extension`,
@@ -883,10 +883,18 @@ ALLOWED_ELEMENTS = dict(_HTML_ELEMENTS, **{t: _MATHML_ATTRIBUTES for t in _MATHM
 ALLOWED_ELEMENTS["mover"] = _MATHML_ATTRIBUTES + ("accent",)   # the overline of \\bar
 ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element that may carry a width: the spacing commands of a formula
 # G2b: what the graph page (graph/index.html) may hold BEYOND ALLOWED_ELEMENTS: exactly what the page layer's shell (viewer/graph/shell.html) needs, a pinned literal
-# (case GP7: 9 entries, 19 element-attribute pairs; nav, button, link and script are new elements, aside, div, header, p and section get more attributes). The list
-# page does not get it: element_problems(page) still uses ALLOWED_ELEMENTS alone. With it the graph page's list is 44 elements and 74 pairs (_graph_allowed).
+# (case GP7: 9 entries, 20 element-attribute pairs; nav, button, link and script are new elements, aside, div, header, p and section get more attributes). The list
+# page does not get it: element_problems(page) still uses ALLOWED_ELEMENTS alone. With it the graph page's list is 44 elements and 75 pairs (_graph_allowed).
+# `data-page-feedback` on a section is the one `data-*` name the page allows, for the About section the assembler marks (`_graph_page(section_attrs=)`); this table
+# is names only, and the value is held by the declared map GRAPH_PAGE_ATTR_VALUES below.
 GRAPH_PAGE_EXTRA = {"aside": ("class", "hidden", "id", "role"), "button": ("class", "id", "type"), "div": ("hidden", "id"), "header": ("class",),
-                    "link": ("href", "rel"), "nav": ("class",), "p": ("hidden", "id", "role"), "script": ("src", "type"), "section": ("id",)}
+                    "link": ("href", "rel"), "nav": ("class",), "p": ("hidden", "id", "role"), "script": ("src", "type"), "section": ("data-page-feedback", "id")}
+# The VALUES the graph page reads of an attribute whose value matters, {(element, name): the values}: the ONE definition, read at two sites, `_graph_page(section_attrs=)`
+# (an early refusal) and `graph_element_problems` (the shell before assembly, the assembled page in the build), each refusing any other value, comparing
+# the raw value (before escaping, exactly: no case folding, no trimming, no prefix). GRAPH_PAGE_EXTRA stays a list of names; this map is the value rule. The page
+# reads `data-page-feedback="off"` and nothing else. WIDENING RULE: a consumer that reads a second value is a new ruling that names the consumer, not a quiet
+# addition to a tuple here. Every key must be an (element, name) pair the graph page's allow-list permits (case GH6).
+GRAPH_PAGE_ATTR_VALUES = {("section", "data-page-feedback"): ("off",)}
 
 
 def _graph_allowed():
@@ -905,9 +913,11 @@ HIDING_ELEMENTS = frozenset(set(html.parser.HTMLParser.CDATA_CONTENT_ELEMENTS)
 _OPENING_RUN = frozenset({"html", "head", "meta"}) | HIDING_ELEMENTS
 
 
-def element_problems(page, allowed=None):
+def element_problems(page, allowed=None, values=None):
     """What the BUILT page holds outside ALLOWED_ELEMENTS (or outside `allowed`, an element -> attribute names table: the graph page passes _graph_allowed()): a sorted list of `element <name>` for each start tag of an element not in the list,
-    `attribute <name> on <element>` for each attribute an allowed element may not carry, and `element <name> outside head` for an element of
+    `attribute <name> on <element>` for each attribute an allowed element may not carry, `attribute <name> on <element> has a value the page does not read` for each
+    attribute the `values` map ({(element, name): the values}, default none; the graph page passes GRAPH_PAGE_ATTR_VALUES) gives a value list and whose raw value, as html.parser
+    reads it (None when it has none), is not in it, and `element <name> outside head` for an element of
     HIDING_ELEMENTS (style, title) after the opening run of the page. The BUILT page is read with html.parser, start tags and attribute NAMES; the
     one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one). A `meta` is one of three
     whole tags (F55: `_META_TAGS`, the charset tag, the viewport tag and the robots tag, each attribute and value literal, in order); any
@@ -920,6 +930,7 @@ def element_problems(page, allowed=None):
     `unterminated markup`. It is a name check on the tags as html.parser sees them, not a
     browser-grade parse."""
     allowed = ALLOWED_ELEMENTS if allowed is None else allowed
+    values = {} if values is None else values
     found = set()
     run = [True]   # the page is still in its opening run
     seen = {"start": False, "decl": False}   # a start tag has been seen; a declaration has been seen
@@ -949,6 +960,7 @@ def element_problems(page, allowed=None):
                 found.add("element " + tag)
             else:
                 found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in allowed[tag])
+                found.update(f"attribute {k} on {tag} has a value the page does not read" for k, v in attrs if k in allowed[tag] and (tag, k) in values and v not in values[(tag, k)])
             if tag == "meta":
                 metas.append(tuple(attrs))
 
@@ -977,8 +989,8 @@ def element_problems(page, allowed=None):
 
 
 def graph_element_problems(page):
-    """element_problems of the graph page: the same check with the allow-list of ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA together."""
-    return element_problems(page, _graph_allowed())
+    """element_problems of the graph page: the same check with the allow-list of ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA together and the value map GRAPH_PAGE_ATTR_VALUES."""
+    return element_problems(page, _graph_allowed(), GRAPH_PAGE_ATTR_VALUES)
 
 
 _HEAD_TAGS = (("viewport", META_VIEWPORT), ("robots", META_ROBOTS))   # fixed at load: the check does not follow a change of the two names above
@@ -2521,10 +2533,15 @@ def _assembled_script_problems(text, assets):
     return out
 
 
-def _graph_page(shell, assets, strings, about, cards):
+def _graph_page(shell, assets, strings, about, cards, shell_keys=GRAPH_SHELL_KEYS, section_attrs=()):
     """(errors, the page text or None) for the graph page. `shell` is the bytes of viewer/graph/shell.html, `assets` the names of the copied files, `strings` the strings
-    file, `about` and `cards` the header's inner html and the main's inner html of the list page (_page_parts). The page is the shell with each `{{S:key}}` of
-    GRAPH_SHELL_KEYS, in element content only, replaced by the escaped value of that strings key, and its one `{{CARDS}}`, in the content of a div, main, section or body,
+    file, `about` and `cards` the header's inner html and the main's inner html of the list page (_page_parts). `shell_keys` (a tuple of non-empty str, default
+    GRAPH_SHELL_KEYS) is the set of `{{S:key}}` tokens the shell may hold: a key of it that `strings` has no value for is `GRAPH-PAGE {{S:key}} has no value in the strings
+    file`; `section_attrs` (a tuple of (name, value) pairs of str, default empty) is written on `<section id="graph-about">` in the order given, each value escaped, each
+    name one the graph page's allow-list permits on a section (not `id`, which the section has, and no name twice) or `GRAPH-PAGE section attribute <name> not allowed`
+    (`is already set`, `is repeated`); an argument that is not of that shape is `GRAPH-PAGE shell_keys ...` / `GRAPH-PAGE section_attrs ...`, never a fall back to the
+    default; a value of a section attribute that GRAPH_PAGE_ATTR_VALUES gives a value list and that is not in it is `GRAPH-PAGE section attribute <name> has a value the page does not
+    read` (the value not echoed), here and, for a shell that holds one, in the element check below. The page is the shell with each `{{S:key}}` of `shell_keys`, in element content only, replaced by the escaped value of that strings key, and its one `{{CARDS}}`, in the content of a div, main, section or body,
     replaced by the cards markup: `<section id="graph-about">` holding the list page's front words (about: its header without the h1) and the list page's
     root_only_note_single sentence in one `p.roots-only` as the last child, then the list page's main (the h2 and the chain, with every card byte for byte). Refused (each
     (GRAPH-PAGE, what, reason), none of the page written): no doctype or no charset meta; a {{CARDS}} count other than 1 or one that is not element content; an unknown
@@ -2534,6 +2551,25 @@ def _graph_page(shell, assets, strings, about, cards):
     without the viewport or robots meta, or with either outside the head (G2c). On the ASSEMBLED page (the shell with the cards in it) this function refuses a script or a link
     that is not what the shell may hold (`GRAPH-PAGE assembled page: ...`, G2c); the element allow-list, the static check, the head rule and the code-on-surface count over the
     assembled page run in `_run` (graph_element_problems, static_problems, head_meta_problems, surface_scan), not here."""
+    refused = []
+    if not (isinstance(shell_keys, tuple) and all(isinstance(k, str) and k for k in shell_keys)):
+        refused.append(("GRAPH-PAGE", "shell_keys", "is not a tuple of non-empty strings"))
+    if not (isinstance(section_attrs, tuple) and all(isinstance(p, tuple) and len(p) == 2 and isinstance(p[0], str) and p[0] and isinstance(p[1], str) for p in section_attrs)):
+        refused.append(("GRAPH-PAGE", "section_attrs", "is not a tuple of (name, value) pairs of strings"))
+    else:
+        section_ok, named = _graph_allowed()["section"], set()
+        for name, value in section_attrs:
+            if name == "id":
+                refused.append(("GRAPH-PAGE", "section attribute id", "is already set"))
+            elif name in named:
+                refused.append(("GRAPH-PAGE", "section attribute " + name, "is repeated"))
+            elif name not in section_ok:
+                refused.append(("GRAPH-PAGE", "section attribute " + name, "not allowed"))
+            elif ("section", name) in GRAPH_PAGE_ATTR_VALUES and value not in GRAPH_PAGE_ATTR_VALUES[("section", name)]:   # the raw value, never echoed
+                refused.append(("GRAPH-PAGE", "section attribute " + name, "has a value the page does not read"))
+            named.add(name)
+    if refused:
+        return list(dict.fromkeys(refused)), None
     try:
         raw = shell.decode("utf-8")
     except UnicodeDecodeError:
@@ -2568,14 +2604,17 @@ def _graph_page(shell, assets, strings, about, cards):
                 swaps.append((lo, hi, None))
             elif n_cards == 1:
                 errors.append(("GRAPH-PAGE", "{{CARDS}}", "is not in element-content position"))
-        elif key not in GRAPH_SHELL_KEYS:
+        elif key not in shell_keys:
             errors.append(("GRAPH-PAGE", mt.group(0), "is an unknown string key"))
+        elif key not in strings:
+            errors.append(("GRAPH-PAGE", mt.group(0), "has no value in the strings file"))
         else:
             swaps.append((lo, hi, key))
     for f in graph_element_problems(raw):
         if f.startswith("element style") or (f.startswith("attribute ") and (f.split()[1], f.split()[3]) in scan.reported):
             continue   # said above, by its own line
-        errors.append(("GRAPH-PAGE", f, "is not allowed in the shell"))
+        value_line = re.fullmatch(r"attribute (\S+) on (\S+) (has a value the page does not read)", f)   # the value rule, in the words of the section_attrs refusal
+        errors.append(("GRAPH-PAGE", f"{value_line.group(2)} attribute {value_line.group(1)}", value_line.group(3)) if value_line else ("GRAPH-PAGE", f, "is not allowed in the shell"))
     errors = list(dict.fromkeys(head + errors))
     if errors:
         return errors, None
@@ -2589,7 +2628,8 @@ def _graph_page(shell, assets, strings, about, cards):
         return [("GRAPH-PAGE", "{{", "is left after replacement")], None
     if text.count(_GRAPH_SENTINEL) != 1:
         return [("GRAPH-PAGE", "shell.html", "holds U+FDD0, which the assembly keeps for the cards")], None
-    markup = ('<section id="graph-about">\n' + about + f'\n<p class="roots-only">{_e(strings["root_only_note_single"])}</p>\n</section>\n' + cards)
+    extra = "".join(f' {name}="{_e(value)}"' for name, value in section_attrs)
+    markup = (f'<section id="graph-about"{extra}>\n' + about + f'\n<p class="roots-only">{_e(strings["root_only_note_single"])}</p>\n</section>\n' + cards)
     page = text.replace(_GRAPH_SENTINEL, markup)
     problems = _assembled_script_problems(page, set(assets))   # G2c: the scripts and links of the assembled page, the cards' included, by the shell's rule
     return (problems, None) if problems else ([], page)
@@ -3709,6 +3749,19 @@ def _assemble(m, s, commits):
     return errors, line, level0, level1, groups, facts
 
 
+def _manifest_bytes(files, commits, counts, release_id=None, archive=None, *, null_fields=False):
+    """The bytes of manifest.json for `files` {path: bytes}: the sha256 of every file but manifest.json itself, sorted by path, with `commits` and `counts` as given (this
+    function adds and drops no key of either) and `release_id` and `release_archive_sha` (the `archive` argument); one that is None is left OUT of the manifest, unless
+    `null_fields` is True, which writes it as null (the list page's build, whose archive hash is optional, asks for that). Text: _dump of the dict, a newline, UTF-8.
+    Called by _output_files, and by the Lean assembler (commits {notes}, counts {steps}, no release fields)."""
+    manifest = {"commits": commits, "counts": counts, "files": {k: _sha(v) for k, v in sorted(files.items()) if k != "manifest.json"}}
+    if release_id is not None or null_fields:
+        manifest["release_id"] = release_id
+    if archive is not None or null_fields:
+        manifest["release_archive_sha"] = archive
+    return (_dump(manifest) + "\n").encode("utf-8")
+
+
 def _output_files(level0, level1, groups, page, commits, m, release_id, archive, graph=None):
     """Every file of the build as bytes, the manifest last (it holds the hash of all the others). `graph` is the bytes of the graph files."""
     files = {"level0.json": level0, "level1.json": level1}
@@ -3718,12 +3771,9 @@ def _output_files(level0, level1, groups, page, commits, m, release_id, archive,
     out["data.js"] = data.encode("utf-8")
     out["index.html"] = page.encode("utf-8")
     out.update(graph or {})
-    manifest = {"commits": commits, "counts": {"blocks": m.totals["blocks"], "editions": sum(1 for g in groups.values() if g["edition"]),
-                                               "note_editions": sum(1 for n in m.notes if n["edition"]),
-                                               "groups": m.totals["groups"], "notes": m.totals["notes"]},
-                "files": {k: _sha(v) for k, v in sorted(out.items())}, "release_archive_sha": archive,
-                "release_id": release_id}
-    out["manifest.json"] = (_dump(manifest) + "\n").encode("utf-8")
+    counts = {"blocks": m.totals["blocks"], "editions": sum(1 for g in groups.values() if g["edition"]), "note_editions": sum(1 for n in m.notes if n["edition"]),
+              "groups": m.totals["groups"], "notes": m.totals["notes"]}
+    out["manifest.json"] = _manifest_bytes(out, commits, counts, release_id, archive, null_fields=True)
     return out
 
 
@@ -13006,19 +13056,19 @@ def _selftest_cases():
                     "a_root": no("/abs/path is not a relative path or #fragment"),
                     "a_ok": [(0, True, [])] * 3, "a_nohref": (0, True, [])})
 
-    @case("GP7", "G2b the element check for graph/index.html: GRAPH_PAGE_EXTRA is a literal of exactly 9 elements and 19 element-attribute pairs (nav, button, link and script are new; "
-                 "aside, div, header, p and section get more attributes), the page's allow-list ALLOWED_ELEMENTS is still 40 elements and 55 pairs and the list page still refuses "
-                 "a <nav>, and the graph page's list is 44 elements and 74 pairs; every element outside it (canvas, iframe, form, img, svg, base, object, embed, input, textarea, "
+    @case("GP7", "G2b the element check for graph/index.html: GRAPH_PAGE_EXTRA is a literal of exactly 9 elements and 20 element-attribute pairs (nav, button, link and script are new; "
+                 "aside, div, header, p and section get more attributes, section among them `data-page-feedback`, on a section and nowhere else, and not on the list page), the page's allow-list ALLOWED_ELEMENTS is still 40 elements and 55 pairs and the list page still refuses "
+                 "a <nav>, and the graph page's list is 44 elements and 75 pairs; every element outside it (canvas, iframe, form, img, svg, base, object, embed, input, textarea, "
                  "select, table, video, audio) and every attribute outside it (data-x on div, id on nav, id on span, onclick on button, media on link, async on "
                  "script, target on a, style on p, role on span) is a finding, and the shell's own elements and attributes are none; through a build, one planted element and one "
                  "planted attribute in the shell are refused with the finding in the line")
     def _():
         extra = {"aside": ("class", "hidden", "id", "role"), "button": ("class", "id", "type"), "div": ("hidden", "id"), "header": ("class",), "link": ("href", "rel"),
-                 "nav": ("class",), "p": ("hidden", "id", "role"), "script": ("src", "type"), "section": ("id",)}
+                 "nav": ("class",), "p": ("hidden", "id", "role"), "script": ("src", "type"), "section": ("data-page-feedback", "id")}
         merged = _graph_allowed()
         page = lambda inner: '<!doctype html>\n<html lang="en"><body>' + inner + "</body></html>"
         elems = ["canvas", "iframe", "form", "img", "svg", "base", "object", "embed", "input", "textarea", "select", "table", "video", "audio"]
-        attrs = [("div", "data-x"), ("nav", "id"), ("span", "id"), ("button", "onclick"), ("link", "media"), ("script", "async"), ("a", "target"), ("p", "style"), ("span", "role")]
+        attrs = [("div", "data-x"), ("nav", "id"), ("span", "id"), ("button", "onclick"), ("link", "media"), ("script", "async"), ("a", "target"), ("p", "style"), ("span", "role"), ("div", "data-page-feedback"), ("section", "data-x")]
         shell_like = page('<aside id="a" class="b" role="dialog" hidden><nav class="n"><button type="button" id="x" class="c"></button></nav></aside><div id="d" hidden></div>'
                           '<header class="intro"></header><p id="p" class="q" role="status" hidden></p><section id="s"></section><script type="module" src="a.js"></script>')
         with_link = '<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="a.css"></head><body></body></html>'
@@ -13028,10 +13078,12 @@ def _selftest_cases():
                     element_problems(page("<nav></nav>")), graph_element_problems(page("<nav></nav>")),
                     [graph_element_problems(page(f"<{e}></{e}>")) for e in elems],
                     [graph_element_problems(page(f'<{t} {k}="x"></{t}>')) for t, k in attrs], graph_element_problems(shell_like), graph_element_problems(with_link),
-                    planted),
-                   (extra, 9, 19, 40, 55, 44, 74, ["element nav"], [], [[f"element {e}"] for e in elems],
+                    planted, graph_element_problems(page('<section data-page-feedback="x" id="y"></section>')), element_problems(page('<section data-page-feedback="x"></section>')),
+                    graph_element_problems(page('<section data-page-feedback="off" id="y"></section>'))),
+                   (extra, 9, 20, 40, 55, 44, 75, ["element nav"], [], [[f"element {e}"] for e in elems],
                     [[f"attribute {k} on {t}"] for t, k in attrs], [], [],
-                    [(1, False, ["element canvas is not allowed in the shell"]), (1, False, ["attribute data-x on h1 is not allowed in the shell"])]))
+                    [(1, False, ["element canvas is not allowed in the shell"]), (1, False, ["attribute data-x on h1 is not allowed in the shell"])],
+                    ["attribute data-page-feedback on section has a value the page does not read"], ["attribute data-page-feedback on section"], []))
 
     @case("GP8", "G2b the checks of the built page are run on graph/index.html as on the list page: a strings value of the shell that holds a request API (`fetch(`) is "
                  "`PAGE-STATIC fetch( found in graph/index.html`; a graph page that holds an element and an address outside the checks (planted through the assembly's seam) is "
@@ -13108,6 +13160,151 @@ def _selftest_cases():
         done = lambda t: t.replace("{{S:title}}", "T &lt;1&gt;").replace("{{S:key}}", "K &amp; 2").replace("{{S:close}}", "C").replace("{{S:map}}", "M")
         return _eq((rc, lines, page.startswith(done(pre)), page.endswith(done(post)), "<h1>R&amp;D T &lt;1&gt; &copy; K &amp; 2 &#65;</h1>\n<p><span>x</span>C\nM</p>" in page),
                    (0, [], True, True, True))
+
+    # ---- the hooks the Lean assembler calls: `_graph_page(shell_keys=, section_attrs=)` and `_manifest_bytes` (cases GH1 to GH5). Every expectation is a literal.
+    GH_ASSETS = ["graph.css", "page/app.js"]
+
+    def gh_page(shell, strings=None, **kw):
+        """`_graph_page` on a fixture shell (a str) with the fixture strings (or those given) and empty about and cards: (errors, page)."""
+        return _graph_page(shell.encode("utf-8"), GH_ASSETS, _strings() if strings is None else strings, "", "", **kw)
+
+    GH_EXTRA = ("<h1>{{S:title}}</h1>", "<h1>{{S:title}}</h1>\n<p>{{S:extra_words}}</p>")
+
+    @case("GH1", "the hooks: `_graph_page(..., shell_keys=GRAPH_SHELL_KEYS)` is the module tuple by default (an explicit tuple of the 11 gives the same errors and the same page as no argument, "
+                 "for the control shell, an unknown key and a stray brace), and `shell_keys` that is not a tuple of non-empty str (a list, a str, a tuple with a number, a tuple with an empty str, None) "
+                 "is refused by name, `GRAPH-PAGE shell_keys is not a tuple of non-empty strings`, with no page and no fall back to the module tuple (a shell that would build under the default is refused too)")
+    def _():
+        control, unknown, stray = GA_SHELL, gp_swap(GH_EXTRA), gp_swap(("<h1>{{S:title}}</h1>", "<h1>{{S:title}} {{ x</h1>"))
+        same = [gh_page(s) == gh_page(s, shell_keys=GRAPH_SHELL_KEYS) for s in (control, unknown, stray)]
+        bad = [gh_page(control, shell_keys=v) for v in (list(GRAPH_SHELL_KEYS), "title", ("title", 3), ("title", ""), None, ("title", b"x"))]
+        want = ([("GRAPH-PAGE", "shell_keys", "is not a tuple of non-empty strings")], None)
+        return _eq((same, bad, gh_page(unknown)[0]),
+                   ([True, True, True], [want] * 6, [("GRAPH-PAGE", "{{S:extra_words}}", "is an unknown string key")]))
+
+    @case("GH2", "the hooks: an extra key of `shell_keys` is accepted as a token of the shell and filled with its strings value HTML-escaped (`a <b> & \"c\"` becomes `a &lt;b&gt; &amp; &quot;c&quot;`; "
+                 "the page is the shell byte for byte otherwise), a strings file without a value for it is refused `GRAPH-PAGE {{S:extra_words}} has no value in the strings file` (no page, no "
+                 "exception), and a token that is not in `shell_keys` is still `unknown`: the extra key without the argument, a different key with it, and a key of the module tuple left out of a "
+                 "shell_keys that does not list it")
+    def _():
+        shell, keys = gp_swap(GH_EXTRA), GRAPH_SHELL_KEYS + ("extra_words",)
+        s = dict(_strings(), extra_words='a <b> & "c"')
+        errs, page = gh_page(shell, s, shell_keys=keys)
+        a, b = shell.split("{{CARDS}}")
+        fill = lambda t: t.replace("{{S:title}}", _e(s["title"])).replace("{{S:extra_words}}", 'a &lt;b&gt; &amp; &quot;c&quot;')
+        no = lambda *lines: (list(lines), None)
+        unk = lambda k: no(("GRAPH-PAGE", "{{S:" + k + "}}", "is an unknown string key"))
+        return _eq((errs, page is not None and page.startswith(fill(a)) and page.endswith(fill(b)), page is not None and 'a &lt;b&gt; &amp; &quot;c&quot;' in page,
+                    gh_page(shell, _strings(), shell_keys=keys), gh_page(shell, s),
+                    gh_page(shell, s, shell_keys=GRAPH_SHELL_KEYS + ("other",)),
+                    gh_page(shell, s, shell_keys=tuple(k for k in keys if k != "title"))),
+                   ([], True, True,
+                    no(("GRAPH-PAGE", "{{S:extra_words}}", "has no value in the strings file")),
+                    unk("extra_words"), unk("extra_words"), unk("title")))
+
+    @case("GH3", "the hooks: `_graph_page(..., section_attrs=((name, value), ...))` writes the pairs on `<section id=\"graph-about\">` in the order given, each value HTML-escaped, and nothing "
+                 "changes by default (the empty tuple is the bytes of no argument); the assembled page passes graph_element_problems; a name the graph page's allow-list does not permit on a section "
+                 "(data-x, onclick, style) is refused `GRAPH-PAGE section attribute <name> not allowed`, naming each one, and so is `id` (the section has one: `section attribute id is already set`) "
+                 "and a name given twice (`section attribute <name> is repeated`); a section_attrs that is not a tuple of (str, str) pairs (a list, a dict, a triple, a number value) is "
+                 "`GRAPH-PAGE section_attrs is not a tuple of (name, value) pairs of strings`; never a silent drop")
+    def _():
+        plain = gh_page(GA_SHELL)[1]
+        errs, page = gh_page(GA_SHELL, section_attrs=(("class", "A <b> & 'c' \"d\""), ("data-page-feedback", "off")))
+        head = '<section id="graph-about" class="A &lt;b&gt; &amp; &#x27;c&#x27; &quot;d&quot;" data-page-feedback="off">\n'
+        no = lambda *lines: (list(lines), None)
+        refused = lambda attrs: gh_page(GA_SHELL, section_attrs=attrs)
+        shape = no(("GRAPH-PAGE", "section_attrs", "is not a tuple of (name, value) pairs of strings"))
+        return _eq((plain == gh_page(GA_SHELL, section_attrs=())[1], plain.count('<section id="graph-about">\n'), errs, page is not None and head in page,
+                    page is not None and graph_element_problems(page),
+                    refused((("data-x", "1"), ("onclick", "x"), ("class", "ok"), ("style", "x"))),
+                    refused((("id", "x"),)), refused((("class", "a"), ("class", "b"))),
+                    [refused(v) for v in ([("class", "a")], {"class": "a"}, (("class", "a", "b"),), (("class", 1),), ("class",), (("", "a"),), None)]),
+                   (True, 1, [], True, [],
+                    no(("GRAPH-PAGE", "section attribute data-x", "not allowed"), ("GRAPH-PAGE", "section attribute onclick", "not allowed"), ("GRAPH-PAGE", "section attribute style", "not allowed")),
+                    no(("GRAPH-PAGE", "section attribute id", "is already set")), no(("GRAPH-PAGE", "section attribute class", "is repeated")),
+                    [shape] * 7))
+
+    @case("GH4", "the hooks: `_manifest_bytes(files, commits, counts, release_id=None, archive=None)` is the manifest.json of the dict `files` {path: bytes}: the sha256 of each file, sorted by path, "
+                 "`manifest.json` itself left out when the dict holds one, `counts` carried verbatim with the keys it has (none added, none dropped), `commits` as given; the text is "
+                 "`_dump` of the dict plus a newline, UTF-8; a release_id or an archive that is None leaves its key (`release_id`, `release_archive_sha`) OUT, one that is given is written; "
+                 "and the manifest `_output_files` writes for the same files is the same bytes (here for the fixture build: the files without manifest.json, its commits, counts, release id and archive)")
+    def _():
+        files = {"b.txt": b"two", "a/z.json": b"one", "manifest.json": b"old", "a/a.json": "é".encode("utf-8")}
+        want_files = {k: hashlib.sha256(v).hexdigest() for k, v in sorted(files.items()) if k != "manifest.json"}
+        got = _manifest_bytes(files, {"notes": "abc"}, {"steps": 3, "zeta": 1, "alpha": 2}, "rel-9", "f" * 64)
+        text = got.decode("utf-8")
+        parsed = json.loads(text)
+        bare = json.loads(_manifest_bytes(files, {"notes": "abc"}, {"steps": 3}).decode("utf-8"))
+        half = [json.loads(_manifest_bytes(files, {}, {}, **kw).decode("utf-8")) for kw in ({"release_id": "r"}, {"archive": "e" * 64})]
+        b = _base()
+        fixture = {k: v for k, v in b.files.items() if k != "manifest.json"}
+        m = b.js("manifest.json")
+        again = _manifest_bytes(fixture, m["commits"], m["counts"], m["release_id"], "ab" * 32)
+        arch = _build(archive="ab" * 32)
+        return _eq((parsed, text == _dump(parsed) + "\n", list(parsed["files"]) == sorted(parsed["files"]), list(parsed["counts"]), bare, half,
+                    again == arch.files["manifest.json"], files["manifest.json"]),
+                   ({"commits": {"notes": "abc"}, "counts": {"alpha": 2, "steps": 3, "zeta": 1}, "files": want_files, "release_archive_sha": "f" * 64, "release_id": "rel-9"}, True, True,
+                    ["alpha", "steps", "zeta"],
+                    {"commits": {"notes": "abc"}, "counts": {"steps": 3}, "files": want_files},
+                    [{"commits": {}, "counts": {}, "files": want_files, "release_id": "r"}, {"commits": {}, "counts": {}, "files": want_files, "release_archive_sha": "e" * 64}],
+                    True, b"old"))
+
+    @case("GH5", "the hooks: the live build's manifest is the bytes it was before the hooks, in both of its forms: with `--release-archive-sha` (the key written) and without (`release_archive_sha` "
+                 "is written as null, not left out: `_manifest_bytes` omits a None key by default, so `_output_files` asks for the null) and `release_id` always written; the counts are "
+                 "the five of the list page (blocks, editions, note_editions, groups, notes)")
+    def _():
+        plain, arch = _base(), _build(archive="ab" * 32)
+        return _eq((list(plain.js("manifest.json")), plain.js("manifest.json")["release_archive_sha"], '"release_archive_sha": null,' in plain.text("manifest.json"),
+                    list(plain.js("manifest.json")["counts"]), arch.js("manifest.json")["release_archive_sha"], list(arch.js("manifest.json"))),
+                   (["commits", "counts", "files", "release_archive_sha", "release_id"], None, True, ["blocks", "editions", "groups", "note_editions", "notes"],
+                    "ab" * 32, ["commits", "counts", "files", "release_archive_sha", "release_id"]))
+
+    @case("GH6", "the hooks: the value of `data-page-feedback` on the About section is exactly `off` (GRAPH_PAGE_ATTR_VALUES, a declared map beside GRAPH_PAGE_EXTRA: {(element, name): the values the page "
+                 "reads}); `off` is accepted and written as data-page-feedback=\"off\"; `on`, the empty string, `off ` (a trailing space), `OFF`, `https://evil.example/x`, `//evil.example/x`, "
+                 "`javascript:alert(1)` and a 10000-character string are each refused `GRAPH-PAGE section attribute data-page-feedback has a value the page does not read`, no page, and the "
+                 "value is not echoed in the refusal; the raw value is compared (before the escaping: a value with `&` or `\"` is refused too); the map's keys are all (element, name) pairs "
+                 "the graph page's allow-list permits, so a name the allow-list does not permit cannot be given a value list; GRAPH_PAGE_EXTRA stays names only (tuples of str)")
+    def _():
+        bad = ("on", "", "off ", "OFF", "https://evil.example/x", "//evil.example/x", "javascript:alert(1)", "x" * 10000, "o&ff", 'off"')
+        got = [gh_page(GA_SHELL, section_attrs=(("data-page-feedback", v),)) for v in bad]
+        want = ([("GRAPH-PAGE", "section attribute data-page-feedback", "has a value the page does not read")], None)
+        errs, page = gh_page(GA_SHELL, section_attrs=(("data-page-feedback", "off"),))
+        allowed = _graph_allowed()
+        return _eq(([g == want for g in got], any("evil" in repr(g) or "javascript" in repr(g) for g in got), errs, page is not None and '<section id="graph-about" data-page-feedback="off">\n' in page,
+                    isinstance(GRAPH_PAGE_ATTR_VALUES, dict), [k for k in GRAPH_PAGE_ATTR_VALUES if not (isinstance(k, tuple) and len(k) == 2 and k[1] in allowed.get(k[0], ()))],
+                    GRAPH_PAGE_ATTR_VALUES, all(isinstance(n, str) for v in GRAPH_PAGE_EXTRA.values() for n in v)),
+                   ([True] * 10, False, [], True, True, [], {("section", "data-page-feedback"): ("off",)}, True))
+
+    @case("GH7", "the hooks: the graph page the fixture shell builds is the bytes it was before the value rule: with `section_attrs` at its default and with (`data-page-feedback`, `off`) given, "
+                 "the page text (fixture shell GA_SHELL, the fixture strings, empty about and cards) has the sha256 the head before the value rule produced (literals read off that head, "
+                 "not derived from this code), and the second is the first with ` data-page-feedback=\"off\"` on the About section alone")
+    def _():
+        plain, off = gh_page(GA_SHELL)[1], gh_page(GA_SHELL, section_attrs=(("data-page-feedback", "off"),))[1]
+        sha = lambda t: hashlib.sha256(t.encode("utf-8")).hexdigest()
+        return _eq((sha(plain), sha(off), off == plain.replace('<section id="graph-about">', '<section id="graph-about" data-page-feedback="off">')),
+                   ("eb6a82b551e03ffa1bda95451f373f3bb9b0dccbbca24f6e08c4987c423f7007", "db6fa37459b98dc6e82c8ca8d182cc660abe7cd670efdea2770edf960969e896", True))
+
+    @case("GH8", "the hooks: the value rule is ALSO in the element check, from the same map (GRAPH_PAGE_ATTR_VALUES): `element_problems(page, allowed, values)` takes a {(element, name): values} map "
+                 "(default none: the shared checker is generic, and with no map `<section data-page-feedback=\"x\">` has no finding when `allowed` permits the name, and with the list page's "
+                 "table it is still `attribute data-page-feedback on section`), a value outside it is `attribute <name> on <element> has a value the page does not read`, a custom map is read "
+                 "(not only the page's own); graph_element_problems passes GRAPH_PAGE_ATTR_VALUES, so a section with data-page-feedback `x`, empty, `OFF`, `off ` or no value, or with a second "
+                 "copy of the attribute that is not `off`, is a finding and `off` is none, and the same attribute on another element is still `attribute ... on div`; a hand-authored shell "
+                 "holding `<section data-page-feedback=\"x\">` is refused inside _graph_page, `GRAPH-PAGE section attribute data-page-feedback has a value the page does not read`, one "
+                 "holding `off` is accepted")
+    def _():
+        pg = lambda inner: '<!doctype html>\n<html lang="en"><body>' + inner + "</body></html>"
+        sec = lambda attrs: graph_element_problems(pg(f"<section {attrs}></section>"))
+        finding = ["attribute data-page-feedback on section has a value the page does not read"]
+        hostile = ['data-page-feedback="x"', 'data-page-feedback=""', 'data-page-feedback="OFF"', 'data-page-feedback="off "', "data-page-feedback", 'data-page-feedback="off" data-page-feedback="x"']
+        custom = {("p", "id"): ("a",)}
+        shell_with = lambda v: gp_swap(("<div id=\"graph-cards\">", f'<section data-page-feedback="{v}"></section>\n<div id="graph-cards">'))
+        return _eq(([sec(a) for a in hostile], sec('data-page-feedback="off"'), sec('class="x"'), graph_element_problems(pg('<div data-page-feedback="off"></div>')),
+                    element_problems(pg('<section data-page-feedback="x"></section>'), _graph_allowed()),
+                    element_problems(pg('<section data-page-feedback="x"></section>')),
+                    [element_problems(pg(f'<p id="{v}"></p>'), _graph_allowed(), custom) for v in ("a", "b")],
+                    gh_page(shell_with("x")), gh_page(shell_with("off"))[0]),
+                   ([finding] * 6, [], [], ["attribute data-page-feedback on div"], [], ["attribute data-page-feedback on section"],
+                    [[], ["attribute id on p has a value the page does not read"]],
+                    ([("GRAPH-PAGE", "section attribute data-page-feedback", "has a value the page does not read")], None), []))
 
     # ---- G2c: the map page's closed rows, the list links, the robots meta of the shell, the list page's link back to the map, and the pins left out of the first
     # round of the graph page cases. Every expectation is a literal. The notes below give the fixture its sections: conditions (three, one of them with a literal
