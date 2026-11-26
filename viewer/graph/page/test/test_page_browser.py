@@ -3135,6 +3135,39 @@ def c_mutant(b):
     c_mutant.fails = fails
 
 
+def c_later_made_card(b, S0, engine):
+    """L3 on a MADE card (the real map's only path: its assembler writes an empty card block, so every card is made from the data): the later fixture
+    with the card block emptied the way the made-card cases do it (assemble's cards_edit, with MADE_ABOUT_BLOCK) opens sk-file-1 as ONE div.card (no
+    article), the line p.note-more is directly after the note body with the text c_later_sheet expects, and after a close and a reopen (the made card is
+    kept in the Map) it is the same element holding the line exactly once."""
+    S = _later_site(engine, cards_edit=lambda c: MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844).settled()
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        st = pg.ev(MADE_STATE_JS)
+        assert st["n"] == 1 and st["tag"] == "DIV" and st["cls"] == "card" and st["id"] is None, st      # (a) a made card, not an article
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body article').length") == 0
+        assert st["kids"] == LATER_KIDS[:-1], st["kids"]                  # the markup card's list, without the article's own P.note
+        m = pg.ev(MORE_JS)                                                # (b) the line, directly after the note body, the text c_later_sheet expects
+        assert m["n"] == 1 and m["text"] == LATER_ONE and m["tag"] == "P", m
+        assert m["nodes"] == [3, 3, 3] and m["elems"] == 0 and m["before"] == "note-body", m
+        assert pg.ev("document.getElementById('graph-sheet-body').firstElementChild.lastElementChild.className") == "note-more"
+        pg.ev("window.__c = document.getElementById('graph-sheet-body').firstElementChild")
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.note-more').length") == 0
+        tap(pg, "sk-file-1")                                              # (c) a reopen: the same made card, the line once
+        pg.wait("document.querySelector('#graph-sheet-body .note-more')", 6000)
+        assert pg.ev("document.getElementById('graph-sheet-body').firstElementChild === window.__c"), "a reopen made a new card"
+        assert pg.ev(MORE_JS) == m, pg.ev(MORE_JS)
+        assert pg.ev("document.querySelectorAll('.note-more').length") == 1 and pg.ev(MADE_STATE_JS)["kids"] == LATER_KIDS[:-1]
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
 # ---------------------------------------------------------------------------------------------------------- made cards
 # The assembler writes an EMPTY card block (its clause A7: the page has no card articles): the cards block of the page is the
 # graph-about section and nothing else. A card the markup lacks is MADE from the data (app.js madeCard); a card the markup has is
@@ -3455,6 +3488,7 @@ def main():
                 run("later: L3 without the maths face the line is still directly after the note", c_later_plain, eng)
                 run("later: L5 a template holding markup is text in both views", c_later_hostile, eng)
                 run("later: L4 a note without later_blocks draws the base head's bytes; a note with 0 draws what the same map without the strings draws", c_later_unchanged, eng)
+                run("later: L3 on a made card (an empty card block): one div.card, the line directly after the note body, once after a close and a reopen", c_later_made_card, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:
