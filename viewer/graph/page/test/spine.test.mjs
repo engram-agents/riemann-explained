@@ -19,7 +19,7 @@ function makeSpine() {
   const nodes = ids.map((id, i) => ({
     constants: ["New.Made.up" + i],
     content: "Made-up sentence number " + i + " of the fixture.",
-    counts: { mentions: 1, no_doc: 0, other_constants: 0 },
+    counts: { mentions: 1, no_doc: 1, other_constants: 0 },
     file: "lean-made-up-file-" + i,
     id,
     mentions: [{ constant: "New.Made.other" + i }],
@@ -98,7 +98,24 @@ test("S6 content and theorem are non-empty strings; names is a non-empty list of
 test("S7 the keys the page does not draw are still of their shape: constants and mentions lists, counts an object", () => {
   refuses(mutate((s) => { s.nodes[0].constants = "x"; }), "bad-spine-node", "constants");
   refuses(mutate((s) => { s.nodes[0].mentions = {}; }), "bad-spine-node", "mentions");
-  refuses(mutate((s) => { s.nodes[0].counts = []; }), "bad-spine-node", "counts");
+  refuses(mutate((s) => { s.nodes[0].counts = []; }), "bad-type", "counts");
+});
+
+test("S7b the contract's invariants on a node's mentions and counts (contract section 26): counts has exactly {mentions, no_doc, other_constants}, whole numbers; counts.mentions is the length of mentions; counts.no_doc the number of mentions without doc; a mention's file is a step id and its spine a node id", () => {
+  const withMentions = (fn) => mutate((s) => { s.nodes[0].mentions = [{ constant: "New.Made.a", doc: { line: 1, source: "x", text: "t" }, file: "lean-made-up-file-1", spine: "spine-made-up-b" }, { constant: "New.Made.b" }];
+    s.nodes[0].counts = { mentions: 2, no_doc: 1, other_constants: 3 }; fn(s); });
+  assert.equal(validateSpine(withMentions(() => {}), CTX).nodes.length, 9);
+  refuses(withMentions((s) => { s.nodes[0].counts.mentions = 3; }), "bad-spine-node", "mentions");
+  refuses(withMentions((s) => { s.nodes[0].counts.no_doc = 0; }), "bad-spine-node", "no_doc");
+  refuses(withMentions((s) => { s.nodes[0].counts.no_doc = 2; }), "bad-spine-node", "no_doc");
+  refuses(withMentions((s) => { delete s.nodes[0].counts.other_constants; }), "missing-key", "other_constants");
+  refuses(withMentions((s) => { s.nodes[0].counts.extra = 1; }), "extra-key");
+  refuses(withMentions((s) => { s.nodes[0].counts.other_constants = -1; }), "bad-spine-node", "other_constants");
+  refuses(withMentions((s) => { s.nodes[0].counts.other_constants = 1.5; }), "bad-spine-node", "other_constants");
+  refuses(withMentions((s) => { s.nodes[0].mentions[0] = "x"; }), "bad-spine-node", "mention");
+  refuses(withMentions((s) => { s.nodes[0].mentions[1].constant = ""; }), "bad-spine-node", "constant");
+  refuses(withMentions((s) => { s.nodes[0].mentions[0].file = "Not A Step"; }), "bad-spine-node", "file");
+  refuses(withMentions((s) => { s.nodes[0].mentions[0].spine = "spine-made-up-zz"; }), "bad-spine-node", "spine");
 });
 
 test("S8 a link joins two different nodes of the file, once, and its flag is a boolean", () => {

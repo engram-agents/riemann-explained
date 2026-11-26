@@ -49,7 +49,21 @@ function nodeOf(n, i, seen) {
   if (!Array.isArray(n.names) || n.names.length === 0 || !n.names.every(nonEmpty)) throw new DataError("bad-spine-node", where + " names is not a non-empty list of non-empty strings");
   if (!Array.isArray(n.constants)) throw new DataError("bad-spine-node", where + " constants is not a list");
   if (!Array.isArray(n.mentions)) throw new DataError("bad-spine-node", where + " mentions is not a list");
-  if (!isObj(n.counts)) throw new DataError("bad-spine-node", where + " counts is not an object");
+  /* Contract section 26: counts is exactly {mentions, no_doc, other_constants}, whole numbers; mentions equals the length of the list and no_doc the number of
+     mentions without a doc. A mention is an object with a constant name; its file, when present, is a step id. (Its spine id is checked once all nodes are known.) */
+  exactKeys(n.counts, ["mentions", "no_doc", "other_constants"], where + " counts");
+  for (const k of ["mentions", "no_doc", "other_constants"])
+    if (!Number.isInteger(n.counts[k]) || n.counts[k] < 0) throw new DataError("bad-spine-node", where + " counts " + k + " is not a whole number: " + shown(n.counts[k]));
+  let noDoc = 0;
+  for (const m of n.mentions) {
+    if (!isObj(m)) throw new DataError("bad-spine-node", where + " has a mention that is not an object");
+    if (!nonEmpty(m.constant)) throw new DataError("bad-spine-node", where + " has a mention whose constant is not a non-empty string");
+    if (m.file !== undefined && !isId(m.file)) throw new DataError("bad-spine-node", where + " has a mention whose file is not a step id");
+    if (has(m, "spine") && !(isStr(m.spine) && SPINE_ID.test(m.spine))) throw new DataError("bad-spine-node", where + " has a mention whose spine is not a spine id");
+    if (!has(m, "doc")) noDoc += 1;
+  }
+  if (n.counts.mentions !== n.mentions.length) throw new DataError("bad-spine-node", where + " counts mentions is not the length of mentions");
+  if (n.counts.no_doc !== noDoc) throw new DataError("bad-spine-node", where + " counts no_doc is not the number of mentions without doc");
   seen.add(n.id);
   return { id: n.id, file: n.file, content: n.content, names: n.names.slice(), theorem: n.theorem };
 }
@@ -95,6 +109,7 @@ export function validateSpine(raw, ctx) {
   if (!Array.isArray(raw.links)) throw new DataError("bad-spine-link", "spine links is not a list");
   const seen = new Set();
   const nodes = raw.nodes.map((n, i) => nodeOf(n, i, seen));
+  raw.nodes.forEach((n, i) => { for (const m of n.mentions) if (has(m, "spine") && !seen.has(m.spine)) throw new DataError("bad-spine-node", "spine node " + i + " has a mention whose spine is not a node of the file"); });
   const pairs = new Set();
   const links = raw.links.map((l, i) => linkOf(l, i, seen, pairs));
   refuseReductionCycle(nodes, links);
