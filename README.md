@@ -74,7 +74,7 @@ Two licences, by kind of file.
 Neither licence covers what is not ours:
 
 - Short quotations from the Lean release remain the author's, as said above.
-- The folder [third-party/grh-lean](third-party/grh-lean/README.md) holds the licence and notices of [lsernau/grh-lean](https://github.com/lsernau/grh-lean), a separate repository that carries a shorter rewriting of the proof under the Apache License 2.0. It is not the release this repository's notes are about, and what is said above about that release stands. The programs here can also build a map of that repository's files, from a checkout of it at build time. Some of our tests copy text from it; the folder's page says where, and that text keeps that repository's licence.
+- The folder [third-party/grh-lean](third-party/grh-lean/README.md) holds the licence and notices of [lsernau/grh-lean](https://github.com/lsernau/grh-lean), a separate repository that carries a shorter rewriting of the proof under the Apache License 2.0. It is not the release this repository's notes are about, and what is said above about that release stands. The programs here can also build a map of the 306 files of its argument (its folder `grh/src/New`), from a checkout of it at build time; such a map shows that repository's notes and titles, which keep its licence. Some of our tests copy text from it; the folder's page says where, and that text keeps that repository's licence.
 
 *Correction, 2026-11-22: four words in this page referred to the author with a gendered pronoun. The only place we have read one is the Lean community's joint statement; the notes now use "the author" throughout. Nothing else changed.*
 
