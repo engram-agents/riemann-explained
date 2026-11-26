@@ -131,6 +131,16 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .note-body li { margin: 0 0 3px; }
 .note-body code, .note-body pre { font-family: var(--mono); font-size: 13px; }
 .note-body pre { margin: 0 0 8px; padding: 6px 8px; background: var(--strip); overflow-x: auto; white-space: pre; }
+/* The maths face: a formula or one-letter span of a note, set in the page's serif, upright, at the paragraph's size, with no box. The italic
+   question for one-letter spans is NOT ruled: the default is upright for all, and the ruling is the one declaration of the .m1 rule below
+   (font-style: italic). */
+.note-body .m { font-family: var(--serif); font-style: normal; font-size: 1em; background: none; border: 0; padding: 0; }
+.note-body .m1 { font-style: normal; }
+/* The exact text (the button's other view): the same pre, wrapped so it needs no sideways scrolling on a phone. */
+.note-body.note-exact pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.graph-sheet-body .note-typeset-line { margin: 0 0 6px; font-family: var(--sans); font-size: 13px; color: var(--muted); }
+.graph-sheet-body .note-toggle { min-height: 44px; margin: 0 0 8px; padding: 0 14px; border: 1px solid var(--rule); background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 14px; cursor: pointer; }
+.graph-sheet-body .note-toggle[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .note-body table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0 0 8px; font-size: 14px; }
 .note-body th, .note-body td { border: 1px solid var(--rule); padding: 3px 8px; text-align: left; vertical-align: top; }
 
