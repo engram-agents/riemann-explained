@@ -1163,10 +1163,14 @@ def _tree(root, body, srcs, ileans=None, index="default"):
     return g
 
 
+NOTE_PAIR_FIXTURE = {"note_label": "L", "note_source": "S {source} {commit}"}   # neutral fixture words for the pair
+
+
 def _strings(extra=True):
     """The strings file of this checkout; with `extra` (the default) the overlay words of this map are in it, as the literals of OVERLAY_WORDS."""
     with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
         s = json.load(f)
+    s.update(NOTE_PAIR_FIXTURE)   # the Lean map writes a note on every file step, and the builder refuses notes without the pair (GRW1): a fixture that is not about the pair carries it
     if extra:
         s.update(OVERLAY_WORDS)
         s.update(COUNT_WORDS)
@@ -1452,7 +1456,7 @@ def _selftest_cases():
     @case("SK5", "kinds are read off CONTENTS: `part` for each `###` heading, `group` for each bold line (an anonymous group too), `file` for each file line; the table of "
                  "this tool has exactly the rows part, group, file (classes kind-part|kind-group|kind-file, words symbol_kind_part|group|file) and the three rows of the "
                  "states and of the proofs; order lists kinds [part, group, file], states [], proofs []; state and proof are `none` on every card; index.json `strings` is "
-                 "27 keys (the 23 and the four count words) with the overlay words and has no symbol_kind_module; index.json has sibling_layout column; site/strings.json has no symbol_kind_module")
+                 "29 keys (the 23, the four count words and the note pair the fixture carries) with the overlay words and has no symbol_kind_module; index.json has sibling_layout column; site/strings.json has no symbol_kind_module")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n\n### T part\n\n- `New/T/C` (1): c\n"
         srcs = {"New/S/A": _lean("theorem x : True := trivial"), "New/S/B": _lean(""), "New/T/C": _lean("-- nothing here")}
@@ -1469,7 +1473,7 @@ def _selftest_cases():
                                "text": "Group of files", "words": "symbol_kind_group"},
                      "file": {"card_words": "card_kind_file", "class": "kind-file", "count_words": {"many": "count_file_many", "one": "count_file_one"},
                               "text": "Lean file", "words": "symbol_kind_file"}},
-                    ["census", "none", "read"], ["none", "not_read", "read"], 27, "What a box is", False, "column", False, ["none"]))
+                    ["census", "none", "read"], ["none", "not_read", "read"], 29, "What a box is", False, "column", False, ["none"]))
 
     @case("SK6", "uses sidecar (format 3): graph/uses.json is {commit: the pin, format: 3, imports: {file id: [ids of the New files it imports, sorted]}, lib_index_rows: [...], used_by: "
                  "{file id: [{id, names, same_group}, ...]}, uses: {file id: [{id, names, same_group}, ... sorted by id]}} with all of imports, used_by and uses for every FILE step (empty "
@@ -1829,7 +1833,7 @@ def _selftest_cases():
         return _eq((ok[0], len(ix["strings"]), ix["strings"]["key_kinds_heading"], ix["symbols"]["kinds"]["file"]["text"], ix["symbols"]["kinds"]["file"]["card_words"],
                     ix["strings"]["card_kind_file"], "extra_key" in ix["strings"], unchanged, short[0], short[1].splitlines(), nocard[0], nocard[1].splitlines(), gone, bad, arr,
                     absent, repo_overlay),
-                   (0, 27, "Replaced heading", "F words", "card_kind_file", "F", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 1,
+                   (0, 29, "Replaced heading", "F words", "card_kind_file", "F", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 1,
                     ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, {k: v for k, v in dict(OVERLAY_WORDS, **OPTIONAL_WORDS, **COUNT_WORDS, **LINES_WORDS, **NOTE_WORDS, key_scope_text=SCOPE_TEMPLATE).items() if k != "spine_lines_text"}))
 
     @case("SK22", "a section of one file with no folder whose first bold line holds no file (`### X`, `**A**`, `**B**`, the file `New/Main`) is `SKEL-LINE <n>` for the empty bold line "
@@ -1901,7 +1905,7 @@ def _selftest_cases():
         return _eq(out, [[("SKEL-LINE", "9", "")], [("SKEL-LINE", "8", "")], [("SKEL-LINE", "7", "")], [("SKEL-LINE", "8", "")]])
 
     @case("SK26", "the three optional page words (key_kinds_note, note_label, note_source; final, `{source}` and `{commit}` kept literal) are index.json `strings` keys when the strings "
-                  "hold them: 27 keys with none, 29 with two, 30 with all three, the values exactly the literals of OPTIONAL_WORDS (typed in this case as well); the overlay file of "
+                  "hold them: 29 keys with the pair alone (a map that writes notes needs it, so the fixture carries it; GRW1), 30 with all three, and a pair given other values replaces the fixture's pair verbatim (the row that tells the pair's values from the fixture's), the values exactly the literals of OPTIONAL_WORDS (typed in this case as well); the overlay file of "
                   "this checkout holds those three values")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
@@ -1911,10 +1915,85 @@ def _selftest_cases():
             g = _tree(d, body, {"New/S/A": _lean()})
             n = lambda extra: len(_j(bld(g, PIN, dict(_strings(), **extra))[1], "graph/index.json")["strings"])
             full = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS))[1], "graph/index.json")["strings"]
-            counts = (n({}), n({"note_label": "L", "note_source": "S"}), n(OPTIONAL_WORDS))
+            counts = (n({}), n(OPTIONAL_WORDS))
+            other = {"note_label": "Lx", "note_source": "Sx {source}"}
+            over = _j(bld(g, PIN, dict(_strings(), **other))[1], "graph/index.json")["strings"]
         with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
             overlay = json.load(f)
-        return _eq((counts, OPTIONAL_WORDS == typed, {k: full[k] for k in typed}, {k: overlay.get(k) for k in typed}), ((27, 29, 30), True, typed, typed))
+        return _eq((counts, OPTIONAL_WORDS == typed, {k: full[k] for k in typed}, {k: overlay.get(k) for k in typed}, {k: over[k] for k in other}), ((29, 30), True, typed, typed, other))
+
+    @case("SKW1", "the pair rule through the CLI of this tool (the builder's own check, not a copy): the Lean map writes a note on every file step, so an overlay holding neither "
+                  "word is refused `GRAPH-STRINGS note_label missing: notes are present and need both note_label and note_source` (and the same line for note_source; exit 1, "
+                  "no output directory); an overlay with note_label alone, or note_source alone, is refused `GRAPH-STRINGS <the missing word> missing: <the present word> is "
+                  "present and the two words come together`; both words build (exit 0)")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            sp = _strings_file(d, {k: v for k, v in _strings().items() if k not in NOTE_PAIR_FIXTURE})   # the file holds neither word: the overlay is the only source
+            ol = _outline_file(d)
+            res = {}
+            for i, (name, w) in enumerate((("none", {}), ("label", {"note_label": "L"}), ("source", {"note_source": "S {source} {commit}"}),
+                                           ("both", {"note_label": "L", "note_source": "S {source} {commit}"}))):
+                path = os.path.join(d, f"ov{i}.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(w, f)
+                out = os.path.join(d, f"o{i}")
+                rc, so, se = _cli(_args(g, out, sp, ol, overlay=path))
+                res[name] = (rc, [ln for ln in so.splitlines() if ln.startswith("GRAPH-STRINGS")], se, os.path.exists(out))
+        need = "missing: notes are present and need both note_label and note_source"
+        return _eq(res, {"none": (1, ["GRAPH-STRINGS note_label " + need, "GRAPH-STRINGS note_source " + need], "REFUSED: nothing written\n", False),
+                         "label": (1, ["GRAPH-STRINGS note_source missing: note_label is present and the two words come together"], "REFUSED: nothing written\n", False),
+                         "source": (1, ["GRAPH-STRINGS note_label missing: note_source is present and the two words come together"], "REFUSED: nothing written\n", False),
+                         "both": (0, [], "", True)})
+
+    @case("SKW2", "a strings value, of an optional or a required key, that is empty or not a string is refused by name through the CLI of this tool, nothing written (exit 1, no output directory): an overlay "
+                  "with note_label `\"\"` is `GRAPH-STRINGS note_label is empty`, with note_label null `GRAPH-STRINGS note_label is not a string`, with both words empty two empty lines "
+                  "(and no pair line), with the required card_kind_file empty or null the same line for that key, and whitespace-only accepted for it; the same rule as the builder's, since the check is the builder's")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        src = "S {source} {commit}"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            sp = _strings_file(d, {k: v for k, v in _strings().items() if k not in NOTE_PAIR_FIXTURE})
+            ol = _outline_file(d)
+            res = {}
+            for i, (name, w) in enumerate((("empty", {"note_label": "", "note_source": src}), ("null", {"note_label": None, "note_source": src}),
+                                           ("both", {"note_label": "", "note_source": ""}), ("blank", {"note_label": " ", "note_source": src}),
+                                           ("req_empty", {"note_label": "L", "note_source": src, "card_kind_file": ""}), ("req_null", {"note_label": "L", "note_source": src, "card_kind_file": None}),
+                                           ("req_blank", {"note_label": "L", "note_source": src, "card_kind_file": " "}))):
+                path = os.path.join(d, f"ov{i}.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(w, f)
+                out = os.path.join(d, f"o{i}")
+                rc, so, se = _cli(_args(g, out, sp, ol, overlay=path))
+                res[name] = (rc, [ln for ln in so.splitlines() if ln.startswith("GRAPH-STRINGS")], se if rc else None, os.path.exists(out))
+        refused = "REFUSED: nothing written\n"
+        return _eq(res, {"empty": (1, ["GRAPH-STRINGS note_label is empty"], refused, False), "null": (1, ["GRAPH-STRINGS note_label is not a string"], refused, False),
+                         "both": (1, ["GRAPH-STRINGS note_label is empty", "GRAPH-STRINGS note_source is empty"], refused, False), "blank": (0, [], None, True),
+                         "req_empty": (1, ["GRAPH-STRINGS card_kind_file is empty"], refused, False), "req_null": (1, ["GRAPH-STRINGS card_kind_file is not a string"], refused, False),
+                         "req_blank": (0, [], None, True)})
+
+    @case("SKW3", "the edge-basis strings through the CLI of this tool (the skeleton writes edge_basis only when key_lines_text is in its strings): key_lines_heading without key_lines_text "
+                  "is `GRAPH-STRINGS key_lines_heading is not a key the page reads without an edge basis`, key_lines_text without key_lines_heading is `GRAPH-STRINGS key_lines_heading missing`, "
+                  "nothing written (exit 1); both words build, and so does neither")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            sp = _strings_file(d, {k: v for k, v in _strings().items() if k not in NOTE_PAIR_FIXTURE})
+            ol = _outline_file(d)
+            res = {}
+            for i, (name, w) in enumerate((("heading", {"key_lines_heading": "H"}), ("text", {"key_lines_text": "T"}), ("both", {"key_lines_heading": "H", "key_lines_text": "T"}), ("neither", {}))):
+                path = os.path.join(d, f"ov{i}.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(dict(NOTE_PAIR_FIXTURE, **w), f)
+                out = os.path.join(d, f"o{i}")
+                rc, so, se = _cli(_args(g, out, sp, ol, overlay=path))
+                res[name] = (rc, [ln for ln in so.splitlines() if ln.startswith("GRAPH-STRINGS")], se if rc else None, os.path.exists(out))
+        refused = "REFUSED: nothing written\n"
+        return _eq(res, {"heading": (1, ["GRAPH-STRINGS key_lines_heading is not a key the page reads without an edge basis"], refused, False),
+                         "text": (1, ["GRAPH-STRINGS key_lines_heading missing"], refused, False), "both": (0, [], None, True), "neither": (0, [], None, True)})
 
     @case("U1", "a file's used set and its weights are what its .ilean says: references with usages to another New module count, the weight is the number of DISTINCT names of "
                 "that module (two names count two; two usage records of one name count once); a reference with no usage (a definition only, or an empty list), a reference "
@@ -2464,9 +2543,9 @@ def _selftest_cases():
             g = sp_files(d, "A", [])
             on = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS))[1], "graph/index.json")
             off = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS))[1], "graph/index.json")
-            only = _j(bld(g, PIN, dict(_strings(), key_lines_text="x"))[1], "graph/index.json")
+            only = _j(bld(g, PIN, dict(_strings(), key_lines_text="x", key_lines_heading="h"))[1], "graph/index.json")   # the page reads the heading beside an edge basis: a words key alone is refused (SKW3)
         return _eq((on.get("edge_basis"), sorted(on["edge_basis"]), "edge_basis" in off, len(on["strings"]), "edge_basis" in on["strings"], "key_lines_text" in on["strings"], len(off["strings"]),
-                    only["edge_basis"]["words"], len(only["strings"])), (EDGE_BASIS, ["basis", "words"], False, 33, False, True, 30, "key_lines_text", 28))
+                    only["edge_basis"]["words"], len(only["strings"])), (EDGE_BASIS, ["basis", "words"], False, 33, False, True, 30, "key_lines_text", 31))
 
     @case("SP9", "used_by is the exact inverse of uses with the same weights: A uses B with two names and C with one, B uses C with two names: used_by C is [A 1, B 2], used_by B is "
                  "[A 2], used_by A is []; the number of used_by entries equals the number of uses entries")
@@ -2788,7 +2867,7 @@ def _selftest_cases():
     @case("OVL1", "the overlay of this checkout holds the page's optional words with these values, each equal to the literal typed here (and to the constants of the cases): note_label, "
                   "note_label_typeset, note_source, note_typeset_line, note_exact_button, note_render_button (final), key_kinds_note (final), and the three lines words, "
                   "which are FINAL too: no value starts with `[proposal]` or `[placeholder]`, and the word `edge` is in none of the page words (the data key edge_basis is not a page word); `{n}` appears only in the four count words; with the three old optional words `strings` is 30 keys, "
-                  "with all seven new ones 37, with none of the optional 27")
+                  "with all seven new ones 37, with none of the optional 29 (the fixture's note pair)")
     def _():
         typed = {"note_label": "The file's opening note, from the repository, unchanged", "note_label_typeset": "The file's opening note, from the repository",
                  "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
@@ -2810,7 +2889,7 @@ def _selftest_cases():
                     sorted(k for k, v in ov.items() if v.startswith(("[proposal]", "[placeholder]"))), sorted(k for k, v in ov.items() if re.search(r"\bedges?\b", v, re.I)),
                     sorted(k for k, v in ov.items() if "{n}" in v), counts),
                    (typed, True, [], [],
-                    ["count_file_many", "count_file_one", "count_group_many", "count_group_one", ], (27, 30, 37, 34)))
+                    ["count_file_many", "count_file_one", "count_group_many", "count_group_one", ], (29, 30, 37, 34)))
 
     GO_CARDS = dict(OVERLAY_WORDS, **COUNT_WORDS, **OPTIONAL_WORDS, **NOTE_WORDS, key_lines_heading=LINES_WORDS["key_lines_heading"], key_lines_text=LINES_WORDS["key_lines_text"])   # every word but the Graph one
     GO_GRAPH = {"spine_lines_text": LINES_WORDS["spine_lines_text"]}
@@ -3004,7 +3083,7 @@ def _selftest_cases():
         with _tmp() as d:
             g = sp_files(d, "A", [])
             full = bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS))[1]
-            only_cards = bld(g, PIN, dict(_strings(), key_lines_text="x"))[1]
+            only_cards = bld(g, PIN, dict(_strings(), key_lines_text="x", key_lines_heading="h"))[1]   # heading beside the words key: SKW3
         sp, ix = _j(full, "graph/spine.json"), _j(full, "graph/index.json")
         eb = sp.get("edge_basis")
         return _eq((eb, sorted(eb), eb["words"] in ix["strings"], eb["words"] != ix["edge_basis"]["words"], eb["basis"] != ix["edge_basis"]["basis"], sorted(sp),
@@ -3298,7 +3377,7 @@ def _selftest_cases():
         return _eq((errs, order, _j(files, "graph/index.json")["sibling_layout"], stems, len(_j(files, "graph/index.json")["strings"]), len(live), rep["steps"], rep["kinds"], sorted({(r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
                     rep["not_drawn"], max(len(r["id"]) for r in rows), len(rep["cut"]), cut_ids, [c["title"] for c in kids] == first3, len(first3), len(files),
                     [r["title"] for r in rows] == src_titles, card_titles == src_titles, len(src_titles), sum("`" in s for s in src_titles), bs._graph_static_problems(files)),
-                   ([], ORDERS, "column", 0, 27, 23, 353, {"part": 9, "group": 38, "file": 306}, [("none", "none")],
+                   ([], ORDERS, "column", 0, 29, 23, 353, {"part": 9, "group": 38, "file": 306}, [("none", "none")],
                     ["lean-reduction", "lean-derivatives", "lean-upper-bound", "lean-spanning", "lean-determinant", "lean-one-lift", "lean-congruences", "lean-appendix",
                      "lean-the-last-file"], 23, 3, 733, 1402, 64, 3,
                     ["lean-congruences--lifting-crystalline-extension-classes-i-07869b", "lean-congruences-galois-representations-rows-and-columns-7a36a5",
