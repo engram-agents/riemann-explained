@@ -810,6 +810,8 @@ MUTATIONS = {
                    "allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
     "M-t": ("A27", "loosen the repository constant of the credits page's outbound-link check to `https://github.com/` (the repository is no longer the one `lsernau/grh-lean`): the allowed set is no longer the "
                    "one repository's, so A27 is red; no other case builds a page with an outbound link, so every other A-case stays green", ("A27",)),
+    "M-u": ("A28", "drop the check of the strings keys a shell token names (the loop over the shell's tokens never tests a key, so a value that is not a str or is empty is written as text as before): "
+                   "A28 is red; no other case puts a bad value under a shell key, so every other A-case stays green", ("A28",)),
     "M-v": ("A27", "drop the dot-segment check of the credits page's outbound-link check (A27b: a tail with a `.` or `..` segment is accepted again; the other tail checks stay): a link such as "
                    "`.../tree/<PIN>/../x` is then allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
 }
@@ -843,6 +845,7 @@ MUTATION_EDITS = {
     "M-r": ('static_problems(cpage, "") + element_problems(cpage) + head_meta_problems(cpage)', 'static_problems(cpage, "") + [] + head_meta_problems(cpage)'),
     "M-s": ('if not (commit == pin and (sep == "/" or kind == "tree/")):', 'if not (bool(_PIN.fullmatch(commit)) and (sep == "/" or kind == "tree/")):'),   # (A27b moved the `return` of this test into an `if`; the same wrong implementation)
     "M-t": ('CREDITS_REPO = "https://github.com/lsernau/grh-lean/"', 'CREDITS_REPO = "https://github.com/"'),
+    "M-u": ('        if key in SHELL_KEYS and key != READINGS_FRONT_KEY and key in strings and key not in seen:\n', '        if False:\n'),
     "M-v": ('return not any(g in (".", "..") for g in segs) and "" not in segs[:-1]', 'return "" not in segs[:-1]'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
@@ -2242,13 +2245,13 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             w = _world(d)
             put_strings(w, **{SCOPE_KEY: 7, READINGS_FRONT_KEY: ["x"], "unused_key": None, "sentence": "  padded & <b>x</b>  "})
             tree = _ok_run(w)[0]
-            ok, why = _eq(tree["index.html"].decode("utf-8"), _expected_page(w, SHELL, _asm_strings(sentence="  padded & <b>x</b>  ")))
+            ok, why = _eq(_no_feedback(tree["index.html"].decode("utf-8")), _no_feedback(_expected_page(w, SHELL, _asm_strings(sentence="  padded & <b>x</b>  "))))   # the section attribute is A7's and A8's (M-h)
             if not ok:
                 return ok, "a bad value under a key the shell does not hold: " + why
         with _tmp() as d:   # (e) a clean world builds the same tree as before: the page is the builder's, the files are the closed set
             w = _world(d, scope=True)
             tree, empty = _ok_run(w)
-            ok, why = _eq((sorted(tree), empty, tree["index.html"].decode("utf-8")), (tree_names(w), [], _expected_page(w, SHELL_SCOPE, _asm_strings())))
+            ok, why = _eq((sorted(tree), empty, _no_feedback(tree["index.html"].decode("utf-8"))), (tree_names(w), [], _no_feedback(_expected_page(w, SHELL_SCOPE, _asm_strings()))))   # the section attribute is A7's and A8's (M-h)
             if not ok:
                 return ok, "a clean world: " + why
         for what, val in (("an int", 7), ("the empty string", ""), ("a template with no {n}", "no braces")):   # (f) readings_front: A18's line alone (the fixture index has no list, so A18's shape line follows), never an A28 line
