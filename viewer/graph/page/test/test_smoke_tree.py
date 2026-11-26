@@ -1027,6 +1027,62 @@ def t39_note_compared_on_what_survives_rendering(tmp):
     assert lines(nothing, "FAIL", "note") and "note text empty" in nothing and not lines(nothing, "PASS", "note"), nothing
 
 
+
+WORLD_SCALE_JS = ("(() => { const w = document.querySelector('.ge-world'); if (!w) return null; "
+                  "const m = /scale\\(([-0-9.e]+)\\)/.exec(w.getAttribute('style') || ''); return m ? parseFloat(m[1]) : null; })()")
+
+
+def floor_tree(tmp, name, floor):
+    return build(tmp, name=name, index_edit=lambda i: i.update({"open_scale_floor": floor}), mutate={"page/data.js": ACCEPT_FLOOR})
+
+
+def scale_numbers(o):
+    got = [l for l in lines(o, "PASS", "scale-floor") + lines(o, "FAIL", "scale-floor") if "390x844" in l]
+    assert len(got) == 1, o
+    return got[0], float(re.search(r"world scale ([0-9.]+)", got[0]).group(1))
+
+
+def t40_scale_floor_reads_the_opened_box(tmp):
+    """F3a: the floor governs framing an OPENED box, so the check deep-links the part, presses the sheet's own parts button, lets the engine settle and
+    reads the world scale then. On a tree whose opened framing reaches the floor it passes and the PASS line says the parts were opened."""
+    out = floor_tree(tmp, "floor-ok", 0.2)
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    line, k = scale_numbers(o)
+    assert code == 0 and line.startswith("PASS") and k >= 0.2, (code, o)
+    assert "after opening the part's parts through the sheet" in line, line
+
+
+def t40b_a_deep_link_only_measurement_is_not_what_the_check_reads(tmp):
+    """F3b: a tree whose floor sits BETWEEN the deep link's scale and the opened box's scale (on this engine opening lowers the scale, so the floor is above
+    the opened one): a measurement right after the deep link would pass, the opened measurement must FAIL. The case reads the deep-link-only scale itself,
+    in the browser, and skips by name when this machine's layout leaves no such split."""
+    from playwright.sync_api import sync_playwright
+    import smoke_tree as S
+    floor = 0.6
+    out = floor_tree(tmp, "floor-split", floor)
+    part = json.load(open(os.path.join(out, "graph", "index.json")))["top"][0]
+    srv, base = S.serve(out)
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(executable_path=S.T.SHELL[0], args=S.LAUNCH_ARGS) if S.T.SHELL else pw.chromium.launch(args=S.LAUNCH_ARGS)
+            v = S.View(browser, base + "graph/#" + part, "390x844", {"console": [], "requests": []})
+            v.wait("document.querySelector('#graph-sheet-body article')", 8000)
+            v.page.wait_for_timeout(1500)
+            closed = v.ev(WORLD_SCALE_JS)
+            v.close()
+            browser.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        S.reset_state()
+    if closed is None or closed < floor:
+        raise Skip("this machine's deep-link scale %r is not at or above the floor %s, so there is no split to discriminate on" % (closed, floor))
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    line, k = scale_numbers(o)
+    assert code == 1 and line.startswith("FAIL"), (code, o)
+    assert k < floor <= closed, ("the check must have read the opened box's scale, not the deep link's", k, floor, closed)
+
+
 CASES = [
     ("T1 the real fixture (--no-note): exit 0, SMOKE PASS, three ids, the checks named", t1_real_fixture),
     ("T1b the flat shape (A1): TREE flat, exit 0", t1b_flat_shape),
@@ -1081,6 +1137,8 @@ CASES = [
     ("T37 F1: the sheet is open on a markup card of the id or a made card of the title; anything else fails", t37_open_check_accepts_a_markup_card_or_a_made_card),
     ("T38 F1: a tree with no card articles and a page that makes the card opens (a named skip where the page cannot)", t38_made_card_tree_opens),
     ("T39 F2: the note is compared on lowercase letters and digits, contained in the rendered body", t39_note_compared_on_what_survives_rendering),
+    ("T40 F3a: the scale floor is read on the opened box and the PASS line says so", t40_scale_floor_reads_the_opened_box),
+    ("T40b F3b: a deep-link-only measurement is not what the floor check reads", t40b_a_deep_link_only_measurement_is_not_what_the_check_reads),
 ]
 
 # The cases that start a browser (the tool's whole run, or the page suite's). The rest speak plain HTTP to the tool's server or call its functions,
@@ -1092,7 +1150,8 @@ NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_st
                  t19c_end_to_end_graph_index_linked_out_tool, t25c_ordinary_tree_through_the_tool, t33_opened_count_end_to_end,
                  t35_credits_page_answers_and_links_back_to_the_map, t35b_credits_link_that_does_not_reach_the_map_fails, t35c_credits_console_error_fails,
                  t36_credits_absent_is_a_named_skip_or_a_required_fail,
-                 t37_open_check_accepts_a_markup_card_or_a_made_card, t38_made_card_tree_opens}
+                 t37_open_check_accepts_a_markup_card_or_a_made_card, t38_made_card_tree_opens,
+                 t40_scale_floor_reads_the_opened_box, t40b_a_deep_link_only_measurement_is_not_what_the_check_reads}
 
 
 def run_cases(cases, only, no_browser=False):
