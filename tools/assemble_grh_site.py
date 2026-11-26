@@ -75,8 +75,11 @@ MAX_STEP_FILES = 2000               # the most step files (A1)
 DATA_FIXED = ("index.json", "spine.json", "uses.json")   # DATA holds these, step/<id>.json, and nothing else (A2)
 ABOUT_KEY = "about_text"            # the strings key whose text fills #graph-about (contract, Open 3: the default; `ASM-STRINGS about_text missing` when absent)
 SCOPE_KEY = "front_scope_line"      # the shell key PR C lets the page carry besides GRAPH_SHELL_KEYS (A7)
+READINGS_FRONT_KEY = "readings_front"   # the shell key whose strings value is the template of the readings front line (A18)
+READINGS_KEY = "readings"           # the key of index.json that holds the list of reading notes, one row per note (A18; the real name is still being asked: ONE constant, used everywhere)
+SHELL_KEYS = bs.GRAPH_SHELL_KEYS + ("front_scope_line", "readings_front")   # the `{{S:key}}` tokens the shell may hold: the builder's eleven, the scope line (A7), the readings front line (A18)
 PAGE_SECTION_ATTRS = (("data-page-feedback", "off"),)   # A7, A8
-CODES = ("ASM-DATA", "ASM-PIN", "ASM-OUT", "ASM-ASSET", "ASM-SINK", "ASM-PAGE", "ASM-STRINGS")   # the codes of a refusal line: `<CODE> <what> <reason>`
+CODES = ("ASM-DATA", "ASM-PIN", "ASM-OUT", "ASM-ASSET", "ASM-SINK", "ASM-PAGE", "ASM-STRINGS", "ASM-READINGS")   # the codes of a refusal line: `<CODE> <what> <reason>`
 DATA_REASONS = ("symlink", "not-regular", "too-large", "encoding", "unexpected", "missing")   # the reasons of ASM-DATA
 
 _OPTIONS = ("--data", "--pin", "--strings", "--shell", "--out", "--graph-src")
@@ -204,6 +207,7 @@ SHELL = """<!doctype html>
 </body>
 </html>
 """   # the live viewer/graph/shell.html minus its two `list/` links and the engine.css link (this graph-src stand-in has no engine.css)
+SHELL_READINGS = SHELL.replace('<p class="sentence">{{S:sentence}}</p>\n', '<p class="sentence">{{S:sentence}}</p>\n<p class="sentence">{{S:readings_front}}</p>\n')   # the variant that holds the A18 key
 SHELL_SCOPE = SHELL.replace('<p class="sentence">{{S:sentence}}</p>\n', '<p class="sentence">{{S:sentence}}</p>\n<p class="sentence">{{S:front_scope_line}}</p>\n')   # the variant that holds the PR C key
 ABOUT_TEXT = "About this map: one plain sentence."
 SCOPE_TEXT = "Scope: the Lean files of the last step."
@@ -352,7 +356,7 @@ def _ok_run(w, argv=None, **kw):
 def _expected_page(w, shell_text, strings):
     """The page the builder's own function makes (the contract's A7 call), for the comparison of the written index.html."""
     errs, page = _graph_page(shell_text.encode("utf-8"), set(w["assets"]), strings, bs._e(strings[ABOUT_KEY]), "",
-                             shell_keys=GRAPH_SHELL_KEYS + (SCOPE_KEY,), section_attrs=PAGE_SECTION_ATTRS)
+                             shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
     if errs:
         raise _FixtureError(f"the builder refuses the fixture page: {errs}")
     return page
@@ -370,7 +374,7 @@ def _limit_writes(n):
 
 # ---------------------------------------------------------------- the mutation controls: exact specifications, for phase 2 to turn into live checks
 
-CLAUSES = tuple(f"A{i}" for i in range(1, 18))
+CLAUSES = tuple(f"A{i}" for i in range(1, 19))
 MUTATIONS = {
     "M-a": ("A3", "in the pin stage, skip the comparison of `commit` with --pin for every step/<id>.json (index.json, spine.json and uses.json are still compared)", ("A3",)),
     "M-b": ("A1", "in the data stage, read a step/<id>.json that is a symlink as if it were a regular file (follow it; no `symlink` refusal for it). Every other symlink refusal "
@@ -383,6 +387,7 @@ MUTATIONS = {
     "M-g": ("A4", "skip the not-empty check: a non-empty OUT_DIR is written into, no `ASM-OUT <path> not-empty`", ("A4",)),
     "M-h": ("A7", "call `_graph_page` with `section_attrs=()` so the section carries no `data-page-feedback`", ("A7", "A8")),
     "M-i": ("A5", "take the shell bytes from the third return value of `_graph_assets(graph_src)` when it is not None (and from --shell only when it is None)", ("A5",)),
+    "M-j": ("A18", "fill the readings front line with the list's length plus one (`str(len(rows) + 1)` instead of `str(len(rows))`): the written line is then not `template.replace(\"{n}\", str(len(list)))`", ("A18",)),
 }
 
 
@@ -905,6 +910,77 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             return False, f"the probe failed: {r.stderr[-300:]}"
         got = json.loads(r.stdout)
         return _eq((got["planted_seen"], got["diffs"], got["build_site_diffs"]), (True, [], []))
+
+    @case("A18", "the readings front line: the shell may hold `{{S:readings_front}}` (a SHELL key); its strings value is a template with exactly one `{n}`, filled with the decimal length of the "
+                 "list `index.json[READINGS_KEY]` by a function replacement (no pattern in the words matters) and then handed to `_graph_page`, which escapes it: the written line equals "
+                 "`template.replace(\"{n}\", str(len(list)))`, escaped, for lengths 0, 1, 10 and 100; refusals by name, nothing written: the value missing or with no `{n}` or with two "
+                 "(`ASM-READINGS readings_front template`), the list missing, not a list or with a row that is not an object (`ASM-READINGS <key> shape`); a shell WITHOUT the token needs "
+                 "neither the template nor the list; the tool never reads or changes readings_heading, readings_about or readings_byline")
+    def _():
+        _need_pr_c()
+        template = 'Notes \\1 <b>{n}</b> & \\g<0>.'   # words a pattern replacement would read as a group reference, and markup the page must escape
+
+        def make(d, rows, shell=SHELL_READINGS, strings=None, index_over=None):
+            w = _world(d, shell=shell, strings=_asm_strings(**{READINGS_FRONT_KEY: template}) if strings is None else strings)
+            idx = json.loads(w["files"]["index.json"])
+            if rows is not None:
+                idx[READINGS_KEY] = rows
+            if index_over is not None:
+                idx.update(index_over(idx))
+            _write_tree(w["data"], {"index.json": _graph_bytes({"x": idx})["x"]})
+            return w, idx
+
+        def carried(tree):
+            return {k: v for k, v in json.loads(tree["index.json"]).items() if k != "assets"}
+
+        for n in (0, 1, 10, 100):   # the written line is the template with {n} the list's length, escaped, whatever the words
+            with _tmp() as d:
+                rows = [{"id": f"r{i}", "title": f"Note {i}"} for i in range(n)]
+                w, idx = make(d, rows)
+                tree = _ok_run(w)[0]
+                page = tree["index.html"].decode("utf-8")
+                line = template.replace("{n}", str(len(rows)))
+                ok, why = _eq((page, bs._e(line) in page, line in page, f"<b>{n}</b>" in page, carried(tree)),
+                              (_expected_page(w, SHELL_READINGS, _asm_strings(**{READINGS_FRONT_KEY: line})), True, False, False, {k: v for k, v in idx.items() if k != "assets"}))
+                if not ok:
+                    return ok, f"a list of {n} rows: " + why
+        for what, over in (("no value", None), ("no {n}", "Our reading notes. The key lists them."), ("two {n}", "{n} notes and {n} more"), ("an empty value", "")):   # the template refusals
+            with _tmp() as d:
+                w, _idx = make(d, [{"id": "r"}], strings=_asm_strings(**{READINGS_FRONT_KEY: over}))
+                good, why = _refused(w, _argv(w), [f"ASM-READINGS {READINGS_FRONT_KEY} template"], f"the strings value of the front line: {what}")
+                if not good:
+                    return good, why
+        for what, rows in (("no list", None), ("a dict", {"id": "r"}), ("a string", "r1,r2"), ("a number", 3), ("a number as a row", [{"id": "r"}, 3]), ("a list as a row", [[1]]),
+                           ("null as a row", [None, None])):   # the shape refusals: ONE line, whatever the number of bad rows
+            with _tmp() as d:
+                w, _idx = make(d, rows)
+                good, why = _refused(w, _argv(w), [f"ASM-READINGS {READINGS_KEY} shape"], f"the readings list is {what}")
+                if not good:
+                    return good, why
+        with _tmp() as d:   # both faults of the stage at once: both reported
+            w, _idx = make(d, "x", strings=_asm_strings(**{READINGS_FRONT_KEY: "no braces"}))
+            good, why = _refused(w, _argv(w), [f"ASM-READINGS {READINGS_FRONT_KEY} template", f"ASM-READINGS {READINGS_KEY} shape"], "a bad template and a bad list together")
+            if not good:
+                return good, why
+        for rows, strings in ((None, _asm_strings()), ("not a list", _asm_strings(**{READINGS_FRONT_KEY: "no braces"})), ([1, 2], _asm_strings(**{READINGS_FRONT_KEY: "{n} {n}"}))):
+            with _tmp() as d:   # a shell WITHOUT the token: neither the template nor the list is needed, and a bad one is not looked at
+                w, idx = make(d, rows, shell=SHELL, strings=strings)
+                tree = _ok_run(w)[0]
+                ok, why = _eq((tree["index.html"].decode("utf-8"), carried(tree)), (_expected_page(w, SHELL, strings), {k: v for k, v in idx.items() if k != "assets"}))
+                if not ok:
+                    return ok, f"a shell without the token, list {rows!r}: " + why
+        odd = {"readings_heading": "{n} {n}", "readings_about": "<b>{n}</b>", "readings_byline": 7}
+        for in_strings in (odd, {}):
+            with _tmp() as d:   # the three PAGE keys of the overlay: carried in index.json's strings, never read: odd values change nothing, absent values are no fault
+                strings = _asm_strings(**{READINGS_FRONT_KEY: template, **in_strings})
+                w, idx = make(d, [{"id": "r"}] * 3, strings=strings, index_over=lambda ix: {"strings": dict(ix["strings"], **odd)})
+                tree = _ok_run(w)[0]
+                line = template.replace("{n}", "3")
+                ok, why = _eq((tree["index.html"].decode("utf-8"), carried(tree)),
+                              (_expected_page(w, SHELL_READINGS, _asm_strings(**{READINGS_FRONT_KEY: line, **in_strings})), {k: v for k, v in idx.items() if k != "assets"}))
+                if not ok:
+                    return ok, f"the readings_* page keys, strings file holds {sorted(in_strings)}: " + why
+        return True, ""
 
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (SKIPPED until phase 2)")(
