@@ -531,7 +531,7 @@ The `title` of a card is `_card_line(group, no_claim_label)`: the group's `short
 a step with no claim, else no line; the first sentence of a claim is not a fallback. `_graph_line_errors` checks the RESOLVED line of every step: no line (a claim and neither a
 short nor a title), more than 50 characters after the strip, a dollar sign, each `GRAPH-SHORT <id> <reason> (<n> characters)`; a short of a bad shape (not a string, empty, a
 line break, over 50) is `GRAPH-SHORT <id> <reason>`, once. The refusals, each its own code, each naming the id, exit 1, nothing written: GRAPH-ID (not
-`^[a-z0-9][a-z0-9-]*$`, or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted; the root's own children count too and the root is
+`^[a-z0-9]+(-[a-z0-9]+)*$` and at most 64 characters, the id rule of the page and the comment service; or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted; the root's own children count too and the root is
 named `root`), GRAPH-SYMBOL, GRAPH-EDGE (a premise on a step that is neither a sibling nor the step's own child, a premise on no step, or a cycle in rests_on), GRAPH-COUNT
 (`_graph_count_errors`: child_count against the children listed, steps against the files, every listed id has its file) and GRAPH-SHORT. The graph files are written like
 data.js (keys sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in G1: graph/index.html,
@@ -1807,6 +1807,8 @@ GRAPH_FORMAT = 1
 GRAPH_MAX_CHILDREN = 40   # a step with more children is refused (GRAPH-FANOUT); the page reads the number from graph/index.json
 GRAPH_SHORT_MAX = nm.SHORT_MAX   # the longest `short` (author text) a group may carry, in characters: the checker's own constant, never a second literal
 GRAPH_ID = re.compile(r"[a-z0-9][a-z0-9-]*")   # a step id; narrower than SAFE_ID, so every graph id is also a file name of the build
+GRAPH_SHAPE = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")   # the id rule of the page and the comment service (their ^[a-z0-9]+(-[a-z0-9]+)*$), written out here: `_graph_files` refuses every step id that does not fullmatch it
+GRAPH_ID_MAX = 64   # the longest step id (the comment service's MAX_TARGET_LENGTH)
 # The strings key whose short word a closed card carries as its `role`, by root_role (contract section 10: a word of its own, not the list page's
 # sentence, which stays in the card markup). The key `role` is absent for a root_role with no row here and for a step with no root_role. The key is
 # resolved into the card at build time and is never in index.json `strings`. The word is at most GRAPH_ROLE_MAX characters with no line break (GRAPH-ROLE otherwise).
@@ -2247,10 +2249,14 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     seen = set()
     for r in rows:
         i = r["id"]
-        if not (isinstance(i, str) and GRAPH_ID.fullmatch(i)) or i == "root":
-            errors.append(("GRAPH-ID", str(i), "is not a step id (lower-case letters, digits and `-`, not starting with `-`)"))
+        if not (isinstance(i, str) and GRAPH_SHAPE.fullmatch(i)):   # one refusal per id: the shape first, the length only for an id of good shape
+            errors.append(("GRAPH-ID", str(i), "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"))
+        elif i == "root":
+            errors.append(("GRAPH-ID", i, "is the id of the root, which is not a step"))
+        elif len(i) > GRAPH_ID_MAX:
+            errors.append(("GRAPH-ID", i, f"is {len(i)} characters (at most {GRAPH_ID_MAX})"))
         if i in seen:
-            errors.append(("GRAPH-DUP", str(i), "is the id of more than one group"))
+            errors.append(("GRAPH-DUP", str(i), "is the id of more than one step"))
         seen.add(i)
     if errors:
         return errors, {}

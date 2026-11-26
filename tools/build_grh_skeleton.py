@@ -23,12 +23,13 @@ the self-test; otherwise they are skipped.
 THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the skeleton's own rules, not reading)
  1 TREE. CONTENTS.md, section `## New` only, in the order of its lines (nothing is sorted, nothing comes from the file system). Each `### heading` is a section;
    a line that is only `**title**` is a group of that section; a line `- `New/<path>` (<n>): <title>` is a file of the latest group. A section whose files have
-   no group line gets one anonymous group (id `<section>--`, empty title). A section of exactly one file whose path has no folder (`New/Main`) is a top step
+   no group line gets one anonymous group (id `<section>-group`, empty title). A section of exactly one file whose path has no folder (`New/Main`) is a top step
    that is the child of a part made from the heading (its id is the slug of the heading), with no group between. Steps: part > group > file.
  2 IDS. Every id starts with `lean-`. Section: the folder name (the second path segment) in kebab case (a lower-case letter followed by an upper-case one gets
-   `-`; `_` becomes `-`; then lower case). Group: `<section id>--<slug of its title>` (NFKD, accents dropped, lower case, each run of characters outside a-z0-9
-   one `-`, trimmed). File: its path after `New/`, each segment in kebab case, joined by `-`. An id longer than 64 characters is cut to its first 57, a trailing
-   `-` removed, then `-` and the first 6 hex digits of the sha256 of the whole id; an id of 64 or fewer is never touched. A clash is GRAPH-DUP, a bad character
+   `-`; `_` becomes `-`; then lower case). Group: `<section id>-<slug of its title>` (NFKD, accents dropped, lower case, each run of characters outside a-z0-9
+   one `-`, trimmed; the slug `group` for an anonymous group or a title that slugs to nothing). File: its path after `New/`, each segment in kebab case, joined by `-`. An id longer than 64 characters is cut to its first 57, a trailing
+   `-` removed, then `-` and the first 6 hex digits of the sha256 of the whole id; an id of 64 or fewer is never touched. A clash is GRAPH-DUP, an id outside ^[a-z0-9]+(-[a-z0-9]+)*$ (a bad character, a `--`, a
+   leading or trailing `-`)
    GRAPH-ID, never corrected; an id that is also an id of the outline is SKEL-ID-CLASH.
  3 TITLES. A file: the text after the colon, exactly as written (a backtick span keeps its backticks). A group: its bold text. A section: its heading. The 50-character bound of the graph
    contract (the face line) is NOT applied here: it lives in build_site's `_graph_line_errors`, which this tool does not call.
@@ -605,7 +606,7 @@ def _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info
     for r in rows:
         kids[r["parent"]] = kids.get(r["parent"], 0) + 1
         d, i = 1, r["parent"]
-        while i != "root" and i in parent:
+        while i != "root" and i in parent and d <= len(rows):   # a group and a file with one id make a step its own parent: the walk ends, and _graph_files then refuses the id (GRAPH-DUP)
             d, i = d + 1, parent[i]
         depth_max = max(depth_max, d)
     return {"steps": len(rows), "top": [r["id"] for r in rows if r["parent"] == "root"], "widest": max([v for k, v in kids.items() if k != "root"] or [0]),
@@ -750,7 +751,7 @@ def _spine_and_index(grh, ilean_dir, fid, rows, report):
 
     def path_of(i):
         out, x = [], parent[i]
-        while x != "root":
+        while x != "root" and len(out) <= len(parent):   # bounded as in _report: a step that is its own parent (a group and a file of one id) ends the walk, and _graph_files refuses the id
             out.append(x)
             x = parent[x]
         return out[::-1]
@@ -814,7 +815,7 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
     cut = []
 
     def ident(i):
-        if not bs.GRAPH_ID.fullmatch(i):   # a bad id is never cut (the cut could hide its bad character): _graph_files names the whole id
+        if not bs.GRAPH_SHAPE.fullmatch(i):   # a bad id is never cut (the cut could hide its bad character): _graph_files names the whole id
             return i
         j = _cap(i)
         if j != i:
@@ -894,7 +895,7 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
         sid_id = ident(sid)
         row(sid_id, "root", ti, [], "part", s["heading"])
         for gi, g in enumerate(s["groups"]):
-            gid = ident(f"{sid}--{slug(g['title'] or '')}")
+            gid = ident(f"{sid}-{slug(g['title'] or '') or 'group'}")
             row(gid, sid_id, gi, [], "group", g["title"] or "")
             members, adj, kept = group_files[(ti, gi)]
             for fi, f in enumerate(g["files"]):
