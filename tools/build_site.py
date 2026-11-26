@@ -545,7 +545,7 @@ folder the page code is copied from: every .js and .css file under it with no `t
 written the assembled tree (assets, and shell.html under its own name) goes through tools/graph_js_check.py, loaded by file path (`gjc`): its non-zero answer is `GRAPH-SINK graph
 <the scanner's REFUSED line>`, one per line. This file keeps no list of forbidden tokens (GA6 counts them). index.json `strings` is exactly the nine `words` keys and the
 GRAPH_RUNTIME_KEYS (parts_n holds {n} as written), checked as an exact set (`GRAPH-STRINGS <key> missing | is not a key the page reads`). A `GRAPH-COUNT` also names an asset whose file or
-sha256 is not the one listed. `role_named_statement` is in `strings` only when a step carries a role (21 keys; 20 without). GRAPH_SHORT_MAX is nm.SHORT_MAX.
+sha256 is not the one listed. `role_named_statement` is never in `strings` (20 keys on every build; the role word is resolved into the card). GRAPH_SHORT_MAX is nm.SHORT_MAX. GR5 and GR21 read tools/fixtures/outline_faces.json, not the live outline (GA18).
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
