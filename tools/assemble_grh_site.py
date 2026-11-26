@@ -654,6 +654,9 @@ MUTATIONS = {
     "M-m": ("A11b", "skip the ref check of the written page (the call that scans the assembled page's `href`, `src`, `action`, `srcset`, `poster` and `data` values for an absolute, `..` or "
                     "missing ref is dropped from `_stage_page`; the builder's own checks stay): the A11b case is red (a shell holding `../x.html` or `nothere.html` builds, exit 0), every "
                     "other A-case stays green except A11b-attrs, which reads the same call through a stand-in page and goes red with it", ("A11b", "A11b-attrs")),
+    "M-n": ("A11b-attrs", "cut `src` from REF_ATTRS (the one-token edit: `REF_ATTRS = (\"href\", \"action\", \"srcset\", \"poster\", \"data\")`): a script whose src is `../x.js`, `nothere.js` or `/x.js` "
+                          "is no longer refused by the ref check, so the A11b-attrs case is red; A11b (a shell with `href` refs) and every other A-case stay green, A11b-attrs being the only case that reads `src`",
+           ("A11b-attrs",)),
 }
 
 
@@ -677,6 +680,7 @@ MUTATION_EDITS = {
     "M-k": ('static_problems(page, "") + graph_element_problems(page) + head_meta_problems(page)', 'static_problems(page, "") + [] + head_meta_problems(page)'),
     "M-l": ('    lines = ["ASM-STATIC " + " ".join(e[1:]) for e in _graph_static_problems(json_files)]', '    lines = []'),
     "M-m": ('    lines += _ref_problems(page, names)', '    lines += []'),
+    "M-n": ('REF_ATTRS = ("href", "src", "action", "srcset", "poster", "data")', 'REF_ATTRS = ("href", "action", "srcset", "poster", "data")'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
 
