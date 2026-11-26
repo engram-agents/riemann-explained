@@ -1,0 +1,127 @@
+{
+ "card": {
+  "child_count": 6,
+  "id": "goal-chain",
+  "kind": "theorem",
+  "path": [],
+  "proof": "not_read",
+  "role": "Theorem",
+  "state": "read",
+  "title": "Title of step goal-chain"
+ },
+ "children": [
+  {
+   "child_count": 4,
+   "id": "a1",
+   "kind": "theorem",
+   "parent_rests_on": true,
+   "path": [
+    "goal-chain"
+   ],
+   "proof": "read",
+   "role": "",
+   "state": "census",
+   "title": "Title of step a1"
+  },
+  {
+   "child_count": 0,
+   "id": "a2",
+   "kind": "def",
+   "parent_rests_on": false,
+   "path": [
+    "goal-chain"
+   ],
+   "proof": "none",
+   "role": "Definition",
+   "state": "none",
+   "title": "Title of step a2"
+  },
+  {
+   "child_count": 0,
+   "id": "a3",
+   "kind": "structure",
+   "parent_rests_on": true,
+   "path": [
+    "goal-chain"
+   ],
+   "proof": "none",
+   "role": "Structure",
+   "state": "none",
+   "title": "Title of step a3"
+  },
+  {
+   "child_count": 0,
+   "id": "a4",
+   "kind": "theorem",
+   "parent_rests_on": false,
+   "path": [
+    "goal-chain"
+   ],
+   "proof": "not_read",
+   "role": "Theorem",
+   "state": "read",
+   "title": "Title of step a4"
+  },
+  {
+   "child_count": 0,
+   "id": "topg",
+   "kind": "def",
+   "parent_rests_on": false,
+   "path": [
+    "goal-chain"
+   ],
+   "proof": "none",
+   "state": "read",
+   "title": "Title of step topg"
+  },
+  {
+   "child_count": 0,
+   "id": "a6",
+   "kind": "structure",
+   "parent_rests_on": false,
+   "path": [
+    "goal-chain"
+   ],
+   "proof": "none",
+   "role": "Structure",
+   "state": "census",
+   "title": "Title of step a6"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "goal-chain",
+ "path": [],
+ "rests_on": [
+  {
+   "from": "a1",
+   "from_path": [
+    "goal-chain"
+   ],
+   "to": "a2",
+   "to_path": [
+    "goal-chain"
+   ]
+  },
+  {
+   "from": "a2",
+   "from_path": [
+    "goal-chain"
+   ],
+   "to": "a3",
+   "to_path": [
+    "goal-chain"
+   ]
+  },
+  {
+   "from": "a4",
+   "from_path": [
+    "goal-chain"
+   ],
+   "to": "topg",
+   "to_path": [
+    "goal-chain"
+   ]
+  }
+ ]
+}
