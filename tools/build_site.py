@@ -1747,8 +1747,8 @@ GRAPH_MAX_CHILDREN = 40   # a step with more children is refused (GRAPH-FANOUT);
 GRAPH_SHORT_MAX = nm.SHORT_MAX   # the longest `short` (author text) a group may carry, in characters: the checker's own constant, never a second literal
 GRAPH_ID = re.compile(r"[a-z0-9][a-z0-9-]*")   # a step id; narrower than SAFE_ID, so every graph id is also a file name of the build
 # The strings key whose short word a closed card carries as its `role`, by root_role (contract section 10: a word of its own, not the list page's
-# sentence, which stays in the card markup). The key `role` is absent for a root_role with no row here and for a step with no root_role. The key joins
-# index.json `strings` only when a step carries a role. The word is at most GRAPH_ROLE_MAX characters with no line break (GRAPH-ROLE otherwise).
+# sentence, which stays in the card markup). The key `role` is absent for a root_role with no row here and for a step with no root_role. The key is
+# resolved into the card at build time and is never in index.json `strings`. The word is at most GRAPH_ROLE_MAX characters with no line break (GRAPH-ROLE otherwise).
 GRAPH_ROLE_WORDS = {"named_statement": "role_named_statement"}
 GRAPH_ROLE_MAX = 24
 # F38: THE symbol table. Each row is a css class token and the strings key whose words explain the symbol; graph/index.json `symbols` is built from
@@ -1786,17 +1786,16 @@ GRAPH_ASSET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")   # the path of an
 GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 
 
-def _graph_strings_keys(with_roles=False):
-    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table, the run-time keys, and (with_roles: some step
-    carries a `role`) the keys of the role words."""
-    return ([v["words"] for table in GRAPH_SYMBOLS.values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
-            + (list(dict.fromkeys(GRAPH_ROLE_WORDS.values())) if with_roles else []))
+def _graph_strings_keys():
+    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table and the run-time keys, on every build. A role
+    word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
+    return [v["words"] for table in GRAPH_SYMBOLS.values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
 
 
-def _graph_strings_errors(strings, with_roles=False):
+def _graph_strings_errors(strings):
     """[(GRAPH-STRINGS, key, what)] for the `strings` object of index.json against the exact set of keys the page reads: the keys it lacks first, then the
     keys it has that the page does not read, each sorted."""
-    want = set(_graph_strings_keys(with_roles))
+    want = set(_graph_strings_keys())
     return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
             + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want)])
 
@@ -2006,8 +2005,7 @@ def _graph_count_errors(objs):
     for i in dict.fromkeys(list(ix["top"]) + [c["id"] for k in sorted(files) for c in files[k]["children"]]):
         if i not in files:
             out.append(("GRAPH-COUNT", i, "is listed but has no step file"))
-    with_roles = any("role" in f["card"] or any("role" in c for c in f["children"]) for f in files.values())
-    return out + _graph_strings_errors(ix["strings"], with_roles)
+    return out + _graph_strings_errors(ix["strings"])
 
 
 def _graph_files(rows, commit, strings, assets=None):
@@ -2104,7 +2102,7 @@ def _graph_files(rows, commit, strings, assets=None):
                 for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
     objs = {"graph/index.json": {
         "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
-        "strings": {k: strings[k] for k in _graph_strings_keys(any("role" in r for r in rows)) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
+        "strings": {k: strings[k] for k in _graph_strings_keys() if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
                          for name, table in GRAPH_SYMBOLS.items()},
                         order={name: list(table) for name, table in GRAPH_SYMBOLS.items()}),
@@ -11367,13 +11365,13 @@ def _selftest_cases():
                     cl(short="S", claim=c("")), cl(short="`x` and `y`")],
                    ["A sh line", "The T term", None, "LBL", "LBL", None, "Ti", None, None, "Ti", "LBL", None, "LBL", None, None, "S", "x and y"])
 
-    @case("GR5", "G1 S4, the real outline's shape (outline/outline.json, read from this checkout, kinds and states from its claims since the table of "
+    @case("GR5", "G1 S4, the real outline's shape (tools/fixtures/outline_faces.json, a copy of the fields of outline/outline.json that this case uses: a change to the live outline does not reach the self-test; kinds and states from its claims since the table of "
                  "declarations is not in the repository): 23 step files; top is rh-from-everycharacter, primitive-to-all, three-inputs; the widest step "
                  "(zeros-enter) has 6 children; the path of a depth-5 step (good-pair) is three-inputs, families-from-topg, zeros-enter, window-bound (4 "
                  "ancestors); 14 premise edges: 7 sibling rests_on links (2 in index.json, 5 in the step files: three-inputs 2, zeros-enter 3), 7 "
                  "parent_rests_on true, 0 across subtrees; state read 16, census 1, none 6 (main gave two steps a claim after the first measure, 14 / 1 / 8); 4 steps (root_role named_statement) carry a role, on the card and on the child")
     def _():
-        with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
+        with open(os.path.join(_HERE, "fixtures", "outline_faces.json"), encoding="utf-8") as f:
             og = json.load(f)["groups"]
         rows = [gr_row(g["id"], g["parent"], g["order"], g["premises"], "theorem",
                        "none" if g["claim"] is None else g["claim"].get("basis", "read"), "t",
@@ -11698,11 +11696,11 @@ def _selftest_cases():
         ("window-bound-every-level", "The same bound on every level's windows"),
         ("landau-every-level", "Every level has the Landau property")]
 
-    @case("GR21", "G1b S1: the face line of each of the 23 steps of the REAL outline (outline/outline.json, read from this checkout), written out: 18 steps "
+    @case("GR21", "G1b S1: the face line of each of the 23 steps of the REAL outline (tools/fixtures/outline_faces.json, a copy of its short, title, claim and role fields, so a change to the live outline does not break the self-test), written out: 18 steps "
                   "resolve by their `short` and 5 (topg, window-inequality, landau-property, vwin-proof, linkn) by their `title`, in the outline's order; "
                   "none has no line, the longest is 49 characters, none holds a `$`, and the line errors of the whole outline are none")
     def _():
-        with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
+        with open(os.path.join(_HERE, "fixtures", "outline_faces.json"), encoding="utf-8") as f:
             og = json.load(f)["groups"]
         lines = [(g["id"], _card_line(g, "LBL")) for g in og]
         return _eq((lines, len(lines), max(len(t) for _i, t in lines), sum(1 for g in og if "short" in g), sum(1 for g in og if "short" not in g and "title" in g),
