@@ -8,8 +8,8 @@ The tool writes, from the data of `build_grh_skeleton.py` (index.json, spine.jso
 and a page made by `build_site._graph_page`, the tree below, FLAT (the page loads its data and scripts relative to its own address):
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
-build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A19 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
-mutation controls M-a to M-n, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
+build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A26 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
+mutation controls M-a to M-r, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
@@ -764,6 +764,14 @@ MUTATIONS = {
     "M-n": ("A11b-attrs", "cut `src` from REF_ATTRS (the one-token edit: `REF_ATTRS = (\"href\", \"action\", \"srcset\", \"poster\", \"data\")`): a script whose src is `../x.js`, `nothere.js` or `/x.js` "
                           "is no longer refused by the ref check, so the A11b-attrs case is red; A11b (a shell with `href` refs) and every other A-case stay green, A11b-attrs being the only case that reads `src`",
            ("A11b-attrs",)),
+    "M-o": ("A24", "take the href of the About link from the strings (`strings.get(\"about_credits_href\", \"credits/\")`) instead of deriving it from the folder of REL: a strings file that carries an extra "
+                   "`about_credits_href` key changes the written link, so A24 is red; every other A-case (their strings carry no such key) stays green", ("A24",)),
+    "M-p": ("A25", "leave credits/index.html out of the manifest `files` map (the page is still written to the tree and still counted in the report): A25 is red (the manifest has no entry for it); A12 "
+                   "(a run without --page) and every other A-case stay green", ("A25",)),
+    "M-q": ("A23", "resolve the credits page's refs with base \"\" (the index.html rules) instead of its own folder: `../graph.css`, `../index.html`, `../` are then `escapes` and `./` is `missing`, so A23 is red; "
+                   "no other case builds with a page that holds a `..` ref, so every other A-case stays green", ("A23",)),
+    "M-r": ("A22", "do not apply `element_problems` to the credits page (the call is dropped from its checks; static, head and link checks stay): a page with a `<script>`, an inline handler or a `<base>` builds, "
+                   "so A22 is red; every other A-case stays green", ("A22",)),
 }
 
 
@@ -788,6 +796,11 @@ MUTATION_EDITS = {
     "M-l": ('    lines = ["ASM-STATIC " + " ".join(e[1:]) for e in _graph_static_problems(json_files)]', '    lines = []'),
     "M-m": ('    lines += _ref_problems(page, names)', '    lines += []'),
     "M-n": ('REF_ATTRS = ("href", "src", "action", "srcset", "poster", "data")', 'REF_ATTRS = ("href", "action", "srcset", "poster", "data")'),
+    "M-o": ("""'<a href="' + CREDITS_DIR + '">'""", """'<a href="' + strings.get("about_credits_href", CREDITS_DIR) + '">'"""),
+    "M-p": ('    manifest = _manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)\n',
+            '    manifest = _manifest_bytes({k: v for k, v in files.items() if k != "credits/index.html"}, {"notes": pin}, {"steps": len(steps)}, None, None)\n'),
+    "M-q": ('_ref_problems(cpage, names, CREDITS_DIR, CREDITS_REL)', '_ref_problems(cpage, names, "", CREDITS_REL)'),
+    "M-r": ('static_problems(cpage, "") + element_problems(cpage) + head_meta_problems(cpage)', 'static_problems(cpage, "") + [] + head_meta_problems(cpage)'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
 
@@ -2051,7 +2064,7 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                  "A11b-attrs are their own cases and stay green)")
     def _():
         _need_pr_c()
-        bad = page_of(add_body="<script></script>", drop_viewport=True)
+        bad = page_of(add_body="<p>call fetch(x) here</p>", drop_viewport=True)   # no element problem: M-r (element check skipped) must not redden A26
         with _tmp() as d:
             w = _page_world(d, text=bad)
             _put(os.path.join(w["data"], "index.json"), _recommit(w["files"]["index.json"], BAD_PIN))
@@ -2082,7 +2095,7 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             w = _page_world(d, text=bad)
             os.mkdir(w["out"])
             before = sorted(os.listdir(d))
-            good, why = _refused(w, _argv(w), ["ASM-PAGE element script found in credits/index.html", "ASM-PAGE viewport missing found in credits/index.html"], "a refusal into an existing empty OUT_DIR", out_state=[])
+            good, why = _refused(w, _argv(w), ["ASM-PAGE fetch( found in credits/index.html", "ASM-PAGE viewport missing found in credits/index.html"], "a refusal into an existing empty OUT_DIR", out_state=[])
             if not good:
                 return good, why
             return _eq(sorted(os.listdir(d)), before)
