@@ -89,6 +89,7 @@ class SourceError(Exception):
 
 
 SOURCE_READ_LIMIT = 1048576   # the most bytes of a source file the tool reads (1 MiB)
+CONTENTS_READ_LIMIT = 4 * 1024 * 1024   # the most bytes of CONTENTS.md the tool reads (4 MiB)
 
 
 PREFIX = "lean-"      # every id of this tool starts with it: its own namespace, apart from the ids of the repository's outline
@@ -185,13 +186,29 @@ def parse_contents(text):
     return sections, errors
 
 
-def _read_bounded(path, limit):
+def _contained(root, path):
+    """True when the REAL path of `path` (every component resolved, not only the last) is `root`'s real path or under it."""
+    r, p = os.path.realpath(root), os.path.realpath(path)
+    return p == r or p.startswith(r + os.sep)
+
+
+def _read_in(root, path, limit):
+    """`_read_bounded` of a path whose real path must be under the real path of `root` (SourceError `outside` otherwise)."""
+    if os.path.islink(path):
+        raise SourceError("symlink")
+    if not _contained(root, path):
+        raise SourceError("outside")
+    return _read_bounded(path, limit)
+
+
+def _read_bounded(path, limit, guards=("lstat", "nofollow")):
     """The bytes of the regular file `path`, read through ONE descriptor that is opened without following a symlink and without blocking (so a FIFO does not hang the open),
-    checked with fstat, and read at most `limit` + 1 bytes. Raises SourceError: missing, symlink, not-a-regular-file, too-large, unreadable."""
+    checked with fstat, and read at most `limit` + 1 bytes. Raises SourceError: missing, symlink, not-a-regular-file, too-large, unreadable. `guards` names the two checks against a
+    symlink that are on (lstat before the open; O_NOFOLLOW in the open): the default is both, a case turns one off to see that each refuses by itself."""
     try:
-        if stat.S_ISLNK(os.lstat(path).st_mode):
+        if "lstat" in guards and stat.S_ISLNK(os.lstat(path).st_mode):
             raise SourceError("symlink")
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | (getattr(os, "O_NOFOLLOW", 0) if "nofollow" in guards else 0) | getattr(os, "O_CLOEXEC", 0))
     except OSError as e:
         raise SourceError("missing" if e.errno == errno.ENOENT else ("symlink" if e.errno == errno.ELOOP else "unreadable"))
     try:
@@ -274,14 +291,43 @@ def _read(path, what):
         raise Unreadable(f"cannot read {what}: {e}")
 
 
+def _src_escapes(grh):
+    """[SKEL-ESCAPE errors] for `src` and `src/New` when either is a symlink, or when its REAL path is not under the real path of `grh`: nothing is walked through a symlinked top."""
+    out = []
+    for rel in ("src", "src/New"):
+        path = os.path.join(grh, *rel.split("/"))
+        if os.path.islink(path):
+            out.append(("SKEL-ESCAPE", rel, "symlink"))
+        elif os.path.exists(path) and not _contained(grh, path):
+            out.append(("SKEL-ESCAPE", rel, "outside"))
+        if out:
+            break   # the folder below a refused top is not looked at
+    return out
+
+
 def _disk_paths(grh):
+    """(the sorted paths of the .lean files under src/New, [SKEL-ESCAPE errors]): a folder under src/New that is a symlink is not walked and is named."""
     def fail(e):
         raise Unreadable(f"cannot read src/New: {e}")
     base = os.path.join(grh, "src")
-    found = []
+    found, escapes = [], []
     for r, ds, fs in os.walk(os.path.join(base, "New"), onerror=fail):
         found += [os.path.relpath(os.path.join(r, n), base)[:-len(".lean")].replace(os.sep, "/") for n in fs + ds if n.endswith(".lean")]   # a directory named X.lean is listed too: it is refused as not a regular file
-    return sorted(found)
+        escapes += [("SKEL-ESCAPE", "src/" + os.path.relpath(os.path.join(r, n), base).replace(os.sep, "/"), "symlink") for n in ds if os.path.islink(os.path.join(r, n))]
+    return sorted(found), escapes
+
+
+def _read_contents(grh):
+    """(the text of CONTENTS.md, []) or (None, [SKEL-CONTENTS error]): read through the bounded reader, under the real path of `grh`. A missing file is Unreadable (exit 2)."""
+    try:
+        raw = _read_in(grh, os.path.join(grh, "CONTENTS.md"), CONTENTS_READ_LIMIT)
+        return raw.decode("utf-8"), []
+    except SourceError as e:
+        if e.reason == "missing":
+            raise Unreadable("cannot read CONTENTS.md: missing")
+        return None, [("SKEL-CONTENTS", "CONTENTS.md", e.reason)]
+    except UnicodeDecodeError:
+        return None, [("SKEL-CONTENTS", "CONTENTS.md", "not-utf-8")]
 
 
 def _group_report(gid, members, kept):
@@ -314,18 +360,26 @@ def _report(rows, drawn, total, self_imports, groups, cut, uses):
 
 def build_rows(grh):
     """(errors, rows, report) from the folder `grh`: SKEL-LINE, then SKEL-MISSING and SKEL-UNLISTED, then SKEL-SOURCE (a source file that cannot be read, all reported), each stops the run before the next stage."""
-    sections, errors = parse_contents(_read(os.path.join(grh, "CONTENTS.md"), "CONTENTS.md"))
+    errors = _src_escapes(grh)
+    if errors:
+        return errors, [], {}
+    text, errors = _read_contents(grh)
+    if errors:
+        return errors, [], {}
+    sections, errors = parse_contents(text)
     if errors:
         return errors, [], {}
     listed = [f["path"] for s in sections for g in s["groups"] for f in g["files"]]
-    disk = _disk_paths(grh)
+    disk, escapes = _disk_paths(grh)
+    if escapes:
+        return escapes, [], {}
     errors = [("SKEL-MISSING", p, "") for p in listed if p not in set(disk)] + [("SKEL-UNLISTED", p, "") for p in disk if p not in set(listed)]
     if errors:
         return errors, [], {}
     src = {}
     for p in listed:
         try:
-            src[p] = _read_bounded(os.path.join(grh, "src", *p.split("/")) + ".lean", SOURCE_READ_LIMIT).decode("utf-8")
+            src[p] = _read_in(grh, os.path.join(grh, "src", *p.split("/")) + ".lean", SOURCE_READ_LIMIT).decode("utf-8")
         except SourceError as e:
             errors.append(("SKEL-SOURCE", p, e.reason))
         except UnicodeDecodeError:

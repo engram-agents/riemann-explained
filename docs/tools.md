@@ -335,7 +335,7 @@ The rules are mechanical; nothing is typed by hand, and the kind and the face li
   group's edges. Groups and sections have no premises. A cycle among the files of a group is `GRAPH-EDGE`.
 - **`graph/uses.json`** lists, for every file step, the ids of every `New` file it imports, in any group, sorted, never itself. It is not part of `index.json`.
 - **Completeness**: every `.lean` file under `src/New` must be a file line and every file line must exist (`SKEL-UNLISTED <path>`, `SKEL-MISSING <path>`, all
-  reported); each source file is read through one descriptor opened without following a symlink and without blocking, checked with `fstat`, and read at most 1 MiB plus one byte (a symlink, a
+  reported); CONTENTS.md (at most 4 MiB) and each source file (at most 1 MiB) are read through one descriptor opened without following a symlink and without blocking, checked with `fstat`, and read at most the limit plus one byte, and the REAL path of `src`, of `src/New` and of every file read must be under the real path of `--grh` (every component is resolved, not only the last: `SKEL-ESCAPE <path> symlink|outside` for a symlinked `src`, `src/New` or folder below it; `SKEL-CONTENTS CONTENTS.md <reason>` for a CONTENTS.md that is a symlink, not a regular file, over the limit or not UTF-8) (a symlink, a
   FIFO, a directory, a larger file, or bytes that are not UTF-8 are `SKEL-SOURCE <path> <reason>`, all reported); a line of the section that does not parse, or a file whose folder is not its section's, is `SKEL-LINE <n>`.
 
 The report prints: steps, the number of steps of each kind, the top ids, the widest step, the depth, the links drawn, the imports not drawn (a cross-group import or a reduced one), the
