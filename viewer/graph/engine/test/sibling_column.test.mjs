@@ -117,6 +117,10 @@ const build = (defs) => defs.map(([id, pr, nk, stem]) => rec(id, pr || [], nk ? 
 const run = (fn, defs) => { const r = top(build(defs)); fn(r, S); return r; };
 const lay = (defs) => run((r, S) => layoutTree(r, S, "column"), defs);      // every case below runs with layout.siblings "column"
 const frozen = (defs) => run(frozenLayoutTree, defs);
+/* the same set as the children of an open NON-root node (a stem is a drawn edge only there); the result has .children and .inner of that node */
+const underP = (fn, defs) => { const p = rec("P", [], build(defs)), r = top([p]); fn(r, S); return { children: p.children, inner: p.inner }; };
+const layP = (defs) => underP((r, S) => layoutTree(r, S, "column"), defs);
+const frozenP = (defs) => underP(frozenLayoutTree, defs);
 const pos = (r) => r.children.map((k) => [k.id, k.rx, k.ry, k.layer]);
 const size = (r) => ({ w: r.inner.w, h: r.inner.h });
 const H = S.nodeH, W0 = S.nodeW, G = S.gapY;
@@ -311,7 +315,7 @@ test("L7: in a mixed set only the real links are handed over; the loose sibling 
 /* ---- Round 2: a stem is a drawn edge. A sibling whose parent rests on it (spec.parentLinksTo) counts as LINKED. ---- */
 
 test("S2: no sibling links, b and d are stem children: b, d share row 0 (b left of d); a and c are a column below, in array order", () => {
-  const r = lay([["a"], ["b", [], 0, true], ["c"], ["d", [], 0, true]]);
+  const r = layP([["a"], ["b", [], 0, true], ["c"], ["d", [], 0, true]]);
   const k = Object.fromEntries(r.children.map((x) => [x.id, x]));
   assert.deepEqual([k.b.rx, k.b.ry, k.b.layer, k.d.rx, k.d.ry, k.d.layer], [0, 0, 0, W0 + S.gapX, 0, 0]);
   const Wb = 2 * W0 + S.gapX;
@@ -322,7 +326,7 @@ test("S2: no sibling links, b and d are stem children: b, d share row 0 (b left 
 
 test("S2: a set whose siblings are all stem children is one row, as before (no sibling link, all layer 0)", () => {
   const defs = [["a", [], 0, true], ["b", [], 0, true], ["c", [], 0, true]];
-  assert.deepEqual(pos(lay(defs)), pos(frozen(defs)));
+  assert.deepEqual(pos(layP(defs)), pos(frozenP(defs)));
 });
 
 test("S3: a stem child that a sibling rests on is at layer > 0 as before, with no stem (control)", async () => {
@@ -360,7 +364,7 @@ test("S1: on the level data and the page real fixtures every stem child that was
   }
   let stems = 0, sets0 = 0;
   for (const [name, defs] of sets) {
-    const a = lay(defs), b = frozen(defs);
+    const a = layP(defs), b = frozenP(defs);
     a.children.forEach((k, i) => {
       if (defs[i][3] === true && b.children[i].layer === 0) { stems++; assert.equal(k.layer, 0, name + ": " + k.id + " lost its first row"); }
     });
@@ -442,4 +446,24 @@ test("O2 through the controller: with no layout option an edgeless and a mixed s
   const c2 = createController({ roots: e.roots, loadChildren: e.loader, maxHeld: 20, fitOnStart: false }, recordingView());
   await c2.ready; await c2.open("par");
   assert.deepEqual(["x", "y", "z"].map((id) => [c2.node(id).rx, c2.node(id).ry]), [[0, 0], [W0 + S.gapX, 0], [2 * (W0 + S.gapX), 0]], "one row, as before");
+});
+
+/* ---- Round 3 (PR 87 review): a stem counts as a drawn edge only for a child of a real (non-root) parent. ---- */
+
+test("S4: in the ROOT's top list a stem flag is not a link: three siblings with no premises are a column in array order", async () => {
+  const t = tiny([{ id: "a" }, { id: "b", stem: true }, { id: "c" }]);
+  const { ctl, view } = await ctlOf(t);
+  const n = ["a", "b", "c"].map((id) => ctl.node(id));
+  assert.deepEqual(n.map((k) => [k.rx, k.ry, k.layer]), [[0, 0, 0], [0, H + G, 1], [0, 2 * (H + G), 2]]);
+  assert.deepEqual(ctl.links(), []); assert.deepEqual(view.links, []);
+  assert.equal(ctl.world().h, 3 * H + 2 * G);
+});
+
+test("S5 control: the same three as children of an opened non-root node: the stem child is linked (row 0), the others follow as a column", async () => {
+  const t = tiny([{ id: "par", kids: ["a", "b", "c"] }, { id: "a" }, { id: "b", stem: true }, { id: "c" }]);
+  const { ctl } = await ctlOf(t);
+  await ctl.open("par");
+  const n = ["a", "b", "c"].map((id) => ctl.node(id));
+  assert.deepEqual(n.map((k) => [k.rx, k.ry, k.layer]), [[0, H + G, 1], [0, 0, 0], [0, 2 * (H + G), 2]]);
+  assert.deepEqual(ctl.links().filter((e) => e.kind === "stem").map((e) => e.from.id), ["b"]);
 });

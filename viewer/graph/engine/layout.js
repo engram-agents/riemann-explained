@@ -6,10 +6,14 @@
 // SIBLING SET = the `children` array of one open node, or the root's top list, in ARRAY ORDER (the data's order).
 // A LINK between siblings a and b exists when b.premises contains a.id or a.premises contains b.id, with a !== b.
 // A premise naming the node itself, or an id that is not in this sibling set, is NOT a link.
-// LINKED = siblings with at least one link, or whose parent rests on them (a stem is a drawn edge: spec.parentLinksTo
-// on the node record). LOOSE = the others.
-//   - a set with no link at all is a COLUMN in array order, each sibling centred on the column axis; nothing is
-//     drawn between them (a drawn link means "rests on" and nothing else);
+// LINKED = siblings with at least one link, or whose parent rests on them (a stem: spec.parentLinksTo on the node
+// record; it is drawn only for a child of a real, non-root parent, so in the root's top list it is ignored). LOOSE = the others.
+// What is tested is exactly this, BY SIBLING ID: a premise naming another member of the set, or a stem. An edge that
+// links.js draws because a premise names a sibling's DESCENDANT (resolved to the nearest visible ancestor) does not make
+// the set linked, in either mode.
+//   - a set where no sibling's premises name another sibling (by id) and no sibling is a stem child is a COLUMN in
+//     array order, each sibling centred on the column axis; nothing is drawn between them (a drawn link means "rests
+//     on" and nothing else);
 //   - a set where every sibling is linked is laid out in ROWS by dependency depth, as before;
 //   - a MIXED set: the linked siblings are laid out in rows among themselves alone, and the loose ones follow below
 //     as a column in array order; the block and the column are both centred on the set's width.
@@ -47,7 +51,7 @@ export function layoutTree(root, S, siblings) {
     if (n.clean === true) return;
     measured++;
     if (isOpen(n)) {
-      const inner = place(n.children);
+      const inner = place(n.children, n.root === true);
       n.inner = inner;
       if (n.root) { n.w = inner.w; n.h = inner.h + S.topInset; }
       else { n.w = Math.max(S.nodeW, inner.w + 2 * S.pad); n.h = S.head + S.top + inner.h + S.pad; }
@@ -90,7 +94,7 @@ export function layoutTree(root, S, siblings) {
     return { w: maxX - minX, h: y - S.gapY, rows: rows.length };
   }
 
-  function place(kids) {
+  function place(kids, rootList) {
     if (!kids.length) return { w: 0, h: 0 };
     kids.forEach(measure);
     if (!column) { const all = rowsBlock(kids); return { w: all.w, h: all.h }; }
@@ -99,7 +103,7 @@ export function layoutTree(root, S, siblings) {
     const linkedSet = new Set();
     for (const k of kids) for (const p of k.premises) if (p !== k.id && byId.has(p)) { linkedSet.add(k); linkedSet.add(byId.get(p)); }
     /* a stem is a drawn edge: a sibling its parent rests on (spec.parentLinksTo, from the controller's node record) is LINKED */
-    for (const k of kids) if (k.spec && k.spec.parentLinksTo === true) linkedSet.add(k);
+    if (!rootList) for (const k of kids) if (k.spec && k.spec.parentLinksTo === true) linkedSet.add(k);
     const linked = kids.filter((k) => linkedSet.has(k)), loose = kids.filter((k) => !linkedSet.has(k));
     const block = linked.length ? rowsBlock(linked) : { w: 0, h: 0, rows: 0 };
     if (!loose.length) return { w: block.w, h: block.h };
