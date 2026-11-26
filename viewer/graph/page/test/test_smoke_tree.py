@@ -932,6 +932,101 @@ def t36_credits_absent_is_a_named_skip_or_a_required_fail(tmp):
     assert code == 0 and lines(o, "PASS", "credits"), (code, o)
 
 
+
+SHEET_PAGE = ('<!doctype html><html><head><meta charset="utf-8"><title>sheet</title></head><body><div id="graph-sheet"><div id="graph-sheet-body">%s</div></div></body></html>')
+
+
+def t37_open_check_accepts_a_markup_card_or_a_made_card(tmp):
+    """F1: the sheet is open on <id> when its body holds the markup's `article#<id>`, OR a card the page MADE from the data (the body's single child is
+    a `.card` whose `.claim` is the step's card title, backticks dropped, whitespace collapsed). A made card of another step, a single child that is not
+    a `.card`, two children, and an article of another id are each a FAIL. Run through open_check on hand-built sheet pages (the page base of this
+    branch does not make cards; the made-card tree case is T38)."""
+    import contextlib, io, smoke_tree as S
+    from playwright.sync_api import sync_playwright
+    title = "Title of `step` a1"
+    pages = {
+        "made-ok": ('<div class="card"><h3 class="claim">Title  of step\n a1</h3></div>', True),
+        "made-other-step": ('<div class="card"><h3 class="claim">Title of step b2</h3></div>', False),
+        "made-not-a-card": ('<div class="other"><h3 class="claim">Title of step a1</h3></div>', False),
+        "made-two-children": ('<div class="card"><h3 class="claim">Title of step a1</h3></div><div class="card"><h3 class="claim">Title of step a1</h3></div>', False),
+        "article-ok": ('<article id="a1"><div class="claim">Title of step a1</div></article>', True),
+        "article-other-id": ('<article id="zz"><div class="claim">Title of step a1</div></article>', False),
+    }
+    site = os.path.join(tmp, "site")
+    os.makedirs(site)
+    for name, (body, _) in pages.items():
+        open(os.path.join(site, name + ".html"), "w", encoding="utf-8").write(SHEET_PAGE % body)
+    srv, base = S.serve(site)
+    saved = S.OPEN_TIMEOUT_MS
+    S.OPEN_TIMEOUT_MS = 1500
+    got = {}
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(executable_path=S.T.SHELL[0], args=S.LAUNCH_ARGS) if S.T.SHELL else pw.chromium.launch(args=S.LAUNCH_ARGS)
+            for name in pages:
+                v = S.View(browser, base + name + ".html", "1280x900", {"console": [], "requests": []})
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    ok = S.open_check(v, "1280x900", "part", {"id": "a1", "title": title})
+                v.close()
+                got[name] = (ok, buf.getvalue())
+            browser.close()
+    finally:
+        S.OPEN_TIMEOUT_MS = saved
+        srv.shutdown()
+        srv.server_close()
+        S.reset_state()
+    for name, (_, want) in pages.items():
+        ok, text = got[name]
+        assert ok is want, (name, got[name])
+        assert bool(lines(text, "PASS", "open-part")) is want and bool(lines(text, "FAIL", "open-part")) is (not want), (name, text)
+
+
+def t38_made_card_tree_opens(tmp):
+    """F1: the real tree with its card block emptied (the About section kept) and a page that makes the card from the data: the part, the group and the
+    file open. On a page that cannot make the card (this branch's base) this is a named SKIP, never a pass."""
+    def about_only(cards):
+        m = re.search(r'<section id="graph-about">.*?</section>', cards, re.S)
+        assert m, "the fixture's About section"
+        return m.group(0) + "\n"
+    out = build(tmp, cards_edit=about_only)
+    html = open(os.path.join(out, "graph", "index.html"), encoding="utf-8").read()
+    assert "<article" not in html and 'id="graph-about"' in html, "the card block is empty and About is kept"
+    code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
+    if not lines(o, "PASS", "open-part"):
+        raise Skip("this branch's page does not make a card from the data (the made-card page change), so the emptied tree cannot open a sheet")
+    assert code == 0 and lines(o, "PASS", "open-group") and lines(o, "PASS", "open-file"), (code, o)
+
+
+def t39_note_compared_on_what_survives_rendering(tmp):
+    """F2: the note check lowercases both sides, keeps letters and digits, and requires the rendered body to CONTAIN the first 30 such characters of the
+    source note: a leading '# heading', a backticked span and list marks do not break a match; another step's note, and a note with nothing to compare,
+    fail."""
+    import contextlib, io, smoke_tree as S
+    def run(text, rendered):
+        class V:
+            def ev(self, expr):
+                return rendered
+        S.reset_state()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            S.note_check(V(), "390x844", {"id": "f1", "note": {"text": text}}, False, True, False)
+        S.reset_state()
+        return buf.getvalue()
+    heading = run("# Title of the note\n\nBody words follow here and go on and on.", "Title of the note Body words follow here and go on and on.")
+    assert lines(heading, "PASS", "note") and not lines(heading, "FAIL", "note"), heading
+    code = run("Use `foo_bar` to call the thing in Lean now, and more words follow.", "Use foo_bar to call the thing in Lean now, and more words follow.")
+    assert lines(code, "PASS", "note"), code
+    items = run("- First item here\n- Second item here\n- Third item here and more", "First item here Second item here Third item here and more")
+    assert lines(items, "PASS", "note"), items
+    short = run("**Short** note.", "Short note.")
+    assert lines(short, "PASS", "note"), short
+    other = run("# Title of the note\n\nBody words follow here and go on and on.", "Completely other words about another step entirely, nothing alike.")
+    assert lines(other, "FAIL", "note") and not lines(other, "PASS", "note"), other
+    nothing = run("### ---", "anything the sheet drew")
+    assert lines(nothing, "FAIL", "note") and "note text empty" in nothing and not lines(nothing, "PASS", "note"), nothing
+
+
 CASES = [
     ("T1 the real fixture (--no-note): exit 0, SMOKE PASS, three ids, the checks named", t1_real_fixture),
     ("T1b the flat shape (A1): TREE flat, exit 0", t1b_flat_shape),
@@ -983,6 +1078,9 @@ CASES = [
     ("T35b V3c: a credits link that does not reach the map fails", t35b_credits_link_that_does_not_reach_the_map_fails),
     ("T35c V3c: a console error on the credits page fails", t35c_credits_console_error_fails),
     ("T36 V3c: no credits/ is a named skip, a fail with --require-credits", t36_credits_absent_is_a_named_skip_or_a_required_fail),
+    ("T37 F1: the sheet is open on a markup card of the id or a made card of the title; anything else fails", t37_open_check_accepts_a_markup_card_or_a_made_card),
+    ("T38 F1: a tree with no card articles and a page that makes the card opens (a named skip where the page cannot)", t38_made_card_tree_opens),
+    ("T39 F2: the note is compared on lowercase letters and digits, contained in the rendered body", t39_note_compared_on_what_survives_rendering),
 ]
 
 # The cases that start a browser (the tool's whole run, or the page suite's). The rest speak plain HTTP to the tool's server or call its functions,
@@ -993,7 +1091,8 @@ NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_st
                  t12_skips_named_in_last_line, t13_require_note, t13b_require_floor, t14_partial_run_says_so, t17c_root_index_linked_out_end_to_end,
                  t19c_end_to_end_graph_index_linked_out_tool, t25c_ordinary_tree_through_the_tool, t33_opened_count_end_to_end,
                  t35_credits_page_answers_and_links_back_to_the_map, t35b_credits_link_that_does_not_reach_the_map_fails, t35c_credits_console_error_fails,
-                 t36_credits_absent_is_a_named_skip_or_a_required_fail}
+                 t36_credits_absent_is_a_named_skip_or_a_required_fail,
+                 t37_open_check_accepts_a_markup_card_or_a_made_card, t38_made_card_tree_opens}
 
 
 def run_cases(cases, only, no_browser=False):
