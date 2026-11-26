@@ -3107,6 +3107,27 @@ def _selftest_cases():
             errs = bld(_tree(d, LB_BODY, srcs), PIN, _strings())[:2]
         return _eq(errs, ([("SKEL-LATER-BLOCKS", "New/S/A", "unterminated block comment"), ("SKEL-LATER-BLOCKS", "New/S/B", "walker=0 grep=1"), ("SKEL-LATER-BLOCKS", "New/S/C", "walker=0 grep=1")], {}))
 
+    @case("LB3", "later_blocks, literals: a string literal that never closes is `SKEL-LATER-BLOCKS <path> unterminated string literal` (not a block-comment reason); the character literal `'\\\"'` "
+                 "(a quote escaped by a backslash) is skipped whole, so a `/-!` on a LATER line is still counted (1), and so is one after a string holding `/-!` that follows it (1): without skipping "
+                 "the literal its quote would open a string and change the count or refuse the file")
+    def _():
+        bad = {"New/S/A": "/-!\nn\n-/\ndef s := \"abc\n", "New/S/B": _lean(), "New/S/C": _lean()}
+        good = {"New/S/A": "/-!\nn\n-/\ndef c := '\\\"'\n/-!\nsecond\n-/\n", "New/S/B": "/-!\nn\n-/\ndef c := '\\\"'\ndef s := \"x /-! y\"\n/-!\nsecond\n-/\n", "New/S/C": _lean()}
+        with _tmp() as d:
+            errs = bld(_tree(d, LB_BODY, bad), PIN, _strings())[:2]
+        with _tmp() as d:
+            e2, files, rows, rep = bld(_tree(d, LB_BODY, good), PIN, _strings())
+        later = {r["id"]: _j(files, f"graph/step/{r['id']}.json")["note"]["later_blocks"] for r in rows if r["kind"] == "file"}
+        return _eq((errs, e2, later), (([("SKEL-LATER-BLOCKS", "New/S/A", "unterminated string literal")], {}), [], {"lean-s-a": 1, "lean-s-b": 1, "lean-s-c": 0}))
+
+    @case("LB4", "later_blocks, the limit of the counter: `_comment_end` takes a three-character opener, so a plain `/-` immediately followed by another `/-` (`/-/- x -/ /-! z -/ -/`) closes at the "
+                 "first `-/` and the `/-!` after it is counted as a block; the grep recipe does not count it (it is not at the start of a line), so the build is REFUSED loudly, "
+                 "`SKEL-LATER-BLOCKS <path> walker=1 grep=0`, and neither number is taken")
+    def _():
+        with _tmp() as d:
+            errs = bld(_tree(d, LB_BODY, {"New/S/A": "/-!\nn\n-/\n/-/- x -/ /-! z -/ -/\n", "New/S/B": _lean(), "New/S/C": _lean()}), PIN, _strings())[:2]
+        return _eq(errs, ([("SKEL-LATER-BLOCKS", "New/S/A", "walker=1 grep=0")], {}))
+
     @case("LBR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): later_blocks is, on every one of the 306 file notes, the number of lines of its source that start "
                  "with `/-!` minus 1 (the grep recipe, written in the case); 178 files have a later block, 643 in all, at most 12 in one file; 949 such lines in all, 306 of them the first of a file")
     def _():
