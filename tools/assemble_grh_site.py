@@ -31,6 +31,7 @@ import json
 import os
 import re
 import sys
+from html.parser import HTMLParser
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -63,9 +64,24 @@ _FROM_SKELETON = ("_read_in", "_contained")
 _UNRESOLVED = [f"build_site.{n}" for n in _FROM_BUILD_SITE if not hasattr(bs, n)] + [f"build_grh_skeleton.{n}" for n in _FROM_SKELETON if not hasattr(sk, n)]
 if _UNRESOLVED:   # something the contract imports cannot be imported as it stands: stop, never copy it
     raise ImportError("assemble_grh_site: cannot import " + ", ".join(_UNRESOLVED))
-_graph_assets, _graph_sink_errors, _graph_asset_errors, _graph_page, GRAPH_SHELL_KEYS, _graph_bytes, _dump, _sha = (getattr(bs, n) for n in _FROM_BUILD_SITE[:8])
-graph_element_problems, static_problems, head_meta_problems, surface_scan = (getattr(bs, n) for n in _FROM_BUILD_SITE[8:12])
-_manifest_bytes, _e, code_spans, GRAPH_ID, _publish, _graph_static_problems = (getattr(bs, n) for n in _FROM_BUILD_SITE[12:])
+_graph_assets = bs._graph_assets   # one name, one line: the binding does not depend on the order of the tuple above
+_graph_sink_errors = bs._graph_sink_errors
+_graph_asset_errors = bs._graph_asset_errors
+_graph_page = bs._graph_page
+GRAPH_SHELL_KEYS = bs.GRAPH_SHELL_KEYS
+_graph_bytes = bs._graph_bytes
+_dump = bs._dump
+_sha = bs._sha
+graph_element_problems = bs.graph_element_problems
+static_problems = bs.static_problems
+head_meta_problems = bs.head_meta_problems
+surface_scan = bs.surface_scan
+_manifest_bytes = bs._manifest_bytes
+_e = bs._e
+code_spans = bs.code_spans
+GRAPH_ID = bs.GRAPH_ID
+_publish = bs._publish
+_graph_static_problems = bs._graph_static_problems
 _read_in, _contained = sk._read_in, sk._contained
 
 TOP_READ_LIMIT = 4 * 1024 * 1024    # index.json, spine.json, uses.json, the strings file, the shell: the most bytes of each read (A1)
@@ -209,7 +225,48 @@ def _stage_pin(pin, objs):
     return lines
 
 
-def _stage_page(shell_bytes, assets, strings, index):
+REF_ATTRS = ("href", "src", "action", "srcset", "poster", "data")   # the attributes of the written page whose value is an address (A11b)
+
+
+def _ref_reason(ref, names):
+    """None when `ref` resolves inside the tree whose file names are `names`, else `absolute`, `escapes` or `missing` (A11b). The part from the first `?` or `#` is dropped; an empty path
+    (a bare #fragment or ?query) passes; a leading `/` or `//`, or a scheme (a `:` in the first segment), is `absolute`; a `..` segment is `escapes`; a path that is not a name of the tree
+    (a trailing-slash folder holds one when some name lies under it) is `missing`. A backslash counts as `/`, as a browser reads it."""
+    path = re.split(r"[?#]", "".join(ch for ch in ref if ch not in "\t\n\r").strip().replace("\\", "/"), maxsplit=1)[0]
+    if not path:
+        return None
+    if path.startswith("/") or ":" in path.split("/")[0]:
+        return "absolute"
+    if ".." in path.split("/"):
+        return "escapes"
+    if path in names or (path.endswith("/") and any(n.startswith(path) for n in names)):
+        return None
+    return "missing"
+
+
+def _ref_problems(page, names):
+    """[`ASM-PAGE <ref> absolute|escapes|missing`] for every ref of the written page (the values of REF_ATTRS; each candidate of a srcset), a repeated (ref, reason) once, ordered by the
+    place of its first occurrence in the page, then by ref. The ref is shown as the page holds it (control whitespace dropped)."""
+    seen = {}
+
+    class P(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            for k, v in attrs:
+                if k not in REF_ATTRS or v is None:
+                    continue
+                for ref in ([c.split()[0] for c in v.split(",") if c.split()] if k == "srcset" else [v]):
+                    shown = "".join(ch for ch in ref if ch not in "\t\n\r").strip()
+                    reason = _ref_reason(shown, names)
+                    if reason:
+                        seen.setdefault((shown, reason), (self.getpos(), shown))
+
+    parser = P()
+    parser.feed(page)
+    parser.close()
+    return [f"ASM-PAGE {ref} {reason}" for (ref, reason), _where in sorted(seen.items(), key=lambda kv: kv[1])]
+
+
+def _stage_page(shell_bytes, assets, strings, index, names):
     """(lines, page): A7 and A18. The page is the builder's `_graph_page` over the Lean shell, `cards` empty, `about` the escaped about_text in one paragraph, the section carrying
     `data-page-feedback="off"`; then the builder's own element, static, head and surface checks over the assembled page."""
     lines = []
@@ -237,6 +294,7 @@ def _stage_page(shell_bytes, assets, strings, index):
     lines = [f"ASM-PAGE {pb} found in index.html" for pb in found]
     if bs.CODE_ON_SURFACE_REFUSES:   # read at the call, as `_run` does
         lines += [f"ASM-PAGE CODE-ON-SURFACE index.html:{card} {text[:60]} x{k}" for card, text, k in code_spans(surface_scan(page)[1])]
+    lines += _ref_problems(page, names)   # A11b: after the builder's checks, which do not look at `..` or at a ref to a file that is not in the tree
     return lines, (None if lines else page)
 
 
@@ -269,7 +327,8 @@ def run(opts):
     if errors:
         print("\n".join("ASM-SINK " + e[2] for e in errors))
         return 1
-    lines, page = _stage_page(shell_bytes, assets, objs["strings"], objs["index.json"])
+    names = set(DATA_FIXED) | set(steps) | set(assets) | {"index.html", "manifest.json"}   # the names the tree will hold (manifest.json is written after the page, and is a file of the tree)
+    lines, page = _stage_page(shell_bytes, assets, objs["strings"], objs["index.json"], names)
     if lines:
         print("\n".join(lines))
         return 1
