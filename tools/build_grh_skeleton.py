@@ -2853,6 +2853,74 @@ def _selftest_cases():
                    ([], [(42, 38, 0), (7, 7, 1), (15, 14, 1), (34, 32, 0), (29, 28, 1), (8, 7, 0), (6, 6, 0), (9, 2, 1), (4, 3, 1)], 108,
                     {"lemma": 42, "def": 30, "abbrev": 17, "theorem": 12, "structure": 6, "class": 1}, 29, True, 353))
 
+    def sc_build(d, **kw):
+        g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+        return g, build(g, PIN, dict(_strings(), edge_basis=EDGE_BASIS), (), _ildir(g), **kw)
+
+    @case("SC1", "`open_scale_floor`: index.json has the top-level key with the value given (1 is written `1`, not `1.0`; 1.5 is `1.5`; a float written 2.0 stays `2.0`), sorted between "
+                 "max_children and rests_on; without the option the key is absent")
+    def _():
+        out = []
+        for v in (None, 1, 1.5, 2.0):
+            with _tmp() as d:
+                g, res = sc_build(d, open_scale_floor=v)
+                raw = res[1]["graph/index.json"].decode("utf-8")
+                ix = json.loads(raw)
+                out.append((res[0], ix.get("open_scale_floor"), re.findall(r'"open_scale_floor": ([^,\n]*)', raw), raw.find('"max_children"') < raw.find('"open_scale_floor"') < raw.find('"rests_on"')
+                            if v is not None else "open_scale_floor" in raw))
+        return _eq(out, [([], None, [], False), ([], 1, ["1"], True), ([], 1.5, ["1.5"], True), ([], 2.0, ["2.0"], True)])
+
+    @case("SC2", "anything but a positive finite number is refused `GRAPH-SCALE-FLOOR <value>` and nothing is returned: zero, a negative, nan, inf, a non-numeric text, a bool, an empty "
+                 "string (the function), and the same texts on the command line (exit 1, OUT not written); a missing value after the option is exit 2; `1`, `1.5` and `1e3` are accepted "
+                 "(and written 1, 1.5 and 1000.0)")
+    def _():
+        bad = [0, -1, float("nan"), float("inf"), "abc", True, False, ""]
+        texts = ("0", "-1", "nan", "inf", "abc", "true", "")
+        with _tmp() as d:
+            g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            fn = [(r[0], r[1]) for r in (build(g, PIN, _strings(), (), _ildir(g), open_scale_floor=v) for v in bad)]
+            sp, ol = _strings_file(d), _outline_file(d)
+            cli = {}
+            for i, text in enumerate(texts):
+                rc, out, err = _cli(_args(g, os.path.join(d, f"o{i}"), sp, ol) + ["--open-scale-floor", text])
+                cli[text] = (rc, out.splitlines(), os.path.exists(os.path.join(d, f"o{i}")))
+            miss = _cli(_args(g, os.path.join(d, "om"), sp, ol) + ["--open-scale-floor"])[0]
+            ok = {}
+            for text in ("1", "1.5", "1e3"):
+                o = os.path.join(d, "ok" + text)
+                rc = _cli(_args(g, o, sp, ol) + ["--open-scale-floor", text])[0]
+                ok[text] = (rc, re.findall(r'"open_scale_floor": ([^,\n]*)', _tree_files(o)["graph/index.json"].decode("utf-8")))
+        return _eq((fn, cli, miss, ok),
+                   ([([("GRAPH-SCALE-FLOOR", s, "")], {}) for s in ("0", "-1", "nan", "inf", "abc", "True", "False", "")],
+                    {text: (1, ["GRAPH-SCALE-FLOOR " + text], False) for text in texts}, 2, {"1": (0, ["1"]), "1.5": (0, ["1.5"]), "1e3": (0, ["1000.0"])}))
+
+    @case("SC3", "the output with the option equals the output without it apart from that ONE key of index.json (every other file byte for byte, index.json equal once the key is "
+                 "removed), and with the option the files are byte-identical under hash seeds 0 and 1")
+    def _():
+        with _tmp() as d:
+            g, a = sc_build(d)
+            runs = []
+            for seed in ("0", "1"):
+                out = os.path.join(d, "out" + seed)
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)) + ["--open-scale-floor", "1"],
+                                   env=dict(os.environ, PYTHONHASHSEED=seed), capture_output=True, text=True)
+                runs.append((r.returncode, _tree_files(out)))
+        with _tmp() as d:
+            g, b = sc_build(d, open_scale_floor=1)
+        ia, ib = json.loads(a[1]["graph/index.json"]), json.loads(b[1]["graph/index.json"])
+        ib.pop("open_scale_floor")
+        return _eq((sorted(a[1]) == sorted(b[1]), all(a[1][k] == b[1][k] for k in a[1] if k != "graph/index.json"), ia == ib, runs[0][0], runs[1][0], runs[0][1] == runs[1][1]),
+                   (True, True, True, 0, 0, True))
+
+    @case("SCR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): the index has `open_scale_floor` 1 when the option is given, and none without")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
+        on = build(_GRH_FOR_SK13, pin, _strings(), ilean_dir=_ILEAN_FOR_SK13, open_scale_floor=1)
+        off = build(_GRH_FOR_SK13, pin, _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        return _eq((on[0], off[0], _j(on[1], "graph/index.json").get("open_scale_floor"), "open_scale_floor" in _j(off[1], "graph/index.json"), len(on[1]), len(off[1])), ([], [], 1, False, 356, 356))
+
     @case("SK13", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
                   "depth 3, 733 links drawn (in-group uses) and 1402 uses not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
                   "lean-reduction are the first 3 file lines of that group in CONTENTS, the live outline's ids are disjoint from the build's, "
