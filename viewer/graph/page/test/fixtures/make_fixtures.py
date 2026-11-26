@@ -11,7 +11,7 @@ skeleton/    the map of a Lean repository's folders and files: kinds part, group
 
 Test-only. Never shipped (lives under test/).
 """
-import json, os, shutil, html
+import glob, importlib.util, json, os, shutil, html
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -84,7 +84,8 @@ SK_TREE = [("sk-part", None, False, "part"),
            ("sk-group-a", "sk-part", False, "group"), ("sk-group-b", "sk-part", True, "group"),
            ("sk-file-1", "sk-group-a", False, "file"), ("sk-file-2", "sk-group-a", True, "file"), ("sk-file-3", "sk-group-a", False, "file"),
            ("sk-file-4", "sk-group-b", False, "file"), ("sk-file-5", "sk-group-b", False, "file")]
-SK_TITLES = {"sk-file-5": LONG_TITLE}
+REAL_SPAN_TITLE = "The second moments of the operators `P* s P`, and good forms"
+SK_TITLES = {"sk-file-5": LONG_TITLE, "sk-file-4": REAL_SPAN_TITLE}
 SK_LINKS = [("sk-group-a", "sk-file-1", "sk-file-2")]
 
 # id -> (parent id or None, parent_rests_on)
@@ -204,6 +205,46 @@ def skeleton_article(i, kids, title):
         out.append("</ul></details>")
     out.append("</article>")
     return "\n".join(out)
+
+
+def _backtick_span():
+    """The builder's ONE definition of a code span, imported from tools/notes_meta.py (never re-typed here)."""
+    root = os.path.abspath(os.path.join(HERE, "..", "..", "..", "..", ".."))
+    spec = importlib.util.spec_from_file_location("notes_meta_for_fixtures", os.path.join(root, "tools", "notes_meta.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod._BACKTICK_SPAN
+
+
+EDGE_TITLES = ["a `x` b", "``", "``x``", "`a``b`", "a `b", "` `", "`a`b`", "x\n`y`", "x\r`y`", "`<b>&`", "no backtick at all",
+               "`one` and `two`", "`x`", "``` `x` ```", "a ` b ` c", REAL_SPAN_TITLE]
+REAL_SKELETON = "/home/agents-shared/sol/skeleton-v1/graph/step"
+
+
+def real_span_titles():
+    """The titles of the real skeleton map that hold a backtick (card.title, read-only). Unreadable -> none, silently."""
+    out = []
+    try:
+        for f in sorted(glob.glob(os.path.join(REAL_SKELETON, "*.json"))):
+            t = json.load(open(f, encoding="utf-8"))["card"]["title"]
+            if "`" in t and t not in out:
+                out.append(t)
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    return out
+
+
+def segments_of(span, title):
+    """The expected segments, computed by the builder's own regex with re.sub semantics: [["text", s] | ["code", s], ...]."""
+    out, pos = [], 0
+    for m in span.finditer(title):
+        if m.start() > pos:
+            out.append(["text", title[pos:m.start()]])
+        out.append(["code", m.group(1)])
+        pos = m.end()
+    if pos < len(title):
+        out.append(["text", title[pos:]])
+    return out
 
 
 def write_json(path, obj):
@@ -356,7 +397,11 @@ def main():
     refusal("role-not-string", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("role", 7))
     refusal("empty-title", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("title", ""))
     refusal("extra-key", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("claim_text", "x"))
-    print("fixtures written; steps:", len(steps))
+    span = _backtick_span()
+    titles = EDGE_TITLES + [t for t in real_span_titles() if t not in EDGE_TITLES]
+    write_json(os.path.join(HERE, "backtick-titles.json"),
+               {"definition": "tools/notes_meta.py _BACKTICK_SPAN", "cases": [{"title": t, "segments": segments_of(span, t)} for t in titles]})
+    print("fixtures written; steps:", len(steps), "; backtick titles:", len(titles))
 
 
 if __name__ == "__main__":

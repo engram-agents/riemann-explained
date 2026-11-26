@@ -10,7 +10,7 @@ const HOSTILE = [
 ];
 
 test("el: tag table is exactly the R1 list", () => {
-  assert.deepEqual([...dom.TAGS].sort(), ["button", "div", "h2", "li", "nav", "ol", "p", "span", "ul"]);
+  assert.deepEqual([...dom.TAGS].sort(), ["button", "code", "div", "h2", "li", "nav", "ol", "p", "span", "ul"]);
 });
 
 test("el: every allowed tag is created; every other tag THROWS", () => {
@@ -83,4 +83,65 @@ test("the module source has no sink and no URL literal", () => {
   const src = readFileSync(new URL("../dom.js", import.meta.url), "utf8");
   for (const s of ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "DOMParser", "createElementNS", "eval(", "new Function", "http:", "https:"])
     assert.ok(!src.includes(s), "dom.js contains " + s);
+});
+
+/* ---- A6: a step title's backtick spans are typeset as code, by ONE helper. The definition of a span is the builder's
+   (tools/notes_meta.py _BACKTICK_SPAN); backtick-titles.json holds the edge strings with the segments that regex itself finds. ---- */
+const flat = (n) => (n.nodeType === 3 ? n.textContent : n.children.map(flat).join(""));
+const render = (title) => { const doc = makeFakeDoc(); const kids = dom.titleChildren(title, dom.makeEl(doc)); return { doc, kids }; };
+const BT = JSON.parse(readFileSync(new URL("./fixtures/backtick-titles.json", import.meta.url), "utf8"));
+
+test("A6 agreement: titleSegments equals the segments the builder's own regex finds, for EVERY fixture title (edge strings and the real span titles)", () => {
+  assert.ok(BT.cases.length >= 16, "the edge strings are there");
+  for (const c of BT.cases) assert.deepEqual(dom.titleSegments(c.title).map((x) => [x.kind, x.text]), c.segments, JSON.stringify(c.title));
+  assert.ok(BT.cases.some((c) => c.title === "``" && c.segments.length === 1 && c.segments[0][0] === "text"), "an empty pair stays two literal backticks");
+});
+
+test("A6 T1: 'a `x` b' -> text 'a ', code 'x', text ' b'; no backtick shown", () => {
+  const { kids } = render("a `x` b");
+  assert.equal(kids.length, 3);
+  assert.equal(kids[0].textContent, "a ");
+  assert.equal(kids[1].tagName, "CODE");
+  assert.equal(flat(kids[1]), "x");
+  assert.equal(kids[2].textContent, " b");
+  assert.ok(!kids.map(flat).join("").includes("`"));
+});
+
+test("A6 T2: the real title -> a code element with the text 'P* s P' (the asterisk stays literal)", () => {
+  const { kids } = render("The second moments of the operators `P* s P`, and good forms");
+  const code = kids.filter((k) => k.nodeType === 1);
+  assert.equal(code.length, 1);
+  assert.equal(flat(code[0]), "P* s P");
+  assert.equal(kids.map(flat).join(""), "The second moments of the operators P* s P, and good forms");
+});
+
+test("A6 T3: '`<b>&`' -> one code element whose text is '<b>&'; no <b> element exists", () => {
+  const { doc, kids } = render("`<b>&`");
+  assert.equal(kids.length, 1);
+  assert.equal(flat(kids[0]), "<b>&");
+  assert.deepEqual(doc.made.map((n) => n.tagName), ["CODE"]);
+});
+
+test("A6 T4/T5: an unpaired backtick and an empty pair are shown as written (the builder's rule)", () => {
+  assert.equal(render("a `b").kids.map(flat).join(""), "a `b");
+  assert.equal(render("a `b").doc.made.length, 0);
+  assert.equal(render("``").kids.map(flat).join(""), "``");
+  assert.equal(render("``").doc.made.length, 0);
+});
+
+test("A6 T6: a title with no backtick is one plain text node, exactly as before", () => {
+  for (const t of ["Title of step goal-chain", "a <b> & c", "x".repeat(300)]) {
+    const { doc, kids } = render(t);
+    assert.equal(kids.length, 1);
+    assert.equal(kids[0], t, "a plain string child, which el() turns into one text node");
+    assert.equal(doc.made.length, 0);
+  }
+});
+
+test("A6: the helper builds with el() only (text nodes and code elements, never markup)", () => {
+  const src = readFileSync(new URL("../dom.js", import.meta.url), "utf8");
+  const at = src.indexOf("export function titleSegments");
+  assert.ok(at >= 0, "the helper exists");
+  const body = src.slice(at);
+  assert.ok(!/innerHTML|insertAdjacentHTML|outerHTML|DOMParser|createContextualFragment/.test(body));
 });

@@ -327,3 +327,12 @@ test("A1: the page decides nothing by a kind NAME (part, group, file, module app
     }
   }
 });
+
+/* A6: every place the page draws a step title goes through the ONE helper (dom.js titleChildren). */
+test("A6: face.js and sheet.js draw a title only through titleChildren; no raw title is handed to el()", () => {
+  for (const [f, raw] of [["face.js", /\[\s*d\.title\s*\]/], ["sheet.js", /kids\.push\(\s*c\.title\s*\)/]]) {
+    const src = read(path.join(GRAPH, "page", f));
+    assert.match(src, /titleChildren\(/, f);
+    assert.ok(!raw.test(src), f + " still draws the raw title");
+  }
+});

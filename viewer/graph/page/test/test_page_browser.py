@@ -951,6 +951,35 @@ def c_skeleton_map(b, S0, engine):
         S.stop()
 
 
+def c_backtick_title(b, S0, engine):
+    """A6 in the browser: the skeleton fixture's sk-file-4 is titled with a backtick span. Its face shows a <code> element INSIDE the
+    3-line clamp (the span is in view and the title has no backtick character), at the title's size, and the breadcrumb shows the same."""
+    root = tempfile.mkdtemp(prefix="pg-bt-")
+    assemble.assemble(root, engine, fix="skeleton")
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        at_hash(pg, "sk-file-4")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-4'", 6000)
+        r = pg.ev("""(() => {
+          const t = document.querySelector('[data-node="sk-file-4"] .face-title'), c = t.querySelector('code');
+          const tr = t.getBoundingClientRect(), cr = c.getBoundingClientRect();
+          const bc = document.querySelector('#graph-crumbs .crumb-here');
+          return { text: t.textContent, code: c.textContent, n: t.querySelectorAll('code').length, size: parseFloat(getComputedStyle(c).fontSize),
+                   tsize: parseFloat(getComputedStyle(t).fontSize), inside: cr.top >= tr.top - 1 && cr.bottom <= tr.bottom + 1 && cr.right <= tr.right + 1,
+                   ch: t.clientHeight, sh: t.scrollHeight, crumb: bc.textContent, crumbCode: bc.querySelector('code') && bc.querySelector('code').textContent };
+        })()""")
+        assert r["text"] == "The second moments of the operators P* s P, and good forms", r
+        assert r["code"] == "P* s P" and r["n"] == 1 and r["inside"], r
+        assert r["size"] >= 15 and r["size"] == r["tsize"], r
+        assert r["sh"] <= r["ch"] + 1, ("the title is clipped", r)
+        assert r["crumb"].endswith("P* s P, and good forms") and "`" not in r["crumb"] and r["crumbCode"] == "P* s P", r
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
 def c_sheet_status_level(b, S, engine):
     """P7 at the sheet's own level: showCard with status null (or empty) builds no .sheet-status; a non-empty status builds exactly
     today's element, directly after the claim; close() removes it, and with none it still puts the article home."""
@@ -1766,6 +1795,7 @@ def main():
                 run("symbols.order sets the key's order", c_key_order, eng)
                 run("module: P4 the live map's key rows are unchanged", c_key_real_rows, eng)
                 run("module: P1/P5/P7 the skeleton map (face classes, the card word as the one sheet line, the key has three kind rows and no states section)", c_skeleton_map, eng)
+                run("module: A6 a backtick span in a title is a code element on the face (inside the clamp) and in the breadcrumb, no backtick shown", c_backtick_title, eng)
                 run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
                 run("module: P6 part, group and file keep their marks over s-none and s-census and differ without colour; swatches match; a theorem s-none is still dashed", c_look_override, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
