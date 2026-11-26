@@ -12659,6 +12659,7 @@ def _selftest_cases():
                     "fragment": go(gp_swap((script, '<script type="module" src="#x"></script>'))),
                     "second_ok": go(gp_swap((script, script + '\n<script type="module" src="engine/index.js"></script>')))[:3],
                     "link_icon": go(gp_swap(('<link rel="stylesheet" href="graph.css">', '<link rel="icon" href="graph.css">'))),
+                    "link_nohref": go(gp_swap(('<link rel="stylesheet" href="graph.css">', '<link rel="stylesheet">'))),
                     "link_not_asset": go(gp_swap(('href="graph.css"', 'href="style.css"'))),
                     "link_abs": go(gp_swap(('href="graph.css"', 'href="https://example.org/a.css"'))),
                     "link_query": go(gp_swap(('href="graph.css"', 'href="graph.css?v=1"'))),
@@ -12667,7 +12668,7 @@ def _selftest_cases():
                     "srcdoc": go(gp_swap(('<div id="graph-cards">', '<div id="graph-cards" srcdoc="x">'))),
                     "a_abs": go(a("https://example.org/")), "a_proto": go(a("//example.org/")), "a_js": go(a("javascript:alert(1)")),
                     "a_JS": go(a("JaVaScRiPt:alert(1)")), "a_tab": go(a("java&#9;script:alert(1)")), "a_data": go(a("data:text/html,x")), "a_root": go(a("/abs/path")),
-                    "a_ok": [go(a(h))[:3] for h in ("../list/", "list/", "#graph")]},
+                    "a_ok": [go(a(h))[:3] for h in ("../list/", "list/", "#graph")], "a_nohref": go(body("<p><a>x</a></p>"))},
                    {"nomodule": no('script is not type="module"'),
                     "inline": no("script has no src", "script has text content (no inline script)"),
                     "abs": no("https://example.org/a.js is not a relative address"),
@@ -12678,6 +12679,7 @@ def _selftest_cases():
                     "fragment": no("#x is not a relative address"),
                     "second_ok": (0, True, []),
                     "link_icon": no('link is not rel="stylesheet"'),
+                    "link_nohref": no("link has no href"),
                     "link_not_asset": no("style.css is not an asset"),
                     "link_abs": no("https://example.org/a.css is not a relative address"),
                     "link_query": no("graph.css?v=1 is not an asset"),
@@ -12691,7 +12693,7 @@ def _selftest_cases():
                     "a_tab": no("java\tscript:alert(1) is not a relative path or #fragment"),
                     "a_data": no("data:text/html,x is not a relative path or #fragment"),
                     "a_root": no("/abs/path is not a relative path or #fragment"),
-                    "a_ok": [(0, True, [])] * 3})
+                    "a_ok": [(0, True, [])] * 3, "a_nohref": (0, True, [])})
 
     @case("GP7", "G2b the element check for graph/index.html: GRAPH_PAGE_EXTRA is a literal of exactly 9 elements and 19 element-attribute pairs (nav, button, link and script are new; "
                  "aside, div, header, p and section get more attributes), the page's allow-list ALLOWED_ELEMENTS is still 40 elements and 55 pairs and the list page still refuses "
