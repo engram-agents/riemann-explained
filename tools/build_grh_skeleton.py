@@ -966,7 +966,7 @@ READINGS_ABOUT_MAX = 200      # the most characters of one `about` name
 READINGS_KEYS = ("id", "title", "attaches", "about", "by", "second_read_by", "source_commit", "date")   # the front-matter keys (each once, in any order)
 READINGS_LISTS = ("attaches", "about")   # the keys whose value is a one-line list; every other key is text
 _READING_LINE = re.compile(r"([a-z_]+):(?: (.*))?")
-_READING_ID = re.compile(r"[a-z0-9-]{1,64}")
+_READING_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")   # the page makes an id an element's data-id (`^[a-z0-9][a-z0-9._-]*$`): the first character is a-z or 0-9; no dot, no underscore
 _READING_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
 
 
@@ -3646,7 +3646,7 @@ def _selftest_cases():
         return _eq((none[0], empty[0], none[1] == empty[1], any(b"readings" in v for v in none[1].values()), r.returncode, any(b"readings" in v for v in cli.values()), len(cli)), ([], [], True, False, 0, False, len(none[1])))
 
     @case("RD3", "contributed notes, refusals by name `SKEL-READING-<kind> <file> <detail>`, one minimal fixture each, nothing written: a missing required key (each of the seven, `MISSING <file> <key>`); an id "
-                 "outside [a-z0-9-]{1,64} (`ID`, the id as written); a date that is not YYYY-MM-DD or not a real day (`DATE`, as written); `by` or `second_read_by` empty, or the two equal (`BY`); a title "
+                 "outside [a-z0-9][a-z0-9-]{0,63} (`ID`, the id as written); a date that is not YYYY-MM-DD or not a real day (`DATE`, as written); `by` or `second_read_by` empty, or the two equal (`BY`); a title "
                  "with a backtick (`TITLE backtick`) or empty (`TITLE empty`); a `source_commit` that is not --pin (`SOURCE`, as written); `attaches` with none (`ATTACHES none`), two (`ATTACHES many`; the "
                  "same id twice is two), an unknown id (`ATTACHES unknown <id>`) or the id of a part or a group (`ATTACHES not-a-file <id>`); an `about` name that is not a full declared name of the "
                  "compiled index (`ABOUT <file> <name>`, the NAME printed, each bad name once: a short name like `S.alpha` is refused like a typo); a duplicate id across files (`DUP <later file> id <id> also in "
