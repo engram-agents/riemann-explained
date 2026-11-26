@@ -409,13 +409,19 @@ function readingsOf(v, stepId) {
   for (let i = 1; i < list.length; i++) if (!(list[i - 1].id < list[i].id)) throw badReadings("step " + stepId + " readings are not in plain string order of id, without a repeat, at " + list[i].id);
   return list;
 }
-/* D4, CONSISTENCY at step load: every reading on the step has a row in the index list with the same id, the same title and `step` equal to this step's id;
-   a step carrying readings while the index has none is refused. */
+/* D4, CONSISTENCY at step load, BOTH WAYS. (a) Every reading on the step has a row in the index list with the same id, the same title and `step` equal to
+   this step's id; a step carrying readings while the index has none is refused. (b) Every index row whose `step` is this step has a reading with that id on
+   the step, so a step the index names but that carries none, or lacks one of the named ids, is refused too: the key's button for such a row would open the
+   step and scroll to nothing. `list` is empty for a step that carries no `readings`. */
 function checkReadingRows(list, stepId, rows) {
   for (const r of list) {
     const row = rows ? rows.find((x) => x.id === r.id) : undefined;
     if (!row || row.title !== r.title || row.step !== stepId)
       throw new DataError("readings-mismatch", "step " + stepId + " reading " + r.id + " has no matching row (id, title and this step) in the index readings");
+  }
+  for (const row of rows || []) {
+    if (row.step === stepId && !list.some((r) => r.id === row.id))
+      throw new DataError("readings-mismatch", "index readings row " + row.id + " names step " + stepId + ", which carries no reading with that id");
   }
 }
 
@@ -465,6 +471,8 @@ export function validateStep(raw, ctx) {
     checkReadingRows(out.readings, raw.id, ctx.readings);
   } else if (children.length !== 0 && ctx.readings && ctx.readings.some((r) => r.step === raw.id)) {
     throw badReadings("index readings names " + raw.id + ", which has children (it is a part or a group, not a file)");
+  } else {
+    checkReadingRows([], raw.id, ctx.readings);
   }
   return out;
 }
