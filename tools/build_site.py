@@ -566,6 +566,13 @@ ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 19 pairs, pinned by GP7; wi
 The COPY SET is the scanner's own JS extensions (gjc.JS_EXT, read at the call: .js and .mjs) plus the one literal GRAPH_CSS_EXT (.css: the scanner has no constant for stylesheets), compared as
 written; a file outside test/ whose lower-cased extension is in gjc.JS_EXT, gjc.SHIP_IMPORT_EXT or is .css but is not in the copy set (X.JS, A.Mjs, X.CSS) is `GRAPH-ASSET <path> not-an-asset-extension`,
 never copied and never dropped without a word (GA23). The shell is read ONCE (in _graph_assets): the bytes the gate scans are the bytes the page is assembled from (GA24).
+G2c THE MAP PAGE'S ROWS, THE LIST LINKS, THE ROBOTS META AND THE LIST PAGE'S LINK BACK (cases GM1 to GM14, GM2b included). `_page_parts(m, s, facts, dirty, map_rows=False)`: with `map_rows` six sections of a card are
+each wrapped in a closed `<details class="map-row map-row-<kind>"><summary>label</summary>section</details>` (conditions = ul.conditions, uses = div.premises, sketch = each div.sketch, literature =
+div.recognition, notes = ul.notes, react = ul.reactions; the label is the strings key map_row_<kind>, `{n}` the item count in map_row_conditions and map_row_notes only), the section's markup inside unchanged;
+the list page passes no flag and is unchanged. The build renders the cards once more with the flag, after the formula log is closed, for the graph page; the About comes from parts[0][0] (no fallback).
+The strings rule R3 lets the exact value `Sketch of the proof` of map_row_sketch hold `of the proof` (OF_THE_PROOF_OK, a key and value pair) and refuses it in every other value. The shell's head must hold the viewport and robots metas (the list page's tags) in the
+head, none outside it: `GRAPH-PAGE head has no robots noindex meta`, `head has no viewport meta`, `robots meta is outside the head`. The list page has `<p class="map-link">` (list_map_link, href `../`) as an element of its own between its header and its main, put in by
+_assemble_page and in no part of _page_parts, so no markup of the graph page can hold it. The two list links of the real shell are `list/`.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
@@ -655,7 +662,11 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none",
              "parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused", "parts_failed_notice",
              "key_kinds_heading", "key_states_heading", "role_named_statement",
-             "title", "sentence", "about_link", "tap_hint", "map", "list", "show_all", "key", "close", "fallback_sentence", "fallback_link")
+             "title", "sentence", "about_link", "tap_hint", "map", "list", "show_all", "key", "close", "fallback_sentence", "fallback_link",
+             "map_row_conditions", "map_row_uses", "map_row_sketch", "map_row_literature", "map_row_notes", "map_row_react", "list_map_link")
+# G2c: the one (key, value) pair the strings rule R3 lets hold `of the proof` (it refuses the phrase in every other value, and in any other value of that key): the label of
+# the map page's sketch row, `Sketch of the proof`, names a section of a card and says nothing about how much of the proof is read. A percent sign is refused in it as in every value.
+OF_THE_PROOF_OK = {"map_row_sketch": "Sketch of the proof"}
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -667,6 +678,7 @@ PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_st
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
                 "shared_note": {"groups"}, "note_href": {"file", "commit"}, "parts_n": {"n"},
+                "map_row_conditions": {"n"}, "map_row_notes": {"n"},   # G2c: the number of items of the list, filled by the builder
                 "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_note_card_note": {"date", "link"},
                 "edition_href_blob": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
@@ -1351,7 +1363,7 @@ def _strings_problems(s):
             if old:
                 bad(path, f"holds {old!r}, a word of the retired coverage scale (exact-case match; the lowercase phrase "
                           "`not read yet` is allowed inside status wording)", "STRINGS-FORBIDDEN")
-            elif "%" in v or re.search(r"of\s+the\s+proof", v, re.I):
+            elif "%" in v or (OF_THE_PROOF_OK.get(path) != v and re.search(r"of\s+the\s+proof", v, re.I)):
                 bad(path, "holds a percent sign or `of the proof`, which the page never says in its own sentences",
                     "STRINGS-FORBIDDEN")
     return out
@@ -2291,6 +2303,54 @@ class _ShellScan(html.parser.HTMLParser):
             self.text.append((start, start + len(data), cur))
 
 
+def _assembled_script_problems(text, assets):
+    """[(GRAPH-PAGE, `assembled page:`, reason)] for the scripts and links of the WHOLE assembled graph page, the shell's own and the cards markup's: a script must be
+    type="module", have a relative src that is an asset and have no text; a link must be rel="stylesheet" with a relative href that is an asset. The cards are the list
+    page's markup, which has neither; this holds the assembled text to the shell's rule whatever a stand-in or a later change puts into the cards."""
+    out, rec = [], []
+
+    def add(reason):
+        if ("GRAPH-PAGE", "assembled page:", reason) not in out:
+            out.append(("GRAPH-PAGE", "assembled page:", reason))
+
+    def address(kind, key, v):
+        if not isinstance(v, str) or not v:
+            add(f"{kind} has no {key}")
+        elif not _graph_relative(v):
+            add(f"{kind} {key} {v} is not a relative address")
+        elif v not in assets:
+            add(f"{kind} {key} {v} is not an asset")
+
+    class P(html.parser.HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            d = {}
+            for k, v in attrs:
+                d.setdefault(k, v)
+            if tag == "script":
+                if d.get("type") != "module":
+                    add('script is not type="module"')
+                address("script", "src", d.get("src"))
+                rec.append([])
+            elif tag == "link":
+                if (d.get("rel") or "").lower() != "stylesheet":
+                    add('link is not rel="stylesheet"')
+                address("link", "href", d.get("href"))
+
+        def handle_data(self, data):
+            if rec:
+                rec[-1].append(data)
+
+        def handle_endtag(self, tag):
+            if tag == "script" and rec:
+                if "".join(rec.pop()).strip():
+                    add("script has text content (no inline script)")
+
+    parser = P(convert_charrefs=False)
+    parser.feed(text)
+    parser.close()
+    return out
+
+
 def _graph_page(shell, assets, strings, about, cards):
     """(errors, the page text or None) for the graph page. `shell` is the bytes of viewer/graph/shell.html, `assets` the names of the copied files, `strings` the strings
     file, `about` and `cards` the header's inner html and the main's inner html of the list page (_page_parts). The page is the shell with each `{{S:key}}` of
@@ -2300,7 +2360,10 @@ def _graph_page(shell, assets, strings, about, cards):
     (GRAPH-PAGE, what, reason), none of the page written): no doctype or no charset meta; a {{CARDS}} count other than 1 or one that is not element content; an unknown
     {{S:key}}; a token in an attribute or inside a script or style; any `{{` left, in the shell or brought by a value; a script that is not type="module" with a relative
     src that is an asset, or has text; a stylesheet link that is not rel="stylesheet" with a relative href that is an asset; an on* attribute or a style attribute (an attribute outside the allow-list is refused too); an
-    <a> that is not a relative path or #fragment; an inline <style>; any element or attribute outside ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA."""
+    <a> that is not a relative path or #fragment; an inline <style>; any element or attribute of the SHELL outside ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA; a head of the shell
+    without the viewport or robots meta, or with either outside the head (G2c). On the ASSEMBLED page (the shell with the cards in it) this function refuses a script or a link
+    that is not what the shell may hold (`GRAPH-PAGE assembled page: ...`, G2c); the element allow-list, the static check, the head rule and the code-on-surface count over the
+    assembled page run in `_run` (graph_element_problems, static_problems, head_meta_problems, surface_scan), not here."""
     try:
         raw = shell.decode("utf-8")
     except UnicodeDecodeError:
@@ -2310,6 +2373,12 @@ def _graph_page(shell, assets, strings, about, cards):
     scan.close()
     errors = scan.errors
     head = ([] if scan.doctype else [("GRAPH-PAGE", "shell.html", "has no doctype")]) + ([] if scan.charset else [("GRAPH-PAGE", "shell.html", "has no charset meta")])
+    found = head_meta_problems(raw)   # G2c: the same rule as the list page's head: the viewport and robots tags are in the head and in no other place, in that order
+    for name, _tag in _HEAD_TAGS:
+        if name + " missing" in found:
+            head.append(("GRAPH-PAGE", "head", f"has no {name} meta" if name == "viewport" else "has no robots noindex meta"))
+        if name + " outside head" in found:
+            head.append(("GRAPH-PAGE", name + " meta", "is outside the head"))
     place = lambda lo, hi, spans: any(a <= lo and hi <= b for a, b, *_rest in spans)
     n_cards, swaps = raw.count("{{CARDS}}"), []
     if n_cards != 1:
@@ -2351,7 +2420,9 @@ def _graph_page(shell, assets, strings, about, cards):
     if text.count(_GRAPH_SENTINEL) != 1:
         return [("GRAPH-PAGE", "shell.html", "holds U+FDD0, which the assembly keeps for the cards")], None
     markup = ('<section id="graph-about">\n' + about + f'\n<p class="roots-only">{_e(strings["root_only_note_single"])}</p>\n</section>\n' + cards)
-    return [], text.replace(_GRAPH_SENTINEL, markup)
+    page = text.replace(_GRAPH_SENTINEL, markup)
+    problems = _assembled_script_problems(page, set(assets))   # G2c: the scripts and links of the assembled page, the cards' included, by the shell's rule
+    return (problems, None) if problems else ([], page)
 
 
 # ---- the page
@@ -3006,10 +3077,13 @@ def _edition_html(template, date, href, label):
     return "".join(out)
 
 
-def _page_parts(m, s, facts, dirty):
+def _page_parts(m, s, facts, dirty, map_rows=False):
     """(the header's inner html without the h1, the main's inner html) of the list page: the first screen, the facts and the notes about the whole, then the h2 and
     the chain of cards. The ONE place the list page's words and cards are written: _assemble_page puts the list page together from them and the graph page's About
-    section and cards are made from the same two strings (G2b), so neither can drift from the other."""
+    section and cards are made from the same two strings (G2b), so neither can drift from the other. With `map_rows` (G2c: the map page's cards, never the list page's) each of
+    six sections of a card is wrapped in a closed `<details class="map-row map-row-<kind>">` whose summary is the label of the strings key `map_row_<kind>`; the section's own
+    markup is inside it unchanged, so the main part with every row replaced by its inner markup (the react row put back before the Evidence block, where the list page has its
+    reactions: on the map page it is the last of the card's own content) is the main part of the list page."""
     lab, kinds = s["labels"], s["labels"]["kinds"]
     files = m.files
     out = [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
@@ -3083,6 +3157,12 @@ def _page_parts(m, s, facts, dirty):
         o.append("</div>")
         return o
 
+    def row(kind, lines, n=None):
+        """G2c: the lines of a section of a card as they are, or, for the map page, one closed row holding them (`n`, an integer, fills {n} of the label)."""
+        if not map_rows:
+            return lines
+        return [f'<details class="map-row map-row-{kind}"><summary>{_e(_fill(s["map_row_" + kind], n=n))}</summary>' + "\n".join(lines) + "</details>"]
+
     def sketch(sk):
         """The sketch of a root: its frame (the basis string filled first, then the frame), its paragraphs and lists, the places
         Lean finishes by automation when there are any, and the note that it is a sketch."""
@@ -3137,7 +3217,8 @@ def _page_parts(m, s, facts, dirty):
                 o.append(f'<p class="definition-statement">{_rich(ttl, where=gid)} {_e(s["definition_join"])} '
                          f'{_rich(sm["claim"]["text"], where=gid)}</p>')
             if sm["claim"]["conditions"]:
-                o.append('<ul class="conditions">' + "".join(f"<li>{_rich(c, where=gid)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
+                o += row("conditions", ['<ul class="conditions">' + "".join(f"<li>{_rich(c, where=gid)}</li>" for c in sm["claim"]["conditions"]) + "</ul>"],
+                         len(sm["claim"]["conditions"]))
         elif ttl is None:
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
@@ -3155,10 +3236,9 @@ def _page_parts(m, s, facts, dirty):
             if len(links) == 1:   # one premise: the sentence line, as it was
                 o.append(f'<p class="premises">{_e(lab["premises"])} {links[0]}</p>')
             else:   # F40: two or more: the label, then a list with one premise per item, in the outline's order
-                o.append(f'<div class="premises"><p>{_e(lab["premises"])}</p><ul>'
-                         + "".join(f"<li>{x}</li>" for x in links) + "</ul></div>")
+                o += row("uses", [f'<div class="premises"><p>{_e(lab["premises"])}</p><ul>' + "".join(f"<li>{x}</li>" for x in links) + "</ul></div>"])
         if sm["claim"]:   # the recognition of the statement: after the premises line, before the two status lines (F24)
-            o += recognition(sm, role)
+            o += row("literature", recognition(sm, role))
         c, by = sm["counts"], sm["statement_by"]
         # the line of a card with no proof: the builder does not know what a declaration of an unknown kind is
         none_line = (s["proof_none_other_line"] if any(r["kind"] not in KNOWN_KINDS for r in fl["roots"])
@@ -3192,7 +3272,7 @@ def _page_parts(m, s, facts, dirty):
             sent = f" {_rich(b['first_sentence'], True, b['block'])}" if b.get("first_sentence") else ""
             o.append(f'<p class="argument">{frames(b, fl["roots"])}{sent} {_note_open(link)}{_e(lab["read_more"])}</a></p>')
         for sk in fl["sketches"]:
-            o += sketch(sk)
+            o += row("sketch", sketch(sk))
         if not fl["sketches"] and sm["proof_read"] is True:   # a card whose proof is read and that has no sketch says so
             o.append(f'<p class="sketch-missing">{_e(s["sketch_missing_line"])}</p>')
         corr = [b for b in fl["blocks"] if b["kind"] == "correction"]
@@ -3204,13 +3284,16 @@ def _page_parts(m, s, facts, dirty):
                 o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> {_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>')
             o.append("</ul>")
         if sm["notes"]:
-            o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
-                     + "".join(f'<li>{_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>' for n in sm["notes"]) + "</ul>")
-        o.append('<ul class="reactions">')
+            o.append(f'<p class="notes">{_e(lab["notes"])}</p>' + "".join(row("notes", [
+                '<ul class="notes">' + "".join(f'<li>{_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>' for n in sm["notes"]) + "</ul>"],
+                len(sm["notes"]))))
+        lines = ['<ul class="reactions">']
         for r in s["reactions"]:
             href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
-            o.append(f'<li><a class="reaction" href="{_e(href)}">{_e(r["label"])}</a></li>')
-        o.append("</ul>")
+            lines.append(f'<li><a class="reaction" href="{_e(href)}">{_e(r["label"])}</a></li>')
+        react = lines + ["</ul>"]
+        if not map_rows:
+            o += react   # the list page: the reactions stay before the Evidence block
         global _IN_EVIDENCE
         _IN_EVIDENCE = True   # everything up to the closing tag below is Evidence: a formula logged now is listed, never refused (FORMULA-RAW)
         o += ['<details class="evidence">', f"<summary>{_e(s['evidence_label'])}</summary>"]
@@ -3289,6 +3372,8 @@ def _page_parts(m, s, facts, dirty):
             o.append("</ul>")
         o.append("</details>")
         _IN_EVIDENCE = False
+        if map_rows:
+            o += row("react", react)   # the map page: the React row is the last of the card's own content, after the Evidence block, before the parts
         kids = m.children.get(gid, [])
         if kids:
             o += ['<details class="children">', f"<summary>{_e(lab['go_deeper'])}</summary>", '<ul class="children">']
@@ -3305,10 +3390,12 @@ def _page_parts(m, s, facts, dirty):
 
 
 def _assemble_page(s, header, main):
-    """The list page from the two parts of _page_parts: the head, the h1 and the header's inner html, then the main."""
+    """The list page from the two parts of _page_parts: the head, the h1 and the header's inner html, then (G2c) the link back to the map as an element of its own between the
+    header and the main, which is in no part of _page_parts (so no markup of the graph page can hold it), then the main."""
     out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', META_VIEWPORT, META_ROBOTS,
            f"<title>{_e(s['page_title'])}</title>",
-           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>", header, "</header>", "<main>", main,
+           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>", header, "</header>",
+           f'<p class="map-link"><a href="../">{_e(s["list_map_link"])}</a></p>', "<main>", main,
            "</main>", "</body>", "</html>"]
     return "\n".join(out) + "\n"
 
@@ -3616,6 +3703,10 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         flog = _FORMULA_LOG
     finally:
         _FORMULA_LOG, _IN_EVIDENCE = None, False
+    try:
+        map_main = _page_parts(m, sj, facts, dirty, map_rows=True)[1]   # G2c: the map page's cards (the same rendering with the rows), made after the formula log is closed
+    finally:
+        _FORMULA_LOG, _IN_EVIDENCE = None, False   # a raise in the second rendering leaves no render state behind (GM14)
     fcounts = formula_counts(flog)
     errors += formula_sum_errors(fcounts)
     errors += formula_raw_errors(flog, _formula_locator(m))
@@ -3629,7 +3720,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     if not a_errors:   # a tree with a refused file in it is not the tree that would ship, so the scanner is not run over it
         errors += _graph_sink_errors(a_files, a_shell)
         if a_shell is not None:   # G2b: the shell is read, never copied; graph/index.html is the page made from it
-            gp_errors, gpage = _graph_page(a_shell, a_index, sj, *(parts[0] if parts else ("", "")))
+            gp_errors, gpage = _graph_page(a_shell, a_index, sj, parts[0][0], map_main)   # no fallback: an empty parts list is an IndexError, never an empty About
             errors += gp_errors
     graph = _graph_bytes(g_objs)
     graph.update({"graph/" + rel: data for rel, data in a_files.items()})
@@ -3648,6 +3739,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         errors += [("PAGE-STATIC", pb, "found in graph/index.html") for pb in graph_element_problems(gpage)]
     for pb in head_meta_problems(page):
         errors.append(("HEAD-META", pb, "in index.html"))
+    if gpage is not None:   # G2c: the same head rule on the assembled map page (the shell was checked on its own in _graph_page)
+        errors += [("HEAD-META", pb, "in graph/index.html") for pb in head_meta_problems(gpage)]
     for pb in link_problems(page):
         errors.append(("PAGE-LINK", pb, "does not resolve on the page"))
     for pb in number_problems(page, number_pool([level0, level1] + list(groups.values())), json.dumps(sj, ensure_ascii=False)):
@@ -3921,6 +4014,10 @@ GRAPH_SHELL_STRINGS = {"title": "Reading the Riemann Hypothesis proof",
                        "about_link": "About this page", "tap_hint": "Tap a step to read it.", "map": "Map", "list": "List", "show_all": "Show all", "key": "Key",
                        "close": "Close", "fallback_sentence": "The steps are listed below until the map has loaded, or if it cannot load.",
                        "fallback_link": "Open the full list page"}
+# G2c: the words of the map page's closed rows and of the list page's link back to the map. The same literals are in site/strings.json; `{n}` is the builder's to fill in
+# (the number of items of the list). list_map_link is the wording seat's final value.
+G2C_STRINGS = {"map_row_conditions": "Conditions ({n})", "map_row_uses": "What it uses", "map_row_sketch": "Sketch of the proof",
+               "map_row_literature": "In the literature", "map_row_notes": "Our notes ({n})", "map_row_react": "React", "list_map_link": "Open the map"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
@@ -3999,6 +4096,7 @@ def _strings():
     s.update(F38_STRINGS)
     s.update(GRAPH_STRINGS)
     s.update(GRAPH_SHELL_STRINGS)
+    s.update(G2C_STRINGS)
     return s
 
 
@@ -4323,6 +4421,8 @@ def _left(d):
 def _hostile(v, path=""):
     """The strings fixture with the hostile text added to every string (the href templates get the one with `%`)."""
     if isinstance(v, str):
+        if OF_THE_PROOF_OK.get(path) == v:
+            return v   # G2c: the one value R3 lets hold `of the proof` is exact; text added to it would be refused (it is escaped like any value)
         return v + HOST if (path == "note_href" or path.endswith(".href") or path in EDITION_HREFS) else v + " " + HOST_S
     if isinstance(v, list):
         return [_hostile(x, f"{path}.{i}") for i, x in enumerate(v)]
@@ -4512,7 +4612,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING) + list(F38_STRINGS) + list(GRAPH_STRINGS) + list(GRAPH_SHELL_STRINGS)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING) + list(F38_STRINGS) + list(GRAPH_STRINGS) + list(GRAPH_SHELL_STRINGS) + list(G2C_STRINGS)
 
 
 def _no_edition(rel, data):
@@ -5178,7 +5278,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 130 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 137 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -5191,7 +5291,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 130))
+        return _eq((bad, len(STRING_KEYS)), ([], 137))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -8966,7 +9066,7 @@ def _selftest_cases():
                   "and none rendered")
     def _():
         import hashlib
-        h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
+        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(("\n" + GM_LINK).encode(), b"", 1)).hexdigest()   # G2c: without the link back to the map
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], _build(notes=_ud(d4=[], d5=[])).page == _sbase().page),
                    (["4a0051149033d3e997242b7b3bdeb96bcdb77368d6a81f66e129359b1695156a",
                      "36d01ea6473bb5395f848627fb383c47abf74c0e33ac690333b482bbec60351e",
@@ -9186,7 +9286,7 @@ def _selftest_cases():
                     "ED4 and UD12 pinned from the tree before F51 (the same four values)")
     def _():
         import hashlib
-        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(F51_NEW.encode(), F51_OLD.encode())).hexdigest()
+        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(("\n" + GM_LINK).encode(), b"", 1).replace(F51_NEW.encode(), F51_OLD.encode())).hexdigest()   # G2c: without the link back
         return _eq([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())],
                    ["5bd3d3aa953a3025302078cd884bb4f3d6f0f2cafc10bd806812a08c6f02aa48",
                     "4f0c02e1f477d4721bd446460973e4962ca2420bd775d28a62d9a51038895d3f",
@@ -9302,7 +9402,7 @@ def _selftest_cases():
                  "pinned before F55 (literal)")
     def _():
         import hashlib
-        h = lambda p: hashlib.sha256(p.replace(VPT + "\n" + ROB + "\n", "", 1).replace(F51_NEW, F51_OLD).encode("utf-8")).hexdigest()
+        h = lambda p: hashlib.sha256(p.replace(VPT + "\n" + ROB + "\n", "", 1).replace("\n" + GM_LINK, "", 1).replace(F51_NEW, F51_OLD).encode("utf-8")).hexdigest()   # G2c: and without the link back
         pages = [x.page for x in (_base(), _zbase(), _sbase(), _bbase())]
         return _eq(([VPT + "\n" + ROB + "\n" in p for p in pages], [h(p) for p in pages]),
                    ([True] * 4, ["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
@@ -10043,7 +10143,7 @@ def _selftest_cases():
         for g in one["groups"]:
             g["edition"] = 1
         e1 = _build(outline=one, strings=_strings())
-        h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
+        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(("\n" + GM_LINK).encode(), b"", 1)).hexdigest()   # G2c: without the link back to the map
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
                    (["4a0051149033d3e997242b7b3bdeb96bcdb77368d6a81f66e129359b1695156a",
                      "36d01ea6473bb5395f848627fb383c47abf74c0e33ac690333b482bbec60351e",
@@ -11836,7 +11936,7 @@ def _selftest_cases():
             t1, t2 = _tree(os.path.join(d, "o1")), _tree(os.path.join(d, "o2"))
         b = _base()
         g = lambda t: {k: v for k, v in t.items() if k.startswith("graph/")}
-        sha = lambda k: hashlib.sha256(b.files[k]).hexdigest()
+        sha = lambda k: hashlib.sha256(b.files[k].replace(("\n" + GM_LINK).encode(), b"", 1)).hexdigest()   # G2c: index.html without the link back to the map
         raw = b.text("graph/step/g1.json")
         return _eq((r1[0], r2[0], len(g(t1)), g(t1) == g(t2), t1 == t2, raw == json.dumps(json.loads(raw), sort_keys=True, indent=1, ensure_ascii=False) + "\n",
                     {k: sha(k) for k in sorted(b.files) if not k.startswith("graph/") and k != "manifest.json"}),
@@ -12136,7 +12236,7 @@ def _selftest_cases():
     # of index.json. Every expectation is a literal; the digests were computed offline from the file texts below.
     # G2b: the shell of these fixtures is a valid one (a shell that the page assembly refuses would fail every build that has a source directory): the doctype,
     # the charset, one string token, a stylesheet and a module script that are assets of the fixture, and the one {{CARDS}}.
-    GA_SHELL = ("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>{{S:title}}</title>\n<link rel=\"stylesheet\" href=\"graph.css\">\n</head>\n"
+    GA_SHELL = ("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"robots\" content=\"noindex\">\n<title>{{S:title}}</title>\n<link rel=\"stylesheet\" href=\"graph.css\">\n</head>\n"
                 "<body>\n<h1>{{S:title}}</h1>\n<div id=\"graph-cards\">\n{{CARDS}}\n</div>\n<script type=\"module\" src=\"page/app.js\"></script>\n</body>\n</html>\n")
     GA_FILES = {"engine/index.js": "export const engine = 1;\n", "page/app.js": "export const page = 2;\n", "graph.css": ".a { margin: 0; }\n",
                 "engine/INTERFACE.md": "# interface\n", "engine/test/x.js": "el.innerHTML = 1;\n", "shell.html": GA_SHELL}
@@ -12550,7 +12650,7 @@ def _selftest_cases():
         return [a.attrs["id"] for a in _dom(page).find("article")]
 
     def gp_text_minus_h1(node):
-        return " ".join(" ".join(k.pieces()) if isinstance(k, _Node) else k for k in node.kids if not (isinstance(k, _Node) and k.tag == "h1")).split()
+        return " ".join(" ".join(k.pieces()) if isinstance(k, _Node) else k for k in node.kids if not (isinstance(k, _Node) and (k.tag == "h1" or "map-link" in k.cls))).split()
 
     @case("GP1", "G2b the shell's words: site/strings.json and the fixture strings hold the 11 keys of the shell's `{{S:key}}` tokens (title, sentence, about_link, tap_hint, "
                  "map, list, show_all, key, close, fallback_sentence, fallback_link) with the values of the wording file (literals; the wording file's link line `About this "
@@ -12571,10 +12671,10 @@ def _selftest_cases():
                    (want, want, [], [], [], GP_SHELL_KEYS, sorted(GP_SHELL_KEYS)))
 
     @case("GP2", "G2b the real shell, the fixture notes, the real source directory: exit 0 and graph/index.html is written and listed in the manifest with its sha256; exactly one "
-                 "section#graph-about; the same article ids as the list page (6, in the list page's order); the cards (from the opening of the chain to its close) are "
+                 "section#graph-about; the same article ids as the list page (6, in the list page's order); the cards (from the opening of the chain to its close), each map row replaced by its inner markup (G2c), are "
                  "byte-equal to the list page's; one <h1>, the shell's, holding the title; every script src and link href is a key of index.json `assets` (page/app.js; "
                  "engine/engine.css and graph.css); no `{{` left; the shell is not copied (no graph/shell.html); the list page index.html is byte-equal to a build with no source "
-                 "directory (sha256 literal, 13431 bytes) and so is every other file outside graph/ and the manifest")
+                 "directory (sha256 literal, 13486 bytes: the list page of the head before G2c, 13431 bytes, plus the one line of its link back to the map, GM6) and so is every other file outside graph/ and the manifest")
     def _():
         b = gp_real()
         page, lp = b.text("graph/index.html"), b.text("index.html")
@@ -12583,13 +12683,13 @@ def _selftest_cases():
         man = b.js("manifest.json")["files"]
         keep = lambda t: {k: v for k, v in t.items() if not k.startswith("graph/") and k != "manifest.json"}
         return _eq((b.rc, man.get("graph/index.html") == hashlib.sha256(b.files["graph/index.html"]).hexdigest(), len(dom.find("section", id="graph-about")),
-                    gp_ids(page), gp_ids(lp), gp_chain(page, "\n</div>") == gp_chain(lp, "\n</main>"), len(dom.find("h1")), dom.find("h1")[0].text(),
+                    gp_ids(page), gp_ids(lp), gp_chain(gm_unwrap(page), "\n</div>") == gp_chain(lp, "\n</main>"), len(dom.find("h1")), dom.find("h1")[0].text(),
                     sorted(s.attrs.get("src") for s in dom.find("script")), sorted(s.attrs.get("href") for s in dom.find("link")),
                     all(s.attrs["src"] in assets for s in dom.find("script")) and all(s.attrs["href"] in assets for s in dom.find("link")),
                     "{{" in page, [k for k in b.files if k.endswith("shell.html")], hashlib.sha256(b.files["index.html"]).hexdigest(), len(b.files["index.html"]),
                     keep(b.files) == keep(_base().files)),
                    (0, True, 1, GP_IDS, GP_IDS, True, 1, "Reading the Riemann Hypothesis proof", ["page/app.js"], ["engine/engine.css", "graph.css"], True,
-                    False, [], GP_LIST_SHA, 13431, True))
+                    False, [], GM_LIST_LINK_SHA, 13486, True))
 
     @case("GP3", "G2b the About section: section#graph-about is inside #graph-cards, before the chain; its text is the list page's header text without the h1 (first screen, "
                  "edition note, facts, mapped line, the section.whole block: compared after the tags are stripped), then the list page's own root_only_note_single sentence in ONE "
@@ -12838,6 +12938,341 @@ def _selftest_cases():
         done = lambda t: t.replace("{{S:title}}", "T &lt;1&gt;").replace("{{S:key}}", "K &amp; 2").replace("{{S:close}}", "C").replace("{{S:map}}", "M")
         return _eq((rc, lines, page.startswith(done(pre)), page.endswith(done(post)), "<h1>R&amp;D T &lt;1&gt; &copy; K &amp; 2 &#65;</h1>\n<p><span>x</span>C\nM</p>" in page),
                    (0, [], True, True, True))
+
+    # ---- G2c: the map page's closed rows, the list links, the robots meta of the shell, the list page's link back to the map, and the pins left out of the first
+    # round of the graph page cases. Every expectation is a literal. The notes below give the fixture its sections: conditions (three, one of them with a literal
+    # `<li>` in its text), a single premise (g1: a `p.premises`, no row) and two premises (g3: a `div.premises`), sketches (g1, g1a, and two on g2) and notes.
+    GM_ROW = re.compile(r'<details class="map-row map-row-([a-z]+)"><summary>(.*?)</summary>(.*?)</details>', re.S)
+    GM_LINK = '<p class="map-link"><a href="../">Open the map</a></p>'
+    GM_LIST_LINK_SHA = "e5c7ba6ac41e4139b17a4c1b477eb06dcbd228908fc69f2e70e28080cf24b339"   # the fixture's list page with GM_LINK as its own line between </header> and <main>
+    GM_WORDS = {"map_row_conditions": "Conditions ({n})", "map_row_uses": "What it uses", "map_row_sketch": "Sketch of the proof",
+                "map_row_literature": "In the literature", "map_row_notes": "Our notes ({n})", "map_row_react": "React", "list_map_link": "Open the map"}
+    GM_ROBOTS = '<meta name="robots" content="noindex">'
+    GM_VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">'
+
+    def gm_outline():
+        o = _outline()
+        next(g for g in o["groups"] if g["id"] == "g1")["claim"]["conditions"] = ["Condition one holds.", "Condition two <li>x</li> & more.", "Third."]
+        return o
+
+    @functools.lru_cache(maxsize=None)
+    def gm_real():
+        """The fixture with sketches (g1, g1a, g2 twice), notes and three conditions on g1, built with the REAL graph source directory."""
+        return _build(graph_src=_GRAPH_SRC_AT_START, notes=_notes_s() | {"11-two.md": _n11()}, outline=gm_outline())
+
+    def gm_rows(page):
+        """[(card id, [(kind, summary text)])] in page order: the map rows that are direct children of each card."""
+        return [(a.attrs["id"], [(r.cls[1][len("map-row-"):], r.find("summary")[0].text()) for r in _direct(a, "details", "map-row")]) for a in _dom(page).find("article")]
+
+    def gm_unwrap(page):
+        """The page with each map row replaced by the section markup inside it, the react row first moved back to where the list page has its reactions (before the
+        Evidence block: on the map page it comes after it)."""
+        page = re.sub(r'(<details class="evidence">.*?</details>)\n(<details class="map-row map-row-react"><summary>.*?</summary>)(.*?)</details>',
+                      lambda mt: mt.group(3) + "\n" + mt.group(1), page, flags=re.S)
+        return GM_ROW.sub(lambda mt: mt.group(3), page)
+
+    @case("GM1", "G2c-1 the map page's closed rows (fixture with sketches, notes and three conditions, the real graph source): each card's rows are exactly the sections it has, in the "
+                 "order the sections already have in the card (conditions, uses = div.premises, literature, sketch, notes, react), each `<details class=\"map-row map-row-<kind>\">` with "
+                 "its label in `<summary>` and no `open`; {n} is the count of the `<li>` of the list (Conditions (3) although one condition's text holds a literal `<li>`; Our notes (3), (2)); a "
+                 "single premise (p.premises) has no row; two sketches on one card are two rows; the page with every row replaced by its inner markup is the list page's chain byte for "
+                 "byte (so the inner markup of each row is the list page's section, and nothing else moved); a row holds no Evidence and no children block, and both stay "
+                 "direct children of their card; the list page holds no row; the opening tag of each kind's inner markup is the one of its section")
+    def _():
+        b = gm_real()
+        page, lp = b.text("graph/index.html"), b.text("index.html")
+        rows = GM_ROW.findall(page)
+        inner_tag = sorted({(k, inner[:inner.index(">") + 1]) for k, _l, inner in rows})
+        g1, g3 = _dom(page).find("article", id="g1")[0], _dom(page).find("article", id="g3")[0]
+        return _eq((b.rc, gm_rows(page), len(rows), [t for t in re.findall(r"<details[^>]*>", page) if " open" in t],
+                    gp_chain(gm_unwrap(page), "\n</div>") == gp_chain(lp, "\n</main>"), [k for k, _l, inner in rows if 'class="evidence"' in inner or 'class="children"' in inner],
+                    page.count('<details class="evidence">'), page.count('<details class="children">'),
+                    [len(_direct(a, "details", "evidence")) for a in _dom(page).find("article")], [len(_direct(a, "details", "children")) for a in _dom(page).find("article")],
+                    "map-row" in lp, len(_direct(g1, "p", "premises")), len(_direct(g3, "div", "premises")), inner_tag),
+                   (0, [("g1", [("conditions", "Conditions (3)"), ("literature", "In the literature"), ("sketch", "Sketch of the proof"), ("notes", "Our notes (3)"), ("react", "React")]),
+                        ("g1a", [("sketch", "Sketch of the proof"), ("notes", "Our notes (2)"), ("react", "React")]),
+                        ("g1a1", [("literature", "In the literature"), ("react", "React")]),
+                        ("g1a1x", [("notes", "Our notes (2)"), ("react", "React")]),
+                        ("g3", [("uses", "What it uses"), ("literature", "In the literature"), ("notes", "Our notes (2)"), ("react", "React")]),
+                        ("g2", [("sketch", "Sketch of the proof"), ("sketch", "Sketch of the proof"), ("notes", "Our notes (3)"), ("react", "React")])],
+                    20, [], True, [], 6, 3, [1] * 6, [1, 1, 1, 0, 0, 0], False, 1, 0,
+                    [("conditions", '<ul class="conditions">'), ("literature", '<div class="recognition">'), ("notes", '<ul class="notes">'), ("react", '<ul class="reactions">'),
+                     ("sketch", '<div class="sketch">'), ("uses", '<div class="premises">')]))
+
+    @case("GM2", "G2c-1 the row words: site/strings.json and the fixture hold the seven keys of GM_WORDS (six row labels and list_map_link) with their values (literals, `{n}` "
+                 "literal in the two counts), each in STRING_KEYS and TEXT_KEYS, the builder's own check passes the real file; `{n}` is declared for map_row_conditions and "
+                 "map_row_notes and for no other of the seven (`has an unknown placeholder {n}` for the other five), `{m}` is unknown in a count; a count label with no `{n}` is "
+                 "allowed; the seven are baked into the page and are NOT in index.json `strings`")
+    def _():
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        with_n = lambda k: _strings_problems(dict(_strings(), **{k: "x {n}"}))
+        no_n = _strings_problems(dict(_strings(), map_row_conditions="Conditions"))
+        wrong = _strings_problems(dict(_strings(), map_row_notes="Our notes ({m})"))
+        return _eq(({k: real.get(k) for k in GM_WORDS}, {k: _strings().get(k) for k in GM_WORDS}, [k for k in GM_WORDS if k not in STRING_KEYS or k not in TEXT_KEYS],
+                    _strings_problems(real), {k: PLACEHOLDERS.get(k) for k in GM_WORDS},
+                    [(k, with_n(k)) for k in ("map_row_uses", "map_row_sketch", "map_row_literature", "map_row_react", "list_map_link")],
+                    with_n("map_row_conditions"), with_n("map_row_notes"), no_n, wrong, sorted(set(GM_WORDS) & set(gm_real().js("graph/index.json")["strings"]))),
+                   (GM_WORDS, GM_WORDS, [], [], {"map_row_conditions": {"n"}, "map_row_uses": None, "map_row_sketch": None, "map_row_literature": None,
+                                              "map_row_notes": {"n"}, "map_row_react": None, "list_map_link": None},
+                    [("map_row_uses", [("STRINGS-KEY", "map_row_uses", "has an unknown placeholder {n}")]),
+                     ("map_row_sketch", [("STRINGS-KEY", "map_row_sketch", "has an unknown placeholder {n}")]),
+                     ("map_row_literature", [("STRINGS-KEY", "map_row_literature", "has an unknown placeholder {n}")]),
+                     ("map_row_react", [("STRINGS-KEY", "map_row_react", "has an unknown placeholder {n}")]),
+                     ("list_map_link", [("STRINGS-KEY", "list_map_link", "has an unknown placeholder {n}")])],
+                    [], [], [], [("STRINGS-KEY", "map_row_notes", "has an unknown placeholder {m}")], []))
+
+    @case("GM2b", "G2c-1 the one wording the rule R3 would refuse, exactly: OF_THE_PROOF_OK is the literal {\"map_row_sketch\": \"Sketch of the proof\"}, a (key, value) pair and not a key: only that "
+                  "exact value of that key skips the `of the proof` rule (map_row_sketch `Sketch of the proof` passes); any other value of the key that holds the phrase (`Half of the "
+                  "proof`, `sketch of the proof`, `Sketch of  the proof`, `Sketch of the proof.`) is refused, STRINGS-FORBIDDEN naming the key; the same value under another key "
+                  "(map_row_uses, list_map_link) is refused, and so is the phrase in mapped_line and map_row_notes; a percent sign is refused in map_row_sketch as everywhere "
+                  "(also next to the exact value)")
+    def _():
+        put = lambda k, v: [(c, p) for c, p, _m in _strings_problems(dict(_strings(), **{k: v}))]
+        bad = lambda k: [("STRINGS-FORBIDDEN", k)]
+        return _eq((OF_THE_PROOF_OK, put("map_row_sketch", "Sketch of the proof"), put("map_row_sketch", "Half of the proof"), put("map_row_sketch", "sketch of the proof"),
+                    put("map_row_sketch", "Sketch of  the proof"), put("map_row_sketch", "Sketch of the proof."), put("map_row_sketch", "50% sketch"),
+                    put("map_row_sketch", "Sketch of the proof 50%"), put("map_row_uses", "Sketch of the proof"), put("list_map_link", "Sketch of the proof"),
+                    put("mapped_line", "A sketch of the proof."), put("map_row_notes", "Our notes ({n}) of the proof")),
+                   ({"map_row_sketch": "Sketch of the proof"}, [], bad("map_row_sketch"), bad("map_row_sketch"), bad("map_row_sketch"), bad("map_row_sketch"), bad("map_row_sketch"),
+                    bad("map_row_sketch"), bad("map_row_uses"), bad("list_map_link"), bad("mapped_line"), bad("map_row_notes")))
+
+    @case("GM3", "G2c-1 ONE source, a flag: `_page_parts(model, strings, facts, dirty, map_rows=False)` is the list page's pair (the default is False and the page `_render_page` returns "
+                 "holds no row); with `map_rows=True` the header part is the same string, the main part has the rows (16 on the plain fixture: conditions 1, uses 1, "
+                 "literature 3, notes 5, react 6) and, with each row replaced by its inner markup, is the main part of the flag's default")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            sj, errors = _strings(), []
+            m = _model(p["notes"], json.load(open(p["outline"])), _decl_rows(p["decls"]), sj, None, errors)
+            _e2, _line, _l0, _l1, _groups, facts = _assemble(m, sj, {"notes": "n", "release": "r", "tools": "t"})
+            plain = _page_parts(m, sj, facts, False)
+            off = _page_parts(m, sj, facts, False, map_rows=False)
+            on = _page_parts(m, sj, facts, False, map_rows=True)
+            page = _render_page(m, sj, facts, False)
+        return _eq((off == plain, "map-row" in page, "map-row" in plain[1], on[0] == plain[0], on[1] == plain[1], len(GM_ROW.findall(on[1])), gm_unwrap(on[1]) == plain[1],
+                    sorted((k, sum(1 for x, _l, _i in GM_ROW.findall(on[1]) if x == k)) for k in ("conditions", "uses", "sketch", "literature", "notes", "react"))),
+                   (True, False, False, True, False, 16, True, [("conditions", 1), ("literature", 3), ("notes", 5), ("react", 6), ("sketch", 0), ("uses", 1)]))
+
+    @case("GM4", "G2c-2 the two list links of the real shell are `list/` (the Map|List toggle and the fallback link), none is `../list/`, and the built graph page carries both; the builder "
+                 "does not judge the value: a fixture shell with an <a> to `../list/` builds (exit 0); the case reads the real shell of this checkout")
+    def _():
+        with open(os.path.join(_GRAPH_SRC_AT_START, "shell.html"), encoding="utf-8") as f:
+            shell = f.read()
+        page = gm_real().text("graph/index.html")
+        return _eq((shell.count('href="list/"'), shell.count("../list/"), page.count('href="list/"'), page.count("../list/"),
+                    gp_go(gp_swap(("</h1>", '</h1>\n<p><a href="../list/">x</a></p>')))[:3]),
+                   (2, 0, 2, 0, (0, True, [])))
+
+    @case("GM5", "G2c-3 the robots meta: the real shell holds `<meta name=\"robots\" content=\"noindex\">` (the list page's own tag, META_ROBOTS) once, in its head, beside the viewport "
+                 "meta; the built graph page holds it once in its head; the head of a shell must hold the charset, the viewport and the robots metas and no other meta: a shell with no "
+                 "robots meta is `GRAPH-PAGE head has no robots noindex meta`, with no viewport meta `head has no viewport meta`, a robots meta outside the head "
+                 "`robots meta is outside the head`, another meta (name description), a robots meta twice and a robots meta with another content are refused by the element "
+                 "check (exit 1, nothing written); control: the fixture shell, which holds the three, builds")
+    def _():
+        with open(os.path.join(_GRAPH_SRC_AT_START, "shell.html"), encoding="utf-8") as f:
+            shell = f.read()
+        page = gm_real().text("graph/index.html")
+        head = lambda t: t[t.index("<head>"):t.index("</head>")]
+
+        def go(s):
+            rc, existed, lines, _b2 = gp_go(s)
+            return rc, existed, lines
+        no = lambda *lines: (1, False, list(lines))
+        return _eq((META_ROBOTS == GM_ROBOTS, shell.count(GM_ROBOTS), head(shell).count(GM_ROBOTS), head(shell).count(GM_VIEWPORT), page.count(GM_ROBOTS), head(page).count(GM_ROBOTS),
+                    go(GA_SHELL), go(gp_swap((GM_ROBOTS + "\n", ""))), go(gp_swap((GM_VIEWPORT + "\n", ""))),
+                    go(gp_swap((GM_ROBOTS + "\n", ""), (GM_VIEWPORT + "\n", ""))),
+                    go(gp_swap((GM_ROBOTS + "\n", ""), ("<h1>", GM_ROBOTS + "\n<h1>"))),
+                    go(gp_swap((GM_ROBOTS + "\n", GM_ROBOTS + '\n<meta name="description" content="x">\n'))),
+                    go(gp_swap((GM_ROBOTS + "\n", GM_ROBOTS + "\n" + GM_ROBOTS + "\n"))),
+                    go(gp_swap((GM_ROBOTS, '<meta name="robots" content="noindex,nofollow">')))),
+                   (True, 1, 1, 1, 1, 1, (0, True, []),
+                    no("head has no robots noindex meta"), no("head has no viewport meta"),
+                    no("head has no viewport meta", "head has no robots noindex meta"),
+                    no("head has no robots noindex meta", "robots meta is outside the head"),
+                    no("meta name not listed is not allowed in the shell"), no("meta repeated is not allowed in the shell"),
+                    no("head has no robots noindex meta", "meta robots content differs is not allowed in the shell")))
+
+    @case("GM6", "G2c-4 the list page's link back to the map: `<p class=\"map-link\"><a href=\"../\">{list_map_link}</a></p>` is in the list page exactly once, as its own line between "
+                 "</header> and <main> (in neither the header part nor the main part of the shared rendering, so no map markup can hold it); the list page with that one line removed is byte-equal to the list page of the head before this change (sha256 literal, "
+                 "13431 bytes) and with it is 13486 bytes (sha256 literal); the value is escaped; graph/index.html holds no `map-link` and no `href=\"../\"` (the About section is "
+                 "built from the header part, which has no such paragraph)")
+    def _():
+        b = gp_real()
+        lp, gpg = b.text("index.html"), b.text("graph/index.html")
+        bare = lp.replace("\n" + GM_LINK, "", 1)
+        s = _strings()
+        s["list_map_link"] = "Back <to> the map"
+        e = _build(graph_src=_GRAPH_SRC_AT_START, strings=s)
+        return _eq((b.rc, lp.count(GM_LINK), lp.count("map-link"), ("</header>\n" + GM_LINK + "\n<main>") in lp, len(re.findall(r"<header>.*?</header>", lp, re.S)[0].split("map-link")) - 1,
+                    hashlib.sha256(bare.encode("utf-8")).hexdigest(), len(bare.encode("utf-8")), hashlib.sha256(lp.encode("utf-8")).hexdigest(), len(lp.encode("utf-8")),
+                    gpg.count("map-link"), gpg.count('href="../"'), e.page.count('<p class="map-link"><a href="../">Back &lt;to&gt; the map</a></p>'),
+                    e.text("graph/index.html").count("Back")),
+                   (0, 1, 1, True, 0, GP_LIST_SHA, 13431, GM_LIST_LINK_SHA, 13486, 0, 0, 1, 0))
+
+    @case("GM7", "G2c-5 (d) an empty parts list fails loudly: with the page renderer standing in for itself and handing on no parts, the build of the graph page raises "
+                 "(IndexError) and does not write an empty About section into a page that exits 0; control: the real renderer builds")
+    def _():
+        real_render = _render_page
+
+        def no_parts(m, s, facts, dirty, parts_out=None, **kw):
+            return real_render(m, s, facts, dirty)
+        got = "built"
+        try:
+            with _patched("_render_page", no_parts):
+                got = ("built", _build(graph_src=_GRAPH_SRC_AT_START).rc)
+        except IndexError:
+            got = "IndexError"
+        return _eq((got, _build(graph_src=_GRAPH_SRC_AT_START).rc), ("IndexError", 0))
+
+    def gm_with_cards(extra, assets=None):
+        """A build whose map page's cards markup (the main part of `_page_parts` with the rows) has `extra` added at its end, through a stand-in for `_page_parts`:
+        (exit code, OUT_DIR existed, the GRAPH-PAGE lines without their prefix)."""
+        real_parts = _page_parts
+
+        def stand_in(m, s, facts, dirty, map_rows=False):
+            header, main = real_parts(m, s, facts, dirty, map_rows=map_rows)
+            return header, (main + extra if map_rows else main)
+        with _patched("_page_parts", stand_in):
+            rc, existed, lines, _b2 = gp_go(GA_SHELL)
+        return rc, existed, lines
+
+    @case("GM11", "G2c-C the assembled page is held to the shell's script and link rule: a script in the cards markup that is inline (no type, no src, text), has no type, is a "
+                  "module with a remote src, a module whose src is a relative path that is no asset, or has text next to a listed src, and a link that is not a stylesheet, "
+                  "has a remote href or a relative href that is no asset, is refused `GRAPH-PAGE assembled page: <script or link problem>`, exit 1, nothing written "
+                  "(planted through a stand-in for _page_parts); controls that build: a second module script and a stylesheet link of listed assets in the cards, and the real "
+                  "shell with the real page and the fixture")
+    def _():
+        mod = lambda src, text="": f'<script type="module" src="{src}">{text}</script>'
+        no = lambda *lines: (1, False, list(lines))
+        P = "assembled page:"
+        return _eq({"inline": gm_with_cards("<script>alert(1)</script>"),
+                    "no_type": gm_with_cards('<script src="page/app.js"></script>'),
+                    "remote": gm_with_cards(mod("https://example.org/a.js")),
+                    "proto": gm_with_cards(mod("//example.org/a.js")),
+                    "not_asset": gm_with_cards(mod("page/other.js")),
+                    "text": gm_with_cards(mod("page/app.js", "x()")),
+                    "link_icon": gm_with_cards('<link rel="icon" href="graph.css">'),
+                    "link_remote": gm_with_cards('<link rel="stylesheet" href="https://example.org/a.css">'),
+                    "link_not_asset": gm_with_cards('<link rel="stylesheet" href="other.css">'),
+                    "ok": gm_with_cards(mod("page/app.js") + '<link rel="stylesheet" href="graph.css">'),
+                    "real": (gm_real().rc, gp_real().rc)},
+                   {"inline": no(P + ' script is not type="module"', P + " script has no src", P + " script has text content (no inline script)"),
+                    "no_type": no(P + ' script is not type="module"'),
+                    "remote": no(P + " script src https://example.org/a.js is not a relative address"),
+                    "proto": no(P + " script src //example.org/a.js is not a relative address"),
+                    "not_asset": no(P + " script src page/other.js is not an asset"),
+                    "text": no(P + " script has text content (no inline script)"),
+                    "link_icon": no(P + ' link is not rel="stylesheet"'),
+                    "link_remote": no(P + " link href https://example.org/a.css is not a relative address"),
+                    "link_not_asset": no(P + " link href other.css is not an asset"),
+                    "ok": (0, True, []), "real": (0, 0)})
+
+    @case("GM12", "G2c-E the head rule runs on the assembled map page too (build time, `HEAD-META <problem> in graph/index.html`, the list page's own check): a graph page "
+                  "handed to the build (a stand-in for _graph_page) with no robots meta is `robots missing`, with no viewport meta `viewport missing`, with the robots tag in the "
+                  "body `robots missing` and `robots outside head`; exit 1, nothing written; control: the page with both metas builds; the real build passes")
+    def _():
+        page = lambda head, body="": '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">' + head + "</head><body>" + body + "</body></html>\n"
+
+        def go(text):
+            with tempfile.TemporaryDirectory() as d:
+                with _patched("_graph_page", lambda *a: ([], text)):
+                    b = _build(graph_src=ga_src(d))
+            return b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR HEAD-META")]
+        pre = "BUILD-ERROR HEAD-META "
+        return _eq([go(page(GM_VIEWPORT)), go(page(GM_ROBOTS)), go(page(GM_VIEWPORT, GM_ROBOTS)), go(page(GM_VIEWPORT + GM_ROBOTS)), gm_real().rc],
+                   [(1, False, [pre + "robots missing in graph/index.html"]), (1, False, [pre + "viewport missing in graph/index.html"]),
+                    (1, False, [pre + "robots missing in graph/index.html", pre + "robots outside head in graph/index.html"]), (0, True, []), 0])
+
+    @case("GM13", "G2c-B a card that prints the missing-sketch line (proof read, no sketch): the line is a `p.sketch-missing` outside any div.sketch and outside every row, as in the "
+                  "list page, and the card has no sketch row (the rows wrap a real div.sketch only); the cards that have a sketch have one row per div.sketch")
+    def _():
+        b = gm_real()
+        page = b.text("graph/index.html")
+        dom = _dom(page)
+        missing = [a.attrs["id"] for a in dom.find("article") if _direct(a, "p", "sketch-missing")]
+        in_row = [m.group(1) for m in GM_ROW.finditer(page) if "sketch-missing" in m.group(3)]
+        in_sketch = [d_.attrs for d_ in dom.find("div", "sketch") if d_.find("p", "sketch-missing")]
+        rows = dict(gm_rows(page))
+        kinds = lambda i: [k for k, _l in rows[i]]
+        return _eq((missing, in_row, in_sketch, [kinds(i).count("sketch") for i in missing], len(dom.find("div", "sketch")),
+                    sum(kinds(i).count("sketch") for i in rows), page.count('<p class="sketch-missing">'), b.text("index.html").count('<p class="sketch-missing">')),
+                   (["g1a1x", "g3"], [], [], [0, 0], 4, 4, 2, 2))
+
+    @case("GM14", "G2c a raise inside the second rendering (the map page's cards) leaves no render state behind: with `_page_parts` standing in for itself, setting the "
+                  "evidence flag and raising when asked for the rows, the build raises and `_IN_EVIDENCE` is False and `_FORMULA_LOG` is None afterwards (the flag steers how a "
+                  "formula in the next build is listed)")
+    def _():
+        real_parts = _page_parts
+
+        def stand_in(m, s, facts, dirty, map_rows=False, raise_it=True):
+            if map_rows:
+                globals()["_IN_EVIDENCE"] = True
+                if raise_it:
+                    raise RuntimeError("second rendering")
+            return real_parts(m, s, facts, dirty, map_rows=map_rows)
+        got = "built"
+        try:
+            with _patched("_page_parts", stand_in):
+                _build(graph_src=_GRAPH_SRC_AT_START)
+        except RuntimeError as e:
+            got = str(e)
+        after = (_IN_EVIDENCE, _FORMULA_LOG)
+        globals()["_IN_EVIDENCE"] = False
+        return _eq((got, after), ("second rendering", (False, None)))
+
+    @case("GM15", "G2c the React row comes after the Evidence block on the map page, and only that row moves: for each card of the fixture the direct `details` children of the card are, in the "
+                  "card's own markup order, the other rows in the section order, then `evidence`, then `react`, then (when the card has parts) `children`; the first card (g1) is "
+                  "conditions, literature, sketch, notes, evidence, react, children; the react row is the last of the card's own content (a card has always an Evidence block and "
+                  "always a ul.reactions, so there is no card with one and not the other); the list page has its ul.reactions before the Evidence block, as before (the "
+                  "`details` of the list page have no row), and the map page's ul.reactions is inside the react row only")
+    def _():
+        b = gm_real()
+        page, lp = b.text("graph/index.html"), b.text("index.html")
+        name = lambda k: "evidence" if "evidence" in k.cls else "children" if "children" in k.cls else k.cls[1][len("map-row-"):]
+        order = {a.attrs["id"]: [name(k) for k in _direct(a, "details")] for a in _dom(page).find("article")}
+        lord = {a.attrs["id"]: [name(k) if k.tag == "details" else "reactions" for k in a.elems() if k.tag == "details" or "reactions" in k.cls] for a in _dom(lp).find("article")}
+        return _eq((order, lord["g1"],
+                    page.count('<ul class="reactions">'), len([1 for m in GM_ROW.finditer(page) if m.group(1) == "react" and m.group(3).startswith('<ul class="reactions">')])),
+                   ({"g1": ["conditions", "literature", "sketch", "notes", "evidence", "react", "children"],
+                     "g1a": ["sketch", "notes", "evidence", "react", "children"], "g1a1": ["literature", "evidence", "react", "children"],
+                     "g1a1x": ["notes", "evidence", "react"], "g3": ["uses", "literature", "notes", "evidence", "react"],
+                     "g2": ["sketch", "sketch", "notes", "evidence", "react"]},
+                    ["reactions", "evidence", "children"], 6, 6))
+
+    @case("GM8", "G2c-5 (a) the address check trims what a browser trims before it looks at the first characters: an <a href> of ` //evil.example` (a leading space) and of a leading "
+                 "tab `//evil.example` is protocol-relative and refused (`is not a relative path or #fragment`), exit 1, nothing written; neighbours that build: ` list/` "
+                 "with a leading space and a trailing tab")
+    def _():
+        def go(h):
+            rc, existed, lines, _b2 = gp_go(gp_swap(("</h1>", f'</h1>\n<p><a href="{h}">x</a></p>')))
+            return rc, existed, lines
+        no = lambda line: (1, False, [line])
+        return _eq([go(" //evil.example"), go("\t//evil.example"), go(" \t //evil.example"), go(" list/"), go("list/\t")],
+                   [no(" //evil.example is not a relative path or #fragment"), no("\t//evil.example is not a relative path or #fragment"),
+                    no(" \t //evil.example is not a relative path or #fragment"), (0, True, []), (0, True, [])])
+
+    @case("GM9", "G2c-5 (b) the sentinel guard of the assembly: a shell that holds U+FDD0 in an attribute (class of the header) or once in text is refused, `GRAPH-PAGE shell.html holds "
+                 "U+FDD0, which the assembly keeps for the cards`, exit 1, nothing written (the cards markup would otherwise be put in at every one of them); control: the fixture builds")
+    def _():
+        def go(s):
+            rc, existed, lines, _b2 = gp_go(s)
+            return rc, existed, lines
+        line = ["shell.html holds U+FDD0, which the assembly keeps for the cards"]
+        return _eq([go(GA_SHELL), go(gp_swap(("<body>", '<body>\n<header class="a﷐b"></header>'))), go(gp_swap(("<h1>{{S:title}}</h1>", "<h1>{{S:title}}﷐</h1>")))],
+                   [(0, True, []), (1, False, line), (1, False, line)])
+
+    @case("GM10", "G2c-5 (c) the elements that may hold `{{CARDS}}` are the content of a div, main, section or body and no other: `{{CARDS}}` in a p and in a span is refused, `{{CARDS}} is not in "
+                  "element-content position`, exit 1, nothing written; neighbours that build: in a section and directly in the body, and the constant is exactly those four")
+    def _():
+        def go(s):
+            rc, existed, lines, _b2 = gp_go(s)
+            return rc, existed, lines
+        out = ("{{CARDS}}\n</div>", "x\n</div>")
+        no = (1, False, ["{{CARDS}} is not in element-content position"])
+        return _eq((sorted(_GRAPH_CARD_PARENTS), go(gp_swap(out, ("</h1>", "</h1>\n<p>{{CARDS}}</p>"))), go(gp_swap(out, ("</h1>", "</h1>\n<p><span>{{CARDS}}</span></p>"))),
+                    go(gp_swap(('<div id="graph-cards">\n{{CARDS}}\n</div>', '<section id="graph-cards">\n{{CARDS}}\n</section>'))),
+                    go(gp_swap(('<div id="graph-cards">\n{{CARDS}}\n</div>', "{{CARDS}}")))),
+                   (["body", "div", "main", "section"], no, no, (0, True, []), (0, True, [])))
 
     @case("GA19", "G2a the gate and the copy rule agree on the scanner's skipped folders: a .js or .css under a `__pycache__` folder (any depth) is refused, "
                   "`GRAPH-ASSET <path> skipped-dir`, by the folder names the scanner itself prunes (its SKIP_DIRS, minus `test`, which is skipped without refusal), "

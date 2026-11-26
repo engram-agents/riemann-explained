@@ -5,7 +5,7 @@
   graph/graph.css, graph/page/*.js     copied byte for byte from viewer/graph/ (nothing under test/)
   graph/engine/*     the REAL engine's shipped files, or the test double (engine="double")
   graph/index.json, graph/step/*.json   a fixture build (optionally edited by the caller)
-  list/index.html    a stand-in list page, so the List link has somewhere to go
+  graph/list/index.html   a stand-in list page, so the List link (the relative address `list/`) has somewhere to go
 
 Never shipped (lives under test/).
 """
@@ -82,8 +82,8 @@ def assemble(out, engine="real", mutate=None, index_edit=None, step_edit=None, w
     if shell_edit:
         shell = shell_edit(shell)
     open(os.path.join(g, "index.html"), "w", encoding="utf-8").write(fill_shell(shell, cards, words))
-    os.makedirs(os.path.join(out, "list"))
-    open(os.path.join(out, "list", "index.html"), "w", encoding="utf-8").write(
+    os.makedirs(os.path.join(g, "list"))
+    open(os.path.join(g, "list", "index.html"), "w", encoding="utf-8").write(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>list</title></head><body><main id=\"list-page\">" + cards + "</main></body></html>\n")
     return g
 
