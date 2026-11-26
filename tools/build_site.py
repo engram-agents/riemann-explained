@@ -671,7 +671,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -1853,7 +1853,8 @@ GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 # The page's OPTIONAL strings keys: words the page draws that a map may or may not carry. index.json `strings` is the required keys plus those of these that `strings` holds;
 # the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
 GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text",
-                       "spine_lines_text", "key_scope_text")
+                       "spine_lines_text", "key_scope_text",
+                       "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice")   # the Graph view's words (G1)
 
 
 def _graph_strings_keys(symbols=None):
@@ -14000,7 +14001,8 @@ def _selftest_cases():
                     {k: full[k] for k in opt}, len(_graph_strings_keys()),
                     _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
                     _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", note_source="S", bogus="x"))),
-                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text"),
+                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"),
                     20, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
@@ -14447,8 +14449,26 @@ def _selftest_cases():
         return _eq((GRAPH_OPTIONAL_KEYS, [tuple(e) for e in ok[0]], ix["edge_basis"], len(ix["strings"]), sorted(k for k in ix["strings"] if k.startswith(("key_lines", "spine_lines"))),
                     [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H"), edge_basis=eb),
                     _graph_strings_errors(dict(req, bogus="x"))),
-                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text"), [], eb, 23,
+                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"), [], eb, 23,
                     ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_heading", "missing"), ("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
+
+    @case("GRG1", "the Graph view's words (G1): view_cards, view_graph, graph_nodes_text, spine_content_label, spine_lives_in, spine_show_file and graph_failed_notice are on "
+                  "GRAPH_OPTIONAL_KEYS, so a build whose strings hold them and the spine's sentence (spine_lines_text) carries all eight in index.json `strings`, each value verbatim; "
+                  "spine_lives_in holds exactly the placeholder {title} (an unknown one is refused naming the key and the token, `has an unknown placeholder {bogus}`); no other of "
+                  "the seven declares a placeholder; a build without them carries none of them (the page's Cards-only map)")
+    def _():
+        rows = [gr_row("a")]
+        words = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "Boxes.", "spine_content_label": "Label", "spine_lives_in": "Lives in: {title}",
+                 "spine_show_file": "Show", "graph_failed_notice": "Failed.", "spine_lines_text": "Lines."}
+        ok = _graph_files(rows, "c0", dict(_strings(), **words))
+        ix = ok[1]["graph/index.json"]["strings"]
+        base = _strings()
+        none = _graph_files(rows, "c0", base)[1]["graph/index.json"]["strings"]
+        return _eq(([tuple(e) for e in ok[0]], {k: ix[k] for k in words}, _strings_problems(dict(base, **words)),
+                    _strings_problems(dict(base, **dict(words, spine_lives_in="Lives in: {bogus}"))), _strings_problems(dict(base, **dict(words, view_cards="Cards {title}"))),
+                    sorted(k for k in words if k in none), all(k in GRAPH_OPTIONAL_KEYS for k in words)),
+                   ([], words, [], [("STRINGS-KEY", "spine_lives_in", "has an unknown placeholder {bogus}")], [("STRINGS-KEY", "view_cards", "has an unknown placeholder {title}")], [], True))
 
     return cases
 

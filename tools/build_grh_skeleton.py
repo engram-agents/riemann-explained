@@ -1256,6 +1256,10 @@ LINES_WORDS = {"key_lines_heading": "What a line is",
                "key_lines_text": "A line joins two files of the same group: the upper file uses definitions or results from the lower one. Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. Lean also uses results it fills in on its own without naming them; those uses are not counted.",
                "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming "
                                    "them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real."}   # final
+# the Graph view's seven words (G1; the values of site/strings-lean-graph.json, written once more here so the tool's own tests do not read the file they check)
+GRAPH_VIEW_WORDS = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "Each box is one of the main results the repository names in its last step.",
+                    "spine_content_label": "In the repository's words", "spine_lives_in": "Lives in: {title}", "spine_show_file": "Show its file in Cards",
+                    "graph_failed_notice": "The graph could not be opened; tap Graph to try again."}
 
 
 def _strings_file(d, s=None, name="strings.json"):
@@ -1644,7 +1648,7 @@ def _selftest_cases():
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
         info = {("lean-s-b", "lean-s-a"): {"weight": 1, "in_reduction": True}}
         notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n", "review": {"state": "converter"}} for i in ("lean-s-a", "lean-s-b")}
-        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS, **NOTE_WORDS, key_scope_text=SCOPE_TEMPLATE.replace("{readme_quote}", "line 15 of the README")), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True, index_extra={"edge_basis": EDGE_BASIS})
+        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS, **GRAPH_VIEW_WORDS, **NOTE_WORDS, key_scope_text=SCOPE_TEMPLATE.replace("{readme_quote}", "line 15 of the README")), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True, index_extra={"edge_basis": EDGE_BASIS})
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -2893,6 +2897,7 @@ def _selftest_cases():
 
     GO_CARDS = dict(OVERLAY_WORDS, **COUNT_WORDS, **OPTIONAL_WORDS, **NOTE_WORDS, key_lines_heading=LINES_WORDS["key_lines_heading"], key_lines_text=LINES_WORDS["key_lines_text"])   # every word but the Graph one
     GO_GRAPH = {"spine_lines_text": LINES_WORDS["spine_lines_text"]}
+    GO_GRAPH_FILE = dict(GO_GRAPH, **GRAPH_VIEW_WORDS)    # what site/strings-lean-graph.json holds: the spine's sentence and the Graph view's seven words
 
     def go_setup(d):
         g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
@@ -2938,8 +2943,8 @@ def _selftest_cases():
                    (0, 0, 0, False, False, True, {"basis": "reaches-through-any-chain-of-uses", "words": "spine_lines_text"}, ["graph/index.json", "graph/spine.json"], True, True, True,
                     (0, 0, sorted(LINES_WORDS), [], True, False), (0, False, False)))
 
-    @case("GO2", "the files of this checkout: site/strings-lean.json (the Cards overlay) has 21 keys (19, key_scope_text and note_render_button) and no `spine_lines_text`; site/strings-lean-graph.json holds exactly that one key, with the value of "
-                 "LINES_WORDS (the literal of this tool); the Graph overlay is not read by default (`OVERLAY` names only the Cards file)")
+    @case("GO2", "the files of this checkout: site/strings-lean.json (the Cards overlay) has 21 keys (19, key_scope_text and note_render_button) and no `spine_lines_text`; site/strings-lean-graph.json holds exactly the eight keys of GO_GRAPH_FILE, spine_lines_text with the value of "
+                 "LINES_WORDS and the seven of the Graph view (GRAPH_VIEW_WORDS, the literals of this tool); the Graph overlay is not read by default (`OVERLAY` names only the Cards file)")
     def _():
         site = os.path.join(_HERE, os.pardir, "site")
 
@@ -2947,7 +2952,7 @@ def _selftest_cases():
             with open(os.path.join(site, n), encoding="utf-8") as f:
                 return json.load(f)
         cards, graph = rd("strings-lean.json"), rd("strings-lean-graph.json")
-        return _eq((len(cards), "spine_lines_text" in cards, graph, os.path.basename(OVERLAY)), (21, False, GO_GRAPH, "strings-lean.json"))
+        return _eq((len(cards), "spine_lines_text" in cards, graph, os.path.basename(OVERLAY)), (21, False, GO_GRAPH_FILE, "strings-lean.json"))
 
     @case("GO3", "a key in both overlay files, or in the Graph overlay and in the base strings, is refused by name `SKEL-OVERLAY-CLASH <key>` (one line per key, sorted), exit 1, nothing written; "
                  "a key in the Cards overlay and in the base strings is NOT a clash (the overlay replaces it, as before); a Graph overlay disjoint from both builds (exit 0)")
