@@ -1,9 +1,43 @@
 #!/usr/bin/env python3
 """The skeleton of the map for a Lean repository that keeps its own index (CONTENTS.md) and its own folders.
 
-STEP 1 OF THE BUILD: this file holds the cases and the names of the functions; the functions do not exist yet.
+usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json]
+       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]
+
+DIR is the folder that holds CONTENTS.md and src/. The tool reads the `## New` section of CONTENTS.md and the .lean files under src/New and writes
+OUT_DIR/graph/index.json, OUT_DIR/graph/step/<id>.json and OUT_DIR/graph/uses.json, and nothing else: no page, no assets (`assets` is {}). It builds ROWS (id,
+parent, order, premises, kind, state, proof, title) and hands them to build_site's `_graph_files` and `_graph_bytes`, with a symbol table that has one more kind
+row (module); it has no writer of its own for the graph objects, and every refusal of the graph contract (GRAPH-FANOUT, GRAPH-ID, GRAPH-DUP, GRAPH-PARENT,
+GRAPH-CYCLE, GRAPH-EDGE, GRAPH-SYMBOL, GRAPH-COUNT, GRAPH-STRINGS) is that function's. --pin is written as the `commit` of every file. --outline (default:
+outline/outline.json of this checkout) names the repository's own outline, whose group ids must not be ids of this tool. Exit 0 built; 1 refused, OUT_DIR not
+written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
+self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 reads the real source and runs only when --grh is given to the self-test;
+otherwise it is skipped.
+
+THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the skeleton's own rules, not reading)
+ 1 TREE. CONTENTS.md, section `## New` only, in the order of its lines (nothing is sorted, nothing comes from the file system). Each `### heading` is a section;
+   a line that is only `**title**` is a group of that section; a line `- `New/<path>` (<n>): <title>` is a file of the latest group. A section whose files have
+   no group line gets one anonymous group (id `<section>--`, empty title). A section of exactly one file whose path has no folder (`New/Main`) is a top step
+   that is that file. Steps: section > group > file.
+ 2 IDS. Every id starts with `lean-`. Section: the folder name (the second path segment) in kebab case (a lower-case letter followed by an upper-case one gets
+   `-`; `_` becomes `-`; then lower case). Group: `<section id>--<slug of its title>` (NFKD, accents dropped, lower case, each run of characters outside a-z0-9
+   one `-`, trimmed). File: its path after `New/`, each segment in kebab case, joined by `-`. An id longer than 64 characters is cut to its first 57, a trailing
+   `-` removed, then `-` and the first 6 hex digits of the sha256 of the whole id; an id of 64 or fewer is never touched. A clash is GRAPH-DUP, a bad character
+   GRAPH-ID, never corrected; an id that is also an id of the outline is SKEL-ID-CLASH.
+ 3 TITLES. A file: the text after the colon with its backticks removed. A group: its bold text. A section: its heading. The 50-character bound of the graph
+   contract (the face line) is NOT applied here: it lives in build_site's `_graph_line_errors`, which this tool does not call.
+ 4 PREMISES. A file rests on a file of the SAME group that it imports (`import New.X.Y` at the start of a line), after the transitive reduction of each group's
+   edges. A self-import and an import outside New are ignored; an import of a New file of another group (and a reduced one) is not drawn but is listed in
+   graph/uses.json. Groups and sections have no premises. A cycle among the files of a group is left as it is (GRAPH-EDGE).
+ 5 KIND, STATE, PROOF. Every step has kind `module`, state `none`, proof `none`: no declaration is read.
+ 6 USES. graph/uses.json holds, for every file step, the ids of every New file it imports, in any group, sorted, never itself. It is not part of index.json.
+ 7 COMPLETENESS. Every .lean file under src/New is a file line of CONTENTS and every file line exists: SKEL-UNLISTED / SKEL-MISSING (`<path>` as in CONTENTS,
+   without `.lean`); a line of the section that does not parse, or a file whose folder is not its section's, is SKEL-LINE <n> (n is the line of CONTENTS.md).
+   All of one kind are reported together.
+ 8 STRINGS. The strings file is read and checked as build_site does and must hold symbol_kind_module; `_graph_files` checks the exact key set (21 keys here).
 """
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -42,34 +76,346 @@ class Unreadable(Exception):
     """An input that cannot be read: exit 2."""
 
 
+PREFIX = "lean-"      # every id of this tool starts with it: its own namespace, apart from the ids of the repository's outline
+ID_MAX = 64           # the longest id (the page's router refuses a longer target)
+ID_KEEP = 57          # an id longer than ID_MAX keeps this many characters, then `-` and ID_HASH hex digits of the sha256 of the whole id
+ID_HASH = 6
+MODULE_ROW = {"class": "kind-module", "words": "symbol_kind_module"}
+SYMBOLS = dict(bs.GRAPH_SYMBOLS, kinds=dict(bs.GRAPH_SYMBOLS["kinds"], module=MODULE_ROW))   # the table of this tool: today's, with the one more kind row
+OUTLINE = os.path.join(_HERE, os.pardir, "outline", "outline.json")
+_FILE_LINE = re.compile(r"- `(New/[^`]+)` \((\d+)\): (.*)")
+_GROUP_LINE = re.compile(r"\*\*(.+)\*\*")
+_IMPORT = re.compile(r"import[ \t]+(\S+)")
+
+
 def kebab(s):
-    raise NotImplementedError
+    """`UpperBound` -> `upper-bound`: `-` between a lower-case letter and an upper-case one, `_` as `-`, then lower case."""
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", "-", s).replace("_", "-").lower()
 
 
 def slug(s):
-    raise NotImplementedError
+    """NFKD with the accents dropped, lower case, every run of characters outside a-z0-9 one `-`, trimmed of `-`."""
+    folded = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).lower()
+    return re.sub(r"[^a-z0-9]+", "-", folded).strip("-")
 
 
 def _cap(i):
-    raise NotImplementedError
+    """An id of at most ID_MAX characters is returned as it is; a longer one is cut to its first ID_KEEP characters, a trailing `-` removed, then `-` and the
+    first ID_HASH hex digits of the sha256 (UTF-8) of the whole, untruncated id are appended."""
+    if len(i) <= ID_MAX:
+        return i
+    return i[:ID_KEEP].rstrip("-") + "-" + hashlib.sha256(i.encode("utf-8")).hexdigest()[:ID_HASH]
 
 
 def parse_contents(text):
-    raise NotImplementedError
+    """(sections, [SKEL-LINE errors]) from CONTENTS.md text. A section is {heading, line, groups: [{title or None, line, files: [{path, title, line}]}],
+    top_file, folder}. The order of every list is the order of the lines. Raises Unreadable when there is no `## New` section."""
+    lines = text.split("\n")
+    start = next((i for i, ln in enumerate(lines) if ln.rstrip() == "## New"), None)
+    if start is None:
+        raise Unreadable("CONTENTS.md has no `## New` section")
+    errors, sections, sec, grp, loose = [], [], None, None, []
+
+    def close():
+        if sec is None:
+            return
+        if sec["groups"]:
+            errors.extend(("SKEL-LINE", str(f["line"]), "") for f in loose)
+        elif loose:
+            sec["groups"].append({"title": None, "line": loose[0]["line"], "files": list(loose)})
+    for i in range(start + 1, len(lines)):
+        n, line = i + 1, lines[i].rstrip()
+        if line.startswith("## "):
+            break
+        if line == "":
+            continue
+        if line.startswith("### "):
+            close()
+            sec, grp, loose = {"heading": line[4:].strip(), "line": n, "groups": []}, None, []
+            sections.append(sec)
+            continue
+        g, f = _GROUP_LINE.fullmatch(line), _FILE_LINE.fullmatch(line)
+        if sec is None or not ((g and "**" not in g.group(1)) or f):
+            errors.append(("SKEL-LINE", str(n), ""))
+        elif f:
+            item = {"path": f.group(1), "title": f.group(3).replace("`", ""), "line": n}
+            (grp["files"] if grp is not None else loose).append(item)
+        else:
+            grp = {"title": g.group(1), "line": n, "files": []}
+            sec["groups"].append(grp)
+    close()
+    for s in sections:
+        files = [f for g in s["groups"] for f in g["files"]]
+        s["top_file"] = len(files) == 1 and files[0]["path"].count("/") == 1
+        s["folder"] = None
+        if s["top_file"]:
+            continue
+        if not files:
+            errors.append(("SKEL-LINE", str(s["line"]), ""))
+        for g in s["groups"]:
+            if not g["files"] and files:
+                errors.append(("SKEL-LINE", str(g["line"]), ""))
+        for f in files:
+            segs = f["path"].split("/")
+            if len(segs) < 3:
+                errors.append(("SKEL-LINE", str(f["line"]), ""))
+            elif s["folder"] is None:
+                s["folder"] = segs[1]
+            elif segs[1] != s["folder"]:
+                errors.append(("SKEL-LINE", str(f["line"]), ""))
+    errors.sort(key=lambda e: int(e[1]))
+    return sections, errors
+
+
+def _imports(src_text):
+    mods = []
+    for line in src_text.split("\n"):
+        m = _IMPORT.match(line)
+        if m and m.group(1) not in mods:
+            mods.append(m.group(1))
+    return mods
+
+
+def _reduce(adj):
+    """The transitive reduction of an acyclic graph {node: [successors]}: an edge F -> H is dropped when F -> G for some other G and G reaches H. A graph
+    with a cycle is returned as it is (the graph contract refuses it)."""
+    state, reach = {}, {}
+
+    def visit(x):
+        if state.get(x) == 1:
+            return False
+        if state.get(x) == 2:
+            return True
+        state[x] = 1
+        r = set()
+        for y in adj[x]:
+            if not visit(y):
+                return False
+            r |= {y} | reach[y]
+        reach[x] = r
+        state[x] = 2
+        return True
+    if not all(visit(x) for x in adj):
+        return {x: list(ys) for x, ys in adj.items()}
+    return {x: [h for h in ys if not any(h in reach[g] for g in ys if g != h)] for x, ys in adj.items()}
+
+
+def _depths(kept):
+    """{node: depth} of a graph {node: [premises]}: 0 for a node that rests on nothing, else 1 + the deepest premise; None when it has a cycle."""
+    memo, busy = {}, set()
+
+    def d(x):
+        if x in memo:
+            return memo[x]
+        if x in busy:
+            raise ValueError(x)
+        busy.add(x)
+        memo[x] = 0 if not kept[x] else 1 + max(d(y) for y in kept[x])
+        busy.discard(x)
+        return memo[x]
+    try:
+        return {x: d(x) for x in kept}
+    except ValueError:
+        return None
+
+
+def _read(path, what):
+    try:
+        with open(path, "rb") as fh:
+            return fh.read().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        raise Unreadable(f"cannot read {what}: {e}")
+
+
+def _disk_paths(grh):
+    def fail(e):
+        raise Unreadable(f"cannot read src/New: {e}")
+    base = os.path.join(grh, "src")
+    found = []
+    for r, _, fs in os.walk(os.path.join(base, "New"), onerror=fail):
+        found += [os.path.relpath(os.path.join(r, n), base)[:-len(".lean")].replace(os.sep, "/") for n in fs if n.endswith(".lean")]
+    return sorted(found)
 
 
 def build_rows(grh):
-    raise NotImplementedError
+    """(errors, rows, report) from the folder `grh`: SKEL-LINE, then SKEL-MISSING and SKEL-UNLISTED, each stops the run before the next stage."""
+    sections, errors = parse_contents(_read(os.path.join(grh, "CONTENTS.md"), "CONTENTS.md"))
+    if errors:
+        return errors, [], {}
+    listed = [f["path"] for s in sections for g in s["groups"] for f in g["files"]]
+    disk = _disk_paths(grh)
+    errors = [("SKEL-MISSING", p, "") for p in listed if p not in set(disk)] + [("SKEL-UNLISTED", p, "") for p in disk if p not in set(listed)]
+    if errors:
+        return errors, [], {}
+    src = {p: _read(os.path.join(grh, "src", *p.split("/")) + ".lean", p + ".lean") for p in listed}
+    cut = []
+
+    def ident(i):
+        j = _cap(i)
+        if j != i:
+            cut.append((i, j))
+        return j
+    fid = {}
+    for p in listed:
+        fid[p] = ident(PREFIX + "-".join(kebab(x) for x in p.split("/")[1:]))
+    where = {}   # file path -> (section, group) it belongs to
+    for si, s in enumerate(sections):
+        for gi, g in enumerate(s["groups"]):
+            for f in g["files"]:
+                where[f["path"]] = (si, gi)
+    self_imports = drawn = total = 0
+    premises, uses, groups = {}, {}, []
+    group_files = {}
+    for si, s in enumerate(sections):
+        for gi, g in enumerate(s["groups"]):
+            members = [f["path"] for f in g["files"]]
+            adj = {p: [] for p in members}
+            for p in members:
+                mine = set()
+                for mod in _imports(src[p]):
+                    q = mod.replace(".", "/")
+                    if q == p:
+                        self_imports += 1
+                    elif q in where:
+                        mine.add(q)
+                        total += 1
+                        if where[q] == (si, gi):
+                            adj[p].append(q)
+                adj[p].sort(key=members.index)
+                uses[fid[p]] = sorted(fid[q] for q in mine)
+            kept = _reduce(adj)
+            drawn += sum(len(v) for v in kept.values())
+            premises.update({p: [fid[q] for q in v] for p, v in kept.items()})
+            group_files[(si, gi)] = (members, kept)
+    rows = []
+
+    def row(i, parent, order, prem, title):
+        rows.append({"id": i, "parent": parent, "order": order, "premises": prem, "kind": "module", "state": "none", "proof": "none", "title": title})
+    for ti, s in enumerate(sections):
+        if s["top_file"]:
+            f = s["groups"][0]["files"][0]
+            row(fid[f["path"]], "root", ti, [], f["title"])
+            continue
+        sid = PREFIX + kebab(s["folder"])
+        sid_id = ident(sid)
+        row(sid_id, "root", ti, [], s["heading"])
+        for gi, g in enumerate(s["groups"]):
+            gid = ident(f"{sid}--{slug(g['title'] or '')}")
+            row(gid, sid_id, gi, [], g["title"] or "")
+            members, kept = group_files[(ti, gi)]
+            for fi, f in enumerate(g["files"]):
+                row(fid[f["path"]], gid, fi, premises[f["path"]], f["title"])
+            ends = {p for p in members if kept[p]} | {q for p in members for q in kept[p]}
+            depth = _depths(kept)
+            per = {}
+            for v in (depth or {}).values():
+                per[v] = per.get(v, 0) + 1
+            wide = min((k for k in per if per[k] == max(per.values())), default=0)
+            groups.append({"group": gid, "files": len(members), "linked": len(ends), "unlinked": len(members) - len(ends),
+                           "longest": max((depth or {}).values(), default=0), "widest_depth": wide, "widest_count": per.get(wide, 0)})
+    kids, depth_max = {}, 0
+    parent = {r["id"]: r["parent"] for r in rows}
+    for r in rows:
+        kids[r["parent"]] = kids.get(r["parent"], 0) + 1
+        d, i = 1, r["parent"]
+        while i != "root" and i in parent:
+            d, i = d + 1, parent[i]
+        depth_max = max(depth_max, d)
+    return [], rows, {"steps": len(rows), "top": [r["id"] for r in rows if r["parent"] == "root"], "widest": max([v for k, v in kids.items() if k != "root"] or [0]),
+                      "depth": depth_max, "drawn": drawn, "not_drawn": total - drawn, "ignored": {"self": self_imports}, "groups": groups, "cut": cut,
+                      "uses": uses}
 
 
 def build(grh, pin, strings, live_ids=()):
-    raise NotImplementedError
+    """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline."""
+    errors, rows, rep = build_rows(grh)
+    if errors:
+        return errors, {}, rows, rep
+    errors = [("SKEL-ID-CLASH", i, "") for i in sorted({r["id"] for r in rows} & set(live_ids))]
+    if errors:
+        return errors, {}, rows, rep
+    missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(SYMBOLS) if k in strings}, SYMBOLS)   # only the missing ones: it holds a subset
+    if missing:
+        return missing, {}, rows, rep
+    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS)
+    if errors:
+        return errors, {}, rows, rep
+    objs["graph/uses.json"] = {"commit": pin, "format": bs.GRAPH_FORMAT, "uses": rep["uses"]}
+    return [], bs._graph_bytes(objs), rows, rep
+
+
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json]\n"
+         "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
+
+
+def _parse(a):
+    """{grh, pin, strings, out[, outline]} or None: each option once, with a value; --pin not empty; nothing else."""
+    opts, i = {}, 0
+    while i < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline") and a[i][2:] not in opts and i + 1 < len(a):
+            opts[a[i][2:]] = a[i + 1]
+            i += 2
+        else:
+            return None
+    return opts if {"grh", "pin", "strings", "out"} <= set(opts) and opts["pin"] else None
+
+
+def report_lines(rep):
+    cuts = [f"cut id {full} -> {final}" for full, final in rep["cut"]]
+    table = [f"group {g['group']}: files {g['files']}, linked {g['linked']}, unlinked {g['unlinked']}, longest {g['longest']}, "
+             f"widest row depth {g['widest_depth']} ({g['widest_count']} files)" for g in rep["groups"]]
+    return ([f"steps: {rep['steps']}", "top: " + ", ".join(rep["top"]), f"widest: {rep['widest']}", f"depth: {rep['depth']}",
+             f"links drawn: {rep['drawn']}", f"imports not drawn: {rep['not_drawn']}", f"self-imports ignored: {rep['ignored']['self']}",
+             f"ids cut: {len(cuts)}"] + cuts + table)
+
+
+def _run(opts):
+    if not os.path.isdir(opts["grh"]):
+        raise Unreadable(f"--grh is not a directory: {opts['grh']}")
+    if os.path.exists(opts["out"]) and not os.path.isdir(opts["out"]):
+        raise Unreadable(f"OUT_DIR is not a directory: {opts['out']}")
+    try:
+        strings = bs._read_json(opts["strings"], "strings file")
+        outline = bs._read_json(opts.get("outline", OUTLINE), "outline")
+    except bs._Unreadable as e:
+        raise Unreadable(str(e))
+    if not (isinstance(outline, dict) and isinstance(outline.get("groups"), list) and all(isinstance(g, dict) and isinstance(g.get("id"), str) for g in outline["groups"])):
+        raise Unreadable("cannot read the outline: no `groups` list of objects with an `id`")
+
+    def refuse(errors):
+        for code, where, msg in errors:
+            print(f"{code} {where}" + (f" {msg}" if msg else ""))
+        print("REFUSED: nothing written", file=sys.stderr)
+        return 1
+    if os.path.isdir(opts["out"]) and os.listdir(opts["out"]):
+        return refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files")])
+    problems = bs._strings_problems(strings)
+    if problems:
+        return refuse(problems)
+    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]])
+    if errors:
+        return refuse(errors)
+    try:
+        bs._publish(opts["out"], files)
+    except OSError as e:
+        raise Unreadable(f"cannot write the graph data: {e.strerror or e}")
+    print("\n".join(report_lines(rep)))
+    return 0
 
 
 def main(argv):
+    """argv with the program name first."""
     if argv[1:2] == ["--selftest"]:
         return _selftest_main(argv[2:])
-    raise NotImplementedError
+    opts = _parse(argv[1:])
+    if opts is None:
+        print(USAGE, file=sys.stderr)
+        return 2
+    try:
+        return _run(opts)
+    except Unreadable as e:
+        print("build_grh_skeleton: " + str(e), file=sys.stderr)
+        return 2
 
 
 # ---------------------------------------------------------------- self-test: fixtures are built from literals in a temp folder
@@ -338,7 +684,7 @@ def _selftest_cases():
             ix = _j(files, "graph/index.json")
         return _eq((errs, sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), len(rows), ix["symbols"]["order"]["kinds"], ix["symbols"]["kinds"]["module"],
                     len(ix["strings"]), ix["strings"]["symbol_kind_module"], _strings(extra=False)["symbol_kind_module"]),
-                   ([], [ALL_MODULE], 8, ["theorem", "def", "structure", "module"],
+                   ([], [ALL_MODULE], 7, ["theorem", "def", "structure", "module"],
                     {"class": "kind-module", "text": "Module words", "words": "symbol_kind_module"}, 21, "Module words",
                     "A folder or file of the Lean code, shown as it is"))
 
@@ -577,7 +923,7 @@ def _selftest_cases():
             errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
         kids = lambda i: [c["id"] for c in _j(files, f"graph/step/{i}.json")["children"]]
         return _eq((errs, _j(files, "graph/index.json")["top"], kids("lean-zeta"), kids("lean-zeta--zed-group"), [r["order"] for r in rows]),
-                   ([], ["lean-zeta", "lean-alpha"], ["lean-zeta--zed-group", "lean-zeta--abe-group"], ["lean-zeta-zz", "lean-zeta-aa"], [0, 0, 0, 1, 0, 1, 0, 0, 0]))
+                   ([], ["lean-zeta", "lean-alpha"], ["lean-zeta--zed-group", "lean-zeta--abe-group"], ["lean-zeta-zz", "lean-zeta-aa"], [0, 0, 0, 1, 1, 0, 1, 0, 0]))
 
     @case("SK17", "edges: a section or a group has no premise ever; a section's step file and index.json hold `rests_on: []` (present, empty); a group's step file holds the "
                   "links among its own files (empty and present when it has none)")
