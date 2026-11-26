@@ -1867,10 +1867,14 @@ def _graph_strings_keys(symbols=None):
 
 def _graph_strings_errors(strings, symbols=None):
     """[(GRAPH-STRINGS, key, what)] for the `strings` object of index.json against the exact set of keys the page reads: the keys it lacks first, then the
-    keys it has that the page does not read, each sorted."""
+    keys it has that the page does not read, each sorted, then the half of the note-word pair: note_label and note_source come together (the page refuses a half pair at
+    index load, so a map that builds is a map that runs), and the one that is absent while the other is present is named. The notes rule (neither word beside notes)
+    needs the notes and lives in _graph_files."""
     want = set(_graph_strings_keys(symbols))
     return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
-            + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want - set(GRAPH_OPTIONAL_KEYS))])
+            + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want - set(GRAPH_OPTIONAL_KEYS))]
+            + [("GRAPH-STRINGS", gone, f"missing: {have} is present and the two words come together")
+               for have, gone in (("note_label", "note_source"), ("note_source", "note_label")) if have in strings and gone not in strings])
 
 
 def _walk_error(ex):
@@ -2282,6 +2286,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             errors.append(("GRAPH-FANOUT", i, f"has {n} children (more than {GRAPH_MAX_CHILDREN})"))
     if notes:
         errors += _graph_note_errors(notes, by, kids)
+        errors += [("GRAPH-STRINGS", k, "missing: notes are present and need both note_label and note_source") for k in ("note_label", "note_source")
+                   if "note_label" not in strings and "note_source" not in strings]   # the half pair is _graph_strings_errors', on the written index
     if step_extra or index_extra:
         errors += _graph_extra_errors(step_extra, index_extra, by, notes, layout)
     eb = (index_extra or {}).get("edge_basis")   # an edge basis names the key of `strings` that states it: a map that carries it must carry that key
@@ -13962,7 +13968,8 @@ def _selftest_cases():
                     ([("GRAPH-SYMBOL", "states", "table is missing"), ("GRAPH-SYMBOL", "proofs", "table is missing")], {}), []))
 
     @case("GRM1", "the page's OPTIONAL strings keys are one constant, GRAPH_OPTIONAL_KEYS = (key_kinds_note, note_label, note_source): index.json `strings` is the required keys (20 on "
-                  "the live table) plus those of the three that `strings` holds, so 20 with none, 21 with one, 22 with two, 23 with all three (the values verbatim); the exact-set "
+                  "the live table) plus those of the three that `strings` holds, so 20 with none, 22 with the pair note_label + note_source, 23 with all three (the values verbatim; "
+                  "one word of the pair alone is refused, case GRW1, so there is no 21); the exact-set "
                   "check accepts an optional key and still refuses any other extra key (`GRAPH-STRINGS <key> is not a key the page reads`) and a missing required one")
     def _():
         rows = [gr_row("a")]
@@ -13970,14 +13977,64 @@ def _selftest_cases():
         count = lambda s: len(_graph_files(rows, "c0", dict(_strings(), **s))[1]["graph/index.json"]["strings"])
         full = _graph_files(rows, "c0", dict(_strings(), **opt))[1]["graph/index.json"]["strings"]
         req = {k: "x" for k in _graph_strings_keys()}
-        return _eq((GRAPH_OPTIONAL_KEYS, count({}), count({"note_label": "L"}), count({"note_label": "L", "note_source": "S"}), count(opt),
+        return _eq((GRAPH_OPTIONAL_KEYS, count({}), count({"note_label": "L", "note_source": "S"}), count(opt),
                     {k: full[k] for k in opt}, len(_graph_strings_keys()),
                     _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
-                    _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", bogus="x"))),
+                    _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", note_source="S", bogus="x"))),
                    (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text"),
-                    20, 21, 22, 23, opt, 20,
+                    20, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
+
+    GR_PAIR = {"note_label": "L", "note_source": "S {source} {commit}"}   # neutral words for a fixture that writes notes and is not about the pair (GRW1 is)
+
+    @case("GRW1", "the two optional words note_label and note_source come as a pair, in four shapes: the label alone and the source alone are each refused, with or without notes "
+                  "(`GRAPH-STRINGS <the missing word> missing: <the present word> is present and the two words come together`); neither word with a non-empty `notes` is refused, "
+                  "naming both (`GRAPH-STRINGS note_label missing: notes are present and need both note_label and note_source`, and the same for note_source, sorted); both words "
+                  "are accepted with or without notes (index.json strings hold them verbatim), and neither word with no notes (None, an empty dict) is accepted, as the live map is; "
+                  "a refusal returns no files; `_graph_strings_errors` holds the half-pair rule (the written index is judged by it), `_graph_files` the notes rule")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1)]
+        notes = {"b": {"source": "src/b.lean", "text": "t"}}
+        L, S = {"note_label": "L"}, {"note_source": "S {source} {commit}"}
+        both = dict(L, **S)
+        miss_s = [("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")]
+        miss_l = [("GRAPH-STRINGS", "note_label", "missing: note_source is present and the two words come together")]
+        need = [("GRAPH-STRINGS", "note_label", "missing: notes are present and need both note_label and note_source"),
+                ("GRAPH-STRINGS", "note_source", "missing: notes are present and need both note_label and note_source")]
+        run = lambda w, n: _graph_files(rows, "c0", dict(_strings(), **w), notes=n)
+        res = lambda w, n: (lambda r: (r[0], r[1] == {}))(run(w, n))
+        acc = lambda w, n: (lambda r: (r[0], r[1]["graph/index.json"]["strings"]))(run(w, n))
+        req = {k: "x" for k in _graph_strings_keys()}
+        return _eq((res(L, None), res(L, notes), res(L, {}), res(S, None), res(S, notes), res(S, {}), res({}, notes),
+                    res({}, {}), res({}, None),
+                    acc(both, notes)[0], {k: acc(both, notes)[1][k] for k in both}, acc(both, None)[0], {k: acc(both, None)[1][k] for k in both}, acc(both, {})[0],
+                    acc({}, None)[0], acc({}, {})[0], "note_label" in acc({}, None)[1] or "note_source" in acc({}, None)[1],
+                    _graph_strings_errors(dict(req, **L)), _graph_strings_errors(dict(req, **S)), _graph_strings_errors(dict(req, **both)), _graph_strings_errors(req),
+                    _graph_strings_errors(dict(req, note_label="L", bogus="x")), _graph_strings_errors(dict(req, note_label="")),
+                    _graph_strings_errors(dict(req, note_label="", note_source="")),
+                    [x for x in _graph_files(rows, "c0", dict(_strings(), **L), notes=notes)[0] if x[0] == "GRAPH-NOTE"]),
+                   ((miss_s, True), (miss_s, True), (miss_s, True), (miss_l, True), (miss_l, True), (miss_l, True), (need, True),
+                    ([], False), ([], False),
+                    [], both, [], both, [], [], [], False,
+                    miss_s, miss_l, [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads"), ("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")],
+                    [("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")], [], []))
+
+    @case("GRW2", "the pair rule through main() on the live inputs (the fixture strings, no notes): a strings file with note_label alone, or note_source alone, is refused "
+                  "`GRAPH-STRINGS <the missing word> missing: ...` (exit 1, the named BUILD-ERROR line on stdout, nothing written, no output directory); both words build (exit 0), and neither builds (the live map)")
+    def _():
+        out = {}
+        for name, w in (("label", {"note_label": "L"}), ("source", {"note_source": "S {source} {commit}"}), ("both", {"note_label": "L", "note_source": "S {source} {commit}"}), ("none", {})):
+            with tempfile.TemporaryDirectory() as d:
+                src = ga_src(d)
+                p = _plant(d, strings=dict(_strings(), **w))
+                o, e = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+                    rc = main(["build_site.py", p["notes"], p["outline"], p["decls"], p["strings"], p["out"], "--graph-src", src], check=lambda: 0)
+                out[name] = (rc, [ln for ln in o.getvalue().splitlines() if "GRAPH-STRINGS" in ln], e.getvalue(), os.path.exists(p["out"]))
+        return _eq(out, {"label": (1, ["BUILD-ERROR GRAPH-STRINGS note_source missing: note_label is present and the two words come together"], "REFUSED: nothing written\n", False),
+                         "source": (1, ["BUILD-ERROR GRAPH-STRINGS note_label missing: note_source is present and the two words come together"], "REFUSED: nothing written\n", False),
+                         "both": (0, [], out["both"][2], True), "none": (0, [], out["none"][2], True)})
 
     @case("GRM2", "the strings check lets `note_source` hold exactly the placeholders {source} and {commit} (and requires neither): a value with both builds, one with an unknown "
                   "placeholder (`{bogus}`) is refused naming the key and the token, and the other two optional keys (key_kinds_note, note_label) declare none")
@@ -14024,11 +14081,11 @@ def _selftest_cases():
                   "trailing spaces), and nothing else changes: index.json and the other step files are equal to the default output")
     def _():
         rows = [gr_row("a"), gr_row("b", "a", 1), gr_row("c", "a", 2)]
-        base = _graph_files(rows, "c0", _strings())[1]
-        none = _graph_files(rows, "c0", _strings(), notes=None)[1]
+        base = _graph_files(rows, "c0", dict(_strings(), **GR_PAIR))[1]
+        none = _graph_files(rows, "c0", dict(_strings(), **GR_PAIR), notes=None)[1]
         text = "\n# T\r\n\tx  \n"
         notes = {"b": {"source": "src/b.lean", "text": text}, "c": {"source": "src/c.lean", "text": ""}}
-        errs, objs = _graph_files(rows, "c0", _strings(), notes=notes)
+        errs, objs = _graph_files(rows, "c0", dict(_strings(), **GR_PAIR), notes=notes)
         raw = _graph_bytes(objs)["graph/step/b.json"].decode("utf-8")
         return _eq((errs, sorted(k for k, v in base.items() if "note" in v), _graph_bytes(base) == _graph_bytes(none), sorted(k for k, v in objs.items() if "note" in v),
                     objs["graph/step/b.json"]["note"], {k: v for k, v in objs.items() if "note" not in v} == {k: v for k, v in base.items() if k in objs and "note" not in objs[k]},
@@ -14043,7 +14100,7 @@ def _selftest_cases():
         ok = {"source": "s", "text": "t"}
 
         def bad(notes):
-            e, o = _graph_files(rows, "c0", _strings(), notes=notes)
+            e, o = _graph_files(rows, "c0", dict(_strings(), **GR_PAIR), notes=notes)
             return [tuple(x) for x in e], o
         return _eq((bad({"zz": ok}), bad({"a": ok}), bad({"b": {"source": "s"}}), bad({"b": dict(ok, extra="x")}), bad({"b": {"source": "s", "text": 5}}),
                     bad({"b": "text"}), bad({"b": ok, "zz": ok})),
@@ -14060,16 +14117,16 @@ def _selftest_cases():
         rows = [gr_row("a"), gr_row("b", "a", 1), gr_row("c", "a", 2)]
         rev = {"state": "converter"}
         ok = {"source": "s", "text": "t"}
-        errs, objs = _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, review=rev), "c": ok})
+        errs, objs = _graph_files(rows, "c0", dict(_strings(), **GR_PAIR), notes={"b": dict(ok, review=rev), "c": ok})
         raw = _graph_bytes(objs)["graph/step/b.json"].decode("utf-8")
 
         def bad(review):
-            e, o = _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, review=review)})
+            e, o = _graph_files(rows, "c0", dict(_strings(), **GR_PAIR), notes={"b": dict(ok, review=review)})
             return [tuple(x) for x in e], o
         msg = 'review must be exactly {"state": "converter"}'
         return _eq((errs, sorted(objs["graph/step/b.json"]["note"]), sorted(objs["graph/step/c.json"]["note"]), raw.index('"review"') < raw.index('"source"') < raw.index('"text"'),
                     bad({"state": "convertor"}), bad({"state": "confirmed"}), bad(dict(rev, by="x")), bad(dict(rev, converter_version="1")), bad({}), bad("converter"), bad(None),
-                    [tuple(x) for x in _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, extra="x", review=rev)})[0]]),
+                    [tuple(x) for x in _graph_files(rows, "c0", dict(_strings(), **GR_PAIR), notes={"b": dict(ok, extra="x", review=rev)})[0]]),
                    ([], ["review", "source", "text"], ["source", "text"], True, ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
                     ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
                     [("GRAPH-NOTE", "b", "must have exactly the keys source and text")]))
@@ -14204,7 +14261,7 @@ def _selftest_cases():
         rows = [gr_row("a"), gr_row("b", "a", 1)]
 
         def bad(**kw):
-            e, o = _graph_files(rows, "c0", _strings(), **kw)
+            e, o = _graph_files(rows, "c0", dict(_strings(), **GR_PAIR), **kw)
             return [tuple(x) for x in e], o
         ok = {"k": 1}
         return _eq((bad(step_extra={"zz": ok}), bad(step_extra={"b": {"card": 1}}), bad(step_extra={"b": {"k": {1, 2}}}), bad(step_extra={"b": {"k": float("nan")}}),
