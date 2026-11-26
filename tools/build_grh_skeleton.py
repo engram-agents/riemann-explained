@@ -221,7 +221,10 @@ def parse_contents(text):
 
 def _comment_end(text, start):
     """The index just past the `-/` that closes the block comment whose three-character opener (`/-!` or `/--`) begins at `start` in `text`, the nesting of `/-` and `-/` counted;
-    None when it never closes. The ONE counter: the module note and a doc comment both end where it says."""
+    None when it never closes. The ONE counter: the module note and a doc comment both end where it says.
+    Its limit: the opener is taken to be THREE characters long (the scan starts at `start + 3`), which is true of `/-!` and `/--`. A plain two-character opener `/-` that is immediately
+    followed by another `/-` (`/-/- x -/ ... -/`) hides the inner opener from the scan, so the comment closes at the first `-/`; the later-blocks walker then counts what follows as top level
+    and its agreement check with the grep recipe refuses the file (`SKEL-LATER-BLOCKS <path> walker=<n> grep=<m>`, case LB4), never guessing."""
     depth, i = 1, start + 3
     while i < len(text):
         if text.startswith("/-", i):
