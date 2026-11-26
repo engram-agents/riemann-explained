@@ -120,3 +120,5 @@ export function createGraph(container, options) {
 export const DEFAULTS = Object.freeze({});
 export const EVENTS = Object.freeze(Object.keys({ tap: 1, open: 1, close: 1, visible: 1, loading: 1, error: 1, refused: 1 }));
 export const VERSION = "double";
+// The real engine's checkOptions (INTERFACE.md) is the one rule for the options; the double draws boxes and checks none, so its answer is the options as given.
+export const checkOptions = (options) => options;

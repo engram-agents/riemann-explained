@@ -1145,6 +1145,64 @@ def c_v3_refusals(b, S0, engine):
         run(lambda i: i.__setitem__("open_scale_floor", 2), False)
 
 
+START_CALL = "start(document, { createGraph, fetch: (address) => fetch(address) });"
+
+
+def expose_failure(src):
+    """Test-only: the page keeps the reason of a failed start in the object start() returns, and nothing reads it; hang it on <html> so a case can."""
+    assert START_CALL in src, "the page's last line is not the one this case rewrites"
+    return src.replace(START_CALL, START_CALL[:-1] + ".then((f) => document.documentElement.setAttribute('data-failure', f.reason));")
+
+
+def spoil_card_height(src):
+    """Test-only: make another option bad (the card height), so the engine refuses for a reason that is not the floor."""
+    assert "nodeH: 140, gapY: 56" in src, "CARD_SIZES edit did not match"
+    return src.replace("nodeH: 140, gapY: 56", "nodeH: -1, gapY: 56")
+
+
+def floor_run(b, engine, floor, spoil=False):
+    """Boot the skeleton with an open_scale_floor of `floor`; returns the failure reason the page recorded ('' when it booted)."""
+    root = tempfile.mkdtemp(prefix="pg-v3f-")
+    mut = (lambda src: spoil_card_height(expose_failure(src))) if spoil else expose_failure
+    assemble.assemble(root, engine, fix="skeleton", index_edit=lambda i: i.__setitem__("open_scale_floor", floor), mutate={os.path.join("page", "app.js"): mut})
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900)
+        pg.wait("document.documentElement.hasAttribute('data-failure') || document.querySelector('[data-node=\"sk-part\"]') !== null", 6000)
+        if pg.ev("document.documentElement.hasAttribute('data-failure')"):
+            reason = pg.ev("document.documentElement.getAttribute('data-failure')")
+            assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards")
+        else:
+            reason = ""
+        pg.close()
+        return reason
+    finally:
+        S.stop()
+
+
+def c_v3_floor_named(b, S0, engine):
+    """98 round 4 (real engine only; the double does not check options): an open_scale_floor below zoom.min (0.01, 0.05) or above the open-framing cap
+    (1.3, 2) is the fallback with the reason `bad-scale-floor` recorded, the page's own refusal made by the engine's own rule (checkOptions); never the
+    engine's TypeError text. A floor of 1 is the control and boots."""
+    if engine != "real":
+        return
+    for f in (0.01, 0.05, 1.3, 2):
+        r = floor_run(b, engine, f)
+        assert r.startswith("bad-scale-floor: ") and str(f) in r, (f, r)
+        assert "graph options" not in r, r
+    assert floor_run(b, engine, 1) == ""
+
+
+def c_v3_floor_valid_other_bad(b, S0, engine):
+    """98 round 4 (real engine only): a VALID floor (1) beside another bad option (the card height, made -1 by a test-only edit of app.js) is a plain
+    start failure with the engine's own text, never bad-scale-floor: the floor is blamed only when taking it away makes the engine accept."""
+    if engine != "real":
+        return
+    r = floor_run(b, engine, 1, spoil=True)
+    assert r != "" and not r.startswith("bad-scale-floor"), r
+    assert "sizes.nodeH" in r, r
+
+
 def c_backtick_title(b, S0, engine):
     """A6 in the browser: the skeleton fixture's sk-file-4 is titled with a backtick span. Its face shows a <code> element INSIDE the
     3-line clamp (the span is in view and the title has no backtick character), at the title's size, and the breadcrumb shows a span in an ancestor's title the same way."""
@@ -2034,6 +2092,8 @@ def main():
                 run("v3: the live map passes createGraph no layout and no frameMin (zoom is {fitMin: 1}); main's options", c_v3_options_live, eng)
                 run("v3: the skeleton passes layout column and zoom {fitMin: 1, frameMin: 1}; the engine gets the reduction's links only", c_v3_options_skeleton, eng)
                 run("v3: a bad sibling_layout or open_scale_floor is the fallback; a floor above the engine's cap throws a TypeError at start and is the fallback too", c_v3_refusals, eng)
+                run("98 r4: a floor below zoom.min or above the open cap is the fallback with bad-scale-floor recorded (the engine's rule, named); a floor of 1 boots", c_v3_floor_named, eng)
+                run("98 r4: a valid floor beside another bad option is the engine's plain start failure, not bad-scale-floor", c_v3_floor_valid_other_bad, eng)
                 run("module: A6 a backtick span in a title is a code element on the face (inside the clamp) and in the breadcrumb, no backtick shown", c_backtick_title, eng)
                 run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
                 run("module: P6/F1 part, group and file told by bar position over s-none and s-census; swatches match; the selection ring gap is 3 px", c_look_override, eng)
