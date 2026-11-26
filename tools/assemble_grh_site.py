@@ -9,7 +9,7 @@ and a page made by `build_site._graph_page`, the tree below, FLAT (the page load
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
 build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A19 (A7b and A11b included), one self-test case each (A7b is four, A19 two), and the
-mutation controls M-a to M-l, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
+mutation controls M-a to M-m, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
@@ -664,13 +664,14 @@ MUTATION_EDITS = {
             '    manifest = _manifest_bytes({k: v for k, v in files.items() if k != "index.html"}, {"notes": pin}, {"steps": len(steps)}, None, None)\n'),
     "M-e": ('    manifest = _manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)\n',
             '    manifest = (_dump(dict(json.loads(_manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)), release_id=None)) + "\\n").encode("utf-8")\n'),
-    "M-f": ('names = sorted(os.listdir(path))', 'names = sorted(os.listdir(path), key=lambda x: os.lstat(os.path.join(path, x)).st_mtime)'),
+    "M-f": ('names = sorted(os.listdir(path))', 'names = sorted(os.listdir(path), key=lambda x: bs.os.lstat(os.path.join(path, x)).st_mtime)'),   # `bs.os`: A16's allowlist refuses `os.lstat` in the tool, and M-f is about the ORDER, not about A16
     "M-g": ('    elif os.path.isdir(out) and os.listdir(out):\n', '    elif False:\n'),
     "M-h": ('"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)', '"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=())'),
     "M-i": ('    shell_bytes = raws["shell"]\n', '    shell_bytes = _graph_src_shell if _graph_src_shell is not None else raws["shell"]\n'),
     "M-j": ('**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows)))}', '**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows) + 1))}'),
     "M-k": ('static_problems(page, "") + graph_element_problems(page) + head_meta_problems(page)', 'static_problems(page, "") + [] + head_meta_problems(page)'),
     "M-l": ('    lines = ["ASM-STATIC " + " ".join(e[1:]) for e in _graph_static_problems(json_files)]', '    lines = []'),
+    "M-m": ('    lines += _ref_problems(page, names)', '    lines += []'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
 
@@ -1234,13 +1235,11 @@ def _selftest_cases():
                 return good, why
         with _tmp() as d:   # the pin stage hides the static stage: a bad pin AND a static-check token in a data file, only the pin line is printed
             w = _world(d, big=True)
-            bad_step = _step_names(w["files"])[3]
-            _write_tree(w["data"], {bad_step: _recommit(w["files"][bad_step], BAD_PIN), "spine.json": with_token(w["files"]["spine.json"])})
-            good, why = _refused(w, _argv(w), [f"ASM-PIN {bad_step} {BAD_PIN}"], "a bad pin hides the static token of the data files")
-            if not good:
-                return good, why
-            _write_tree(w["data"], {bad_step: w["files"][bad_step]})   # fixture control: with the pin right, the token IS refused (by the stage that comes after)
-            good, why = _refused(w, _argv(w), ["ASM-STATIC fetch( found in graph/spine.json"], "the planted token is a static refusal once the pin is right")
+            spine = with_token(w["files"]["spine.json"])
+            if not _graph_static_problems({"graph/spine.json": spine}):   # fixture control, on the builder's own function: the planted token IS a static refusal
+                raise _FixtureError("the builder's static check accepts the planted token")
+            _write_tree(w["data"], {"index.json": _recommit(w["files"]["index.json"], BAD_PIN), "spine.json": spine})   # (index.json, not a step file: M-a skips the step pins and must redden A3 only)
+            good, why = _refused(w, _argv(w), [f"ASM-PIN index.json {BAD_PIN}"], "a bad pin hides the static token of the data files")
             if not good:
                 return good, why
         _need_pr_c()
@@ -1292,7 +1291,8 @@ def _selftest_cases():
                 return False, f"lures with a valid pin: exit {rc}, stdout {lines!r}, canary created {os.path.exists(canary)}, stderr {err[-200:]!r}"
             tree = _read_tree(w["out"])[0]
             changed = sorted(k for k in set(base) | set(tree) if base.get(k) != tree.get(k))
-            ok, why = _eq((changed, tree[step], tree["index.html"].decode("utf-8")), (sorted([step, "index.html", "manifest.json"]), lured_step, _expected_page(w, lured_shell, lured_strings)))
+            ok, why = _eq((changed, tree[step], tree["index.html"].decode("utf-8").replace(' data-page-feedback="off"', "")),   # the section attribute is A7's and A8's business (M-h removes it)
+                          (sorted([step, "index.html", "manifest.json"]), lured_step, _expected_page(w, lured_shell, lured_strings).replace(' data-page-feedback="off"', "")))
             if not ok:
                 return ok, "lures with a valid pin, the tree against the same world without lures: " + why
         with open(TOOL, encoding="utf-8") as f:
