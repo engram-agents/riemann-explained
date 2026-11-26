@@ -14036,10 +14036,11 @@ def _selftest_cases():
                          "source": (1, ["BUILD-ERROR GRAPH-STRINGS note_label missing: note_source is present and the two words come together"], "REFUSED: nothing written\n", False),
                          "both": (0, [], None, True), "none": (0, [], None, True)})
 
-    @case("GRW3", "an OPTIONAL strings value (any key of GRAPH_OPTIONAL_KEYS, eleven) that is present must be a non-empty string, the page's own rule at load: None, a number or a list "
-                  "is `GRAPH-STRINGS <key> is not a string`, `\"\"` is `GRAPH-STRINGS <key> is empty`, one line per key, in `_graph_strings_errors`, after the missing and unread lines "
-                  "and before the pair lines; a whitespace-only value is ACCEPTED (the rule is the empty string only, not blank text); an empty word beside the other word is a complete "
-                  "pair by key (the empty-value line only), both empty is two empty-value lines and no pair line; a REQUIRED key's value is not checked (unchanged); and the notes rule "
+    @case("GRW3", "every value of a key of index.json `strings`, required or optional (GRAPH_OPTIONAL_KEYS is eleven keys), is a string and, but for whitespace, not empty: the page's "
+                  "own rule at load. None, a number or a list is `GRAPH-STRINGS <key> is not a string`, `\"\"` is `GRAPH-STRINGS <key> is empty`, one line per key, sorted by key, in "
+                  "`_graph_strings_errors`, after the missing and unread lines and before the pair lines (a key that is absent is `missing`, never `empty`); a whitespace-only value is "
+                  "ACCEPTED, for a required and for an optional key (the page tests `=== \"\"`, never a trimmed value); an empty word beside the other word is a complete "
+                  "pair by key (the empty-value line only), both empty is two empty-value lines and no pair line; and the notes rule "
                   "does not fire on `step_extra` or `index_extra` (no notes, no pair: no error), while notes with no pair name both words whether or not an extra is given")
     def _():
         rows = [gr_row("a"), gr_row("b", "a", 1)]
@@ -14058,7 +14059,9 @@ def _selftest_cases():
                     e(**dict(both, note_label=" ", note_source="\t")), e(**dict(both, key_kinds_note=" ")),
                     e(note_label="", note_source=""), e(note_label=""), e(note_source=""),
                     _graph_strings_errors(dict(req, bogus="x", note_label="", note_source="S")), _graph_strings_errors({k: v for k, v in dict(req, note_label="").items() if k != first_req}),
-                    e(**{first_req: ""}), e(**{first_req: None}), e(**dict(both, note_label_typeset="", key_lines_text=3)),
+                    e(parts_n=""), e(parts_n=None), e(parts_n=["x"]), e(parts_n=" "), e(parts_n=7), e(**dict(both, note_label=None, parts_n="")),
+                    _graph_strings_errors({k: v for k, v in dict(req, **both).items() if k != "parts_n"}),
+                    e(**dict(both, note_label_typeset="", key_lines_text=3)),
                     files(both, step_extra={"b": {"k": 1}}), files({}, step_extra={"b": {"k": 1}}), files({}, index_extra={"k": 1}),
                     files({}, step_extra={"b": {"k": 1}}, notes=notes), files({}, index_extra={"k": 1}, notes=notes), files(dict(both, note_label=""), notes=notes),
                     files(dict(both, note_source=None)), files(both, notes=notes)[0]),
@@ -14069,7 +14072,9 @@ def _selftest_cases():
                     emp("note_source") + [("GRAPH-STRINGS", "note_label", "missing: note_source is present and the two words come together")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")] + emp("note_label"),
                     [("GRAPH-STRINGS", first_req, "missing")] + emp("note_label") + [("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")],
-                    [], [], emp("note_label_typeset") + isn("key_lines_text"),
+                    emp("parts_n"), isn("parts_n"), isn("parts_n"), [], isn("parts_n"), isn("note_label") + emp("parts_n"),
+                    [("GRAPH-STRINGS", "parts_n", "missing")],
+                    emp("note_label_typeset") + isn("key_lines_text"),
                     ([], False), ([], False), ([], False),
                     (need, True), (need, True), (emp("note_label"), True),
                     (isn("note_source"), True), []))

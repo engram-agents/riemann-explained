@@ -1947,9 +1947,9 @@ def _selftest_cases():
                          "source": (1, ["GRAPH-STRINGS note_label missing: note_source is present and the two words come together"], "REFUSED: nothing written\n", False),
                          "both": (0, [], "", True)})
 
-    @case("SKW2", "an OPTIONAL strings value that is empty or not a string is refused by name through the CLI of this tool, nothing written (exit 1, no output directory): an overlay "
+    @case("SKW2", "a strings value, of an optional or a required key, that is empty or not a string is refused by name through the CLI of this tool, nothing written (exit 1, no output directory): an overlay "
                   "with note_label `\"\"` is `GRAPH-STRINGS note_label is empty`, with note_label null `GRAPH-STRINGS note_label is not a string`, with both words empty two empty lines "
-                  "(and no pair line); the same rule as the builder's, since the check is the builder's")
+                  "(and no pair line), with the required card_kind_file empty or null the same line for that key, and whitespace-only accepted for it; the same rule as the builder's, since the check is the builder's")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
         src = "S {source} {commit}"
@@ -1959,7 +1959,9 @@ def _selftest_cases():
             ol = _outline_file(d)
             res = {}
             for i, (name, w) in enumerate((("empty", {"note_label": "", "note_source": src}), ("null", {"note_label": None, "note_source": src}),
-                                           ("both", {"note_label": "", "note_source": ""}), ("blank", {"note_label": " ", "note_source": src}))):
+                                           ("both", {"note_label": "", "note_source": ""}), ("blank", {"note_label": " ", "note_source": src}),
+                                           ("req_empty", {"note_label": "L", "note_source": src, "card_kind_file": ""}), ("req_null", {"note_label": "L", "note_source": src, "card_kind_file": None}),
+                                           ("req_blank", {"note_label": "L", "note_source": src, "card_kind_file": " "}))):
                 path = os.path.join(d, f"ov{i}.json")
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(w, f)
@@ -1968,7 +1970,9 @@ def _selftest_cases():
                 res[name] = (rc, [ln for ln in so.splitlines() if ln.startswith("GRAPH-STRINGS")], se if rc else None, os.path.exists(out))
         refused = "REFUSED: nothing written\n"
         return _eq(res, {"empty": (1, ["GRAPH-STRINGS note_label is empty"], refused, False), "null": (1, ["GRAPH-STRINGS note_label is not a string"], refused, False),
-                         "both": (1, ["GRAPH-STRINGS note_label is empty", "GRAPH-STRINGS note_source is empty"], refused, False), "blank": (0, [], None, True)})
+                         "both": (1, ["GRAPH-STRINGS note_label is empty", "GRAPH-STRINGS note_source is empty"], refused, False), "blank": (0, [], None, True),
+                         "req_empty": (1, ["GRAPH-STRINGS card_kind_file is empty"], refused, False), "req_null": (1, ["GRAPH-STRINGS card_kind_file is not a string"], refused, False),
+                         "req_blank": (0, [], None, True)})
 
     @case("U1", "a file's used set and its weights are what its .ilean says: references with usages to another New module count, the weight is the number of DISTINCT names of "
                 "that module (two names count two; two usage records of one name count once); a reference with no usage (a definition only, or an empty list), a reference "
