@@ -51,9 +51,20 @@ SKELETON_WORDS = {
     "count_group_one": "{n} group", "count_group_many": "{n} groups", "count_file_one": "{n} file", "count_file_many": "{n} files",
     "key_kinds_heading": "What a box is",
     "key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+    # PR 98 round 2 (data v3, edge basis): the key's first paragraph and the section that says what a line is. The words are the Lean map's
+    # own, copied by hand as literals (never read from a host path at run time).
+    "key_scope_text": ("The map holds the 306 Lean files of the proof's own argument (the folder New). Two short files at the top of the repository are not on it. "
+                       "In the repository's words (grh/README.md): \"`src/Statements.lean` states the theorems in Mathlib's terms. `src/Main.lean` proves five theorems\", "
+                       "the Riemann Hypothesis among them, each in a line or two from results on this map or from one another. "
+                       "(The map's file named Main is New/Main.lean, a different file.) The map also leaves out the repository's own 495 library files (the folder Lib) and Mathlib. "
+                       "A file's uses of those are not drawn."),
+    "key_lines_heading": "What a line is",
+    "key_lines_text": ("A line joins two files of the same group: the upper file uses definitions or results from the lower one. "
+                       "Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. "
+                       "Lean also uses results it fills in on its own without naming them; those uses are not counted."),
 }
 SKELETON_STRINGS = {k: v for k, v in STRINGS.items() if not k.startswith("key_kind_") or k == "key_kinds_heading"}
-SKELETON_STRINGS.update(SKELETON_WORDS)   # 11 fixed + 3 kind labels + 3 card words + 4 count words + 3 states + 3 proofs = 27, plus the optional key_kinds_note
+SKELETON_STRINGS.update(SKELETON_WORDS)   # 11 fixed + 3 kind labels + 3 card words + 4 count words + 3 states + 3 proofs = 27, plus the optional key_kinds_note and key_scope_text, and the edge-basis pair key_lines_heading and key_lines_text
 
 
 def _rows(table, strings=STRINGS, card_words=None, count_words=None):
@@ -212,7 +223,8 @@ def build_skeleton():
     top = [i for i in ids if parent[i] is None]
     index = {"format": 1, "commit": COMMIT, "max_children": 40, "top": top, "rests_on": [], "steps": len(ids),
              "symbols": SYMBOLS_SKELETON, "assets": {}, "strings": SKELETON_STRINGS,
-             "sibling_layout": "column", "open_scale_floor": 1}      # data v3 (sections 15 and 24): both optional, both absent on the live map
+             "sibling_layout": "column", "open_scale_floor": 1,      # data v3 (sections 15 and 24): both optional, both absent on the live map
+             "edge_basis": {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}}   # data v3 (section 25): `words` names the strings key the key's line paragraph prints
     return index, steps, kids, title
 
 

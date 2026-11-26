@@ -382,8 +382,9 @@ test("P2/A2/F2 skeleton: the strings set is EXACTLY the fixed list, the words of
   const need = requiredStrings(v.symbols);
   assert.equal(need.length, 27);
   assert.deepEqual([...need].sort(), [...FIXED_STRINGS, ...rows, ...cards, ...counts].sort());
-  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note"]);
-  assert.deepEqual(Object.keys(idx.strings).sort(), [...need, "key_kinds_note"].sort());
+  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note", "key_scope_text"]);
+  /* the edge basis (PR 98 round 2): key_lines_heading and the strings key edge_basis.words (key_lines_text) are read because edge_basis is present */
+  assert.deepEqual(Object.keys(idx.strings).sort(), [...need, "key_kinds_note", "key_scope_text", "key_lines_heading", "key_lines_text"].sort());
   const extra = clone(idx);
   extra.strings.bonus = "x";
   assert.throws(() => validateIndex(extra), (e) => e instanceof DataError && e.code === "extra-string");

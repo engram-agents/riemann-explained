@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { createData, DataError, validateIndex, validateStep } from "../data.js";
+import { createData, DataError, validateIndex, validateStep, OPTIONAL_STRINGS } from "../data.js";
 
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const read = (dir, ...p) => JSON.parse(readFileSync(path.join(FIX, dir, ...p), "utf8"));
@@ -210,14 +210,125 @@ test("D4 the rows are carried, never drawn: the node handed to the engine has no
 
 /* ---------------------------------------------------------------------------------------------- what stays refused */
 
-test("not in this PR: note on a step, edge_basis on the index and the note strings stay refused (extra-key)", () => {
+test("not in this PR: note on a step stays refused (extra-key); spine_lines_text stays refused (extra-string), with or without edge_basis", () => {
   const v = validateIndex(skIndex());
   const s = skStep("sk-file-1");
   s.note = "a note";
   refuses(() => validateStep(s, v), "extra-key");
   const b = skIndex();
-  b.edge_basis = "key_lines_text";
-  refuses(() => validateIndex(b), "extra-key");
+  b.strings.spine_lines_text = "A line means the upper result rests on the lower one.";
+  refuses(() => validateIndex(b), "extra-string", "spine_lines_text");
+  const c = skIndex();
+  delete c.edge_basis;
+  delete c.strings.key_lines_heading;
+  delete c.strings.key_lines_text;
+  c.strings.spine_lines_text = "x";
+  refuses(() => validateIndex(c), "extra-string", "spine_lines_text");
+});
+
+/* ---------------------------------------------------------------------------------- PR 98 round 2: E1, E2, E3, K1, S1 */
+
+const BASIS = "names-written-in-source-from-compiled-index";
+
+test("E1 the skeleton's edge_basis validates and the record carries {basis, words}; the live map's record has no such key", () => {
+  const v = validateIndex(skIndex());
+  assert.deepEqual(v.edgeBasis, { basis: BASIS, words: "key_lines_text" });
+  assert.ok(!("edgeBasis" in validateIndex(realIndex())));
+});
+
+test("E1 a basis value other than the one this page knows is bad-edge-basis and the reason names it", () => {
+  for (const bad of ["names-written-in-source", "", "Names-Written-In-Source-From-Compiled-Index", 7, null]) {
+    const idx = skIndex();
+    idx.edge_basis.basis = bad;
+    refuses(() => validateIndex(idx), "bad-edge-basis", typeof bad === "string" && bad !== "" ? bad : "basis");
+  }
+});
+
+test("E1 words must be a non-empty string naming a key PRESENT in strings (else bad-edge-basis)", () => {
+  for (const bad of ["no_such_key", "", 7, null, ["key_lines_text"]]) {
+    const idx = skIndex();
+    idx.edge_basis.words = bad;
+    refuses(() => validateIndex(idx), "bad-edge-basis");
+  }
+});
+
+test("E1 any other shape of edge_basis is bad-edge-basis: null, a string, a list, a number, an extra key, a missing key, an empty object", () => {
+  const shapes = [null, "key_lines_text", ["a"], 7, true, { basis: BASIS, words: "key_lines_text", more: 1 }, { basis: BASIS }, { words: "key_lines_text" }, {}];
+  for (const bad of shapes) {
+    const idx = skIndex();
+    idx.edge_basis = bad;
+    refuses(() => validateIndex(idx), "bad-edge-basis");
+  }
+});
+
+test("E2 with edge_basis, key_lines_heading is REQUIRED: absent is missing-string, empty is empty-string", () => {
+  const a = skIndex();
+  delete a.strings.key_lines_heading;
+  refuses(() => validateIndex(a), "missing-string", "key_lines_heading");
+  const e = skIndex();
+  e.strings.key_lines_heading = "";
+  refuses(() => validateIndex(e), "empty-string", "key_lines_heading");
+});
+
+test("E2 with edge_basis, the strings key it names is REQUIRED non-empty (empty is empty-string); an absent one is bad-edge-basis (E1)", () => {
+  const e = skIndex();
+  e.strings.key_lines_text = "";
+  refuses(() => validateIndex(e), "empty-string", "key_lines_text");
+  const a = skIndex();
+  delete a.strings.key_lines_text;
+  refuses(() => validateIndex(a), "bad-edge-basis");
+});
+
+test("E2 without edge_basis, key_lines_heading and key_lines_text are not read: each present is extra-string", () => {
+  const base = () => { const i = skIndex(); delete i.edge_basis; return i; };
+  const both = base();
+  refuses(() => validateIndex(both), "extra-string");
+  const onlyHeading = base();
+  delete onlyHeading.strings.key_lines_text;
+  refuses(() => validateIndex(onlyHeading), "extra-string", "key_lines_heading");
+  const onlyText = base();
+  delete onlyText.strings.key_lines_heading;
+  refuses(() => validateIndex(onlyText), "extra-string", "key_lines_text");
+  const none = base();
+  delete none.strings.key_lines_heading;
+  delete none.strings.key_lines_text;
+  validateIndex(none);
+  for (const k of ["key_lines_heading", "key_lines_text"]) assert.ok(!OPTIONAL_STRINGS.includes(k), k + " is never unconditionally optional");
+});
+
+test("E2 the set follows edge_basis.words: words naming another key reads THAT key, and key_lines_text is then not read (extra-string)", () => {
+  const idx = skIndex();
+  idx.strings.test_words = "A test paragraph";
+  idx.edge_basis.words = "test_words";
+  refuses(() => validateIndex(idx), "extra-string", "key_lines_text");
+  delete idx.strings.key_lines_text;
+  const v = validateIndex(idx);
+  assert.equal(v.edgeBasis.words, "test_words");
+});
+
+test("K1 key_scope_text is an OPTIONAL strings key: in OPTIONAL_STRINGS, accepted absent, accepted present on the live map, empty is empty-string", () => {
+  assert.ok(OPTIONAL_STRINGS.includes("key_scope_text"));
+  const a = skIndex();
+  delete a.strings.key_scope_text;
+  validateIndex(a);
+  const e = skIndex();
+  e.strings.key_scope_text = "";
+  refuses(() => validateIndex(e), "empty-string", "key_scope_text");
+  const live = realIndex();
+  live.strings.key_scope_text = "A scope paragraph";
+  validateIndex(live);
+});
+
+test("S1 error order on a link: an unknown key beside a bad flag is extra-key; one flag with a non-integer weight is bad-link-flags", () => {
+  const both = skStep("sk-group-a");
+  both.rests_on[0].bogus = 1;
+  both.rests_on[0].weight = 1.5;
+  both.rests_on[0].in_reduction = "yes";
+  refuses(() => validateStep(both, validateIndex(skIndex())), "extra-key");
+  const one = skStep("sk-group-a");
+  delete one.rests_on[0].in_reduction;
+  one.rests_on[0].weight = 1.5;
+  refuses(() => validateStep(one, validateIndex(skIndex())), "bad-link-flags");
 });
 
 test("the v3 keys do not leak into the live map's record: its index and step records carry exactly the keys they carried", () => {

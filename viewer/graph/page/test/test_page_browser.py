@@ -954,17 +954,111 @@ def c_skeleton_map(b, S0, engine):
         heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")
         rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
         sw = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li .swatch')].map(e => e.className)")
-        assert heads == ["What a box is"], heads
+        assert heads == ["What a box is", "What a line is"], heads          # PR 98 round 2: the edge basis adds the key's last section
         assert rows == ["Part of the argument", "Group of files", "Lean file"], rows
         assert sw == ["swatch k-part", "swatch k-group", "swatch k-file"], sw
-        # F3: the optional note is ONE plain line directly under the kind rows
-        note = pg.ev("""(() => { const c = document.querySelector('#graph-sheet-body .key-content'), p = [...c.querySelectorAll('p')];
+        # F3: the optional note is ONE plain line directly under the kind rows (the key now also holds the scope paragraph and the line paragraph)
+        note = pg.ev("""(() => { const c = document.querySelector('#graph-sheet-body .key-content'), p = [...c.querySelectorAll('p.key-note')];
           return { n: p.length, text: p[0] && p[0].textContent, prev: p[0] && p[0].previousElementSibling.tagName, items: c.querySelectorAll('li').length }; })()""")
         assert note == {"n": 1, "text": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "prev": "UL", "items": 3}, note
         pg.csp_clean()
         pg.close()
     finally:
         S.stop()
+
+
+KEY_CHILDREN_JS = """(() => { const c = document.querySelector('#graph-sheet-body .key-content');
+  return { kids: [...c.children].map(e => ({ tag: e.tagName, cls: e.className, text: e.textContent, nodes: [...e.childNodes].map(n => n.nodeType) })),
+           bad: document.querySelectorAll('#graph-sheet-body img, #graph-sheet-body [onerror], #graph-sheet-body code').length,
+           scripts: document.querySelectorAll('script').length }; })()"""
+
+# The live map's key, as the base page (before the edge basis and key_scope_text) drew it, captured from a run on that head: both engines.
+LIVE_KEY_HTML = ('<div class="key-content"><h2>Colour and shape: what Lean declares</h2><ul><li><span class="swatch k-theorem"></span><span>Theorem: a result the Lean code proves</span></li>'
+                 '<li><span class="swatch k-def"></span><span>Definition: a named object or statement</span></li><li><span class="swatch k-structure"></span><span>Structure: a bundle of named fields</span></li></ul>'
+                 '<h2>Frame: what we have read</h2><ul><li><span class="swatch k-theorem s-read"></span><span>Statement read</span></li>'
+                 '<li><span class="swatch k-theorem s-census"></span><span>Statement counted by a program</span></li>'
+                 '<li><span class="swatch k-theorem s-none"></span><span>Statement not read</span></li></ul></div>')
+
+
+def key_of(b, engine, fix, edit=None):
+    """Opens the Key sheet on a fixture (optionally edited) and returns the key's children, as {tag, cls, text, nodes} rows."""
+    root = tempfile.mkdtemp(prefix="pg-key98-")
+    assemble.assemble(root, engine, fix=fix, index_edit=edit)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        got = pg.ev(KEY_CHILDREN_JS)
+        html = pg.ev("document.querySelector('#graph-sheet-body .key-content').outerHTML")
+        pg.csp_clean()
+        pg.close()
+        return got, html
+    finally:
+        S.stop()
+
+
+def skeleton_words():
+    return json.load(open(os.path.join(assemble.HERE, "fixtures", "skeleton", "index.json"), encoding="utf-8"))["strings"]
+
+
+def c_key_edge_basis(b, S0, engine):
+    """E3, K1 on the skeleton: the key's FIRST child is the scope paragraph (class key-scope, one text node, backticks kept as characters), and
+    AFTER everything it shows today comes an h2 with key_lines_heading and one p with the strings key edge_basis.words names, one text node each."""
+    w = skeleton_words()
+    got, _ = key_of(b, engine, "skeleton")
+    kids = got["kids"]
+    assert [k["tag"] for k in kids] == ["P", "H2", "UL", "P", "H2", "P"], [k["tag"] for k in kids]
+    assert kids[0]["cls"] == "key-scope" and kids[0]["text"] == w["key_scope_text"] and kids[0]["nodes"] == [3], kids[0]
+    assert "`src/Statements.lean`" in kids[0]["text"], "the backticks stay characters"
+    assert kids[3]["cls"] == "key-note", kids[3]
+    assert kids[4]["text"] == w["key_lines_heading"] == "What a line is" and kids[4]["nodes"] == [3], kids[4]
+    assert kids[5]["text"] == w["key_lines_text"] and kids[5]["nodes"] == [3], kids[5]
+    assert got["bad"] == 0, "no code element, image or handler in the key"
+    # the page prints strings[words], never a key it names itself: words names ANOTHER key here, and key_lines_text is gone
+    def other(i):
+        i["strings"]["test_words"] = "The words of a test key"
+        del i["strings"]["key_lines_text"]
+        i["edge_basis"]["words"] = "test_words"
+    got2, _ = key_of(b, engine, "skeleton", other)
+    assert got2["kids"][-1]["tag"] == "P" and got2["kids"][-1]["text"] == "The words of a test key", got2["kids"][-1]
+
+
+def c_key_absent_keys(b, S0, engine):
+    """No edge_basis, no key_scope_text, no key_lines_*: nothing is drawn for them (the key is the kinds section and the optional note only)."""
+    def edit(i):
+        del i["edge_basis"]
+        for k in ("key_scope_text", "key_lines_heading", "key_lines_text"):
+            del i["strings"][k]
+    got, _ = key_of(b, engine, "skeleton", edit)
+    assert [k["tag"] for k in got["kids"]] == ["H2", "UL", "P"], got["kids"]
+    assert [k["cls"] for k in got["kids"]] == ["", "", "key-note"], got["kids"]
+    # key_scope_text alone (no edge_basis): the scope paragraph only, first
+    def scope_only(i):
+        del i["edge_basis"]
+        del i["strings"]["key_lines_heading"]
+        del i["strings"]["key_lines_text"]
+    got2, _ = key_of(b, engine, "skeleton", scope_only)
+    assert [k["tag"] for k in got2["kids"]] == ["P", "H2", "UL", "P"] and got2["kids"][0]["cls"] == "key-scope", got2["kids"]
+
+
+def c_key_live_unchanged(b, S0, engine):
+    """The live map carries none of the new keys: its key's DOM is byte-identical to the base head's (the literal above)."""
+    _got, html = key_of(b, engine, None)
+    assert html == LIVE_KEY_HTML, html
+
+
+def c_key_hostile(b, S0, engine):
+    """key_scope_text and the words value hold markup: both are text in the key, never elements."""
+    payload = "<img src=x onerror=1>"
+    def edit(i):
+        i["strings"]["key_scope_text"] = payload
+        i["strings"]["key_lines_text"] = payload
+    got, _ = key_of(b, engine, "skeleton", edit)
+    kids = got["kids"]
+    assert kids[0]["text"] == payload and kids[0]["nodes"] == [3], kids[0]
+    assert kids[-1]["text"] == payload and kids[-1]["nodes"] == [3], kids[-1]
+    assert got["bad"] == 0 and got["scripts"] == 1, got
 
 
 def options_seen(pg):
@@ -1918,6 +2012,10 @@ def main():
                 run("module: P4 the live map's key rows are unchanged", c_key_real_rows, eng)
                 run("module: F1/F2/F4 controls on the live map: ring gap, the parts foot, the breadcrumb with the open card", c_live_controls, eng)
                 run("module: P1/P5/P7 the skeleton map (face classes, the card word as the one sheet line, the key has three kind rows and no states section)", c_skeleton_map, eng)
+                run("98: the key's first child is the scope paragraph and its last section is the edge basis's line paragraph (text nodes; the page prints strings[words])", c_key_edge_basis, eng)
+                run("98: without edge_basis and key_scope_text nothing is drawn for them", c_key_absent_keys, eng)
+                run("98: the live map's key DOM is byte-identical to the base head's", c_key_live_unchanged, eng)
+                run("98: hostile key_scope_text and words value are text in the key", c_key_hostile, eng)
                 run("v3: the live map passes createGraph no layout and no frameMin (zoom is {fitMin: 1}); main's options", c_v3_options_live, eng)
                 run("v3: the skeleton passes layout column and zoom {fitMin: 1, frameMin: 1}; the engine gets the reduction's links only", c_v3_options_skeleton, eng)
                 run("v3: a bad sibling_layout or open_scale_floor is the fallback; a floor above the engine's cap throws a TypeError at start and is the fallback too", c_v3_refusals, eng)
