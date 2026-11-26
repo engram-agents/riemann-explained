@@ -7,7 +7,7 @@ locally with the graph page's Content-Security-Policy header (spec R8):
 Run:  ~/.engram/venv/bin/python3 viewer/graph/page/test/test_page_browser.py [--engine double|real|both] [--only TEXT]
 Browser: by default the bundled headless shell under ~/.cache/ms-playwright (as before). If the environment variable
 RH_PLAYWRIGHT_CHANNEL is set to a Playwright channel name (for example `chrome`), the browser of that channel installed on the
-machine is launched instead and the headless shell is not looked for. `--check-browser-choice` runs the choice's own three checks.
+machine is launched instead and the headless shell is not looked for. `--check-browser-choice` runs the choice's own five checks.
 
 Every case runs on the ENGINE TEST DOUBLE (test/double_engine.js, written to INTERFACE.md); cases marked REAL also run on
 the real engine (viewer/graph/engine/), which is where pinch, camera and layout are decided. Exit 0 only if every
@@ -37,10 +37,12 @@ def browser_launch(env, shell):
 
 
 def check_browser_choice():
-    shell = ["/x/chrome-headless-shell"]
-    got = [browser_launch({}, shell), browser_launch({}, []), browser_launch({"RH_PLAYWRIGHT_CHANNEL": ""}, shell), browser_launch({"RH_PLAYWRIGHT_CHANNEL": "chrome"}, [])]
-    want = [{"executable_path": "/x/chrome-headless-shell", "args": ["--no-sandbox"]}, None, {"executable_path": "/x/chrome-headless-shell", "args": ["--no-sandbox"]},
-            {"channel": "chrome", "args": ["--no-sandbox"]}]
+    shell = ["/x/first-headless-shell", "/x/second-headless-shell"]
+    first = {"executable_path": "/x/first-headless-shell", "args": ["--no-sandbox"]}
+    chrome = {"channel": "chrome", "args": ["--no-sandbox"]}
+    got = [browser_launch({}, shell), browser_launch({}, []), browser_launch({"RH_PLAYWRIGHT_CHANNEL": ""}, shell), browser_launch({"RH_PLAYWRIGHT_CHANNEL": "chrome"}, []),
+           browser_launch({"RH_PLAYWRIGHT_CHANNEL": "chrome"}, shell)]
+    want = [first, None, first, chrome, chrome]
     print("browser choice: " + ("PASS" if got == want else "FAIL " + repr(got)))
     return 0 if got == want else 1
 
