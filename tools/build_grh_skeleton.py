@@ -971,14 +971,30 @@ _READING_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
 
 
 def _esc(text):
-    """`text` with every character that is not printable (str.isprintable() False: a newline, ESC, NUL, U+2028, a bidi control, ...) written as \\xNN, \\uNNNN or \\UNNNNNNNN (lower-case hex); a backslash and
-    every printable character stay as they are. The one function every printed file name and detail of a `SKEL-READING-*` line goes through."""
-    return "".join(c if c.isprintable() else (f"\\x{ord(c):02x}" if ord(c) < 0x100 else f"\\u{ord(c):04x}" if ord(c) < 0x10000 else f"\\U{ord(c):08x}") for c in text)
+    """`text` with every character that is not printable (str.isprintable() False: a newline, ESC, NUL, U+2028, a bidi control, ...) written as \\xNN (below U+0080), \\uNNNN or \\UNNNNNNNN (lower-case
+    hex), a backslash doubled, and a lone surrogate U+DC80..U+DCFF (a byte of a file name that is not UTF-8, kept by `os.fsdecode`) written as \\xNN of that byte. The map is injective (a real newline is
+    `\\x0a`, the four characters backslash x 0 a are `\\\\x0a`; the byte 0x85 is `\\x85`, the character U+0085 is `\\u0085`), so it is applied EXACTLY ONCE, by `_readings`, over every refusal."""
+    out = []
+    for c in text:
+        o = ord(c)
+        if c == "\\":
+            out.append("\\\\")
+        elif 0xDC80 <= o <= 0xDCFF:
+            out.append(f"\\x{o - 0xDC00:02x}")
+        elif c.isprintable():
+            out.append(c)
+        elif o < 0x80:
+            out.append(f"\\x{o:02x}")
+        elif o < 0x10000:
+            out.append(f"\\u{o:04x}")
+        else:
+            out.append(f"\\U{o:08x}")
+    return "".join(out)
 
 
 def _shown(name):
-    """A file name as it is printed: its bytes as UTF-8, a byte that is not UTF-8 written as an escape (a print never fails on a name), then `_esc`."""
-    return _esc(os.fsencode(name).decode("utf-8", "backslashreplace"))
+    """A file name as text, NOT escaped (`_readings` escapes every refusal once): a byte that is not UTF-8 stays a lone surrogate."""
+    return os.fsencode(name).decode("utf-8", "surrogateescape")
 
 
 def _reading_value(key, value):
@@ -1117,6 +1133,8 @@ def _readings_checked(notes_dir, pin, rows, ilean_dir):
             errors.append(("SKEL-READING-TITLE", shown, "backtick"))
         elif "title" in f and f["title"] == "":
             errors.append(("SKEL-READING-TITLE", shown, "empty"))
+        elif "title" in f and not f["title"].isprintable():
+            errors.append(("SKEL-READING-TITLE", shown, "not-printable"))
         if len(f.get("title", "")) > READINGS_TITLE_MAX:
             errors.append(("SKEL-READING-SIZE", shown, "title too-long"))
         if "date" in f:
@@ -1130,6 +1148,8 @@ def _readings_checked(notes_dir, pin, rows, ilean_dir):
         for k in ("by", "second_read_by"):
             if k in f and f[k] == "":
                 errors.append(("SKEL-READING-BY", shown, f"{k} is empty"))
+            elif k in f and not f[k].isprintable():
+                errors.append(("SKEL-READING-BY", shown, f"{k} not-printable"))
         errors += [("SKEL-READING-SIZE", shown, f"{k} too-long") for k in ("by", "second_read_by") if len(f.get(k, "")) > READINGS_BY_MAX]
         if f.get("by") and f.get("by") == f.get("second_read_by"):
             errors.append(("SKEL-READING-BY", shown, "by and second_read_by are the same"))
@@ -3786,7 +3806,7 @@ def _selftest_cases():
                 fh.write(text)
 
     @case("RD9", "contributed notes, control characters in refusal lines: every file name and every detail printed in a `SKEL-READING-<kind>` line is escaped (a character that is not printable becomes \\xNN, "
-                 "\\uNNNN or \\UNNNNNNNN, lower-case hex; a backslash and every printable character stay), one function for the file name, the detail and the bytes-that-are-not-UTF-8 path, so each refusal is "
+                 "\\uNNNN or \\UNNNNNNNN, lower-case hex; a backslash is doubled and every printable character stays), one function for the file name, the detail and the bytes-that-are-not-UTF-8 path, so each refusal is "
                  "exactly ONE stdout line with no raw control character: a file name holding a newline and a forged `SKEL-READING-...` line, a name with ESC, an `id`, a `date`, a `source_commit` "
                  "(with U+202E), an `about` name (ESC) and an `attaches` id (U+2028) each with a control character; a folder fault (`FILE`) on a name with a newline, U+2028 and a byte that is not UTF-8 (that one name is skipped where the file system refuses to create it, errno EILSEQ or EINVAL, as APFS does; RD16 tests the escape of it with no file)")
     def _():
