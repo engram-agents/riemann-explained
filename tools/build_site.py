@@ -634,7 +634,8 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure", "sheet_statement_read", "sheet_statement_census",
              "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none",
              "parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused", "parts_failed_notice",
-             "key_kinds_heading", "key_states_heading", "role_named_statement")
+             "key_kinds_heading", "key_states_heading", "role_named_statement",
+             "title", "sentence", "about_link", "tap_hint", "map", "list", "show_all", "key", "close", "fallback_sentence", "fallback_link")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -849,6 +850,16 @@ _MATHML_ATTRIBUTES = ("mathvariant", "stretchy", "form")
 ALLOWED_ELEMENTS = dict(_HTML_ELEMENTS, **{t: _MATHML_ATTRIBUTES for t in _MATHML_ELEMENTS})
 ALLOWED_ELEMENTS["mover"] = _MATHML_ATTRIBUTES + ("accent",)   # the overline of \\bar
 ALLOWED_ELEMENTS["mspace"] = _MATHML_ATTRIBUTES + ("width",)   # the one element that may carry a width: the spacing commands of a formula
+# G2b: what the graph page (graph/index.html) may hold BEYOND ALLOWED_ELEMENTS: exactly what the page layer's shell (viewer/graph/shell.html) needs, a pinned literal
+# (case GP7: 9 entries, 19 element-attribute pairs; nav, button, link and script are new elements, aside, div, header, p and section get more attributes). The list
+# page does not get it: element_problems(page) still uses ALLOWED_ELEMENTS alone. With it the graph page's list is 44 elements and 74 pairs (_graph_allowed).
+GRAPH_PAGE_EXTRA = {"aside": ("class", "hidden", "id", "role"), "button": ("class", "id", "type"), "div": ("hidden", "id"), "header": ("class",),
+                    "link": ("href", "rel"), "nav": ("class",), "p": ("hidden", "id", "role"), "script": ("src", "type"), "section": ("id",)}
+
+
+def _graph_allowed():
+    """ALLOWED_ELEMENTS with GRAPH_PAGE_EXTRA added: element -> attribute names, for the graph page."""
+    return {t: tuple(dict.fromkeys(ALLOWED_ELEMENTS.get(t, ()) + GRAPH_PAGE_EXTRA.get(t, ()))) for t in sorted({*ALLOWED_ELEMENTS, *GRAPH_PAGE_EXTRA})}
 
 
 # The elements html.parser reads as TEXT (raw text, RCDATA) wherever they stand, among the allowed ones: today `style` and `title`, taken from the
@@ -862,8 +873,8 @@ HIDING_ELEMENTS = frozenset(set(html.parser.HTMLParser.CDATA_CONTENT_ELEMENTS)
 _OPENING_RUN = frozenset({"html", "head", "meta"}) | HIDING_ELEMENTS
 
 
-def element_problems(page):
-    """What the BUILT page holds outside ALLOWED_ELEMENTS: a sorted list of `element <name>` for each start tag of an element not in the list,
+def element_problems(page, allowed=None):
+    """What the BUILT page holds outside ALLOWED_ELEMENTS (or outside `allowed`, an element -> attribute names table: the graph page passes _graph_allowed()): a sorted list of `element <name>` for each start tag of an element not in the list,
     `attribute <name> on <element>` for each attribute an allowed element may not carry, and `element <name> outside head` for an element of
     HIDING_ELEMENTS (style, title) after the opening run of the page. The BUILT page is read with html.parser, start tags and attribute NAMES; the
     one end tag looked at is `</head>`, which only CLOSES the opening run (it can add a refusal, never remove one). A `meta` is one of three
@@ -876,6 +887,7 @@ def element_problems(page):
     unterminated comment, CDATA section, start tag or style: it reports none of it, a browser still reads the tag behind it) is
     `unterminated markup`. It is a name check on the tags as html.parser sees them, not a
     browser-grade parse."""
+    allowed = ALLOWED_ELEMENTS if allowed is None else allowed
     found = set()
     run = [True]   # the page is still in its opening run
     seen = {"start": False, "decl": False}   # a start tag has been seen; a declaration has been seen
@@ -901,10 +913,10 @@ def element_problems(page):
                 found.add(f"element {tag} outside head")
             if tag not in _OPENING_RUN:
                 run[0] = False
-            if tag not in ALLOWED_ELEMENTS:
+            if tag not in allowed:
                 found.add("element " + tag)
             else:
-                found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in ALLOWED_ELEMENTS[tag])
+                found.update(f"attribute {k} on {tag}" for k, _v in attrs if k not in allowed[tag])
             if tag == "meta":
                 metas.append(tuple(attrs))
 
@@ -930,6 +942,11 @@ def element_problems(page):
     if "<" in parser.rawdata:   # what html.parser still holds back (an unterminated comment, CDATA, tag or style): it reports none of it
         found.add("unterminated markup")   # no close(): it would flush the held text and report it a second way
     return sorted(found)
+
+
+def graph_element_problems(page):
+    """element_problems of the graph page: the same check with the allow-list of ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA together."""
+    return element_problems(page, _graph_allowed())
 
 
 _HEAD_TAGS = (("viewport", META_VIEWPORT), ("robots", META_ROBOTS))   # fixed at load: the check does not follow a change of the two names above
@@ -2126,6 +2143,179 @@ def _graph_static_problems(files):
             for pb in static_problems("", files[rel].decode("utf-8"))]
 
 
+# ---- G2b: the graph page document, graph/index.html
+
+GRAPH_SHELL_KEYS = ("title", "sentence", "about_link", "tap_hint", "map", "list", "show_all", "key", "close", "fallback_sentence", "fallback_link")   # the `{{S:key}}` tokens of the shell
+assert set(GRAPH_SHELL_KEYS) <= set(TEXT_KEYS)
+_GRAPH_TOKEN = re.compile(r"\{\{(?:S:([A-Za-z0-9_]+)|(CARDS))\}\}")
+_GRAPH_VOID = frozenset(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"])
+_GRAPH_CARD_PARENTS = frozenset(["body", "div", "main", "section"])   # the elements whose content may be the cards markup
+_GRAPH_SENTINEL = "\ufdd0"   # stands for the cards markup while the string tokens are replaced, so a `{{` left in the rest is looked for before the markup is in
+
+
+def _graph_relative(v, fragment=False):
+    """True when the attribute value `v` is a relative path (with `fragment`, a #fragment too): after the characters a browser drops (tab, line breaks anywhere; control
+    characters and spaces at the ends) it is not empty, holds no control character and no backslash, is not root-relative or protocol-relative (a leading `/`), and has no
+    scheme (a `:` before the first `/`, `?` or `#`), so `https:`, `javascript:` and `data:` in any letter case are refused."""
+    if not isinstance(v, str):
+        return False
+    c = "".join(ch for ch in v if ch not in "\t\n\r").strip("".join(chr(i) for i in range(33)))
+    if not c or "\\" in c or any(ord(ch) < 32 or ord(ch) == 127 for ch in c):
+        return False
+    if c.startswith("#"):
+        return fragment
+    return not c.startswith("/") and ":" not in re.split(r"[/?#]", c, maxsplit=1)[0]
+
+
+class _ShellScan(html.parser.HTMLParser):
+    """Reads the shell once: the errors of its tags (scripts, links, anchors, event and style attributes, an inline style), whether it has a doctype and a charset
+    meta, and WHERE each text run, start tag and script or style content lies in the shell's text (absolute offsets), so a token is replaced only where it is element
+    content. Character references are not converted, so a text run is the shell's own text."""
+
+    def __init__(self, raw, assets):
+        super().__init__(convert_charrefs=False)
+        self.raw, self.assets = raw, assets
+        self.line_starts = [0] + [m.end() for m in re.finditer("\n", raw)]
+        self.errors, self.reported = [], set()
+        self.doctype = self.charset = self.started = False
+        self.stack, self.text, self.tags, self.hidden = [], [], [], []
+
+    def at(self):
+        line, col = self.getpos()
+        return self.line_starts[line - 1] + col
+
+    def add(self, where, msg):
+        if ("GRAPH-PAGE", where, msg) not in self.errors:
+            self.errors.append(("GRAPH-PAGE", where, msg))
+
+    def address(self, value, fragment):
+        if not _graph_relative(value, fragment):
+            self.add(value or "(empty)", "is not a relative path or #fragment" if fragment else "is not a relative address")
+        elif not fragment and value not in self.assets:
+            self.add(value, "is not an asset")
+
+    def handle_decl(self, decl):
+        if not self.started and decl.strip().lower() == "doctype html":
+            self.doctype = True
+
+    def handle_starttag(self, tag, attrs):
+        self.started = True
+        start = self.at()
+        self.tags.append((start, start + len(self.get_starttag_text() or "")))
+        d = {}
+        for k, v in attrs:
+            d.setdefault(k, v)
+            if k.startswith("on") or k == "style":
+                self.add(k, f"on {tag} is not allowed")
+                self.reported.add((k, tag))
+        if tag == "meta" and (d.get("charset") or "").lower() == "utf-8":
+            self.charset = True
+        elif tag == "style":
+            self.add("style", "is not allowed in the shell (no inline style)")
+        elif tag == "script":
+            if d.get("type") != "module":
+                self.add("script", 'is not type="module"')
+            if not d.get("src"):
+                self.add("script", "has no src")
+            else:
+                self.address(d["src"], False)
+        elif tag == "link":
+            if d.get("rel") != "stylesheet":
+                self.add("link", 'is not rel="stylesheet"')
+            if not d.get("href"):
+                self.add("link", "has no href")
+            else:
+                self.address(d["href"], False)
+        elif tag == "a" and d.get("href") is not None:
+            self.address(d["href"], True)
+        if tag not in _GRAPH_VOID:
+            self.stack.append(tag)
+
+    def handle_endtag(self, tag):
+        if tag in _GRAPH_VOID or tag not in self.stack:
+            return
+        while self.stack and self.stack.pop() != tag:
+            pass
+
+    def handle_data(self, data):
+        start = self.at()
+        cur = self.stack[-1] if self.stack else None
+        if cur in ("script", "style"):
+            self.hidden.append((start, start + len(data)))
+            if cur == "script" and data.strip():
+                self.add("script", "has text content (no inline script)")
+        else:
+            self.text.append((start, start + len(data), cur))
+
+
+def _graph_page(shell, assets, strings, about, cards):
+    """(errors, the page text or None) for the graph page. `shell` is the bytes of viewer/graph/shell.html, `assets` the names of the copied files, `strings` the strings
+    file, `about` and `cards` the header's inner html and the main's inner html of the list page (_page_parts). The page is the shell with each `{{S:key}}` of
+    GRAPH_SHELL_KEYS, in element content only, replaced by the escaped value of that strings key, and its one `{{CARDS}}`, in the content of a div, main, section or body,
+    replaced by the cards markup: `<section id="graph-about">` holding the list page's front words (about: its header without the h1) and the list page's
+    root_only_note_single sentence in one `p.roots-only` as the last child, then the list page's main (the h2 and the chain, with every card byte for byte). Refused (each
+    (GRAPH-PAGE, what, reason), none of the page written): no doctype or no charset meta; a {{CARDS}} count other than 1 or one that is not element content; an unknown
+    {{S:key}}; a token in an attribute or inside a script or style; any `{{` left, in the shell or brought by a value; a script that is not type="module" with a relative
+    src that is an asset, or has text; a stylesheet link that is not rel="stylesheet" with a relative href that is an asset; an on* attribute or a style attribute (an attribute outside the allow-list is refused too); an
+    <a> that is not a relative path or #fragment; an inline <style>; any element or attribute outside ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA."""
+    try:
+        raw = shell.decode("utf-8")
+    except UnicodeDecodeError:
+        return [("GRAPH-PAGE", "shell.html", "is not UTF-8")], None
+    scan = _ShellScan(raw, set(assets))
+    scan.feed(raw)
+    scan.close()
+    errors = scan.errors
+    head = ([] if scan.doctype else [("GRAPH-PAGE", "shell.html", "has no doctype")]) + ([] if scan.charset else [("GRAPH-PAGE", "shell.html", "has no charset meta")])
+    place = lambda lo, hi, spans: any(a <= lo and hi <= b for a, b, *_rest in spans)
+    n_cards, swaps = raw.count("{{CARDS}}"), []
+    if n_cards != 1:
+        errors.append(("GRAPH-PAGE", "{{CARDS}}", f"appears {n_cards} times (exactly 1 is needed)"))
+    for mt in _GRAPH_TOKEN.finditer(raw):
+        lo, hi, key = mt.start(), mt.end(), mt.group(1)
+        run = next(((a, b, cur) for a, b, cur in scan.text if a <= lo and hi <= b), None)
+        if place(lo, hi, scan.hidden):
+            errors.append(("GRAPH-PAGE", mt.group(0), "is inside a script or style element"))
+        elif run is None and place(lo, hi, scan.tags) and key is not None:
+            errors.append(("GRAPH-PAGE", mt.group(0), "is in an attribute position"))
+        elif run is None:
+            if key is None and n_cards == 1:
+                errors.append(("GRAPH-PAGE", "{{CARDS}}", "is not in element-content position"))
+            elif key is not None:
+                errors.append(("GRAPH-PAGE", "{{", "is left after replacement"))
+        elif key is None:
+            if n_cards == 1 and run[2] in _GRAPH_CARD_PARENTS:
+                swaps.append((lo, hi, None))
+            elif n_cards == 1:
+                errors.append(("GRAPH-PAGE", "{{CARDS}}", "is not in element-content position"))
+        elif key not in GRAPH_SHELL_KEYS:
+            errors.append(("GRAPH-PAGE", mt.group(0), "is an unknown string key"))
+        else:
+            swaps.append((lo, hi, key))
+    covered = [(mt.start(), mt.end()) for mt in _GRAPH_TOKEN.finditer(raw)]
+    if any(not place(mt.start(), mt.start() + 2, covered) for mt in re.finditer(r"\{\{", raw)):
+        errors.append(("GRAPH-PAGE", "{{", "is left after replacement"))
+    for f in graph_element_problems(raw):
+        if f.startswith("element style") or (f.startswith("attribute ") and (f.split()[1], f.split()[3]) in scan.reported):
+            continue   # said above, by its own line
+        errors.append(("GRAPH-PAGE", f, "is not allowed in the shell"))
+    errors = list(dict.fromkeys(head + errors))
+    if errors:
+        return errors, None
+    out, pos = [], 0
+    for lo, hi, key in sorted(swaps):
+        out += [raw[pos:lo], _GRAPH_SENTINEL if key is None else _e(strings[key])]
+        pos = hi
+    out.append(raw[pos:])
+    text = "".join(out)
+    if "{{" in text:
+        return [("GRAPH-PAGE", "{{", "is left after replacement")], None
+    if text.count(_GRAPH_SENTINEL) != 1:
+        return [("GRAPH-PAGE", "shell.html", "holds U+FDD0, which the assembly keeps for the cards")], None
+    markup = ('<section id="graph-about">\n' + about + f'\n<p class="roots-only">{_e(strings["root_only_note_single"])}</p>\n</section>\n' + cards)
+    return [], text.replace(_GRAPH_SENTINEL, markup)
+
+
 # ---- the page
 
 CSS = ("body { max-width: 50rem; margin: 1rem auto; padding: 0 1rem; font-family: serif; line-height: 1.45; }\n"
@@ -2778,13 +2968,13 @@ def _edition_html(template, date, href, label):
     return "".join(out)
 
 
-def _render_page(m, s, facts, dirty):
+def _page_parts(m, s, facts, dirty):
+    """(the header's inner html without the h1, the main's inner html) of the list page: the first screen, the facts and the notes about the whole, then the h2 and
+    the chain of cards. The ONE place the list page's words and cards are written: _assemble_page puts the list page together from them and the graph page's About
+    section and cards are made from the same two strings (G2b), so neither can drift from the other."""
     lab, kinds = s["labels"], s["labels"]["kinds"]
     files = m.files
-    out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', META_VIEWPORT, META_ROBOTS,
-           f"<title>{_e(s['page_title'])}</title>",
-           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>"]
-    out += [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
+    out = [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
     ed_dates = [f["edition"]["date"] for f in files.values() if f["edition"]] + [n["edition"] for n in m.notes if n["edition"]]   # groups and notes (F44B)
     if ed_dates:   # F44: said once on the first screen, with the LATEST date of a rewrite
         out.append('<p class="edition-note">' + _edition_html(s["edition_note_first_screen"], max(ed_dates), s["edition_href_tree"],
@@ -2800,7 +2990,8 @@ def _render_page(m, s, facts, dirty):
         out += ['<section class="whole">', f"<h2>{_e(lab['level0_notes'])}</h2>", "<ul>"]
         out += [f'<li>{_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>' for n in m.header_notes]
         out += ["</ul>", "</section>"]
-    out += ["</header>", "<main>", f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
+    header = out
+    out = [f"<h2>{_e(lab['chain'])}</h2>", '<ul class="chain">']
 
     def where(b):
         """(the base name of the block's file, the range of its lines) as the Evidence section shows them (F29, moved there by F37):
@@ -3071,8 +3262,25 @@ def _render_page(m, s, facts, dirty):
 
     for gid in m.steps:
         out += ["<li>"] + card(gid) + ["</li>"]
-    out += ["</ul>", "</main>", "</body>", "</html>"]
+    out.append("</ul>")
+    return "\n".join(header), "\n".join(out)
+
+
+def _assemble_page(s, header, main):
+    """The list page from the two parts of _page_parts: the head, the h1 and the header's inner html, then the main."""
+    out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', META_VIEWPORT, META_ROBOTS,
+           f"<title>{_e(s['page_title'])}</title>",
+           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>", header, "</header>", "<main>", main,
+           "</main>", "</body>", "</html>"]
     return "\n".join(out) + "\n"
+
+
+def _render_page(m, s, facts, dirty, parts_out=None):
+    """The list page. When `parts_out` is a list, the (header, main) pair of _page_parts is appended to it, so the graph page is made from the same rendering."""
+    header, main = _page_parts(m, s, facts, dirty)
+    if parts_out is not None:
+        parts_out.append((header, main))
+    return _assemble_page(s, header, main)
 
 
 # ---- the build
@@ -3362,8 +3570,9 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     global _FORMULA_LOG
     global _IN_EVIDENCE
     _FORMULA_LOG, _IN_EVIDENCE = [], False
+    parts = []
     try:
-        page = _render_page(m, sj, facts, dirty)
+        page = _render_page(m, sj, facts, dirty, parts)
         flog = _FORMULA_LOG
     finally:
         _FORMULA_LOG, _IN_EVIDENCE = None, False
@@ -3376,17 +3585,27 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     a_index = {rel: _sha(data) for rel, data in a_files.items()}
     g_more, g_objs = _graph_files(g_rows, commits["notes"], sj, a_index)
     errors += g_errors + g_more + a_errors
+    gpage = None
     if not a_errors:   # a tree with a refused file in it is not the tree that would ship, so the scanner is not run over it
         errors += _graph_sink_errors(a_files, a_shell)
+        if a_shell is not None:   # G2b: the shell is read, never copied; graph/index.html is the page made from it
+            gp_errors, gpage = _graph_page(a_shell, a_index, sj, *(parts[0] if parts else ("", "")))
+            errors += gp_errors
     graph = _graph_bytes(g_objs)
     graph.update({"graph/" + rel: data for rel, data in a_files.items()})
+    if gpage is not None:
+        graph["graph/index.html"] = gpage.encode("utf-8")
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha, graph)
     errors += _graph_asset_errors(a_index, files)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
     errors += _graph_static_problems(graph)
+    if gpage is not None:   # G2b: the graph page passes the static check, the element check with GRAPH_PAGE_EXTRA, and (below) the code-on-surface count
+        errors += [("PAGE-STATIC", pb, "found in graph/index.html") for pb in static_problems(gpage, "")]
     for pb in element_problems(page):
         errors.append(("PAGE-STATIC", pb, "found in index.html"))
+    if gpage is not None:
+        errors += [("PAGE-STATIC", pb, "found in graph/index.html") for pb in graph_element_problems(gpage)]
     for pb in head_meta_problems(page):
         errors.append(("HEAD-META", pb, "in index.html"))
     for pb in link_problems(page):
@@ -3397,6 +3616,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     cands, spans = formula_candidates(surf_texts), code_spans(surf_codes)
     if CODE_ON_SURFACE_REFUSES:
         errors += [("CODE-ON-SURFACE", card, f"{text[:60]} x{k}") for card, text, k in spans]
+        if gpage is not None:
+            errors += [("CODE-ON-SURFACE", f"graph/index.html:{card}", f"{text[:60]} x{k}") for card, text, k in code_spans(surface_scan(gpage)[1])]
     if errors:
         return _refuse(errors)
     print("facts check: " + check_line)
@@ -12351,8 +12572,9 @@ def _selftest_cases():
 
     @case("GP5", "G2b the shell's refusals, each `BUILD-ERROR GRAPH-PAGE <reason>`, exit 1, OUT_DIR not written, through a fixture shell given by --graph-src: no doctype; no "
                  "charset meta; {{CARDS}} 0 times and 2 times; {{CARDS}} in an attribute, in <title> and in <h1> (not element content); an unknown {{S:zeta}} and a real strings key "
-                 "that is not a shell key ({{S:page_title}}); {{S:title}} in an attribute, inside a script and inside a style; a `{{` left in the shell, a malformed token, and a "
-                 "`{{` that a strings VALUE brings in (left after replacement); control: the fixture shell builds, exit 0")
+                 "that is not a shell key ({{S:page_title}}); {{S:title}} in an attribute, inside a script and inside a style; a `{{` left in the shell and a malformed token; through "
+                 "the pure function _graph_page, since the strings check already refuses a brace in a value: a value that holds `{{b}}` or `{{CARDS}}` is `{{ is left after "
+                 "replacement` and is never replaced a second time, while `{{` in the cards markup (not the shell's, not a value) is no refusal; control: the fixture shell builds, exit 0")
     def _():
         def go(shell, **kw):
             rc, existed, lines, _b2 = gp_go(shell, **kw)
@@ -12374,7 +12596,8 @@ def _selftest_cases():
                     "in_style": go(gp_swap(("</head>", "<style>{{S:title}}</style>\n</head>"))),
                     "stray": go(gp_swap(("<h1>{{S:title}}</h1>", "<h1>{{S:title}} {{ x</h1>"))),
                     "malformed": go(gp_swap(("<h1>{{S:title}}</h1>", "<h1>{{S:title}</h1>"))),
-                    "value": go(GA_SHELL, strings=dict(_strings(), title="a {{b}} c"))},
+                    "value": [_graph_page(GA_SHELL.encode("utf-8"), ["graph.css", "page/app.js"], dict(_strings(), title=t), "", "") for t in ("a {{b}} c", "{{CARDS}}")],
+                    "cards_braces": _graph_page(GA_SHELL.encode("utf-8"), ["graph.css", "page/app.js"], _strings(), "<p>{{a}}</p>", "<p>{{b}}</p>")[0]},
                    {"control": ok,
                     "doctype": no(["shell.html has no doctype"]),
                     "charset": no(["shell.html has no charset meta"]),
@@ -12390,11 +12613,12 @@ def _selftest_cases():
                     "in_style": no(["style is not allowed in the shell (no inline style)", "{{S:title}} is inside a script or style element"]),
                     "stray": no(["{{ is left after replacement"]),
                     "malformed": no(["{{ is left after replacement"]),
-                    "value": no(["{{ is left after replacement"])})
+                    "value": [([("GRAPH-PAGE", "{{", "is left after replacement")], None)] * 2,
+                    "cards_braces": []})
 
     @case("GP6", "G2b scripts, links, event attributes and addresses of the shell, each refused with its own line (exit 1, nothing written): a script that is not type=\"module\"; "
                  "an inline script (no src, text); a script src that is absolute (https), protocol-relative, `javascript:` or `data:`, or a relative path that is not an asset; "
-                 "a link that is not rel=\"stylesheet\", is not an asset, is absolute, or is an asset with a query; an on* attribute, a style attribute and srcdoc; an <a> with an "
+                 "a link that is not rel=\"stylesheet\", is not an asset, is absolute, or is an asset with a query; an on* attribute, a style attribute, and srcdoc (refused as an attribute outside the list); an <a> with an "
                  "absolute, protocol-relative, javascript:, data: (in any letter case, with a tab inside the scheme) or root-relative address; controls that build: a SECOND module script "
                  "whose src is an asset, and an <a> to `../list/`, to `list/` and to `#graph`")
     def _():
@@ -12437,7 +12661,7 @@ def _selftest_cases():
                     "link_query": no("graph.css?v=1 is not an asset"),
                     "onclick": no("onclick on h1 is not allowed"),
                     "style_attr": no("style on h1 is not allowed"),
-                    "srcdoc": no("srcdoc on div is not allowed"),
+                    "srcdoc": no("attribute srcdoc on div is not allowed in the shell"),
                     "a_abs": no("https://example.org/ is not a relative path or #fragment"),
                     "a_proto": no("//example.org/ is not a relative path or #fragment"),
                     "a_js": no("javascript:alert(1) is not a relative path or #fragment"),

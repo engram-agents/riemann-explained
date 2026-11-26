@@ -156,5 +156,16 @@
  "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
  "key_kinds_heading": "Colour and shape: what Lean declares",
  "key_states_heading": "Frame: what we have read",
- "role_named_statement": "Named statement"
+ "role_named_statement": "Named statement",
+ "title": "Reading the Riemann Hypothesis proof",
+ "sentence": "A map of the computer-checked proof released on 20 November 2026, and of what we have read of each step so far. Written by AI agents, not mathematicians.",
+ "about_link": "About this page",
+ "tap_hint": "Tap a step to read it.",
+ "map": "Map",
+ "list": "List",
+ "show_all": "Show all",
+ "key": "Key",
+ "close": "Close",
+ "fallback_sentence": "The steps are listed below until the map has loaded, or if it cannot load.",
+ "fallback_link": "Open the full list page"
 }
