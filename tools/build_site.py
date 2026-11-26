@@ -13635,6 +13635,37 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", "kinds.file.card_words", "is not a string")],
                     ["class", "text", "words"], 20))
 
+    @case("GRO4", "an `orders=` that lacks one of kinds, states, proofs is `GRAPH-ORDER <name> is missing`, and a `symbols=` that lacks one of the three tables is `GRAPH-SYMBOL <name> "
+                  "table is missing` (named refusals, nothing returned, no KeyError)")
+    def _():
+        rows = [gr_row("a")]
+        full = {"kinds": ["theorem"], "states": ["read"], "proofs": ["read"]}
+        no_proofs = {k: v for k, v in full.items() if k != "proofs"}
+        no_kinds = {k: v for k, v in full.items() if k != "kinds"}
+        no_states = {k: v for k, v in GRAPH_SYMBOLS.items() if k != "states"}
+        no_both = {k: v for k, v in GRAPH_SYMBOLS.items() if k == "kinds"}
+        r = lambda **kw: ([tuple(e) for e in _graph_files(rows, "c0", _strings(), **kw)[0]], _graph_files(rows, "c0", _strings(), **kw)[1])
+        return _eq((r(orders=no_proofs), r(orders=no_kinds), r(symbols=no_states), r(symbols=no_both), r(orders=full)[0]),
+                   (([("GRAPH-ORDER", "proofs", "is missing")], {}), ([("GRAPH-ORDER", "kinds", "is missing")], {}), ([("GRAPH-SYMBOL", "states", "table is missing")], {}),
+                    ([("GRAPH-SYMBOL", "states", "table is missing"), ("GRAPH-SYMBOL", "proofs", "table is missing")], {}), []))
+
+    @case("GRM1", "the page's OPTIONAL strings keys are one constant, GRAPH_OPTIONAL_KEYS = (key_kinds_note, note_label, note_source): index.json `strings` is the required keys (20 on "
+                  "the live table) plus those of the three that `strings` holds, so 20 with none, 21 with one, 22 with two, 23 with all three (the values verbatim); the exact-set "
+                  "check accepts an optional key and still refuses any other extra key (`GRAPH-STRINGS <key> is not a key the page reads`) and a missing required one")
+    def _():
+        rows = [gr_row("a")]
+        opt = {"key_kinds_note": "K", "note_label": "L", "note_source": "Source {source} \\u00b7 {commit}"}
+        count = lambda s: len(_graph_files(rows, "c0", dict(_strings(), **s))[1]["graph/index.json"]["strings"])
+        full = _graph_files(rows, "c0", dict(_strings(), **opt))[1]["graph/index.json"]["strings"]
+        req = {k: "x" for k in _graph_strings_keys()}
+        return _eq((GRAPH_OPTIONAL_KEYS, count({}), count({"note_label": "L"}), count({"note_label": "L", "note_source": "S"}), count(opt),
+                    {k: full[k] for k in opt}, len(_graph_strings_keys()),
+                    _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
+                    _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", bogus="x"))),
+                   (("key_kinds_note", "note_label", "note_source"), 20, 21, 22, 23, opt, 20,
+                    [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
+                    [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
+
     return cases
 
 

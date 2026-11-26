@@ -450,6 +450,8 @@ KIND_ROWS = {"part": {"card_words": "card_kind_part", "class": "kind-part", "wor
 ORDERS = {"kinds": ["part", "group", "file"], "states": [], "proofs": []}
 OVERLAY_WORDS = {"key_kinds_heading": "What a box is", "symbol_kind_part": "Part of the argument", "symbol_kind_group": "Group of files",
                  "symbol_kind_file": "Lean file", "card_kind_part": "Part", "card_kind_group": "Group", "card_kind_file": "File"}
+OPTIONAL_WORDS = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "note_label": "From the repository, unchanged",
+                  "note_source": "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean"}   # the three optional page-drawn words, final
 
 
 def _lean(decl="theorem t : True := trivial", note="", imports=()):
@@ -465,8 +467,8 @@ def _tree(root, body, srcs):
     for p, text in list(srcs.items()) + [("Lib/Other/File", _lean())]:
         fp = os.path.join(g, "src", *p.split("/")) + ".lean"
         os.makedirs(os.path.dirname(fp), exist_ok=True)
-        with open(fp, "w", encoding="utf-8") as f:
-            f.write(text)
+        with open(fp, "wb") as f:
+            f.write(text if isinstance(text, bytes) else text.encode("utf-8"))
     return g
 
 
@@ -870,7 +872,7 @@ def _selftest_cases():
         rows = [row("lean-s", "root", 0, [], "part", "S part"), row("lean-s--g", "lean-s", 0, [], "group", "G"),
                 row("lean-s-a", "lean-s--g", 0, [], "file", "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "file", "b")]
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
-        want_errs, want_objs = bs._graph_files(rows, PIN, _strings(), symbols=table, orders=ORDERS, layout="column")
+        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS), symbols=table, orders=ORDERS, layout="column")
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -1021,7 +1023,8 @@ def _selftest_cases():
     @case("SK21", "the strings overlay (`--strings-overlay FILE`): its keys replace or add to the strings file for this map only; with the overlay giving the three kind "
                   "words and a new heading the index holds exactly the 23 keys with those words (an extra overlay key is not in it); the strings file is not edited; an "
                   "overlay without one kind word is refused GRAPH-STRINGS (exit 1); a file that is not there, not JSON or not an object is exit 2; the overlay file of this "
-                  "checkout (site/strings-lean.json) holds exactly the four placeholder words")
+                  "checkout (site/strings-lean.json) holds exactly ten words: the seven of OVERLAY_WORDS (the kinds heading, the three kind words and the three card words, "
+                  "placeholders) and the three of OPTIONAL_WORDS (final)")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
         full = {"key_kinds_heading": "Replaced heading", "symbol_kind_part": "P words", "symbol_kind_group": "G words", "symbol_kind_file": "F words",
@@ -1053,7 +1056,91 @@ def _selftest_cases():
                     ix["strings"]["card_kind_file"], "extra_key" in ix["strings"], unchanged, short[0], short[1].splitlines(), nocard[0], nocard[1].splitlines(), gone, bad, arr,
                     absent, repo_overlay),
                    (0, 23, "Replaced heading", "F words", "card_kind_file", "F", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 1,
-                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, OVERLAY_WORDS))
+                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, dict(OVERLAY_WORDS, **OPTIONAL_WORDS)))
+
+    @case("SK22", "a section of one file with no folder whose first bold line holds no file (`### X`, `**A**`, `**B**`, the file `New/Main`) is `SKEL-LINE <n>` for the empty bold line "
+                  "(a named refusal, exit 1, no traceback), and the same section with its one bold line over the file builds")
+    def _():
+        bad = "### X\n**A**\n**B**\n- `New/Main` (1): m\n"
+        good = "### X\n**B**\n- `New/Main` (1): m\n"
+        with _tmp() as d:
+            g = _tree(d, bad, {"New/Main": _lean()})
+            errs = build_rows(g)[0]
+            rc, out, err = _cli(_args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)))
+        with _tmp() as d:
+            ok = build(_tree(d, good, {"New/Main": _lean()}), PIN, _strings())
+        return _eq((errs, rc, out.splitlines(), "Traceback" in err, ok[0], [r["id"] for r in ok[2]]), ([("SKEL-LINE", "8", "")], 1, ["SKEL-LINE 8"], False, [], ["lean-x", "lean-main"]))
+
+    @case("SK23", "an id that is cut cannot hide a bad character: the UNCUT id is checked against the id pattern first, so a file name with a non-ASCII character past the 57th "
+                  "character of an over-long id (`New/X/` + 60 `a` + `\u00e9`) is GRAPH-ID with the whole id, as it is at the front; an over-long id of good characters is still cut")
+    def _():
+        name = "a" * 60 + "\u00e9"
+        body = f"### X part\n\n**G**\n\n- `New/X/{name}` (1): x\n"
+        with _tmp() as d:
+            errs = build(_tree(d, body, {f"New/X/{name}": _lean()}), PIN, _strings())[0]
+        good = "a" * 60 + "b"
+        with _tmp() as d:
+            ok = build(_tree(d, f"### X part\n\n**G**\n\n- `New/X/{good}` (1): x\n", {f"New/X/{good}": _lean()}), PIN, _strings())
+        return _eq(([(c, w) for c, w, _ in errs], ok[0], len(ok[3]["cut"]), [len(r["id"]) for r in ok[2]]), ([("GRAPH-ID", "lean-x-" + name)], [], 1, [6, 9, 64]))
+
+    @case("SK24", "a source file is read through one bounded, non-blocking, non-following descriptor: a .lean that is a symlink (to a file outside the tree), a FIFO, a directory or "
+                  "larger than 1 MiB, or not UTF-8, is `SKEL-SOURCE <path> <reason>` (`symlink`, `not-a-regular-file`, `not-a-regular-file`, `too-large`, `not-utf-8`; all reported, "
+                  "exit 1, OUT not written), and one of exactly 1 MiB is read. The case runs the CLI in a subprocess with a 60 second timeout, so a tool that blocked on the FIFO "
+                  "would fail the case, not hang the self-test")
+    def _():
+        body = "### S part\n\n**G**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in "ABCDEFG")
+        limit = 1048576
+        srcs = {f"New/S/{n}": _lean() for n in "ABCDEFG"}
+        srcs["New/S/D"] = "-" * (limit + 1)
+        srcs["New/S/E"] = "-" * limit
+        srcs["New/S/G"] = b"\xff\xfe"
+        with _tmp() as d:
+            g = _tree(d, body, srcs)
+            base = os.path.join(g, "src", "New", "S")
+            outside = os.path.join(d, "outside.lean")
+            with open(outside, "w") as f:
+                f.write("theorem x : True := trivial\n")
+            os.remove(os.path.join(base, "A.lean"))
+            os.symlink(outside, os.path.join(base, "A.lean"))
+            os.remove(os.path.join(base, "B.lean"))
+            os.mkfifo(os.path.join(base, "B.lean"))
+            os.remove(os.path.join(base, "C.lean"))
+            os.mkdir(os.path.join(base, "C.lean"))
+            out = os.path.join(d, "out")
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=60)
+            absent = not os.path.exists(out)
+        return _eq((r.returncode, r.stdout.splitlines(), "Traceback" in r.stderr, absent),
+                   (1, ["SKEL-SOURCE New/S/A symlink", "SKEL-SOURCE New/S/B not-a-regular-file", "SKEL-SOURCE New/S/C not-a-regular-file", "SKEL-SOURCE New/S/D too-large",
+                        "SKEL-SOURCE New/S/G not-utf-8"], False, True))
+
+    @case("SK25", "the other branches of the CONTENTS reader each give `SKEL-LINE <n>` with their own line: a bold line that holds another bold span (`**one** and **two**`), a file "
+                  "before the first bold line of a section that has bold lines, a `###` heading with no file, and a bold line with no file in a section that has files")
+    def _():
+        bold = "### Sec\n\n**one** and **two**\n\n- `New/S/A` (1): a\n"
+        loose = "### Sec\n- `New/S/A` (1): a\n**G**\n- `New/S/B` (1): b\n"
+        empty = "### Empty\n\n### Sec\n**G**\n- `New/S/A` (1): a\n"
+        group = "### Sec\n**Empty**\n**G**\n- `New/S/A` (1): a\n"
+        out = []
+        for b in (bold, loose, empty, group):
+            with _tmp() as d:
+                out.append(build_rows(_tree(d, b, {}))[0])
+        return _eq(out, [[("SKEL-LINE", "9", "")], [("SKEL-LINE", "8", "")], [("SKEL-LINE", "7", "")], [("SKEL-LINE", "8", "")]])
+
+    @case("SK26", "the three optional page words (key_kinds_note, note_label, note_source; final, `{source}` and `{commit}` kept literal) are index.json `strings` keys when the strings "
+                  "hold them: 23 keys with none, 25 with two, 26 with all three, the values exactly the literals of OPTIONAL_WORDS (typed in this case as well); the overlay file of "
+                  "this checkout holds those three values")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        typed = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "note_label": "From the repository, unchanged",
+                 "note_source": "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean"}
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            n = lambda extra: len(_j(build(g, PIN, dict(_strings(), **extra))[1], "graph/index.json")["strings"])
+            full = _j(build(g, PIN, dict(_strings(), **OPTIONAL_WORDS))[1], "graph/index.json")["strings"]
+            counts = (n({}), n({"note_label": "L", "note_source": "S"}), n(OPTIONAL_WORDS))
+        with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
+            overlay = json.load(f)
+        return _eq((counts, OPTIONAL_WORDS == typed, {k: full[k] for k in typed}, {k: overlay.get(k) for k in typed}), ((23, 25, 26), True, typed, typed))
 
     @case("SK13", "the real source (give `--selftest --grh DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
                   "depth 3, 298 links drawn and 226 imports not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
