@@ -721,6 +721,7 @@ A16_FROM = {"html.parser": ("HTMLParser",)}                    # `from M import 
 A16_OS = ("listdir", "path")                                   # the attributes of `os` the tool uses today
 A16_OS_PATH = ("abspath", "dirname", "exists", "isdir", "islink", "join", "lexists")   # and of `os.path`
 A16_NAMES = ("eval", "exec", "compile", "__import__", "getattr", "setattr", "delattr", "vars", "globals", "locals")   # names that reach anything by a string, in any use
+A16_MODULES = ("os", "subprocess", "sys", "ctypes", "pickle", "runpy", "marshal", "importlib")   # the restricted modules: reached only as the plain names imported at the top, never as an attribute of another object
 A16_ATTRS = re.compile(r"system|popen|exec\w*|spawn\w*|posix_spawn\w*|fork\w*|Popen|check_output|check_call|getoutput|getstatusoutput")   # attribute names that run a program, on any base
 
 
@@ -748,6 +749,8 @@ def _scan_source(src, loader="_load"):
                 continue
             if A16_ATTRS.fullmatch(n.attr):
                 found.append(f"line {n.lineno}: attribute .{n.attr}")
+            elif n.attr in A16_MODULES:
+                found.append(f"line {n.lineno}: module {n.attr} reached as an attribute")
             elif isinstance(base, ast.Name) and base.id == "os" and n.attr not in A16_OS:
                 found.append(f"line {n.lineno}: os.{n.attr}")
             elif isinstance(base, ast.Attribute) and isinstance(base.value, ast.Name) and (base.value.id, base.attr) == ("os", "path") and n.attr not in A16_OS_PATH:
