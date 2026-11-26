@@ -80,9 +80,10 @@ def _refs(text):
 
 
 def about_markup(words):
-    """The About block's inner html as the assembler writes it with --page: the about_text paragraph, then the credits paragraph."""
+    """The About block's inner html as the assembler writes it with --page: the about_text paragraph, then the credits paragraph, with nothing
+    between them. Compared byte for byte with a real assembly by PR 119 at f26f81ec (the pinned data, 353 steps): equal."""
     e = bs._e
-    return ("<p>" + e(words["about_text"]) + "</p>\n<p>" + e(words["about_credits_before"]) + f'<a href="{CREDITS_REF}">'
+    return ("<p>" + e(words["about_text"]) + "</p><p>" + e(words["about_credits_before"]) + f'<a href="{CREDITS_REF}">'
             + e(words["about_credits_link"]) + "</a>" + e(words["about_credits_after"]) + "</p>")
 
 
