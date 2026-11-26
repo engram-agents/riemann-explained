@@ -12087,6 +12087,19 @@ def _selftest_cases():
         return _eq(res, [(1, False, ["BUILD-ERROR GRAPH-ID a--b " + shape]), (1, False, ["BUILD-ERROR GRAPH-ID " + "x" * 65 + " is 65 characters (at most 64)"]),
                          (1, False, ["BUILD-ERROR GRAPH-ID _page " + shape]), (0, True, [])])
 
+    @case("GRID4", "the id rule does not depend on where the row sits or on how the id begins: a bad id on a part that has a child, on a group that has a child, and on a "
+                   "leaf is refused once each (the children are good); an id that begins `lean-` is bound by 64 like every other: 64 characters are accepted and 65 are "
+                   "`GRAPH-ID <id> is 65 characters (at most 64)`")
+    def _():
+        shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        part_with_child = gr_codes([gr_row("a--b"), gr_row("c", "a--b")])
+        group_with_child = gr_codes([gr_row("p"), gr_row("a--b", "p"), gr_row("c", "a--b")])
+        both = gr_codes([gr_row("a--b"), gr_row("c", "a--b"), gr_row("d_e", "c")])
+        l64, l65 = "lean-" + "x" * 59, "lean-" + "x" * 60
+        return _eq((part_with_child, group_with_child, both, gr_codes([gr_row(l64)]), gr_codes([gr_row(l65)]), gr_codes([gr_row("p"), gr_row(l65, "p"), gr_row("q", l65)])),
+                   ([("GRAPH-ID", "a--b", shape)], [("GRAPH-ID", "a--b", shape)], [("GRAPH-ID", "a--b", shape), ("GRAPH-ID", "d_e", shape)], [],
+                    [("GRAPH-ID", l65, "is 65 characters (at most 64)")], [("GRAPH-ID", l65, "is 65 characters (at most 64)")]))
+
     @case("GR9", "G1 S2, F38 c (G1b S3, S6): a kind, a state or a proof with no row in the table refuses, `GRAPH-SYMBOL <step id> kind|state|proof <value>` "
                  "(a kind `none` too: there is no such row); a kind outside the table says what is allowed, ` (allowed: theorem, lemma, def, structure)`, and "
                  "a state or a proof does not; a table row that no step uses stays in `symbols` (the fixture has no structure); through the function (a fourth "
