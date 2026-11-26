@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { createController } from "../controller.js";
 import * as optionsModule from "../options.js";
 import { normalizeOptions } from "../options.js";
-import { recordingView } from "./helpers.mjs";
+import { recordingView, tiny } from "./helpers.mjs";
 
 const isCapErr = (e) => e instanceof TypeError && /zoom\.frameMin/.test(e.message) && /open-framing cap/.test(e.message);
 
@@ -36,6 +36,16 @@ test("G2: frameMin exactly equal to the cap is accepted (the function's own valu
   assert.doesNotThrow(() => normalizeOptions({ sizes: { nodeW: 350 }, zoom: { frameMin: cap350 } }));
 });
 test("G2: frameMin 1 with default sizes is accepted", () => assert.equal(normalizeOptions({ zoom: { frameMin: 1 } }).zoom.frameMin, 1));
+test("G1 behaviour: an opened node framed in a roomy viewport lands exactly at openFrameCap (the cap binds), with and without frameMin", async () => {
+  const defs = [{ id: "p", kids: Array.from({ length: 12 }, (_, i) => "c" + i) }, ...Array.from({ length: 12 }, (_, i) => ({ id: "c" + i }))];
+  for (const zoom of [undefined, { frameMin: 1 }]) {
+    const t = tiny(defs), view = recordingView({ w: 2000, h: 5000 });
+    const ctl = createController({ roots: t.roots, loadChildren: t.loader, zoom, layout: { siblings: "column" } }, view);
+    await ctl.ready;
+    await ctl.open("p"); await ctl.reveal(["p"]);
+    assert.equal(ctl.camera().k, optionsModule.openFrameCap(normalizeOptions({ zoom })));
+  }
+});
 test("G2: lower bound and null rule unchanged", () => {
   assert.throws(() => normalizeOptions({ zoom: { frameMin: 0.01 } }), (e) => e instanceof TypeError && /zoom\.frameMin/.test(e.message));
   assert.equal(normalizeOptions({ zoom: { frameMin: null } }).zoom.frameMin, 0.06);
