@@ -2543,9 +2543,9 @@ def _selftest_cases():
             g = sp_files(d, "A", [])
             on = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS))[1], "graph/index.json")
             off = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS))[1], "graph/index.json")
-            only = _j(bld(g, PIN, dict(_strings(), key_lines_text="x"))[1], "graph/index.json")
+            only = _j(bld(g, PIN, dict(_strings(), key_lines_text="x", key_lines_heading="h"))[1], "graph/index.json")   # the page reads the heading beside an edge basis: a words key alone is refused (SKW3)
         return _eq((on.get("edge_basis"), sorted(on["edge_basis"]), "edge_basis" in off, len(on["strings"]), "edge_basis" in on["strings"], "key_lines_text" in on["strings"], len(off["strings"]),
-                    only["edge_basis"]["words"], len(only["strings"])), (EDGE_BASIS, ["basis", "words"], False, 33, False, True, 30, "key_lines_text", 30))
+                    only["edge_basis"]["words"], len(only["strings"])), (EDGE_BASIS, ["basis", "words"], False, 33, False, True, 30, "key_lines_text", 31))
 
     @case("SP9", "used_by is the exact inverse of uses with the same weights: A uses B with two names and C with one, B uses C with two names: used_by C is [A 1, B 2], used_by B is "
                  "[A 2], used_by A is []; the number of used_by entries equals the number of uses entries")
@@ -3083,7 +3083,7 @@ def _selftest_cases():
         with _tmp() as d:
             g = sp_files(d, "A", [])
             full = bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS))[1]
-            only_cards = bld(g, PIN, dict(_strings(), key_lines_text="x"))[1]
+            only_cards = bld(g, PIN, dict(_strings(), key_lines_text="x", key_lines_heading="h"))[1]   # heading beside the words key: SKW3
         sp, ix = _j(full, "graph/spine.json"), _j(full, "graph/index.json")
         eb = sp.get("edge_basis")
         return _eq((eb, sorted(eb), eb["words"] in ix["strings"], eb["words"] != ix["edge_basis"]["words"], eb["basis"] != ix["edge_basis"]["basis"], sorted(sp),

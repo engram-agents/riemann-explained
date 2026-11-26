@@ -1865,18 +1865,31 @@ def _graph_strings_keys(symbols=None):
             + list(GRAPH_RUNTIME_KEYS))
 
 
-def _graph_strings_errors(strings, symbols=None):
+GRAPH_EDGE_HEADING = "key_lines_heading"   # the page reads it only beside an edge basis (as it reads the key the edge basis names); key_lines_text is read only as that key
+GRAPH_EDGE_ONLY_KEYS = ("key_lines_heading", "key_lines_text")
+
+
+def _graph_strings_errors(strings, symbols=None, edge_basis=None):
     """[(GRAPH-STRINGS, key, what)] for the `strings` object of index.json against the exact set of keys the page reads: the keys it lacks first, then the
     keys it has that the page does not read, each sorted, then the value of every key the page reads (required or optional) that is present: a value that is not a
     string is `is not a string`, an empty string `is empty` (one line per key, sorted; a whitespace-only value is accepted, as the page tests `=== ""` and never trims),
     then the half of the note-word pair: note_label and note_source come together (the page refuses a half pair at
     index load, so a map that builds is a map that runs), and the one that is absent while the other is present is named. The notes rule (neither word beside notes)
-    needs the notes and lives in _graph_files."""
+    needs the notes and lives in _graph_files.
+
+    The edge basis (`edge_basis`, the index's own, None when it has none; it counts as present when it is an object with a string `words`) decides two of the optional
+    keys, as the page reads them: with one, key_lines_heading and the key `words` names are required (`missing`) and judged like every key the page reads; without one
+    key_lines_heading and key_lines_text are refused (`is not a key the page reads without an edge basis`, after the unread lines). spine_lines_text is not conditional:
+    the page learns it with the Graph view."""
     want = set(_graph_strings_keys(symbols))
-    return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
+    eb = isinstance(edge_basis, dict) and isinstance(edge_basis.get("words"), str)
+    edge = {GRAPH_EDGE_HEADING, edge_basis["words"]} if eb else set()
+    judged = ((want | set(GRAPH_OPTIONAL_KEYS)) - set(GRAPH_EDGE_ONLY_KEYS) | edge) & set(strings)
+    return ([("GRAPH-STRINGS", k, "missing") for k in sorted((want | edge) - set(strings))]
             + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want - set(GRAPH_OPTIONAL_KEYS))]
+            + [("GRAPH-STRINGS", k, "is not a key the page reads without an edge basis") for k in sorted(set(GRAPH_EDGE_ONLY_KEYS) & set(strings)) if not eb]
             + [("GRAPH-STRINGS", k, "is not a string" if not isinstance(strings[k], str) else "is empty")
-               for k in sorted((want | set(GRAPH_OPTIONAL_KEYS)) & set(strings)) if not isinstance(strings[k], str) or strings[k] == ""]
+               for k in sorted(judged) if not isinstance(strings[k], str) or strings[k] == ""]
             + [("GRAPH-STRINGS", gone, f"missing: {have} is present and the two words come together")
                for have, gone in (("note_label", "note_source"), ("note_source", "note_label")) if have in strings and gone not in strings])
 
@@ -2114,7 +2127,7 @@ def _graph_count_errors(objs, symbols=None):
     for i in dict.fromkeys(list(ix["top"]) + [c["id"] for k in sorted(files) for c in files[k]["children"]]):
         if i not in files:
             out.append(("GRAPH-COUNT", i, "is listed but has no step file"))
-    return out + _graph_strings_errors(ix["strings"], symbols)
+    return out + _graph_strings_errors(ix["strings"], symbols, ix.get("edge_basis"))
 
 
 GRAPH_STATUS_HIDDEN = ("part", "group", "file")   # a card of one of these (skeleton) kinds draws no state frame and no status line, so its state and proof do not occur on the map
@@ -2295,8 +2308,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     if step_extra or index_extra:
         errors += _graph_extra_errors(step_extra, index_extra, by, notes, layout)
     eb = (index_extra or {}).get("edge_basis")   # an edge basis names the key of `strings` that states it: a map that carries it must carry that key
-    if isinstance(eb, dict) and isinstance(eb.get("words"), str) and eb["words"] not in strings:
-        errors.append(("GRAPH-STRINGS", eb["words"], "missing"))
+    if isinstance(eb, dict) and isinstance(eb.get("words"), str):   # and the page also needs the line heading beside it (_graph_strings_errors judges what is present)
+        errors += [("GRAPH-STRINGS", k, "missing") for k in sorted({GRAPH_EDGE_HEADING, eb["words"]}) if k not in strings]
     for r in rows:
         for field, table in (("kind", symbols["kinds"]), ("state", symbols["states"]), ("proof", symbols["proofs"])):
             if r[field] not in table:
@@ -14065,7 +14078,7 @@ def _selftest_cases():
                     _graph_strings_errors(dict(req, bogus="x", note_label="", note_source="S")), _graph_strings_errors({k: v for k, v in dict(req, note_label="").items() if k != first_req}),
                     e(parts_n=""), e(parts_n=None), e(parts_n=["x"]), e(parts_n=" "), e(parts_n=7), e(**dict(both, note_label=None, parts_n="")),
                     _graph_strings_errors({k: v for k, v in dict(req, **both).items() if k != "parts_n"}),
-                    e(**dict(both, note_label_typeset="", key_lines_text=3)),
+                    e(**dict(both, note_label_typeset="", spine_lines_text=3)),
                     files(both, step_extra={"b": {"k": 1}}), files({}, step_extra={"b": {"k": 1}}), files({}, index_extra={"k": 1}),
                     files({}, step_extra={"b": {"k": 1}}, notes=notes), files({}, index_extra={"k": 1}, notes=notes), files(dict(both, note_label=""), notes=notes),
                     files(dict(both, note_source=None)), files(both, notes=notes)[0]),
@@ -14078,7 +14091,7 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", first_req, "missing")] + emp("note_label") + [("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")],
                     emp("parts_n"), isn("parts_n"), isn("parts_n"), [], isn("parts_n"), isn("note_label") + emp("parts_n"),
                     [("GRAPH-STRINGS", "parts_n", "missing")],
-                    isn("key_lines_text") + emp("note_label_typeset"),
+                    emp("note_label_typeset") + isn("spine_lines_text"),
                     ([], False), ([], False), ([], False),
                     (need, True), (need, True), (emp("note_label"), True),
                     (isn("note_source"), True), []))
@@ -14410,7 +14423,7 @@ def _selftest_cases():
                     ([("GRAPH-EXTRA", "index", "key k has a value that is not JSON")], {}), []))
 
     @case("GRX3", "an `edge_basis` in index_extra that is an object {basis, words} must name a key of `strings` (`GRAPH-STRINGS <key> missing` otherwise, nothing returned); one whose words "
-                  "key is there is written as given and the key is in index.json `strings` when it is one of the page's optional keys (key_lines_heading, key_lines_text, "
+                  "key is there (and the line heading, which the page reads beside an edge basis: both are named missing when absent) is written as given and the key is in index.json `strings` when it is one of the page's optional keys (key_lines_heading, key_lines_text, "
                   "spine_lines_text are, like note_label); an unknown extra key is still refused by the exact-set check")
     def _():
         rows = [gr_row("a")]
@@ -14421,10 +14434,10 @@ def _selftest_cases():
         ix = ok[1]["graph/index.json"]
         req = {k: "x" for k in _graph_strings_keys()}
         return _eq((GRAPH_OPTIONAL_KEYS, [tuple(e) for e in ok[0]], ix["edge_basis"], len(ix["strings"]), sorted(k for k in ix["strings"] if k.startswith(("key_lines", "spine_lines"))),
-                    [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H")),
+                    [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H"), edge_basis=eb),
                     _graph_strings_errors(dict(req, bogus="x"))),
                    (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text"), [], eb, 23,
-                    ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
+                    ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_heading", "missing"), ("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
     return cases
 
