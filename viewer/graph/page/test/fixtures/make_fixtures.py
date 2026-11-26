@@ -11,7 +11,7 @@ skeleton/    the map of a Lean repository's folders and files: kinds part, group
 
 Test-only. Never shipped (lives under test/).
 """
-import glob, importlib.util, json, os, shutil, html
+import importlib.util, json, os, shutil, html
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -218,20 +218,16 @@ def _backtick_span():
 
 EDGE_TITLES = ["a `x` b", "``", "``x``", "`a``b`", "a `b", "` `", "`a`b`", "x\n`y`", "x\r`y`", "`<b>&`", "no backtick at all",
                "`one` and `two`", "`x`", "``` `x` ```", "a ` b ` c", REAL_SPAN_TITLE]
-REAL_SKELETON = "/home/agents-shared/sol/skeleton-v1/graph/step"
+REAL_TITLES_FILE = os.path.join(HERE, "backtick-real-titles.json")   # a committed static input: the real map's span titles, verbatim
 
 
 def real_span_titles():
-    """The titles of the real skeleton map that hold a backtick (card.title, read-only). Unreadable -> none, silently."""
-    out = []
-    try:
-        for f in sorted(glob.glob(os.path.join(REAL_SKELETON, "*.json"))):
-            t = json.load(open(f, encoding="utf-8"))["card"]["title"]
-            if "`" in t and t not in out:
-                out.append(t)
-    except (OSError, ValueError, KeyError, TypeError):
-        return []
-    return out
+    """The real span titles, read ONLY from the committed input file. A missing or malformed file fails loud (no fallback, no skip)."""
+    with open(REAL_TITLES_FILE, encoding="utf-8") as f:
+        data = json.load(f)
+    titles = data["titles"]
+    assert titles and all(isinstance(t, str) and "`" in t for t in titles), "backtick-real-titles.json holds no span titles"
+    return titles
 
 
 def segments_of(span, title):
