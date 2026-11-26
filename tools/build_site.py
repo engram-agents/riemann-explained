@@ -12792,11 +12792,11 @@ def _selftest_cases():
                    (([*five], {"graph_src": "x"}), None, None, True, 0, ["graph/engine/index.js", "graph/graph.css", "graph/index.html", "graph/index.json", "graph/page/app.js"]))
 
     # ---- OSF: the open-scale floor of the live map (`--open-scale-floor N`, no default; the page owns the accepted value)
-    OSF_BAD = ("0", "-0", "0.0", "-1", "nan", "inf", "-inf", "1e400", "abc", "true", "", "0x1", " 1", "1 ", "1" * 400, "1" * 5000)   # the skeleton's SC2 texts, and the ones SC2 does not list
+    OSF_BAD = ("0", "-0", "0.0", "-1", "nan", "inf", "-inf", "1e400", "abc", "true", "", "0x1", " 1", "1 ", "+1", "1_0", "\u0661\u0662\u0663", "\uff11", "1" * 400, "1" * 5000)   # the skeleton's SC2 texts, and the ones SC2 does not list (a sign, an underscore, Arabic-Indic and full-width digits)
 
     @case("OSF1", "the live map with `--open-scale-floor 1` (a number or the text, through run() and through main()) differs from the build without it in exactly graph/index.json (parsed: equal "
                  "except the key `open_scale_floor`, 1, written `1`) and manifest.json (parsed: equal except the sha256 of graph/index.json, which is the sha256 of the new file); every other file and "
-                 "the stdout are byte for byte equal; 1.5 and the text 1e3 are written 1.5 and 1000.0")
+                 "the stdout are byte for byte equal; the written number is the parsed value: 1.5, 1e3, 1E3, 1e+3, 007, `1.` and 1e16 are written 1.5, 1000.0, 1000.0, 1000.0, 7, 1.0 and 1e+16")
     def _():
         off = _build(graph_src=_GRAPH_SRC_AT_START)
         out = []
@@ -12819,8 +12819,8 @@ def _selftest_cases():
                 rc = main(["build_site.py", p["notes"], p["outline"], p["decls"], p["strings"], p["out"], "--graph-src", _GRAPH_SRC_AT_START, "--open-scale-floor", "1"], check=lambda: 0)
             made = _tree(p["out"])   # main() asks git for the tools' own state, so the commit ids in the files differ from the fixture's: only the key is compared here
             via_main = (rc, re.findall(r'"open_scale_floor": ([^,\n]*)', made["graph/index.json"].decode("utf-8")))
-        got = [re.findall(r'"open_scale_floor": ([^,\n]*)', _build(graph_src=_GRAPH_SRC_AT_START, open_scale_floor=v).text("graph/index.json")) for v in (1.5, "1.5", "1e3")]
-        return _eq((out, via_main, got), ([(0, ["graph/index.json", "manifest.json"], [], True, 1, ["1"], True, True, True, True, True)] * 2, (0, ["1"]), [["1.5"], ["1.5"], ["1000.0"]]))
+        got = [re.findall(r'"open_scale_floor": ([^,\n]*)', _build(graph_src=_GRAPH_SRC_AT_START, open_scale_floor=v).text("graph/index.json")) for v in (1.5, "1.5", "1e3", "1E3", "1e+3", "007", "1.", "1e16")]
+        return _eq((out, via_main, got), ([(0, ["graph/index.json", "manifest.json"], [], True, 1, ["1"], True, True, True, True, True)] * 2, (0, ["1"]), [["1.5"], ["1.5"], ["1000.0"], ["1000.0"], ["1000.0"], ["7"], ["1.0"], ["1e+16"]]))
 
     @case("OSF2", "without the option the build is the build of before: `run` takes `open_scale_floor` as a keyword whose default is None, index.json has no such key, and no file of the build but the page's own copied assets holds the key")
     def _():
@@ -12832,7 +12832,7 @@ def _selftest_cases():
                     sorted(k for k, v in off.files.items() if b"open_scale_floor" in v and k not in assets)),   # the page's own code names the key: those files are copied from the source folder as they are
                    (None, "POSITIONAL_OR_KEYWORD", 0, False, []))
 
-    @case("OSF3", "a bad floor is refused `BUILD-ERROR GRAPH-SCALE-FLOOR <value as typed>` (exit 1, REFUSED on stderr, OUT_DIR not written, an OUT_DIR of an earlier build kept under --force) "
+    @case("OSF3", "a bad floor is refused `BUILD-ERROR GRAPH-SCALE-FLOOR <value as typed>` (exit 1, the line ends with one space, the empty message part of the page's refusal format, REFUSED on stderr, OUT_DIR not written, an OUT_DIR of an earlier build kept under --force) "
                  "for zero, minus zero, a negative, nan, inf, a number too large to be finite (1e400; 400 digits), a text that is no number (abc, true, empty, 0x1, with a space), 5000 digits "
                  "(beyond Python's integer parser), and, through run(), a bool and the integer 10**400")
     def _():
@@ -12854,28 +12854,56 @@ def _selftest_cases():
                     [(1, f"BUILD-ERROR GRAPH-SCALE-FLOOR {s} \n", False) for s in ("0", "-1", "nan", "inf", "True", "False", str(10 ** 400))],
                     (1, {"keep.txt": b"earlier\n"})))
 
-    @case("OSF4", "`--open-scale-floor N` is a value option, at most once (a second one, or none after it, is a usage error, exit 2, nothing written); the usage line in the module text names it")
+    @case("OSF4", "`--open-scale-floor N` is a value option, at most once (a second one, none after it, or the `=` form `--open-scale-floor=1` is a usage error, exit 2, nothing written); the usage line in the module text "
+                 "AND the synopsis line of docs/tools.md name it")
     def _():
         five = ["n", "o", "d", "s", "out"]
         with tempfile.TemporaryDirectory() as d:
             p = _plant(d)
             rcs = []
-            for extra in (["--open-scale-floor", "1", "--open-scale-floor", "2"], ["--open-scale-floor"]):
+            for extra in (["--open-scale-floor", "1", "--open-scale-floor", "2"], ["--open-scale-floor"], ["--open-scale-floor=1"]):
                 o, e = io.StringIO(), io.StringIO()
                 with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
                     rcs.append((main(["build_site.py", p["notes"], p["outline"], p["decls"], p["strings"], p["out"]] + extra, check=lambda: 0), o.getvalue(), os.path.exists(p["out"])))
+        with open(os.path.join(_HERE, os.pardir, "docs", "tools.md"), encoding="utf-8") as f:
+            syn = [ln for ln in f.read().split("\n") if ln.startswith("`python3 tools/build_site.py NOTES_DIR")]
         return _eq((_parse(five + ["--open-scale-floor", "1"]), _parse(five + ["--open-scale-floor", "1", "--open-scale-floor", "2"]), _parse(five + ["--open-scale-floor"]),
-                    "[--open-scale-floor N]" in __doc__.split("usage:")[1], rcs),
-                   (([*five], {"open_scale_floor": "1"}), None, None, True, [(2, "", False)] * 2))
+                    _parse(five + ["--open-scale-floor=1"]), "[--open-scale-floor N]" in __doc__.split("usage:")[1], [("[--open-scale-floor N]" in ln) for ln in syn], rcs),
+                   (([*five], {"open_scale_floor": "1"}), None, None, None, True, [True], [(2, "", False)] * 3))
 
-    @case("OSF5", "the check of the floor lives here, once: `_scale_floor_error` and `_scale_from_text` are functions of this file (the skeleton calls them) and give the refusal list of OSF3 "
-                 "the same way: a positive finite number is accepted (an int stays an int, a decimal or exponent text is a float), nothing else")
+    @case("OSF5", "the check of the floor lives here, once: `_scale_floor_from_text(value)` is the whole sequence (text -> number -> check -> the refusal naming the value as typed) and returns (errors, number): "
+                  "a positive finite number is accepted (an int stays an int; a decimal or exponent text, `1e3`, `1E3` and `1e+3` included, is a float), nothing else (OSF_BAD, a bool, 10**400, inf: errors name the text as typed, number None); "
+                  "`_scale_floor_error` and `_scale_from_text` stay the two primitives and are called from that function only, and that function from `_run` only (read from the syntax tree of this file, the self-test aside)")
     def _():
-        texts = {"1": 1, "1.5": 1.5, "1e3": 1000.0, ".5": 0.5, "2.": 2.0}
-        return _eq(([_scale_floor_error(_scale_from_text(t)) for t in OSF_BAD], [_scale_from_text(t) for t in texts], [_scale_floor_error(_scale_from_text(t)) for t in texts],
-                    [_scale_floor_error(v) for v in (0, True, 10 ** 400, float("inf"))]),
-                   ([[("GRAPH-SCALE-FLOOR", str(_scale_from_text(t)), "")] for t in OSF_BAD], list(texts.values()), [[]] * len(texts),
-                    [[("GRAPH-SCALE-FLOOR", s, "")] for s in ("0", "True", str(10 ** 400), "inf")]))
+        import ast
+        texts = {"1": 1, "1.5": 1.5, "1e3": 1000.0, "1E3": 1000.0, "1e+3": 1000.0, ".5": 0.5, "2.": 2.0, "007": 7}
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        callers = {}
+        for fn in tree.body:
+            if isinstance(fn, ast.FunctionDef) and fn.name != "_selftest_cases":
+                for c in ast.walk(fn):
+                    if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id in ("_scale_floor_error", "_scale_from_text", "_scale_floor_from_text"):
+                        callers.setdefault(c.func.id, set()).add(fn.name)
+        return _eq(([_scale_floor_from_text(t) for t in OSF_BAD], [_scale_floor_from_text(t) for t in texts], [_scale_floor_from_text(v) for v in (0, True, 10 ** 400, float("inf"), 1, 1.5)],
+                    [_scale_floor_error(_scale_from_text(t)) for t in texts], [_scale_floor_error(v) for v in (0, True, 10 ** 400, float("inf"))],
+                    {k: sorted(v) for k, v in sorted(callers.items())}),
+                   ([([("GRAPH-SCALE-FLOOR", t, "")], None) for t in OSF_BAD], [([], n) for n in texts.values()],
+                    [([("GRAPH-SCALE-FLOOR", s_, "")], None) for s_ in ("0", "True", str(10 ** 400), "inf")] + [([], 1), ([], 1.5)],
+                    [[]] * len(texts), [[("GRAPH-SCALE-FLOOR", s_, "")] for s_ in ("0", "True", str(10 ** 400), "inf")],
+                    {"_scale_floor_error": ["_scale_floor_from_text"], "_scale_floor_from_text": ["_run"], "_scale_from_text": ["_scale_floor_from_text"]}))
+
+    @case("OSF6", "where the floor is checked: after the path checks (a SRC_ROOT that is not a directory is exit 2 even with a bad floor, OUT_DIR not written) and before the strings file is read "
+                  "(a bad floor with a strings file that is not JSON is the floor's refusal, exit 1, not exit 2)")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            o, e = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+                rc = main(["build_site.py", p["notes"], p["outline"], p["decls"], p["strings"], p["out"], "--source-check", os.path.join(d, "nodir"), "--open-scale-floor", "0"], check=lambda: 0)
+            path_first = (rc, o.getvalue(), e.getvalue().strip() == "build_site: SRC_ROOT is not a directory: " + os.path.join(d, "nodir"), os.path.exists(p["out"]))
+        bad = _build(strings="{not json", open_scale_floor="0")
+        return _eq((path_first, (bad.rc, bad.out, bad.existed)), (((2, "", True, False)), (1, "BUILD-ERROR GRAPH-SCALE-FLOOR 0 \n", False)))
 
     GA_ROLE = {"role_named_statement": "Named statement"}
 

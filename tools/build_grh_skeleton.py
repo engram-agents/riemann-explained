@@ -3229,16 +3229,19 @@ def _selftest_cases():
 
     @case("SCS", "the check of the floor has ONE implementation, the page's (build_site.py): this file defines neither `_scale_floor_error` nor `_scale_from_text` (read from its own syntax tree), has no "
                  "name of either, and calls the page's by lookup: with both of the page's replaced by ones that accept everything, `--open-scale-floor 0` builds (floor 0 written); with the page's own, "
-                 "the same texts are refused `GRAPH-SCALE-FLOOR <text>` on this tool's command line exactly as the page's check names them")
+                 "the same texts are refused `GRAPH-SCALE-FLOOR <text>` on this tool's command line exactly as the page's check names them; and the sequence text -> number -> check -> name as typed is the page's "
+                 "`_scale_floor_from_text`, the only thing of the page's `_scale*` this file uses (neither primitive, no sequence of its own)")
     def _():
         import ast
         names = ("_scale_floor_error", "_scale_from_text")
+        three = names + ("_scale_floor_from_text",)
         with open(os.path.abspath(__file__), encoding="utf-8") as f:
             tree = ast.parse(f.read())
-        defined = sorted({n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name in names}
+        defined = sorted({n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name in three}
                          | {t.id for n in ast.walk(tree) if isinstance(n, (ast.Assign, ast.AnnAssign)) for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
-                            if isinstance(t, ast.Name) and t.id in names})
-        texts = ("0", "-0", "0.0", "-1", "nan", "inf", "-inf", "1e400", "abc", "true", "", "0x1", " 1", "1 ", "1" * 400, "1" * 5000)
+                            if isinstance(t, ast.Name) and t.id in three})
+        used = sorted({n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "bs" and n.attr.startswith("_scale")})   # what this file takes from the page
+        texts = ("0", "-0", "0.0", "-1", "nan", "inf", "-inf", "1e400", "abc", "true", "", "0x1", " 1", "1 ", "+1", "1_0", "\u0661\u0662\u0663", "\uff11", "1" * 400, "1" * 5000)
         real = {n: getattr(bs, n) for n in names}
         with _tmp() as d:
             g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
@@ -3252,8 +3255,15 @@ def _selftest_cases():
             finally:
                 for n in names:
                     setattr(bs, n, real[n])
-        return _eq((defined, [n in globals() for n in names], all(theirs), ours, lax, written),
-                   ([], [False, False], True, [(1, "GRAPH-SCALE-FLOOR " + t + "\n") for t in texts], 0, ["0"]))
+        return _eq((defined, [n in globals() for n in three], used, all(theirs), ours, lax, written),
+                   ([], [False] * 3, ["_scale_floor_from_text"], True, [(1, "GRAPH-SCALE-FLOOR " + t + "\n") for t in texts], 0, ["0"]))
+
+    @case("SCE", "the `=` form `--open-scale-floor=1` is a usage error like every unknown option: exit 2, nothing on stdout, OUT_DIR not written (the same in build_site.py, OSF4)")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            rc, out, err = _cli(_args(g, os.path.join(d, "o"), _strings_file(d), _outline_file(d)) + ["--open-scale-floor=1"])
+            return _eq((rc, out, os.path.exists(os.path.join(d, "o"))), (2, "", False))
 
     @case("SCR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): the index has `open_scale_floor` 1 when the option is given, and none without")
     def _():
