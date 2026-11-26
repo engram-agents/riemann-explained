@@ -58,6 +58,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     blocked = set()
     garbage = set()     # paths answered 200 with a body that is not JSON
     delay = {}          # path -> threading.Event: the response waits until the event is set (at most 15 s)
+    status = {}         # path -> int: after any delay, the response is that error status (a slow-then-failing step file)
     seen = []
 
     def __init__(self, *a, **k):
@@ -68,6 +69,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path in Handler.delay:
             Handler.delay[path].wait(15)
+        if path in Handler.status:
+            self.send_error(Handler.status[path])
+            return
         if path in Handler.blocked:
             self.send_error(404)
             return
@@ -562,6 +566,434 @@ def c_dead_inflight(b, S, engine):
         Handler.delay = {}
 
 
+# ------------------------------------------------------------------------------- ONE navigation ticket (the latest route wins)
+
+def hold_step(step_id, status=None):
+    """The server holds ONE step file until the returned event is set; with a status, it then answers that error."""
+    gate = threading.Event()
+    path = "/graph/step/%s.json" % step_id
+    Handler.delay[path] = gate
+    if status is not None:
+        Handler.status[path] = status
+    Handler.seen.clear()
+    return gate, path
+
+
+def held_arrived(pg, path):
+    waited = 0
+    while path not in Handler.seen and waited < 5000:
+        pg.page.wait_for_timeout(50)
+        waited += 50
+    assert path in Handler.seen, "the held request never arrived: " + path
+
+
+def nav_page(b, S, prep=True):
+    """A settled page. The page's own start fetches the three top step files, so a tap on a top card is served from the cache and has no
+    load in flight. With prep, the address #a1 is followed first: that opens a1's sheet (card C) and puts its siblings a2 and a3 on the
+    map with their step files NOT yet fetched, which is what a slow tap needs."""
+    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    if prep:
+        at_hash(pg, "a1")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a1'", 6000)
+    return pg
+
+
+def carry_notes(index):
+    """index_edit: the two words that make a map one that carries notes (the live fixture has neither; none of its steps carries a note)."""
+    index["strings"]["note_label"] = "Note label (synthetic)"
+    index["strings"]["note_source"] = "Note source {source} {commit} (synthetic)"
+
+
+def nav_clear():
+    Handler.delay = {}
+    Handler.status = {}
+
+
+def click_by_id(pg, i):
+    pg.ev("document.getElementById(%s).click()" % json.dumps(i))
+
+
+def c_nav_r1(b, S, engine):
+    """R1: tap A (slow, then a 500), then tap B (fast): B's sheet is open, no notice, no fallback, also after A answers."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2", 500)
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        tap(pg, "a3")
+        wait_sheet(pg, True)
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a3'", 5000)
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert shown_id(pg) == "a3" and sheet_open(pg), "B's sheet is the open one"
+        assert notice_text(pg) is None, "no notice for a card the reader left: %r" % notice_text(pg)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "no fallback"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r2(b, S, engine, how):
+    """R2: tap A (slow), then Escape (or the close button): when A resolves the sheet stays closed."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        if how == "escape":
+            pg.page.keyboard.press("Escape")
+        else:
+            click_by_id(pg, "graph-sheet-close")
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert not sheet_open(pg), "the close was undone by the load that resolved after it (%s)" % how
+        assert shown_id(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r3(b, S, engine):
+    """R3: tap A (slow), then the toolbar key: when A resolves the key panel is still the one shown."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        click_by_id(pg, "graph-key")
+        wait_sheet(pg, True)
+        assert pg.ev("document.querySelector('#graph-sheet-body .key-content') !== null")
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert pg.ev("document.querySelector('#graph-sheet-body .key-content') !== null"), "the key panel was replaced by the late card"
+        assert shown_id(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r4(b, S, engine):
+    """R4: deep link #A (slow) then #B (fast): the page ends on B (the sheet shows B; the address is #B)."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S, False)
+        gate, path = hold_step("a1")
+        at_hash(pg, "a1")
+        held_arrived(pg, path)
+        at_hash(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 6000)
+        gate.set()
+        pg.page.wait_for_timeout(900)
+        assert shown_id(pg) == "a2", "the page ended on %r, not on the later address" % shown_id(pg)
+        assert pg.ev("location.hash") == "#a2"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r5(b, S, engine):
+    """R5: card C open; tap A (slow); an in-sheet close request: when A resolves the sheet stays closed."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        pg.ev("document.getElementById('a1').dispatchEvent(new CustomEvent('sheetcloserequest', {bubbles: true}))")
+        wait_sheet(pg, False)
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert not sheet_open(pg), "an in-sheet close was undone by the load that resolved after it"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r6(b, S, engine):
+    """R6 control, unchanged: a single slow tap opens its sheet; a single failed load shows the parts notice; a 4xx the refused-link notice."""
+    gate = threading.Event()
+    try:
+        for code, want in ((None, None), (500, PARTS_FAILED), (404, LINK_REFUSED)):
+            nav_clear()
+            pg = nav_page(b, S)
+            gate, path = hold_step("a2", code)
+            tap(pg, "a2")
+            held_arrived(pg, path)
+            gate.set()
+            if code is None:
+                pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+                assert sheet_open(pg)
+            else:
+                pg.wait("!document.getElementById('graph-notice').hidden", 5000)
+                assert notice_text(pg) == want, (code, notice_text(pg))
+                assert shown_id(pg) == "a1" and pg.ev("!!document.getElementById('graph-layer')"), "a single failure is a notice, the open card stays, no fallback"
+            pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+# ------------------------------- round 4: no visible effect from a superseded route, through ANY channel (reviewer round 2, S1 and S2)
+
+def c_nav_b1_b3(b, S, engine, how):
+    """B1/B3 (and the About half of B2): tap A (slow), then a route that closes or replaces the sheet that is not Escape, the close button or the key:
+    tap-outside (a tap on blank map), toolbar About, toolbar Show all. When A resolves, its sheet does not open over what the reader did."""
+    gate = threading.Event()
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        if how == "tap-outside":
+            assert CLOSE_DRIVERS["tap-outside"](pg), "no blank map to tap"
+            wait_sheet(pg, False)
+        elif how == "toolbar-about":
+            click_by_id(pg, "graph-about-open")
+            wait_sheet(pg, True)
+            assert pg.ev("document.getElementById('graph-about').parentElement === document.getElementById('graph-sheet-body')")
+        else:
+            click_by_id(pg, "graph-show-all")
+            wait_sheet(pg, False)
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        if how == "toolbar-about":
+            assert pg.ev("document.getElementById('graph-about').parentElement === document.getElementById('graph-sheet-body')"), "About was replaced by the late card"
+        else:
+            assert not sheet_open(pg), "the late card opened over %s" % how
+        assert shown_id(pg) is None, "the late card's article is in the sheet (%s)" % how
+        assert notice_text(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+HOLD_KIDS_JS = "(() => { const h = { fail: false }; h.p = new Promise((r) => { window.__releaseKids = (fail) => { h.fail = !!fail; r(); }; }); window.__holdKids = { a1: h }; return true; })()"
+
+
+def hold_kids_root(engine):
+    """A served copy of the page whose data layer (the copy only) waits on window.__holdKids[id] before it answers loadChildren(id): the step of a
+    card on the sheet is cached, so its parts load is otherwise instant and there is no window to put a tap in. Released with a true argument it then
+    fails the way a transport failure does (a DataError 'http-500', the class the page shows as the parts notice)."""
+    def mut(text):
+        old = "  async function loadChildren(id) {\n"
+        assert old in text
+        hold = ("    const h = globalThis.__holdKids && globalThis.__holdKids[id];\n"
+                "    if (h) { await h.p; if (h.fail) throw new DataError(\"http-500\", \"held, then failed\"); }\n")
+        return text.replace(old, old + hold)
+    root = tempfile.mkdtemp(prefix="pg-b4-")
+    assemble.assemble(root, engine, mutate={os.path.join("page", "data.js"): mut}, index_edit=carry_notes)
+    return Served(root)
+
+
+def world_style(pg):
+    """The real engine's camera: the transform on its world element (the world's own width and height change when a node opens, so they are not compared)."""
+    return pg.ev("(() => { const w = document.querySelector('#graph .ge-world'); const m = w && /transform:([^;]*);/.exec(w.getAttribute('style') || ''); return m ? m[1] : null; })()")
+
+
+def c_nav_b4(b, S0, engine):
+    """B4: open-parts on card C (its children's load slow), then tap card D: when C's load resolves D's sheet is untouched and the camera is
+    not moved to C (the double's call log has no new reveal; the real engine's world keeps its transform); D stays the selected card."""
+    S = hold_kids_root(engine)
+    try:
+        pg = nav_page(b, S)
+        assert pg.ev(HOLD_KIDS_JS)
+        pg.page.click("#graph-sheet-tools .sheet-tool")                 # open C's parts: the route waits on the held load
+        wait_sheet(pg, False)
+        tap(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+        log0 = len(pg.ev("document.getElementById('graph').__log")) if engine == "double" else 0
+        style0 = world_style(pg)
+        pg.ev("(() => { window.__releaseKids(false); return true; })()")
+        pg.page.wait_for_timeout(700)
+        assert shown_id(pg) == "a2" and sheet_open(pg), "D's sheet was replaced or closed by C's late load"
+        if engine == "double":
+            late = [e for e in pg.ev("document.getElementById('graph').__log")[log0:] if e[0] == "reveal"]
+            assert not late, "the camera was moved by the superseded open-parts: %r" % late
+        else:
+            assert style0 and world_style(pg) == style0, "the camera moved after D's sheet opened: %r -> %r" % (style0, world_style(pg))
+        assert pg.ev("document.querySelector('[data-node=\"a2\"]').classList.contains('ge-selected')"), "D is no longer the selected card"
+        assert notice_text(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_nav_b4b(b, S, engine):
+    """B4b: tap A (slow), then open-parts on the card still shown: the open-parts route takes its own ticket, so when A resolves the sheet stays closed."""
+    gate = threading.Event()
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert not sheet_open(pg) and shown_id(pg) is None, "the late card opened over the reader's open-parts"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_b5_b6(b, S, engine, mode, then_tap):
+    """B5 (then_tap) / B6 (the control, no tap): deep link #a1-a, whose reveal must open a1's parts: a1's step file is held, then fails ('500': a
+    transport failure, the engine's error event is the parts notice; 'garbage': data that arrived invalid, the engine's error event is the
+    fallback). B5: before it fails the reader taps card a2: a2's sheet is open and when the failure arrives there is NO notice and NO fallback.
+    B6: nothing follows. The failure shows exactly what it showed before this round: the fallback for data that arrived invalid; for a transport failure
+    the engine's notice is cleared at once by the deep link's own card opening (go() goes on into openCard, which hushes), so the observable end is the
+    open sheet of the target and no notice, which is also what the page did before this round."""
+    gate = threading.Event()
+    try:
+        pg = nav_page(b, S, False)
+        gate, path = hold_step("a1", 500 if mode == "500" else None)
+        if mode == "garbage":
+            Handler.garbage = {path}
+        at_hash(pg, "a1-a")
+        held_arrived(pg, path)
+        if then_tap:
+            pg.wait("document.querySelector('[data-node=\"a2\"]') !== null", 5000)        # the reveal opened goal-chain on its way to a1
+            tap(pg, "a2")
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+        gate.set()
+        pg.page.wait_for_timeout(900)
+        if then_tap:
+            assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "the page fell back for a route the reader left"
+            assert notice_text(pg) is None, "a notice from the route the reader left: %r" % notice_text(pg)
+            assert shown_id(pg) == "a2" and sheet_open(pg), "a2's sheet is the open one"
+        elif mode == "500":
+            assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden")
+            assert shown_id(pg) == "a1-a" and sheet_open(pg) and notice_text(pg) is None, (shown_id(pg), notice_text(pg))
+        else:
+            assert pg.ev("!document.getElementById('graph-layer')") and pg.page.is_visible("#graph-fallback"), "arrived invalid data is the fallback"
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        gate.set()
+        Handler.garbage = set()
+        nav_clear()
+
+
+def c_nav_b5b_b6b(b, S0, engine, then_tap):
+    """B5b (then_tap) / B6b (the control): open-parts on card C whose parts load is held, then fails as a transport failure. B5b: before it fails the
+    reader taps card D: D's sheet is open and there is NO notice when C's failure arrives. B6b: nothing follows: the parts notice appears as before
+    (an open-parts route that fails keeps its notice: nothing after it hushes it)."""
+    S = hold_kids_root(engine)
+    try:
+        pg = nav_page(b, S)
+        assert pg.ev(HOLD_KIDS_JS)
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        if then_tap:
+            tap(pg, "a2")
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+        pg.ev("(() => { window.__releaseKids(true); return true; })()")
+        pg.page.wait_for_timeout(700)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden")
+        if then_tap:
+            assert notice_text(pg) is None, "a notice from the route the reader left: %r" % notice_text(pg)
+            assert shown_id(pg) == "a2" and sheet_open(pg)
+        else:
+            assert notice_text(pg) == PARTS_FAILED, notice_text(pg)
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_nav_b7(b, S0, engine):
+    """B7 control: the READER opens a node's parts on the map (a pinch on the real engine), the load is slow and then fails, with no route awaiting it:
+    the parts notice is shown exactly as before."""
+    root = tempfile.mkdtemp(prefix="pg-b7-")
+    assemble.assemble(root, engine, index_edit=carry_notes)
+    S = Served(root)
+    gate = threading.Event()
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        pg.page.click("#graph-sheet-tools .sheet-tool")                  # goal-chain's parts (a route, finished)
+        wait_sheet(pg, False)
+        pg.wait("document.querySelector('[data-node=\"a1\"]') !== null", 6000)
+        gate, path = hold_step("a1", 500)
+        if engine == "double":     # open_on_map's evaluate would wait for the held promise (the test hook returns it); start the open without waiting
+            pg.ev("(() => { document.getElementById('graph').__open('a1'); return true; })()")
+        else:
+            open_on_map(pg, engine, "a1", "a1-a", wait=False)
+        held_arrived(pg, path)
+        assert notice_text(pg) is None
+        gate.set()
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert notice_text(pg) == PARTS_FAILED, notice_text(pg)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden")
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+        S.stop()
+
+
+def c_nav_c1(b, S0, engine):
+    """C1: suppression is scoped to the pending call's nodes. Open-parts on card C (node X = a1) is pending (its children's load is held); the reader
+    taps card D (a2), which supersedes it; then the reader's OWN gesture opens the parts of an UNRELATED node Y (inputs, not on X's path) whose
+    load is slow and then fails (http-500, held in the page's data-layer copy like X's: the top step's file is cached, so the server cannot hold
+    it): Y's parts notice APPEARS even though a superseded call is still pending. The reader then taps card a3 (clears the notice, so a
+    later notice could only be new), X's load is released as a failure: no notice and no fallback come from it. Discriminates a `supersededCall`
+    that ignores the node filter, or that looks only at the newest pending call."""
+    S = hold_kids_root(engine)
+    try:
+        pg = nav_page(b, S)
+        assert pg.ev(HOLD_KIDS_JS)
+        assert pg.ev("(() => { const h = { fail: false }; h.p = new Promise((r) => { window.__releaseY = (fail) => { h.fail = !!fail; r(); }; }); window.__holdKids.inputs = h; return true; })()")
+        pg.page.click("#graph-sheet-tools .sheet-tool")                 # X's parts: the route waits on the held load
+        wait_sheet(pg, False)
+        tap(pg, "a2")                                                    # supersedes it
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+        if engine == "double":
+            pg.ev("(() => { document.getElementById('graph').__open('inputs'); return true; })()")
+        else:
+            pg.page.click("#graph-show-all")       # Y is below the fold on the real map: the reader shows all (a route that closes D's sheet and fits the camera; X's call is still pending)
+            wait_sheet(pg, False)
+            pg.page.wait_for_timeout(800)
+            open_on_map(pg, engine, "inputs", "b1", wait=False)
+        pg.page.wait_for_timeout(300)
+        assert notice_text(pg) is None, "Y's load is still held"
+        pg.ev("(() => { window.__releaseY(true); return true; })()")
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert notice_text(pg) == PARTS_FAILED, "Y's own failed load was swallowed by an unrelated superseded call: %r" % notice_text(pg)
+        tap(pg, "a3")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a3'", 5000)
+        assert notice_text(pg) is None, "the card opening clears the notice"
+        pg.ev("(() => { window.__releaseKids(true); return true; })()")
+        pg.page.wait_for_timeout(700)
+        assert notice_text(pg) is None, "a notice from the superseded call: %r" % notice_text(pg)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "the page fell back"
+        assert shown_id(pg) == "a3" and sheet_open(pg)
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        S.stop()
+
+
 # ---------------------------------------------------------------------------------------------- the open-parts route (S1)
 
 def c_open_parts_rejects(b):
@@ -604,6 +1036,95 @@ def c_failed_load_keeps_card(b, S):
     wait_sheet(pg, False)
     pg.csp_clean()
     pg.close()
+
+
+# ------------------------------------------- a map that carries no notes opens a card exactly as main does (PR 97 round 6)
+# A map "carries notes" iff its index strings hold BOTH note_label and note_source. On any other map (the live one) a tap or an address opens
+# the sheet at once from the markup, with no step load in its path: no fetch result can delay it or prevent it.
+
+def c_live_open_fetch_fails(b, S, engine):
+    """C1: on the live map a tap on a card whose step fetch FAILS (500) still opens the sheet, and no notice shows."""
+    try:
+        pg = nav_page(b, S)                                    # a1 is open; a2 and a3 are on the map with their step files not fetched
+        Handler.status["/graph/step/a2.json"] = 500
+        tap(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 3000)
+        pg.page.wait_for_timeout(500)
+        assert shown_id(pg) == "a2" and sheet_open(pg), "the sheet opens although a2's step file answers 500"
+        assert notice_text(pg) is None, "no notice on the live map: %r" % notice_text(pg)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "no fallback"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        nav_clear()
+
+
+def c_live_open_fetch_held(b, S, engine):
+    """C2: on the live map a tap on a card whose step fetch never settles (held) has the sheet open BEFORE it settles."""
+    gate = threading.Event()
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 3000)
+        assert sheet_open(pg) and shown_id(pg) == "a2", "the sheet is open while a2's step file is still held"
+        gate.set()
+        pg.page.wait_for_timeout(500)
+        assert shown_id(pg) == "a2" and notice_text(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_live_sheets_match_main(b, S, engine):
+    """C3: the sheet of each of the 23 live cards (opened by its address) and of the three top cards opened by a TAP (26 snapshots), the
+    crumbs, the tools, the body, the class and the notice, are byte-equal to what main's page drew. fixtures/live-sheets-main.json holds only the
+    SHA-256 of each snapshot (canonical JSON), generated from origin/main's page code on the same fixture, so no text is copied into the tests."""
+    import hashlib
+    with open(os.path.join(HERE, "fixtures", "live-sheets-main.json"), encoding="utf-8") as f:
+        want = json.load(f)
+    assert sorted(want) == sorted(ALL_IDS) and len(want) == 23, "the golden covers the 23 live cards"
+    snap_js = """(() => { const s = document.getElementById('graph-sheet');
+      return { hidden: s.hidden, cls: s.className, crumbs: document.getElementById('graph-crumbs').innerHTML,
+               tools: document.getElementById('graph-sheet-tools').innerHTML, body: document.getElementById('graph-sheet-body').innerHTML,
+               notice: document.getElementById('graph-notice').hidden }; })()"""
+    digest = lambda v: hashlib.sha256(json.dumps(v, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    n = 0
+    for card in ALL_IDS:
+        pg = Pg(b, S.base + "graph/index.html#" + card, 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        assert digest(pg.ev(snap_js)) == want[card], "by address: " + card
+        n += 1
+        pg.close()
+    for card in ("goal-chain", "inputs", "bounds"):
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, card)
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        assert digest(pg.ev(snap_js)) == want[card], "by tap: " + card
+        n += 1
+        pg.close()
+    assert n == 26
+
+
+def c_note_one_key_refused(b, S0, engine):
+    """A map holding only ONE of note_label and note_source is refused at START: the page's usual fallback, the code bad-note-strings recorded as the
+    failure reason, and no card opens (round 7)."""
+    for drop in ("note_source", "note_label"):
+        root = tempfile.mkdtemp(prefix="pg-notes1-")
+        assemble.assemble(root, engine, fix="notes", index_edit=lambda i, d=drop: i["strings"].pop(d),
+                          mutate={os.path.join("page", "app.js"): expose_failure})
+        S = Served(root)
+        try:
+            pg = Pg(b, S.base + "graph/index.html#sk-file-3", 1280, 900)
+            pg.wait("document.documentElement.hasAttribute('data-failure')", 6000)
+            assert pg.ev("document.documentElement.getAttribute('data-failure')").startswith("bad-note-strings"), drop
+            assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards"), drop
+            assert not pg.ev("!!document.querySelector('#graph-sheet-body article')"), drop
+            pg.close()
+        finally:
+            S.stop()
 
 
 # ---------------------------------------------------------------- face text sizes and one fixed closed size (A1, R1')
@@ -1389,9 +1910,9 @@ def c_key_real_rows(b, S0, engine):
 
 # ----------------------------------------------------------------- the parts button follows the SHOWN card, not the engine's events (K1)
 
-def open_on_map(pg, engine, node_id, child_id):
+def open_on_map(pg, engine, node_id, child_id, wait=True):
     """Open a node on the MAP while the sheet is up: the double does what a semantic zoom does; the real engine is zoomed with
-    ctrl + wheel over the node until it opens itself."""
+    ctrl + wheel over the node until it opens itself. wait=False returns without waiting for the child (a load that is meant to fail)."""
     if engine == "double":
         pg.ev("document.getElementById('graph').__open(%s)" % json.dumps(node_id))
     else:
@@ -1408,7 +1929,8 @@ def open_on_map(pg, engine, node_id, child_id):
                     break
         finally:
             pg.page.keyboard.up("Control")
-    pg.wait("document.querySelector('[data-node=\"%s\"]') !== null" % child_id, 6000)
+    if wait:
+        pg.wait("document.querySelector('[data-node=\"%s\"]') !== null" % child_id, 6000)
 
 
 def c_parts_button_follows_shown(b, S, engine):
@@ -1512,7 +2034,8 @@ def c_load_failure_go(b, S0, engine, mode):
 
 
 def c_load_failure_engine(b, S0, engine, mode):
-    """B's parts are opened from the sheet (the engine loads B's step): same split, through the engine's load-failed event."""
+    """B's parts are opened ON THE MAP (the engine loads B's step, which no card opening has fetched yet: a card opened on the sheet loads its own
+    step file, so the sheet's parts button always finds it cached): same split, through the engine's load-failed event."""
     root = tempfile.mkdtemp(prefix="pg-k2eng-")
     assemble.assemble(root, engine)
     S = Served(root)
@@ -1523,11 +2046,8 @@ def c_load_failure_engine(b, S0, engine, mode):
         pg.page.click("#graph-sheet-tools .sheet-tool")                  # goal-chain's parts (already loaded)
         wait_sheet(pg, False)
         pg.wait("document.querySelector('[data-node=\"a1\"]') !== null", 6000)
-        tap(pg, "a1")
-        wait_sheet(pg, True)
-        assert shown_id(pg) == "a1"
         pat = fail_step(pg, "a1", mode)
-        pg.page.click("#graph-sheet-tools .sheet-tool")                  # open a1's parts: its step file is fetched now
+        open_on_map(pg, engine, "a1", "a1-a", wait=False)               # open a1's parts on the map: its step file is fetched now
         if mode in ("garbage", "invalid"):
             pg.wait("!document.getElementById('graph-layer')", 6000)
             assert pg.page.is_visible("#graph-fallback") and pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
@@ -2050,6 +2570,375 @@ def c_hostile_kind_state(b):
                 S.stop()
 
 
+# ---------------------------------------------------------------- the repository's note on the sheet (fixtures/notes)
+
+NOTE_KIDS_JS = """(() => { const a = document.querySelector('#graph-sheet-body article');
+  return [...a.children].map(e => e.tagName + '.' + e.className); })()"""
+NOTE_BODY_JS = """(() => { const b = document.querySelector('#graph-sheet-body .note-body'); if (!b) return null;
+  const all = [...b.querySelectorAll('*')], sheet = document.getElementById('graph-sheet-body');
+  return { tags: [...new Set(all.map(e => e.tagName))].sort(),
+           attrs: [...new Set(all.flatMap(e => [...e.attributes].map(a => e.tagName + ':' + a.name)))].sort(),
+           text: b.textContent, kids: [...b.children].map(e => e.tagName),
+           stray: sheet.querySelectorAll('img, script, a, iframe, b, u, i, em, strong, style, svg').length,
+           handlers: [...sheet.querySelectorAll('*')].filter(e => [...e.attributes].some(a => /^on/i.test(a.name))).length }; })()"""
+
+
+def _notes_site(engine, **edits):
+    root = tempfile.mkdtemp(prefix="pg-notes-")
+    assemble.assemble(root, engine, fix="notes", **edits)
+    return Served(root)
+
+
+def c_note_sheet(b, S0, engine):
+    """N12/N14/N2: opening a file card with a note shows, after the kind word line, the label, the source line ({source} as text, {commit} the
+    first 8 characters of the step's commit) and then the rendered note, in that order; the note's first '# ' line is kept (as an h3.note-h)
+    even though it equals the card title; a card without a note shows none of them; closing puts the card's markup back."""
+    S = _notes_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        before = pg.ev("document.getElementById('graph-cards').outerHTML")
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-1'", 6000)
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        kids = pg.ev(NOTE_KIDS_JS)
+        assert kids[:5] == ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "DIV.note-body"], kids
+        assert kids[5] == "P.note", kids          # the builder's own line is still there, after ours
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-label').textContent") == "From the repository, unchanged"
+        src = pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent")
+        assert src == "Source file: grh/src/New/Reduction/OneSidedBound.lean \u00b7 version 01234567 of lsernau/grh-lean", src
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-source *, #graph-sheet-body .note-label *').length") == 0, "text only, never a link"
+        body = pg.ev(NOTE_BODY_JS)
+        assert body["kids"] == ["H3", "P", "P", "UL"], body["kids"]
+        assert body["tags"] == ["CODE", "H3", "LI", "P", "UL"], body["tags"]
+        assert body["attrs"] == ["H3:class"], body["attrs"]
+        assert "Here \u03bb(n) = \u039b(n) (1 - chiK d n) for n \u2261 1 modulo q and 0 otherwise" in body["text"], body["text"][-400:]
+        assert body["stray"] == 0 and body["handlers"] == 0, body
+        # N14: the first '# ' line equals the card title and is KEPT, with the note heading class
+        h = pg.ev("""(() => { const hs = [...document.querySelectorAll('#graph-sheet-body h3')];
+          return hs.map(e => [e.className, e.textContent]); })()""")
+        title = "The one-sided bound, and the theorem in half-plane form"
+        assert h == [["claim", title], ["note-h", title]], h
+        # a card without a note shows none of it
+        at_hash(pg, "sk-file-3")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
+        kids3 = pg.ev(NOTE_KIDS_JS)
+        assert kids3[:3] == ["H3.claim", "P.sheet-status", "P.note"], kids3
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-h').length") == 0
+        # closing puts the markup back: no note element is left in any article
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-h').length") == 0
+        after = pg.ev("document.getElementById('graph-cards').outerHTML")
+        assert after.replace(' open=""', "") == before.replace(' open=""', ""), "closing must put the markup back"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_note_tap_and_hostile(b, S0, engine):
+    """N9 in the browser, and the TAP route: a tap on a card whose step file has not been fetched yet loads it, then shows its note. The
+    hostile note renders as visible text: only the allowed elements, the only attributes are the heading class and `start`, no element
+    from the payloads exists, no dialog, no CSP violation."""
+    S = _notes_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        Handler.seen.clear()
+        tap(pg, "sk-file-2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-2'", 6000)
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        assert "/graph/step/sk-file-2.json" in Handler.seen, Handler.seen
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body').length") == 1
+        body = pg.ev(NOTE_BODY_JS)
+        assert body["tags"] == ["CODE", "H3", "LI", "OL", "P", "PRE", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"], body["tags"]
+        assert body["attrs"] == ["H3:class", "OL:start"], body["attrs"]
+        assert body["stray"] == 0 and body["handlers"] == 0, body
+        for want in ("<script>alert(1)</script>", "<img src=x onerror=1> &amp;lt; javascript:alert(1) [x](javascript:y) <b>bold</b>", "<img src=x onerror=2>",
+                     "javascript:void(0)", "[y](javascript:z)", "<iframe src=javascript:alert(3)></iframe>", "<b>h</b>", "&lt;"):
+            assert want in body["text"], (want, body["text"])
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-body ol').getAttribute('start')") == "3"
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent") == \
+            "Source file: grh/src/New/Hostile.lean \u00b7 version 01234567 of lsernau/grh-lean"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_note_strings(b, S0, engine):
+    """N13 in the browser: a map lacking the note keys (both: one alone is refused at start, round 7) whose reader opens a step carrying a note gets the page's usual failure (the
+    fallback; no half-filled label); a note_source template with markup in it is text; the live map's sheet carries none of it."""
+    def no_note_words(i):
+        i["strings"].pop("note_source")
+        i["strings"].pop("note_label")
+    for drop in ("neither",):
+        S = _notes_site(engine, index_edit=no_note_words)
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+            at_hash(pg, "sk-file-1")
+            pg.wait("!document.getElementById('graph-layer')", 6000)
+            assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards")
+            assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body').length") == 0
+            pg.close()
+        finally:
+            S.stop()
+    # the same map with a card that has no note: no failure at all
+    S = _notes_site(engine, index_edit=no_note_words)
+    try:
+        pg = Pg(b, S.base + "graph/index.html#sk-file-3", 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
+        assert pg.ev("document.getElementById('graph-fallback').hidden")
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+    # a template with markup: filled and shown as text
+    S = _notes_site(engine, index_edit=lambda i: i["strings"].__setitem__("note_source", "<b>Source</b> {commit} &amp; {source} {source}"))
+    try:
+        pg = Pg(b, S.base + "graph/index.html#sk-file-1", 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body .note-source')", 6000)
+        t = pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent")
+        assert t == "<b>Source</b> 01234567 &amp; grh/src/New/Reduction/OneSidedBound.lean grh/src/New/Reduction/OneSidedBound.lean", t
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-source *').length") == 0
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_note_load_failure(b, S0, engine):
+    """A tap on a card whose step file cannot be loaded leaves the reader's open card exactly as it was and shows the page's notice
+    (the step is loaded BEFORE the open card is touched)."""
+    S = _notes_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+        Handler.blocked = {"/graph/step/sk-file-2.json"}
+        tap(pg, "sk-file-2")
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert shown_id(pg) == "sk-file-1" and sheet_open(pg)
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body').length") == 1
+        assert pg.ev("document.getElementById('graph-fallback').hidden")
+        pg.csp_clean()
+        pg.close()
+    finally:
+        Handler.blocked = set()
+        S.stop()
+
+
+def c_note_open_throws(b, S0, engine):
+    """A card opening whose sheet THROWS after the step loaded (a plain exception, not a data refusal) is the page's fallback and an
+    unhandled rejection is not left behind: the tap route is now asynchronous, so its exception must be caught inside it."""
+    def mut(text):
+        old = "    const rec = adopt(article, true);\n"
+        assert text.count(old) == 1
+        return text.replace(old, old + '    throw new Error("the sheet failed after the load");\n')
+    root = tempfile.mkdtemp(prefix="pg-open-throws-")
+    assemble.assemble(root, engine, mutate={os.path.join("page", "sheet.js"): mut})
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, "goal-chain")
+        pg.wait("!document.getElementById('graph-layer')", 6000)
+        assert pg.page.is_visible("#graph-fallback") and pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
+        assert not [c for c in pg.console if c[0] == "pageerror"], pg.console
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_note_live_unchanged(b, S, engine):
+    """N11: on the live real fixture no step carries a note, so a card's sheet holds no note label, source line or body, and its children
+    are the claim, the status line and the builder's own lines as before."""
+    for card in ("goal-chain", "a1-a-1-x"):
+        pg = Pg(b, S.base + "graph/index.html#" + card, 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-h').length") == 0, card
+        kids = pg.ev(NOTE_KIDS_JS)
+        assert kids[0] == "H3.claim" and kids[1] == "P.sheet-status", kids
+        assert not any(k.startswith(("DIV.note", "P.note-")) for k in kids), kids
+        pg.csp_clean()
+        pg.close()
+
+
+
+# ---------------------------------------------------------------- the maths face on the sheet (fixtures/typeset)
+
+TYPESET_NEW = ("note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button")
+LABEL_TYPESET = "The file's opening note, from the repository"
+LABEL_EXACT = "The file's opening note, from the repository, unchanged"
+LINE_WORDS = "Formulas set in maths type by us; every symbol is the repository's."
+BUTTON_EXACT = "Show the exact text"
+BUTTON_RENDER = "Show the note with formulas set in maths type"
+TYPESET_KIDS = ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "P.note-typeset-line", "BUTTON.note-toggle", "DIV.note-body", "P.note"]
+TYPESET_STATE_JS = """(() => { const b = document.querySelector('#graph-sheet-body .note-body'), t = document.querySelector('#graph-sheet-body .note-toggle');
+  const l = document.querySelector('#graph-sheet-body .note-label'), ln = document.querySelector('#graph-sheet-body .note-typeset-line');
+  return { label: l && l.textContent, line: ln ? ln.textContent : null, button: t ? t.textContent : null, pressed: t ? t.getAttribute('aria-pressed') : null,
+           type: t ? t.getAttribute('type') : null, body: b ? b.innerHTML : null, text: b ? b.textContent : null,
+           kids: b ? [...b.children].map(e => e.tagName) : null, maths: b ? b.querySelectorAll('span.m').length : null,
+           pres: b ? b.querySelectorAll('pre').length : null }; })()"""
+
+
+def _typeset_site(engine, **edits):
+    root = tempfile.mkdtemp(prefix="pg-typeset-")
+    assemble.assemble(root, engine, fix="typeset", **edits)
+    return Served(root)
+
+
+def _fixture_note(step):
+    with open(os.path.join(HERE, "fixtures", "typeset", "step", step + ".json"), encoding="utf-8") as f:
+        return json.load(f)["note"]["text"]
+
+
+def _open_note(pg, card):
+    at_hash(pg, card)
+    pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+    pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+
+
+def c_typeset_sheet(b, S0, engine):
+    """L1/T4/T6: with all four strings present a note's sheet shows label (typeset words), source line, the maths-type line, the button and the
+    note, in that order; formula and one-letter spans are span.m (m1 for one letter) in a serif, upright, unboxed face at the paragraph's size;
+    names stay code. The button (aria-pressed false) replaces the rendering with ONE pre holding the note's text verbatim, backticks included, under
+    the exact-view label, with the render words and aria-pressed true; pressing it again returns the rendering unchanged. Escape closes the sheet and
+    the next opening starts on the rendering."""
+    S = _typeset_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844).settled()
+        _open_note(pg, "sk-file-3")
+        assert pg.ev(NOTE_KIDS_JS) == TYPESET_KIDS, pg.ev(NOTE_KIDS_JS)
+        st = pg.ev(TYPESET_STATE_JS)
+        assert st["label"] == LABEL_TYPESET and st["line"] == LINE_WORDS and st["button"] == BUTTON_EXACT, st
+        assert st["pressed"] == "false" and st["type"] == "button", st
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent") == \
+            "Opening note of grh/src/New/OneLift/ComparisonOperator/LineCoordinates.lean · version 01234567 of lsernau/grh-lean"
+        body = pg.ev(NOTE_BODY_JS)
+        assert body["tags"] == ["CODE", "H3", "H4", "LI", "P", "SPAN", "UL"], body["tags"]
+        assert body["attrs"] == ["H3:class", "H4:class", "SPAN:class"], body["attrs"]
+        assert body["stray"] == 0 and body["handlers"] == 0, body
+        assert st["maths"] >= 10, st["maths"]
+        # the face: serif, upright, the paragraph's size, no box
+        look = pg.ev("""(() => { const m = document.querySelector('#graph-sheet-body .note-body p span.m'), p = m.parentElement;
+          const cm = getComputedStyle(m), cp = getComputedStyle(p), cc = getComputedStyle(document.querySelector('#graph-sheet-body .note-body code'));
+          return { family: cm.fontFamily, style: cm.fontStyle, size: cm.fontSize, psize: cp.fontSize, bg: cm.backgroundColor, bw: cm.borderTopWidth,
+                   pad: cm.paddingLeft, codefamily: cc.fontFamily, pfamily: cp.fontFamily, kids: m.childNodes.length, cls: m.className }; })()""")
+        assert look["style"] == "normal" and look["size"] == look["psize"] and look["bw"] == "0px" and look["bg"] == "rgba(0, 0, 0, 0)", look
+        assert "monospace" not in look["family"] and look["family"] == look["pfamily"] and look["family"] != look["codefamily"], look
+        assert look["kids"] == 1 and look["cls"].split()[0] == "m", look
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body span.m1').length") >= 1
+        assert all(c == "m m1" for c in pg.ev("[...document.querySelectorAll('#graph-sheet-body .note-body span.m1')].map(e => e.className)"))
+        assert pg.ev("document.documentElement.scrollWidth <= window.innerWidth"), "no horizontal overflow at 390"
+        rendered = st
+        # the button: the exact text, verbatim
+        pg.page.click("#graph-sheet-body .note-toggle")
+        ex = pg.ev(TYPESET_STATE_JS)
+        assert ex["pressed"] == "true" and ex["button"] == BUTTON_RENDER and ex["label"] == LABEL_EXACT, ex
+        assert ex["kids"] == ["PRE"] and ex["pres"] == 1 and ex["maths"] == 0, ex
+        assert ex["text"] == _fixture_note("sk-file-3") and "`" in ex["text"], "the exact text, every character, backticks included"
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-body pre').childNodes.length") == 1, "one text node"
+        assert ex["line"] is None, "the maths-type line is told only of the maths-type view"
+        assert pg.ev(NOTE_KIDS_JS)[:4] == ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source"]
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent").startswith("Opening note of grh/src/New/")
+        # and back
+        pg.page.click("#graph-sheet-body .note-toggle")
+        back = pg.ev(TYPESET_STATE_JS)
+        assert back == rendered, (back["pressed"], back["button"], back["label"])
+        assert pg.ev(NOTE_KIDS_JS) == TYPESET_KIDS
+        # Escape (not Back) closes the sheet from the exact view; the next opening starts on the rendering; nothing of the note is left behind
+        pg.page.click("#graph-sheet-body .note-toggle")
+        assert pg.ev(TYPESET_STATE_JS)["pressed"] == "true"
+        pg.page.keyboard.press("Escape")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-toggle, .note-typeset-line, .m').length") == 0
+        _open_note(pg, "sk-file-1")
+        again = pg.ev(TYPESET_STATE_JS)
+        assert again["pressed"] == "false" and again["label"] == LABEL_TYPESET and again["button"] == BUTTON_EXACT and again["pres"] == 0, again
+        # a card without a note has none of it; the button is gone with the sheet's content
+        at_hash(pg, "sk-file-4")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-4'", 6000)
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-toggle, .note-typeset-line').length") == 0
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_typeset_hostile(b, S0, engine):
+    """T4 in the browser: formula-class spans whose characters would be markup (`<b>x</b>`, `a<i>b`, `x&y`) are span.m text; no b, i or other element
+    comes of them; in the exact view they are the characters of one pre."""
+    S = _typeset_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _open_note(pg, "sk-file-2")
+        body = pg.ev(NOTE_BODY_JS)
+        assert body["stray"] == 0 and body["handlers"] == 0, body
+        assert body["tags"] == ["CODE", "H3", "LI", "OL", "P", "PRE", "SPAN", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"], body["tags"]
+        assert body["attrs"] == ["H3:class", "OL:start", "SPAN:class"], body["attrs"]
+        spans = pg.ev("[...document.querySelectorAll('#graph-sheet-body .note-body span.m')].map(e => [e.className, e.childNodes.length, e.textContent])")
+        assert ["m", 1, "<b>x</b>"] in spans and ["m", 1, "a<i>b"] in spans and ["m", 1, "x&y"] in spans, spans
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body b, #graph-sheet-body .note-body i, #graph-sheet-body .note-body img, #graph-sheet-body .note-body script').length") == 0
+        pg.page.click("#graph-sheet-body .note-toggle")
+        ex = pg.ev(TYPESET_STATE_JS)
+        assert ex["kids"] == ["PRE"] and ex["text"] == _fixture_note("sk-file-2"), ex["kids"]
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_typeset_gate(b, S0, engine):
+    """T5/L1 in the browser: a map that has note_label and note_source but lacks ANY ONE of the four maths-face strings renders the note exactly as the
+    round-1 page does (same words, same body markup as the notes map): no span.m, no line, no button, the exact-view label."""
+    S1 = _notes_site(engine)
+    try:
+        pg = Pg(b, S1.base + "graph/index.html", 1280, 900).settled()
+        _open_note(pg, "sk-file-1")
+        round1 = pg.ev(TYPESET_STATE_JS)
+        kids1 = pg.ev(NOTE_KIDS_JS)
+        pg.close()
+    finally:
+        S1.stop()
+    assert round1["button"] is None and round1["line"] is None and round1["maths"] == 0 and round1["label"] == "From the repository, unchanged", round1
+    for drop in TYPESET_NEW:
+        S = _typeset_site(engine, index_edit=lambda i, d=drop: i["strings"].pop(d))
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+            _open_note(pg, "sk-file-1")
+            st = pg.ev(TYPESET_STATE_JS)
+            assert st["button"] is None and st["line"] is None and st["maths"] == 0 and st["pressed"] is None, (drop, st)
+            assert st["label"] == LABEL_EXACT, (drop, st["label"])
+            assert st["body"] == round1["body"], drop
+            assert pg.ev(NOTE_KIDS_JS) == kids1, (drop, pg.ev(NOTE_KIDS_JS))
+            assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body code').length") == round1["body"].count("<code>")
+            pg.csp_clean()
+            pg.close()
+        finally:
+            S.stop()
+
+
+def c_typeset_review(b, S0, engine):
+    """L2 in the browser: a note carrying review {"state": "converter"} draws exactly what the same note without it draws (the sheet's whole body)."""
+    got = []
+    for strip in (False, True):
+        edit = (lambda steps: steps["sk-file-3"]["note"].pop("review")) if strip else None
+        S = _typeset_site(engine, step_edit=edit)
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+            _open_note(pg, "sk-file-3")
+            got.append(pg.ev("document.getElementById('graph-sheet-body').innerHTML"))
+            assert "review" not in got[-1] and "converter" not in got[-1]
+            pg.csp_clean()
+            pg.close()
+        finally:
+            S.stop()
+    assert got[0] == got[1], "a review field changed what is drawn"
+
+
 def c_mutant(b):
     """R7 MUTANT: a copy of dom.js whose text path uses innerHTML. The hostile cells must go red."""
     def mut(text):
@@ -2085,10 +2974,15 @@ def main():
             root = tempfile.mkdtemp(prefix="pg-" + eng + "-")
             assemble.assemble(root, eng)
             S = Served(root)
+            # The navigation-ticket cases hold a card's STEP FETCH, so they need a map whose open waits for one: a map that carries notes. The live
+            # fixture with the two note words added is that map (no step carries a note; the live map itself opens at once, round 6).
+            rootn = tempfile.mkdtemp(prefix="pg-nav-" + eng + "-")
+            assemble.assemble(rootn, eng, index_edit=carry_notes)
+            SN = Served(rootn)
             try:
                 def run(name, fn, *a):
                     if only is None or only in name:
-                        case(eng + ": " + name, fn, br, S, *a)
+                        case(eng + ": " + name, fn, br, SN if name.startswith("nav ") else S, *a)
                 run("first frame at 1024", c_first_frame, False)
                 run("first frame at 390", c_first_frame, True)
                 run("role-less step: no role element, title-only crumb; role shown when present", c_role_less)
@@ -2127,6 +3021,16 @@ def main():
                 run("module: A6 a backtick span in a title is a code element on the face (inside the clamp) and in the breadcrumb, no backtick shown", c_backtick_title, eng)
                 run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
                 run("module: P6/F1 part, group and file told by bar position over s-none and s-census; swatches match; the selection ring gap is 3 px", c_look_override, eng)
+                run("note: N12/N14/N2 the sheet shows the label, the source line and the rendered note in order; the first heading is kept; a card without a note shows none", c_note_sheet, eng)
+                run("note: N9 a tap loads the step file and shows its note; the hostile note is visible text and only allowed elements", c_note_tap_and_hostile, eng)
+                run("note: N13 a map lacking a note key is the page's failure when a note step opens; a template with markup is text", c_note_strings, eng)
+                run("note: a failed step load on a tap leaves the open card untouched", c_note_load_failure, eng)
+                run("note: N11 the live map's sheet carries no note", c_note_live_unchanged, eng)
+                run("note: a sheet that throws after the step loaded is the fallback, with no unhandled rejection", c_note_open_throws, eng)
+                run("note: L1/T4/T6 with the four maths-face strings: label, source, line, button, note in order; formulas in the maths face; the button toggles to the exact text and back; Escape closes", c_typeset_sheet, eng)
+                run("note: T4 formula spans that would be markup are span.m text, no element comes of them", c_typeset_hostile, eng)
+                run("note: T5 a map lacking any one of the four maths-face strings renders the note exactly as round 1", c_typeset_gate, eng)
+                run("note: L2 a review {state: converter} changes nothing drawn", c_typeset_review, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:
@@ -2146,12 +3050,36 @@ def main():
                 run("after a fallback: a hash change, a premise link click and the keys move nothing", c_dead_after_fallback, eng)
                 run("after a fallback: a step load that was in flight moves nothing when it resolves", c_dead_inflight, eng)
                 run("a failed load (404) leaves the reader's open card open and shows the notice", c_failed_load_keeps_card)
+                run("nav R1: tap A (slow, then 500) then tap B (fast): B's sheet is open, no notice, no fallback", c_nav_r1, eng)
+                run("nav R2: tap A (slow) then Escape: when A resolves the sheet stays closed", c_nav_r2, eng, "escape")
+                run("nav R2: tap A (slow) then the close button: when A resolves the sheet stays closed", c_nav_r2, eng, "button")
+                run("nav R3: tap A (slow) then the toolbar key: the key panel is still the one shown", c_nav_r3, eng)
+                run("nav R4: deep link #A (slow) then #B (fast): the page ends on B", c_nav_r4, eng)
+                run("nav R5: card C open, tap A (slow), an in-sheet close request: the sheet stays closed", c_nav_r5, eng)
+                run("nav R6 control: a single slow tap opens; a single 500 is the parts notice; a 4xx the refused-link notice", c_nav_r6, eng)
+                run("nav B1: tap A (slow) then a tap on blank map: when A resolves no sheet opens", c_nav_b1_b3, eng, "tap-outside")
+                run("nav B2: tap A (slow) then toolbar About: when A resolves About is still the one shown", c_nav_b1_b3, eng, "toolbar-about")
+                run("nav B3: tap A (slow) then toolbar Show all: when A resolves no sheet opens", c_nav_b1_b3, eng, "toolbar-show-all")
+                run("nav B4: open-parts on C (its children's load slow) then tap D: when C's load resolves D's sheet is untouched and the camera is not moved to C", c_nav_b4, eng)
+                run("nav B4b: tap A (slow) then open-parts on the shown card: when A resolves the sheet stays closed", c_nav_b4b, eng)
+                for mode in ("500", "garbage"):
+                    run("nav B5: deep link whose reveal fails (%s, slow), the reader taps another card first: that card's sheet is open and no notice, no fallback when the failure arrives" % mode, c_nav_b5_b6, eng, mode, True)
+                    run("nav B6 control: the same failing deep link with nothing after it (%s): the notice or the fallback, exactly as before" % mode, c_nav_b5_b6, eng, mode, False)
+                run("nav B5b: open-parts whose load fails (slow), the reader taps another card first: that card's sheet is open and no notice when the failure arrives", c_nav_b5b_b6b, eng, True)
+                run("nav B6b control: the same failing open-parts with nothing after it: the parts notice appears, as before", c_nav_b5b_b6b, eng, False)
+                run("nav B7 control: the reader's own open of a node's parts that fails to load (slow, 500) is still the parts notice", c_nav_b7, eng)
+                run("nav C1: a superseded open-parts is pending on one node, the reader's own open of an unrelated node fails to load: its parts notice appears; the superseded load's failure later says nothing", c_nav_c1, eng)
+                run("round 6 C1: on the live map a tap whose step fetch FAILS (500) opens the sheet, no notice", c_live_open_fetch_fails, eng)
+                run("round 6 C2: on the live map a tap whose step fetch never settles (held) has the sheet open before it settles", c_live_open_fetch_held, eng)
+                run("round 6 C3: the 26 live sheet snapshots (23 by address, 3 by tap) equal what main's page drew", c_live_sheets_match_main, eng)
+                run("round 7: a map with only ONE of note_label and note_source is refused at start: the fallback, bad-note-strings recorded, no card opens", c_note_one_key_refused, eng)
                 if eng == "real":
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
                     run("REAL: pinch semantic-opens a step and loads its step file; no sheet", c_real_pinch)
             finally:
                 S.stop()
+                SN.stop()
         if only is None or "open-parts" in only:
             case("open-parts: a rejecting open() is a fallback, not an unhandled rejection", c_open_parts_rejects, br)
         if only is None or "hostile" in only or "mutant" in only:
