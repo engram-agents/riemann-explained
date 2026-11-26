@@ -12960,7 +12960,10 @@ def _selftest_cases():
         return [(a.attrs["id"], [(r.cls[1][len("map-row-"):], r.find("summary")[0].text()) for r in _direct(a, "details", "map-row")]) for a in _dom(page).find("article")]
 
     def gm_unwrap(page):
-        """The page with each map row replaced by the section markup inside it."""
+        """The page with each map row replaced by the section markup inside it, the react row first moved back to where the list page has its reactions (before the
+        Evidence block: on the map page it comes after it)."""
+        page = re.sub(r'(<details class="evidence">.*?</details>)\n(<details class="map-row map-row-react"><summary>.*?</summary>)(.*?)</details>',
+                      lambda mt: mt.group(3) + "\n" + mt.group(1), page, flags=re.S)
         return GM_ROW.sub(lambda mt: mt.group(3), page)
 
     @case("GM1", "G2c-1 the map page's closed rows (fixture with sketches, notes and three conditions, the real graph source): each card's rows are exactly the sections it has, in the "
@@ -13211,6 +13214,25 @@ def _selftest_cases():
         after = (_IN_EVIDENCE, _FORMULA_LOG)
         globals()["_IN_EVIDENCE"] = False
         return _eq((got, after), ("second rendering", (False, None)))
+
+    @case("GM15", "G2c the React row comes after the Evidence block on the map page, and only that row moves: for each card of the fixture the direct `details` children of the card are, in the "
+                  "card's own markup order, the other rows in the section order, then `evidence`, then `react`, then (when the card has parts) `children`; the first card (g1) is "
+                  "conditions, literature, sketch, notes, evidence, react, children; the react row is the last of the card's own content (a card has always an Evidence block and "
+                  "always a ul.reactions, so there is no card with one and not the other); the list page has its ul.reactions before the Evidence block, as before (the "
+                  "`details` of the list page have no row), and the map page's ul.reactions is inside the react row only")
+    def _():
+        b = gm_real()
+        page, lp = b.text("graph/index.html"), b.text("index.html")
+        name = lambda k: "evidence" if "evidence" in k.cls else "children" if "children" in k.cls else k.cls[1][len("map-row-"):]
+        order = {a.attrs["id"]: [name(k) for k in _direct(a, "details")] for a in _dom(page).find("article")}
+        lord = {a.attrs["id"]: [name(k) if k.tag == "details" else "reactions" for k in a.elems() if k.tag == "details" or "reactions" in k.cls] for a in _dom(lp).find("article")}
+        return _eq((order, lord["g1"],
+                    page.count('<ul class="reactions">'), len([1 for m in GM_ROW.finditer(page) if m.group(1) == "react" and m.group(3).startswith('<ul class="reactions">')])),
+                   ({"g1": ["conditions", "literature", "sketch", "notes", "evidence", "react", "children"],
+                     "g1a": ["sketch", "notes", "evidence", "react", "children"], "g1a1": ["literature", "evidence", "react", "children"],
+                     "g1a1x": ["notes", "evidence", "react"], "g3": ["uses", "literature", "notes", "evidence", "react"],
+                     "g2": ["sketch", "sketch", "notes", "evidence", "react"]},
+                    ["reactions", "evidence", "children"], 6, 6))
 
     @case("GM8", "G2c-5 (a) the address check trims what a browser trims before it looks at the first characters: an <a href> of ` //evil.example` (a leading space) and of a leading "
                  "tab `//evil.example` is protocol-relative and refused (`is not a relative path or #fragment`), exit 1, nothing written; neighbours that build: ` list/` "
