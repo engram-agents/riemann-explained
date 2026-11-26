@@ -319,7 +319,7 @@ The rules are mechanical; nothing is typed by hand, and the kind and the face li
 - **Ids** start with `lean-`, so they cannot meet the ids of the repository's outline (`SKEL-ID-CLASH` if one does). A section id is its folder name in kebab
   case; a group id is `<section id>--<slug of the group title>`; a file id is its path after `New/` in kebab case. An id longer than 64 characters is cut to its
   first 57, a trailing `-` removed, then `-` and the first 6 hex digits of the sha256 of the whole id.
-- **Titles** are the `CONTENTS.md` text, with the backticks removed. The 50-character bound of the graph contract is not applied here (it lives in
+- **Titles** are the `CONTENTS.md` text exactly (a file line's text after the colon, a group's bold text, a part's heading); a backtick span keeps its backticks. The 50-character bound of the graph contract is not applied here (it lives in
   `build_site.py`'s `_graph_line_errors`, which this tool does not call): most titles of the real source are longer.
 - **Kind, state, proof**: kinds are `part`, `group` and `file`, read off the structure of `CONTENTS.md`; every step has state `none` and proof `none`. No
   declaration is read. The symbol table for this tool (`_graph_files(symbols=)`) has only those three kind rows; its order lists are kinds `[part, group, file]`,

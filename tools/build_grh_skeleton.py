@@ -25,7 +25,7 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
    one `-`, trimmed). File: its path after `New/`, each segment in kebab case, joined by `-`. An id longer than 64 characters is cut to its first 57, a trailing
    `-` removed, then `-` and the first 6 hex digits of the sha256 of the whole id; an id of 64 or fewer is never touched. A clash is GRAPH-DUP, a bad character
    GRAPH-ID, never corrected; an id that is also an id of the outline is SKEL-ID-CLASH.
- 3 TITLES. A file: the text after the colon with its backticks removed. A group: its bold text. A section: its heading. The 50-character bound of the graph
+ 3 TITLES. A file: the text after the colon, exactly as written (a backtick span keeps its backticks). A group: its bold text. A section: its heading. The 50-character bound of the graph
    contract (the face line) is NOT applied here: it lives in build_site's `_graph_line_errors`, which this tool does not call.
  4 PREMISES. A file rests on a file of the SAME group that it imports (`import New.X.Y` at the start of a line), after the transitive reduction of each group's
    edges. A self-import and an import outside New are ignored; an import of a New file of another group (and a reduced one) is not drawn but is listed in
@@ -141,7 +141,7 @@ def parse_contents(text):
         if sec is None or not ((g and "**" not in g.group(1)) or f):
             errors.append(("SKEL-LINE", str(n), ""))
         elif f:
-            item = {"path": f.group(1), "title": f.group(3).replace("`", ""), "line": n}
+            item = {"path": f.group(1), "title": f.group(3), "line": n}
             (grp["files"] if grp is not None else loose).append(item)
         else:
             grp = {"title": g.group(1), "line": n, "files": []}
@@ -988,11 +988,11 @@ def _selftest_cases():
         return _eq((errs, [(r["id"], r["premises"]) for r in rows if r["parent"] == "lean-s--grp"], rep["drawn"], rep["not_drawn"]),
                    ([], [("lean-s-a", ["lean-s-b"]), ("lean-s-b", [])], 1, 2))
 
-    @case("SK19", "titles are the CONTENTS text with no bound: a file title of 98 characters, a group title and a section heading of 60 are kept whole (no refusal, no cut)")
+    @case("SK19", "titles are the CONTENTS text with no bound: a file title of 98 characters, a group title and a section heading of 60, both with a backtick span, are kept whole (no refusal, no cut, backticks kept)")
     def _():
         ft = "w" * 49 + " " + "z" * 48
-        gt = "g" * 30 + " " + "h" * 29
-        st = "s" * 30 + " " + "t" * 29
+        gt = "g" * 30 + " `" + "h" * 27 + "`"
+        st = "s" * 30 + " `" + "t" * 27 + "`"
         body = f"### {st}\n\n**{gt}**\n\n- `New/S/A` (1): {ft}\n"
         with _tmp() as d:
             errs, files, rows, rep = build(_tree(d, body, {"New/S/A": _lean()}), PIN, _strings())
@@ -1070,7 +1070,7 @@ def _selftest_cases():
             lines = f.read().split("\n")
         i = lines.index("## New")
         j = next(k for k in range(i, len(lines)) if lines[k].startswith("**"))
-        first3 = [re.fullmatch(r"- `New/[^`]+` \(\d+\): (.*)", ln).group(1).replace("`", "") for ln in [x for x in lines[j:] if x.startswith("- `New/")][:3]]
+        first3 = [re.fullmatch(r"- `New/[^`]+` \(\d+\): (.*)", ln).group(1) for ln in [x for x in lines[j:] if x.startswith("- `New/")][:3]]
         src_titles = []
         for ln in lines[i + 1:]:
             if ln.startswith("## "):
