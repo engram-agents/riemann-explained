@@ -12041,11 +12041,13 @@ def _selftest_cases():
     @case("GRID1", "the id rule of the page and the comment service, in `_graph_files`: EVERY step id, in a part row, a group row and a file row alike, must fullmatch "
                    "`[a-z0-9]+(-[a-z0-9]+)*` and be at most 64 characters; each fault is `GRAPH-ID <id> is not a step id (the page and the comment service accept "
                    "^[a-z0-9]+(-[a-z0-9]+)*$)`: `a--b`, `a-`, `-a`, `-`, `a_b`, `A`, the empty id, `_page` (no exemption), `lean-`, `a.b`, `a b`, a final newline; `root` is "
-                   "refused with its own text; 64 characters are accepted and 65 are `GRAPH-ID <id> is 65 characters (at most 64)`; one refusal per id (a bad shape is not also "
+                   "refused with its own text; a Unicode digit (U+0663), a full-width letter (U+FF41), `\u00e9`, a zero-width space, a NUL and a line break are not in a-z0-9 and are refused; "
+                   "64 characters are accepted and 65 are `GRAPH-ID <id> is 65 characters (at most 64)`; one refusal per id (a bad shape is not also "
                    "named for its length); a good id in the same rows adds nothing")
     def _():
         shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
-        bad = ["a--b", "a-", "-a", "-", "a_b", "A", "", "_page", "lean-", "a.b", "a b", "a\n", "a--" + "b" * 70]
+        bad = ["a--b", "a-", "-a", "-", "a_b", "A", "", "_page", "lean-", "a.b", "a b", "a\n", "a--" + "b" * 70,
+               "\u0663", "a\u0663", "\uff41", "a\uff41b", "\u00e9", "caf\u00e9", "a\u200bb", "a\x00b", "a\x00", "a\n-b"]
 
         def part(i):
             return [gr_row(i)]
@@ -12065,14 +12067,23 @@ def _selftest_cases():
                     [[("GRAPH-ID", "a--b", shape), ("GRAPH-ID", "c--d", shape)]]))
 
     @case("GRID2", "two steps with one id are `GRAPH-DUP <id> is the id of more than one step` whatever the two are (two parts, a group and a file of one part: `lean-x-y` as "
-                   "both, two files); each id once per extra row; no file is returned")
+                   "both, two files); each id once per extra row; no file is returned. PINNED, the other behaviour: an id that is refused for its shape, its length or as `root` and is "
+                   "shared by two or more steps gets ONLY that one refusal, once (one refusal per id), never also GRAPH-DUP and never once per row")
     def _():
         dup = "is the id of more than one step"
         both = gr_codes([gr_row("lean-x"), gr_row("lean-x-y", "lean-x"), gr_row("lean-x-y", "lean-x-y")])
         parts = gr_codes([gr_row("a"), gr_row("a", order=2)])
         files = gr_codes([gr_row("p"), gr_row("f", "p"), gr_row("f", "p", order=2), gr_row("f", "p", order=3)])
-        return _eq((both, parts, files, _graph_files([gr_row("a"), gr_row("a", order=2)], "c0", _strings())[1]),
-                   ([("GRAPH-DUP", "lean-x-y", dup)], [("GRAPH-DUP", "a", dup)], [("GRAPH-DUP", "f", dup), ("GRAPH-DUP", "f", dup)], {}))
+        shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        bad2 = gr_codes([gr_row("a--b"), gr_row("a--b", order=2)])
+        bad3 = gr_codes([gr_row("p"), gr_row("a--b", "p"), gr_row("a--b", "p", order=2), gr_row("a--b", "p", order=3)])
+        root2 = gr_codes([gr_row("root"), gr_row("root", order=2)])
+        long2 = gr_codes([gr_row("x" * 65), gr_row("x" * 65, order=2)])
+        mixed = gr_codes([gr_row("a--b"), gr_row("a--b", order=2), gr_row("c"), gr_row("c", order=3)])
+        return _eq((both, parts, files, _graph_files([gr_row("a"), gr_row("a", order=2)], "c0", _strings())[1], bad2, bad3, root2, long2, mixed),
+                   ([("GRAPH-DUP", "lean-x-y", dup)], [("GRAPH-DUP", "a", dup)], [("GRAPH-DUP", "f", dup), ("GRAPH-DUP", "f", dup)], {},
+                    [("GRAPH-ID", "a--b", shape)], [("GRAPH-ID", "a--b", shape)], [("GRAPH-ID", "root", "is the id of the root, which is not a step")],
+                    [("GRAPH-ID", "x" * 65, "is 65 characters (at most 64)")], [("GRAPH-ID", "a--b", shape), ("GRAPH-DUP", "c", dup)]))
 
     @case("GRID3", "the id rule through a build of the live inputs (not only the function): a group `a--b`, a group of 65 characters and a group `_page` are refused "
                    "`BUILD-ERROR GRAPH-ID <id> ...` with exit 1 and nothing written; a group of 64 characters builds")

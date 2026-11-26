@@ -3327,18 +3327,32 @@ def _selftest_cases():
 
     @case("GID2", "a collision is GRAPH-DUP naming the id, whatever the two steps are, and nothing is written: a group titled `Group` and an anonymous group of a second section "
                   "of the same folder (`lean-t-group`, and the two parts `lean-t`); a group titled `Group` and a file `New/S/Group` of one section; a group whose title slugs to "
-                  "nothing and a file `Group`; the text is true for any two steps")
+                  "nothing and a file `Group`; two groups of one section whose titles are all non-ASCII (`\u03b8`, `\u03a9`) both get the slug `group`; each build is run as the command line in "
+                  "a CHILD with a timeout, so that a walk over the parents that does not end (the group and the file are one step that is its own parent) is ONE failure of this case, "
+                  "named `HANG` or with the child's own error, and never a hang of the self-test")
     def _():
         two = "### A part\n\n- `New/T/X` (1): x\n\n### B part\n\n**Group**\n\n- `New/T/Y` (1): y\n"
         gf = "### S part\n\n**Group**\n\n- `New/S/A` (1): a\n- `New/S/Group` (1): g\n"
         empty = "### S part\n\n**???**\n\n- `New/S/A` (1): a\n- `New/S/Group` (1): g\n"
+        greek = "### S part\n\n**\u03b8**\n\n- `New/S/A` (1): a\n\n**\u03a9**\n\n- `New/S/B` (1): b\n"
+
+        def limit():   # the child may not use more than 2 GB: a walk that grows a list ends in MemoryError, a loop that does not grow ends by the timeout
+            import resource
+            resource.setrlimit(resource.RLIMIT_AS, (2 * 1024 ** 3, 2 * 1024 ** 3))
         out = []
-        for body, paths in ((two, ("New/T/X", "New/T/Y")), (gf, ("New/S/A", "New/S/Group")), (empty, ("New/S/A", "New/S/Group"))):
+        for body, paths in ((two, ("New/T/X", "New/T/Y")), (gf, ("New/S/A", "New/S/Group")), (empty, ("New/S/A", "New/S/Group")), (greek, ("New/S/A", "New/S/B"))):
             with _tmp() as d:
-                errs, files, rows, rep = bld(_tree(d, body, {p: _lean() for p in paths}), PIN, _strings())
-            out.append(([(c, w, m) for c, w, m in errs], files))
+                g = _tree(d, body, {p: _lean() for p in paths})
+                o = os.path.join(d, "out")
+                try:
+                    r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, o, _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=30,
+                                       preexec_fn=limit)
+                    out.append((r.returncode, r.stdout.splitlines(), os.path.exists(o), "Traceback" in r.stderr))
+                except subprocess.TimeoutExpired:
+                    out.append("HANG")
         dup = "is the id of more than one step"
-        return _eq(out, [([("GRAPH-DUP", "lean-t", dup), ("GRAPH-DUP", "lean-t-group", dup)], {}), ([("GRAPH-DUP", "lean-s-group", dup)], {}), ([("GRAPH-DUP", "lean-s-group", dup)], {})])
+        return _eq(out, [(1, ["GRAPH-DUP lean-t " + dup, "GRAPH-DUP lean-t-group " + dup], False, False), (1, ["GRAPH-DUP lean-s-group " + dup], False, False),
+                         (1, ["GRAPH-DUP lean-s-group " + dup], False, False), (1, ["GRAPH-DUP lean-s-group " + dup], False, False)])
 
     @case("GID3", "an id over 64 is cut by the same rule and passes the new check: a group title of 80 `a` is `lean-s-` + 50 `a` + `-545a54` (64 characters, one hyphen between the "
                   "words, the hash after a single `-`), and a title that ends the 57 characters on a `-` loses it (`lean-s-` + 49 `a` + `-` + 30 `b`, cut to 56 characters and the hash); "
@@ -3379,6 +3393,48 @@ def _selftest_cases():
         return _eq((errs, len(ids), all(ID_SHAPE.fullmatch(i) for i in ids), max(len(i) for i in ids), sum(len(i) == 64 for i in ids), sum("--" in i for i in ids),
                     len(set(ids)), len(groups), all(r["id"].startswith(r["parent"] + "-") or r["id"] in cut_groups for r in groups), len(cut_groups), stepfiles == sorted(ids)),
                    ([], 353, True, 64, 3, 0, 353, 38, True, 2, True))
+
+    @case("GID4", "the cut cannot hide a `--` that is AFTER the 57th character: a file `New/S/` + 60 `a` + `_/B` has the id `lean-s-` + 60 `a` + `--b` (70 characters, the `--` at index 67, "
+                  "past the cut); it is GRAPH-ID with the WHOLE id (not the cut form), nothing is written, in the pure build and in the command line (exit 1, OUT absent, the whole id "
+                  "on stdout); an over-long id of good shape (`New/S/` + 60 `a` + `/B`, the same length) is still cut and builds")
+    def _():
+        name = "a" * 60
+        full = "lean-s-" + name + "--b"
+        assert full.index("--") > 57 and len(full) == 70
+        body = f"### S part\n\n**G**\n\n- `New/S/{name}_/B` (1): b\n"
+        with _tmp() as d:
+            e1 = bld(_tree(d, body, {f"New/S/{name}_/B": _lean()}), PIN, _strings())
+        with _tmp() as d:
+            os.makedirs(os.path.join(d, "cli"))
+            g = _tree(os.path.join(d, "cli"), body, {f"New/S/{name}_/B": _lean()})
+            out = os.path.join(d, "out")
+            cli = _cli(_args(g, out, _strings_file(d), _outline_file(d)))
+            written = os.path.exists(out)
+        with _tmp() as d:
+            ok = bld(_tree(d, f"### S part\n\n**G**\n\n- `New/S/{name}/B` (1): b\n", {f"New/S/{name}/B": _lean()}), PIN, _strings())
+        text = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        return _eq(([(c, w, m) for c, w, m in e1[0]], e1[1], cli[0], [ln for ln in cli[1].splitlines() if ln.startswith("GRAPH-ID")], written, ok[0], len(ok[3]["cut"]),
+                    max(len(r["id"]) for r in ok[2])),
+                   ([("GRAPH-ID", full, text)], {}, 1, ["GRAPH-ID " + full + " " + text], False, [], 1, 64))
+
+    @case("GID5", "a group id is built from the UNCUT section id, as it always was, not from the cut one: a section whose folder is 72 characters (`lean-` + 72 `s` = 77) with the group `G` and "
+                  "the file `F` has three ids, the part, the group and the file, each the cut of its OWN full id (`lean-` + 72 `s`, `... -g`, `... -f`): three different valid ids of 64 "
+                  "characters that share their first 57 characters; the group id is not the cut of (the cut part id + `-g`)")
+    def _():
+        folder = "s" * 72
+        body = f"### Big part\n\n**G**\n\n- `New/{folder}/F` (1): f\n"
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, body, {f"New/{folder}/F": _lean()}), PIN, _strings())
+
+        def cut(i):   # the cut rule, written again here
+            return i if len(i) <= 64 else i[:57].rstrip("-") + "-" + hashlib.sha256(i.encode("utf-8")).hexdigest()[:6]
+        sid = "lean-" + folder
+        want = [cut(sid), cut(sid + "-g"), cut(sid + "-f")]
+        wrong = cut(cut(sid) + "-g")
+        ids = [r["id"] for r in rows]
+        return _eq((errs, ids, ids == want, len(set(ids)), [len(i) for i in ids], len({i[:57] for i in ids}), all(ID_SHAPE.fullmatch(i) for i in ids), ids[1] != wrong,
+                    [r["parent"] for r in rows]),
+                   ([], want, True, 3, [64, 64, 64], 1, True, True, ["root", want[0], want[1]]))
 
     @case("RB1", "structure of the tool above the self-test section (read with `ast` from this file's own text, everything before the self-test header): exactly ONE call of `os.open` and it is in `_read_bounded` "
                  "(no allow-list of other sites), no call of the builtin `open` (the tool's own writes go through build_site's `_publish`, which is another module; the writes of this file's fixtures are "
