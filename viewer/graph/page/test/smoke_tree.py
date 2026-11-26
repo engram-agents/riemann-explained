@@ -127,8 +127,9 @@ def tree_shape(site):
 class SmokeHandler(T.Handler):
     """The suite's own handler (its headers come from its end_headers), with ONE choke point at the open: send_head, which GET and HEAD
     share, resolves the real path of the exact file it is about to open (after the stdlib's rule has chosen any index file) and opens that
-    resolved path, so what was checked is what is read. A file whose real path is outside the root is a 403 recorded in OUTSIDE; a directory
-    is never listed (403)."""
+    resolved path, so what was checked is what is read. Every decision (a directory or not, a slash or not, which index) is made from the one
+    decoded path translate_path returns, the path that is opened, and the stdlib's send_head is never called. A file whose real path is
+    outside the root is a 403 recorded in OUTSIDE; a directory is never listed (403)."""
     INDEX_NAMES = ("index.html", "index.htm")        # the stdlib's own choice of a directory's page; containment is checked on whatever is chosen
 
     def send_head(self):
@@ -138,12 +139,22 @@ class SmokeHandler(T.Handler):
             self.send_error(400)
             return None
 
+    def _redirect_to_slash(self):
+        """The stdlib's own redirect for a directory asked for without its slash (Location from the request's own path, query kept); reads no file."""
+        parts = urllib.parse.urlsplit(self.path)
+        self.send_response(301)
+        self.send_header("Location", urllib.parse.urlunsplit(parts._replace(path=parts.path + "/")))
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _open_contained(self):
         raw = self.path.split("?")[0].split("#")[0]
-        path = self.translate_path(raw)
+        path = self.translate_path(raw)              # decoded ONCE, a trailing slash kept: the one view of the request every decision below uses
+        slash = path.endswith("/")                   # never `raw`: `/d%2f` is the slash form of `/d` to the filesystem, whatever the text says
         if os.path.isdir(path):
-            if not raw.endswith("/"):
-                return super().send_head()           # the stdlib's redirect to the slash form; it reads no file
+            if not slash:
+                self._redirect_to_slash()            # the tool's own 301: no directory is ever handed to the stdlib's send_head
+                return None
             for name in self.INDEX_NAMES:
                 if os.path.isfile(os.path.join(path, name)):
                     path = os.path.join(path, name)
@@ -151,7 +162,7 @@ class SmokeHandler(T.Handler):
             else:
                 self.send_error(403, "No permission to list directory")
                 return None
-        elif raw.endswith("/"):
+        elif slash:
             self.send_error(404, "File not found")
             return None
         real = os.path.realpath(path)
