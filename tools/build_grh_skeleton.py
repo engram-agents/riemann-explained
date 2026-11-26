@@ -12,7 +12,7 @@ GRAPH-CYCLE, GRAPH-EDGE, GRAPH-SYMBOL, GRAPH-COUNT, GRAPH-STRINGS) is that funct
 outline/outline.json of this checkout) names the repository's own outline, whose group ids must not be ids of this tool. --strings-overlay (default:
 site/strings-lean.json) holds keys that replace or add to the strings file for this map only; no file is edited. --strings-overlay-graph (no default; site/strings-lean-graph.json
 holds the Graph view's words) adds the words only the Graph view reads: without it the build is a Cards-only build, the file's keys are not in `strings` and spine.json has no `edge_basis`;
-a key in both overlays, or in it and the strings file, is refused `SKEL-OVERLAY-CLASH <key>`. A Graph-view build passes --strings-overlay-graph; one that passes only --strings-overlay is Cards-only.
+a key in both overlays, or in it and the strings file, is refused `SKEL-OVERLAY-CLASH <key>`; a key of either overlay that the page does not read (not copied into `strings`) is refused `SKEL-OVERLAY-KEY <overlay file name> <key> is not a key the page reads`. A Graph-view build passes --strings-overlay-graph; one that passes only --strings-overlay is Cards-only.
 The Graph overlay is read by the same reader as the Cards overlay and its keys meet the same `{n}` placeholder rule at build time; the value rules (no `[proposal]`, no `[placeholder]`, no
 word `edge`) are not checked by the build: case OVL1 holds them on the checked-in file of each overlay. Every .ilean the tool loads must have `version` exactly 5 (ILEAN_VERSIONS), else
 `SKEL-ILEAN-VERSION <path under --ilean-dir> <value as JSON text, or missing>`. Exit 0 built; 1 refused, OUT_DIR not
@@ -1056,6 +1056,10 @@ def _run(opts):
     clash = sorted(set(graph) & set(strings))   # `strings` holds the strings file and the Cards overlay here: a key lives in one class
     if clash:
         return refuse([("SKEL-OVERLAY-CLASH", k, "") for k in clash])
+    page_keys = set(bs._graph_strings_keys(SYMBOLS)) | set(bs.GRAPH_OPTIONAL_KEYS)   # what _graph_files copies into index.json `strings`: anything else of an overlay would be dropped without a word
+    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph)) for k in obj if k not in page_keys)
+    if unknown:
+        return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
     strings.update(graph)
     if os.path.isdir(opts["out"]) and os.listdir(opts["out"]):
         return refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files")])
