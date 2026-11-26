@@ -563,6 +563,9 @@ not a relative path or a #fragment (absolute, protocol-relative, root-relative, 
 ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 19 pairs, pinned by GP7; with it 44 elements and 74 pairs: `element_problems(page, allowed)` takes the table, `graph_element_problems` passes
 `_graph_allowed()`, the list page keeps ALLOWED_ELEMENTS alone). The built page passes the static check, the element check with that list and, when CODE_ON_SURFACE_REFUSES is True, the code count
 (`CODE-ON-SURFACE graph/index.html:<card> ...`); the leak check reads it as any output file. The self-test cases that give the build a source folder use a valid shell (GA_SHELL).
+The COPY SET is the scanner's own JS extensions (gjc.JS_EXT, read at the call: .js and .mjs) plus the one literal GRAPH_CSS_EXT (.css: the scanner has no constant for stylesheets), compared as
+written; a file outside test/ whose lower-cased extension is in gjc.JS_EXT, gjc.SHIP_IMPORT_EXT or is .css but is not in the copy set (X.JS, A.Mjs, X.CSS) is `GRAPH-ASSET <path> not-an-asset-extension`,
+never copied and never dropped without a word (GA23). The shell is read ONCE (in _graph_assets): the bytes the gate scans are the bytes the page is assembled from (GA24).
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
