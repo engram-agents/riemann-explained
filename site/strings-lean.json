@@ -15,7 +15,6 @@
  "note_label_typeset": "The file's opening note, from the repository",
  "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
  "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
- "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real.",
  "symbol_kind_file": "Lean file",
  "symbol_kind_group": "Group of files",
  "symbol_kind_part": "Part of the argument"

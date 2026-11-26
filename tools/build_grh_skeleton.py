@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The skeleton of the map for a Lean repository that keeps its own index (CONTENTS.md) and its own folders.
 
-usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json]
+usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json]
        build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR]
 
 DIR is the folder that holds CONTENTS.md and src/. The tool reads the `## New` section of CONTENTS.md and the .lean files under src/New and writes
@@ -10,7 +10,9 @@ parent, order, premises, kind, state, proof, title) and hands them to build_site
 only the three kinds (part, group, file) as rows, its order lists (`orders=`) and `layout="column"`; it has no writer of its own for the graph objects, and every refusal of the graph contract (GRAPH-FANOUT, GRAPH-ID, GRAPH-DUP, GRAPH-PARENT,
 GRAPH-CYCLE, GRAPH-EDGE, GRAPH-SYMBOL, GRAPH-COUNT, GRAPH-STRINGS) is that function's. --pin is written as the `commit` of every file. --outline (default:
 outline/outline.json of this checkout) names the repository's own outline, whose group ids must not be ids of this tool. --strings-overlay (default:
-site/strings-lean.json) holds keys that replace or add to the strings file for this map only; no file is edited. Exit 0 built; 1 refused, OUT_DIR not
+site/strings-lean.json) holds keys that replace or add to the strings file for this map only; no file is edited. --strings-overlay-graph (no default; site/strings-lean-graph.json
+holds the Graph view's words) adds the words only the Graph view reads: without it the build is a Cards-only build, the file's keys are not in `strings` and spine.json has no `edge_basis`;
+a key in both overlays, or in it and the strings file, is refused `SKEL-OVERLAY-CLASH <key>`. Exit 0 built; 1 refused, OUT_DIR not
 written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
 self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 and U5 read the real source and run only when --grh and --ilean-dir are given to
 the self-test; otherwise they are skipped.
@@ -933,15 +935,15 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--source-prefix PREFIX] [--open-scale-floor N]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
 
 
 def _parse(a):
-    """{grh, pin, strings, out[, outline][, strings-overlay]} or None: each option once, with a value; --pin not empty; nothing else."""
+    """{grh, pin, strings, out[, outline][, strings-overlay][, strings-overlay-graph]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--ilean-dir", "--source-prefix", "--open-scale-floor") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -970,10 +972,11 @@ def _run(opts):
         strings = bs._read_json(opts["strings"], "strings file")
         outline = bs._read_json(opts.get("outline", OUTLINE), "outline")
         overlay = bs._read_json(opts.get("strings-overlay", OVERLAY), "strings overlay")
+        graph = bs._read_json(opts["strings-overlay-graph"], "Graph strings overlay") if "strings-overlay-graph" in opts else {}   # no default: absent is a Cards-only build
     except bs._Unreadable as e:
         raise Unreadable(str(e))
-    if not (isinstance(overlay, dict) and isinstance(strings, dict)):
-        raise Unreadable("cannot read the strings overlay: it and the strings file must be JSON objects")
+    if not (isinstance(overlay, dict) and isinstance(graph, dict) and isinstance(strings, dict)):
+        raise Unreadable("cannot read the strings overlay: it, the Graph overlay and the strings file must be JSON objects")
     strings = dict(strings, **overlay)   # the overlay's keys replace or add to the strings file, for this map only (no file is edited)
     if not (isinstance(outline, dict) and isinstance(outline.get("groups"), list) and all(isinstance(g, dict) and isinstance(g.get("id"), str) for g in outline["groups"])):
         raise Unreadable("cannot read the outline: no `groups` list of objects with an `id`")
@@ -983,6 +986,10 @@ def _run(opts):
             print(f"{code} {where}" + (f" {msg}" if msg else ""))
         print("REFUSED: nothing written", file=sys.stderr)
         return 1
+    clash = sorted(set(graph) & set(strings))   # `strings` holds the strings file and the Cards overlay here: a key lives in one class
+    if clash:
+        return refuse([("SKEL-OVERLAY-CLASH", k, "") for k in clash])
+    strings.update(graph)
     if os.path.isdir(opts["out"]) and os.listdir(opts["out"]):
         return refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files")])
     problems = bs._strings_problems(strings)
@@ -1120,9 +1127,9 @@ def _ildir(g):
     return os.path.join(os.path.dirname(g), "ilean")
 
 
-def _args(g, out, strings_path, outline, pin=PIN, overlay=None):
+def _args(g, out, strings_path, outline, pin=PIN, overlay=None, graph=None):
     return (["--grh", g, "--pin", pin, "--strings", strings_path, "--out", out, "--outline", outline, "--ilean-dir", _ildir(g)]
-            + (["--strings-overlay", overlay] if overlay else []))
+            + (["--strings-overlay", overlay] if overlay else []) + (["--strings-overlay-graph", graph] if graph else []))
 
 
 def bld(g, pin, strings, live_ids=()):
@@ -1564,7 +1571,7 @@ def _selftest_cases():
             g = _tree(d, body, srcs)
             sp = _strings_file(d)
             out = os.path.join(d, "out")
-            rc = _cli(_args(g, out, sp, _outline_file(d)))[0]
+            rc = _cli(_args(g, out, sp, _outline_file(d), graph=os.path.join(_HERE, os.pardir, "site", "strings-lean-graph.json")))[0]   # the Graph words are in the wanted strings above
             got = _tree_files(out)
         uses = got.pop("graph/uses.json")
         got.pop("graph/spine.json")
@@ -1715,7 +1722,7 @@ def _selftest_cases():
     @case("SK21", "the strings overlay (`--strings-overlay FILE`): its keys replace or add to the strings file for this map only; with the overlay giving the three kind "
                   "words and a new heading the index holds exactly the 23 keys with those words (an extra overlay key is not in it); the strings file is not edited; an "
                   "overlay without one kind word is refused GRAPH-STRINGS (exit 1); a file that is not there, not JSON or not an object is exit 2; the overlay file of this "
-                  "checkout (site/strings-lean.json) holds exactly twenty-two words (the five note words final, the three lines words final): the three lines words (placeholders, marked), the four of COUNT_WORDS (final), the seven of OVERLAY_WORDS (the kinds heading, the three kind words and the three card words, "
+                  "checkout (site/strings-lean.json) holds exactly nineteen words (the five note words final, the two lines words final; `spine_lines_text` is in the Graph overlay, case GO2): the two lines words (placeholders, marked), the four of COUNT_WORDS (final), the seven of OVERLAY_WORDS (the kinds heading, the three kind words and the three card words, "
                   "placeholders) and the three of OPTIONAL_WORDS (final)")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
@@ -1748,7 +1755,7 @@ def _selftest_cases():
                     ix["strings"]["card_kind_file"], "extra_key" in ix["strings"], unchanged, short[0], short[1].splitlines(), nocard[0], nocard[1].splitlines(), gone, bad, arr,
                     absent, repo_overlay),
                    (0, 27, "Replaced heading", "F words", "card_kind_file", "F", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 1,
-                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, dict(OVERLAY_WORDS, **OPTIONAL_WORDS, **COUNT_WORDS, **LINES_WORDS, **NOTE_WORDS)))
+                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, {k: v for k, v in dict(OVERLAY_WORDS, **OPTIONAL_WORDS, **COUNT_WORDS, **LINES_WORDS, **NOTE_WORDS).items() if k != "spine_lines_text"}))
 
     @case("SK22", "a section of one file with no folder whose first bold line holds no file (`### X`, `**A**`, `**B**`, the file `New/Main`) is `SKEL-LINE <n>` for the empty bold line "
                   "(a named refusal, exit 1, no traceback), and the same section with its one bold line over the file builds")
@@ -2716,6 +2723,8 @@ def _selftest_cases():
                                      "them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real."}
         with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
             ov = json.load(f)
+        with open(os.path.join(_HERE, os.pardir, "site", "strings-lean-graph.json"), encoding="utf-8") as f:
+            ov.update(json.load(f))   # the words of both overlay files are held to the same value rules
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
         with _tmp() as d:
             g = _tree(d, body, {"New/S/A": _lean()})
@@ -2727,6 +2736,110 @@ def _selftest_cases():
                     sorted(k for k, v in ov.items() if "{n}" in v), counts),
                    (typed, True, [], [],
                     ["count_file_many", "count_file_one", "count_group_many", "count_group_one", ], (27, 30, 36, 33)))
+
+    GO_CARDS = dict(OVERLAY_WORDS, **COUNT_WORDS, **OPTIONAL_WORDS, **NOTE_WORDS, key_lines_heading=LINES_WORDS["key_lines_heading"], key_lines_text=LINES_WORDS["key_lines_text"])   # every word but the Graph one
+    GO_GRAPH = {"spine_lines_text": LINES_WORDS["spine_lines_text"]}
+
+    def go_setup(d):
+        g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+        return g, _strings_file(d, _strings(extra=False)), _outline_file(d)
+
+    def go_file(d, name, obj):
+        path = os.path.join(d, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(obj if isinstance(obj, str) else json.dumps(obj))
+        return path
+
+    def go_run(d, g, sp, ol, name, **kw):
+        """(exit code, stdout lines, stderr, whether OUT_DIR `name` exists) of one run."""
+        r = _cli(_args(g, os.path.join(d, name), sp, ol, **kw))
+        return r[0], r[1].splitlines(), r[2], os.path.exists(os.path.join(d, name))
+
+    @case("GO1", "the Graph overlay (`--strings-overlay-graph FILE`, no default): WITHOUT the option none of the keys of the file is in index.json `strings` and spine.json has NO `edge_basis`, and every other byte "
+                 "of the build is as it is with the option (only graph/index.json `strings` and graph/spine.json differ, by exactly those); WITH it every key of the file is in `strings` and spine.json carries "
+                 "{basis: reaches-through-any-chain-of-uses, words: spine_lines_text}; and the build with the option is byte for byte the build in which the same key is in the Cards overlay (today's build); "
+                 "a file with all three lines words as the Graph overlay has all three in `strings` with the option and none without; "
+                 "the checkout's own build with no option at all has neither the key nor the `edge_basis`")
+    def _():
+        with _tmp() as d:
+            g, sp, ol = go_setup(d)
+            cards, cards_old = go_file(d, "c.json", GO_CARDS), go_file(d, "co.json", dict(GO_CARDS, **GO_GRAPH))
+            gf = go_file(d, "g.json", GO_GRAPH)
+
+            def run(name, **kw):
+                return go_run(d, g, sp, ol, name, **kw)[0], _tree_files(os.path.join(d, name))
+            (ra, a), (rb, b), (rc, c) = run("a", overlay=cards), run("b", overlay=cards, graph=gf), run("c", overlay=cards_old)
+            three = go_file(d, "g3.json", {k: LINES_WORDS[k] for k in ("key_lines_heading", "key_lines_text", "spine_lines_text")})
+            base = go_file(d, "c3.json", {k: v for k, v in GO_CARDS.items() if k not in LINES_WORDS})
+            (r3, t3), (r4, t4) = run("t3", overlay=base, graph=three), run("t4", overlay=base)
+            rd, dflt = run("d")   # no option at all, the checkout's own Cards overlay: a Cards-only build
+        ia, ib = _j(a, "graph/index.json"), _j(b, "graph/index.json")
+        sa, sb = _j(a, "graph/spine.json"), _j(b, "graph/spine.json")
+        differ = sorted(n for n in set(a) | set(b) if a.get(n) != b.get(n))
+        return _eq((ra, rb, rc, "spine_lines_text" in ia["strings"], "edge_basis" in sa, "spine_lines_text" in ib["strings"], sb.get("edge_basis"), differ,
+                    {k: v for k, v in ib["strings"].items() if k != "spine_lines_text"} == ia["strings"], {k: v for k, v in sb.items() if k != "edge_basis"} == sa, b == c,
+                    (r3, r4, sorted(k for k in LINES_WORDS if k in _j(t3, "graph/index.json")["strings"]), sorted(k for k in LINES_WORDS if k in _j(t4, "graph/index.json")["strings"]),
+                     "edge_basis" in _j(t3, "graph/spine.json"), "edge_basis" in _j(t4, "graph/spine.json")),
+                    (rd, "spine_lines_text" in _j(dflt, "graph/index.json")["strings"], "edge_basis" in _j(dflt, "graph/spine.json"))),
+                   (0, 0, 0, False, False, True, {"basis": "reaches-through-any-chain-of-uses", "words": "spine_lines_text"}, ["graph/index.json", "graph/spine.json"], True, True, True,
+                    (0, 0, sorted(LINES_WORDS), [], True, False), (0, False, False)))
+
+    @case("GO2", "the files of this checkout: site/strings-lean.json (the Cards overlay) has 19 keys and no `spine_lines_text`; site/strings-lean-graph.json holds exactly that one key, with the value of "
+                 "LINES_WORDS (the literal of this tool); the Graph overlay is not read by default (`OVERLAY` names only the Cards file)")
+    def _():
+        site = os.path.join(_HERE, os.pardir, "site")
+
+        def rd(n):
+            with open(os.path.join(site, n), encoding="utf-8") as f:
+                return json.load(f)
+        cards, graph = rd("strings-lean.json"), rd("strings-lean-graph.json")
+        return _eq((len(cards), "spine_lines_text" in cards, graph, os.path.basename(OVERLAY)), (19, False, GO_GRAPH, "strings-lean.json"))
+
+    @case("GO3", "a key in both overlay files, or in the Graph overlay and in the base strings, is refused by name `SKEL-OVERLAY-CLASH <key>` (one line per key, sorted), exit 1, nothing written; "
+                 "a key in the Cards overlay and in the base strings is NOT a clash (the overlay replaces it, as before); a Graph overlay disjoint from both builds (exit 0)")
+    def _():
+        with _tmp() as d:
+            g, sp, ol = go_setup(d)
+            gf = go_file(d, "g.json", GO_GRAPH)
+            both = go_run(d, g, sp, ol, "o1", overlay=go_file(d, "co.json", dict(GO_CARDS, **GO_GRAPH)), graph=gf)
+            two = go_run(d, g, sp, ol, "o2", overlay=go_file(d, "co2.json", dict(GO_CARDS, **GO_GRAPH)), graph=go_file(d, "g2.json", dict(GO_GRAPH, key_lines_text="x")))
+            sp2 = _strings_file(d, dict(_strings(extra=False), **GO_GRAPH), name="s2.json")
+            base = go_run(d, g, sp2, ol, "o3", overlay=go_file(d, "c.json", GO_CARDS), graph=gf)
+            repl = go_run(d, g, sp, ol, "o4", overlay=go_file(d, "c4.json", dict(GO_CARDS, key_kinds_heading="Replaced")), graph=gf)
+        pick = lambda r: (r[0], r[1], r[3])
+        return _eq((pick(both), pick(two), pick(base), repl[0], repl[3]),
+                   ((1, ["SKEL-OVERLAY-CLASH spine_lines_text"], False), (1, ["SKEL-OVERLAY-CLASH key_lines_text", "SKEL-OVERLAY-CLASH spine_lines_text"], False),
+                    (1, ["SKEL-OVERLAY-CLASH spine_lines_text"], False), 0, True))
+
+    @case("GO4", "the Graph overlay is read as the Cards overlay is: a file that is not there, not JSON or not an object is exit 2 and nothing written; a key the page does not read in it is not in `strings`, "
+                 "as for the Cards overlay (exit 0, nothing refused); the value rules (no value starting `[proposal]` or `[placeholder]`, the word `edge` in none, `{n}` only in the count words) "
+                 "are held on the real Graph file by OVL1")
+    def _():
+        with _tmp() as d:
+            g, sp, ol = go_setup(d)
+            cards = go_file(d, "c.json", GO_CARDS)
+            ok = go_run(d, g, sp, ol, "o0", overlay=cards, graph=go_file(d, "ok.json", GO_GRAPH))
+            gone = go_run(d, g, sp, ol, "o1", overlay=cards, graph=os.path.join(d, "nothing.json"))
+            bad = go_run(d, g, sp, ol, "o2", overlay=cards, graph=go_file(d, "bad.json", "{x"))
+            arr = go_run(d, g, sp, ol, "o3", overlay=cards, graph=go_file(d, "arr.json", "[1]"))
+            extra = go_run(d, g, sp, ol, "o4", overlay=cards, graph=go_file(d, "ex.json", dict(GO_GRAPH, bogus="x")))
+            extra_c = go_run(d, g, sp, ol, "o5", overlay=go_file(d, "cx.json", dict(GO_CARDS, bogus="x")), graph=go_file(d, "g5.json", GO_GRAPH))
+            ixs = [_j(_tree_files(os.path.join(d, n)), "graph/index.json")["strings"] for n in ("o4", "o5")]
+        return _eq((ok[0], (gone[0], gone[3]), (bad[0], bad[3]), (arr[0], arr[3]), (extra[0], extra_c[0]), [("bogus" in s, "spine_lines_text" in s) for s in ixs]),
+                   (0, (2, False), (2, False), (2, False), (0, 0), [(False, True), (False, True)]))
+
+    @case("GO5", "the option is a usage error as every other option: twice, or last without a value, is exit 2 with the usage text on stderr and nothing written; once with a value it builds (exit 0); "
+                 "the usage text (USAGE and the tool's docstring) names `--strings-overlay-graph`")
+    def _():
+        with _tmp() as d:
+            g, sp, ol = go_setup(d)
+            cards, gf = go_file(d, "c.json", GO_CARDS), go_file(d, "g.json", GO_GRAPH)
+            ok = go_run(d, g, sp, ol, "o0", overlay=cards, graph=gf)[0]
+            twice = _cli(_args(g, os.path.join(d, "o1"), sp, ol, overlay=cards, graph=gf) + ["--strings-overlay-graph", gf])
+            novalue = _cli(_args(g, os.path.join(d, "o2"), sp, ol, overlay=cards) + ["--strings-overlay-graph"])
+            absent = [os.path.exists(os.path.join(d, n)) for n in ("o1", "o2")]
+        return _eq((ok, twice[0], twice[2].startswith("usage:"), novalue[0], novalue[2].startswith("usage:"), absent, "--strings-overlay-graph" in USAGE, "--strings-overlay-graph" in __doc__),
+                   (0, 2, True, 2, True, [False, False], True, True))
 
     DOC_SRC = "\n".join(["/-!", "n", "-/",
                          "/-- Beta opens /- an inner comment -/ and then continues to its real end. -/", "theorem t1 : True := trivial",
