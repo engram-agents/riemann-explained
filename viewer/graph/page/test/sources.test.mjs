@@ -303,18 +303,25 @@ test("S5: every css rule that hides a list-page line (p.status, p.roots-only) is
   assert.ok(seen >= 3, "the rules this polices: " + seen);
 });
 
-/* P6/A3: the part, group and file look. Structure is fixed now; the look is a placeholder (LOOK PENDING). Each override must win over the
-   s-none and s-census frames whatever the source order, so it names them in its own selector. */
-test("P6: graph.css has .face.k-* and .swatch.k-* for part, group and file, each with the override selectors that out-rank .face.s-none / .face.s-census", () => {
+/* P6/F1: the part, group and file looks. The kind is told by BAR POSITION (never by ring count): part a 6 px top bar, group no bar, file a 4 px
+   left bar. Each override must win over the s-none and s-census frames whatever the source order, so it names them in its own selector. The
+   selection ring gets a wider gap on THIS map only (engine.css untouched). The look is a placeholder (LOOK PENDING). */
+test("P6/F1: graph.css has .face.k-* and .swatch.k-* for part, group and file with the override selectors, the bar widths, and the scoped ring gap", () => {
   const css = read(path.join(GRAPH, "graph.css"));
   assert.match(css, /LOOK PENDING \(Borges proposes, Kepler rules\)/);
   assert.ok(!/k-module/.test(css), "no module look is left");
+  const bars = { part: /border-width:\s*6px 2px 2px 2px/, group: /border-width:\s*2px;/, file: /border-width:\s*1px 1px 1px 4px/ };
   for (const k of ["part", "group", "file"]) {
     assert.match(css, new RegExp("\\.swatch\\.k-" + k + "\\s*[,{]"));
-    const m = new RegExp("\\.face\\.k-" + k + "\\.s-none[^{]*\\{").exec(css);
+    const m = new RegExp("\\.face\\.k-" + k + "\\.s-none[^{]*\\{[^}]*\\}").exec(css);
     assert.ok(m, "an override selector naming .face.k-" + k + ".s-none");
     assert.match(m[0], new RegExp("\\.face\\.k-" + k + "\\.s-census"));
+    assert.match(m[0], bars[k], k);
+    assert.ok(!/double/.test(m[0]), "no ring-count (double) mark");
   }
+  assert.match(css, /\.ge-node\.ge-selected:has\(\.face\.k-part, \.face\.k-group, \.face\.k-file\)\s*\{\s*outline-offset:\s*3px;\s*\}/);
+  const engine = read(path.join(GRAPH, "engine", "engine.css"));
+  assert.ok(!/outline-offset:\s*3px/.test(engine), "engine.css is untouched by this map's ring gap");
 });
 
 test("A1: the page decides nothing by a kind NAME (part, group, file, module appear in no page logic)", () => {

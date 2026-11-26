@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { createData, DataError, validateIndex, validateStep, requiredStrings, FIXED_STRINGS, KIND_CLASS, STATE_CLASS, PROOF_CLASS, isTransportCode, SHEET_PROOF_CLASS } from "../data.js";
 
+import * as DATA from "../data.js";
+const OPTIONAL_STRINGS = DATA.OPTIONAL_STRINGS;   // read through the namespace so a missing export is one red case, not a load failure
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 /* A fetch-like over a fixture directory. Counts calls. A missing file answers 404; a file that is not JSON
@@ -159,7 +161,7 @@ const REFUSALS = [
   // contract section 8
   ["unrenderable-proof", "unknown-proof"], ["bad-proof-value", "unknown-proof"], ["missing-proof", "missing-key"],
   ["missing-words-string", "missing-string"], ["extra-string", "extra-string"], ["extra-string-proofs-heading", "extra-string"],
-  ["card-words-missing-key", "missing-card-words"], ["card-words-empty", "bad-card-words"], ["order-not-array", "bad-order"], ["order-unknown-name", "bad-order"], ["order-kinds-empty", "bad-order"], ["order-repeats", "bad-order"], ["class-not-string", "bad-type"], ["words-not-string", "bad-type"],
+  ["child-kind-unknown", "unknown-child-kind"], ["child-kind-on-leaf", "bad-child-kind"], ["count-words-missing-key", "missing-count-words"], ["count-words-bad-shape", "bad-count-words"], ["card-words-missing-key", "missing-card-words"], ["card-words-empty", "bad-card-words"], ["order-not-array", "bad-order"], ["order-unknown-name", "bad-order"], ["order-kinds-empty", "bad-order"], ["order-repeats", "bad-order"], ["class-not-string", "bad-type"], ["words-not-string", "bad-type"],
   ["symbols-old-shape", "missing-key"], ["missing-parts-failed-notice", "missing-string"],
 ];
 
@@ -369,24 +371,108 @@ test("P2 skeleton: validates although its order lists omit rows; the table names
   assert.deepEqual([...v.symbols.names.proofs].sort(), ["none", "not_read", "read"]);
 });
 
-test("P2/A2 skeleton: the strings set is EXACTLY the fixed list plus the words of every TABLE row plus every kinds row's card_words (23 keys)", () => {
+test("P2/A2/F2 skeleton: the strings set is EXACTLY the fixed list, the words of every TABLE row, every card_words and every count_words key (27), plus the optional key_kinds_note", () => {
   const idx = skIndex();
   const v = validateIndex(idx);
   const rows = ["kinds", "proofs", "states"].flatMap((t) => Object.values(idx.symbols[t]).map((r) => r.words));
   const cards = Object.values(idx.symbols.kinds).map((r) => r.card_words);
+  const counts = Object.values(idx.symbols.kinds).flatMap((r) => (r.count_words ? [r.count_words.one, r.count_words.many] : []));
   assert.deepEqual([...cards].sort(), ["card_kind_file", "card_kind_group", "card_kind_part"]);
+  assert.deepEqual([...counts].sort(), ["count_file_many", "count_file_one", "count_group_many", "count_group_one"]);
   const need = requiredStrings(v.symbols);
-  assert.equal(need.length, 23);
-  assert.deepEqual([...need].sort(), [...FIXED_STRINGS, ...rows, ...cards].sort());
-  assert.deepEqual(Object.keys(idx.strings).sort(), [...need].sort());
+  assert.equal(need.length, 27);
+  assert.deepEqual([...need].sort(), [...FIXED_STRINGS, ...rows, ...cards, ...counts].sort());
+  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note"]);
+  assert.deepEqual(Object.keys(idx.strings).sort(), [...need, "key_kinds_note"].sort());
   const extra = clone(idx);
   extra.strings.bonus = "x";
   assert.throws(() => validateIndex(extra), (e) => e instanceof DataError && e.code === "extra-string");
-  for (const [k, code] of [["sheet_statement_read", "missing-string"], ["card_kind_file", "missing-card-words"]]) {   // a table row that is not in the order; a card word
+  for (const [k, code] of [["sheet_statement_read", "missing-string"], ["card_kind_file", "missing-card-words"], ["count_file_many", "missing-count-words"]]) {
     const missing = clone(idx);
     delete missing.strings[k];
     assert.throws(() => validateIndex(missing), (e) => e instanceof DataError && e.code === code && e.message.includes(k), k);
   }
+});
+
+test("F3 key_kinds_note is an OPTIONAL strings key: accepted present, accepted absent, refused when empty; nothing else extra gets in", () => {
+  const idx = skIndex();
+  assert.match(idx.strings.key_kinds_note, /CONTENTS\.md/);
+  validateIndex(idx);
+  const absent = clone(idx);
+  delete absent.strings.key_kinds_note;
+  validateIndex(absent);
+  validateIndex(realIndex());                         // the live map has none
+  assert.ok(!("key_kinds_note" in realIndex().strings));
+  const empty = clone(idx);
+  empty.strings.key_kinds_note = "";
+  assert.throws(() => validateIndex(empty), (e) => e instanceof DataError && e.code === "missing-string" && e.message.includes("key_kinds_note"));
+  const live = realIndex();
+  live.strings.key_kinds_note = "a note";
+  validateIndex(live);
+});
+
+test("F3 the skeleton fixture carries none of the old placeholder words", () => {
+  const text = readFileSync(path.join(FIX, "skeleton", "index.json"), "utf8");
+  for (const old of ["folder", "Colour and shape: what Lean declares", "a top-level folder of the repository", "a folder inside a part", "one Lean file"])
+    assert.ok(!text.includes(old), old);
+  const idx = skIndex();
+  assert.equal(idx.strings.key_kinds_heading, "What a box is");
+  assert.equal(idx.strings.symbol_kind_part, "Part of the argument");
+  assert.equal(idx.strings.symbol_kind_group, "Group of files");
+  assert.equal(idx.strings.symbol_kind_file, "Lean file");
+});
+
+/* F2: a card's optional child_kind and a kinds row's optional count_words */
+test("F2 child_kind: names a kinds-table row, on a card with children; carried into the NodeSpec data; absent means absent", async () => {
+  const v = validateIndex(skIndex());
+  assert.equal(validateStep(skStep("sk-part"), v).card.child_kind, "group");
+  assert.equal(validateStep(skStep("sk-group-a"), v).children.length, 3);
+  assert.equal(validateStep(skStep("sk-part-2"), v).card.child_kind, "file");
+  const leaf = validateStep(skStep("sk-group-a"), v).children[0];
+  assert.equal("child_kind" in leaf, false);
+  const d = createData(dirFetch(path.join(FIX, "skeleton")));
+  await d.loadIndex();
+  const roots = await d.loadRoots();
+  assert.deepEqual(roots.map((r) => r.data.childKind), ["group", "file"]);
+  const kids = await d.loadChildren("sk-group-a");
+  assert.ok(kids.every((k) => !("childKind" in k.data)));
+  const real = createData(real_());
+  await real.loadIndex();
+  assert.ok((await real.loadRoots()).every((r) => !("childKind" in r.data)));
+});
+const real_ = () => dirFetch(path.join(FIX, "real"));
+
+test("F2 child_kind refusals: a name the table does not have, and a card with no children; each its own code", () => {
+  const v = validateIndex(skIndex());
+  const unknown = skStep("sk-part");
+  unknown.card.child_kind = "theorem";               // a real kind, but not a row of THIS map's table
+  assert.throws(() => validateStep(unknown, v), (e) => e instanceof DataError && e.code === "unknown-child-kind");
+  const notStr = skStep("sk-part");
+  notStr.card.child_kind = 5;
+  assert.throws(() => validateStep(notStr, v), (e) => e instanceof DataError && e.code === "unknown-child-kind");
+  const leaf = skStep("sk-group-a");
+  leaf.children[0].child_kind = "file";
+  assert.throws(() => validateStep(leaf, v), (e) => e instanceof DataError && e.code === "bad-child-kind");
+});
+
+test("F2 count_words: {one, many}, exactly, each a strings key; kept by kind; both keys required; refusals have their own codes", () => {
+  const v = validateIndex(skIndex());
+  assert.deepEqual(v.symbols.countWords, { group: { one: "count_group_one", many: "count_group_many" }, file: { one: "count_file_one", many: "count_file_many" } });
+  assert.deepEqual(validateIndex(realIndex()).symbols.countWords, {});
+  const reason = (edit) => {
+    const b = realIndex();
+    edit(b);
+    try { validateIndex(b); } catch (e) { assert.ok(e instanceof DataError); return e.code; }
+    assert.fail("accepted");
+  };
+  const set = (cw) => (b) => { b.symbols.kinds.theorem.count_words = cw; };
+  assert.equal(reason(set({ one: "part_one", many: "no_such_key" })), "missing-count-words");
+  for (const bad of ["x", null, [], { one: "part_one" }, { many: "parts_n" }, { one: "part_one", many: "parts_n", few: "parts_n" }, { one: "", many: "parts_n" }, { one: 5, many: "parts_n" }])
+    assert.equal(reason(set(bad)), "bad-count-words", JSON.stringify(bad));
+  assert.throws(() => { const b = realIndex(); b.symbols.states.read.count_words = { one: "part_one", many: "parts_n" }; validateIndex(b); }, (e) => e instanceof DataError && e.code === "extra-key");
+  const ok = realIndex();
+  ok.symbols.kinds.theorem.count_words = { one: "part_one", many: "parts_n" };
+  assert.deepEqual(validateIndex(ok).symbols.countWords.theorem, { one: "part_one", many: "parts_n" });
 });
 
 test("A2 card_words: kept in symbols.cardWords by kind; absent on the live map; a missing key, an empty or non-string value, or a non-kinds row is refused with its own code", () => {
@@ -430,9 +516,10 @@ test("P2 skeleton: a card is checked against the TABLE (state none, proof none a
 test("P2 skeleton: loads end to end (index, roots, children, the sibling link, the 98-character title)", async () => {
   const d = createData(dirFetch(path.join(FIX, "skeleton")));
   const idx = await d.loadIndex();
-  assert.deepEqual(idx.top, ["sk-part"]);
+  assert.deepEqual(idx.top, ["sk-part", "sk-part-2"]);
   const roots = await d.loadRoots();
   assert.equal(roots[0].data.kind, "part");
+  assert.equal(roots.length, 2);
   const groups = await d.loadChildren("sk-part");
   assert.deepEqual(groups.map((g) => g.data.kind), ["group", "group"]);
   const files = await d.loadChildren("sk-group-a");

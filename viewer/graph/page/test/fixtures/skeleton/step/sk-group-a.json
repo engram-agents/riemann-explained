@@ -1,6 +1,7 @@
 {
  "card": {
   "child_count": 3,
+  "child_kind": "file",
   "id": "sk-group-a",
   "kind": "group",
   "path": [

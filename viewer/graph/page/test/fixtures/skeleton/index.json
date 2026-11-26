@@ -4,7 +4,7 @@
  "format": 1,
  "max_children": 40,
  "rests_on": [],
- "steps": 8,
+ "steps": 10,
  "strings": {
   "card_kind_file": "File",
   "card_kind_group": "Group",
@@ -12,8 +12,13 @@
   "claim_less": "Show less",
   "claim_more": "Show the whole claim",
   "close_parts": "Close its parts",
+  "count_file_many": "{n} files",
+  "count_file_one": "{n} file",
+  "count_group_many": "{n} groups",
+  "count_group_one": "{n} group",
   "crumb_label": "Where this step sits",
-  "key_kinds_heading": "Colour and shape: what Lean declares",
+  "key_kinds_heading": "What a box is",
+  "key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
   "key_states_heading": "Frame: what we have read",
   "link_refused": "That address does not name a step on this map.",
   "open_parts": "Open its parts",
@@ -26,28 +31,36 @@
   "sheet_statement_census": "Statement counted by a program",
   "sheet_statement_not_read": "Statement not read",
   "sheet_statement_read": "Statement read",
-  "symbol_kind_file": "File: one Lean file",
-  "symbol_kind_group": "Group: a folder inside a part",
-  "symbol_kind_part": "Part: a top-level folder of the repository"
+  "symbol_kind_file": "Lean file",
+  "symbol_kind_group": "Group of files",
+  "symbol_kind_part": "Part of the argument"
  },
  "symbols": {
   "kinds": {
    "file": {
     "card_words": "card_kind_file",
     "class": "builder-file",
-    "text": "File: one Lean file",
+    "count_words": {
+     "many": "count_file_many",
+     "one": "count_file_one"
+    },
+    "text": "Lean file",
     "words": "symbol_kind_file"
    },
    "group": {
     "card_words": "card_kind_group",
     "class": "builder-group",
-    "text": "Group: a folder inside a part",
+    "count_words": {
+     "many": "count_group_many",
+     "one": "count_group_one"
+    },
+    "text": "Group of files",
     "words": "symbol_kind_group"
    },
    "part": {
     "card_words": "card_kind_part",
     "class": "builder-part",
-    "text": "Part: a top-level folder of the repository",
+    "text": "Part of the argument",
     "words": "symbol_kind_part"
    }
   },
@@ -96,6 +109,7 @@
   }
  },
  "top": [
-  "sk-part"
+  "sk-part",
+  "sk-part-2"
  ]
 }

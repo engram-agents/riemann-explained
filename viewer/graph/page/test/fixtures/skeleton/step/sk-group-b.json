@@ -1,6 +1,7 @@
 {
  "card": {
   "child_count": 2,
+  "child_kind": "file",
   "id": "sk-group-b",
   "kind": "group",
   "path": [
@@ -8,7 +9,7 @@
   ],
   "proof": "none",
   "state": "none",
-  "title": "Group sk-group-b"
+  "title": "Files under `Formalism/Basic`"
  },
  "children": [
   {
