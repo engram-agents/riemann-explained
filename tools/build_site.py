@@ -13852,6 +13852,28 @@ def _selftest_cases():
                     ([("GRAPH-NOTE", "b", "has a value that is not a string")], {}), ([("GRAPH-NOTE", "b", "is not an object")], {}),
                     ([("GRAPH-NOTE", "zz", "is not a step")], {})))
 
+    @case("GRN3", "note review: a note may carry the key `review` whose value is exactly {state: converter} (the only state the page accepts): the step file's note then has the keys "
+                  "review, source and text, sorted in the bytes, and nothing else changes; a note without it is unchanged; a review that is another state (a misspelling, `confirmed`), "
+                  "has an extra key (by, converter_version), lacks `state`, or is not an object is `GRAPH-NOTE <id> review must be exactly {\"state\": \"converter\"}` and nothing is returned; "
+                  "a key other than review, source and text is still refused as before")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1), gr_row("c", "a", 2)]
+        rev = {"state": "converter"}
+        ok = {"source": "s", "text": "t"}
+        errs, objs = _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, review=rev), "c": ok})
+        raw = _graph_bytes(objs)["graph/step/b.json"].decode("utf-8")
+
+        def bad(review):
+            e, o = _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, review=review)})
+            return [tuple(x) for x in e], o
+        msg = 'review must be exactly {"state": "converter"}'
+        return _eq((errs, sorted(objs["graph/step/b.json"]["note"]), sorted(objs["graph/step/c.json"]["note"]), raw.index('"review"') < raw.index('"source"') < raw.index('"text"'),
+                    bad({"state": "convertor"}), bad({"state": "confirmed"}), bad(dict(rev, by="x")), bad(dict(rev, converter_version="1")), bad({}), bad("converter"), bad(None),
+                    [tuple(x) for x in _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, extra="x", review=rev)})[0]]),
+                   ([], ["review", "source", "text"], ["source", "text"], True, ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
+                    ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
+                    [("GRAPH-NOTE", "b", "must have exactly the keys source and text")]))
+
     @case("GRCK1", "`_graph_files(child_kinds=)`: off by default (the bytes equal an explicit child_kinds=False and no card has `child_kind`); on, every card (the step file's card and the "
                    "closed child entry) with children that all share one kind has `child_kind` = that kind, and it is omitted when the children differ and when there are none; the "
                    "card in a step's own file and the child entry in its parent's file agree")

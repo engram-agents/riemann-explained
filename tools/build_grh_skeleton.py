@@ -1525,7 +1525,7 @@ def _selftest_cases():
                 row("lean-s-a", "lean-s--g", 0, [], "file", "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "file", "b")]
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
         info = {("lean-s-b", "lean-s-a"): {"weight": 1, "in_reduction": True}}
-        notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n"} for i in ("lean-s-a", "lean-s-b")}
+        notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n", "review": {"state": "converter"}} for i in ("lean-s-a", "lean-s-b")}
         want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS, **NOTE_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True, index_extra={"edge_basis": EDGE_BASIS})
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
@@ -1937,7 +1937,7 @@ def _selftest_cases():
         return raw[a:raw.index(b"-/", a)].decode("utf-8")
 
     @case("N1", "a module note with markdown, backticks, `$`, a CRLF, a tab, trailing spaces and a final newline comes through byte for byte: the step file's note.text equals the "
-                "source slice read in the case, note.source is `grh/src/` + the CONTENTS path + `.lean`, the note has exactly the keys source and text, and the CRLF and the "
+                "source slice read in the case, note.source is `grh/src/` + the CONTENTS path + `.lean`, the note has exactly the keys review, source and text (review is {state: converter}), and the CRLF and the "
                 "trailing spaces are in the written JSON as escapes")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
@@ -1946,7 +1946,7 @@ def _selftest_cases():
         note = _j(files, "graph/step/lean-s-a.json")["note"]
         want = slice1(RAW1)
         return _eq((errs, note["text"] == want, note["source"], sorted(note), len(want), want.count("\r\n"), b"Title\\r\\nSome `code`" in files["graph/step/lean-s-a.json"]),
-                   ([], True, "grh/src/New/S/A.lean", ["source", "text"], 77, 1, True))
+                   ([], True, "grh/src/New/S/A.lean", ["review", "source", "text"], 77, 1, True))
 
     @case("N2", "the equality of N1 can fail: the fixture's note differs from its strip, rstrip, lstrip, CRLF-folded, line-normalised and one-character-shorter versions, so a "
                 "tool that trims, folds a newline or loses a character is caught")
@@ -2853,9 +2853,32 @@ def _selftest_cases():
                    ([], [(42, 38, 0), (7, 7, 1), (15, 14, 1), (34, 32, 0), (29, 28, 1), (8, 7, 0), (6, 6, 0), (9, 2, 1), (4, 3, 1)], 108,
                     {"lemma": 42, "def": 30, "abbrev": 17, "theorem": 12, "structure": 6, "class": 1}, 29, True, 353))
 
+    @case("NR1", "note review: the note of EVERY file step has `review` equal to exactly {state: converter} (the converter's rendering, read by no one), the note keys are exactly review, source and text, "
+                 "and a part or a group has no note; the review object is a fresh one per note (changing one in the report changes no other)")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": _lean(), "New/S/B": _lean()}), PIN, _strings())
+        notes = {r["id"]: _j(files, f"graph/step/{r['id']}.json").get("note") for r in rows}
+        return _eq((errs, {k: (None if v is None else (v["review"], sorted(v))) for k, v in notes.items()},
+                    rep["notes"]["lean-s-a"]["review"] is not rep["notes"]["lean-s-b"]["review"]),
+                   ([], {"lean-s": None, "lean-s--g": None, "lean-s-a": ({"state": "converter"}, ["review", "source", "text"]), "lean-s-b": ({"state": "converter"}, ["review", "source", "text"])}, True))
+
+    @case("NRR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): all 306 file steps have a note whose review is exactly {state: converter} (306 of 306, no other "
+                 "value, no other key in review), the note keys are review, source and text on every one, and no part or group has a note")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        steps = {r["id"]: (r["kind"], _j(files, f"graph/step/{r['id']}.json").get("note")) for r in rows}
+        files_n = [n for k, n in steps.values() if k == "file"]
+        return _eq((errs, len(files_n), sum(1 for n in files_n if n is not None and n.get("review") == {"state": "converter"}), sorted({tuple(sorted(n)) for n in files_n}),
+                    sum(1 for k, n in steps.values() if k != "file" and n is not None)),
+                   ([], 306, 306, [("review", "source", "text")], 0))
+
     def sc_build(d, **kw):
         g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
-        return g, build(g, PIN, dict(_strings(), edge_basis=EDGE_BASIS), (), _ildir(g), **kw)
+        return g, build(g, PIN, _strings(), (), _ildir(g), **kw)
 
     @case("SC1", "`open_scale_floor`: index.json has the top-level key with the value given (1 is written `1`, not `1.0`; 1.5 is `1.5`; a float written 2.0 stays `2.0`), sorted between "
                  "max_children and rests_on; without the option the key is absent")
@@ -2871,11 +2894,11 @@ def _selftest_cases():
         return _eq(out, [([], None, [], False), ([], 1, ["1"], True), ([], 1.5, ["1.5"], True), ([], 2.0, ["2.0"], True)])
 
     @case("SC2", "anything but a positive finite number is refused `GRAPH-SCALE-FLOOR <value>` and nothing is returned: zero, a negative, nan, inf, a non-numeric text, a bool, an empty "
-                 "string (the function), and the same texts on the command line (exit 1, OUT not written); a missing value after the option is exit 2; `1`, `1.5` and `1e3` are accepted "
+                 "string, the text `1e400` (a number too large to be finite; the command line names it as given) (the function), and the same texts on the command line (exit 1, OUT not written); a missing value after the option is exit 2; `1`, `1.5` and `1e3` are accepted "
                  "(and written 1, 1.5 and 1000.0)")
     def _():
-        bad = [0, -1, float("nan"), float("inf"), "abc", True, False, ""]
-        texts = ("0", "-1", "nan", "inf", "abc", "true", "")
+        bad = [0, -1, float("nan"), float("inf"), "abc", True, False, "", "1e400"]
+        texts = ("0", "-1", "nan", "inf", "abc", "true", "", "1e400", "-0", "0.0")
         with _tmp() as d:
             g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
             fn = [(r[0], r[1]) for r in (build(g, PIN, _strings(), (), _ildir(g), open_scale_floor=v) for v in bad)]
@@ -2891,7 +2914,7 @@ def _selftest_cases():
                 rc = _cli(_args(g, o, sp, ol) + ["--open-scale-floor", text])[0]
                 ok[text] = (rc, re.findall(r'"open_scale_floor": ([^,\n]*)', _tree_files(o)["graph/index.json"].decode("utf-8")))
         return _eq((fn, cli, miss, ok),
-                   ([([("GRAPH-SCALE-FLOOR", s, "")], {}) for s in ("0", "-1", "nan", "inf", "abc", "True", "False", "")],
+                   ([([("GRAPH-SCALE-FLOOR", s, "")], {}) for s in ("0", "-1", "nan", "inf", "abc", "True", "False", "", "1e400")],
                     {text: (1, ["GRAPH-SCALE-FLOOR " + text], False) for text in texts}, 2, {"1": (0, ["1"]), "1.5": (0, ["1.5"]), "1e3": (0, ["1000.0"])}))
 
     @case("SC3", "the output with the option equals the output without it apart from that ONE key of index.json (every other file byte for byte, index.json equal once the key is "
