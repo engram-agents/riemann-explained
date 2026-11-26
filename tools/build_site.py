@@ -14100,7 +14100,8 @@ def _selftest_cases():
                   "(`GRAPH-STRINGS <key> missing`, sorted, the words key reported once) and, as every key the page reads, a string and not empty (whitespace accepted); with NO edge_basis "
                   "key_lines_heading and key_lines_text are refused `GRAPH-STRINGS <key> is not a key the page reads without an edge basis` (one line per key, sorted), in "
                   "`_graph_strings_errors` and so through `_graph_files`; spine_lines_text is NOT conditional (the page learns it with the Graph view: it stays optional with and without "
-                  "an edge basis); the other optional words are unaffected")
+                  "an edge basis); an edge basis that names ANOTHER words key (spine_lines_text) allows exactly key_lines_heading and that key: a stray key_lines_text beside it is "
+                  "`GRAPH-STRINGS key_lines_text is not a key the page reads: the edge basis names spine_lines_text`, the page's own rule; the other optional words are unaffected")
     def _():
         rows = [gr_row("a")]
         eb = {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}
@@ -14110,10 +14111,14 @@ def _selftest_cases():
         no_eb = lambda k: ("GRAPH-STRINGS", k, "is not a key the page reads without an edge basis")
         req = {k: "x" for k in _graph_strings_keys()}
         H, T = {"key_lines_heading": "H"}, {"key_lines_text": "T"}
+        eb_sp = {"basis": "names-written-in-source-from-compiled-index", "words": "spine_lines_text"}   # an edge basis naming ANOTHER words key
+        g = lambda w: [tuple(x) for x in _graph_files(rows, "c0", st(**w), index_extra={"edge_basis": eb_sp})[0]]
+        stray = [("GRAPH-STRINGS", "key_lines_text", "is not a key the page reads: the edge basis names spine_lines_text")]
         return _eq((f(dict(H, **T)), f(T), f(H), f({}), f(dict(H, key_lines_text="")), f(dict(T, key_lines_heading="")), f(dict(T, key_lines_heading=None)), f(dict(T, key_lines_heading=3)),
                     f(dict(H, key_lines_text=None)), f(dict(T, key_lines_heading=" ")), f(dict(H, key_lines_text=" ")),
                     f(H, False), f(T, False), f(dict(H, **T), False), f({}, False), f({"spine_lines_text": "S"}, False), f(dict(H, **T, spine_lines_text="S")),
                     f(dict(T, spine_lines_text="S", key_lines_heading=""), True),
+                    g(dict(H, **T, spine_lines_text="S")), g(dict(H, spine_lines_text="S")), g(dict(H, spine_lines_text="")), g(dict(spine_lines_text="S")), g(dict(T, spine_lines_text="S")),
                     _graph_strings_errors(dict(req, **H)), _graph_strings_errors(dict(req, **T)), _graph_strings_errors(dict(req, spine_lines_text="S")),
                     _graph_strings_errors(dict(req, key_kinds_note="K", key_scope_text="Q", note_label_typeset="a", note_typeset_line="b", note_exact_button="c", note_render_button="d"))),
                    ([], [miss("key_lines_heading")], [miss("key_lines_text")], [miss("key_lines_heading"), miss("key_lines_text")],
@@ -14121,6 +14126,7 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", "key_lines_heading", "is not a string")], [("GRAPH-STRINGS", "key_lines_text", "is not a string")], [], [],
                     [no_eb("key_lines_heading")], [no_eb("key_lines_text")], [no_eb("key_lines_heading"), no_eb("key_lines_text")], [], [], [],
                     [("GRAPH-STRINGS", "key_lines_heading", "is empty")],
+                    stray, [], [("GRAPH-STRINGS", "spine_lines_text", "is empty")], [miss("key_lines_heading")], [miss("key_lines_heading")] + stray,
                     [no_eb("key_lines_heading")], [no_eb("key_lines_text")], [], []))
 
     @case("PGV1", "the builder and the page agree: for each shape of strings the written index.json (the one the builder would write, with the shape's strings and edge_basis) is judged "
@@ -14138,6 +14144,7 @@ def _selftest_cases():
         rows = [gr_row("a"), gr_row("b", "a", 1)]
         notes = {"b": {"source": "src/b.lean", "text": "t"}}
         EB = {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}
+        EB_SP = dict(EB, words="spine_lines_text")   # an edge basis naming another words key: the page reads exactly that key and the heading
         both = {"note_label": "L", "note_source": "S {source} {commit}"}
         H, T = {"key_lines_heading": "H"}, {"key_lines_text": "T"}
         base = _strings()
@@ -14154,6 +14161,8 @@ def _selftest_cases():
             "spine_lines_text with edge basis (KNOWN DIVERGENCE)": (dict(base, **H, **T, spine_lines_text="S"), None, EB),
             "edge basis without heading": (dict(base, **T), None, EB), "edge basis, empty heading": (dict(base, key_lines_heading="", **T), None, EB),
             "edge basis, words key absent": (dict(base, **H), None, EB),
+            "basis names spine_lines_text, key_lines_text stray": (dict(base, **H, **T, spine_lines_text="S"), None, EB_SP),
+            "basis names spine_lines_text, heading only": (dict(base, **H, spine_lines_text="S"), None, EB_SP),
         }
         known = "spine_lines_text with edge basis (KNOWN DIVERGENCE)"
         built, cands = {}, {}
@@ -14173,7 +14182,7 @@ def _selftest_cases():
             _put(os.path.join(d, "run.mjs"), "import { readFileSync } from 'node:fs';\n"
                  "import { validateIndex } from " + json.dumps("file://" + data_js) + ";\n"
                  "const all = JSON.parse(readFileSync(process.argv[2], 'utf8')); const out = {};\n"
-                 "for (const [k, v] of Object.entries(all)) { try { validateIndex(v); out[k] = 'accept'; } catch (e) { out[k] = 'refuse ' + (e.code || e.message); } }\n"
+                 "for (const [k, v] of Object.entries(all)) { try { validateIndex(v); out[k] = 'accept'; } catch (e) { out[k] = 'refuse ' + e.code + ': ' + e.message; } }\n"
                  "process.stdout.write(JSON.stringify(out));\n")
             r = subprocess.run([node, os.path.join(d, "run.mjs"), os.path.join(d, "in.json")], capture_output=True, text=True, timeout=60)
         if r.returncode != 0:
@@ -14185,7 +14194,7 @@ def _selftest_cases():
         agree = {k: (built[k], page[k].split()[0] == "accept") for k in shapes if k != known}
         disagree = sorted(k for k, (a, b) in agree.items() if a != b)
         return _eq((disagree, (built[known], page[known]), len(shapes)),
-                   ([], (True, "refuse extra-string"), len(shapes)))   # the divergence: the page does not read spine_lines_text yet (it learns it with the Graph view)
+                   ([], (True, "refuse extra-string: extra-string: index strings holds a key the page does not read: spine_lines_text"), len(shapes)))   # the divergence: the page does not read spine_lines_text yet (it learns it with the Graph view)
 
     @case("GRM2", "the strings check lets `note_source` hold exactly the placeholders {source} and {commit} (and requires neither): a value with both builds, one with an unknown "
                   "placeholder (`{bogus}`) is refused naming the key and the token, and the other two optional keys (key_kinds_note, note_label) declare none")
