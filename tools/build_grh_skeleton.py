@@ -101,8 +101,16 @@ SOURCE_READ_LIMIT = 1048576   # the most bytes of a source file the tool reads (
 SOURCE_PREFIX = "grh/src/"   # the path of src/ from the repository root; `source` of a note is this and the CONTENTS path and `.lean`
 _IMPORT_LINE = re.compile(r"import\s+\S.*")
 ILEAN_READ_LIMIT = 16 * 1024 * 1024   # the most bytes of an .ilean file the tool reads (16 MiB; the largest of the real source is 260 KB)
-USES_FORMAT = 2   # the format of graph/uses.json
+USES_FORMAT = 3   # the format of graph/uses.json
 CONTENTS_READ_LIMIT = 4 * 1024 * 1024   # the most bytes of CONTENTS.md the tool reads (4 MiB)
+INDEX_READ_LIMIT = 1048576   # the most bytes of INDEX.md the tool reads (1 MiB)
+SPINE_FORMAT = 1   # the format of graph/spine.json
+INDEX_SOURCE = "grh/INDEX.md"
+EDGE_BASIS_VALUE = "names-written-in-source-from-compiled-index"   # what an edge is: a name written in the source of one file and declared in another (a lower bound); the words are in strings
+EDGE_BASIS_WORDS = "key_lines_text"   # the key of `strings` that states it
+SPINE_EDGE_BASIS = "reaches-through-any-chain-of-uses"   # what a spine link is: the upper result reaches the lower through any chain of uses of the declaration graph, then reduced
+SPINE_EDGE_WORDS = "spine_lines_text"   # the key of `strings` that states it; never the index's key
+CONSTANT_KEYWORDS = ("theorem", "lemma", "def", "abbrev", "structure", "class", "inductive", "instance", "axiom", "opaque", "example")   # the keyword a mention's kind is read as
 
 
 PREFIX = "lean-"      # every id of this tool starts with it: its own namespace, apart from the ids of the repository's outline
@@ -200,6 +208,24 @@ def parse_contents(text):
     return sections, errors
 
 
+def _comment_end(text, start):
+    """The index just past the `-/` that closes the block comment whose three-character opener (`/-!` or `/--`) begins at `start` in `text`, the nesting of `/-` and `-/` counted;
+    None when it never closes. The ONE counter: the module note and a doc comment both end where it says."""
+    depth, i = 1, start + 3
+    while i < len(text):
+        if text.startswith("/-", i):
+            depth += 1
+            i += 2
+        elif text.startswith("-/", i):
+            depth -= 1
+            i += 2
+            if depth == 0:
+                return i
+        else:
+            i += 1
+    return None
+
+
 def _module_note(raw):
     """The inner text of the FIRST `/-!` ... `-/` block of the source bytes `raw`, delimiters excluded, byte for byte (strict UTF-8, no newline change, no trimming), the
     nesting of `/-` and `-/` counted. Only blank lines and `import` lines may precede the block. Raises NoteError(reason): not-utf-8, no-note, text-before-note, unterminated."""
@@ -213,19 +239,10 @@ def _module_note(raw):
     before = text[:start].split("\n")
     if not all(ln.strip() == "" or _IMPORT_LINE.fullmatch(ln.strip()) for ln in before[:-1]) or before[-1].strip() != "":
         raise NoteError("text-before-note")
-    depth, i = 1, start + 3
-    while i < len(text):
-        if text.startswith("/-", i):
-            depth += 1
-            i += 2
-        elif text.startswith("-/", i):
-            depth -= 1
-            if depth == 0:
-                return text[start + 3:i]
-            i += 2
-        else:
-            i += 1
-    raise NoteError("unterminated")
+    end = _comment_end(text, start)
+    if end is None:
+        raise NoteError("unterminated")
+    return text[start + 3:end - 2]
 
 
 def _contained(root, path):
@@ -404,15 +421,9 @@ def _src_escapes(grh):
 
 
 def _ilean_escapes(ilean_dir):
-    """[SKEL-ESCAPE errors] for the folders of the .ilean files under `ilean_dir/New`: the folder itself, or one below it, that is a symlink (or whose real path is not under the real
-    path of `ilean_dir`) is named and never walked."""
-    top = os.path.join(ilean_dir, "New")
-    if os.path.islink(top):
-        return [("SKEL-ESCAPE", "ilean/New", "symlink")]
-    if os.path.exists(top) and not _contained(ilean_dir, top):
-        return [("SKEL-ESCAPE", "ilean/New", "outside")]
+    """[SKEL-ESCAPE errors] for every folder below `ilean_dir` that is a symlink: it is named and never walked."""
     out = []
-    for r, ds, fs in os.walk(top):
+    for r, ds, fs in os.walk(ilean_dir):
         out += [("SKEL-ESCAPE", "ilean/" + os.path.relpath(os.path.join(r, n), ilean_dir).replace(os.sep, "/"), "symlink") for n in sorted(ds) if os.path.islink(os.path.join(r, n))]
     return out
 
@@ -442,6 +453,110 @@ def _read_contents(grh):
         return None, [("SKEL-CONTENTS", "CONTENTS.md", "not-utf-8")]
 
 
+def _index_cells(line):
+    """The cells of a table row: split on `|` that is not escaped, the one space of padding of each cell removed, nothing else (the text is kept byte for byte)."""
+    inner = line.strip()
+    inner = inner[1:-1] if inner.endswith("|") else inner[1:]
+    return [c[1:] if c.startswith(" ") else c for c in (x[:-1] if x.endswith(" ") else x for x in re.split(r"(?<!\\)\|", inner))]
+
+
+def _index_table(lines, heading, ncells):
+    """([(line number, cells)], [SKEL-INDEX errors]) for the table under `heading` (the header row and the separator are skipped); a row with another number of cells is
+    `SKEL-INDEX <line>`. Raises Unreadable when the heading is not there."""
+    if heading not in [ln.rstrip() for ln in lines]:
+        raise Unreadable(f"INDEX.md has no `{heading}` section")
+    i = [ln.rstrip() for ln in lines].index(heading) + 1
+    while i < len(lines) and not lines[i].startswith("|"):
+        i += 1
+    rows, errors = [], []
+    j = i
+    while j < len(lines) and lines[j].startswith("|"):
+        if j >= i + 2:
+            cells = _index_cells(lines[j])
+            (rows if len(cells) == ncells else errors).append((j + 1, cells) if len(cells) == ncells else ("SKEL-INDEX", str(j + 1), ""))
+        elif j == i and len(_index_cells(lines[j])) != ncells:
+            errors.append(("SKEL-INDEX", str(j + 1), ""))
+        j += 1
+    return rows, errors
+
+
+def _load_json_in(root, path, limit):
+    """The parsed JSON of a file read through the contained, bounded reader; raises SourceError (the reader's reasons, `not-json`)."""
+    raw = _read_in(root, path, limit)
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise SourceError("not-json")
+
+
+def _ilean_index(ilean_dir, row_constants):
+    """(errors, where, uses_of, first_pos) from every .ilean under `ilean_dir`: where {declared name: (module, range entry)}, uses_of {enclosing declaration: {names it uses}} (a usage
+    record with a 5th element that is not the name itself) and first_pos {(enclosing, name): the smallest (line, col)} for the enclosing declarations in `row_constants`."""
+    errors, where, uses_of, first_pos = [], {}, {}, {}
+    paths = []
+    for r, ds, fs in os.walk(ilean_dir):
+        ds.sort()
+        paths += [os.path.join(r, n) for n in sorted(fs) if n.endswith(".ilean")]
+    for path in sorted(paths):
+        rel = os.path.relpath(path, ilean_dir)[:-len(".ilean")].replace(os.sep, "/")
+        try:
+            obj = _load_json_in(ilean_dir, path, ILEAN_READ_LIMIT)
+        except SourceError as e:
+            errors.append(("SKEL-USES", rel, e.reason))
+            continue
+        if not (isinstance(obj, dict) and isinstance(obj.get("module"), str) and isinstance(obj.get("decls"), dict) and isinstance(obj.get("references"), dict)):
+            errors.append(("SKEL-USES", rel, "bad-ilean"))
+            continue
+        for n, pos in obj["decls"].items():
+            where.setdefault(n, (obj["module"], pos))
+        for key, val in obj["references"].items():
+            try:
+                ref = json.loads(key)
+            except (ValueError, RecursionError):
+                continue
+            c = ref.get("c") if isinstance(ref, dict) else None
+            if not (isinstance(c, dict) and isinstance(c.get("n"), str)) or not isinstance(val, dict):
+                continue
+            for u in val.get("usages") or []:
+                if isinstance(u, list) and len(u) > 4 and isinstance(u[4], str) and u[4] and u[4] != c["n"]:
+                    uses_of.setdefault(u[4], set()).add(c["n"])
+                    if u[4] in row_constants:
+                        k = (u[4], c["n"])
+                        if all(isinstance(x, int) and not isinstance(x, bool) for x in u[:2]):   # a record without a usable position gives no first use (a mention that has none is refused)
+                            first_pos[k] = min(first_pos.get(k, (u[0], u[1])), (u[0], u[1]))
+    return errors, where, uses_of, first_pos
+
+
+def _reach(starts, uses_of):
+    """The set of names reachable from `starts` along `uses_of` by any chain (iterative)."""
+    seen, stack = set(), list(starts)
+    while stack:
+        x = stack.pop()
+        for y in uses_of.get(x, ()):
+            if y not in seen:
+                seen.add(y)
+                stack.append(y)
+    return seen
+
+
+def _kind_and_doc(lines, pos):
+    """(kind or None, doc dict or None) of a declaration from the lines of its source and its range entry [start line, col, end line, col, name line, col, ...] (0-based lines).
+    The doc comment runs to the `-/` that closes it, nesting counted by `_comment_end` (so an inner `/- ... -/` stays inside it); raises ValueError("unterminated doc comment") when it
+    never closes."""
+    sl, sc, nl, nc = pos[0], pos[1], pos[4], pos[5]
+    line = lines[nl] if nl < len(lines) else ""
+    before = re.sub(r"@\[[^\]]*\]", " ", line[:nc])
+    kind = next((w for w in reversed(re.findall(r"[A-Za-z_]+", before)) if w in CONSTANT_KEYWORDS), None)
+    doc = None
+    if sl < nl and sl < len(lines) and lines[sl][sc:].startswith("/--"):
+        txt = "\n".join([lines[sl][sc:]] + lines[sl + 1:nl])
+        end = _comment_end(txt, 0)
+        if end is None:
+            raise ValueError("unterminated doc comment")
+        doc = {"line": sl + 1, "text": txt[:end]}
+    return kind, doc
+
+
 def _group_report(gid, members, adj, kept):
     """The numbers of one group for the report: files, use edges, reduction edges, files that are an end of a drawn link, files with none, the longest path of `rests_on` and the
     depth row with most files (depth 0 = a file that rests on nothing; the smallest depth wins a tie). `adj` is the group's use relation, `kept` its transitive reduction."""
@@ -468,6 +583,169 @@ def _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info
     return {"steps": len(rows), "top": [r["id"] for r in rows if r["parent"] == "root"], "widest": max([v for k, v in kids.items() if k != "root"] or [0]),
             "depth": depth_max, "drawn": drawn, "not_drawn": total - drawn, "reduction": reduction, "uses_total": total, "groups": groups, "cut": cut,
             "kinds": {k: sum(1 for r in rows if r["kind"] == k) for k in KINDS}, "uses": uses, "imports": imports, "link_info": link_info}
+
+
+def _spine_and_index(grh, ilean_dir, fid, rows, report):
+    """Adds to `report`: spine {nodes, links}, step_extra {file step id: {index_rows, spine_rows}}, index {carried, lib_rows, lib_files}, lib_index_rows, titles, used_by. Returns
+    the errors (SKEL-INDEX, SKEL-SPINE, SKEL-SPINE-CYCLE, SKEL-KIND, SKEL-USES) instead, all of one stage together."""
+    try:
+        raw = _read_in(grh, os.path.join(grh, "INDEX.md"), INDEX_READ_LIMIT)
+        text = raw.decode("utf-8")
+    except SourceError as e:
+        return [("SKEL-INDEX", "INDEX.md", e.reason)]
+    except UnicodeDecodeError:
+        return [("SKEL-INDEX", "INDEX.md", "not-utf-8")]
+    lines = text.split("\n")
+    spine_rows, e1 = _index_table(lines, "## The last step", 3)
+    step_rows, e2 = _index_table(lines, "## Steps of the argument", 4)
+    errors = e1 + e2
+    cell_path = lambda cell: (re.findall(r"`([^`]+)`", cell) or [None])[0]
+    step_extra, lib_rows, carried = {}, [], 0
+    for ln, cells in step_rows:
+        path = cell_path(cells[1])
+        if path in fid:
+            step_extra.setdefault(fid[path], {"index_rows": []})["index_rows"].append({"source": INDEX_SOURCE, "text": cells[0]})
+            carried += 1
+        elif path is not None and path.startswith("Lib/"):
+            lib_rows.append({"file": path, "source": INDEX_SOURCE, "text": cells[0]})
+        else:
+            errors.append(("SKEL-INDEX", str(ln), f"{path} is not a step" if path else "no file"))
+    nodes, consts = [], {}
+    for number, (ln, cells) in enumerate(spine_rows, 1):
+        path = cell_path(cells[1])
+        if path not in fid:
+            errors.append(("SKEL-INDEX", str(ln), f"{path} is not a step" if path else "no file"))
+            continue
+        try:
+            obj = _load_json_in(ilean_dir, os.path.join(ilean_dir, *path.split("/")) + ".ilean", ILEAN_READ_LIMIT)
+            decls = obj["decls"]
+        except (SourceError, KeyError, TypeError):
+            errors.append(("SKEL-USES", path, "bad-ilean"))
+            continue
+        names, resolved = re.findall(r"`([^`]+)`", cells[0]), []
+        for name in names:
+            cand = sorted({n for n in decls if n in (name, "New." + name, "New." + (("Data." + name[2:]) if name.startswith("D.") else name))})
+            if len(cand) != 1:
+                errors.append(("SKEL-SPINE", f"{number} {name}", "unresolved" if not cand else "ambiguous"))
+            else:
+                resolved.append(cand[0])
+        if names and len(resolved) == len(names):
+            nid = _cap("spine-" + slug(names[0]))
+            nodes.append({"content": cells[2], "constants": resolved, "file": fid[path], "id": nid, "names": names, "source": INDEX_SOURCE, "theorem": cells[0]})
+            for c in resolved:
+                consts[c] = nid
+        elif not names:
+            errors.append(("SKEL-SPINE", f"{number}", "no name"))
+    if errors:
+        return sorted(errors, key=lambda e: (e[0] != "SKEL-INDEX", int(e[1]) if e[0] == "SKEL-INDEX" else 0, e[1]))
+    ie, where, uses_of, first_pos = _ilean_index(ilean_dir, set(consts))
+    if ie:
+        return ie
+    # the links: row A rests on row B when a constant of A reaches a constant of B by any chain
+    rests = {}
+    for k, n in enumerate(nodes):
+        reach = _reach(n["constants"], uses_of)
+        rests[k] = [j for j, m in enumerate(nodes) if j != k and reach & set(m["constants"])]
+    cycles = [(k, j) for k in rests for j in rests[k] if k in rests[j] and k < j]
+    if cycles:
+        return [("SKEL-SPINE-CYCLE", nodes[k]["id"] + " " + nodes[j]["id"], "") for k, j in cycles]
+    kept = _reduce(rests)
+    links = [{"from": nodes[k]["id"], "in_reduction": j in kept[k], "to": nodes[j]["id"]} for k in sorted(rests) for j in rests[k]]
+    # the direct mentions of each row
+    src_cache, kind_errors = {}, []
+
+    def lines_of(module):
+        if module not in src_cache:
+            try:
+                src_cache[module] = _read_in(grh, os.path.join(grh, "src", *module.split(".")) + ".lean", SOURCE_READ_LIMIT).decode("utf-8").split("\n")
+            except SourceError as e:
+                src_cache[module] = e.reason
+            except UnicodeDecodeError:
+                src_cache[module] = "not-utf-8"
+        return src_cache[module]
+    path_to_fid = {p.replace("/", "."): i for p, i in ((q, fid[q]) for q in fid)}
+    for number, n in enumerate(nodes, 1):
+        best, no_pos = {}, set()
+        for i, e in enumerate(n["constants"]):
+            for c in uses_of.get(e, ()):
+                if c in where and c not in n["constants"]:
+                    if (e, c) not in first_pos:
+                        no_pos.add(c)
+                        continue
+                    key = (i, first_pos[(e, c)])
+                    if c not in best or key < best[c]:
+                        best[c] = key
+        kind_errors.extend(("SKEL-MENTION", f"{number} {c}", "no usage position") for c in sorted(no_pos - set(best)))
+        others = {c for e in n["constants"] for c in uses_of.get(e, ()) if c not in where and c not in n["constants"]}
+        mentions = []
+        for c, (i, pos) in sorted(best.items(), key=lambda kv: (kv[1], kv[0])):
+            module, entry = where[c]
+            src = lines_of(module)
+            if isinstance(src, str):
+                kind_errors.append(("SKEL-KIND", c, src))
+                continue
+            try:
+                kind, doc = _kind_and_doc(src, entry)
+            except ValueError as e:
+                kind_errors.append(("SKEL-KIND", c, str(e)))
+                continue
+            if kind is None:
+                kind_errors.append(("SKEL-KIND", c, ""))
+                continue
+            rel = "grh/src/" + module.replace(".", "/") + ".lean"
+            m = {"constant": c, "file_path": rel, "first_use": [pos[0] + 1, pos[1]], "kind": kind, "line": entry[4] + 1, "module": module}
+            if doc is not None:
+                m["doc"] = dict(doc, source=rel)
+            if module in path_to_fid:
+                m["file"] = path_to_fid[module]
+            if c in consts:
+                m["spine"] = consts[c]
+            mentions.append(m)
+        n["mentions"] = mentions
+        n["counts"] = {"mentions": len(mentions), "no_doc": sum(1 for m in mentions if "doc" not in m), "other_constants": len(others)}
+    if kind_errors:
+        return kind_errors
+    for n in nodes:
+        step_extra.setdefault(n["file"], {})
+    for n in nodes:
+        step_extra[n["file"]].setdefault("spine_rows", []).append(n["id"])
+    uses = report["uses"]
+    used_by = {i: [] for i in uses}
+    for f in sorted(uses):
+        for e in uses[f]:
+            used_by[e["id"]].append({"id": f, "names": e["names"], "same_group": e["same_group"]})
+    parent = {r["id"]: r["parent"] for r in rows}
+
+    def path_of(i):
+        out, x = [], parent[i]
+        while x != "root":
+            out.append(x)
+            x = parent[x]
+        return out[::-1]
+    report["spine"] = {"nodes": nodes, "links": links}
+    report["step_extra"] = step_extra
+    report["index"] = {"carried": carried, "lib_rows": len(lib_rows), "lib_files": list(dict.fromkeys(r["file"] for r in lib_rows))}
+    report["lib_index_rows"] = lib_rows
+    report["used_by"] = used_by
+    report["titles"] = {r["id"]: {"kind": r["kind"], "path": path_of(r["id"]), "title": r["title"]} for r in rows}
+    return []
+
+
+def _spine_basis_errors(spine, strings):
+    """[(code, key, reason)] for the `edge_basis` of a spine object: exactly the keys basis and words (SKEL-SPINE-BASIS), the basis not the index's, the words key not the index's
+    (SKEL-SPINE-BASIS), and the words key a key of `strings` (GRAPH-STRINGS <key> missing). A spine without `edge_basis` has nothing to check."""
+    eb = spine.get("edge_basis")
+    if eb is None:
+        return []
+    if not isinstance(eb, dict) or set(eb) != {"basis", "words"} or not isinstance(eb["words"], str):
+        return [("SKEL-SPINE-BASIS", "edge_basis", "must have exactly the keys basis and words")]
+    if eb["words"] == EDGE_BASIS_WORDS:
+        return [("SKEL-SPINE-BASIS", eb["words"], "is the index's words key")]
+    if eb["basis"] == EDGE_BASIS_VALUE:
+        return [("SKEL-SPINE-BASIS", eb["words"], "has the index's basis")]
+    if eb["words"] not in strings:
+        return [("GRAPH-STRINGS", eb["words"], "missing")]
+    return []
 
 
 def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
@@ -587,6 +865,9 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
             groups.append(_group_report(gid, members, adj, kept))
     report = _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info)
     report["notes"] = {fid[p]: {"source": source_prefix + p + ".lean", "text": note_text[p]} for p in listed}
+    errors = _spine_and_index(grh, ilean_dir, fid, rows, report)
+    if errors:
+        return errors, [], {}
     return [], rows, report
 
 
@@ -598,16 +879,26 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     errors, rows, rep = build_rows(grh, ilean_dir, source_prefix)
     if errors:
         return errors, {}, rows, rep
-    errors = [("SKEL-ID-CLASH", i, "") for i in sorted({r["id"] for r in rows} & set(live_ids))]
+    step_ids, spine_ids = {r["id"] for r in rows}, [n["id"] for n in rep["spine"]["nodes"]]
+    clash = (step_ids & set(live_ids)) | {i for i in spine_ids if i in step_ids or i in set(live_ids) or spine_ids.count(i) > 1}
+    errors = [("SKEL-ID-CLASH", i, "") for i in sorted(clash)]
     if errors:
         return errors, {}, rows, rep
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(SYMBOLS) if k in strings}, SYMBOLS)   # only the missing ones: it holds a subset
     if missing:
         return missing, {}, rows, rep
-    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"], child_kinds=True)
+    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"], child_kinds=True,
+                                    step_extra=rep["step_extra"], index_extra=({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else None))
     if errors:
         return errors, {}, rows, rep
-    objs["graph/uses.json"] = {"commit": pin, "format": USES_FORMAT, "imports": rep["imports"], "uses": rep["uses"]}
+    objs["graph/uses.json"] = {"commit": pin, "format": USES_FORMAT, "imports": rep["imports"], "lib_index_rows": rep["lib_index_rows"], "titles": rep["titles"], "used_by": rep["used_by"],
+                               "uses": rep["uses"]}
+    objs["graph/spine.json"] = {"commit": pin, "format": SPINE_FORMAT, "links": rep["spine"]["links"], "nodes": rep["spine"]["nodes"]}
+    if SPINE_EDGE_WORDS in strings:
+        objs["graph/spine.json"]["edge_basis"] = {"basis": SPINE_EDGE_BASIS, "words": SPINE_EDGE_WORDS}
+    errors = _spine_basis_errors(objs["graph/spine.json"], strings)
+    if errors:
+        return errors, {}, rows, rep
     return [], bs._graph_bytes(objs), rows, rep
 
 
@@ -716,8 +1007,11 @@ COUNT_WORDS = {"count_group_one": "{n} group", "count_group_many": "{n} groups",
 ORDERS = {"kinds": ["part", "group", "file"], "states": [], "proofs": []}
 OVERLAY_WORDS = {"key_kinds_heading": "What a box is", "symbol_kind_part": "Part of the argument", "symbol_kind_group": "Group of files",
                  "symbol_kind_file": "Lean file", "card_kind_part": "Part", "card_kind_group": "Group", "card_kind_file": "File"}
-OPTIONAL_WORDS = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "note_label": "From the repository, unchanged",
-                  "note_source": "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean"}   # the three optional page-drawn words, final
+OPTIONAL_WORDS = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+                  "note_label": "The file's opening note, from the repository, unchanged",
+                  "note_source": "Opening note of {source} \u00b7 version {commit} of lsernau/grh-lean"}   # the three optional page-drawn words, final
+NOTE_WORDS = {"note_label_typeset": "The file's opening note, from the repository", "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
+              "note_exact_button": "Show the exact text"}   # the note words, final
 
 
 def _lean(decl="theorem t : True := trivial", note="n", imports=()):
@@ -725,12 +1019,15 @@ def _lean(decl="theorem t : True := trivial", note="n", imports=()):
     return "".join(f"import {m}\n" for m in imports) + f"/-!\n{note}\n-/\n" + decl + "\n"
 
 
-def _tree(root, body, srcs, ileans=None):
+def _tree(root, body, srcs, ileans=None, index="default"):
     """Write <root>/grh/CONTENTS.md (HEAD, body, TAIL) and one src/<path>.lean per entry of `srcs` (path as in CONTENTS, e.g. New/A/B); return <root>/grh."""
     g = os.path.join(root, "grh")
     os.makedirs(g)
     with open(os.path.join(g, "CONTENTS.md"), "w", encoding="utf-8") as f:
         f.write(HEAD + body + TAIL)
+    if index is not None:
+        with open(os.path.join(g, "INDEX.md"), "wb") as f:
+            f.write(_index() .encode("utf-8") if index == "default" else (index if isinstance(index, bytes) else index.encode("utf-8")))
     for p, text in list(srcs.items()) + [("Lib/Other/File", _lean())]:
         fp = os.path.join(g, "src", *p.split("/")) + ".lean"
         os.makedirs(os.path.dirname(fp), exist_ok=True)
@@ -809,8 +1106,38 @@ def _ref(module, *names, usages=1, definition=None):
     return {json.dumps({"c": {"m": module, "n": n}}, separators=(",", ":")): {"definition": definition, "usages": [[1, 1, 1, 2, "x"]] * usages} for n in names}
 
 
-def _ilean(path, refs, module=None):
-    return {"decls": [], "directImports": [], "module": module or path.replace("/", "."), "references": refs, "version": 5}
+def _ilean(path, refs, module=None, decls=()):
+    return {"decls": {n: [3, 0, 3, 28, 3, 8, 3, 9] for n in decls}, "directImports": [], "module": module or path.replace("/", "."), "references": refs, "version": 5}
+
+
+def _use(module, name, enclosing=None):
+    """One reference of an .ilean: a use of `name` (declared in `module`) with one usage record, inside the declaration `enclosing` (none: a 4-element record)."""
+    return {json.dumps({"c": {"m": module, "n": name}}, separators=(",", ":")): {"definition": None, "usages": [[1, 1, 1, 2] + ([enclosing] if enclosing else [])]}}
+
+
+def _index(spine=(), steps=()):
+    """An INDEX.md: the two tables, each row a ready line; row lines of the first table start on line 9, a table row of the second on line 14 + the rows before it."""
+    return ("# Index\n\n## The last step\n\nNames omit `New.`.\n\n| theorem | file | content |\n|---|---|---|\n" + "".join(l + "\n" for l in spine)
+            + "\n## Steps of the argument\n\n| result | file | further files | related work |\n|---|---|---|---|\n" + "".join(l + "\n" for l in steps) + "\n## Known results\n\nx\n")
+
+
+def _srow(a, b, c):
+    return f"| {a} | {b} | {c} |"
+
+
+def _trow(a, b, c="", d=""):
+    return f"| {a} | {b} | {c} | {d} |"
+
+
+def _flat(names):
+    return "### S part\n\n**G**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in names)
+
+
+EDGE_BASIS = {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}   # index.json edge_basis: a pointer, the sentence is in strings
+LINES_WORDS = {"key_lines_heading": "What a line is",
+               "key_lines_text": "A line joins two files of the same group: the upper file uses definitions or results from the lower one. Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. Lean also uses results it fills in on its own without naming them; those uses are not counted.",
+               "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming "
+                                   "them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real."}   # final
 
 
 def _strings_file(d, s=None, name="strings.json"):
@@ -924,7 +1251,7 @@ def _selftest_cases():
             beta5 = _j(files, "graph/step/lean-beta-sub-five.json")
             return _eq(([(r["kind"], r["state"], r["proof"]) for r in rows], ix["top"], ix["steps"], len(steps), ix["assets"], sorted(rows[0]),
                         beta5["path"], beta5["card"]["kind"], beta5["card"]["proof"], beta5["card"]["state"], bs._graph_static_problems(files),
-                        sorted(files) == ["graph/index.json"] + steps + ["graph/uses.json"],
+                        sorted(files) == ["graph/index.json", "graph/spine.json"] + steps + ["graph/uses.json"],
                         [c["id"] for c in _j(files, "graph/step/lean-alpha.json")["children"]],
                         _j(files, "graph/step/lean-alpha-one.json")["card"]["title"],
                         [c["title"] for c in _j(files, "graph/step/lean-alpha--first-group.json")["children"]]),
@@ -1030,17 +1357,23 @@ def _selftest_cases():
                               "text": "Lean file", "words": "symbol_kind_file"}},
                     ["census", "none", "read"], ["none", "not_read", "read"], 27, "What a box is", False, "column", False, ["none"]))
 
-    @case("SK6", "uses sidecar (format 2): graph/uses.json is {commit: the pin, format: 2, imports: {file id: [ids of the New files it imports, sorted]}, uses: {file id: "
-                 "[{id, names, same_group}, ... sorted by id]}} with both keys for every FILE step (empty lists allowed) and none for a section or a group; an import outside "
-                 "New is not in it; a use across groups is in `uses` with same_group false; it is not in index.json `steps`")
+    @case("SK6", "uses sidecar (format 3): graph/uses.json is {commit: the pin, format: 3, imports: {file id: [ids of the New files it imports, sorted]}, lib_index_rows: [...], used_by: "
+                 "{file id: [{id, names, same_group}, ...]}, uses: {file id: [{id, names, same_group}, ... sorted by id]}} with all of imports, used_by and uses for every FILE step (empty "
+                 "lists allowed) and none for a section or a group; an import outside New is not in it; a use across groups is in `uses` with same_group false; used_by is the exact "
+                 "inverse of uses; it is not in index.json `steps`")
     def _():
         with _tmp() as d:
             errs, files, rows, rep = bld(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
         u = _j(files, "graph/uses.json")
         e = lambda i, n, g: {"id": f"lean-s-{i}", "names": n, "same_group": g}
         return _eq((errs, u, files["graph/uses.json"].endswith(b"\n"), _j(files, "graph/index.json")["steps"]),
-                   ([], {"commit": PIN, "format": 2,
+                   ([], {"commit": PIN, "format": 3, "lib_index_rows": [],
+                         "titles": {"lean-s": {"kind": "part", "path": [], "title": "S part"}, "lean-s--grp": {"kind": "group", "path": ["lean-s"], "title": "Grp"},
+                                    "lean-s--other": {"kind": "group", "path": ["lean-s"], "title": "Other"},
+                                    "lean-s-a": {"kind": "file", "path": ["lean-s", "lean-s--grp"], "title": "a"}, "lean-s-b": {"kind": "file", "path": ["lean-s", "lean-s--grp"], "title": "b"},
+                                    "lean-s-c": {"kind": "file", "path": ["lean-s", "lean-s--grp"], "title": "c"}, "lean-s-d": {"kind": "file", "path": ["lean-s", "lean-s--other"], "title": "d"}},
                          "imports": {"lean-s-a": ["lean-s-b", "lean-s-c", "lean-s-d"], "lean-s-b": ["lean-s-c", "lean-s-d"], "lean-s-c": [], "lean-s-d": []},
+                         "used_by": {"lean-s-a": [], "lean-s-b": [e("a", 1, True)], "lean-s-c": [e("a", 1, True), e("b", 1, True)], "lean-s-d": [e("a", 1, False), e("b", 1, False)]},
                          "uses": {"lean-s-a": [e("b", 1, True), e("c", 1, True), e("d", 1, False)], "lean-s-b": [e("c", 1, True), e("d", 1, False)], "lean-s-c": [], "lean-s-d": []}},
                     True, 7))
 
@@ -1078,7 +1411,7 @@ def _selftest_cases():
         with _tmp() as d:
             e40, f40, r40, _r = bld(_tree(d, *fx(40)), PIN, _strings())
         return _eq((e41, f41, e40, len(f40), _j(f40, "graph/index.json")["steps"]),
-                   ([("GRAPH-FANOUT", "lean-w--g", "has 41 children (more than 40)")], {}, [], 44, 42))
+                   ([("GRAPH-FANOUT", "lean-w--g", "has 41 children (more than 40)")], {}, [], 45, 42))
 
     @case("SK9", "ids: slug folds accents to ASCII (NFKD), lower-cases and turns every run of other characters into one `-`; two groups of one section whose titles "
                  "give one slug are GRAPH-DUP; a folder name that cannot make an id (a dot) is GRAPH-ID (nothing is corrected); kebab: a lower-case letter before an "
@@ -1126,7 +1459,7 @@ def _selftest_cases():
                     b"\\u003cimg src=x onerror=alert(1)\\u003e \\u0026 `code`" in f0["graph/step/lean-s-a.json"],
                     [any(c in data for c in (b"<", b">", b"&")) for data in f0.values()].count(True),
                     sorted({json.loads(data)["commit"] for data in f0.values()})),
-                   (0, 0, True, ["graph/index.json", "graph/step/lean-s--g.json", "graph/step/lean-s-a.json", "graph/step/lean-s-b.json", "graph/step/lean-s.json",
+                   (0, 0, True, ["graph/index.json", "graph/spine.json", "graph/step/lean-s--g.json", "graph/step/lean-s-a.json", "graph/step/lean-s-b.json", "graph/step/lean-s.json",
                                  "graph/uses.json"], True, True, 0, ["pinX"]))
 
     @case("SK11", "exit codes: 0 built (OUT holds `graph` and nothing else), 1 refused (OUT absent after; a non-empty OUT is refused and left as it was; a strings file "
@@ -1193,7 +1526,7 @@ def _selftest_cases():
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
         info = {("lean-s-b", "lean-s-a"): {"weight": 1, "in_reduction": True}}
         notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n"} for i in ("lean-s-a", "lean-s-b")}
-        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True)
+        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS, **NOTE_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True, index_extra={"edge_basis": EDGE_BASIS})
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -1202,6 +1535,7 @@ def _selftest_cases():
             rc = _cli(_args(g, out, sp, _outline_file(d)))[0]
             got = _tree_files(out)
         uses = got.pop("graph/uses.json")
+        got.pop("graph/spine.json")
         return _eq((rc, want_errs, got == want, _j(want, "graph/index.json")["assets"], len(got), uses != b""), (0, [], True, {}, 5, True))
 
     @case("SK14", "ids are at most 64 characters: an id longer than 64 is cut to its first 57 characters, trailing `-` removed, then `-` and the first 6 hex digits of the "
@@ -1349,7 +1683,7 @@ def _selftest_cases():
     @case("SK21", "the strings overlay (`--strings-overlay FILE`): its keys replace or add to the strings file for this map only; with the overlay giving the three kind "
                   "words and a new heading the index holds exactly the 23 keys with those words (an extra overlay key is not in it); the strings file is not edited; an "
                   "overlay without one kind word is refused GRAPH-STRINGS (exit 1); a file that is not there, not JSON or not an object is exit 2; the overlay file of this "
-                  "checkout (site/strings-lean.json) holds exactly fourteen words: the four of COUNT_WORDS (final), the seven of OVERLAY_WORDS (the kinds heading, the three kind words and the three card words, "
+                  "checkout (site/strings-lean.json) holds exactly twenty-two words (the five note words final, the three lines words final): the three lines words (placeholders, marked), the four of COUNT_WORDS (final), the seven of OVERLAY_WORDS (the kinds heading, the three kind words and the three card words, "
                   "placeholders) and the three of OPTIONAL_WORDS (final)")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
@@ -1382,7 +1716,7 @@ def _selftest_cases():
                     ix["strings"]["card_kind_file"], "extra_key" in ix["strings"], unchanged, short[0], short[1].splitlines(), nocard[0], nocard[1].splitlines(), gone, bad, arr,
                     absent, repo_overlay),
                    (0, 27, "Replaced heading", "F words", "card_kind_file", "F", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 1,
-                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, dict(OVERLAY_WORDS, **OPTIONAL_WORDS, **COUNT_WORDS)))
+                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, dict(OVERLAY_WORDS, **OPTIONAL_WORDS, **COUNT_WORDS, **LINES_WORDS, **NOTE_WORDS)))
 
     @case("SK22", "a section of one file with no folder whose first bold line holds no file (`### X`, `**A**`, `**B**`, the file `New/Main`) is `SKEL-LINE <n>` for the empty bold line "
                   "(a named refusal, exit 1, no traceback), and the same section with its one bold line over the file builds")
@@ -1457,8 +1791,8 @@ def _selftest_cases():
                   "this checkout holds those three values")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
-        typed = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "note_label": "From the repository, unchanged",
-                 "note_source": "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean"}
+        typed = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "note_label": "The file's opening note, from the repository, unchanged",
+                 "note_source": "Opening note of {source} \u00b7 version {commit} of lsernau/grh-lean"}
         with _tmp() as d:
             g = _tree(d, body, {"New/S/A": _lean()})
             n = lambda extra: len(_j(bld(g, PIN, dict(_strings(), **extra))[1], "graph/index.json")["strings"])
@@ -1699,7 +2033,7 @@ def _selftest_cases():
                     sorted(k for k in files if k.startswith("graph/step/") and "note" in _j(files, k))),
                    ([], ["card", "children", "commit", "format", "id", "path", "rests_on"], ["card", "children", "commit", "format", "id", "path", "rests_on"],
                     ["card", "children", "commit", "format", "id", "note", "path", "rests_on"],
-                    ["assets", "commit", "format", "max_children", "rests_on", "sibling_layout", "steps", "strings", "symbols", "top"], ["commit", "format", "imports", "uses"],
+                    ["assets", "commit", "format", "max_children", "rests_on", "sibling_layout", "steps", "strings", "symbols", "top"], ["commit", "format", "imports", "lib_index_rows", "titles", "used_by", "uses"],
                     ["graph/step/lean-alpha-one.json", "graph/step/lean-alpha-three.json", "graph/step/lean-alpha-two-parts.json", "graph/step/lean-beta-four.json",
                      "graph/step/lean-beta-six.json", "graph/step/lean-beta-sub-five.json"]))
 
@@ -1721,7 +2055,7 @@ def _selftest_cases():
         with _tmp() as d:
             errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": raw, "New/S/B": RAW1}), PIN, _strings())
         return _eq((errs, bs._graph_static_problems(files), sorted(files)[:2], [b'"note"' in files[k] for k in ("graph/step/lean-s-a.json", "graph/step/lean-s-b.json")]),
-                   ([], [], ["graph/index.json", "graph/step/lean-s--g.json"], [True, True]))
+                   ([], [], ["graph/index.json", "graph/spine.json"], [True, True]))
 
     @case("N11", "determinism with notes: the files, the notes included, are byte-identical under PYTHONHASHSEED 0, 1 and 2")
     def _():
@@ -1909,6 +2243,616 @@ def _selftest_cases():
         agree = sum(1 for i, c in cards.items() if i in entries and {k: entries[i].get(k) for k in c} == c and set(entries[i]) - set(c) <= {"parent_rests_on"})
         return _eq((errs, kinds, len(cards), agree, sum(1 for r in rows if r["parent"] == "root")), ([], {"part": {"group": 8, "file": 1}, "group": {"file": 38}, "file": {None: 306}}, 353, 344, 9))
 
+    def sp_files(d, names, spine, steps=(), ileans=None, index=None, edge=None):
+        g = _tree(d, _flat(names), {f"New/S/{n}": _lean() for n in names}, ileans, index if index is not None else _index([_srow(*s) for s in spine], [_trow(*s) for s in steps]))
+        os.makedirs(os.path.join(g, "src", "Lib"), exist_ok=True)
+        with open(os.path.join(g, "src", "Lib", "Foo.lean"), "w", encoding="utf-8") as f:
+            f.write(_lean())
+        return g
+
+    F1_ILEANS = {
+        "New/S/A": _ilean("New/S/A", {**_use("New.S.B", "New.gamma", "New.alpha"), **_use("New.S.E", "New.zeta"), **_use("New.S.A", "New.alpha", "New.alpha")}, decls=["New.alpha"]),
+        "New/S/B": _ilean("New/S/B", {**_use("New.S.B", "New.helper", "New.gamma"), **_use("New.S.C", "New.delta", "New.helper")}, decls=["New.gamma", "New.helper"]),
+        "New/S/C": _ilean("New/S/C", _use("Lib.Foo", "Lib.Foo.bar", "New.delta"), decls=["New.delta"]),
+        "New/S/D": _ilean("New/S/D", {}, decls=["New.eps"]), "New/S/E": _ilean("New/S/E", {}, decls=["New.zeta"]),
+        "Lib/Foo": _ilean("Lib/Foo", _use("New.S.D", "New.eps", "Lib.Foo.bar"), module="Lib.Foo", decls=["Lib.Foo.bar"])}
+    F1_SPINE = [("`alpha`", "`New/S/A`", "c1"), ("`gamma`", "`New/S/B`", "c2"), ("`delta`", "`New/S/C`", "c3"), ("`eps`", "`New/S/D`", "c4"), ("`zeta`", "`New/S/E`", "c5")]
+
+    @case("SP1", "a spine row is ONE node even with two names: its names as written, its constants resolved in the row's file (`D.alpha` is `New.Data.alpha`, `beta` is `New.beta`, a "
+                 "name equal to a declaration `plain` resolves as it is), in name order; the node holds the first cell as `theorem` and the third as `content` byte for byte (backticks, "
+                 "markdown, trailing spaces kept), the step id of its file, `spine-` + the slug of its first name, and source `grh/INDEX.md`; spine.json is {commit, format 1, links, nodes}")
+    def _():
+        spine = [("`D.alpha`, `beta`", "`New/S/A`", "Row one: **bold**, `code`.  "), ("`plain`", "`New/S/B`", "Two")]
+        ile = {"New/S/A": _ilean("New/S/A", {}, decls=["New.Data.alpha", "New.beta", "New.unrelated"]), "New/S/B": _ilean("New/S/B", {}, decls=["plain", "New.other"])}
+        with _tmp() as d:
+            errs, files, rows, rep = bld(sp_files(d, "AB", spine, ileans=ile), PIN, _strings())
+        sp = _j(files, "graph/spine.json")
+        return _eq((errs, sorted(sp), sp["commit"], sp["format"], sp["links"], len(sp["nodes"]), sp["nodes"][0], sp["nodes"][1]["id"], sp["nodes"][1]["constants"]),
+                   ([], ["commit", "format", "links", "nodes"], PIN, 1, [], 2,
+                    {"constants": ["New.Data.alpha", "New.beta"], "content": "Row one: **bold**, `code`.  ", "counts": {"mentions": 0, "no_doc": 0, "other_constants": 0}, "file": "lean-s-a",
+                     "id": "spine-d-alpha", "mentions": [], "names": ["D.alpha", "beta"], "source": "grh/INDEX.md", "theorem": "`D.alpha`, `beta`"}, "spine-plain", ["plain"]))
+
+    @case("SP2", "links between spine rows: a one-hop use, a chain through an UNNAMED declaration and a chain through a declaration of Lib each give the edge; a usage with no enclosing "
+                 "declaration gives none and a use of a declaration inside itself is ignored; every edge of the closed relation is kept with in_reduction (true on the three of the "
+                 "transitive reduction a->b, b->c, c->d, false on the three others), in table order")
+    def _():
+        with _tmp() as d:
+            errs, files, rows, rep = bld(sp_files(d, "ABCDE", F1_SPINE, ileans=F1_ILEANS), PIN, _strings())
+        sp = _j(files, "graph/spine.json")
+        l = lambda a, b, r: {"from": f"spine-{a}", "in_reduction": r, "to": f"spine-{b}"}
+        return _eq((errs, [n["id"] for n in sp["nodes"]], sp["links"]),
+                   ([], ["spine-alpha", "spine-gamma", "spine-delta", "spine-eps", "spine-zeta"],
+                    [l("alpha", "gamma", True), l("alpha", "delta", False), l("alpha", "eps", False), l("gamma", "delta", True), l("gamma", "eps", False), l("delta", "eps", True)]))
+
+    @case("SP3", "two rows that reach each other are refused `SKEL-SPINE-CYCLE <the spine ids>` (in table order), CLI exit 1, OUT not written")
+    def _():
+        ile = {"New/S/A": _ilean("New/S/A", {**_use("New.S.A", "New.gamma", "New.alpha"), **_use("New.S.A", "New.alpha", "New.gamma")}, decls=["New.alpha", "New.gamma"])}
+        spine = [("`alpha`", "`New/S/A`", "c1"), ("`gamma`", "`New/S/A`", "c2")]
+        with _tmp() as d:
+            g = sp_files(d, "A", spine, ileans=ile)
+            errs = bld(g, PIN, _strings())[0]
+            rc, out, err = _cli(_args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)))
+            absent = not os.path.exists(os.path.join(d, "out"))
+        return _eq((errs, rc, out.splitlines(), absent), ([("SKEL-SPINE-CYCLE", "spine-alpha spine-gamma", "")], 1, ["SKEL-SPINE-CYCLE spine-alpha spine-gamma"], True))
+
+    @case("SP4", "a name that resolves to no declaration of the row's file and a name that resolves to two are each refused `SKEL-SPINE <row number> <name> <reason>` (rows counted from 1, "
+                 "all reported, exit 1)")
+    def _():
+        ile = {"New/S/A": _ilean("New/S/A", {}, decls=["New.dup", "dup", "New.ok"])}
+        spine = [("`nothing`", "`New/S/A`", "c"), ("`dup`", "`New/S/A`", "c"), ("`ok`", "`New/S/A`", "c")]
+        with _tmp() as d:
+            g = sp_files(d, "A", spine, ileans=ile)
+            errs = bld(g, PIN, _strings())[0]
+            rc, out, err = _cli(_args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)))
+        return _eq((errs, rc, out.splitlines()), ([("SKEL-SPINE", "1 nothing", "unresolved"), ("SKEL-SPINE", "2 dup", "ambiguous")], 1,
+                                                   ["SKEL-SPINE 1 nothing unresolved", "SKEL-SPINE 2 dup ambiguous"]))
+
+    @case("SP5", "the repository's sentences: each row of the steps table whose file is a New step is carried on that step's file as index_rows [{source `grh/INDEX.md`, text: the first "
+                 "cell byte for byte}] in table order (the one space of padding removed, the rest kept: backticks, inner and trailing spaces); a row whose file is in Lib is carried on "
+                 "NO step and listed in graph/uses.json `lib_index_rows` [{file, source, text}] in table order; a part, a group and a file with no row have no `index_rows`; the report "
+                 "counts carried 3, Lib rows 1, Lib files 1")
+    def _():
+        steps = [("First `code` row  ", "`New/S/A`"), ("Lib   row `x`", "`Lib/X/Y`", "", "related"), ("Second row", "`New/S/A`"), ("B row", "`New/S/B`")]
+        with _tmp() as d:
+            errs, files, rows, rep = bld(sp_files(d, "ABC", [], steps), PIN, _strings())
+        ir = lambda i: _j(files, f"graph/step/{i}.json").get("index_rows")
+        s = lambda text: {"source": "grh/INDEX.md", "text": text}
+        return _eq((errs, ir("lean-s-a"), ir("lean-s-b"), ir("lean-s-c"), ir("lean-s"), ir("lean-s--g"), _j(files, "graph/uses.json")["lib_index_rows"], rep["index"]),
+                   ([], [s("First `code` row  "), s("Second row")], [s("B row")], None, None, None, [{"file": "Lib/X/Y", "source": "grh/INDEX.md", "text": "Lib   row `x`"}],
+                    {"carried": 3, "lib_rows": 1, "lib_files": ["Lib/X/Y"]}))
+
+    @case("SP6", "a table with the wrong number of cells is `SKEL-INDEX <line>` (the first table needs 3, the second 4; all reported); a row whose file is a New file that is not a step "
+                 "of the map is `SKEL-INDEX <line> <path> is not a step`; a missing section is exit 2")
+    def _():
+        bad = _index([_srow("`a`", "`New/S/A`", "c"), "| `b` | `New/S/A` |"], [_trow("x", "`New/S/A`"), "| x | `New/S/A` | y |", _trow("z", "`New/S/Nope`")])
+        with _tmp() as d:
+            g = sp_files(d, "A", [], index=bad, ileans={"New/S/A": _ilean("New/S/A", {}, decls=["New.a"])})
+            errs = brows(g)[0]
+        with _tmp() as d:
+            g = sp_files(d, "A", [], index="# Index\\n\\nnothing\\n")
+            rc = _cli(_args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)))[0]
+        return _eq((errs, rc), ([("SKEL-INDEX", "10", ""), ("SKEL-INDEX", "17", ""), ("SKEL-INDEX", "18", "New/S/Nope is not a step")], 2))
+
+    @case("SP7", "spine_rows: a file step has `spine_rows`, the ids of the spine rows whose row is in that file, in table order; absent when it has none; two rows in one file give two ids")
+    def _():
+        ile = {"New/S/A": _ilean("New/S/A", {}, decls=["New.alpha", "New.beta"]), "New/S/B": _ilean("New/S/B", {}, decls=["New.gamma"])}
+        spine = [("`alpha`", "`New/S/A`", "c"), ("`gamma`", "`New/S/B`", "c"), ("`beta`", "`New/S/A`", "c")]
+        with _tmp() as d:
+            errs, files, rows, rep = bld(sp_files(d, "ABC", spine, ileans=ile), PIN, _strings())
+        sr = lambda i: _j(files, f"graph/step/{i}.json").get("spine_rows")
+        return _eq((errs, sr("lean-s-a"), sr("lean-s-b"), sr("lean-s-c"), sr("lean-s"), sr("lean-s--g")), ([], ["spine-alpha", "spine-beta"], ["spine-gamma"], None, None, None))
+
+    @case("SP8", "edge_basis: index.json gets the top-level OBJECT {basis: `names-written-in-source-from-compiled-index`, words: `key_lines_text`} (exactly those two keys; the sentence is "
+                 "NOT in index.json) when the strings carry key_lines_text, and none when they do not; the words key is in `strings` (the page's optional keys: 27 required + the "
+                 "three note words + the three lines words = 33 keys, 30 with the lines words absent); `edge_basis` itself is not a key of `strings`")
+    def _():
+        with _tmp() as d:
+            g = sp_files(d, "A", [])
+            on = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS))[1], "graph/index.json")
+            off = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS))[1], "graph/index.json")
+            only = _j(bld(g, PIN, dict(_strings(), key_lines_text="x"))[1], "graph/index.json")
+        return _eq((on.get("edge_basis"), sorted(on["edge_basis"]), "edge_basis" in off, len(on["strings"]), "edge_basis" in on["strings"], "key_lines_text" in on["strings"], len(off["strings"]),
+                    only["edge_basis"]["words"], len(only["strings"])), (EDGE_BASIS, ["basis", "words"], False, 33, False, True, 30, "key_lines_text", 28))
+
+    @case("SP9", "used_by is the exact inverse of uses with the same weights: A uses B with two names and C with one, B uses C with two names: used_by C is [A 1, B 2], used_by B is "
+                 "[A 2], used_by A is []; the number of used_by entries equals the number of uses entries")
+    def _():
+        ile = {"New/S/A": _ilean("New/S/A", {**_ref("New.S.B", "b1", "b2"), **_ref("New.S.C", "c1")}), "New/S/B": _ilean("New/S/B", _ref("New.S.C", "c1", "c2")), "New/S/C": _ilean("New/S/C", {})}
+        with _tmp() as d:
+            errs, files, rows, rep = bld(sp_files(d, "ABC", [], ileans=ile), PIN, _strings())
+        u = _j(files, "graph/uses.json")
+        e = lambda i, n: {"id": f"lean-s-{i}", "names": n, "same_group": True}
+        return _eq((errs, u["used_by"], sum(len(v) for v in u["used_by"].values()), sum(len(v) for v in u["uses"].values())),
+                   ([], {"lean-s-a": [], "lean-s-b": [e("a", 2)], "lean-s-c": [e("a", 1), e("b", 2)]}, 3, 3))
+
+    @case("SP10", "determinism: under hash seeds 0, 1 and 2 graph/spine.json and graph/uses.json are byte-identical and every object of spine.json has sorted keys")
+    def _():
+        with _tmp() as d:
+            g = sp_files(d, "ABCDE", F1_SPINE, ileans=F1_ILEANS)
+            sp, ol = _strings_file(d), _outline_file(d)
+            got = []
+            for seed in ("0", "1", "2"):
+                out = os.path.join(d, "out" + seed)
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, sp, ol), env=dict(os.environ, PYTHONHASHSEED=seed), capture_output=True, text=True)
+                fs = _tree_files(out)
+                got.append((r.returncode, fs["graph/spine.json"], fs["graph/uses.json"]))
+        ok = [True]
+
+        def chk(pairs):
+            ok[0] = ok[0] and [k for k, _ in pairs] == sorted(k for k, _ in pairs)
+            return dict(pairs)
+        json.loads(got[0][1].decode("utf-8"), object_pairs_hook=chk)
+        return _eq(([x[0] for x in got], got[0][1] == got[1][1] == got[2][1], got[0][2] == got[1][2] == got[2][2], ok[0]), ([0, 0, 0], True, True, True))
+
+    @case("SP11", "a spine id that is also a live outline id is `SKEL-ID-CLASH <id>`, and so are two spine rows with one id; ids are at most 64 characters (a long first name is cut by the id rule)")
+    def _():
+        ile = {"New/S/A": _ilean("New/S/A", {}, decls=["New.alpha"]), "New/S/B": _ilean("New/S/B", {}, decls=["New.alpha"])}
+        spine = [("`alpha`", "`New/S/A`", "c"), ("`alpha`", "`New/S/B`", "c")]
+        longname = "x" * 80
+        ile2 = {"New/S/A": _ilean("New/S/A", {}, decls=["New." + longname])}
+        with _tmp() as d:
+            g = sp_files(d, "AB", spine, ileans=ile)
+            dup = bld(g, PIN, _strings())[0]
+        with _tmp() as d:
+            g = sp_files(d, "A", [(f"`{longname}`", "`New/S/A`", "c")], ileans=ile2)
+            live = bld(g, PIN, _strings(), live_ids=["spine-" + "x" * 58])
+            fine = bld(g, PIN, _strings())
+        return _eq((dup, [(c, w) for c, w, _ in live[0]], fine[0], [len(n["id"]) for n in _j(fine[1], "graph/spine.json")["nodes"]]),
+                   ([("SKEL-ID-CLASH", "spine-alpha", "")], [], [], [64]))
+
+    @case("SP12", "INDEX.md is read through the bounded reader: a symlink, a FIFO, a file over 1 MiB, bytes that are not UTF-8 and a missing file are each `SKEL-INDEX INDEX.md <reason>` "
+                  "(symlink, not-a-regular-file, too-large, not-utf-8, missing; exit 1, no hang: the CLI runs in a subprocess with a 60 second timeout); the .ilean files outside New "
+                  "(the walk of --ilean-dir that builds the spine) are bounded too: a symlinked one is `SKEL-USES Lib/Foo symlink`, a FIFO one `SKEL-USES Lib/Bar not-a-regular-file`")
+    def _():
+        out = []
+        for kind in ("symlink", "fifo", "big", "bytes", "missing"):
+            with _tmp() as d:
+                g = sp_files(d, "A", [])
+                path = os.path.join(g, "INDEX.md")
+                os.remove(path)
+                if kind == "symlink":
+                    with open(os.path.join(d, "elsewhere.md"), "w") as f:
+                        f.write(_index())
+                    os.symlink(os.path.join(d, "elsewhere.md"), path)
+                elif kind == "fifo":
+                    os.mkfifo(path)
+                elif kind == "big":
+                    with open(path, "w") as f:
+                        f.write(_index() + " " * (1048576 + 1 - len(_index())))
+                elif kind == "bytes":
+                    with open(path, "wb") as f:
+                        f.write(b"\xff\xfe")
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=60)
+                out.append((r.returncode, r.stdout.splitlines()))
+        with _tmp() as d:
+            g = sp_files(d, "A", [])
+            base = os.path.join(d, "ilean", "Lib")
+            os.makedirs(base)
+            with open(os.path.join(d, "real.ilean"), "w") as f:
+                f.write(json.dumps(_ilean("Lib/Foo", {}, module="Lib.Foo")))
+            os.symlink(os.path.join(d, "real.ilean"), os.path.join(base, "Foo.ilean"))
+            os.mkfifo(os.path.join(base, "Bar.ilean"))
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=60)
+        return _eq((out, r.returncode, r.stdout.splitlines()),
+                   ([(1, ["SKEL-INDEX INDEX.md symlink"]), (1, ["SKEL-INDEX INDEX.md not-a-regular-file"]), (1, ["SKEL-INDEX INDEX.md too-large"]), (1, ["SKEL-INDEX INDEX.md not-utf-8"]),
+                     (1, ["SKEL-INDEX INDEX.md missing"])], 1, ["SKEL-USES Lib/Bar not-a-regular-file", "SKEL-USES Lib/Foo symlink"]))
+
+    @case("SPN1", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): 9 spine nodes (rows read from INDEX.md in the case); the two rows of ShortAndEnough and "
+                  "the two of OneSidedBound share a file, 7 distinct files hold spine rows; 19 links, 8 in the reduction, the longest chain of the reduction 5; the relation by name: "
+                  "integral_forms_long rests on covolume; star_inequality on Theorem A, enough_forms, covolume, integral_forms_long (reduction A, enough, integral); the rpow row on those "
+                  "and star_inequality and the abs row (reduction star, abs); grh on all eight others (reduction rpow, LFunction); the others on none; 57 index rows carried on 57 file "
+                  "steps, 24 Lib rows (22 distinct files) in lib_index_rows in table order and on no step; used_by has as many entries as uses (2135), 112 for FieldsAndPlaces and 100 for "
+                  "AdmissibleData; edge_basis the pointer object and not a key of strings")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", dict(_strings(), **LINES_WORDS), ilean_dir=_ILEAN_FOR_SK13)
+        sp = _j(files, "graph/spine.json")
+        u = _j(files, "graph/uses.json")
+        with open(os.path.join(_GRH_FOR_SK13, "INDEX.md"), encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        first = []   # the first name of each row of the first table, read by a simpler implementation
+        i = lines.index("## The last step")
+        for ln in lines[i:]:
+            if ln.startswith("## ") and ln != "## The last step":
+                break
+            m = re.match(r"\| `([^`]+)`", ln)
+            if m:
+                first.append(m.group(1))
+        steps_rows = []
+        i = lines.index("## Steps of the argument")
+        for ln in lines[i:]:
+            if ln.startswith("## ") and ln != "## Steps of the argument":
+                break
+            m = re.match(r"\| (.*?) \| `([^`]+)` \|", ln)
+            if m:
+                steps_rows.append((m.group(2), m.group(1)))
+        nm = {n["names"][0]: n["id"] for n in sp["nodes"]}
+        rests, red = {}, {}
+        for l in sp["links"]:
+            rests.setdefault(l["from"], set()).add(l["to"])
+            if l["in_reduction"]:
+                red.setdefault(l["from"], set()).add(l["to"])
+        byname = lambda n, table: {x for x in nm if nm[x] in table.get(nm[n], set())}
+        A, E, C, I, ST = "D.span_short_integralRamified_eq_top", "D.enough_forms", "TwistedLattice.covolume_add_index_nonneg", "D.integral_forms_long", "star_inequality"
+        P, R, L, G = "eventually_abs_primeRemainder_le", "eventually_primeRemainder_le_rpow", "LFunction_ne_zero_of_primeRemainder_le", "grh"
+        depth = {}
+
+        def longest(x):
+            if x not in depth:
+                depth[x] = 1 + max([longest(y) for y in red.get(x, ())] or [0])
+            return depth[x]
+        step_rows = {i: _j(files, f"graph/step/{i}.json").get("index_rows") for i in (r["id"] for r in rows if r["kind"] == "file")}
+        carried = [v for v in step_rows.values() if v]
+        libs = [(f, t) for f, t in steps_rows if f.startswith("Lib/")]
+        spine_files = {}
+        for n in sp["nodes"]:
+            spine_files[n["file"]] = spine_files.get(n["file"], 0) + 1
+        entries = sum(len(v) for v in u["used_by"].values())
+        return _eq((errs, first == [n["names"][0] if len(n["names"]) == 1 else n["names"][0] for n in sp["nodes"]], len(sp["nodes"]), len(sp["links"]), sum(1 for l in sp["links"] if l["in_reduction"]),
+                    max(longest(n["id"]) for n in sp["nodes"]),
+                    sorted(spine_files.values()), len(spine_files), byname(ST, rests), byname(I, rests), byname(R, rests) == {A, E, C, I, ST, P}, byname(G, rests) == set(nm) - {G},
+                    byname(ST, red), byname(R, red), byname(G, red), [byname(x, rests) for x in (A, E, C, P, L)],
+                    sum(len(v or []) for v in step_rows.values()), len(carried), [(e["file"], e["text"]) for e in u["lib_index_rows"]] == libs, len(u["lib_index_rows"]), len({e["file"] for e in u["lib_index_rows"]}),
+                    entries, sum(len(v) for v in u["uses"].values()), len(u["used_by"]["lean-reduction-data-fields-and-places"]), len(u["used_by"]["lean-reduction-data-admissible-data"]),
+                    _j(files, "graph/index.json").get("edge_basis"), "edge_basis" in _j(files, "graph/index.json")["strings"]),
+                   ([], True, 9, 19, 8, 5, [1, 1, 1, 1, 1, 2, 2], 7, {A, E, C, I}, {C}, True, True, {A, E, I}, {ST, P}, {R, L}, [set()] * 5, 57, 57, True, 24, 22, 2135, 2135, 112, 100, EDGE_BASIS, False))
+
+    SRC_A = "\n".join([
+        "/-!", "note", "-/",
+        "/-- Doc for helper.", "", "Second para with `code` and trailing space ", "-/", "@[simp]",
+        "lemma helper : True := trivial", "def d1 : Nat := 1", "abbrev ab : Nat := 2", "structure St where", "  x : Nat", "class Cl where", "  y : Nat",
+        "instance inst : Inhabited Nat := ⟨0⟩", "inductive Ind where", "  | a", "theorem main : True := trivial", "@[simp] theorem attr_same_line : True := trivial", ""])
+    SRC_L = "\n".join(["/-!", "lib note", "-/", "/-- Lib doc. -/", "theorem libthing : True := trivial", ""])
+
+    def decl(sl, sc, el, ec, nl, nc, ne):
+        return [sl, sc, el, ec, nl, nc, nl, nc + ne]
+
+    A_DECLS = {"New.helper": decl(3, 0, 8, 30, 8, 6, 6), "New.d1": decl(9, 0, 9, 22, 9, 4, 2), "New.ab": decl(10, 0, 10, 24, 10, 7, 2), "New.St": decl(11, 0, 12, 10, 11, 10, 2),
+               "New.Cl": decl(13, 0, 14, 10, 13, 6, 2), "New.inst": decl(15, 0, 15, 40, 15, 9, 4), "New.Ind": decl(16, 0, 17, 6, 16, 10, 3), "New.main": decl(18, 0, 18, 30, 18, 8, 4),
+               "New.attr_same_line": decl(19, 0, 19, 40, 19, 16, 14)}
+
+    def mref(module, name, *positions, enclosing="New.main"):
+        return {json.dumps({"c": {"m": module, "n": name}}, separators=(",", ":")): {"definition": None, "usages": [[l, c, l, c + 1, enclosing] for l, c in positions]}}
+
+    def mention_fixture(d, extra_decls=None, lib_src=SRC_L):
+        refs = {}
+        for name, pos in (("New.helper", [(18, 30), (18, 2)]), ("New.d1", [(18, 5)]), ("New.ab", [(18, 9)]), ("New.St", [(18, 14)]), ("New.Cl", [(18, 16)]), ("New.inst", [(18, 18)]),
+                          ("New.Ind", [(18, 20)]), ("New.attr_same_line", [(18, 22)])):
+            refs.update(mref("New.S.A", name, *pos))
+        refs.update(mref("New.S.A", "New.St.x", (18, 24)))                 # a structure field: not a declaration of the index
+        refs.update(mref("Mathlib.Nat", "Nat.add_comm", (18, 26)))         # outside New and Lib
+        refs.update(mref("Lib.Foo", "Lib.libthing", (18, 28)))             # a declaration of Lib
+        refs.update(mref("New.S.A", "New.main", (18, 1)))                  # its own constant
+        ile = {"New/S/A": _ilean("New/S/A", refs, decls=[]), "Lib/Foo": _ilean("Lib/Foo", {}, module="Lib.Foo", decls=[])}
+        ile["New/S/A"]["decls"] = dict(A_DECLS, **(extra_decls or {}))
+        ile["Lib/Foo"]["decls"] = {"Lib.libthing": decl(3, 0, 4, 30, 4, 8, 8)}
+        spine = [("`main`", "`New/S/A`", "row"), ("`d1`", "`New/S/A`", "row two")]
+        g = _tree(d, _flat("A"), {"New/S/A": SRC_A}, ile, _index([_srow(*s) for s in spine]))
+        os.makedirs(os.path.join(g, "src", "Lib"), exist_ok=True)
+        with open(os.path.join(g, "src", "Lib", "Foo.lean"), "w", encoding="utf-8") as f:
+            f.write(lib_src)
+        return g
+
+    @case("MN1", "the direct mentions of a spine row (one hop): the declarations of New or Lib that its declaration NAMES, in the reading order of the proof (the smallest (line, col) of "
+                 "a usage inside the declaration, a constant named at two positions taking the smaller), each with its kind as the author wrote it (lemma stays lemma, abbrev "
+                 "stays abbrev; theorem, def, structure, class, instance, inductive; an attribute on the same line skipped), its doc comment byte for byte (blank lines, a "
+                 "backtick, a trailing space; from `/--` on an earlier line through the `-/` that closes it, nesting counted, also with an attribute line between it and the keyword) or no `doc` key, "
+                 "line, module, file_path, first_use [line + 1, col], `file` for a New declaration and none for a Lib one, `spine` when it is itself a row; the row's own constants, "
+                 "a Mathlib constant and a structure field are not mentions")
+    def _():
+        with _tmp() as d:
+            errs, files, rows, rep = bld(mention_fixture(d), PIN, _strings())
+        sp = _j(files, "graph/spine.json")
+        ms = sp["nodes"][0]["mentions"]
+        brief = [(m["constant"], m["kind"], m["line"], m["first_use"], m.get("file"), m.get("spine"), "doc" in m) for m in ms]
+        src_a = "grh/src/New/S/A.lean"
+        doc = [m for m in ms if m["constant"] == "New.helper"][0]
+        return _eq((errs, brief, doc["doc"], doc["module"], doc["file_path"], [m for m in ms if m["constant"] == "New.Cl"][0]["file_path"], [m for m in ms if m["constant"] == "Lib.libthing"][0]),
+                   ([], [("New.helper", "lemma", 9, [19, 2], "lean-s-a", None, True), ("New.d1", "def", 10, [19, 5], "lean-s-a", "spine-d1", False), ("New.ab", "abbrev", 11, [19, 9], "lean-s-a", None, False),
+                         ("New.St", "structure", 12, [19, 14], "lean-s-a", None, False), ("New.Cl", "class", 14, [19, 16], "lean-s-a", None, False),
+                         ("New.inst", "instance", 16, [19, 18], "lean-s-a", None, False), ("New.Ind", "inductive", 17, [19, 20], "lean-s-a", None, False),
+                         ("New.attr_same_line", "theorem", 20, [19, 22], "lean-s-a", None, False), ("Lib.libthing", "theorem", 5, [19, 28], None, None, True)],
+                    {"line": 4, "source": src_a, "text": "/-- Doc for helper.\n\nSecond para with `code` and trailing space \n-/"}, "New.S.A", src_a, src_a,
+                    {"constant": "Lib.libthing", "doc": {"line": 4, "source": "grh/src/Lib/Foo.lean", "text": "/-- Lib doc. -/"}, "first_use": [19, 28], "kind": "theorem", "line": 5,
+                     "module": "Lib.Foo", "file_path": "grh/src/Lib/Foo.lean"}))
+
+    @case("MN2", "counts: {mentions, no_doc, other_constants}: the mentions of the row, those with no doc comment, and the DISTINCT constants named that are not declarations of New or "
+                 "Lib (here a Mathlib constant and a structure field, whose kind is not guessed); the second row has none")
+    def _():
+        with _tmp() as d:
+            errs, files, rows, rep = bld(mention_fixture(d), PIN, _strings())
+        nodes = _j(files, "graph/spine.json")["nodes"]
+        return _eq((errs, nodes[0]["counts"], nodes[1]["counts"], nodes[1]["mentions"]), ([], {"mentions": 9, "no_doc": 7, "other_constants": 2}, {"mentions": 0, "no_doc": 0, "other_constants": 0}, []))
+
+    @case("MN3", "a two-declaration row orders by the table's name order first (all that p names, then what q names), then by first use; a constant named by both takes its position "
+                 "from the first declaration that names it; no `file`/`spine` keys when they do not apply")
+    def _():
+        src = "\n".join(["/-!", "n", "-/", "theorem z1 : True := trivial", "theorem z0 : True := trivial", "theorem zb : True := trivial", "theorem p : True := trivial",
+                         "theorem q : True := trivial", ""])
+        dec = {"New.z1": decl(3, 0, 3, 28, 3, 8, 2), "New.z0": decl(4, 0, 4, 28, 4, 8, 2), "New.zb": decl(5, 0, 5, 28, 5, 8, 2), "New.p": decl(6, 0, 6, 26, 6, 8, 1), "New.q": decl(7, 0, 7, 26, 7, 8, 1)}
+        refs = {**mref("New.S.A", "New.z1", (6, 20), enclosing="New.p"), **mref("New.S.A", "New.zb", (6, 25), enclosing="New.p"), **mref("New.S.A", "New.zb", (7, 3), enclosing="New.q"),
+                **mref("New.S.A", "New.z0", (7, 10), enclosing="New.q")}
+        # one reference key per constant: the usages of zb in p and in q are two records of one reference
+        refs[json.dumps({"c": {"m": "New.S.A", "n": "New.zb"}}, separators=(",", ":"))]["usages"] = [[6, 25, 6, 26, "New.p"], [7, 3, 7, 4, "New.q"]]
+        ile = {"New/S/A": dict(_ilean("New/S/A", refs), decls=dec)}
+        with _tmp() as d:
+            g = _tree(d, _flat("A"), {"New/S/A": src}, ile, _index([_srow("`p`, `q`", "`New/S/A`", "two names")]))
+            errs, files, rows, rep = bld(g, PIN, _strings())
+        node = _j(files, "graph/spine.json")["nodes"][0]
+        return _eq((errs, [(m["constant"], m["first_use"]) for m in node["mentions"]], node["counts"], [sorted(m) for m in node["mentions"]][:1]),
+                   ([], [("New.z1", [7, 20]), ("New.zb", [7, 25]), ("New.z0", [8, 10])], {"mentions": 3, "no_doc": 3, "other_constants": 0},
+                    [["constant", "file", "file_path", "first_use", "kind", "line", "module"]]))
+
+    @case("MN4", "a declaration whose keyword cannot be read (no theorem, lemma, def, abbrev, structure, class, inductive, instance, axiom, opaque or example before the name on its "
+                 "line) refuses the build `SKEL-KIND <constant>`, all of them; so does a source that cannot be read through the bounded reader (a symlink), named the same way; "
+                 "a Lib source is read through it too")
+    def _():
+        with _tmp() as d:
+            g = mention_fixture(d, extra_decls={"New.d1": decl(9, 0, 9, 22, 9, 0, 2)})   # the name at the start of its line: nothing before it
+            e1 = bld(g, PIN, _strings())[0]
+        with _tmp() as d:
+            g = mention_fixture(d)
+            lib = os.path.join(g, "src", "Lib", "Foo.lean")
+            os.rename(lib, os.path.join(d, "real.lean"))
+            os.symlink(os.path.join(d, "real.lean"), lib)
+            e2 = bld(g, PIN, _strings())[0]
+        return _eq((e1, e2), ([("SKEL-KIND", "New.d1", "")], [("SKEL-KIND", "Lib.libthing", "symlink")]))
+
+    @case("MN5", "determinism: the mentions, their order and spine.json are byte-identical under hash seeds 0, 1 and 2")
+    def _():
+        with _tmp() as d:
+            g = mention_fixture(d)
+            sp, ol = _strings_file(d), _outline_file(d)
+            got = []
+            for seed in ("0", "1", "2"):
+                out = os.path.join(d, "out" + seed)
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, sp, ol), env=dict(os.environ, PYTHONHASHSEED=seed), capture_output=True, text=True)
+                got.append((r.returncode, _tree_files(out)["graph/spine.json"]))
+        return _eq(([x[0] for x in got], got[0][1] == got[1][1] == got[2][1], b'"mentions"' in got[0][1]), ([0, 0, 0], True, True))
+
+    @case("MN6", "a row's own constants are never listed as mentions of the row, also when one declaration of a two-declaration row names the other (p names q: q is not a mention of the row)")
+    def _():
+        src = "\n".join(["/-!", "n", "-/", "theorem z1 : True := trivial", "theorem p : True := trivial", "theorem q : True := trivial", ""])
+        dec = {"New.z1": decl(3, 0, 3, 28, 3, 8, 2), "New.p": decl(4, 0, 4, 26, 4, 8, 1), "New.q": decl(5, 0, 5, 26, 5, 8, 1)}
+        refs = {**mref("New.S.A", "New.z1", (4, 20), enclosing="New.p"), **mref("New.S.A", "New.q", (4, 5), enclosing="New.p")}
+        with _tmp() as d:
+            g = _tree(d, _flat("A"), {"New/S/A": src}, {"New/S/A": dict(_ilean("New/S/A", refs), decls=dec)}, _index([_srow("`p`, `q`", "`New/S/A`", "two names")]))
+            errs, files, rows, rep = bld(g, PIN, _strings())
+        node = _j(files, "graph/spine.json")["nodes"][0]
+        return _eq((errs, [m["constant"] for m in node["mentions"]], node["counts"]), ([], ["New.z1"], {"mentions": 1, "no_doc": 1, "other_constants": 0}))
+
+    @case("SP13", "uses.json `titles`: {step id: {kind, path, title}} for EVERY step (parts with path [], groups, files), each equal to the step file's own card title, path and kind "
+                  "(read from the written step files); a hostile title (`<img onerror>`, a backtick span) is escaped in the JSON and parses back exactly")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): <img src=x onerror=alert(1)> & `code`\n- `New/S/B` (1): plain\n"
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": _lean(), "New/S/B": _lean()}), PIN, _strings())
+        u = _j(files, "graph/uses.json")
+        step = lambda i: _j(files, f"graph/step/{i}.json")
+        same = all(u["titles"][i] == {"kind": step(i)["card"]["kind"], "path": step(i)["card"]["path"], "title": step(i)["card"]["title"]} for i in u["titles"])
+        return _eq((errs, sorted(u["titles"]), same, u["titles"]["lean-s-a"], u["titles"]["lean-s"], b"\\u003cimg src=x onerror=alert(1)\\u003e \\u0026 `code`" in files["graph/uses.json"],
+                    any(c in files["graph/uses.json"] for c in (b"<", b">", b"&")), sorted(u["titles"]) == sorted(k[len("graph/step/"):-5] for k in files if k.startswith("graph/step/"))),
+                   ([], ["lean-s", "lean-s--g", "lean-s-a", "lean-s-b"], True, {"kind": "file", "path": ["lean-s", "lean-s--g"], "title": "<img src=x onerror=alert(1)> & `code`"},
+                    {"kind": "part", "path": [], "title": "S part"}, True, False, True))
+
+    @case("MN7", "a mention with no usable usage position is loud: a constant named by a record whose line is not a number is `SKEL-MENTION <row> <constant> no usage position` (rows "
+                 "counted from 1), never a default position")
+    def _():
+        refs = mref("New.S.A", "New.helper", (18, 2))
+        refs[json.dumps({"c": {"m": "New.S.A", "n": "New.helper"}}, separators=(",", ":"))]["usages"] = [["x", 2, 18, 3, "New.main"]]
+        with _tmp() as d:
+            g = mention_fixture(d)
+            ile = _j({"i": open(os.path.join(d, "ilean", "New", "S", "A.ilean"), "rb").read()}, "i")
+            key = json.dumps({"c": {"m": "New.S.A", "n": "New.helper"}}, separators=(",", ":"))
+            ile["references"][key]["usages"] = [["x", 2, 18, 3, "New.main"]]
+            with open(os.path.join(d, "ilean", "New", "S", "A.ilean"), "w", encoding="utf-8") as f:
+                f.write(json.dumps(ile))
+            errs = bld(g, PIN, _strings())[0]
+            rc, out, err = _cli(_args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)))
+        return _eq((errs, rc, out.splitlines()), ([("SKEL-MENTION", "1 New.helper", "no usage position")], 1, ["SKEL-MENTION 1 New.helper no usage position"]))
+
+    def invariants(files):
+        """The invariants of the page-facing files (docs/tools.md), each as a named boolean."""
+        ix, sp, us = (_j(files, f"graph/{n}.json") for n in ("index", "spine", "uses"))
+        steps = {k[len("graph/step/"):-5]: _j(files, k) for k in files if k.startswith("graph/step/")}
+        file_ids = {i for i, s in steps.items() if s["card"]["kind"] == "file"}
+        ids = {n["id"] for n in sp["nodes"]}
+        ms = [m for n in sp["nodes"] for m in n["mentions"]]
+        inv = {}
+        inv["commit"] = ix["commit"] == sp["commit"] == us["commit"]
+        inv["links"] = all(l["from"] in ids and l["to"] in ids for l in sp["links"])
+        inv["node file"] = all(n["file"] in file_ids for n in sp["nodes"])
+        inv["mention file"] = all(m["file"] in file_ids for m in ms if "file" in m)
+        inv["mention spine"] = all(m["spine"] in ids for m in ms if "spine" in m)
+        inv["counts"] = all(n["counts"]["mentions"] == len(n["mentions"]) and n["counts"]["no_doc"] == sum(1 for m in n["mentions"] if "doc" not in m) for n in sp["nodes"])
+        inv["used_by"] = sorted((a, e["id"], e["names"], e["same_group"]) for a, v in us["used_by"].items() for e in v) == sorted((e["id"], a, e["names"], e["same_group"]) for a, v in us["uses"].items() for e in v)
+        inv["spine basis"] = sp["edge_basis"]["words"] in ix["strings"] and sp["edge_basis"]["words"] != ix["edge_basis"]["words"]
+        inv["titles"] = set(us["titles"]) == set(steps) and all(us["titles"][i] == {"kind": s["card"]["kind"], "path": s["card"]["path"], "title": s["card"]["title"]} for i, s in steps.items())
+        return inv
+
+    @case("OVL1", "the overlay of this checkout holds the page's optional words with these values, each equal to the literal typed here (and to the constants of the cases): note_label, "
+                  "note_label_typeset, note_source, note_typeset_line, note_exact_button (final), key_kinds_note (final), and the three lines words, "
+                  "which are FINAL too: no value starts with `[proposal]` or `[placeholder]`, and the word `edge` is in none of the page words (the data key edge_basis is not a page word); `{n}` appears only in the four count words; with the three old optional words `strings` is 30 keys, "
+                  "with all six new ones 36, with none of the optional 27")
+    def _():
+        typed = {"note_label": "The file's opening note, from the repository, unchanged", "note_label_typeset": "The file's opening note, from the repository",
+                 "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
+                 "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.", "note_exact_button": "Show the exact text", "key_lines_heading": "What a line is",
+                 "key_lines_text": LINES_WORDS["key_lines_text"],   # the one literal of the test: LINES_WORDS
+                 "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming "
+                                     "them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real."}
+        with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
+            ov = json.load(f)
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            n = lambda extra: len(_j(bld(g, PIN, dict(_strings(), **extra))[1], "graph/index.json")["strings"])
+            counts = (n({}), n(OPTIONAL_WORDS), n(dict(OPTIONAL_WORDS, **LINES_WORDS, **NOTE_WORDS)), n(dict(OPTIONAL_WORDS, **NOTE_WORDS)))
+        return _eq(({k: ov.get(k) for k in typed}, {**LINES_WORDS, **NOTE_WORDS, **{k: OPTIONAL_WORDS[k] for k in ("note_label", "note_source")}} == {k: typed[k] for k in
+                                                                                                        list(LINES_WORDS) + list(NOTE_WORDS) + ["note_label", "note_source"]},
+                    sorted(k for k, v in ov.items() if v.startswith(("[proposal]", "[placeholder]"))), sorted(k for k, v in ov.items() if re.search(r"\bedges?\b", v, re.I)),
+                    sorted(k for k, v in ov.items() if "{n}" in v), counts),
+                   (typed, True, [], [],
+                    ["count_file_many", "count_file_one", "count_group_many", "count_group_one", ], (27, 30, 36, 33)))
+
+    DOC_SRC = "\n".join(["/-!", "n", "-/",
+                         "/-- Beta opens /- an inner comment -/ and then continues to its real end. -/", "theorem t1 : True := trivial",
+                         "/-- Two /- levels /- deep -/ still -/ done. -/", "theorem t2 : True := trivial",
+                         "/-- Plain doc. -/", "@[simp]", "theorem t3 : True := trivial", "theorem main : True := trivial", ""])
+    DOC_T1 = "/-- Beta opens /- an inner comment -/ and then continues to its real end. -/"
+    DOC_T2 = "/-- Two /- levels /- deep -/ still -/ done. -/"
+    DOC_T3 = "/-- Plain doc. -/"
+
+    def doc_fixture(d, src=DOC_SRC):
+        dec = {"New.t1": decl(3, 0, 4, 28, 4, 8, 2), "New.t2": decl(5, 0, 6, 28, 6, 8, 2), "New.t3": decl(7, 0, 9, 28, 9, 8, 2), "New.main": decl(10, 0, 10, 30, 10, 8, 4)}
+        refs = {**mref("New.S.A", "New.t1", (10, 5)), **mref("New.S.A", "New.t2", (10, 10)), **mref("New.S.A", "New.t3", (10, 15))}
+        ile = _ilean("New/S/A", refs, decls=[])
+        ile["decls"] = dec
+        return _tree(d, _flat("A"), {"New/S/A": src}, {"New/S/A": ile}, _index([_srow("`main`", "`New/S/A`", "row")]))
+
+    def source_end(lines, line_no):
+        """The doc comment that starts on the 1-based line `line_no` (at its first `/--`), cut at its REAL end by a nesting counter written here, independently of the tool."""
+        start_col = lines[line_no - 1].index("/--")
+        text = lines[line_no - 1][start_col:] + "\n" + "\n".join(lines[line_no:])
+        depth, i = 1, 3
+        while i < len(text):
+            if text.startswith("/-", i):
+                depth += 1
+                i += 2
+            elif text.startswith("-/", i):
+                depth -= 1
+                i += 2
+                if depth == 0:
+                    return text[:i], text[i:i + 12]
+            else:
+                i += 1
+        return None, ""
+
+    @case("DOC1", "a doc comment is carried to its REAL end, nesting of `/-` and `-/` counted by the one counter the module note uses: a doc holding `/- an inner comment -/` is carried whole "
+                  "(the full string typed here, byte for byte), so is one with two nested levels, and a plain doc is unchanged; the case asserts that its first fixture holds `/-` before "
+                  "its end (so dropping the fixture reddens it); a doc that never closes (its inner comment is closed, its own is not) is `SKEL-KIND <constant> unterminated doc comment`")
+    def _():
+        assert "/-" in DOC_T1[3:-2] and "/-" in DOC_T2[3:-2]   # the discriminating fact: the fixture docs hold an inner opener before their end
+        with _tmp() as d:
+            errs, files, rows, rep = bld(doc_fixture(d), PIN, _strings())
+        node = _j(files, "graph/spine.json")["nodes"][0]
+        got = {m["constant"]: m["doc"]["text"] for m in node["mentions"]}
+        bad_src = DOC_SRC.replace(DOC_T1, "/-- never closes /- inner -/")
+        with _tmp() as d:
+            e2 = bld(doc_fixture(d, bad_src), PIN, _strings())[0]
+        return _eq((errs, got, e2), ([], {"New.t1": DOC_T1, "New.t2": DOC_T2, "New.t3": DOC_T3}, [("SKEL-KIND", "New.t1", "unterminated doc comment")]))
+
+    @case("DOC2", "the END of every carried doc comment is checked against the source by a counter run independently in the case: doc.text equals the source from the doc's start line "
+                  "through its closing delimiter (nesting counted), ends with `-/`, and what follows in the source is not a continuation of the comment; a doc cut at the first `-/` "
+                  "(a PREFIX) or carried past its real end (over the attribute line that follows the last doc) fails it")
+    def _():
+        assert "/-" in DOC_T1[3:-2]
+        with _tmp() as d:
+            errs, files, rows, rep = bld(doc_fixture(d), PIN, _strings())
+        lines = DOC_SRC.split("\n")
+        node = _j(files, "graph/spine.json")["nodes"][0]
+        res = []
+        for m in node["mentions"]:
+            text, after = source_end(lines, m["doc"]["line"])
+            res.append((m["doc"]["text"] == text, m["doc"]["text"].endswith("-/"), "/-" in text[3:-2]))
+        return _eq((errs, res), ([], [(True, True, True), (True, True, True), (True, True, False)]))
+
+    @case("DOCR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): the 149 doc comments carried in spine.json (the mention entries of the nine rows with a "
+                  "doc) are unchanged by the nesting fix (their texts joined with line breaks have the sha256 the previous head's output had) and none of them holds `/-` before "
+                  "its closing `-/` (0: the nesting bug is latent on this source); each equals the source from its start line through its real end by the independent counter")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        docs = [m["doc"] for n in _j(files, "graph/spine.json")["nodes"] for m in n["mentions"] if "doc" in m]
+        root = os.path.dirname(os.path.abspath(_GRH_FOR_SK13))
+        cache, same = {}, 0
+        for dc in docs:
+            if dc["source"] not in cache:
+                with open(os.path.join(root, *dc["source"].split("/")), encoding="utf-8") as f:
+                    cache[dc["source"]] = f.read().split("\n")
+            text, after = source_end(cache[dc["source"]], dc["line"])
+            same += text == dc["text"]
+        import hashlib
+        return _eq((errs, len(docs), sum(1 for dc in docs if "/-" in dc["text"][3:-2]), same, hashlib.sha256("\n".join(dc["text"] for dc in docs).encode("utf-8")).hexdigest()),
+                   ([], 149, 0, 149, "72edd208ea9da8204604c87411d537c6722c00f9631e910c6522e0c422ebf2f6"))
+
+    @case("SPB1", "spine.json has its OWN top-level `edge_basis` = {basis: `reaches-through-any-chain-of-uses`, words: `spine_lines_text`} (exactly those two keys) when the strings carry "
+                  "spine_lines_text, none when they do not; the spine's words key is a key of `strings` and is not the index's words key; the index's basis and the spine's are different values")
+    def _():
+        with _tmp() as d:
+            g = sp_files(d, "A", [])
+            full = bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS))[1]
+            only_cards = bld(g, PIN, dict(_strings(), key_lines_text="x"))[1]
+        sp, ix = _j(full, "graph/spine.json"), _j(full, "graph/index.json")
+        eb = sp.get("edge_basis")
+        return _eq((eb, sorted(eb), eb["words"] in ix["strings"], eb["words"] != ix["edge_basis"]["words"], eb["basis"] != ix["edge_basis"]["basis"], sorted(sp),
+                    "edge_basis" in _j(only_cards, "graph/spine.json"), ix["edge_basis"]),
+                   ({"basis": "reaches-through-any-chain-of-uses", "words": "spine_lines_text"}, ["basis", "words"], True, True, True, ["commit", "edge_basis", "format", "links", "nodes"], False, EDGE_BASIS))
+
+    @case("SPB2", "a spine edge basis is checked: one whose words key is the index's (`key_lines_text`) is refused `SKEL-SPINE-BASIS <key>`, one whose basis value is the index's, one with an "
+                  "extra key or a missing one likewise, one whose words key is not in the strings `GRAPH-STRINGS <key> missing`; a good one gives no error; planted in a build (the "
+                  "constant naming the spine's words key set to `key_lines_text`) the build is refused `SKEL-SPINE-BASIS` and writes nothing")
+    def _():
+        S = dict(_strings(), **LINES_WORDS)
+        good = {"basis": "reaches-through-any-chain-of-uses", "words": "spine_lines_text"}
+        chk = lambda eb, s=S: _spine_basis_errors({"edge_basis": eb}, s)
+        with _tmp() as d:
+            g = sp_files(d, "A", [])
+            old = globals()["SPINE_EDGE_WORDS"]
+            globals()["SPINE_EDGE_WORDS"] = "key_lines_text"
+            try:
+                planted = bld(g, PIN, S)
+            finally:
+                globals()["SPINE_EDGE_WORDS"] = old
+        return _eq((chk(good), chk(dict(good, words="key_lines_text")), chk(dict(good, basis=EDGE_BASIS["basis"])), chk(dict(good, extra="x")), chk({"basis": good["basis"]}),
+                    chk(dict(good, words="nope")), planted[0], planted[1]),
+                   ([], [("SKEL-SPINE-BASIS", "key_lines_text", "is the index's words key")], [("SKEL-SPINE-BASIS", "spine_lines_text", "has the index's basis")],
+                    [("SKEL-SPINE-BASIS", "edge_basis", "must have exactly the keys basis and words")], [("SKEL-SPINE-BASIS", "edge_basis", "must have exactly the keys basis and words")],
+                    [("GRAPH-STRINGS", "nope", "missing")], [("SKEL-SPINE-BASIS", "key_lines_text", "is the index's words key")], {}))
+
+    @case("INV1", "the invariants of docs/tools.md hold, each checked by name, on a fixture with a spine and mentions: commit equal in index, spine and uses; every link end is a node id; "
+                  "every node file is a file step id; a mention's file and spine resolve; counts match; used_by is the exact inverse of uses; titles hold exactly the step ids; the spine's edge_basis words key is a strings key and not the index's")
+    def _():
+        with _tmp() as d:
+            errs, files, rows, rep = bld(mention_fixture(d), PIN, dict(_strings(), **LINES_WORDS))
+        inv = invariants(files)
+        return _eq((errs, inv), ([], {k: True for k in ("commit", "links", "node file", "mention file", "mention spine", "counts", "used_by", "titles", "spine basis")}))
+
+    @case("INVR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): every invariant holds on the real output; titles has 353 entries: 9 parts, 38 groups, 306 "
+                  "files; the first use of New.Parameters in the star_inequality row is [87, 29] (1-based line, 0-based column) and the mention's file key is `file_path`")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", dict(_strings(), **LINES_WORDS), ilean_dir=_ILEAN_FOR_SK13)
+        titles = _j(files, "graph/uses.json")["titles"]
+        kinds = {}
+        for v in titles.values():
+            kinds[v["kind"]] = kinds.get(v["kind"], 0) + 1
+        star = [n for n in _j(files, "graph/spine.json")["nodes"] if n["names"][0] == "star_inequality"][0]
+        par = [m for m in star["mentions"] if m["constant"] == "New.Parameters"][0]
+        return _eq((errs, set(invariants(files).values()), len(titles), kinds, par["first_use"], par["file_path"], "path" in par), ([], {True}, 353, {"part": 9, "group": 38, "file": 306},
+                                                                                                                                [87, 29], "grh/src/New/Reduction/Data/FieldsAndPlaces.lean", False))
+
+    @case("MNR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): the direct mentions per row (mentions / in New / without doc), in the table's row order: "
+                 "42/38/0, 7/7/1, 15/14/1, 34/32/0, 29/28/1, 8/7/0, 6/6/0, 9/2/1, 4/3/1; 108 distinct declarations with kinds lemma 42, def 30, abbrev 17, theorem 12, structure 6, "
+                 "class 1; star_inequality has 29 mentions and its other_constants count includes the structure fields New.Data.logB and New.Data.m; uses.json has 353 titles")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        sp = _j(files, "graph/spine.json")
+        per = [(n["counts"]["mentions"], sum(1 for m in n["mentions"] if "file" in m), n["counts"]["no_doc"]) for n in sp["nodes"]]
+        allm = {m["constant"]: m["kind"] for n in sp["nodes"] for m in n["mentions"]}
+        kinds = {}
+        for k in allm.values():
+            kinds[k] = kinds.get(k, 0) + 1
+        star = [n for n in sp["nodes"] if n["names"][0] == "star_inequality"][0]
+        return _eq((errs, per, len(allm), kinds, star["counts"]["mentions"], star["counts"]["other_constants"] >= 2, len(_j(files, "graph/uses.json")["titles"])),
+                   ([], [(42, 38, 0), (7, 7, 1), (15, 14, 1), (34, 32, 0), (29, 28, 1), (8, 7, 0), (6, 6, 0), (9, 2, 1), (4, 3, 1)], 108,
+                    {"lemma": 42, "def": 30, "abbrev": 17, "theorem": 12, "structure": 6, "class": 1}, 29, True, 353))
+
     @case("SK13", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
                   "depth 3, 733 links drawn (in-group uses) and 1402 uses not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
                   "lean-reduction are the first 3 file lines of that group in CONTENTS, the live outline's ids are disjoint from the build's, "
@@ -1949,7 +2893,7 @@ def _selftest_cases():
                     ["lean-reduction", "lean-derivatives", "lean-upper-bound", "lean-spanning", "lean-determinant", "lean-one-lift", "lean-congruences", "lean-appendix",
                      "lean-the-last-file"], 23, 3, 733, 1402, 64, 3,
                     ["lean-congruences--lifting-crystalline-extension-classes-i-07869b", "lean-congruences-galois-representations-rows-and-columns-7a36a5",
-                     "lean-one-lift--hecke-l-values-as-squared-norms-and-their-25fb42"], True, 3, 355, True, True, 353, 22, []))
+                     "lean-one-lift--hecke-l-values-as-squared-norms-and-their-25fb42"], True, 3, 356, True, True, 353, 22, []))
 
     return cases
 

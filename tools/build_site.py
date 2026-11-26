@@ -1840,7 +1840,8 @@ GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 
 # The page's OPTIONAL strings keys: words the page draws that a map may or may not carry. index.json `strings` is the required keys plus those of these that `strings` holds;
 # the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
-GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source")
+GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "key_lines_heading", "key_lines_text",
+                       "spine_lines_text")
 
 
 def _graph_strings_keys(symbols=None):
@@ -2166,7 +2167,40 @@ def _graph_note_errors(notes, by, kids):
     return out
 
 
-def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None, child_kinds=False):
+def _json_value(v):
+    """True when `v` can be written as JSON (no set, no nan or infinity)."""
+    try:
+        json.dumps(v, allow_nan=False)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _graph_extra_errors(step_extra, index_extra, by, notes, layout):
+    """[(GRAPH-EXTRA, id, reason)] for `step_extra` ({step id: {key: value}}) and `index_extra` ({key: value}): the id is a step, no key is one the step file (or the index) already
+    uses, and every value is JSON."""
+    out = []
+    step_keys = {"card", "children", "commit", "format", "id", "path", "rests_on"}
+    index_keys = {"assets", "commit", "format", "max_children", "rests_on", "steps", "strings", "symbols", "top"} | ({"sibling_layout"} if layout is not None else set())
+    for i in sorted(step_extra or {}):
+        if i not in by:
+            out.append(("GRAPH-EXTRA", i, "is not a step"))
+            continue
+        used = step_keys | ({"note"} if notes and i in notes else set())
+        for k in sorted(step_extra[i]):
+            if k in used:
+                out.append(("GRAPH-EXTRA", i, f"key {k} is already used by the step file"))
+            elif not _json_value(step_extra[i][k]):
+                out.append(("GRAPH-EXTRA", i, f"key {k} has a value that is not JSON"))
+    for k in sorted(index_extra or {}):
+        if k in index_keys:
+            out.append(("GRAPH-EXTRA", "index", f"key {k} is already used by the index"))
+        elif not _json_value(index_extra[k]):
+            out.append(("GRAPH-EXTRA", "index", f"key {k} has a value that is not JSON"))
+    return out
+
+
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None, child_kinds=False, step_extra=None, index_extra=None):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
     hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
@@ -2233,6 +2267,11 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             errors.append(("GRAPH-FANOUT", i, f"has {n} children (more than {GRAPH_MAX_CHILDREN})"))
     if notes:
         errors += _graph_note_errors(notes, by, kids)
+    if step_extra or index_extra:
+        errors += _graph_extra_errors(step_extra, index_extra, by, notes, layout)
+    eb = (index_extra or {}).get("edge_basis")   # an edge basis names the key of `strings` that states it: a map that carries it must carry that key
+    if isinstance(eb, dict) and isinstance(eb.get("words"), str) and eb["words"] not in strings:
+        errors.append(("GRAPH-STRINGS", eb["words"], "missing"))
     for r in rows:
         for field, table in (("kind", symbols["kinds"]), ("state", symbols["states"]), ("proof", symbols["proofs"])):
             if r[field] not in table:
@@ -2302,12 +2341,16 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
         "top": [r["id"] for r in kids.get("root", [])]}}
     if layout is not None:
         objs["graph/index.json"]["sibling_layout"] = layout
+    if index_extra:
+        objs["graph/index.json"].update(json.loads(json.dumps(index_extra)))
     for r in rows:
         objs[f"graph/step/{r['id']}.json"] = {
             "card": closed(r), "children": [dict(closed(c), parent_rests_on=c["id"] in r["premises"]) for c in kids.get(r["id"], [])],
             "commit": commit, "format": GRAPH_FORMAT, "id": r["id"], "path": list(path[r["id"]]), "rests_on": links(r["id"])}
         if notes and r["id"] in notes:
             objs[f"graph/step/{r['id']}.json"]["note"] = {"source": notes[r["id"]]["source"], "text": notes[r["id"]]["text"]}
+        if step_extra and r["id"] in step_extra:
+            objs[f"graph/step/{r['id']}.json"].update(json.loads(json.dumps(step_extra[r["id"]])))
     errors = _graph_count_errors(objs, symbols)
     return errors, ({} if errors else objs)
 
@@ -13731,7 +13774,8 @@ def _selftest_cases():
                     {k: full[k] for k in opt}, len(_graph_strings_keys()),
                     _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
                     _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", bogus="x"))),
-                   (("key_kinds_note", "note_label", "note_source"), 20, 21, 22, 23, opt, 20,
+                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "key_lines_heading", "key_lines_text", "spine_lines_text"),
+                    20, 21, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
@@ -13872,6 +13916,15 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", "kinds.group.count_words", "must be an object with exactly the keys many and one, both strings")],
                     [("GRAPH-SYMBOL", "states.read", "has count_words (only a kinds row may)")], ["class", "text", "words"], 20))
 
+    @case("GRM4", "`{n}` is not a placeholder of any page word of this map but the four count keys: it is refused in the note words (note_label_typeset, note_typeset_line, "
+                  "note_exact_button) naming key and token")
+    def _():
+        base = _strings()
+        bad = dict(base, note_typeset_line="Formulas {n}")
+        bad2 = dict(base, note_exact_button="{x}")
+        return _eq((_strings_problems(dict(base, note_exact_button="Show the exact text")), _strings_problems(bad), _strings_problems(bad2)),
+                   ([], [("STRINGS-KEY", "note_typeset_line", "has an unknown placeholder {n}")], [("STRINGS-KEY", "note_exact_button", "has an unknown placeholder {x}")]))
+
     @case("GRM3", "`{n}` is a declared placeholder of exactly the four count keys (count_group_one, count_group_many, count_file_one, count_file_many), required of none; any other "
                   "placeholder in them, and `{n}` in the optional page words, is refused")
     def _():
@@ -13882,6 +13935,55 @@ def _selftest_cases():
         wrong = dict(base, note_label="{n} labels")
         return _eq((_strings_problems(ok), _strings_problems(plain), _strings_problems(bogus), _strings_problems(wrong)),
                    ([], [], [("STRINGS-KEY", "count_file_many", "has an unknown placeholder {x}")], [("STRINGS-KEY", "note_label", "has an unknown placeholder {n}")]))
+
+    @case("GRX1", "`_graph_files(step_extra=, index_extra=)`: off by default (the bytes equal explicit None and no step file has the extra keys); `step_extra` {step id: {key: value}} adds "
+                  "those top-level keys to exactly those step files (sorted in the bytes, values kept as given), `index_extra` {key: value} adds top-level keys to index.json, and "
+                  "nothing else changes")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1), gr_row("c", "a", 2)]
+        base = _graph_files(rows, "c0", _strings())[1]
+        none = _graph_files(rows, "c0", _strings(), step_extra=None, index_extra=None)[1]
+        extra = {"b": {"index_rows": [{"source": "s", "text": "t"}], "spine_rows": ["x"]}}
+        errs, objs = _graph_files(rows, "c0", _strings(), step_extra=extra, index_extra={"edge_basis": "E"})
+        raw = _graph_bytes(objs)["graph/step/b.json"].decode("utf-8")
+        strip_step = {k: ({x: y for x, y in v.items() if x not in ("index_rows", "spine_rows")} if k == "graph/step/b.json" else v) for k, v in objs.items()}
+        strip_step["graph/index.json"] = {x: y for x, y in strip_step["graph/index.json"].items() if x != "edge_basis"}
+        return _eq((_graph_bytes(base) == _graph_bytes(none), errs, objs["graph/step/b.json"]["index_rows"], objs["graph/step/b.json"]["spine_rows"], objs["graph/index.json"]["edge_basis"],
+                    "index_rows" in objs["graph/step/c.json"], strip_step == base, raw.rindex('"id"') < raw.index('"index_rows"') < raw.rindex('"path"') < raw.index('"spine_rows"')),
+                   (True, [], [{"source": "s", "text": "t"}], ["x"], "E", False, True, True))
+
+    @case("GRX2", "GRAPH-EXTRA <id> <reason>: a step_extra for an id that is not a step, with a key the step file already uses (card, children, commit, format, id, note, path, rests_on), "
+                  "or with a value that is not JSON (a set, nan), and an index_extra with a key the index already uses or a value that is not JSON, are refused and nothing is returned")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1)]
+
+        def bad(**kw):
+            e, o = _graph_files(rows, "c0", _strings(), **kw)
+            return [tuple(x) for x in e], o
+        ok = {"k": 1}
+        return _eq((bad(step_extra={"zz": ok}), bad(step_extra={"b": {"card": 1}}), bad(step_extra={"b": {"k": {1, 2}}}), bad(step_extra={"b": {"k": float("nan")}}),
+                    bad(step_extra={"b": {"note": 1}}, notes={"b": {"source": "s", "text": "t"}}), bad(index_extra={"top": []}), bad(index_extra={"k": {1}}), bad(step_extra={"b": ok, "a": ok})[0]),
+                   (([("GRAPH-EXTRA", "zz", "is not a step")], {}), ([("GRAPH-EXTRA", "b", "key card is already used by the step file")], {}),
+                    ([("GRAPH-EXTRA", "b", "key k has a value that is not JSON")], {}), ([("GRAPH-EXTRA", "b", "key k has a value that is not JSON")], {}),
+                    ([("GRAPH-EXTRA", "b", "key note is already used by the step file")], {}), ([("GRAPH-EXTRA", "index", "key top is already used by the index")], {}),
+                    ([("GRAPH-EXTRA", "index", "key k has a value that is not JSON")], {}), []))
+
+    @case("GRX3", "an `edge_basis` in index_extra that is an object {basis, words} must name a key of `strings` (`GRAPH-STRINGS <key> missing` otherwise, nothing returned); one whose words "
+                  "key is there is written as given and the key is in index.json `strings` when it is one of the page's optional keys (key_lines_heading, key_lines_text, "
+                  "spine_lines_text are, like note_label); an unknown extra key is still refused by the exact-set check")
+    def _():
+        rows = [gr_row("a")]
+        eb = {"basis": "b", "words": "key_lines_text"}
+        st = dict(_strings(), key_lines_text="T", key_lines_heading="H", spine_lines_text="S")
+        ok = _graph_files(rows, "c0", st, index_extra={"edge_basis": eb})
+        miss = _graph_files(rows, "c0", _strings(), index_extra={"edge_basis": eb})
+        ix = ok[1]["graph/index.json"]
+        req = {k: "x" for k in _graph_strings_keys()}
+        return _eq((GRAPH_OPTIONAL_KEYS, [tuple(e) for e in ok[0]], ix["edge_basis"], len(ix["strings"]), sorted(k for k in ix["strings"] if k.startswith(("key_lines", "spine_lines"))),
+                    [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H")),
+                    _graph_strings_errors(dict(req, bogus="x"))),
+                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "key_lines_heading", "key_lines_text", "spine_lines_text"), [], eb, 23,
+                    ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
     return cases
 
