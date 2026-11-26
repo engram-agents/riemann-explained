@@ -412,7 +412,7 @@ ids that were cut, and one line per group (files, use edges, reduction edges, fi
 Exit: 0 built; 1 refused, `OUT_DIR` not written (a `SKEL-*` or `GRAPH-*` code, a strings file `build_site.py` refuses, or `OUT-NOT-EMPTY` when `OUT_DIR` already holds files); 2 usage error or an input that cannot be read; 4 is not used by a normal run.
 `python3 tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings site/strings.json --out OUT_DIR --ilean-dir DIR`
 
-**`tools/assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR]`** answers: what is the page of a map whose data
+**`tools/assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR] [--page credits/index.html=PATH]`** answers: what is the page of a map whose data
 the skeleton builder wrote? `DIR` is the skeleton's `graph/` folder (`index.json`, `spine.json`, `uses.json`, `step/<id>.json` and nothing else). The tool writes ONE flat tree into
 `OUT_DIR`, the way the page reads it (the page fetches `index.json` and `step/<id>.json` and loads its scripts relative to its own address): `index.html`, `index.json`, `spine.json`,
 `uses.json`, `step/`, the engine and page files and `graph.css` (every asset of `build_site._graph_assets` over `--graph-src`, default `viewer/graph/`), and `manifest.json`. This tree is the map's files and their manifest, and it is NOT yet the tree the website keeps: the website's `place.mjs` refuses a kept map folder unless `credits/index.html` is kept and listed in the manifest and the map's `index.html` links `credits/`, and a run without a credits page writes neither. Until the `--page` change adds the Licence and credits page, the website refuses this tree, loudly and by name. It has no
@@ -428,6 +428,14 @@ from the one, and the bounded, non-following reader `_read_in` from the other.
   (the page has no card articles and no page-level comment thread). The shell may hold the `{{S:front_scope_line}}` and `{{S:readings_front}}` tokens besides the builder's own; the
   strings value of `readings_front` is a template with one `{n}`, filled with the length of the `readings` list of `index.json` (`ASM-READINGS`). The assembled page then passes the builder's
   element, static, head and code-on-surface checks (`ASM-PAGE`), and every ref of the written page resolves inside the tree: an absolute, `..` or missing ref is `ASM-PAGE <ref> absolute|escapes|missing`. The refs of the written page must be files of the tree, exactly as named (`./graph.css` is `missing`, a link to `list/` is `missing`), so the shell given to the tool must not be the repository's shared `viewer/graph/shell.html`, which links `list/` twice. Every JSON file about to be written passes the static check as `build_site.py` runs it (`ASM-STATIC`).
+- **The credits page (`--page credits/index.html=PATH`, at most once; REL is exactly `credits/index.html`).** The tool takes the finished page, it does not build it. PATH is read like `--strings` and
+  `--shell` (`ASM-DATA <path> <reason>`, 4 MiB). The page passes `static_problems`, `element_problems` (the document table, not the graph page's: no script, inline handler, `base` or `link`),
+  `head_meta_problems` and `link_problems`, each problem `ASM-PAGE <problem> found in credits/index.html`; its refs resolve from its own folder, so `../graph.css` is fine and `../../x` is `escapes`
+  (`ASM-PAGE credits/index.html: <ref> absolute|escapes|missing`). With `--page` the three strings keys `about_credits_before`, `about_credits_link` and `about_credits_after` are all required
+  (non-empty strings, else `ASM-STRINGS <key> missing|not-a-string`) and the About block gets a second paragraph: BEFORE, `<a href="credits/">` LINK `</a>`, AFTER, each escaped (the href comes from
+  REL, never from the strings). The page is copied byte for byte to `credits/index.html` and listed in `manifest.json`; nothing else is added. Without `--page` the three keys are ignored, and the
+  success line `assembled N steps, M files, into OUT` is followed by `note: no credits page (--page credits/index.html=PATH); place.mjs refuses a tree without it`. A tree assembled without
+  `--page` is refused downstream by `place.mjs` (website PR 86).
 - **Data is carried, not changed.** `spine.json`, `uses.json`, every step file and every asset are written exactly as read; `index.json` is the builder's index with ONLY `assets` replaced by
   the sha256 of each asset, written by the builder's own serialiser.
 - **`manifest.json`** is `{"commits": {"notes": PIN}, "counts": {"steps": N}, "files": {path: sha256}}`: the sha256 of every other written file, `index.html` included. There is no release id
