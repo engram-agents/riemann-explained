@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The skeleton of the map for a Lean repository that keeps its own index (CONTENTS.md) and its own folders.
 
-usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json]
-       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR]
+usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--notes-lean-dir DIR]
+       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]
 
 DIR is the folder that holds CONTENTS.md and src/. The tool reads the `## New` section of CONTENTS.md and the .lean files under src/New and writes
 OUT_DIR/graph/index.json, OUT_DIR/graph/step/<id>.json and OUT_DIR/graph/uses.json, and nothing else: no page, no assets (`assets` is {}). It builds ROWS (id,
@@ -12,7 +12,9 @@ GRAPH-CYCLE, GRAPH-EDGE, GRAPH-SYMBOL, GRAPH-COUNT, GRAPH-STRINGS) is that funct
 outline/outline.json of this checkout) names the repository's own outline, whose group ids must not be ids of this tool. --strings-overlay (default:
 site/strings-lean.json) holds keys that replace or add to the strings file for this map only; no file is edited. --strings-overlay-graph (no default; site/strings-lean-graph.json
 holds the Graph view's words) adds the words only the Graph view reads: without it the build is a Cards-only build, the file's keys are not in `strings` and spine.json has no `edge_basis`;
-a key in both overlays, or in it and the strings file, is refused `SKEL-OVERLAY-CLASH <key>`. Exit 0 built; 1 refused, OUT_DIR not
+a key in both overlays, or in it and the strings file, is refused `SKEL-OVERLAY-CLASH <key>`. --notes-lean-dir (no default; absent, the output is today's) reads the contributed notes
+(readings) of a folder of `*.md` files and writes them as `readings` into the file steps they attach to and as the list `readings` of index.json: the grammar, the checks and every
+`SKEL-READING-<kind>` refusal are in docs/tools.md. Exit 0 built; 1 refused, OUT_DIR not
 written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
 self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 and U5 read the real source and run only when --grh and --ilean-dir are given to
 the self-test; otherwise they are skipped.
@@ -41,6 +43,7 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
  8 STRINGS. The strings file is read and checked as build_site does and overlaid; `_graph_files` checks the exact key set (27 keys: the kind words, the card words and the count words come from the overlay).
 """
 import contextlib
+import datetime
 import errno
 import hashlib
 import importlib.util
@@ -922,9 +925,203 @@ def _readme_quote(grh):
     return [], lines[14][:-1]
 
 
-def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None):
+READINGS_READ_LIMIT = 65536   # the most bytes of one note file the tool reads (64 KiB; the body has its own, smaller bound)
+READINGS_BODY_LIMIT = 20000   # the most bytes of a note's body (the text after the closing `---` line)
+READINGS_MAX = 200            # the most notes in the folder
+READINGS_KEYS = ("id", "title", "attaches", "about", "by", "second_read_by", "source_commit", "date")   # the front-matter keys, in the one order a note may write them
+READINGS_LISTS = ("attaches", "about")   # the keys whose value is a one-line list; every other key is text
+_READING_LINE = re.compile(r"([a-z_]+):(?: (.*))?")
+_READING_ID = re.compile(r"[a-z0-9-]{1,64}")
+_READING_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
+
+
+def _shown(name):
+    """A file name as it is printed: its bytes as UTF-8, a byte that is not UTF-8 written as an escape (a print never fails on a name)."""
+    return os.fsencode(name).decode("utf-8", "backslashreplace")
+
+
+def _reading_value(key, value):
+    """(reason, parsed) of the text after `key: `: a list `[a, b]` for the keys of READINGS_LISTS (no commas or brackets in an item, no empty item; a `#` tail is part of the value, so it makes the list
+    malformed), plain text (trimmed) for the others; a list where text is expected and the reverse are refused."""
+    if value.startswith("["):
+        if key not in READINGS_LISTS:
+            return f"{key} is a list, not text", None
+        inner = value[1:-1]
+        if not value.endswith("]") or "[" in inner or "]" in inner:
+            return f"{key} is a malformed list", None
+        if inner.strip() == "":
+            return None, []
+        items = [x.strip() for x in inner.split(",")]
+        if "" in items:
+            return f"{key} is a malformed list", None
+        return None, items
+    if key in READINGS_LISTS:
+        return f"{key} is text, not a list", None
+    return None, value
+
+
+def _reading_front(text):
+    """(reason, fields, body) of one note's text: the front matter between the first line `---` and the next line `---`, then the body (every byte after that line's newline). `reason` is None when the
+    front matter is taken. Lines are `key: value` or blank; the keys are those of READINGS_KEYS, each once, in that order."""
+    if text.startswith("---\r"):
+        return "carriage return", None, None
+    if not text.startswith("---\n"):
+        return "no opening ---", None, None
+    pos, n, fields, last = 4, 1, {}, -1
+    while True:
+        nl = text.find("\n", pos)
+        line = text[pos:] if nl == -1 else text[pos:nl]
+        n += 1
+        if line == "---":
+            return None, fields, "" if nl == -1 else text[nl + 1:]
+        if nl == -1:
+            return "no closing ---", None, None
+        pos = nl + 1
+        if "\r" in line:
+            return "carriage return", None, None
+        if line.strip() == "":
+            continue
+        m = _READING_LINE.fullmatch(line)
+        if m is None:
+            return f"line {n} is not key: value", None, None
+        key = m.group(1)
+        if key in fields:
+            return f"duplicate key {key}", None, None
+        if key not in READINGS_KEYS:
+            return f"unknown key {key}", None, None
+        if READINGS_KEYS.index(key) < last:
+            return f"key {key} is out of order", None, None
+        last = READINGS_KEYS.index(key)
+        reason, value = _reading_value(key, (m.group(2) or "").strip())
+        if reason:
+            return reason, None, None
+        if key == "about" and value == []:
+            return "about is an empty list", None, None
+        fields[key] = value
+
+
+def _readings_invariant(step_readings, index_rows):
+    """[(SKEL-READING-INVARIANT, id, detail)]: every row of the index list names a step that carries a reading with that id, and every reading of a step is a row of the list (same id, same step)."""
+    rows = {(r["id"], r["step"]) for r in index_rows}
+    have = {(r["id"], s) for s, rs in step_readings.items() for r in rs}
+    return ([("SKEL-READING-INVARIANT", i, f"index step {s} has no such reading") for i, s in sorted(rows - have)]
+            + [("SKEL-READING-INVARIANT", i, f"reading on {s} is not in the index list") for i, s in sorted(have - rows)])
+
+
+def _readings(notes_dir, pin, rows, ilean_dir):
+    """([(SKEL-READING-<kind>, file, detail)], {file step id: [reading]}, [index row]) from the folder `notes_dir`: the regular files `*.md` directly in it, in name order, each read through the bounded,
+    contained reader; anything else in it is refused by name. Every fault of every note is reported together (the faults of the folder first and alone: FILE, COUNT)."""
+    errors = []
+    try:
+        names = sorted(os.listdir(notes_dir))
+    except OSError:
+        return [("SKEL-READING-FILE", "DIR", "unreadable")], {}, []
+    errors += [("SKEL-READING-FILE", _shown(n), "not-a-note") for n in names if not n.endswith(".md")]
+    names = [n for n in names if n.endswith(".md")]
+    if len(names) > READINGS_MAX:
+        return errors + [("SKEL-READING-COUNT", "DIR", f"{len(names)} notes, at most {READINGS_MAX}")], {}, []
+    raws = {}
+    for n in names:
+        try:
+            raws[n] = _read_in(notes_dir, os.path.join(notes_dir, n), READINGS_READ_LIMIT)
+        except SourceError as e:
+            errors.append(("SKEL-READING-FILE", _shown(n), e.reason))
+    errors.sort(key=lambda e: e[1])
+    if errors:
+        return errors, {}, []
+    kinds = {r["id"]: r["kind"] for r in rows}
+    declared = []   # the full declared names of the compiled index, read once and only if a note has `about`
+
+    def known(name):
+        if not declared:
+            ie, where, _uses, _pos = _ilean_index(ilean_dir, set())
+            declared.append((ie, set(where)))
+        return name in declared[0][1]
+    notes, seen = [], {}
+    for n in names:
+        raw, shown = raws[n], _shown(n)
+        if raw.startswith(b"\xef\xbb\xbf"):
+            errors.append(("SKEL-READING-ENCODING", shown, "bom"))
+            continue
+        if b"\x00" in raw:
+            errors.append(("SKEL-READING-ENCODING", shown, "nul"))
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            errors.append(("SKEL-READING-ENCODING", shown, "not-utf-8"))
+            continue
+        reason, f, body = _reading_front(text)
+        if reason:
+            errors.append(("SKEL-READING-FRONT", shown, reason))
+            continue
+        size = len(body.encode("utf-8"))
+        if size > READINGS_BODY_LIMIT:
+            errors.append(("SKEL-READING-SIZE", shown, f"body {size} bytes, at most {READINGS_BODY_LIMIT}"))
+        errors += [("SKEL-READING-MISSING", shown, k) for k in READINGS_KEYS if k != "about" and k not in f]
+        if "id" in f and not _READING_ID.fullmatch(f["id"]):
+            errors.append(("SKEL-READING-ID", shown, f["id"]))
+        if "title" in f and "`" in f["title"]:
+            errors.append(("SKEL-READING-TITLE", shown, "backtick"))
+        elif "title" in f and f["title"] == "":
+            errors.append(("SKEL-READING-TITLE", shown, "empty"))
+        if "date" in f:
+            m = _READING_DATE.fullmatch(f["date"])
+            try:
+                if m is None:
+                    raise ValueError
+                datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            except ValueError:
+                errors.append(("SKEL-READING-DATE", shown, f["date"]))
+        for k in ("by", "second_read_by"):
+            if k in f and f[k] == "":
+                errors.append(("SKEL-READING-BY", shown, f"{k} is empty"))
+        if f.get("by") and f.get("by") == f.get("second_read_by"):
+            errors.append(("SKEL-READING-BY", shown, "by and second_read_by are the same"))
+        if "source_commit" in f and f["source_commit"] != pin:
+            errors.append(("SKEL-READING-SOURCE", shown, f["source_commit"]))
+        step = None
+        if "attaches" in f:
+            a = f["attaches"]
+            if not a:
+                errors.append(("SKEL-READING-ATTACHES", shown, "none"))
+            elif len(a) > 1:
+                errors.append(("SKEL-READING-ATTACHES", shown, "many"))
+            elif a[0] not in kinds:
+                errors.append(("SKEL-READING-ATTACHES", shown, f"unknown {a[0]}"))
+            elif kinds[a[0]] != "file":
+                errors.append(("SKEL-READING-ATTACHES", shown, f"not-a-file {a[0]}"))
+            else:
+                step = a[0]
+        bad = []
+        for name in f.get("about", []):
+            if name not in bad and not known(name):
+                bad.append(name)
+        if declared and declared[0][0]:   # an .ilean that cannot be read was already refused (SKEL-USES) when the index was built; it is never an `about` verdict
+            return declared[0][0], {}, []
+        errors += [("SKEL-READING-ABOUT", shown, name) for name in bad]
+        if "id" in f:
+            if f["id"] in seen:
+                errors.append(("SKEL-READING-DUP", shown, f"id {f['id']} also in {seen[f['id']]}"))
+            else:
+                seen[f["id"]] = shown
+        notes.append((f, body, step))
+    if errors:
+        return errors, {}, []
+    step_readings, index_rows = {}, []
+    for f, body, step in sorted(notes, key=lambda x: x[0]["id"]):
+        obj = {"id": f["id"], "title": f["title"], "text": body, "by": f["by"], "second_read_by": f["second_read_by"], "date": f["date"]}
+        if "about" in f:
+            obj["about"] = f["about"]
+        step_readings.setdefault(step, []).append(obj)
+        index_rows.append({"id": f["id"], "title": f["title"], "step": step})
+    errors = _readings_invariant(step_readings, index_rows)
+    return errors, ({} if errors else step_readings), ([] if errors else index_rows)
+
+
+def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
-    the folder of the .ilean files of the build."""
+    the folder of the .ilean files of the build; `notes_lean_dir` (optional) is the folder of the contributed notes (readings)."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
     if open_scale_floor is not None:
@@ -950,9 +1147,18 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         if errors:
             return errors, {}, rows, rep
         strings = dict(strings, key_scope_text=value.replace("{readme_quote}", quote))
+    step_extra, index_rows = rep["step_extra"], []
+    if notes_lean_dir is not None:
+        errors, step_readings, index_rows = _readings(notes_lean_dir, pin, rows, ilean_dir)
+        if errors:
+            return errors, {}, rows, rep
+        step_extra = {k: dict(v) for k, v in rep["step_extra"].items()}   # a copy: the report is not changed
+        for sid, readings in step_readings.items():
+            step_extra.setdefault(sid, {})["readings"] = readings
     errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"], child_kinds=True,
-                                    step_extra=rep["step_extra"], index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
-                                                     **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {})) or None)
+                                    step_extra=step_extra, index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
+                                                     **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {}),
+                                                     **({"readings": index_rows} if index_rows else {})) or None)
     if errors:
         return errors, {}, rows, rep
     objs["graph/uses.json"] = {"commit": pin, "format": USES_FORMAT, "imports": rep["imports"], "lib_index_rows": rep["lib_index_rows"], "titles": rep["titles"], "used_by": rep["used_by"],
@@ -966,15 +1172,15 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N]\n"
-         "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR]\n"
+         "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]")
 
 
 def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay][, strings-overlay-graph]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -997,6 +1203,8 @@ def _run(opts):
         raise Unreadable(f"--grh is not a directory: {opts['grh']}")
     if not os.path.isdir(opts["ilean-dir"]):
         raise Unreadable(f"--ilean-dir is not a directory: {opts['ilean-dir']}")
+    if "notes-lean-dir" in opts and not os.path.isdir(opts["notes-lean-dir"]):
+        raise Unreadable(f"--notes-lean-dir is not a directory: {opts['notes-lean-dir']}")
     if os.path.exists(opts["out"]) and not os.path.isdir(opts["out"]):
         raise Unreadable(f"OUT_DIR is not a directory: {opts['out']}")
     try:
@@ -1027,7 +1235,7 @@ def _run(opts):
     if problems:
         return refuse(problems)
     errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
-                                       _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None)
+                                       _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None, opts.get("notes-lean-dir"))
     if errors:
         return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
     try:
@@ -3347,7 +3555,7 @@ def _selftest_cases():
             out = os.path.join(d, "o")
             r = sp.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)), cwd=d, capture_output=True, text=True)
             cli = _tree_files(out)
-        return _eq((none[0], empty[0], none[1] == empty[1], any(b"readings" in v for v in none[1].values()), r.returncode, cli == none[1]), ([], [], True, False, 0, True))
+        return _eq((none[0], empty[0], none[1] == empty[1], any(b"readings" in v for v in none[1].values()), r.returncode, any(b"readings" in v for v in cli.values()), len(cli)), ([], [], True, False, 0, False, len(none[1])))
 
     @case("RD3", "contributed notes, refusals by name `SKEL-READING-<kind> <file> <detail>`, one minimal fixture each, nothing written: a missing required key (each of the seven, `MISSING <file> <key>`); an id "
                  "outside [a-z0-9-]{1,64} (`ID`, the id as written); a date that is not YYYY-MM-DD or not a real day (`DATE`, as written); `by` or `second_read_by` empty, or the two equal (`BY`); a title "
@@ -3451,7 +3659,7 @@ def _selftest_cases():
 
     @case("RD6", "contributed notes on the command line (`--notes-lean-dir DIR`, once, with a value, in the usage text): a good folder builds (exit 0, `readings` written); a refused one is exit 1 with the "
                  "`SKEL-READING-...` lines on stdout and OUT_DIR not written; a DIR that is not a directory is exit 2; the option twice or with no value is exit 2; the output is byte-identical under "
-                 "hash seeds 0 and 1 and equals the in-process build (the folder is read in name order, whatever order the file system lists it)")
+                 "hash seeds 0 and 1 and equals a build of this process (the folder is read in name order, whatever order the file system lists it)")
     def _():
         import subprocess as sp
         with _tmp() as d:
@@ -3477,10 +3685,10 @@ def _selftest_cases():
                 out = os.path.join(d, "s" + seed)
                 r = sp.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, sps, ol) + ["--notes-lean-dir", good], env=dict(os.environ, PYTHONHASHSEED=seed), capture_output=True, text=True)
                 runs.append((r.returncode, _tree_files(out)))
-            inproc = build(g, PIN, _strings(), (), _ildir(g), notes_lean_dir=good)[1]
+            first = _tree_files(os.path.join(d, "o1"))   # the same build in this process
             ix = _j(_tree_files(os.path.join(d, "o1")), "graph/index.json")
             return _eq((r1[0], [r["id"] for r in ix["readings"]], [r["step"] for r in ix["readings"]], r2[0], r2[1].splitlines(), os.path.exists(os.path.join(d, "o2")), r3[0], r4[0], r5[0],
-                        "--notes-lean-dir" in usage, runs[0][0], runs[1][0], runs[0][1] == runs[1][1], runs[0][1] == inproc),
+                        "--notes-lean-dir" in usage, runs[0][0], runs[1][0], runs[0][1] == runs[1][1], runs[0][1] == first),
                        (0, ["a-note", "b-note"], ["lean-s-b", "lean-s-a"], 1, ["SKEL-READING-MISSING n.md date"], False, 2, 2, 2, True, 0, 0, True, True))
 
     @case("RD7", "contributed notes, the invariant between the two lists (`_readings_invariant(step_readings, index_rows)`, `SKEL-READING-INVARIANT <id> <detail>`): every index row's step carries a reading "
