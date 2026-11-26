@@ -39,8 +39,8 @@ function rowKeys(group) {
   const list = m[1].split(/\.\s/)[0];
   return [...list.matchAll(/`([A-Za-z0-9_]+)`/g)].map((x) => x[1]);
 }
-test("each option group's row names exactly the sub-keys DEFAULTS has (sizes, zoom, semantic, input)", () => {
-  for (const g of ["sizes", "zoom", "semantic", "input"]) {
+test("each option group's row names exactly the sub-keys DEFAULTS has (sizes, zoom, semantic, input, layout)", () => {
+  for (const g of ["sizes", "zoom", "semantic", "input", "layout"]) {
     assert.deepEqual(sorted(new Set(rowKeys(g))), sorted(Object.keys(mod.DEFAULTS[g])), "row " + g);
   }
 });

@@ -9,8 +9,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createController } from "../controller.js";
 import { layoutTree } from "../layout.js";
+import { normalizeOptions, DEFAULTS } from "../options.js";
+import { fromLevel } from "./helpers.mjs";
 import { recordingView, tiny } from "./helpers.mjs";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 const S = { nodeW: 300, nodeH: 190, gapX: 44, gapY: 76, pad: 32, head: 160, top: 34, topInset: 0 };
 
@@ -104,15 +106,16 @@ function frozenLayoutTree(root, S) {
 }
 /* ---- end of the frozen copy ---- */
 
-const rec = (id, premises = [], kids = null) => ({
+const rec = (id, premises = [], kids = null, stem) => ({
   id, premises, children: kids, open: kids !== null, clean: false,
   x: 0, y: 0, w: 0, h: 0, rx: 0, ry: 0, layer: 0, inner: null,
+  ...(stem === undefined ? {} : { spec: { parentLinksTo: stem } }),     // the controller's record carries its NodeSpec as `spec`
 });
 const top = (kids) => ({ id: "root", root: true, premises: [], children: kids, open: true, clean: false, x: 0, y: 0, w: 0, h: 0, rx: 0, ry: 0, layer: 0, inner: null });
 /* a sibling set of closed nodes from [id, premises] pairs; an entry with a third item is an OPEN node with that many closed children */
-const build = (defs) => defs.map(([id, pr, nk]) => rec(id, pr || [], nk ? Array.from({ length: nk }, (_, i) => rec(id + "." + i)) : null));
+const build = (defs) => defs.map(([id, pr, nk, stem]) => rec(id, pr || [], nk ? Array.from({ length: nk }, (_, i) => rec(id + "." + i)) : null, stem));
 const run = (fn, defs) => { const r = top(build(defs)); fn(r, S); return r; };
-const lay = (defs) => run(layoutTree, defs);
+const lay = (defs) => run((r, S) => layoutTree(r, S, "column"), defs);      // every case below runs with layout.siblings "column"
 const frozen = (defs) => run(frozenLayoutTree, defs);
 const pos = (r) => r.children.map((k) => [k.id, k.rx, k.ry, k.layer]);
 const size = (r) => ({ w: r.inner.w, h: r.inner.h });
@@ -277,7 +280,7 @@ test("column members: layer is the row index of the column (stem only from the t
 
 async function ctlOf(t) {
   const view = recordingView();
-  const ctl = createController({ roots: t.roots, loadChildren: t.loader, maxHeld: 20, fitOnStart: false }, view);
+  const ctl = createController({ roots: t.roots, loadChildren: t.loader, maxHeld: 20, fitOnStart: false, layout: { siblings: "column" } }, view);
   await ctl.ready;
   return { ctl, view };
 }
@@ -303,4 +306,127 @@ test("L7: in a mixed set only the real links are handed over; the loose sibling 
   assert.deepEqual(l, ["u>v"]);
   assert.deepEqual(view.links.filter((e) => e.kind === "rests").length, 1);
   assert.ok(ctl.links().every((e) => e.from.id !== "w" && e.to.id !== "w"));
+});
+
+/* ---- Round 2: a stem is a drawn edge. A sibling whose parent rests on it (spec.parentLinksTo) counts as LINKED. ---- */
+
+test("S2: no sibling links, b and d are stem children: b, d share row 0 (b left of d); a and c are a column below, in array order", () => {
+  const r = lay([["a"], ["b", [], 0, true], ["c"], ["d", [], 0, true]]);
+  const k = Object.fromEntries(r.children.map((x) => [x.id, x]));
+  assert.deepEqual([k.b.rx, k.b.ry, k.b.layer, k.d.rx, k.d.ry, k.d.layer], [0, 0, 0, W0 + S.gapX, 0, 0]);
+  const Wb = 2 * W0 + S.gapX;
+  assert.deepEqual([k.a.rx, k.a.ry, k.c.rx, k.c.ry], [(Wb - W0) / 2, H + G, (Wb - W0) / 2, 2 * (H + G)]);
+  assert.deepEqual([k.a.layer, k.c.layer], [1, 2]);
+  assert.deepEqual(size(r), { w: Wb, h: 3 * H + 2 * G });
+});
+
+test("S2: a set whose siblings are all stem children is one row, as before (no sibling link, all layer 0)", () => {
+  const defs = [["a", [], 0, true], ["b", [], 0, true], ["c", [], 0, true]];
+  assert.deepEqual(pos(lay(defs)), pos(frozen(defs)));
+});
+
+test("S3: a stem child that a sibling rests on is at layer > 0 as before, with no stem (control)", async () => {
+  const defs = [["p", [], 0, true], ["q", ["p"]], ["z"]];
+  const r = lay(defs), f = frozen(defs.slice(0, 2));
+  assert.deepEqual([r.children[0].layer, r.children[1].layer], [1, 0]);
+  assert.deepEqual(pos(r).slice(0, 2), pos(f));
+  const t = tiny([{ id: "par", kids: ["p", "q", "z"] }, { id: "p", stem: true }, { id: "q", premises: ["p"] }, { id: "z" }]);
+  const { ctl } = await ctlOf(t);
+  await ctl.open("par");
+  assert.deepEqual(ctl.links().filter((e) => e.kind === "stem"), []);
+});
+
+test("S2 through the controller: both stem children of an otherwise edgeless set get their stem", async () => {
+  const t = tiny([{ id: "par", kids: ["a", "b", "c"] }, { id: "a", stem: true }, { id: "b" }, { id: "c", stem: true }]);
+  const { ctl } = await ctlOf(t);
+  await ctl.open("par");
+  assert.deepEqual(ctl.links().filter((e) => e.kind === "stem").map((e) => e.from.id).sort(), ["a", "c"]);
+  assert.deepEqual([ctl.node("a").layer, ctl.node("c").layer, ctl.node("b").layer], [0, 0, 1]);
+});
+
+test("S1: on the level data and the page real fixtures every stem child that was at layer 0 under fd42c540 is at layer 0 again", () => {
+  const sets = [];
+  const lv = JSON.parse(readFileSync(new URL("./fixtures/level1.json", import.meta.url), "utf8"));
+  (function walk(list, parent) {
+    sets.push(["level1 " + (parent ? parent.id : "top"), list.map((x) => [x.id, x.premises || [], 0, parent ? parent.premises.includes(x.id) : false])]);
+    for (const x of list) if (x.children && x.children.length) walk(x.children, x);
+  })(lv.steps, null);
+  const real = new URL("../../page/test/fixtures/real/step/", import.meta.url);
+  for (const f of readdirSync(real)) {
+    const st = JSON.parse(readFileSync(new URL(f, real), "utf8"));
+    if (!st.children.length) continue;
+    const pr = {}; for (const l of st.rests_on) (pr[l.from] = pr[l.from] || []).push(l.to);
+    sets.push(["page real " + st.id, st.children.map((c) => [c.id, pr[c.id] || [], 0, c.parent_rests_on])]);
+  }
+  let stems = 0, sets0 = 0;
+  for (const [name, defs] of sets) {
+    const a = lay(defs), b = frozen(defs);
+    a.children.forEach((k, i) => {
+      if (defs[i][3] === true && b.children[i].layer === 0) { stems++; assert.equal(k.layer, 0, name + ": " + k.id + " lost its first row"); }
+    });
+    sets0++;
+  }
+  assert.ok(sets0 >= 10 && stems >= 6, "the fixtures hold stem children at layer 0: sets " + sets0 + ", stems " + stems);
+});
+
+/* ---- Round 3: the column rule is an option, layout.siblings, default "rows" (the layout of fd42c540 for every set) ---- */
+
+const SHAPES = {
+  edgeless: [["a"], ["b"], ["c"]],
+  mixed: [["a"], ["c"], ["b", ["a"]], ["d"]],
+  linked: [["a", ["b"]], ["b", ["c"]], ["c"]],
+  stemOnly: [["a", [], 0, true], ["b"], ["c", [], 0, true], ["d"]],
+  stemWithSiblingLink: [["p", [], 0, true], ["q", ["p"]], ["z"]],
+  selfAndForeign: [["a", ["a"]], ["b", ["elsewhere"]], ["c"]],
+  single: [["only"]],
+  empty: [],
+  openChildren: [["o", [], 3], ["c"], ["d", [], 1], ["e", ["c"]]],
+  openNestedEdgeless: [["a", [], 2], ["b", [], 4], ["c"]],
+};
+const whole = (r) => { const out = []; (function walk(n) { for (const c of n.children || []) { out.push([c.id, c.x, c.y, c.w, c.h, c.rx, c.ry, c.layer]); walk(c); } })(r); return out.concat([[r.w, r.h, r.inner && r.inner.w, r.inner && r.inner.h]]); };
+
+test("O2: with the default and with layout.siblings 'rows', every node of every set shape equals the frozen fd42c540 layout", () => {
+  for (const [name, defs] of Object.entries(SHAPES)) {
+    const f = whole(frozen(defs));
+    assert.ok(f.length >= 1);
+    assert.deepEqual(whole(run(layoutTree, defs)), f, name + " (default)");
+    assert.deepEqual(whole(run((r, S) => layoutTree(r, S, "rows"), defs)), f, name + " (rows)");
+    assert.deepEqual(whole(run((r, S) => layoutTree(r, S, undefined), defs)), f, name + " (undefined)");
+  }
+});
+
+test("O2 control: with 'column' the edgeless, mixed and stem-only shapes differ from the frozen layout (the comparison can fail)", () => {
+  for (const name of ["edgeless", "mixed", "stemOnly"]) assert.notDeepEqual(whole(run((r, S) => layoutTree(r, S, "column"), SHAPES[name])), whole(frozen(SHAPES[name])), name);
+});
+
+test("O1: layout.siblings: default 'rows', frozen DEFAULTS, 'column' accepted, anything else refused like the other options", () => {
+  assert.equal(DEFAULTS.layout.siblings, "rows");
+  assert.ok(Object.isFrozen(DEFAULTS.layout));
+  assert.equal(normalizeOptions({}).layout.siblings, "rows");
+  assert.equal(normalizeOptions({ layout: {} }).layout.siblings, "rows");
+  assert.equal(normalizeOptions({ layout: { siblings: undefined } }).layout.siblings, "rows");
+  assert.equal(normalizeOptions({ layout: { siblings: "rows" } }).layout.siblings, "rows");
+  assert.equal(normalizeOptions({ layout: { siblings: "column" } }).layout.siblings, "column");
+  assert.equal(DEFAULTS.layout.siblings, "rows", "normalizing did not touch DEFAULTS");
+  const refused = (raw, re) => assert.throws(() => normalizeOptions(raw), (e) => e instanceof TypeError && re.test(e.message), JSON.stringify(raw));
+  for (const bad of ["columns", "Column", "", "row", null, 1, true, ["column"], {}]) refused({ layout: { siblings: bad } }, /layout\.siblings/);
+  refused({ layout: { rows: 1 } }, /unknown option layout\.rows/);
+  refused({ layout: "column" }, /layout must be an object/);
+  refused({ layout: null }, /layout must be an object/);
+});
+
+test("O3 through the controller: 'column' lays out the level data with the stems of fd42c540 and the new sizes; the default does not change", async () => {
+  const run1 = async (layout) => {
+    const lvl = fromLevel(JSON.parse(readFileSync(new URL("./fixtures/level1.json", import.meta.url), "utf8"))), view = recordingView();
+    const ctl = createController({ roots: lvl.roots, loadChildren: lvl.loader, maxHeld: 500, fitOnStart: false, sizes: { topInset: 104 }, ...(layout ? { layout } : {}) }, view);
+    await ctl.ready;
+    const st = () => { const w = ctl.world(), l = ctl.links(); return [ctl.visibleNodes().length, Math.round(w.w), Math.round(w.h), l.filter((e) => e.kind === "rests").length, l.filter((e) => e.kind === "stem").length]; };
+    for (const n of ctl.visibleNodes().filter((m) => m.parent.root && m.childCount > 0)) await ctl.open(n.id);
+    const first = st();
+    for (let again = true; again; ) { again = false; for (const n of ctl.visibleNodes()) if (n.childCount > 0 && !n.open) { await ctl.open(n.id); again = true; } }
+    return { first, all: st() };
+  };
+  assert.deepEqual(await run1(null), { first: [10, 1052, 2036, 4, 3], all: [23, 2824, 3472, 7, 6] });
+  assert.deepEqual(await run1({ siblings: "rows" }), { first: [10, 1052, 2036, 4, 3], all: [23, 2824, 3472, 7, 6] });
+  assert.deepEqual(await run1({ siblings: "column" }), { first: [10, 1052, 2036, 4, 3], all: [23, 1620, 4270, 7, 6] });
 });

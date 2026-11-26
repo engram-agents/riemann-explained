@@ -77,13 +77,13 @@ test("ported checks on the real level data, every open/closed state", async () =
   // first view: the roots' parts open
   for (const n of ctl.visibleNodes().filter((m) => m.parent.root && m.childCount > 0)) await ctl.open(n.id);
   states.first = checkState("first", lvl, ctl);
-  assert.deepEqual([states.first.visible, states.first.w, states.first.h], [10, 364, 2568]);   // was [10, 1052, 2036]: edgeless sibling sets are now columns (re-based, sibling-column rule)
-  assert.deepEqual([states.first.rests, states.first.stems], [4, 1]);   // stems were 3: a column member below the first is not a first-row child
+  assert.deepEqual([states.first.visible, states.first.w, states.first.h], [10, 1052, 2036]);
+  assert.deepEqual([states.first.rests, states.first.stems], [4, 3]);
   // all open
   await openAll(ctl);
   states.all = checkState("all-open", lvl, ctl);
-  assert.deepEqual([states.all.visible, states.all.w, states.all.h], [23, 868, 5294]);   // was [23, 2824, 3472]: same re-basing
-  assert.deepEqual([states.all.rests, states.all.stems], [7, 4]);   // stems were 6
+  assert.deepEqual([states.all.visible, states.all.w, states.all.h], [23, 2824, 3472]);
+  assert.deepEqual([states.all.rests, states.all.stems], [7, 6]);
   ok(states.all.visible === 23, "all open: every step visible");
   // every single-node toggle from all-open
   const withParts = [...lvl.byId.values()].filter((s) => s.children.length);
@@ -113,6 +113,6 @@ test("the premise links of the level data are the 14 of the prototype (7 sibling
   await openAll(ctl);
   const rests = ctl.links().filter((e) => e.kind === "rests").length, stems = ctl.links().filter((e) => e.kind === "stem").length;
   assert.equal(rests, 7);
-  assert.equal(stems, 4);   // 7 steps whose parent rests on them; only a first-row child (the top of a column too) gets a stem. Was 6 before edgeless sets became columns.
+  assert.equal(stems, 6);   // 7 steps whose parent rests on them; one of them is not in the first row
   assert.equal(lvl.pathOf.size, 23);
 });

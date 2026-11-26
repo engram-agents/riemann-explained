@@ -75,7 +75,7 @@ export function createController(rawOptions, view) {
   /* ---------- drawing ---------- */
   function render() {
     if (destroyed) return;
-    measured += layoutTree(root, o.sizes);
+    measured += layoutTree(root, o.sizes, o.layout.siblings);
     const list = [];
     (function walk(p) { if (!p.open || !p.children) return; for (const c of p.children) { list.push(c); walk(c); } })(root);
     for (const n of list) { if (!n.mounted) { view.mount(n); n.mounted = true; } view.place(n); }

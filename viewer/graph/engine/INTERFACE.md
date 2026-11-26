@@ -35,6 +35,7 @@ Every option has a default in `DEFAULTS`. An unknown option name is a `TypeError
 - `renderFace`
 - `sizes`
 - `zoom`
+- `layout`
 - `semantic`
 - `input`
 - `maxChildren`
@@ -49,6 +50,7 @@ Every option has a default in `DEFAULTS`. An unknown option name is a `TypeError
 | `renderFace(nodeSpec)` | returns an Element, the face of the node. The engine appends it as it is and never reads it. It is called once when the node is drawn. Throwing or returning a non-element is an `error` event (`face-failed`, `bad-face`) and the node is drawn with an empty face. Default: an empty face. |
 | `sizes` | `nodeW`, `nodeH` (a closed node), `gapX`, `gapY`, `pad` (inside an open node), `head` (an open node's face height), `top` (space below it), `topInset` (space above the first row), `stroke` (bar thickness), `arrow`, `arrowGap` (link drawing). |
 | `zoom` | `min`, `max`, `fitMax`, `fitPad`, `fitMin`, `frameMaxOpen`, `frameMaxClosed`, `framePadOpen`, `framePadClosed`. `fitMin` (`DEFAULTS` holds `null`, resolved to `min` at creation, and an explicit `null` means not given; otherwise `min <= fitMin <= fitMax`): the start fit never goes below it, and when clamped it is top-anchored and centred horizontally (a drawing wider than the stage is cut on both sides); `fit()` and the reader's own zoom are not affected. |
+| `layout` | `siblings`. `siblings` is `"rows"` (the default) or `"column"`; anything else is a `TypeError` at creation, like the other options. With `"rows"` every sibling set is laid out in rows by dependency depth. With `"column"`, a set with no drawn edge among its siblings is a column in the data's order (centred, nothing drawn between members), and in a set with some edges the siblings with none follow the rows as a column. A sibling with a link to or from another sibling, or whose parent rests on it (`parentLinksTo`: a stem is a drawn edge), counts as linked. A premise naming the node itself or an id outside the set is not a link. |
 | `semantic` | `openPx` (a node opens when it is at least this wide on screen), `closePx` (an open node closes when narrower; must be below `openPx`), `reArmShare`, `frameOpenShare`, `frameClosedShare`. |
 | `input` | `tapSlopPx` (8), `tapMs` (300), `wheelStep`, `wheelCtrlStep`, `keyZoom`, `keyPanPx`. |
 | `maxChildren` | default 40. A node that has more children than this is refused (see **Refusals**), never drawn. |
@@ -136,10 +138,9 @@ A node whose children were refused stays closed and says so (class `ge-refused`)
 ## What the engine does
 
 - Layout of one opened node from its own children: rows by dependency depth among siblings (a node sits below every
-  sibling that rests on it). Siblings with a link to or from another sibling are laid out in those rows; a set with no
-  such link at all is a column in the data's order, centred, and the unlinked siblings of a mixed set follow the rows as a
-  column. A premise naming the node itself or an id outside the set is not a link. Nothing is drawn between column
-  members, and only the top member of a column is a first-row child (it alone gets a stem from its parent).
+  sibling that rests on it). With the option `layout.siblings` set to `"column"` an edgeless set is a column and the
+  unlinked siblings of a mixed set follow the rows as a column (see the option's row); the default `"rows"` is rows for
+  every set. A stem child (`parentLinksTo`) counts as linked, so it stays in the rows and keeps its stem.
   Opening a node re-measures it and its ancestors only.
 - Camera: pan, zoom about a point, fit; pointer and touch (two pointers pinch), wheel, and keys on the focused stage (arrows,
   plus and minus, 0 to fit). The stage has `touch-action: none`.
