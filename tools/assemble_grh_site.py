@@ -8,8 +8,8 @@ The tool writes, from the data of `build_grh_skeleton.py` (index.json, spine.jso
 and a page made by `build_site._graph_page`, the tree below, FLAT (the page loads its data and scripts relative to its own address):
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
-build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A19 (A7b and A11b included), one self-test case each (A7b is four, A19 two), and the
-mutation controls M-a to M-m, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
+build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A19 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
+mutation controls M-a to M-n, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
@@ -22,6 +22,11 @@ THE THREE DEPENDENCIES ON PR C (a separate change to build_site.py by another ag
   (c) `_manifest_bytes(files, commits, counts, release_id=None, archive=None)`, extracted from `_output_files`; the keys release_id and release_archive_sha are OMITTED when None.
 A case that needs one of them detects it (`hasattr(bs, "_manifest_bytes")`, the signature of `_graph_page`, `graph_element_problems` on a `section` that carries the attribute) and
 reports SKIP with the reason; it never passes and never fails for the want of it.
+
+WHAT THE A16 SCAN CLAIMS AND DOES NOT: the claim "the tool never executes what it reads" is checked two ways. The DYNAMIC half (lures in every input create no file, the run builds) is the real
+check. The STATIC half is a LINT over the text above the self-test marker: it flags the imports, names, attributes and `os` uses it models, each with a positive control and a negative control,
+and it is not a closed set. It does not see, for example, `sys.modules['builtins'].eval`, a subscript of a namespace dict, a `shutil`-style write reached under another name, or `os` bound
+to another name by assignment; passing it is evidence about the routes it models, never proof that no route exists.
 
 Exit codes: 0 built, 1 refused (OUT_DIR not created and not touched), 2 usage. --selftest: 0 all pass (a skipped case does not fail), 4 one fails, 2 an unknown id after --only or a bad
 self-test command line.
@@ -628,7 +633,7 @@ def _limit_writes(n):
 
 # ---------------------------------------------------------------- the mutation controls: exact specifications, for phase 2 to turn into live checks
 
-CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A19", "A19-call")   # A7b is four cases, one per check the builder's `_run` applies; A19 is two
+CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call")   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
 MUTATIONS = {
     "M-a": ("A3", "in the pin stage, skip the comparison of `commit` with --pin for every step/<id>.json (index.json, spine.json and uses.json are still compared)", ("A3",)),
     "M-b": ("A1", "in the data stage, read a step/<id>.json that is a symlink as if it were a regular file (follow it; no `symlink` refusal for it). Every other symlink refusal "
@@ -648,7 +653,7 @@ MUTATIONS = {
                    "index, spine, uses and a step file, and the call-site case), every other A-case stays green", ("A19", "A19-call")),
     "M-m": ("A11b", "skip the ref check of the written page (the call that scans the assembled page's `href`, `src`, `action`, `srcset`, `poster` and `data` values for an absolute, `..` or "
                     "missing ref is dropped from `_stage_page`; the builder's own checks stay): the A11b case is red (a shell holding `../x.html` or `nothere.html` builds, exit 0), every "
-                    "other A-case stays green", ("A11b",)),
+                    "other A-case stays green except A11b-attrs, which reads the same call through a stand-in page and goes red with it", ("A11b", "A11b-attrs")),
 }
 
 
@@ -714,7 +719,8 @@ def _mutation_case(mid):
     return _eq(observed, sorted(red, key=CLAUSES.index))
 
 
-# ---------------------------------------------------------------- the A16 scan: an ALLOWLIST over the text of the tool above the marker
+# ---------------------------------------------------------------- the A16 scan: an ALLOWLIST LINT over the text of the tool above the marker. It flags the routes it models (below) and claims nothing about
+# the others (`sys.modules['builtins'].eval`, subscripting a namespace dict, a write through a helper reached by another name, ...): the dynamic half of case A16 is the real check.
 
 A16_IMPORTS = ("importlib.util", "json", "os", "re", "sys")   # `import X`, unaliased, for exactly these modules and no others
 A16_FROM = {"html.parser": ("HTMLParser",)}                    # `from M import N`, unaliased, for exactly these and no others
@@ -772,6 +778,11 @@ A16_LURES = (   # (what, source): each must be FLAGGED by the scan, or the scan 
     ("os.remove (an os attribute the tool does not use)", "import os\nos.remove('x')\n"), ("os.path.getsize (an os.path attribute the tool does not use)", "import os\nos.path.getsize('x')\n"),
     ("getattr(os, 'system')", "import os\ngetattr(os, 'system')('x')\n"), ("sys.modules['os'].system", "import sys\nsys.modules['os'].system('x')\n"),
     ("eval", "eval('1')\n"), ("exec", "exec('x = 1')\n"), ("compile", "compile('1', 'x', 'eval')\n"), ("__import__", "__import__('os')\n"), ("a name bound to eval", "f = eval\n"),
+    ("__dict__ (a chain from a function to its globals)", "x = f.__dict__\n"), ("__globals__", "g = f.__globals__\n"), ("__builtins__ as an attribute", "b = f.__builtins__\n"),
+    ("__class__", "c = x.__class__\n"), ("__subclasses__", "s = object.__subclasses__()\n"), ("__code__", "c = f.__code__\n"),
+    ("the name __builtins__ (subscripted)", "__builtins__['eval']('1')\n"), ("the name open (a write)", "open('x', 'w').write('y')\n"), ("the name open (bound)", "f = open\n"),
+    ("import shutil", "import shutil\n"), ("from shutil import copy", "from shutil import copy\n"), ("import tempfile", "import tempfile\n"), ("import builtins", "import builtins\n"),
+    ("from builtins import eval", "from builtins import eval\n"), ("import os as o (the alias alone)", "import os as o\n"),
     ("import ctypes", "import ctypes\n"), ("import pickle", "import pickle\n"), ("import runpy", "import runpy\n"), ("import marshal", "import marshal\n"), ("bare import importlib", "import importlib\n"),
     ("exec_module outside _load", "def f(spec, mod):\n    spec.loader.exec_module(mod)\n"), ("from importlib import import_module", "from importlib import import_module\n"), ("importlib used outside _load", "import importlib.util\nimportlib.util.module_from_spec(1)\n"),
 )
@@ -779,6 +790,8 @@ A16_CLEAN = (   # (what, source): each must be NOT flagged (the scan is an allow
     ("os.path and os.listdir", "import os\nos.path.join('a', 'b')\nos.listdir('.')\nos.path.lexists('x')\n"), ("json, re, sys", "import json\nimport re\nimport sys\njson.loads('1')\nre.compile('x')\nsys.exit(0)\n"),
     ("HTMLParser", "from html.parser import HTMLParser\n\n\nclass P(HTMLParser):\n    pass\n"),
     ("bs.<function> and sk.<function> uses", "x = bs._graph_assets(1)\ny = sk._read_in(1, 2, 3)\nz = sk.SourceError\n"), ("bs.CODE_ON_SURFACE_REFUSES", "if bs.CODE_ON_SURFACE_REFUSES:\n    pass\n"),
+    ("dunder names and attributes the tool does use", "x = __file__\nif __name__ == '__main__':\n    pass\ny = f.__name__\n"),
+    ("names that merely contain `open`", "def reopen(p):\n    return p\n\n\nreopen(1)\nbs.open_page\nsk.is_open\n"),
     ("exec_module inside _load", "def _load(spec, mod):\n    spec.loader.exec_module(mod)\n"), ("importlib inside _load", "import importlib.util\n\n\ndef _load(p):\n    return importlib.util.spec_from_file_location('k', p)\n"),
 )
 
@@ -1255,10 +1268,12 @@ def _selftest_cases():
             _write_tree(w["out"], {"keep.txt": b"mine"})
             return _refused(w, _argv(w), ["ASM-STRINGS about_text missing"], "a page fault hides a non-empty OUT_DIR", out_state=["keep.txt"])
 
-    @case("A16", "never executes anything it reads: no import, eval, subprocess or shell on DATA, strings, shell or assets. STATIC: the text of the tool above the self-test marker passes an "
-                 "ALLOWLIST scan (imports exactly importlib.util, json, os, re, sys and `from html.parser import HTMLParser`, unaliased; no use of eval, exec, compile, __import__, getattr, "
-                 "setattr, delattr, vars, globals or locals; no attribute that runs a program; no attribute of os or os.path beyond the ones the tool uses; importlib and `exec_module` only inside `_load`), and "
-                 "the scan has its own positive controls (small sources, each of which it must FLAG: a scan that flags nothing fails here) and negative controls (the sources it must pass). "
+    @case("A16", "never executes anything it reads: no import, eval, subprocess or shell on DATA, strings, shell or assets. STATIC (a LINT over the routes it models, not a closed set: it does not claim that no other route to execution or to a write exists, e.g. "
+                 "`sys.modules['builtins'].eval`, a subscript of a namespace dict, `shutil`-style helpers reached by another name; the DYNAMIC half below is the real check): the text of the tool "
+                 "above the self-test marker passes the scan (imports exactly importlib.util, json, os, re, sys and `from html.parser import HTMLParser`, unaliased; no use of the names eval, exec, "
+                 "compile, __import__, getattr, setattr, delattr, vars, globals, locals, open or __builtins__; no attribute that runs a program; none of the attributes __dict__, __globals__, "
+                 "__builtins__, __class__, __subclasses__ or __code__; no attribute of os or os.path beyond the ones the tool uses; importlib and `exec_module` only inside `_load`), and "
+                 "the scan has its own positive controls (small sources, each of which it must FLAG: a scan that flags nothing fails here; shutil, tempfile, builtins and an aliased os among them) and negative controls (the sources it must pass). "
                  "DYNAMIC: lures (code that would create a file) in the strings values, the shell and a step file of a world with a VALID pin create no file, the run reaches the page stage "
                  "and builds, and its tree differs from the same world without lures only where the lures are text")
     def _():
@@ -1600,6 +1615,49 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             if not want:
                 raise _FixtureError("the builder accepts a shell with an absolute script src")
             note("an absolute script src: the builder's own line", _refused(w, _argv(w), want, "an absolute script src"))
+        return (not fails, "; ".join(fails))
+
+    @case("A11b-attrs", "A11b, every ref attribute is READ (in-process stand-in case, the A7b pattern): the builder's own page function refuses a script whose `src` is not an asset and has no "
+                        "`form`, `img`, `video` or `object` in its element table, so the attributes that name a ref are reached only by a stand-in `_graph_page` that returns the real page with one "
+                        "element added or changed. `src` (a `<script type=\"module\">`, the real element check left on): `../x.js` is `ASM-PAGE ../x.js escapes`, `nothere.js` is "
+                        "`ASM-PAGE nothere.js missing`, `/x.js` is `absolute`; `action`, `srcset` (each candidate), `poster` and `data` (element check stood in) are each refused the same way; every "
+                        "sub-check: `run` returns 1, exactly the one expected line, nothing written (no OUT_DIR, no sibling folder). Of these only `href` (an `<a>`) and the `src` of a listed asset can "
+                        "be produced by the builder; the other four cannot appear in any page the builder accepts, so this case is their only pin")
+    def _():
+        _need_pr_c()
+        m = tool_module()
+        real = m._graph_page
+        fails = []
+
+        def page_with(edit):   # a stand-in `_graph_page`: the real page, then one text edit
+            def fake(*a, **k):
+                errors, page = real(*a, **k)
+                return errors, edit(page)
+            return fake
+
+        def add(extra):
+            return lambda page: page.replace("</body>", extra + "</body>")
+
+        def sub(name, edit, want, element_check=True):
+            patch = {"_graph_page": page_with(edit)}
+            if not element_check:
+                patch["graph_element_problems"] = lambda page: []   # the element table has no form, img, video or object: the ref check is what is under test
+            with _tmp() as d:
+                w = _world(d)
+                before = sorted(os.listdir(d))
+                rc, lines = inproc(w, patch)
+                ok, why = _eq((rc, lines, os.path.exists(w["out"]), sorted(os.listdir(d))), (1, want, False, before))
+                if not ok:
+                    fails.append(f"[{name}] {why}")
+
+        script = lambda ref: (lambda page: page.replace('src="page/app.js"', f'src="{ref}"'))
+        sub("script src ../x.js", script("../x.js"), ["ASM-PAGE ../x.js escapes"])
+        sub("script src nothere.js", script("nothere.js"), ["ASM-PAGE nothere.js missing"])
+        sub("script src /x.js", script("/x.js"), ["ASM-PAGE /x.js absolute"])
+        sub("form action", add('<form action="../x.cgi"></form>'), ["ASM-PAGE ../x.cgi escapes"], element_check=False)
+        sub("img srcset, every candidate", add('<img srcset="graph.css 1x, ../x.png 2x, nothere.png 3x" alt="">'), ["ASM-PAGE ../x.png escapes", "ASM-PAGE nothere.png missing"], element_check=False)
+        sub("video poster", add('<video poster="../x.png"></video>'), ["ASM-PAGE ../x.png escapes"], element_check=False)
+        sub("object data", add('<object data="nothere.swf"></object>'), ["ASM-PAGE nothere.swf missing"], element_check=False)
         return (not fails, "; ".join(fails))
 
     def with_token(raw):
