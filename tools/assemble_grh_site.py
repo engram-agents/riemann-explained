@@ -764,7 +764,7 @@ def _limit_writes(n):
 
 # ---------------------------------------------------------------- the mutation controls: exact specifications, for phase 2 to turn into live checks
 
-CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 28))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
+CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 29))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
 MUTATIONS = {
     "M-a": ("A3", "in the pin stage, skip the comparison of `commit` with --pin for every step/<id>.json (index.json, spine.json and uses.json are still compared)", ("A3",)),
     "M-b": ("A1", "in the data stage, read a step/<id>.json that is a symlink as if it were a regular file (follow it; no `symlink` refusal for it). Every other symlink refusal "
@@ -2196,6 +2196,67 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                               ("dots inside a segment", repo + "blob/" + PIN + "/a.b/c..d/e")):
                 note("in-process allowed: " + what, _eq(refs(f'<p><a href="{ref}">x</a></p>'), []))
         return (not fails, "; ".join(fails))
+
+    @case("A28", "every strings key a shell token names is a non-empty string: for each `{{S:key}}` token the shell holds (the builder's own token pattern) whose key is one of SHELL_KEYS and is PRESENT in the "
+                 "strings file, a value that is not a str (an int, a bool, null, a list, an object, a float) is `ASM-STRINGS <key> not-a-string` and the empty string is `ASM-STRINGS <key> empty`, one line "
+                 "per key, after the about_text lines and in the order the tokens first appear in the shell, exit 1, nothing written; a key the shell does not hold is not checked (any value); a missing "
+                 "key stays the builder's refusal; `readings_front` keeps A18's rule and is not reported twice; with --page the three credits keys keep A24's lines; a non-empty str passes unchanged")
+    def _():
+        _need_pr_c()
+
+        def put_strings(w, **over):   # written as JSON directly: `_asm_strings` drops a None, and a null is one of the cases
+            _put(w["strings"], json.dumps(dict(_asm_strings(), **over)))
+
+        for what, val in (("an int", 7), ("a bool", True), ("null", None), ("a list", ["x"]), ("an object", {"a": 1}), ("a float", 1.5)):   # (a) every non-str type, one shell key
+            with _tmp() as d:
+                w = _world(d)
+                put_strings(w, title=val)
+                good, why = _refused(w, _argv(w), ["ASM-STRINGS title not-a-string"], f"title is {what}")
+                if not good:
+                    return good, why
+        with _tmp() as d:   # (b) the empty string
+            w = _world(d)
+            put_strings(w, title="")
+            good, why = _refused(w, _argv(w), ["ASM-STRINGS title empty"], "title is the empty string")
+            if not good:
+                return good, why
+        with _tmp() as d:   # (c) two bad keys and a bad about_text: all the lines, the about_text line first, then the keys in the order of the tokens in the shell (not the strings file's order)
+            w = _world(d)
+            put_strings(w, close=["x"], title="", **{ABOUT_KEY: 7})
+            rc, lines, err = _cli(_argv(w))
+            ok, why = _eq((rc, lines, "Traceback" in err, os.path.exists(w["out"])),
+                          (1, [f"ASM-STRINGS {ABOUT_KEY} not-a-string", "ASM-STRINGS title empty", "ASM-STRINGS close not-a-string"], False, False))
+            if not ok:
+                return ok, "two bad keys and a bad about_text, in order: " + why
+        with _tmp() as d:   # (d) a bad value under a key the shell does NOT hold (SHELL has no scope line and no readings line) is not looked at; a padded str is passed unchanged
+            w = _world(d)
+            put_strings(w, **{SCOPE_KEY: 7, READINGS_FRONT_KEY: ["x"], "unused_key": None, "sentence": "  padded & <b>x</b>  "})
+            tree = _ok_run(w)[0]
+            ok, why = _eq(tree["index.html"].decode("utf-8"), _expected_page(w, SHELL, _asm_strings(sentence="  padded & <b>x</b>  ")))
+            if not ok:
+                return ok, "a bad value under a key the shell does not hold: " + why
+        with _tmp() as d:   # (e) a clean world builds the same tree as before: the page is the builder's, the files are the closed set
+            w = _world(d, scope=True)
+            tree, empty = _ok_run(w)
+            ok, why = _eq((sorted(tree), empty, tree["index.html"].decode("utf-8")), (tree_names(w), [], _expected_page(w, SHELL_SCOPE, _asm_strings())))
+            if not ok:
+                return ok, "a clean world: " + why
+        for what, val in (("an int", 7), ("the empty string", ""), ("a template with no {n}", "no braces")):   # (f) readings_front: A18's line alone (the fixture index has no list, so A18's shape line follows), never an A28 line
+            with _tmp() as d:
+                w = _world(d, shell=SHELL_READINGS)
+                put_strings(w, **{READINGS_FRONT_KEY: val})
+                good, why = _refused(w, _argv(w), [f"ASM-READINGS {READINGS_FRONT_KEY} template", f"ASM-READINGS {READINGS_KEY} shape"], f"readings_front is {what}")
+                if not good:
+                    return good, why
+        with _tmp() as d:   # (g) with --page: A24's lines for the three credits keys are unchanged and appear once; a bad shell key adds its own line after them
+            w = _page_world(d)
+            _put(w["strings"], json.dumps(dict(_page_strings(), **{CREDITS_KEYS[0]: 7, CREDITS_KEYS[1]: "", CREDITS_KEYS[2]: None, "title": 7})))
+            rc, lines, err = _cli(_argv(w))
+            ok, why = _eq((rc, lines, os.path.exists(w["out"])),
+                          (1, [f"ASM-STRINGS {CREDITS_KEYS[0]} not-a-string", f"ASM-STRINGS {CREDITS_KEYS[1]} missing", f"ASM-STRINGS {CREDITS_KEYS[2]} not-a-string", "ASM-STRINGS title not-a-string"], False))
+            if not ok:
+                return ok, "with --page, the three credits keys and a bad title: " + why
+        return True, ""
 
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(
