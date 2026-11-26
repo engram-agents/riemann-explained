@@ -42,12 +42,15 @@ test("L1 `later_blocks` is optional: a note without it validates and its step ca
   assert.equal(validateStep(withLater(1000000), ctx).note.later_blocks, 1000000);
 });
 
-test("L1 `later_blocks` that is not an integer >= 0 (a float, a string, a boolean, null, a negative, an array, an object) is `bad-later-blocks` naming the step", () => {
+test("L1 `later_blocks` that is not an integer >= 0 (a float, a string, a boolean, null, a negative, an array, an object, an unsafe integer) is `bad-later-blocks` naming the step", () => {
   const ctx = validateIndex(idx());
   for (const [what, n] of [["a float", 1.5], ["a float that is small", 0.5], ["a string", "1"], ["an empty string", ""], ["true", true], ["false", false], ["null", null],
-    ["-1", -1], ["a negative float", -0.5], ["an array", [1]], ["an object", { n: 1 }]]) {
+    ["-1", -1], ["a negative float", -0.5], ["an array", [1]], ["an object", { n: 1 }],
+    ["1e300, an integer to JavaScript but printed as 1e+300", 1e300], ["2**53, one above the largest safe integer", Number.MAX_SAFE_INTEGER + 1]]) {
     assert.throws(() => validateStep(withLater(n), ctx), (e) => isErr("bad-later-blocks")(e) && e.message.includes("sk-file-1"), what);
   }
+  // the largest safe integer is still a count the page can print exactly
+  assert.equal(validateStep(withLater(Number.MAX_SAFE_INTEGER), ctx).note.later_blocks, Number.MAX_SAFE_INTEGER);
 });
 
 test("L1 any OTHER unknown note key stays `bad-note`, with or without a valid later_blocks beside it", () => {
