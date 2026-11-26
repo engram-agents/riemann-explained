@@ -12879,7 +12879,7 @@ def _selftest_cases():
     # `<li>` in its text), a single premise (g1: a `p.premises`, no row) and two premises (g3: a `div.premises`), sketches (g1, g1a, and two on g2) and notes.
     GM_ROW = re.compile(r'<details class="map-row map-row-([a-z]+)"><summary>(.*?)</summary>(.*?)</details>', re.S)
     GM_LINK = '<p class="map-link"><a href="../">Open the map</a></p>'
-    GM_LIST_LINK_SHA = "1fcabab2314b2468720cbe6e885d524b6e2a2a949240504f1cd45bce37f2a487"   # the fixture's list page with GM_LINK as the last line of its header
+    GM_LIST_LINK_SHA = "e5c7ba6ac41e4139b17a4c1b477eb06dcbd228908fc69f2e70e28080cf24b339"   # the fixture's list page with GM_LINK as its own line between </header> and <main>
     GM_WORDS = {"map_row_conditions": "Conditions ({n})", "map_row_uses": "What it uses", "map_row_sketch": "Sketch of the proof",
                 "map_row_literature": "In the literature", "map_row_notes": "Our notes ({n})", "map_row_react": "React", "list_map_link": "Open the map"}
     GM_ROBOTS = '<meta name="robots" content="noindex">'
@@ -13020,8 +13020,8 @@ def _selftest_cases():
                     no("meta name not listed is not allowed in the shell"), no("meta repeated is not allowed in the shell"),
                     no("head has no robots noindex meta", "meta robots content differs is not allowed in the shell")))
 
-    @case("GM6", "G2c-4 the list page's link back to the map: `<p class=\"map-link\"><a href=\"../\">{list_map_link}</a></p>` is in the list page exactly once, as the last line of its "
-                 "header (after the whole-notes section); the list page with that one line removed is byte-equal to the list page of the head before this change (sha256 literal, "
+    @case("GM6", "G2c-4 the list page's link back to the map: `<p class=\"map-link\"><a href=\"../\">{list_map_link}</a></p>` is in the list page exactly once, as its own line between "
+                 "</header> and <main> (in neither the header part nor the main part of the shared rendering, so no map markup can hold it); the list page with that one line removed is byte-equal to the list page of the head before this change (sha256 literal, "
                  "13431 bytes) and with it is 13486 bytes (sha256 literal); the value is escaped; graph/index.html holds no `map-link` and no `href=\"../\"` (the About section is "
                  "built from the header part, which has no such paragraph)")
     def _():
@@ -13031,11 +13031,11 @@ def _selftest_cases():
         s = _strings()
         s["list_map_link"] = "Back <to> the map"
         e = _build(graph_src=_GRAPH_SRC_AT_START, strings=s)
-        return _eq((b.rc, lp.count(GM_LINK), lp.count("map-link"), ("</section>\n" + GM_LINK + "\n</header>") in lp,
+        return _eq((b.rc, lp.count(GM_LINK), lp.count("map-link"), ("</header>\n" + GM_LINK + "\n<main>") in lp, len(re.findall(r"<header>.*?</header>", lp, re.S)[0].split("map-link")) - 1,
                     hashlib.sha256(bare.encode("utf-8")).hexdigest(), len(bare.encode("utf-8")), hashlib.sha256(lp.encode("utf-8")).hexdigest(), len(lp.encode("utf-8")),
                     gpg.count("map-link"), gpg.count('href="../"'), e.page.count('<p class="map-link"><a href="../">Back &lt;to&gt; the map</a></p>'),
                     e.text("graph/index.html").count("Back")),
-                   (0, 1, 1, True, GP_LIST_SHA, 13431, GM_LIST_LINK_SHA, 13486, 0, 0, 1, 0))
+                   (0, 1, 1, True, 0, GP_LIST_SHA, 13431, GM_LIST_LINK_SHA, 13486, 0, 0, 1, 0))
 
     @case("GM7", "G2c-5 (d) an empty parts list fails loudly: with the page renderer standing in for itself and handing on no parts, the build of the graph page raises "
                  "(IndexError) and does not write an empty About section into a page that exits 0; control: the real renderer builds")
@@ -13051,6 +13051,80 @@ def _selftest_cases():
         except IndexError:
             got = "IndexError"
         return _eq((got, _build(graph_src=_GRAPH_SRC_AT_START).rc), ("IndexError", 0))
+
+    def gm_with_cards(extra, assets=None):
+        """A build whose map page's cards markup (the main part of `_page_parts` with the rows) has `extra` added at its end, through a stand-in for `_page_parts`:
+        (exit code, OUT_DIR existed, the GRAPH-PAGE lines without their prefix)."""
+        real_parts = _page_parts
+
+        def stand_in(m, s, facts, dirty, map_rows=False):
+            header, main = real_parts(m, s, facts, dirty, map_rows=map_rows)
+            return header, (main + extra if map_rows else main)
+        with _patched("_page_parts", stand_in):
+            rc, existed, lines, _b2 = gp_go(GA_SHELL)
+        return rc, existed, lines
+
+    @case("GM11", "G2c-C the assembled page is held to the shell's script and link rule: a script in the cards markup that is inline (no type, no src, text), has no type, is a "
+                  "module with a remote src, a module whose src is a relative path that is no asset, or has text next to a listed src, and a link that is not a stylesheet, "
+                  "has a remote href or a relative href that is no asset, is refused `GRAPH-PAGE assembled page: <script or link problem>`, exit 1, nothing written "
+                  "(planted through a stand-in for _page_parts); controls that build: a second module script and a stylesheet link of listed assets in the cards, and the real "
+                  "shell with the real page and the fixture")
+    def _():
+        mod = lambda src, text="": f'<script type="module" src="{src}">{text}</script>'
+        no = lambda *lines: (1, False, list(lines))
+        P = "assembled page:"
+        return _eq({"inline": gm_with_cards("<script>alert(1)</script>"),
+                    "no_type": gm_with_cards('<script src="page/app.js"></script>'),
+                    "remote": gm_with_cards(mod("https://example.org/a.js")),
+                    "proto": gm_with_cards(mod("//example.org/a.js")),
+                    "not_asset": gm_with_cards(mod("page/other.js")),
+                    "text": gm_with_cards(mod("page/app.js", "x()")),
+                    "link_icon": gm_with_cards('<link rel="icon" href="graph.css">'),
+                    "link_remote": gm_with_cards('<link rel="stylesheet" href="https://example.org/a.css">'),
+                    "link_not_asset": gm_with_cards('<link rel="stylesheet" href="other.css">'),
+                    "ok": gm_with_cards(mod("page/app.js") + '<link rel="stylesheet" href="graph.css">'),
+                    "real": (gm_real().rc, gp_real().rc)},
+                   {"inline": no(P + ' script is not type="module"', P + " script has no src", P + " script has text content (no inline script)"),
+                    "no_type": no(P + ' script is not type="module"'),
+                    "remote": no(P + " script src https://example.org/a.js is not a relative address"),
+                    "proto": no(P + " script src //example.org/a.js is not a relative address"),
+                    "not_asset": no(P + " script src page/other.js is not an asset"),
+                    "text": no(P + " script has text content (no inline script)"),
+                    "link_icon": no(P + ' link is not rel="stylesheet"'),
+                    "link_remote": no(P + " link href https://example.org/a.css is not a relative address"),
+                    "link_not_asset": no(P + " link href other.css is not an asset"),
+                    "ok": (0, True, []), "real": (0, 0)})
+
+    @case("GM12", "G2c-E the head rule runs on the assembled map page too (build time, `HEAD-META <problem> in graph/index.html`, the list page's own check): a graph page "
+                  "handed to the build (a stand-in for _graph_page) with no robots meta is `robots missing`, with no viewport meta `viewport missing`, with the robots tag in the "
+                  "body `robots missing` and `robots outside head`; exit 1, nothing written; control: the page with both metas builds; the real build passes")
+    def _():
+        page = lambda head, body="": '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">' + head + "</head><body>" + body + "</body></html>\n"
+
+        def go(text):
+            with tempfile.TemporaryDirectory() as d:
+                with _patched("_graph_page", lambda *a: ([], text)):
+                    b = _build(graph_src=ga_src(d))
+            return b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR HEAD-META")]
+        pre = "BUILD-ERROR HEAD-META "
+        return _eq([go(page(GM_VIEWPORT)), go(page(GM_ROBOTS)), go(page(GM_VIEWPORT, GM_ROBOTS)), go(page(GM_VIEWPORT + GM_ROBOTS)), gm_real().rc],
+                   [(1, False, [pre + "robots missing in graph/index.html"]), (1, False, [pre + "viewport missing in graph/index.html"]),
+                    (1, False, [pre + "robots missing in graph/index.html", pre + "robots outside head in graph/index.html"]), (0, True, []), 0])
+
+    @case("GM13", "G2c-B a card that prints the missing-sketch line (proof read, no sketch): the line is a `p.sketch-missing` outside any div.sketch and outside every row, as in the "
+                  "list page, and the card has no sketch row (the rows wrap a real div.sketch only); the cards that have a sketch have one row per div.sketch")
+    def _():
+        b = gm_real()
+        page = b.text("graph/index.html")
+        dom = _dom(page)
+        missing = [a.attrs["id"] for a in dom.find("article") if _direct(a, "p", "sketch-missing")]
+        in_row = [m.group(1) for m in GM_ROW.finditer(page) if "sketch-missing" in m.group(3)]
+        in_sketch = [d_.attrs for d_ in dom.find("div", "sketch") if d_.find("p", "sketch-missing")]
+        rows = dict(gm_rows(page))
+        kinds = lambda i: [k for k, _l in rows[i]]
+        return _eq((missing, in_row, in_sketch, [kinds(i).count("sketch") for i in missing], len(dom.find("div", "sketch")),
+                    sum(kinds(i).count("sketch") for i in rows), page.count('<p class="sketch-missing">'), b.text("index.html").count('<p class="sketch-missing">')),
+                   (["g1a1x", "g3"], [], [], [0, 0], 4, 4, 2, 2))
 
     @case("GM8", "G2c-5 (a) the address check trims what a browser trims before it looks at the first characters: an <a href> of ` //evil.example` (a leading space) and of a leading "
                  "tab `//evil.example` is protocol-relative and refused (`is not a relative path or #fragment`), exit 1, nothing written; neighbours that build: ` list/` "
