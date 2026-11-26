@@ -138,7 +138,8 @@ def claim_text(i):
 
 def _proof_line(i):
     # the list page's own line (the graph page never reads it)
-    return {"none": [], "not_read": ['<p class="status proof">Proof: not read yet.</p>'],
+    return {"none": ['<p class="status proof">No proof to read: this step states a definition or a structure.</p>'],
+            "not_read": ['<p class="status proof">Proof: not read yet.</p>'],
             "read": ['<p class="status proof">Proof read by Kepler on 2026-11-23.</p>']}[proof_of(i)]
 
 
@@ -148,6 +149,7 @@ def article(i, kids, depth=0):
            '<h3 class="claim">%s</h3>' % e(claim_text(i)),
            '<p class="status statement">Statement read by Kepler on 2026-11-23.</p>',
            ] + _proof_line(i) + [
+           '<p class="roots-only">Only the Lean roots of this step are listed here.</p>',
            '<details class="conditions"%s><summary>Conditions (1)</summary><ul><li>a condition</li></ul></details>' % (" open" if i == "a1" else ""),
            '<details class="uses"><summary>What it uses</summary><p>nothing yet</p></details>',
            '<details class="evidence"><summary>Evidence</summary><dl><dt>Lean name</dt><dd><code>Formalism.%s</code></dd></dl></details>' % e(i),

@@ -96,6 +96,11 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .sheet-status { margin: 4px 0 10px; font-family: var(--sans); font-size: 14px; font-weight: 500; }
 .graph-sheet-body .claim { font-size: 18px; line-height: 1.4; margin: 0 0 6px; }
 .graph-sheet-body.claim-clamped .claim { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 10; line-clamp: 10; overflow: hidden; }
+/* The sheet shows the page's own one status line, so the list page's lines inside the moved card are hidden HERE ONLY (the fallback
+   page and a page with scripts off keep all of them): the statement line and the roots-only line always; the proof line unless
+   the card has no proof (the page sets sheet-proof-none from the card's data), where it says why. */
+.graph-sheet .graph-sheet-body p.status.statement, .graph-sheet .graph-sheet-body p.roots-only, .graph-sheet .graph-sheet-body p.status.proof { display: none; }
+.graph-sheet.sheet-proof-none .graph-sheet-body p.status.proof { display: block; }
 /* a card's nested parts stay on the List page; on the map they are separate cards */
 .graph-sheet-body details.children { display: none; }
 .graph-sheet-body summary, .graph-sheet-body details.rc-section > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-family: var(--sans); }

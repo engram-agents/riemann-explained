@@ -814,21 +814,30 @@ def c_first_fit_size(b, S0, engine, tol=0.0, mutate=None, print_it=True):
         S.stop()
 
 
-def c_first_fit_mutant(b):
-    """Control for the strict first-fit case. Row gaps the engine's default way (76: scale 0.966) and an in-between 70 (scale
-    0.986, text 14.8 px) both fail it. The 0.5 allowance the old case carried passes the 70 run: it is what hid the shortfall."""
-    def gap(n):
-        return lambda text: text.replace("gapY: 56", "gapY: %d" % n)
-    for n in (76, 70):
-        red = False
-        try:
-            c_first_fit_size(b, None, "real", mutate={os.path.join("page", "app.js"): gap(n)}, print_it=False)
-        except Exception as e:  # noqa: BLE001
-            red = True
-            print("   first-fit mutant red (gapY %d): %s" % (n, repr(e)[:100]))
-        assert red, "MUTANT SURVIVED: the strict case passed with gapY %d" % n
-    c_first_fit_size(b, None, "real", tol=0.5, mutate={os.path.join("page", "app.js"): gap(70)}, print_it=False)   # the allowance lets it through
-    print("   with the old 0.5 allowance the gapY 70 build passes (that is what the strict case is for)")
+def c_first_view_mutant(b):
+    """Control for the small-viewport cases: when the page does NOT pass zoom.fitMin the strict first-view case goes red at the three
+    small viewports (the engine zooms out to fit, scale below 1), and stays green at 390 x 844, where the fit is above 1 anyway. The
+    same build is red whichever way the size is measured (camera scale or the rendered ratio), so the case discriminates either way."""
+    def no_fitmin(text):
+        old = "      zoom: { fitMin: 1 },"
+        assert old in text, "fitMin line not found"
+        i = text.index(old)
+        j = text.index("\n", i)
+        return text[:i] + text[j + 1:]
+    mut = {os.path.join("page", "app.js"): no_fitmin}
+    for measure in ("camera", "rendered"):
+        for vw, vh in ((375, 667), (360, 640), (320, 568)):
+            red = False
+            try:
+                c_first_view(b, None, "real", vw, vh, mutate=mut, measure=measure)
+            except Exception as e:  # noqa: BLE001
+                red = True
+                print("   fitMin-not-passed mutant red (%s, %dx%d): %s" % (measure, vw, vh, repr(e)[:90]))
+            assert red, "MUTANT SURVIVED: fitMin not passed, %s measure, %dx%d" % (measure, vw, vh)
+    c_first_view(b, None, "real", 390, 844, mutate=mut)        # a tall phone fits above scale 1 anyway: unaffected
+    for vw, vh in ((375, 667), (320, 568)):                    # with fitMin passed the rendered measure agrees with the camera one
+        c_first_view(b, None, "real", vw, vh, measure="rendered")
+
 
 
 def c_status_from_data(b, S0, engine):
@@ -1123,6 +1132,191 @@ def c_sheet_text_unscaled(b, S, engine):
     pg.close()
 
 
+# ------------------------------------------------ the first view never zooms below scale 1; a cue says the map goes on (R3a)
+
+VIEWPORTS = [(390, 844), (375, 667), (360, 640), (320, 568)]
+
+FIRST_VIEW_JS = """(() => { const stage = document.getElementById('graph'), sr = stage.getBoundingClientRect();
+  const w = stage.querySelector('.ge-world'); let k = 1, from = 'none (the double has no camera)';
+  if (w) { const m = /scale\\(([-0-9.e]+)\\)/.exec(w.getAttribute('style') || ''); if (!m) throw new Error('no scale'); k = parseFloat(m[1]); from = 'ge-world'; }
+  const box = (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; };
+  const texts = [];
+  for (const f of stage.querySelectorAll('.face')) {
+    const tw = document.createTreeWalker(f, NodeFilter.SHOW_TEXT); let n;
+    while ((n = tw.nextNode())) { if (!n.textContent.trim()) continue; const e = n.parentElement, r = e.getBoundingClientRect();
+      texts.push({cls: e.className, title: !!e.closest('.face-title'), size: parseFloat(getComputedStyle(e).fontSize), rendered: e.offsetHeight ? r.height / e.offsetHeight : 1}); }
+  }
+  return {k, from, stage: [sr.left, sr.top, sr.right, sr.bottom], texts,
+    nodes: [...stage.querySelectorAll('[data-node]')].map((n) => [n.getAttribute('data-node')].concat(box(n))),
+    strokes: [...stage.querySelectorAll('.ge-link')].map(box), heads: [...stage.querySelectorAll('.ge-head')].map(box)}; })()"""
+
+
+def first_view_numbers(pg):
+    return pg.ev(FIRST_VIEW_JS)
+
+
+def cue_form(stage, nodes, strokes, heads, head_reach=12.0):
+    """The continuation cue (the reader seat's rule 3a), one predicate with three forms; returns which one holds, or None.
+      'card'       a card box crosses the stage's bottom edge;
+      'stroke'     a link stroke box crosses the bottom edge (an arrowhead crossing it counts the same);
+      'arrowhead'  a link arrowhead (the engine's arrowhead element) lies entirely inside the frame with its bottom within
+                   `head_reach` (12) px above the bottom edge. The engine's DOM encodes no direction for an arrowhead, so none is checked.
+    stage = [l, t, r, b]; every other box is [l, t, r, b]. A clean gap at the bottom (no crossing, no near arrowhead) is None."""
+    st, sb = stage[1], stage[3]
+    crosses = lambda x: x[1] < sb - 1 and x[3] > sb + 1
+    if any(crosses(n) for n in nodes):
+        return "card"
+    if any(crosses(x) for x in strokes) or any(crosses(x) for x in heads):
+        return "stroke"
+    for x in heads:
+        if x[1] >= st and x[3] <= sb and 0 <= sb - x[3] <= head_reach:
+            return "arrowhead (bottom %.1f px above the edge)" % (sb - x[3])
+    return None
+
+
+def c_first_view(b, S0, engine, w, h, mutate=None, measure="camera"):
+    """The first frame at w x h, on the real fixture. Every face text at its size EFFECTIVE at the first fit (computed font-size x the
+    engine's camera scale, read from the world element, no allowance; measure='rendered' reads the rendered ratio instead): the title
+    >= 15 px, every other >= 14. The top of the drawing is in view. Whenever a top step is not wholly in view, a continuation cue sits
+    inside the frame touching the bottom edge: part of a card or a link stroke whose box crosses the stage's bottom edge."""
+    root = tempfile.mkdtemp(prefix="pg-view-")
+    assemble.assemble(root, engine, mutate=mutate)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=True).settled()
+        r = first_view_numbers(pg)
+        sl, st, sr_, sb = r["stage"]
+        title = [t for t in r["texts"] if t["title"]][0]
+        scale = r["k"] if measure == "camera" else title["rendered"]
+        print("   first view %dx%d (%s): scale %.3f; title %.2f px, other text %.2f px effective" % (
+            w, h, engine, scale, title["size"] * scale, min(t["size"] for t in r["texts"] if not t["title"]) * scale))
+        low = []
+        for t in r["texts"]:
+            eff = t["size"] * (r["k"] if measure == "camera" else t["rendered"])
+            if eff < (15.0 if t["title"] else 14.0):
+                low.append((t["cls"], round(eff, 2)))
+        assert not low, ("face text below its size at the first fit", low)
+        nodes = {n[0]: n[1:] for n in r["nodes"]}
+        assert sorted(nodes) == ["bounds", "goal-chain", "inputs"], sorted(nodes)
+        top = nodes["goal-chain"]
+        assert top[1] >= st - 1 and top[1] < sb - 20, ("the top of the drawing is not in view", top, r["stage"])
+        inside = lambda n: n[1] >= st - 1 and n[3] <= sb + 1
+        if all(inside(n) for n in nodes.values()):
+            print("   cue (%s %dx%d): none needed, every top step is in view" % (engine, w, h))
+        else:
+            form = cue_form(r["stage"], list(nodes.values()), r["strokes"], r["heads"])
+            print("   cue (%s %dx%d): %s" % (engine, w, h, form))
+            assert form, ("a top step is out of view and no cue touches the bottom edge: a clean gap reads as the end of the map", r["stage"], nodes, r["heads"][-2:])
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_cue_predicate_control(b=None, S0=None, predicate=None):
+    """Negative and positive controls for the cue predicate, on synthetic frames (no browser). A clean gap of more than 12 px below the
+    last visible card, with no stroke crossing and no arrowhead near the edge, is NOT a cue; each of the three forms is one."""
+    f = predicate or cue_form
+    stage = [0, 0, 360, 640]
+    card = lambda top, bottom: [30, top, 330, bottom]
+    # clean gap: the last card ends 40 px above the edge, a stroke and an arrowhead sit above it, nothing crosses, no head near the edge
+    assert f(stage, [card(300, 600), card(100, 240)], [[180, 240, 182, 300]], [[176, 590, 184, 598]]) is None, "a clean gap is not a cue"
+    assert f(stage, [card(100, 240)], [], [[176, 240, 184, 248]]) is None, "an arrowhead 392 px above the edge is not a cue"
+    assert f(stage, [card(100, 240)], [], [[176, 618, 184, 626]]) is None, "an arrowhead 14 px above the edge is not a cue"
+    assert f(stage, [card(100, 240)], [[180, 640, 182, 658]], []) is None, "a stroke that only starts at the edge is not a cue (it does not cross)"
+    # each form
+    assert f(stage, [card(500, 700)], [], []) == "card"
+    assert f(stage, [card(100, 240)], [[180, 600, 182, 680]], []) == "stroke"
+    got = f(stage, [card(100, 630)], [], [[176, 630, 184, 638]])
+    assert got and got.startswith("arrowhead"), got
+    assert f(stage, [card(100, 630)], [], [[176, 628, 184, 643]]) == "stroke", "an arrowhead crossing the edge counts as a crossing link element"
+    assert f(stage, [card(100, 630)], [], [[176, 636, 184, 644]]) == "stroke"
+    assert f(stage, [card(100, 630)], [], [[176, 630, 184, 638.1]]) is not None
+
+
+def c_cue_mutant(b=None):
+    """Control for the control: a predicate that accepts ANY visible arrowhead whatever its distance is caught by the negative control."""
+    lenient = lambda stage, nodes, strokes, heads: cue_form(stage, nodes, strokes, heads, head_reach=1e9)
+    caught = False
+    try:
+        c_cue_predicate_control(predicate=lenient)
+    except AssertionError as e:
+        caught = True
+        print("   lenient-arrowhead predicate caught by the negative control: %s" % str(e)[:80])
+    assert caught, "MUTANT SURVIVED: the negative control accepts an arrowhead at any distance"
+
+
+def c_show_all_whole_top_level(b, S, engine):
+    """360 x 640: Show all frames the whole top level (the scale may go below 1)."""
+    pg = Pg(b, S.base + "graph/index.html", 360, 640, mobile=True).settled()
+    pg.page.click("#graph-show-all")
+    pg.page.wait_for_timeout(500)
+    r = first_view_numbers(pg)
+    st, sb = r["stage"][1], r["stage"][3]
+    nodes = {n[0]: n[1:] for n in r["nodes"]}
+    print("   show all 360x640 (%s): scale %.3f" % (engine, r["k"]))
+    for name, n in nodes.items():
+        assert n[1] >= st - 1 and n[3] <= sb + 1, ("a top step is out of view after Show all", name, n, r["stage"])
+    if engine == "real":
+        assert r["k"] < 1, r["k"]
+    pg.csp_clean()
+    pg.close()
+
+
+# ------------------------------------------- the sheet shows one status line of its own, not the list page's three (S5)
+
+def disp(pg, sel):
+    return pg.ev("""(() => { const a = document.querySelector('#graph-sheet-body article'); const e = a.querySelector(':scope > ' + %s);
+        return e ? getComputedStyle(e).display : 'absent'; })()""" % json.dumps(sel))
+
+
+def c_sheet_duplicates(b, S, engine):
+    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    # (card, proof): a1 is proof read, a4 not read, a2 none (a definition)
+    for card, proof in (("a1", "read"), ("a4", "not_read"), ("a2", "none"), ("a1", "read")):
+        at_hash(pg, "")
+        at_hash(pg, card)
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        got = (disp(pg, "p.status.statement"), disp(pg, "p.status.proof"), disp(pg, "p.roots-only"))
+        assert disp(pg, "p.status.statement") == "none" and disp(pg, "p.roots-only") == "none", (card, proof, got)
+        if proof == "none":
+            assert disp(pg, "p.status.proof") not in ("none", "absent"), ("a proof-none card keeps the line that says why", card, got)
+        else:
+            assert disp(pg, "p.status.proof") == "none", (card, proof, got)
+        assert pg.ev("getComputedStyle(document.querySelector('#graph-sheet-body .sheet-status')).display") != "none", "the page's own status line shows"
+        assert pg.ev("document.getElementById('graph-sheet').classList.contains('sheet-proof-none')") == (proof == "none")
+    pg.csp_clean()
+    pg.close()
+
+
+def c_fallback_keeps_lines(b, S0, engine):
+    """The fallback page (after a failure) shows all three lines on every card."""
+    root = tempfile.mkdtemp(prefix="pg-s5fb-")
+    assemble.assemble(root, engine)
+    S = Served(root)
+    Handler.garbage = {"/graph/step/a1.json"}
+    try:
+        pg = Pg(b, S.base + "graph/index.html").settled()
+        tap(pg, "a1") if False else None
+        at_hash(pg, "a1")
+        pg.wait("!document.getElementById('graph-layer')", 6000)
+        for sel in ("p.status.statement", "p.status.proof", "p.roots-only"):
+            shown = pg.ev("[...document.querySelectorAll('#graph-cards %s')].map(e => getComputedStyle(e).display)" % sel)
+            assert len(shown) == 23 and all(d != "none" for d in shown), (sel, len(shown), set(shown))
+        pg.close()
+    finally:
+        Handler.garbage = set()
+        S.stop()
+
+
+def c_scripts_off_keeps_lines(b, S):
+    pg = Pg(b, S.base + "graph/index.html", js=False)
+    for sel in ("p.status.statement", "p.status.proof", "p.roots-only"):
+        shown = pg.page.eval_on_selector_all("#graph-cards " + sel, "els => els.map(e => getComputedStyle(e).display)")
+        assert len(shown) == 23 and all(d != "none" for d in shown), (sel, len(shown), set(shown))
+    pg.close()
+
+
 # ------------------------------------------------------------------------- cases that need the REAL engine (camera, gestures)
 
 def center(pg, sel):
@@ -1412,6 +1606,14 @@ def main():
                 run("the sheet status line is the data's words (states and proofs); the list's proof line is never read; the key shows kinds then states", c_status_from_data, eng)
                 run("symbols.order sets the key's order", c_key_order, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
+                run("R3a cue predicate: a clean gap is not a cue, each of the three forms is", lambda b, S, *a: c_cue_predicate_control())
+                for vw, vh in VIEWPORTS:
+                    run("R3a first view at %dx%d: text at its size at the first fit (camera scale, no allowance), the top in view, a cue at the bottom edge" % (vw, vh), c_first_view, eng, vw, vh)
+                if eng == "real":       # the double draws a plain flow and has no Show all
+                    run("R3a Show all at 360x640 frames the whole top level", c_show_all_whole_top_level, eng)
+                run("S5: the sheet hides the list's statement and roots-only lines, and the proof line unless there is no proof", c_sheet_duplicates, eng)
+                run("S5: the fallback page keeps all three lines on every card", c_fallback_keeps_lines, eng)
+                run("S5: with scripts off all three lines stay", c_scripts_off_keeps_lines)
                 run("K1: a parts button follows the SHOWN card: B opened on the map leaves A's button alone and A's click opens A's parts", c_parts_button_follows_shown, eng)
                 for mode in ("abort", 500, 404, "garbage", "invalid"):
                     run("K2 via an address, %s: transport is a notice (A stays open, B closed, retry works); 4xx a refused link; arrived data the fallback" % mode, c_load_failure_go, eng, mode)
@@ -1434,7 +1636,8 @@ def main():
             case("hostile: 6 payloads x title, role, runtime words, key, crumb, status", c_hostile, br)
             case("hostile: kind and state payloads are refusals", c_hostile_kind_state, br)
             case("R7 MUTANT (innerHTML text path) turns the hostile cells red", c_mutant, br)
-            case("first-fit MUTANT: row gaps that leave the text under 15 px at fit turn the strict case red; the old 0.5 allowance would pass one", c_first_fit_mutant, br)
+            case("cue MUTANT: a predicate accepting any visible arrowhead is caught by the negative control", c_cue_mutant, br)
+            case("first-view MUTANT: without zoom.fitMin the strict small-viewport cases go red (camera and rendered measures)", c_first_view_mutant, br)
             case("face MUTANT: a fixed closed height 30 px shorter turns the fit case red", c_face_mutant, br)
             case("sheet MUTANTS: each plausible-wrong sheet turns its case red; the first-frame case stays green", c_sheet_mutants, br)
         if only is None or "markers" in only:

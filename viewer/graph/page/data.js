@@ -9,6 +9,9 @@ import { isId, stepPath } from "./dom.js";
 export const KIND_CLASS = Object.freeze({ theorem: "k-theorem", def: "k-def", structure: "k-structure" });
 export const STATE_CLASS = Object.freeze({ read: "s-read", census: "s-census", none: "s-none" });
 export const PROOF_CLASS = Object.freeze({ read: "p-read", not_read: "p-not-read", none: "p-none" });
+/* The class the SHEET takes from the shown card's `proof` (never from any text): only `none` has one, because a card with no proof
+   keeps the list page's proof line (it says why there is none). graph.css hides the list page's other lines under the sheet. */
+export const SHEET_PROOF_CLASS = Object.freeze({ read: "", not_read: "", none: "sheet-proof-none" });
 
 export class DataError extends Error {
   constructor(code, detail) {

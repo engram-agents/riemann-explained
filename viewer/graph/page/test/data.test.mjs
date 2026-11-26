@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { createData, DataError, validateIndex, validateStep, requiredStrings, FIXED_STRINGS, KIND_CLASS, STATE_CLASS, PROOF_CLASS, isTransportCode } from "../data.js";
+import { createData, DataError, validateIndex, validateStep, requiredStrings, FIXED_STRINGS, KIND_CLASS, STATE_CLASS, PROOF_CLASS, isTransportCode, SHEET_PROOF_CLASS } from "../data.js";
 
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -458,4 +458,11 @@ test("K2: the codes the data layer really throws for a rejected fetch and for a 
   assert.equal(isTransportCode(await code(async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("x"); } }))), false, "not-json arrived");
   assert.equal(isTransportCode(await code(async () => ({ ok: true, status: 200, json: async () => ({ format: 2 }) }))), false, "a contract refusal arrived");
   assert.equal(isTransportCode(await code(async () => undefined)), false, "no response object at all is not a recognised status");
+});
+
+
+test("S5: the sheet's proof class comes from a page-owned table keyed exactly like PROOF_CLASS; only `none` has a class", () => {
+  assert.deepEqual(Object.keys(SHEET_PROOF_CLASS), Object.keys(PROOF_CLASS));
+  assert.deepEqual(Object.entries(SHEET_PROOF_CLASS).filter(([, v]) => v !== ""), [["none", "sheet-proof-none"]]);
+  assert.ok(Object.isFrozen(SHEET_PROOF_CLASS));
 });

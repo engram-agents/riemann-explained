@@ -277,3 +277,28 @@ test("K2 scan control: a planted message or reason flowing into the DOM is found
   assert.equal(domLeaks("say(strings.parts_failed_notice);").length, 0);
   assert.equal(domLeaks("say(text);").length >= 1, true);
 });
+
+
+/* S5: the sheet's proof class comes from the PROOF table (data.js), never from text; the css hiding the list page's lines is scoped
+   under the sheet, so the fallback page and a page with scripts off keep every line. */
+test("S5: app.js takes the sheet class from SHEET_PROOF_CLASS[proof]; no page code names the class or reads the lines' text", () => {
+  const app = noComments(read(path.join(GRAPH, "page", "app.js"))), sheet = noComments(read(path.join(GRAPH, "page", "sheet.js")));
+  assert.match(app, /SHEET_PROOF_CLASS\s*\[\s*m\.proof\s*\]/, "the class is looked up by the data's proof");
+  for (const [n, src] of [["app.js", app], ["sheet.js", sheet]]) {
+    assert.ok(!src.includes("sheet-proof-none"), n + " names the class itself instead of taking it from the table");
+    assert.ok(!/roots-only/.test(src), n + " touches the roots-only line");
+  }
+  assert.ok(read(path.join(GRAPH, "page", "data.js")).includes('none: "sheet-proof-none"'));
+});
+
+test("S5: every css rule that hides a list-page line (p.status, p.roots-only) is scoped under the sheet", () => {
+  const css = noComments(read(path.join(GRAPH, "graph.css")));
+  let seen = 0;
+  for (const m of css.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
+    const sel = m[1].trim();
+    if (!/\.status\b|\.roots-only\b/.test(sel)) continue;
+    seen++;
+    for (const one of sel.split(",")) assert.match(one.trim(), /^\.graph-sheet\b/, "unscoped rule: " + one.trim());
+  }
+  assert.ok(seen >= 3, "the rules this polices: " + seen);
+});

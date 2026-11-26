@@ -43,6 +43,7 @@ export function createSheet(parts, strings, hooks, signal) {
     clear(crumbs);
     clear(tools);
     body.classList.remove("claim-clamped");
+    if (rec.sheetClass) root.classList.remove(rec.sheetClass);
     root.hidden = true;
     cur = null;
   }
@@ -88,6 +89,7 @@ export function createSheet(parts, strings, hooks, signal) {
     if (!close()) return false;
     const rec = adopt(article, true);
     rec.id = info.id;          // the id this sheet shows: an engine event about any other id never touches it
+    if (info.sheetClass) { root.classList.add(info.sheetClass); rec.sheetClass = info.sheetClass; }   // a token from the page's own table
     clear(crumbs);
     crumbs.appendChild(crumbList(info.crumbs));
     const claim = article.querySelector(".claim");

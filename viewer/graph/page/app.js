@@ -10,7 +10,7 @@
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
 import { createGraph } from "../engine/index.js";
 import { el, isId } from "./dom.js";
-import { createData, DataError, isTransportCode, KIND_CLASS, STATE_CLASS } from "./data.js";
+import { createData, DataError, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS } from "./data.js";
 import { makeRenderFace } from "./face.js";
 import { createSheet } from "./sheet.js";
 
@@ -120,7 +120,7 @@ export async function start(doc, deps) {
       const w = index.symbols.words;
       const status = [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
       const ok = sheet.showCard(art, {
-        id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id),
+        id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
         crumbs: anc.concat(m).map((x) => ({ id: x.id, title: x.title, role: x.role })),
       });
       if (ok) { hush(); handle.select(id); }
@@ -194,6 +194,7 @@ export async function start(doc, deps) {
     const loadFailures = new Map();
     handle = deps.createGraph(q["graph"], {
       roots, maxChildren: index.maxChildren, sizes: { ...CARD_SIZES },
+      zoom: { fitMin: 1 },      // the first view never zooms below scale 1 (text at its size); 'Show all' (handle.fit()) still shows all
       loadChildren: (id) => data.loadChildren(id).catch((e) => { loadFailures.set(id, e instanceof DataError ? e.code : null); throw e; }),
       renderFace: makeRenderFace(strings),
     });
