@@ -671,7 +671,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"note_source": {"source", "commit"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"note_source": {"source", "commit"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -1847,7 +1847,9 @@ def _graph_strings_keys(symbols=None):
     """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table (`symbols`, default GRAPH_SYMBOLS) and the run-time keys,
     on every build. A role word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
     rows = [v for table in (GRAPH_SYMBOLS if symbols is None else symbols).values() for v in table.values()]
-    return [v["words"] for v in rows] + [v["card_words"] for v in rows if "card_words" in v] + list(GRAPH_RUNTIME_KEYS)
+    return ([v["words"] for v in rows] + [v["card_words"] for v in rows if "card_words" in v]
+            + [k for v in rows if "count_words" in v and isinstance(v["count_words"], dict) for k in (v["count_words"].get("many"), v["count_words"].get("one")) if isinstance(k, str)]
+            + list(GRAPH_RUNTIME_KEYS))
 
 
 def _graph_strings_errors(strings, symbols=None):
@@ -2077,6 +2079,14 @@ def _graph_count_errors(objs, symbols=None):
             if c["id"] in files and c["child_count"] != len(files[c["id"]]["children"]):
                 out.append(("GRAPH-COUNT", i, f"child {c['id']} child_count {c['child_count']} is not the {len(files[c['id']]['children'])} "
                                               "children of its step file"))
+    for i in sorted(files):   # child_kind: the kind of every child, and only on a card that has children
+        for sid, card in [(i, files[i]["card"])] + [(c["id"], c) for c in files[i]["children"]]:
+            if "child_kind" in card:
+                below = files[sid]["children"] if sid in files else None
+                if below is not None and not below:
+                    out.append(("GRAPH-CHILDKIND", sid, "is set and child_count is 0"))
+                elif below is not None and any(c["kind"] != card["child_kind"] for c in below):
+                    out.append(("GRAPH-CHILDKIND", sid, "is not the kind of every child"))
     ix = objs["graph/index.json"]
     if ix["steps"] != len(files):
         out.append(("GRAPH-COUNT", "index", f"steps {ix['steps']} is not the {len(files)} step files"))
@@ -2156,7 +2166,7 @@ def _graph_note_errors(notes, by, kids):
     return out
 
 
-def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None):
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None, child_kinds=False):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
     hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
@@ -2178,6 +2188,11 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
                 errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has card_words (only a kinds row may)"))
             elif "card_words" in v and not isinstance(v["card_words"], str):
                 errors.append(("GRAPH-STRINGS", f"{name}.{k}.card_words", "is not a string"))
+            if "count_words" in v and name != "kinds":   # `count_words` ({many, one}: two keys of `strings`) is for a kinds row only
+                errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has count_words (only a kinds row may)"))
+            elif "count_words" in v and not (isinstance(v["count_words"], dict) and set(v["count_words"]) == {"many", "one"}
+                                             and all(isinstance(x, str) for x in v["count_words"].values())):
+                errors.append(("GRAPH-STRINGS", f"{name}.{k}.count_words", "must be an object with exactly the keys many and one, both strings"))
     if errors:
         return errors, {}
     seen = set()
@@ -2266,6 +2281,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     def closed(r):
         d = {"child_count": len(kids.get(r["id"], [])), "id": r["id"], "kind": r["kind"], "path": list(path[r["id"]]), "proof": r["proof"],
              "state": r["state"], "title": r["title"]}
+        if child_kinds and kids.get(r["id"]) and len({c["kind"] for c in kids[r["id"]]}) == 1:   # optional: the kind all the children share
+            d["child_kind"] = kids[r["id"]][0]["kind"]
         if r.get("role"):   # optional: absent, never null and never empty
             d["role"] = r["role"]
         return d
@@ -2278,7 +2295,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
         "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
         "strings": {k: strings[k] for k in _graph_strings_keys(symbols) + list(GRAPH_OPTIONAL_KEYS) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: dict({"class": v["class"], "text": strings[v["words"]], "words": v["words"]},
-                                        **({"card_words": v["card_words"]} if "card_words" in v else {})) for k, v in table.items()}
+                                        **({"card_words": v["card_words"]} if "card_words" in v else {}),
+                                        **({"count_words": {"many": v["count_words"]["many"], "one": v["count_words"]["one"]}} if "count_words" in v else {})) for k, v in table.items()}
                          for name, table in symbols.items()},
                         order={name: list(orders[name]) for name in symbols}),
         "top": [r["id"] for r in kids.get("root", [])]}}
@@ -13789,6 +13807,81 @@ def _selftest_cases():
                     ([("GRAPH-NOTE", "b", "must have exactly the keys source and text")], {}), ([("GRAPH-NOTE", "b", "must have exactly the keys source and text")], {}),
                     ([("GRAPH-NOTE", "b", "has a value that is not a string")], {}), ([("GRAPH-NOTE", "b", "is not an object")], {}),
                     ([("GRAPH-NOTE", "zz", "is not a step")], {})))
+
+    @case("GRCK1", "`_graph_files(child_kinds=)`: off by default (the bytes equal an explicit child_kinds=False and no card has `child_kind`); on, every card (the step file's card and the "
+                   "closed child entry) with children that all share one kind has `child_kind` = that kind, and it is omitted when the children differ and when there are none; the "
+                   "card in a step's own file and the child entry in its parent's file agree")
+    def _():
+        rows3 = {k: {"class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in ("part", "group", "file")}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_group="G", symbol_kind_file="F")
+
+        def r(i, parent, order, kind):
+            return gr_row(i, parent, order, kind=kind, state="none", proof="none")
+        rows = [r("a", "root", 0, "part"), r("b", "a", 0, "group"), r("c", "a", 1, "group"), r("d", "b", 0, "file"), r("e", "b", 1, "file"),
+                r("x", "root", 1, "part"), r("y", "x", 0, "group"), r("z", "x", 1, "file"), r("w", "root", 2, "part"), r("v", "w", 0, "file")]
+        off = _graph_files(rows, "c0", st, symbols=own)[1]
+        off2 = _graph_files(rows, "c0", st, symbols=own, child_kinds=False)[1]
+        errs, on = _graph_files(rows, "c0", st, symbols=own, child_kinds=True)
+        own_card = {i: on[f"graph/step/{i}.json"]["card"].get("child_kind") for i in "abcdexyzwv"}
+        entry = {c["id"]: c.get("child_kind") for s in "axw" + "by" for c in on[f"graph/step/{s}.json"]["children"]}
+        live = _graph_files([gr_row("a"), gr_row("b", "a", 1)], "c0", _strings(), child_kinds=False)[1]
+        return _eq((_graph_bytes(off) == _graph_bytes(off2), any("child_kind" in json.dumps(v) for v in off.values()), errs, own_card,
+                    {i: own_card[i] for i in entry} == entry, any("child_kind" in json.dumps(v) for v in live.values())),
+                   (True, False, [], {"a": "group", "b": "file", "c": None, "d": None, "e": None, "x": None, "y": None, "z": None, "w": "file", "v": None},
+                    True, False))
+
+    @case("GRCK2", "GRAPH-CHILDKIND <id> <reason>: a card (in its own step file, or as a child entry of its parent's) whose child_kind is not the kind of every child, or that has a "
+                   "child_kind and no children, is refused by the count check")
+    def _():
+        rows = [gr_row("a", kind="theorem"), gr_row("b", "a", 1, kind="def"), gr_row("c", "b", 1, kind="def")]
+        ok = _graph_files(rows, "c0", _strings(), child_kinds=True)[1]
+        planted = json.loads(json.dumps(ok))
+        planted["graph/step/a.json"]["card"]["child_kind"] = "theorem"       # its only child is a def
+        planted["graph/step/c.json"]["card"]["child_kind"] = "def"           # it has no children
+        planted["graph/step/a.json"]["children"][0]["child_kind"] = "theorem"   # the child entry b: its child c is a def
+        errs = [tuple(e) for e in _graph_count_errors(planted) if e[0] == "GRAPH-CHILDKIND"]
+        good = [tuple(e) for e in _graph_count_errors(ok) if e[0] == "GRAPH-CHILDKIND"]
+        return _eq((good, errs, ok["graph/step/a.json"]["card"]["child_kind"], ok["graph/step/b.json"]["card"]["child_kind"]),
+                   ([], [("GRAPH-CHILDKIND", "a", "is not the kind of every child"), ("GRAPH-CHILDKIND", "b", "is not the kind of every child"),
+                         ("GRAPH-CHILDKIND", "c", "is set and child_count is 0")], "def", "def"))
+
+    @case("GRCW1", "a kinds row of a caller's table may carry `count_words` {many, one} (two keys of `strings`): the row in symbols.kinds then has the keys card_words, class, count_words, "
+                   "text, words (sorted), index.json `strings` holds the count keys of the rows, a count key that `strings` lacks is `GRAPH-STRINGS <key> missing`, count_words that is not "
+                   "exactly {many, one} of strings is refused, and so is one on a states or proofs row; the live table has none")
+    def _():
+        cw = {"many": "count_group_many", "one": "count_group_one"}
+        rows3 = {"part": {"class": "kind-part", "words": "symbol_kind_part"},
+                 "group": {"class": "kind-group", "words": "symbol_kind_group", "count_words": cw}, "file": {"class": "kind-file", "words": "symbol_kind_file"}}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_group="G", symbol_kind_file="F", count_group_many="{n} groups", count_group_one="{n} group")
+        rows = [gr_row("a", kind="part", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
+        ix = objs["graph/index.json"]
+        dangling = {k: v for k, v in st.items() if k != "count_group_one"}
+        bad = lambda row: [tuple(e) for e in _graph_files(rows, "c0", st, symbols=dict(own, kinds=dict(rows3, group=dict(rows3["group"], count_words=row))))[0]]
+        on_state = dict(own, states=dict(own["states"], read=dict(own["states"]["read"], count_words=cw)))
+        live = _graph_files([gr_row("a")], "c0", _strings())[1]["graph/index.json"]
+        return _eq((errs, sorted(ix["symbols"]["kinds"]["group"]), ix["symbols"]["kinds"]["group"]["count_words"], sorted(ix["symbols"]["kinds"]["part"]), len(ix["strings"]),
+                    ix["strings"]["count_group_one"], [tuple(e) for e in _graph_files(rows, "c0", dangling, symbols=own)[0]],
+                    bad({"many": "count_group_many"}), bad(dict(cw, extra="x")), bad({"many": "count_group_many", "one": 5}),
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=on_state)[0]], sorted(live["symbols"]["kinds"]["theorem"]), len(live["strings"])),
+                   ([], ["class", "count_words", "text", "words"], cw, ["class", "text", "words"], 22, "{n} group", [("GRAPH-STRINGS", "count_group_one", "missing")],
+                    [("GRAPH-STRINGS", "kinds.group.count_words", "must be an object with exactly the keys many and one, both strings")],
+                    [("GRAPH-STRINGS", "kinds.group.count_words", "must be an object with exactly the keys many and one, both strings")],
+                    [("GRAPH-STRINGS", "kinds.group.count_words", "must be an object with exactly the keys many and one, both strings")],
+                    [("GRAPH-SYMBOL", "states.read", "has count_words (only a kinds row may)")], ["class", "text", "words"], 20))
+
+    @case("GRM3", "`{n}` is a declared placeholder of exactly the four count keys (count_group_one, count_group_many, count_file_one, count_file_many), required of none; any other "
+                  "placeholder in them, and `{n}` in the optional page words, is refused")
+    def _():
+        base = _strings()
+        ok = dict(base, count_group_one="{n} group", count_group_many="{n} groups", count_file_one="{n} file", count_file_many="{n} files")
+        plain = dict(base, count_group_one="one group")
+        bogus = dict(base, count_file_many="{x} files")
+        wrong = dict(base, note_label="{n} labels")
+        return _eq((_strings_problems(ok), _strings_problems(plain), _strings_problems(bogus), _strings_problems(wrong)),
+                   ([], [], [("STRINGS-KEY", "count_file_many", "has an unknown placeholder {x}")], [("STRINGS-KEY", "note_label", "has an unknown placeholder {n}")]))
 
     return cases
 
