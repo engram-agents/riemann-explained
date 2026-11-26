@@ -959,16 +959,26 @@ def _readme_quote(grh):
 READINGS_READ_LIMIT = 65536   # the most bytes of one note file the tool reads (64 KiB; the body has its own, smaller bound)
 READINGS_BODY_LIMIT = 20000   # the most bytes of a note's body (the text after the closing `---` line)
 READINGS_MAX = 200            # the most notes in the folder
-READINGS_KEYS = ("id", "title", "attaches", "about", "by", "second_read_by", "source_commit", "date")   # the front-matter keys, in the one order a note may write them
+READINGS_ENTRIES = 1000       # the most directory entries of the folder the tool examines (more: one line `SKEL-READING-COUNT DIR entries`, nothing else)
+READINGS_TITLE_MAX = 200      # the most characters of a title
+READINGS_BY_MAX = 100         # the most characters of `by` and of `second_read_by`
+READINGS_ABOUT_MAX = 200      # the most characters of one `about` name
+READINGS_KEYS = ("id", "title", "attaches", "about", "by", "second_read_by", "source_commit", "date")   # the front-matter keys (each once, in any order)
 READINGS_LISTS = ("attaches", "about")   # the keys whose value is a one-line list; every other key is text
 _READING_LINE = re.compile(r"([a-z_]+):(?: (.*))?")
 _READING_ID = re.compile(r"[a-z0-9-]{1,64}")
 _READING_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
 
 
+def _esc(text):
+    """`text` with every character that is not printable (str.isprintable() False: a newline, ESC, NUL, U+2028, a bidi control, ...) written as \\xNN, \\uNNNN or \\UNNNNNNNN (lower-case hex); a backslash and
+    every printable character stay as they are. The one function every printed file name and detail of a `SKEL-READING-*` line goes through."""
+    return "".join(c if c.isprintable() else (f"\\x{ord(c):02x}" if ord(c) < 0x100 else f"\\u{ord(c):04x}" if ord(c) < 0x10000 else f"\\U{ord(c):08x}") for c in text)
+
+
 def _shown(name):
-    """A file name as it is printed: its bytes as UTF-8, a byte that is not UTF-8 written as an escape (a print never fails on a name)."""
-    return os.fsencode(name).decode("utf-8", "backslashreplace")
+    """A file name as it is printed: its bytes as UTF-8, a byte that is not UTF-8 written as an escape (a print never fails on a name), then `_esc`."""
+    return _esc(os.fsencode(name).decode("utf-8", "backslashreplace"))
 
 
 def _reading_value(key, value):
@@ -993,12 +1003,12 @@ def _reading_value(key, value):
 
 def _reading_front(text):
     """(reason, fields, body) of one note's text: the front matter between the first line `---` and the next line `---`, then the body (every byte after that line's newline). `reason` is None when the
-    front matter is taken. Lines are `key: value` or blank; the keys are those of READINGS_KEYS, each once, in that order."""
+    front matter is taken. Lines are `key: value` or blank; the keys are those of READINGS_KEYS, each once, in any order."""
     if text.startswith("---\r"):
         return "carriage return", None, None
     if not text.startswith("---\n"):
         return "no opening ---", None, None
-    pos, n, fields, last = 4, 1, {}, -1
+    pos, n, fields = 4, 1, {}
     while True:
         nl = text.find("\n", pos)
         line = text[pos:] if nl == -1 else text[pos:nl]
@@ -1020,9 +1030,6 @@ def _reading_front(text):
             return f"duplicate key {key}", None, None
         if key not in READINGS_KEYS:
             return f"unknown key {key}", None, None
-        if READINGS_KEYS.index(key) < last:
-            return f"key {key} is out of order", None, None
-        last = READINGS_KEYS.index(key)
         reason, value = _reading_value(key, (m.group(2) or "").strip())
         if reason:
             return reason, None, None
@@ -1040,13 +1047,25 @@ def _readings_invariant(step_readings, index_rows):
 
 
 def _readings(notes_dir, pin, rows, ilean_dir):
+    """`_readings_checked` with every file name and every detail of its refusals escaped by `_esc` (so no refusal line can carry a raw control character, whatever the printer)."""
+    errors, step_readings, index_rows = _readings_checked(notes_dir, pin, rows, ilean_dir)
+    return [(c, _esc(w), _esc(d)) for c, w, d in errors], step_readings, index_rows
+
+
+def _readings_checked(notes_dir, pin, rows, ilean_dir):
     """([(SKEL-READING-<kind>, file, detail)], {file step id: [reading]}, [index row]) from the folder `notes_dir`: the regular files `*.md` directly in it, in name order, each read through the bounded,
     contained reader; anything else in it is refused by name. Every fault of every note is reported together (the faults of the folder first and alone: FILE, COUNT)."""
     errors = []
     try:
-        names = sorted(os.listdir(notes_dir))
+        names = []
+        with os.scandir(notes_dir) as it:
+            for entry in it:   # at most READINGS_ENTRIES + 1 entries are looked at
+                names.append(entry.name)
+                if len(names) > READINGS_ENTRIES:
+                    return [("SKEL-READING-COUNT", "DIR", "entries")], {}, []
     except OSError:
         return [("SKEL-READING-FILE", "DIR", "unreadable")], {}, []
+    names.sort()
     errors += [("SKEL-READING-FILE", _shown(n), "not-a-note") for n in names if not n.endswith(".md")]
     names = [n for n in names if n.endswith(".md")]
     if len(names) > READINGS_MAX:
@@ -1089,6 +1108,8 @@ def _readings(notes_dir, pin, rows, ilean_dir):
         size = len(body.encode("utf-8"))
         if size > READINGS_BODY_LIMIT:
             errors.append(("SKEL-READING-SIZE", shown, f"body {size} bytes, at most {READINGS_BODY_LIMIT}"))
+        if body == "":
+            errors.append(("SKEL-READING-BODY", shown, "empty"))
         errors += [("SKEL-READING-MISSING", shown, k) for k in READINGS_KEYS if k != "about" and k not in f]
         if "id" in f and not _READING_ID.fullmatch(f["id"]):
             errors.append(("SKEL-READING-ID", shown, f["id"]))
@@ -1096,6 +1117,8 @@ def _readings(notes_dir, pin, rows, ilean_dir):
             errors.append(("SKEL-READING-TITLE", shown, "backtick"))
         elif "title" in f and f["title"] == "":
             errors.append(("SKEL-READING-TITLE", shown, "empty"))
+        if len(f.get("title", "")) > READINGS_TITLE_MAX:
+            errors.append(("SKEL-READING-SIZE", shown, "title too-long"))
         if "date" in f:
             m = _READING_DATE.fullmatch(f["date"])
             try:
@@ -1107,6 +1130,7 @@ def _readings(notes_dir, pin, rows, ilean_dir):
         for k in ("by", "second_read_by"):
             if k in f and f[k] == "":
                 errors.append(("SKEL-READING-BY", shown, f"{k} is empty"))
+        errors += [("SKEL-READING-SIZE", shown, f"{k} too-long") for k in ("by", "second_read_by") if len(f.get(k, "")) > READINGS_BY_MAX]
         if f.get("by") and f.get("by") == f.get("second_read_by"):
             errors.append(("SKEL-READING-BY", shown, "by and second_read_by are the same"))
         if "source_commit" in f and f["source_commit"] != pin:
@@ -1124,6 +1148,8 @@ def _readings(notes_dir, pin, rows, ilean_dir):
                 errors.append(("SKEL-READING-ATTACHES", shown, f"not-a-file {a[0]}"))
             else:
                 step = a[0]
+        if any(len(name) > READINGS_ABOUT_MAX for name in f.get("about", [])):
+            errors.append(("SKEL-READING-SIZE", shown, "about too-long"))
         bad = []
         for name in f.get("about", []):
             if name not in bad and not known(name):
@@ -3646,7 +3672,7 @@ def _selftest_cases():
             good.replace("by: Halley", "by: [Halley]"), good.replace("title: A title", "title: [A, B]"), good.replace("attaches: [lean-s-a]", "attaches: lean-s-a"),
             good.replace("about: [New.S.alpha]", "about: New.S.alpha"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a,]"),
             good.replace("attaches: [lean-s-a]", "attaches: [[lean-s-a]]"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a] # the first file"),
-            good.replace("about: [New.S.alpha]", "about: []"), "---\nid: x\n---\n", good.replace("id: n-one\n", "id: n-one\r\n"))]
+            good.replace("about: [New.S.alpha]", "about: []"), "---\nid: x\n---\nb\n", good.replace("id: n-one\n", "id: n-one\r\n"))]
         hashtail = rd_build({"n.md": rd_note(title="Plain # not a comment")})
         enc = [rd_build({"n.md": b})[0] for b in (b"\xef\xbb\xbf" + rd_note(), rd_note(body="a\x00b\n"), rd_note().replace(b"A title", b"A\x00title"), rd_note(body="x\n").replace(b"x\n", b"\xff\xfe\n"),
                                                   rd_note().replace(b"A title", b"A \xc3 title"))]
