@@ -3747,6 +3747,16 @@ def _scale_from_text(text):
     return text
 
 
+def _scale_floor_from_text(value):
+    """([(GRAPH-SCALE-FLOOR, <value as typed>, "")], None) for a value that is not a positive finite number, else ([], the number). THE sequence of the open-scale floor, written once and
+    called by `_run` and by build_grh_skeleton.py: a text (the command line) is converted by `_scale_from_text`, a number (a caller of run() or build()) is taken as it is, the number is
+    checked by `_scale_floor_error`, and a refusal names the value as it was typed (`1e400`, not `inf`; a bool is `True`). The two primitives are called from here only."""
+    number = _scale_from_text(value) if isinstance(value, str) else value
+    typed = value if isinstance(value, str) else str(value)
+    bad = _scale_floor_error(number)
+    return ([(c, typed, r) for c, _w, r in bad], None) if bad else ([], number)
+
+
 def _assemble(m, s, commits):
     """(errors, the facts check line, level0, level1, the group files, the facts over the steps)."""
     errors = []
@@ -3859,11 +3869,9 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     if graph_src is not None and not os.path.isdir(graph_src):   # a folder the caller NAMED must be there; the default one may be absent
         raise _Unreadable(f"--graph-src is not a directory: {graph_src}")
     if open_scale_floor is not None:   # refused by name, as typed, before anything is read or written
-        bad = _scale_floor_error(_scale_from_text(open_scale_floor) if isinstance(open_scale_floor, str) else open_scale_floor)
+        bad, open_scale_floor = _scale_floor_from_text(open_scale_floor)
         if bad:
-            typed = open_scale_floor if isinstance(open_scale_floor, str) else str(open_scale_floor)
-            return _refuse([(c, typed, r) for c, _w, r in bad])
-        open_scale_floor = _scale_from_text(open_scale_floor) if isinstance(open_scale_floor, str) else open_scale_floor
+            return _refuse(bad)
     sj = _read_json(strings, "strings file")
     if os.path.isdir(out) and os.listdir(out) and not force:
         return _refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files; a fresh build would mix two builds; "

@@ -933,7 +933,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
     if open_scale_floor is not None:
-        errors = bs._scale_floor_error(open_scale_floor)
+        errors, open_scale_floor = bs._scale_floor_from_text(open_scale_floor)   # the page's sequence: a text (the command line) or a number; a refusal names the value as typed
         if errors:
             return errors, {}, [], {}
     errors, rows, rep = build_rows(grh, ilean_dir, source_prefix)
@@ -1041,9 +1041,9 @@ def _run(opts):
     if problems:
         return refuse(problems)
     errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
-                                       bs._scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None)
+                                       opts.get("open-scale-floor"))
     if errors:
-        return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
+        return refuse(errors)
     try:
         bs._publish(opts["out"], files)
     except OSError as e:
@@ -3240,7 +3240,8 @@ def _selftest_cases():
         defined = sorted({n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name in three}
                          | {t.id for n in ast.walk(tree) if isinstance(n, (ast.Assign, ast.AnnAssign)) for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
                             if isinstance(t, ast.Name) and t.id in three})
-        used = sorted({n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "bs" and n.attr.startswith("_scale")})   # what this file takes from the page
+        used = sorted({n.attr for fn in tree.body if isinstance(fn, ast.FunctionDef) and fn.name != "_selftest_cases" for n in ast.walk(fn)
+                       if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "bs" and n.attr.startswith("_scale")})   # what the tool takes from the page (the self-test aside)
         texts = ("0", "-0", "0.0", "-1", "nan", "inf", "-inf", "1e400", "abc", "true", "", "0x1", " 1", "1 ", "+1", "1_0", "\u0661\u0662\u0663", "\uff11", "1" * 400, "1" * 5000)
         real = {n: getattr(bs, n) for n in names}
         with _tmp() as d:
