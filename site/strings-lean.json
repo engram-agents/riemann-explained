@@ -3,6 +3,9 @@
  "card_kind_group": "Group",
  "card_kind_part": "Part",
  "key_kinds_heading": "What a box is",
+ "key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+ "note_label": "From the repository, unchanged",
+ "note_source": "Source file: {source} · version {commit} of lsernau/grh-lean",
  "symbol_kind_file": "Lean file",
  "symbol_kind_group": "Group of files",
  "symbol_kind_part": "Part of the argument"

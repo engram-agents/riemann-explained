@@ -38,12 +38,14 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
  8 STRINGS. The strings file is read and checked as build_site does and overlaid; `_graph_files` checks the exact key set (23 keys: the kind words and the card words come from the overlay).
 """
 import contextlib
+import errno
 import hashlib
 import importlib.util
 import io
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -75,6 +77,17 @@ bs = _load("build_site")
 
 class Unreadable(Exception):
     """An input that cannot be read: exit 2."""
+
+
+class SourceError(Exception):
+    """A file that cannot be taken as an input of the build (`reason` says why): the caller names it in a SKEL-* line."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+SOURCE_READ_LIMIT = 1048576   # the most bytes of a source file the tool reads (1 MiB)
 
 
 PREFIX = "lean-"      # every id of this tool starts with it: its own namespace, apart from the ids of the repository's outline
@@ -152,6 +165,7 @@ def parse_contents(text):
         s["top_file"] = len(files) == 1 and files[0]["path"].count("/") == 1
         s["folder"] = None
         if s["top_file"]:
+            errors.extend(("SKEL-LINE", str(g["line"]), "") for g in s["groups"] if not g["files"])   # a bold line with no file in a section of one file
             continue
         if not files:
             errors.append(("SKEL-LINE", str(s["line"]), ""))
@@ -168,6 +182,35 @@ def parse_contents(text):
                 errors.append(("SKEL-LINE", str(f["line"]), ""))
     errors.sort(key=lambda e: int(e[1]))
     return sections, errors
+
+
+def _read_bounded(path, limit):
+    """The bytes of the regular file `path`, read through ONE descriptor that is opened without following a symlink and without blocking (so a FIFO does not hang the open),
+    checked with fstat, and read at most `limit` + 1 bytes. Raises SourceError: missing, symlink, not-a-regular-file, too-large, unreadable."""
+    try:
+        if stat.S_ISLNK(os.lstat(path).st_mode):
+            raise SourceError("symlink")
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
+    except OSError as e:
+        raise SourceError("missing" if e.errno == errno.ENOENT else ("symlink" if e.errno == errno.ELOOP else "unreadable"))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise SourceError("not-a-regular-file")
+        chunks, need = [], limit + 1
+        while need > 0:
+            part = os.read(fd, min(need, 65536))
+            if not part:
+                break
+            chunks.append(part)
+            need -= len(part)
+        data = b"".join(chunks)
+        if len(data) > limit:
+            raise SourceError("too-large")
+        return data
+    except OSError:
+        raise SourceError("unreadable")
+    finally:
+        os.close(fd)
 
 
 def _imports(src_text):
@@ -235,13 +278,41 @@ def _disk_paths(grh):
         raise Unreadable(f"cannot read src/New: {e}")
     base = os.path.join(grh, "src")
     found = []
-    for r, _, fs in os.walk(os.path.join(base, "New"), onerror=fail):
-        found += [os.path.relpath(os.path.join(r, n), base)[:-len(".lean")].replace(os.sep, "/") for n in fs if n.endswith(".lean")]
+    for r, ds, fs in os.walk(os.path.join(base, "New"), onerror=fail):
+        found += [os.path.relpath(os.path.join(r, n), base)[:-len(".lean")].replace(os.sep, "/") for n in fs + ds if n.endswith(".lean")]   # a directory named X.lean is listed too: it is refused as not a regular file
     return sorted(found)
 
 
+def _group_report(gid, members, kept):
+    """The numbers of one group for the report: files, files that are an end of a drawn link, files with none, the longest path of `rests_on` and the depth row with most files
+    (depth 0 = a file that rests on nothing; the smallest depth wins a tie)."""
+    ends = {p for p in members if kept[p]} | {q for p in members for q in kept[p]}
+    depth = _depths(kept)
+    per = {}
+    for v in (depth or {}).values():
+        per[v] = per.get(v, 0) + 1
+    wide = min((k for k in per if per[k] == max(per.values())), default=0)
+    return {"group": gid, "files": len(members), "linked": len(ends), "unlinked": len(members) - len(ends),
+            "longest": max((depth or {}).values(), default=0), "widest_depth": wide, "widest_count": per.get(wide, 0)}
+
+
+def _report(rows, drawn, total, self_imports, groups, cut, uses):
+    """The report of a build: the steps, the top ids, the widest step, the depth, the counts of the links and of the kinds, the groups, the ids that were cut, the uses."""
+    kids, depth_max = {}, 0
+    parent = {r["id"]: r["parent"] for r in rows}
+    for r in rows:
+        kids[r["parent"]] = kids.get(r["parent"], 0) + 1
+        d, i = 1, r["parent"]
+        while i != "root" and i in parent:
+            d, i = d + 1, parent[i]
+        depth_max = max(depth_max, d)
+    return {"steps": len(rows), "top": [r["id"] for r in rows if r["parent"] == "root"], "widest": max([v for k, v in kids.items() if k != "root"] or [0]),
+            "depth": depth_max, "drawn": drawn, "not_drawn": total - drawn, "ignored": {"self": self_imports}, "groups": groups, "cut": cut,
+            "kinds": {k: sum(1 for r in rows if r["kind"] == k) for k in KINDS}, "uses": uses}
+
+
 def build_rows(grh):
-    """(errors, rows, report) from the folder `grh`: SKEL-LINE, then SKEL-MISSING and SKEL-UNLISTED, each stops the run before the next stage."""
+    """(errors, rows, report) from the folder `grh`: SKEL-LINE, then SKEL-MISSING and SKEL-UNLISTED, then SKEL-SOURCE (a source file that cannot be read, all reported), each stops the run before the next stage."""
     sections, errors = parse_contents(_read(os.path.join(grh, "CONTENTS.md"), "CONTENTS.md"))
     if errors:
         return errors, [], {}
@@ -250,10 +321,21 @@ def build_rows(grh):
     errors = [("SKEL-MISSING", p, "") for p in listed if p not in set(disk)] + [("SKEL-UNLISTED", p, "") for p in disk if p not in set(listed)]
     if errors:
         return errors, [], {}
-    src = {p: _read(os.path.join(grh, "src", *p.split("/")) + ".lean", p + ".lean") for p in listed}
+    src = {}
+    for p in listed:
+        try:
+            src[p] = _read_bounded(os.path.join(grh, "src", *p.split("/")) + ".lean", SOURCE_READ_LIMIT).decode("utf-8")
+        except SourceError as e:
+            errors.append(("SKEL-SOURCE", p, e.reason))
+        except UnicodeDecodeError:
+            errors.append(("SKEL-SOURCE", p, "not-utf-8"))
+    if errors:
+        return errors, [], {}
     cut = []
 
     def ident(i):
+        if not bs.GRAPH_ID.fullmatch(i):   # a bad id is never cut (the cut could hide its bad character): _graph_files names the whole id
+            return i
         j = _cap(i)
         if j != i:
             cut.append((i, j))
@@ -296,7 +378,7 @@ def build_rows(grh):
         rows.append({"id": i, "parent": parent, "order": order, "premises": prem, "kind": kind, "state": "none", "proof": "none", "title": title})
     for ti, s in enumerate(sections):
         if s["top_file"]:   # a part whose one file has no folder: the part is made from the heading, the file is its child (no group between)
-            f = s["groups"][0]["files"][0]
+            f = next(f for g in s["groups"] for f in g["files"])
             pid = ident(PREFIX + slug(s["heading"]))
             row(pid, "root", ti, [], "part", s["heading"])
             row(fid[f["path"]], pid, 0, [], "file", f["title"])
@@ -310,26 +392,8 @@ def build_rows(grh):
             members, kept = group_files[(ti, gi)]
             for fi, f in enumerate(g["files"]):
                 row(fid[f["path"]], gid, fi, premises[f["path"]], "file", f["title"])
-            ends = {p for p in members if kept[p]} | {q for p in members for q in kept[p]}
-            depth = _depths(kept)
-            per = {}
-            for v in (depth or {}).values():
-                per[v] = per.get(v, 0) + 1
-            wide = min((k for k in per if per[k] == max(per.values())), default=0)
-            groups.append({"group": gid, "files": len(members), "linked": len(ends), "unlinked": len(members) - len(ends),
-                           "longest": max((depth or {}).values(), default=0), "widest_depth": wide, "widest_count": per.get(wide, 0)})
-    kids, depth_max = {}, 0
-    parent = {r["id"]: r["parent"] for r in rows}
-    for r in rows:
-        kids[r["parent"]] = kids.get(r["parent"], 0) + 1
-        d, i = 1, r["parent"]
-        while i != "root" and i in parent:
-            d, i = d + 1, parent[i]
-        depth_max = max(depth_max, d)
-    return [], rows, {"steps": len(rows), "top": [r["id"] for r in rows if r["parent"] == "root"], "widest": max([v for k, v in kids.items() if k != "root"] or [0]),
-                      "depth": depth_max, "drawn": drawn, "not_drawn": total - drawn, "ignored": {"self": self_imports}, "groups": groups, "cut": cut,
-                      "kinds": {k: sum(1 for r in rows if r["kind"] == k) for k in KINDS},
-                      "uses": uses}
+            groups.append(_group_report(gid, members, kept))
+    return [], rows, _report(rows, drawn, total, self_imports, groups, cut, uses)
 
 
 def build(grh, pin, strings, live_ids=()):

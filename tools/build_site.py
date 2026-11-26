@@ -671,7 +671,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"note_source": {"source", "commit"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -1838,6 +1838,11 @@ GRAPH_ASSET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")   # the path of an
 GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 
 
+# The page's OPTIONAL strings keys: words the page draws that a map may or may not carry. index.json `strings` is the required keys plus those of these that `strings` holds;
+# the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
+GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source")
+
+
 def _graph_strings_keys(symbols=None):
     """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table (`symbols`, default GRAPH_SYMBOLS) and the run-time keys,
     on every build. A role word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
@@ -1850,7 +1855,7 @@ def _graph_strings_errors(strings, symbols=None):
     keys it has that the page does not read, each sorted."""
     want = set(_graph_strings_keys(symbols))
     return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
-            + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want)])
+            + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want - set(GRAPH_OPTIONAL_KEYS))])
 
 
 def _walk_error(ex):
@@ -2126,7 +2131,11 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     if layout is not None and not (isinstance(layout, str) and layout in GRAPH_LAYOUTS):
         return [("GRAPH-LAYOUT", str(layout), "only column is allowed")], {}
     symbols = GRAPH_SYMBOLS if symbols is None else symbols
+    if any(n not in symbols for n in ("kinds", "states", "proofs")):
+        return [("GRAPH-SYMBOL", n, "table is missing") for n in ("kinds", "states", "proofs") if n not in symbols], {}
     orders = {name: list(table) for name, table in symbols.items()} if orders is None else orders
+    if any(n not in orders for n in ("kinds", "states", "proofs")):
+        return [("GRAPH-ORDER", n, "is missing") for n in ("kinds", "states", "proofs") if n not in orders], {}
     errors = []
     for name, table in symbols.items():   # `card_words` (a key of `strings`) is for a kinds row only, and must be a string
         for k, v in table.items():
@@ -2227,7 +2236,7 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
                 for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
     objs = {"graph/index.json": {
         "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
-        "strings": {k: strings[k] for k in _graph_strings_keys(symbols) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
+        "strings": {k: strings[k] for k in _graph_strings_keys(symbols) + list(GRAPH_OPTIONAL_KEYS) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: dict({"class": v["class"], "text": strings[v["words"]], "words": v["words"]},
                                         **({"card_words": v["card_words"]} if "card_words" in v else {})) for k, v in table.items()}
                          for name, table in symbols.items()},
@@ -13665,6 +13674,16 @@ def _selftest_cases():
                    (("key_kinds_note", "note_label", "note_source"), 20, 21, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
+
+    @case("GRM2", "the strings check lets `note_source` hold exactly the placeholders {source} and {commit} (and requires neither): a value with both builds, one with an unknown "
+                  "placeholder (`{bogus}`) is refused naming the key and the token, and the other two optional keys (key_kinds_note, note_label) declare none")
+    def _():
+        base = _strings()
+        ok = dict(base, note_source="Source file: {source} · version {commit}")
+        bad = dict(base, note_source="Source file: {source} {bogus}")
+        brace = dict(base, note_label="From {source}")
+        return _eq((_strings_problems(ok), _strings_problems(bad), _strings_problems(brace)),
+                   ([], [("STRINGS-KEY", "note_source", "has an unknown placeholder {bogus}")], [("STRINGS-KEY", "note_label", "has an unknown placeholder {source}")]))
 
     return cases
 
