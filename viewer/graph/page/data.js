@@ -297,7 +297,7 @@ function closedOf(c, ctx, isChild, where) {
    text only); source is a repository-root-relative path of 1 to 300 characters from [A-Za-z0-9._/-], with no leading '/' and no '..' segment (it is
    shown as text, never as a link). `review` is reserved: the only value accepted now is exactly {state: "converter"} (that key set, that value);
    anything else is `bad-review` naming the step. The page draws nothing from it. The later field `converter_version` is not accepted yet.
-   `later_blocks` is optional: when present it is an integer >= 0 (the number of further module-doc blocks in the file after the first; a float, a
+   `later_blocks` is optional: when present it is a safe integer >= 0 (at most 2**53 - 1, so it prints exactly; the number of further module-doc blocks in the file after the first; a float, a larger integer, a
    string, a boolean, null or a negative is `bad-later-blocks` naming the step), and a build without it is accepted as before. Any other key is `bad-note`.
    The page does not look at the step's kind. */
 const NOTE_SOURCE = /^[A-Za-z0-9._/-]{1,300}$/;
@@ -309,7 +309,7 @@ function noteOf(v, ctx, stepId) {
   if (!isStr(v.source) || !NOTE_SOURCE.test(v.source) || v.source.charAt(0) === "/" || v.source.split("/").includes("..")) throw bad("has a source that is not a repository-relative path");
   if (has(v, "review") && (!isObj(v.review) || Object.keys(v.review).length !== 1 || v.review.state !== "converter"))
     throw new DataError("bad-review", "step " + stepId + " has a note.review that is not exactly {state: converter}");
-  if (has(v, "later_blocks") && !(Number.isInteger(v.later_blocks) && v.later_blocks >= 0))
+  if (has(v, "later_blocks") && !(Number.isSafeInteger(v.later_blocks) && v.later_blocks >= 0))
     throw new DataError("bad-later-blocks", "step " + stepId + " has a note.later_blocks that is not an integer of 0 or more");
   const s = ctx.strings || {};
   if (!has(s, "note_label") || !has(s, "note_source")) throw new DataError("bad-note-strings", "a step carries a note but the index strings lack note_label or note_source");
