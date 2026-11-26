@@ -547,7 +547,7 @@ written the assembled tree (assets, and shell.html under its own name) goes thro
 GRAPH_RUNTIME_KEYS (parts_n holds {n} as written), checked as an exact set (`GRAPH-STRINGS <key> missing | is not a key the page reads`). A `GRAPH-COUNT` also names an asset whose file or
 sha256 is not the one listed. `role_named_statement` is never in `strings` (20 keys on every build; the role word is resolved into the card). GRAPH_SHORT_MAX is nm.SHORT_MAX. GR5 and GR21 read tools/fixtures/outline_faces.json, not the live outline (GA18).
 
-G2b THE GRAPH PAGE DOCUMENT (cases GP1 to GP10). With a shell.html in the graph source folder the build writes `graph/index.html`: the shell with its tokens replaced, in the manifest like every
+G2b THE GRAPH PAGE DOCUMENT (cases GP1 to GP11). With a shell.html in the graph source folder the build writes `graph/index.html`: the shell with its tokens replaced, in the manifest like every
 output (no shell.html, no page; the shell itself is neither copied nor an asset). `{{S:key}}`, in element content only, becomes the HTML-escaped strings value of one of the eleven GRAPH_SHELL_KEYS (title,
 sentence, about_link, tap_hint, map, list, show_all, key, close, fallback_sentence, fallback_link: keys of site/strings.json and of TEXT_KEYS, not of index.json `strings`); the wording file's link line is
 about_link and tap_hint, and the separator between them is the shell's own CSS. The one `{{CARDS}}`, in the content of a div, main, section or body, becomes the CARDS MARKUP: `<section id="graph-about">`
