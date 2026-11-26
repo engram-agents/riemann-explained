@@ -633,7 +633,7 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure", "sheet_statement_read", "sheet_statement_census",
              "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none",
              "parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused", "parts_failed_notice",
-             "key_kinds_heading", "key_states_heading")
+             "key_kinds_heading", "key_states_heading", "role_named_statement")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -1743,11 +1743,13 @@ def _nest(m, gid):
 
 GRAPH_FORMAT = 1
 GRAPH_MAX_CHILDREN = 40   # a step with more children is refused (GRAPH-FANOUT); the page reads the number from graph/index.json
-GRAPH_SHORT_MAX = 50      # the longest `short` (author text) a group may carry, in characters
+GRAPH_SHORT_MAX = nm.SHORT_MAX   # the longest `short` (author text) a group may carry, in characters: the checker's own constant, never a second literal
 GRAPH_ID = re.compile(r"[a-z0-9][a-z0-9-]*")   # a step id; narrower than SAFE_ID, so every graph id is also a file name of the build
-# The strings key whose words a closed card carries as its `role`, by root_role: the words the list page prints for that role (the named-statement
-# line). The key `role` is absent for a root_role with no row here (the list page prints no words of its own for it) and for a step with no root_role.
-GRAPH_ROLE_WORDS = {"named_statement": "named_statement_use_line"}
+# The strings key whose short word a closed card carries as its `role`, by root_role (contract section 10: a word of its own, not the list page's
+# sentence, which stays in the card markup). The key `role` is absent for a root_role with no row here and for a step with no root_role. The key joins
+# index.json `strings` only when a step carries a role. The word is at most GRAPH_ROLE_MAX characters with no line break (GRAPH-ROLE otherwise).
+GRAPH_ROLE_WORDS = {"named_statement": "role_named_statement"}
+GRAPH_ROLE_MAX = 24
 # F38: THE symbol table. Each row is a css class token and the strings key whose words explain the symbol; graph/index.json `symbols` is built from
 # this table and from nothing else, and the page reads the key from there. The order of the rows is the order of the key. `words` is a key of the
 # `strings` object of index.json (the page reads the label from there); the states and the proofs use the sheet's status words.
@@ -1783,15 +1785,17 @@ GRAPH_ASSET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")   # the path of an
 GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 
 
-def _graph_strings_keys():
-    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table and the run-time keys."""
-    return [v["words"] for table in GRAPH_SYMBOLS.values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
+def _graph_strings_keys(with_roles=False):
+    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table, the run-time keys, and (with_roles: some step
+    carries a `role`) the keys of the role words."""
+    return ([v["words"] for table in GRAPH_SYMBOLS.values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
+            + (list(dict.fromkeys(GRAPH_ROLE_WORDS.values())) if with_roles else []))
 
 
-def _graph_strings_errors(strings):
+def _graph_strings_errors(strings, with_roles=False):
     """[(GRAPH-STRINGS, key, what)] for the `strings` object of index.json against the exact set of keys the page reads: the keys it lacks first, then the
     keys it has that the page does not read, each sorted."""
-    want = set(_graph_strings_keys())
+    want = set(_graph_strings_keys(with_roles))
     return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
             + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want)])
 
@@ -1958,12 +1962,12 @@ def _graph_kind(raw):
 
 
 def _graph_rows(m, strings):
-    """([GRAPH-SHORT errors], the rows `_graph_files` takes) from the model: one row per group, in the outline's order, with its kind (the Lean kind of
+    """([GRAPH-SHORT and GRAPH-ROLE errors], the rows `_graph_files` takes) from the model: one row per group, in the outline's order, with its kind (the Lean kind of
     its root, the first root when there are several, for every step, a null claim too), its state (`read` when its statement is read, `census` when it
     is not and its claim's basis is census, else `none`), its proof state (`_graph_proof` of the group's proof_read), its card line (None for a step that
     has no line; the refusal is in the errors) and, when its root_role has words (GRAPH_ROLE_WORDS), its `role`."""
     groups = list(m.groups.values())
-    rows = []
+    rows, role_errors = [], []
     for gid, g in m.groups.items():
         sm = m.summary[gid]
         state = "read" if sm["statement_read"] else ("census" if sm["claim"] is not None and sm["claim"]["basis"] == "census" else "none")
@@ -1972,8 +1976,14 @@ def _graph_rows(m, strings):
                      "kind": _graph_kind(roots[0]["kind"] if roots else None), "state": state, "proof": _graph_proof(sm["proof_read"]),
                      "title": _card_line(g, strings["no_claim_label"])})
         if sm["root_role"] in GRAPH_ROLE_WORDS:
-            rows[-1]["role"] = _unspan(strings[GRAPH_ROLE_WORDS[sm["root_role"]]])
-    return _graph_line_errors(groups, strings["no_claim_label"]), rows
+            word = _unspan(strings[GRAPH_ROLE_WORDS[sm["root_role"]]])
+            if len(word) > GRAPH_ROLE_MAX:
+                role_errors.append(("GRAPH-ROLE", gid, f"is longer than {GRAPH_ROLE_MAX} characters"))
+            elif not nm._one_line(word):
+                role_errors.append(("GRAPH-ROLE", gid, "has a line break"))
+            else:
+                rows[-1]["role"] = word
+    return _graph_line_errors(groups, strings["no_claim_label"]) + role_errors, rows
 
 
 def _graph_count_errors(objs):
@@ -1995,7 +2005,8 @@ def _graph_count_errors(objs):
     for i in dict.fromkeys(list(ix["top"]) + [c["id"] for k in sorted(files) for c in files[k]["children"]]):
         if i not in files:
             out.append(("GRAPH-COUNT", i, "is listed but has no step file"))
-    return out + _graph_strings_errors(ix["strings"])
+    with_roles = any("role" in f["card"] or any("role" in c for c in f["children"]) for f in files.values())
+    return out + _graph_strings_errors(ix["strings"], with_roles)
 
 
 def _graph_files(rows, commit, strings, assets=None):
@@ -2092,7 +2103,7 @@ def _graph_files(rows, commit, strings, assets=None):
                 for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
     objs = {"graph/index.json": {
         "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
-        "strings": {k: strings[k] for k in _graph_strings_keys() if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
+        "strings": {k: strings[k] for k in _graph_strings_keys(any("role" in r for r in rows)) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
                          for name, table in GRAPH_SYMBOLS.items()},
                         order={name: list(table) for name, table in GRAPH_SYMBOLS.items()}),
@@ -3627,14 +3638,16 @@ F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this
 F53_STRINGS = {"unexpanded_detail_heading": "In the Lean files, file by file: the automation used and where, as we found it:"}
 # F38, G1, G1b: the words of the nine rows of the symbol table (GRAPH_SYMBOLS), no placeholder: the kinds the prototype's, the states and the proofs the
 # sheet's status words (the legend and the sheet's status line share one name per symbol). The same literals are in site/strings.json.
-F38_STRINGS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
-               "symbol_kind_structure": "Diamond: the part is a structure",
+F38_STRINGS = {"symbol_kind_theorem": "Square corners: a result the Lean code proves",
+               "symbol_kind_def": "Rounded corners, one line: a named object or statement",
+               "symbol_kind_structure": "Rounded corners and an inner line: a bundle of named fields",
                "sheet_statement_read": "Statement read", "sheet_statement_census": "Statement counted, not read",
                "sheet_statement_not_read": "Statement not read yet",
                "sheet_proof_read": "proof read", "sheet_proof_not_read": "proof not read yet", "sheet_proof_none": "no proof to read"}
 # G2a: the run-time words of the graph page (GRAPH_RUNTIME_KEYS), the values of the wording file; `{n}` is the page's to fill in. The same literals are in
 # site/strings.json. link_refused and the two headings of the key are from the page layer's own fixture (the wording file has no row for them).
-GRAPH_STRINGS = {"parts_n": "{n} parts", "part_one": "1 part", "open_parts": "Open its parts", "close_parts": "Close its parts",
+GRAPH_STRINGS = {"role_named_statement": "Named statement",   # the role word of a closed card (GRAPH_ROLE_WORDS), not a run-time key of the page
+                 "parts_n": "{n} parts", "part_one": "1 part", "open_parts": "Open its parts", "close_parts": "Close its parts",
                  "claim_more": "Show the whole claim", "claim_less": "Show less", "crumb_label": "Where this step sits",
                  "link_refused": "That address does not name a step on this map.",
                  "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
@@ -12020,7 +12033,7 @@ def _selftest_cases():
                  "each with its value (literals; `{n}` literal in parts_n; the values of the wording file, link_refused and the two key headings from the "
                  "page layer's fixture); GRAPH_RUNTIME_KEYS is the 11; the fixture strings hold them; no key_proofs_heading")
     def _():
-        ix = _graph_files([gr_row("a")], "c0", _strings())[1]["graph/index.json"]   # no step with a role: the 20 keys
+        ix = json.loads(_graph_bytes(_graph_files([gr_row("a")], "c0", _strings())[1])["graph/index.json"])   # no step with a role: the 20 keys, as written
         want = dict(GR_WORDS, **GA_RUNTIME)
         return _eq((ix["strings"], sorted(ix["strings"]) == list(ix["strings"]), len(ix["strings"]), list(GRAPH_RUNTIME_KEYS),
                     {k: _strings().get(k) for k in GA_RUNTIME}, "key_proofs_heading" in ix["strings"]),
@@ -12148,7 +12161,7 @@ def _selftest_cases():
                     len(none), "role_named_statement" in none, len(withrole), withrole.get("role_named_statement"),
                     _strings()["named_statement_use_line"] in b.page, GR_ROLE in b.page, real.get("role_named_statement"),
                     _strings_problems(real), "role_named_statement" in STRING_KEYS, "role_named_statement" in TEXT_KEYS),
-                   ({"named_statement": "role_named_statement"}, {"g1a1": "Named statement", "g1a1x": None}, "Named statement", False, True, 21,
+                   ({"named_statement": "role_named_statement"}, {"g1a1": "Named statement"}, "Named statement", False, True, 21,
                     20, False, 21, "Named statement", True, False, "Named statement", [], True, True))
 
     @case("GA15", "G2a (section 10) GRAPH-ROLE: a role word of 24 characters is accepted, one of 25 is `GRAPH-ROLE <id> is longer than 24 characters`, one with a line "
@@ -12192,7 +12205,10 @@ def _selftest_cases():
     # GRAPH-SYMBOL: GR9, GR10), so these cases run with the graph step switched off and keep every literal they had; GR* are the graph's own cases.
     # G1b: two more plant a face line the graph refuses (GRAPH-SHORT): ESC1 puts the hostile text on every strings value, so on the no-claim label (over 50
     # characters), and TT6 a title with a formula (`$`); both test the list page.
-    no_graph_cases = ("PL1", "PL2", "PL3", "PRM1", "PRM2", "PRM3", "PRK1", "PRK2", "NONE1", "F41b", "F49b", "F49c", "ESC1", "TT6")
+    # G2a (section 10): the role word is at most 24 characters, and the cases that put a marker on every strings value (`MARK-role_named_statement` is 25) test
+    # the list page, so they run with the graph step off too: P1b, RO1, RO2, EVD1, DEF4, NAL1, MK1, UD5.
+    no_graph_cases = ("PL1", "PL2", "PL3", "PRM1", "PRM2", "PRM3", "PRK1", "PRK2", "NONE1", "F41b", "F49b", "F49c", "ESC1", "TT6",
+                      "P1b", "RO1", "RO2", "EVD1", "DEF4", "NAL1", "MK1", "UD5")
 
     def without_graph(fn):
         def run_():
