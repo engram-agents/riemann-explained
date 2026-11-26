@@ -1,0 +1,32 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-1",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "File sk-file-1"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-1",
+ "index_rows": [
+  {
+   "source": "grh/INDEX.md",
+   "text": "The first file: the definitions the later files rest on."
+  }
+ ],
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "rests_on": [],
+ "spine_rows": [
+  "spine-theorem-a"
+ ]
+}

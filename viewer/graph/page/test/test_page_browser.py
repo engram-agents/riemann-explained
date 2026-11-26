@@ -108,9 +108,11 @@ class Pg:
     """A page with its console, errors and dialogs collected; ev() evaluates through DevTools (Playwright's own evaluate
     compiles strings with eval, which this CSP rightly blocks)."""
 
-    def __init__(self, browser, url, width=1024, height=800, js=True, mobile=False):
+    def __init__(self, browser, url, width=1024, height=800, js=True, mobile=False, init=None):
         self.ctx = browser.new_context(viewport={"width": width, "height": height}, java_script_enabled=js,
                                        is_mobile=mobile, has_touch=mobile, device_scale_factor=1)
+        if init:
+            self.ctx.add_init_script(init)     # runs before any script of the page: a listener registered here cannot miss an early event
         self.page = self.ctx.new_page()
         self.console, self.dialogs = [], []
         self.page.on("console", lambda m: self.console.append((m.type, m.text)))
@@ -3033,6 +3035,68 @@ def c_made_deep_link(b, S0, engine, w, h, mobile):
         S.stop()
 
 
+# ---- the Graph view (graphview.js): the switch, the lazy read of spine.json, the spine drawn by a second engine, the failure event ----
+GV_INIT = "window.__gp = []; document.addEventListener('graphpage-failure', function (e) { window.__gp.push(e.detail); });"
+GV_PATH = "/graph/spine.json"
+
+
+def gv(b, engine, spine_edit=None, index_edit=None, fix="graphview", width=390, height=844, wait_for="graph"):
+    """The graphview fixture (made-up text) served, a listener for the failure event registered BEFORE the page loads, the page open at `width`."""
+    root = tempfile.mkdtemp(prefix="pg-gv-")
+    assemble.assemble(root, engine, fix=fix, spine_edit=spine_edit, index_edit=index_edit)
+    Handler.seen.clear()
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", width, height, init=GV_INIT)
+    if wait_for == "graph":
+        pg.settled()
+    return S, pg
+
+
+def gv_clean():
+    Handler.blocked.clear(); Handler.garbage.clear(); Handler.status.clear(); Handler.delay.clear()
+
+
+def gv_spine_requests():
+    return len([x for x in Handler.seen if x.split("?")[0] == GV_PATH])
+
+
+def gv_state(pg):
+    return pg.ev("""(() => { const q = (s) => document.querySelector(s);
+      return { cards: q('#graph').hidden === false, spine: q('.graph-spine') ? q('.graph-spine').hidden === false : null, notice: q('#graph-notice').hidden === false,
+        noticeText: q('#graph-notice').textContent, nodes: document.querySelectorAll('.graph-spine .ge-node').length, cardNodes: document.querySelectorAll('#graph .ge-node').length,
+        pressed: [...document.querySelectorAll('button.view-btn')].map((x) => x.getAttribute('data-id') + ':' + x.getAttribute('aria-pressed')), events: window.__gp }; })()""")
+
+
+def gv_press(pg, which):
+    pg.page.click('button.view-btn[data-id="%s"]' % which)
+    pg.page.wait_for_timeout(250)
+
+
+def c_gv_live_silent(b, S0, engine):
+    """GV1: on the live map (no view words) there is no switch, no Graph stage, no request for spine.json and not one event, through taps, a key, the About
+    block and deep links."""
+    root = tempfile.mkdtemp(prefix="pg-gv-live-")
+    assemble.assemble(root, engine)
+    Handler.seen.clear()
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1024, 800, init=GV_INIT).settled()
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        pg.page.click("#graph-key")
+        pg.page.click("#graph-about-open")
+        at_hash(pg, "a1")
+        pg.page.wait_for_timeout(400)
+        st = gv_state(pg)
+        assert st["spine"] is None and pg.ev("document.querySelectorAll('button.view-btn').length") == 0, st
+        assert pg.ev("document.querySelectorAll('.view-switch').length") == 0
+        assert st["events"] == [], st["events"]
+        assert gv_spine_requests() == 0, Handler.seen
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop()
+
+
 def c_made_tap(b, S0, engine, w, h, mobile):
     """B2: a tap on a drawn box opens the same card; the parts button on a part with children opens its parts."""
     S = made_served(engine, MADE_ABOUT_BLOCK)
@@ -3191,6 +3255,212 @@ def c_made_markup_wins(b, S0, engine, w, h, mobile):
         S.stop()
 
 
+def c_gv_switch_present(b, S0, engine):
+    """GV2: with both view words the switch is two buttons in span.seg.view-switch inside nav.toolbar (data-id cards and graph, aria-pressed on Cards), the
+    Graph stage exists hidden and empty, and spine.json has NOT been requested."""
+    S, pg = gv(b, engine)
+    try:
+        assert pg.ev("[...document.querySelectorAll('nav.toolbar > span.seg.view-switch > button.view-btn')].map((x) => x.getAttribute('data-id') + ':' + x.textContent)") == ["cards:Cards", "graph:Graph"]
+        st = gv_state(pg)
+        assert st["pressed"] == ["cards:true", "graph:false"] and st["spine"] is False and st["nodes"] == 0 and st["cards"] is True, st
+        assert gv_spine_requests() == 0
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_draw(b, S0, engine):
+    """GV3 + GV4: pressing Graph reads spine.json ONCE and draws one box per node of the file (the count is the file's, not a literal) in the second stage; Cards is
+    hidden, the notice hidden, the pressed button follows; pressing Graph again does nothing more; Cards returns and back is no new request. The links drawn are
+    the ones in the reduction: the same page without the non-reduction link has the same number of link strokes, and a control that flags it in_reduction draws more."""
+    counts = {}
+    for name, edit in (("full", None), ("without", lambda s: s.__setitem__("links", [l for l in s["links"] if l["in_reduction"]])),
+                       ("flagged", lambda s: [l.__setitem__("in_reduction", True) for l in s["links"]])):
+        S, pg = gv(b, engine, spine_edit=edit)
+        try:
+            n = pg.ev("fetch('/graph/spine.json').then((r) => r.json()).then((j) => j.nodes.length)")
+            Handler.seen.clear()
+            gv_press(pg, "graph")
+            pg.wait("document.querySelectorAll('.graph-spine .ge-node').length > 0", 6000)
+            st = gv_state(pg)
+            assert st["nodes"] == n == 4 and st["spine"] is True and st["cards"] is False and st["notice"] is False, st
+            assert st["pressed"] == ["cards:false", "graph:true"] and st["events"] == [], st
+            counts[name] = pg.ev("document.querySelectorAll('.graph-spine .ge-link').length")
+            if name == "full":
+                assert gv_spine_requests() == 1, Handler.seen
+                gv_press(pg, "graph")
+                assert gv_spine_requests() == 1 and gv_state(pg)["nodes"] == 4
+                gv_press(pg, "cards")
+                st = gv_state(pg)
+                assert st["cards"] is True and st["spine"] is False and st["pressed"] == ["cards:true", "graph:false"], st
+                gv_press(pg, "graph")
+                assert gv_state(pg)["spine"] is True and gv_spine_requests() == 1, Handler.seen
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+    assert counts["full"] == counts["without"] and counts["flagged"] > counts["full"] and counts["full"] > 0, counts
+
+
+def c_gv_faces_and_sheet(b, S0, engine):
+    """GV5 + GV6: a box's face is the row's sentence alone, as text (hostile content stays text: no element from it); a tap opens the sheet with the names as code, the
+    label, the sentence, the line 'Lives in: <the file's title>' and the button; the button switches to Cards and opens THAT file's sheet there."""
+    hostile = "<img src=x onerror=alert(1)> and `<b>code</b>` text"
+
+    def edit(s):
+        s["nodes"][0]["content"] = hostile
+        s["nodes"][0]["names"] = ["<i>x</i>", "Made.second"]
+    S, pg = gv(b, engine, spine_edit=edit)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        faces = pg.ev("[...document.querySelectorAll('.graph-spine .ge-node')].map((n) => n.getAttribute('data-node') + '|' + n.querySelector('.face-title').textContent)")
+        assert faces[0] == "spine-made-a|" + hostile.replace("`", ""), faces[0]
+        assert faces[1:] == ["spine-made-b|Made-up sentence of box b.", "spine-made-c|Made-up sentence of box c.", "spine-made-d|Made-up sentence of box d."], faces
+        assert pg.ev("document.querySelectorAll('.graph-spine img, .graph-spine i, .graph-spine b').length") == 0
+        assert pg.ev("document.querySelectorAll('.graph-spine .face-title code').length") == 1
+        tap(pg, "spine-made-a")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        panel = pg.ev("""(() => { const p = document.querySelector('#graph-sheet-body .spine-panel');
+          return { names: [...p.querySelectorAll('h2 code')].map((c) => c.textContent), label: p.querySelector('.spine-label').textContent,
+                   content: p.querySelector('.spine-content').textContent, lives: p.querySelector('.spine-lives').textContent,
+                   button: p.querySelector('button').textContent, file: p.querySelector('button').getAttribute('data-id'), img: p.querySelectorAll('img, b, i').length }; })()""")
+        assert panel["names"] == ["<i>x</i>", "Made.second"] and panel["label"] == "In the repository's words", panel
+        assert panel["content"] == hostile.replace("`", "") and panel["lives"] == "Lives in: File sk-file-1" and panel["button"] == "Show its file in Cards", panel
+        assert panel["file"] == "sk-file-1" and panel["img"] == 0, panel
+        pg.page.click("#graph-sheet-body .spine-show-file")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-1'", 8000)
+        st = gv_state(pg)
+        assert st["cards"] is True and st["spine"] is False and st["pressed"] == ["cards:true", "graph:false"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_key(b, S0, engine):
+    """GV7: in the Graph view the Key says what a box is and prints the spine's own sentence (the key the spine's edge_basis names); in Cards it is the index's key as before."""
+    S, pg = gv(b, engine)
+    try:
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        cards_key = pg.ev("document.querySelector('#graph-sheet-body .key-content').textContent")
+        assert "Each box is one of the main results" not in cards_key and "Made-up words of the fixture" not in cards_key
+        pg.page.click("#graph-sheet-close")
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        key = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content > *')].map((e) => e.tagName + ':' + e.textContent)")
+        assert key[0] == "P:Each box is one of the main results the repository names in its last step.", key
+        assert key[-1] == "P:A line means the upper result rests on the lower one. Made-up words of the fixture.", key
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_refusals(b, S0, engine):
+    """GV8 + GV9 + GV10: each way the spine can fail at the switch leaves Cards standing (its nodes drawn, shown), the Graph stage hidden and EMPTY, one page-constant
+    notice, and ONE event {stage: graph, code} whose code is a member of the fixed set and nothing else (a hostile value in the refused file never reaches it);
+    pressing Graph again after the cause is gone draws the view, hides the notice and fires {stage: graph, code: null} once."""
+    CODES = ["fetch-failed", "not-json", "http-error", "bad-type", "missing-key", "extra-key", "bad-format", "bad-commit", "bad-edge-basis", "bad-spine-node", "bad-spine-link",
+             "engine-refused", "graph-failed"]
+    hostile = "<img src=x onerror=alert(1)> SECRET-DATA-VALUE"
+    cases = [("a missing file", lambda s: Handler.blocked.add(GV_PATH), None, "http-error"),
+             ("a failing server", lambda s: Handler.status.__setitem__(GV_PATH, 500), None, "http-error"),
+             ("not JSON", lambda s: Handler.garbage.add(GV_PATH), None, "not-json"),
+             ("a hostile edge_basis words", None, lambda sp: sp["edge_basis"].__setitem__("words", hostile), "bad-edge-basis"),
+             ("a cycle in the reduction", None, lambda sp: sp["links"].append({"from": "spine-made-d", "in_reduction": True, "to": "spine-made-a"}), "bad-spine-link"),
+             ("a wrong commit", None, lambda sp: sp.__setitem__("commit", "f" * 40), "bad-commit"),
+             ("an unknown key", None, lambda sp: sp.__setitem__("extra", 1), "extra-key")]
+    for name, serve, edit, code in cases:
+        S, pg = gv(b, engine, spine_edit=edit)
+        try:
+            if serve:
+                serve(S)
+            gv_press(pg, "graph")
+            pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+            st = gv_state(pg)
+            assert st["notice"] and st["noticeText"] == "The graph could not be opened; tap Graph to try again.", (name, st)
+            assert st["nodes"] == 0 and st["spine"] is False and st["cards"] is True and st["cardNodes"] > 0, (name, st)
+            assert st["pressed"] == ["cards:true", "graph:false"], (name, st)
+            assert len(st["events"]) == 1 and sorted(st["events"][0]) == ["code", "stage"] and st["events"][0]["stage"] == "graph", (name, st["events"])
+            assert st["events"][0]["code"] == code and st["events"][0]["code"] in CODES, (name, st["events"])
+            assert "SECRET-DATA-VALUE" not in json.dumps(st["events"]), name
+            assert pg.ev("document.getElementById('graph-fallback').hidden") is True, name      # Cards still standing: no fallback of the whole page
+            # the cause goes away: the next press draws the view, clears the notice and tells the clearing once
+            gv_clean()
+            if edit:
+                open(os.path.join(S.srv.RequestHandlerClass.root, "graph", "spine.json"), "w").write(open(os.path.join(assemble.HERE, "fixtures", "graphview", "spine.json")).read())
+            gv_press(pg, "graph")
+            pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+            st = gv_state(pg)
+            assert st["notice"] is False and st["spine"] is True and st["cards"] is False, (name, st)
+            assert len(st["events"]) == 2 and st["events"][1] == {"stage": "graph", "code": None}, (name, st["events"])
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+
+
+def c_gv_ticket(b, S0, engine):
+    """GV11: a press of Graph whose spine is still loading, then a press of Cards: the late answer changes nothing (Cards stays, the stage stays hidden and empty,
+    no notice, no event); the route's ticket was superseded."""
+    S, pg = gv(b, engine)
+    try:
+        ev = threading.Event()
+        Handler.delay[GV_PATH] = ev
+        pg.page.click('button.view-btn[data-id="graph"]')
+        pg.page.wait_for_timeout(200)
+        pg.page.click('button.view-btn[data-id="cards"]')
+        ev.set()
+        pg.page.wait_for_timeout(600)
+        st = gv_state(pg)
+        assert st["cards"] is True and st["spine"] is False and st["nodes"] == 0 and st["notice"] is False and st["events"] == [], st
+        assert st["pressed"] == ["cards:true", "graph:false"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_one_view_word(b, S0, engine):
+    """GV12: a map with only ONE of the two view words is refused at start (bad-view-words): the fallback shows and Cards' markup stays, as for any refused index."""
+    for drop in ("view_cards", "view_graph"):
+        S, pg = gv(b, engine, index_edit=lambda i, d=drop: i["strings"].pop(d), wait_for="load")
+        try:
+            pg.wait("document.getElementById('graph-fallback').hidden === false", 6000)
+            assert pg.ev("document.querySelectorAll('button.view-btn').length") == 0 and pg.ev("document.getElementById('graph-cards').hidden") is False
+            assert gv_spine_requests() == 0
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+
+
+def c_gv_engine_refused(b, S0, engine):
+    """GV13: the engine itself refuses the spine's roots (more boxes than the map's max_children): this happens AFTER the stage was shown, so the page must put
+    itself back: Cards shown and drawn, the Graph stage hidden and empty, the one notice, one event with the code engine-refused, the pressed button back on Cards."""
+    S, pg = gv(b, engine, index_edit=lambda i: i.__setitem__("max_children", 3))
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+        st = gv_state(pg)
+        assert st["noticeText"] == "The graph could not be opened; tap Graph to try again." and st["cards"] is True and st["spine"] is False and st["nodes"] == 0 and st["cardNodes"] > 0, st
+        assert st["events"] == [{"stage": "graph", "code": "engine-refused"}] and st["pressed"] == ["cards:true", "graph:false"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+GV_CASES = [
+    ("GV1: the live map has no switch, no Graph stage, no spine request and no event", c_gv_live_silent),
+    ("GV2: with both view words the switch is two buttons (Cards pressed), the stage hidden and empty, spine.json not requested", c_gv_switch_present),
+    ("GV3/GV4: Graph reads spine.json once, draws one box per node, only the reduction's links, and switches back and forth without a new request", c_gv_draw),
+    ("GV5/GV6: a box's face is its sentence as text, its sheet holds names, label, sentence, 'Lives in' and the button, which opens the file's sheet in Cards", c_gv_faces_and_sheet),
+    ("GV7: the Graph view's key says what a box is and prints the spine's own sentence; Cards' key is unchanged", c_gv_key),
+    ("GV8/GV9/GV10: seven ways the spine fails each leave Cards standing, one notice, one event with a fixed-set code only, and a retry draws it and tells the clearing once", c_gv_refusals),
+    ("GV11: a press of Graph superseded by a press of Cards changes nothing when the spine arrives late", c_gv_ticket),
+    ("GV12: one view word without the other is refused at start", c_gv_one_view_word),
+    ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
+]
+
+
 def main():
     only = None
     engines = ["double", "real"]
@@ -3319,7 +3589,10 @@ def main():
                     run("made B4: an unknown id is still link_refused and opens nothing" + vw, c_made_unknown, eng, mw, mh, mm)
                     run("made B5: a made card's sheet looks the same as a markup card's (claim, status and note placement)" + vw, c_made_looks_like_markup, eng, mw, mh, mm)
                     run("made B6: a page with an article shows it, byte for byte as today; a made card only for an id it has none for" + vw, c_made_markup_wins, eng, mw, mh, mm)
+                run(GV_CASES[0][0], GV_CASES[0][1], eng)
                 if eng == "real":
+                    for gname, gfn in GV_CASES[1:]:
+                        run(gname, gfn, eng)
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
                     run("REAL: pinch semantic-opens a step and loads its step file; no sheet", c_real_pinch)

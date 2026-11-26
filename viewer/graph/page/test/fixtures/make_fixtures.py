@@ -440,6 +440,32 @@ def cards_html(top, kids):
     return "\n".join(parts) + "\n"
 
 
+GRAPHVIEW_WORDS = {
+    "view_cards": "Cards", "view_graph": "Graph",
+    "graph_nodes_text": "Each box is one of the main results the repository names in its last step.",
+    "spine_content_label": "In the repository's words", "spine_lives_in": "Lives in: {title}",
+    "spine_show_file": "Show its file in Cards", "graph_failed_notice": "The graph could not be opened; tap Graph to try again.",
+    "spine_lines_text": "A line means the upper result rests on the lower one. Made-up words of the fixture.",
+}
+# the made-up spine of the graphview fixture: four boxes over four files of the skeleton map; a rests on b and c, b and c on d, and a on d too (not in the reduction)
+GV_SPINE = [("a", "sk-file-1", "Made-up sentence of box a."), ("b", "sk-file-2", "Made-up sentence of box b."),
+            ("c", "sk-file-3", "Made-up sentence of box c."), ("d", "sk-file-4", "Made-up sentence of box d.")]
+GV_LINKS = [("a", "b", True), ("a", "c", True), ("b", "d", True), ("c", "d", True), ("a", "d", False)]
+
+
+def graphview_build():
+    """The skeleton map with the Graph view's seven words, the spine's sentence key and a four-box spine.json (all made-up text)."""
+    index, steps, kids, title = build_skeleton()
+    index = json.loads(json.dumps(index))
+    index["strings"] = dict(index["strings"], **GRAPHVIEW_WORDS)
+    spine = {"commit": COMMIT, "format": 1, "edge_basis": {"basis": "reaches-through-any-chain-of-uses", "words": "spine_lines_text"},
+             "nodes": [{"constants": ["New.Made.%s" % k], "content": text, "counts": {"mentions": 1, "no_doc": 1, "other_constants": 0}, "file": f,
+                        "id": "spine-made-%s" % k, "mentions": [{"constant": "New.Made.other"}], "names": ["Made.%s" % k], "source": "grh/INDEX.md", "theorem": "`Made.%s`" % k}
+                       for (k, f, text) in GV_SPINE],
+             "links": [{"from": "spine-made-%s" % a, "in_reduction": red, "to": "spine-made-%s" % b} for (a, b, red) in GV_LINKS]}
+    return index, steps, kids, title, spine
+
+
 def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None):
     index, steps, _k, _p, _n = build()
     # a small build: one top step with its children
@@ -484,6 +510,15 @@ def main():
     parts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, skids, stitle) for t in sindex["top"]] + ["</ul>"]
     open(os.path.join(HERE, "skeleton", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + parts) + "\n")
+
+    gindex, gsteps, gkids, gtitle, gspine = graphview_build()
+    write_json(os.path.join(HERE, "graphview", "index.json"), gindex)
+    write_json(os.path.join(HERE, "graphview", "spine.json"), gspine)
+    for i, st in gsteps.items():
+        write_json(os.path.join(HERE, "graphview", "step", i + ".json"), st)
+    gparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, gkids, gtitle) for t in gindex["top"]] + ["</ul>"]
+    open(os.path.join(HERE, "graphview", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + gparts) + "\n")
 
     nindex, nsteps, nkids, ntitle = notes_build()
     write_json(os.path.join(HERE, "notes", "index.json"), nindex)
