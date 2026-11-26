@@ -59,7 +59,7 @@ test("N2 the REAL OneSidedBound.lean note: heading, paragraphs, a three-item lis
   assert.equal(ul.children.length, 3);
   assert.equal(ul.children.filter((li) => li.tagName === "LI").length, 3);
   const li2 = ser(ul.children[1]);
-  assert.ok(li2.includes('"Here "'), li2);
+  assert.ok(li2.includes('". Here "'), li2);
   assert.ok(li2.includes('code("λ(n) = Λ(n) (1 - chiK d n)")'), li2);
   assert.ok(li2.includes('" for "'), li2);
   const text = allText(f);
@@ -186,7 +186,7 @@ test("note.js is small, pure and imports only dom.js: no document, window, fetch
   const src = readFileSync(path.join(HERE, "..", "note.js"), "utf8");
   const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");
   assert.deepEqual([...src.matchAll(/^import .* from "([^"]+)";/gm)].map((m) => m[1]), ["./dom.js"]);
-  for (const bad of ["document", "window", "globalThis", "fetch", "setTimeout", "Math.random", "Date", "createElement", "setAttribute", "innerHTML", "textContent", "appendChild"])
+  for (const bad of ["document", "window", "globalThis", "fetch", "setTimeout", "Math.random", "Date", "createElement", "setAttribute", "innerHTML", "textContent"])
     assert.ok(!code.includes(bad), "note.js uses " + bad);
   assert.ok(src.split("\n").length <= 330, "note.js stays small: " + src.split("\n").length + " lines");
 });

@@ -1362,9 +1362,9 @@ def c_key_real_rows(b, S0, engine):
 
 # ----------------------------------------------------------------- the parts button follows the SHOWN card, not the engine's events (K1)
 
-def open_on_map(pg, engine, node_id, child_id):
+def open_on_map(pg, engine, node_id, child_id, wait=True):
     """Open a node on the MAP while the sheet is up: the double does what a semantic zoom does; the real engine is zoomed with
-    ctrl + wheel over the node until it opens itself."""
+    ctrl + wheel over the node until it opens itself. wait=False returns without waiting for the child (a load that is meant to fail)."""
     if engine == "double":
         pg.ev("document.getElementById('graph').__open(%s)" % json.dumps(node_id))
     else:
@@ -1381,7 +1381,8 @@ def open_on_map(pg, engine, node_id, child_id):
                     break
         finally:
             pg.page.keyboard.up("Control")
-    pg.wait("document.querySelector('[data-node=\"%s\"]') !== null" % child_id, 6000)
+    if wait:
+        pg.wait("document.querySelector('[data-node=\"%s\"]') !== null" % child_id, 6000)
 
 
 def c_parts_button_follows_shown(b, S, engine):
@@ -1485,7 +1486,8 @@ def c_load_failure_go(b, S0, engine, mode):
 
 
 def c_load_failure_engine(b, S0, engine, mode):
-    """B's parts are opened from the sheet (the engine loads B's step): same split, through the engine's load-failed event."""
+    """B's parts are opened ON THE MAP (the engine loads B's step, which no card opening has fetched yet: a card opened on the sheet loads its own
+    step file, so the sheet's parts button always finds it cached): same split, through the engine's load-failed event."""
     root = tempfile.mkdtemp(prefix="pg-k2eng-")
     assemble.assemble(root, engine)
     S = Served(root)
@@ -1496,11 +1498,8 @@ def c_load_failure_engine(b, S0, engine, mode):
         pg.page.click("#graph-sheet-tools .sheet-tool")                  # goal-chain's parts (already loaded)
         wait_sheet(pg, False)
         pg.wait("document.querySelector('[data-node=\"a1\"]') !== null", 6000)
-        tap(pg, "a1")
-        wait_sheet(pg, True)
-        assert shown_id(pg) == "a1"
         pat = fail_step(pg, "a1", mode)
-        pg.page.click("#graph-sheet-tools .sheet-tool")                  # open a1's parts: its step file is fetched now
+        open_on_map(pg, engine, "a1", "a1-a", wait=False)               # open a1's parts on the map: its step file is fetched now
         if mode in ("garbage", "invalid"):
             pg.wait("!document.getElementById('graph-layer')", 6000)
             assert pg.page.is_visible("#graph-fallback") and pg.ev("document.querySelectorAll('#graph-cards article').length") == 23

@@ -53,8 +53,9 @@ const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]
    EXACTLY this set. */
 export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label",
   "link_refused", "parts_failed_notice", "key_kinds_heading", "key_states_heading"]);
-/* Strings keys the page reads when the builder supplies them and ignores otherwise (the live map has none): allowed in `strings`, never required. */
-export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text"]);
+/* Strings keys the page reads when the builder supplies them and ignores otherwise (the live map has none): allowed in `strings`, never required.
+   note_label and note_source are the words round the repository's note on a sheet; a step that carries a `note` needs both (`bad-note-strings`). */
+export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source"]);
 /* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
    `edge_basis.words` names. They are neither fixed nor optional: validateIndex adds them to the required set when edge_basis is there, and
    without it they are not read, so their presence is an extra-string (the page reads exactly what it draws). */
@@ -284,8 +285,22 @@ function closedOf(c, ctx, isChild, where) {
   return out;
 }
 
+/* A step's optional `note`: exactly {text, source}. text is a string of 1 to 65536 characters (the repository's words, shown as text only);
+   source is a repository-root-relative path of 1 to 300 characters from [A-Za-z0-9._/-], with no leading '/' and no '..' segment (it is
+   shown as text, never as a link). The page does not look at the step's kind. */
+const NOTE_SOURCE = /^[A-Za-z0-9._/-]{1,300}$/;
+function noteOf(v, ctx) {
+  const bad = (why) => new DataError("bad-note", "step.note " + why);
+  if (!isObj(v) || Object.keys(v).length !== 2 || !has(v, "text") || !has(v, "source")) throw bad("is not exactly {text, source}");
+  if (!isStr(v.text) || v.text.length < 1 || v.text.length > 65536) throw bad("has a text that is not a string of 1 to 65536 characters");
+  if (!isStr(v.source) || !NOTE_SOURCE.test(v.source) || v.source.charAt(0) === "/" || v.source.split("/").includes("..")) throw bad("has a source that is not a repository-relative path");
+  const s = ctx.strings || {};
+  if (!has(s, "note_label") || !has(s, "note_source")) throw new DataError("bad-note-strings", "a step carries a note but the index strings lack note_label or note_source");
+  return { text: v.text, source: v.source };
+}
+
 export function validateStep(raw, ctx) {
-  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["index_rows", "spine_rows"], "step");
+  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows"], "step");
   if (raw.format !== 1) throw new DataError("bad-format", "step format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "step commit is not a non-empty string");
   if (raw.commit !== ctx.commit) throw new DataError("commit-mismatch", "step commit differs from the index's");
@@ -320,6 +335,7 @@ export function validateStep(raw, ctx) {
   const out = { id: raw.id, path, card, children, rests_on: rests };
   if (has(raw, "index_rows")) out.index_rows = indexRowsOf(raw.index_rows);
   if (has(raw, "spine_rows")) out.spine_rows = spineRowsOf(raw.spine_rows);
+  if (has(raw, "note")) out.note = { ...noteOf(raw.note, ctx), commit: raw.commit };
   return out;
 }
 

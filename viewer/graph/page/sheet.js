@@ -10,17 +10,19 @@
                         runs close()
      claim-clamped      on the sheet body while the claim is clamped to 10 lines (graph.css)
      sheet-status, sheet-tool, crumbs, crumb, crumb-here, crumb-role   chrome this module creates
+     note-label, note-source, note-body   the repository's note, only when the card has one (info.note), directly after the status line
 
    CLOSING: every way the sheet closes goes through close(), the ONE close function. It first dispatches a cancelable
    `sheetclose` event on the thing shown; if a listener cancels it, the sheet stays open and nothing moves. A
    bubbling `sheetcloserequest` from inside the sheet runs the same close(). */
 import { el, titleChildren } from "./dom.js";
+import { renderNote } from "./note.js";
 
 export function createSheet(parts, strings, hooks, signal) {
   const { root, crumbs, tools, body, closeButton } = parts;
   const doc = root.ownerDocument;
   const win = doc.defaultView;
-  let cur = null;   // { node, home, details: [{d, open}], status, id (a card), parts, partsOpen }
+  let cur = null;   // { node, home, details: [{d, open}], status, noteEls, id (a card), parts, partsOpen }
 
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
@@ -31,6 +33,7 @@ export function createSheet(parts, strings, hooks, signal) {
   /* The restore half of close(): everything moved or added goes back, so the page's markup is as it was. */
   function release(rec) {
     if (rec.status && rec.status.parentNode) rec.status.parentNode.removeChild(rec.status);
+    for (const x of rec.noteEls || []) if (x.parentNode) x.parentNode.removeChild(x);
     restoreDetails(rec);
     if (rec.home) {
       if (rec.home.parentNode) {
@@ -103,6 +106,20 @@ export function createSheet(parts, strings, hooks, signal) {
       rec.status = el("p", { class: "sheet-status" }, [info.status]);
       if (claim && claim.parentNode) claim.parentNode.insertBefore(rec.status, claim.nextSibling);
       else article.insertBefore(rec.status, article.firstChild);
+    }
+    /* The repository's note, when the card has one: the label, the source line (text only, never a link), then the note rendered by note.js. They go
+       directly after the status line (after the claim when there is none), and the restore half of close takes them out again. */
+    if (info.note) {
+      const kids = [el("p", { class: "note-label" }, [info.note.label]), el("p", { class: "note-source" }, info.note.sourceParts)];
+      const body = el("div", { class: "note-body" }, []);
+      body.appendChild(renderNote(info.note.text, el));
+      kids.push(body);
+      rec.noteEls = kids;
+      const first = article.firstChild;
+      let tail = rec.status || (claim && claim.parentNode ? claim : null);
+      for (const k of kids) {
+        if (tail) { tail.parentNode.insertBefore(k, tail.nextSibling); tail = k; } else article.insertBefore(k, first);
+      }
     }
     clear(tools);
     if (info.canParts) {

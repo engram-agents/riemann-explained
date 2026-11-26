@@ -12,6 +12,7 @@ import { createGraph, checkOptions } from "../engine/index.js";
 import { el, isId } from "./dom.js";
 import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING } from "./data.js";
 import { makeRenderFace } from "./face.js";
+import { templateParts } from "./note.js";
 import { createSheet } from "./sheet.js";
 
 /* Every way the sheet can close. Each one is a function in `routes` below that begins with the sheet's one close
@@ -120,10 +121,18 @@ export async function start(doc, deps) {
     function say(text) { if (dead) return; notice.replaceChildren(doc.createTextNode(text)); notice.hidden = false; }
     function hush() { notice.hidden = true; }
 
-    function openCard(id) {
+    /* The step's own file is loaded (it is cached when the card's parents or a deep link already loaded it) BEFORE the sheet is touched, because the
+       repository's note lives in that file: a failed load changes nothing (the open card stays open) and goes through failed(). A later call
+       supersedes an earlier one that is still loading. */
+    let openSeq = 0;
+    async function openCard(id) {
       const art = articles.get(id), m = data.meta(id);
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
       if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
+      const mine = ++openSeq;
+      let step;
+      try { step = await data.loadStep(id); } catch (e) { return failed(e); }
+      if (dead || mine !== openSeq) return false;
       const w = index.symbols.words;
       /* The sheet's one line. A kind whose table row has `card_words` (a folder or file asserts nothing) shows that word and nothing from
          state or proof; every other kind shows the state and the proof, as before. The TABLE's row decides, never the kind's name. The same
@@ -133,6 +142,7 @@ export async function start(doc, deps) {
       const ok = sheet.showCard(art, {
         id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
         currentListed: cardWord === undefined,
+        note: step.note ? { label: strings.note_label, text: step.note.text, sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null,
         crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
       });
       if (ok) { hush(); handle.select(id); }
