@@ -566,11 +566,11 @@ ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 19 pairs, pinned by GP7; wi
 The COPY SET is the scanner's own JS extensions (gjc.JS_EXT, read at the call: .js and .mjs) plus the one literal GRAPH_CSS_EXT (.css: the scanner has no constant for stylesheets), compared as
 written; a file outside test/ whose lower-cased extension is in gjc.JS_EXT, gjc.SHIP_IMPORT_EXT or is .css but is not in the copy set (X.JS, A.Mjs, X.CSS) is `GRAPH-ASSET <path> not-an-asset-extension`,
 never copied and never dropped without a word (GA23). The shell is read ONCE (in _graph_assets): the bytes the gate scans are the bytes the page is assembled from (GA24).
-G2c THE MAP PAGE'S ROWS, THE LIST LINKS, THE ROBOTS META AND THE LIST PAGE'S LINK BACK (cases GM1 to GM10). `_page_parts(m, s, facts, dirty, map_rows=False)`: with `map_rows` six sections of a card are
+G2c THE MAP PAGE'S ROWS, THE LIST LINKS, THE ROBOTS META AND THE LIST PAGE'S LINK BACK (cases GM1 to GM14, GM2b included). `_page_parts(m, s, facts, dirty, map_rows=False)`: with `map_rows` six sections of a card are
 each wrapped in a closed `<details class="map-row map-row-<kind>"><summary>label</summary>section</details>` (conditions = ul.conditions, uses = div.premises, sketch = each div.sketch, literature =
 div.recognition, notes = ul.notes, react = ul.reactions; the label is the strings key map_row_<kind>, `{n}` the item count in map_row_conditions and map_row_notes only), the section's markup inside unchanged;
 the list page passes no flag and is unchanged. The build renders the cards once more with the flag, after the formula log is closed, for the graph page; the About comes from parts[0][0] (no fallback).
-The strings rule R3 lets map_row_sketch hold `of the proof` (OF_THE_PROOF_OK) and refuses it in every other value. The shell's head must hold the viewport and robots metas (the list page's tags) in the
+The strings rule R3 lets the exact value `Sketch of the proof` of map_row_sketch hold `of the proof` (OF_THE_PROOF_OK, a key and value pair) and refuses it in every other value. The shell's head must hold the viewport and robots metas (the list page's tags) in the
 head, none outside it: `GRAPH-PAGE head has no robots noindex meta`, `head has no viewport meta`, `robots meta is outside the head`. The list page has `<p class="map-link">` (list_map_link, href `../`) as an element of its own between its header and its main, put in by
 _assemble_page and in no part of _page_parts, so no markup of the graph page can hold it. The two list links of the real shell are `list/`.
 
@@ -664,9 +664,9 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "key_kinds_heading", "key_states_heading", "role_named_statement",
              "title", "sentence", "about_link", "tap_hint", "map", "list", "show_all", "key", "close", "fallback_sentence", "fallback_link",
              "map_row_conditions", "map_row_uses", "map_row_sketch", "map_row_literature", "map_row_notes", "map_row_react", "list_map_link")
-# G2c: the one key the strings rule R3 lets hold `of the proof` (it refuses the phrase in every other value): the label of the map page's sketch row, `Sketch of the
-# proof`, names a section of a card and says nothing about how much of the proof is read. A percent sign is refused in it as in every value.
-OF_THE_PROOF_OK = frozenset(["map_row_sketch"])
+# G2c: the one (key, value) pair the strings rule R3 lets hold `of the proof` (it refuses the phrase in every other value, and in any other value of that key): the label of
+# the map page's sketch row, `Sketch of the proof`, names a section of a card and says nothing about how much of the proof is read. A percent sign is refused in it as in every value.
+OF_THE_PROOF_OK = {"map_row_sketch": "Sketch of the proof"}
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -1363,7 +1363,7 @@ def _strings_problems(s):
             if old:
                 bad(path, f"holds {old!r}, a word of the retired coverage scale (exact-case match; the lowercase phrase "
                           "`not read yet` is allowed inside status wording)", "STRINGS-FORBIDDEN")
-            elif "%" in v or (path not in OF_THE_PROOF_OK and re.search(r"of\s+the\s+proof", v, re.I)):
+            elif "%" in v or (OF_THE_PROOF_OK.get(path) != v and re.search(r"of\s+the\s+proof", v, re.I)):
                 bad(path, "holds a percent sign or `of the proof`, which the page never says in its own sentences",
                     "STRINGS-FORBIDDEN")
     return out
@@ -3698,7 +3698,10 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         flog = _FORMULA_LOG
     finally:
         _FORMULA_LOG, _IN_EVIDENCE = None, False
-    map_main = _page_parts(m, sj, facts, dirty, map_rows=True)[1]   # G2c: the map page's cards (the same rendering with the rows), made after the formula log is closed
+    try:
+        map_main = _page_parts(m, sj, facts, dirty, map_rows=True)[1]   # G2c: the map page's cards (the same rendering with the rows), made after the formula log is closed
+    finally:
+        _FORMULA_LOG, _IN_EVIDENCE = None, False   # a raise in the second rendering leaves no render state behind (GM14)
     fcounts = formula_counts(flog)
     errors += formula_sum_errors(fcounts)
     errors += formula_raw_errors(flog, _formula_locator(m))
@@ -4413,6 +4416,8 @@ def _left(d):
 def _hostile(v, path=""):
     """The strings fixture with the hostile text added to every string (the href templates get the one with `%`)."""
     if isinstance(v, str):
+        if OF_THE_PROOF_OK.get(path) == v:
+            return v   # G2c: the one value R3 lets hold `of the proof` is exact; text added to it would be refused (it is escaped like any value)
         return v + HOST if (path == "note_href" or path.endswith(".href") or path in EDITION_HREFS) else v + " " + HOST_S
     if isinstance(v, list):
         return [_hostile(x, f"{path}.{i}") for i, x in enumerate(v)]
