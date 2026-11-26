@@ -713,6 +713,212 @@ def c_nav_r6(b, S, engine):
         nav_clear()
 
 
+# ------------------------------- round 4: no visible effect from a superseded route, through ANY channel (reviewer round 2, S1 and S2)
+
+def c_nav_b1_b3(b, S, engine, how):
+    """B1/B3 (and the About half of B2): tap A (slow), then a route that closes or replaces the sheet that is not Escape, the close button or the key:
+    tap-outside (a tap on blank map), toolbar About, toolbar Show all. When A resolves, its sheet does not open over what the reader did."""
+    gate = threading.Event()
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        if how == "tap-outside":
+            assert CLOSE_DRIVERS["tap-outside"](pg), "no blank map to tap"
+            wait_sheet(pg, False)
+        elif how == "toolbar-about":
+            click_by_id(pg, "graph-about-open")
+            wait_sheet(pg, True)
+            assert pg.ev("document.getElementById('graph-about').parentElement === document.getElementById('graph-sheet-body')")
+        else:
+            click_by_id(pg, "graph-show-all")
+            wait_sheet(pg, False)
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        if how == "toolbar-about":
+            assert pg.ev("document.getElementById('graph-about').parentElement === document.getElementById('graph-sheet-body')"), "About was replaced by the late card"
+        else:
+            assert not sheet_open(pg), "the late card opened over %s" % how
+        assert shown_id(pg) is None, "the late card's article is in the sheet (%s)" % how
+        assert notice_text(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+HOLD_KIDS_JS = "(() => { const h = { fail: false }; h.p = new Promise((r) => { window.__releaseKids = (fail) => { h.fail = !!fail; r(); }; }); window.__holdKids = { a1: h }; return true; })()"
+
+
+def hold_kids_root(engine):
+    """A served copy of the page whose data layer (the copy only) waits on window.__holdKids[id] before it answers loadChildren(id): the step of a
+    card on the sheet is cached, so its parts load is otherwise instant and there is no window to put a tap in. Released with a true argument it then
+    fails the way a transport failure does (a DataError 'http-500', the class the page shows as the parts notice)."""
+    def mut(text):
+        old = "  async function loadChildren(id) {\n"
+        assert old in text
+        hold = ("    const h = globalThis.__holdKids && globalThis.__holdKids[id];\n"
+                "    if (h) { await h.p; if (h.fail) throw new DataError(\"http-500\", \"held, then failed\"); }\n")
+        return text.replace(old, old + hold)
+    root = tempfile.mkdtemp(prefix="pg-b4-")
+    assemble.assemble(root, engine, mutate={os.path.join("page", "data.js"): mut})
+    return Served(root)
+
+
+def world_style(pg):
+    """The real engine's camera: the transform on its world element (the world's own width and height change when a node opens, so they are not compared)."""
+    return pg.ev("(() => { const w = document.querySelector('#graph .ge-world'); const m = w && /transform:([^;]*);/.exec(w.getAttribute('style') || ''); return m ? m[1] : null; })()")
+
+
+def c_nav_b4(b, S0, engine):
+    """B4: open-parts on card C (its children's load slow), then tap card D: when C's load resolves D's sheet is untouched and the camera is
+    not moved to C (the double's call log has no new reveal; the real engine's world keeps its transform); D stays the selected card."""
+    S = hold_kids_root(engine)
+    try:
+        pg = nav_page(b, S)
+        assert pg.ev(HOLD_KIDS_JS)
+        pg.page.click("#graph-sheet-tools .sheet-tool")                 # open C's parts: the route waits on the held load
+        wait_sheet(pg, False)
+        tap(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+        log0 = len(pg.ev("document.getElementById('graph').__log")) if engine == "double" else 0
+        style0 = world_style(pg)
+        pg.ev("(() => { window.__releaseKids(false); return true; })()")
+        pg.page.wait_for_timeout(700)
+        assert shown_id(pg) == "a2" and sheet_open(pg), "D's sheet was replaced or closed by C's late load"
+        if engine == "double":
+            late = [e for e in pg.ev("document.getElementById('graph').__log")[log0:] if e[0] == "reveal"]
+            assert not late, "the camera was moved by the superseded open-parts: %r" % late
+        else:
+            assert style0 and world_style(pg) == style0, "the camera moved after D's sheet opened: %r -> %r" % (style0, world_style(pg))
+        assert pg.ev("document.querySelector('[data-node=\"a2\"]').classList.contains('ge-selected')"), "D is no longer the selected card"
+        assert notice_text(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_nav_b4b(b, S, engine):
+    """B4b: tap A (slow), then open-parts on the card still shown: the open-parts route takes its own ticket, so when A resolves the sheet stays closed."""
+    gate = threading.Event()
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert not sheet_open(pg) and shown_id(pg) is None, "the late card opened over the reader's open-parts"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_b5_b6(b, S, engine, mode, then_tap):
+    """B5 (then_tap) / B6 (the control, no tap): deep link #a1-a, whose reveal must open a1's parts: a1's step file is held, then fails ('500': a
+    transport failure, the engine's error event is the parts notice; 'garbage': data that arrived invalid, the engine's error event is the
+    fallback). B5: before it fails the reader taps card a2: a2's sheet is open and when the failure arrives there is NO notice and NO fallback.
+    B6: nothing follows. The failure shows exactly what it showed before this round: the fallback for data that arrived invalid; for a transport failure
+    the engine's notice is cleared at once by the deep link's own card opening (go() goes on into openCard, which hushes), so the observable end is the
+    open sheet of the target and no notice, which is also what the page did before this round."""
+    gate = threading.Event()
+    try:
+        pg = nav_page(b, S, False)
+        gate, path = hold_step("a1", 500 if mode == "500" else None)
+        if mode == "garbage":
+            Handler.garbage = {path}
+        at_hash(pg, "a1-a")
+        held_arrived(pg, path)
+        if then_tap:
+            pg.wait("document.querySelector('[data-node=\"a2\"]') !== null", 5000)        # the reveal opened goal-chain on its way to a1
+            tap(pg, "a2")
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+        gate.set()
+        pg.page.wait_for_timeout(900)
+        if then_tap:
+            assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "the page fell back for a route the reader left"
+            assert notice_text(pg) is None, "a notice from the route the reader left: %r" % notice_text(pg)
+            assert shown_id(pg) == "a2" and sheet_open(pg), "a2's sheet is the open one"
+        elif mode == "500":
+            assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden")
+            assert shown_id(pg) == "a1-a" and sheet_open(pg) and notice_text(pg) is None, (shown_id(pg), notice_text(pg))
+        else:
+            assert pg.ev("!document.getElementById('graph-layer')") and pg.page.is_visible("#graph-fallback"), "arrived invalid data is the fallback"
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        gate.set()
+        Handler.garbage = set()
+        nav_clear()
+
+
+def c_nav_b5b_b6b(b, S0, engine, then_tap):
+    """B5b (then_tap) / B6b (the control): open-parts on card C whose parts load is held, then fails as a transport failure. B5b: before it fails the
+    reader taps card D: D's sheet is open and there is NO notice when C's failure arrives. B6b: nothing follows: the parts notice appears as before
+    (an open-parts route that fails keeps its notice: nothing after it hushes it)."""
+    S = hold_kids_root(engine)
+    try:
+        pg = nav_page(b, S)
+        assert pg.ev(HOLD_KIDS_JS)
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        if then_tap:
+            tap(pg, "a2")
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+        pg.ev("(() => { window.__releaseKids(true); return true; })()")
+        pg.page.wait_for_timeout(700)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden")
+        if then_tap:
+            assert notice_text(pg) is None, "a notice from the route the reader left: %r" % notice_text(pg)
+            assert shown_id(pg) == "a2" and sheet_open(pg)
+        else:
+            assert notice_text(pg) == PARTS_FAILED, notice_text(pg)
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_nav_b7(b, S0, engine):
+    """B7 control: the READER opens a node's parts on the map (a pinch on the real engine), the load is slow and then fails, with no route awaiting it:
+    the parts notice is shown exactly as before."""
+    root = tempfile.mkdtemp(prefix="pg-b7-")
+    assemble.assemble(root, engine)
+    S = Served(root)
+    gate = threading.Event()
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        pg.page.click("#graph-sheet-tools .sheet-tool")                  # goal-chain's parts (a route, finished)
+        wait_sheet(pg, False)
+        pg.wait("document.querySelector('[data-node=\"a1\"]') !== null", 6000)
+        gate, path = hold_step("a1", 500)
+        if engine == "double":     # open_on_map's evaluate would wait for the held promise (the test hook returns it); start the open without waiting
+            pg.ev("(() => { document.getElementById('graph').__open('a1'); return true; })()")
+        else:
+            open_on_map(pg, engine, "a1", "a1-a", wait=False)
+        held_arrived(pg, path)
+        assert notice_text(pg) is None
+        gate.set()
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert notice_text(pg) == PARTS_FAILED, notice_text(pg)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden")
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+        S.stop()
+
+
 # ---------------------------------------------------------------------------------------------- the open-parts route (S1)
 
 def c_open_parts_rejects(b):
@@ -2676,6 +2882,17 @@ def main():
                 run("nav R4: deep link #A (slow) then #B (fast): the page ends on B", c_nav_r4, eng)
                 run("nav R5: card C open, tap A (slow), an in-sheet close request: the sheet stays closed", c_nav_r5, eng)
                 run("nav R6 control: a single slow tap opens; a single 500 is the parts notice; a 4xx the refused-link notice", c_nav_r6, eng)
+                run("nav B1: tap A (slow) then a tap on blank map: when A resolves no sheet opens", c_nav_b1_b3, eng, "tap-outside")
+                run("nav B2: tap A (slow) then toolbar About: when A resolves About is still the one shown", c_nav_b1_b3, eng, "toolbar-about")
+                run("nav B3: tap A (slow) then toolbar Show all: when A resolves no sheet opens", c_nav_b1_b3, eng, "toolbar-show-all")
+                run("nav B4: open-parts on C (its children's load slow) then tap D: when C's load resolves D's sheet is untouched and the camera is not moved to C", c_nav_b4, eng)
+                run("nav B4b: tap A (slow) then open-parts on the shown card: when A resolves the sheet stays closed", c_nav_b4b, eng)
+                for mode in ("500", "garbage"):
+                    run("nav B5: deep link whose reveal fails (%s, slow), the reader taps another card first: that card's sheet is open and no notice, no fallback when the failure arrives" % mode, c_nav_b5_b6, eng, mode, True)
+                    run("nav B6 control: the same failing deep link with nothing after it (%s): the notice or the fallback, exactly as before" % mode, c_nav_b5_b6, eng, mode, False)
+                run("nav B5b: open-parts whose load fails (slow), the reader taps another card first: that card's sheet is open and no notice when the failure arrives", c_nav_b5b_b6b, eng, True)
+                run("nav B6b control: the same failing open-parts with nothing after it: the parts notice appears, as before", c_nav_b5b_b6b, eng, False)
+                run("nav B7 control: the reader's own open of a node's parts that fails to load (slow, 500) is still the parts notice", c_nav_b7, eng)
                 if eng == "real":
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
