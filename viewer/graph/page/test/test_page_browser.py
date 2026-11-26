@@ -3035,6 +3035,363 @@ def c_made_deep_link(b, S0, engine, w, h, mobile):
         S.stop()
 
 
+# ---- the header fold (viewfold.js, graph.css FOLD block): the Lean map's header is compact on a phone and folds into one bar when the reader works in the graph ----
+# Lei's phone requirement (Kepler 39323). The shell carries the marker: an element #graph-intro-bar after the header (the live map's shell has none, so nothing here applies to it).
+FOLD_TITLE = "A map of the made-up files of a proof that is not real"
+FOLD_SENTENCE = ("How the made-up files of the made-up edition in a made-up repository, at version 0000000, are built on one another. "
+                 "Made by made-up agents, not by the people of the proof.")
+FOLD_SCOPE = "Shows the 306 made-up files of the argument. Not on it: the made-up final theorems, library files, made-up libraries."
+FOLD_HEADER = ('<header class="intro">\n<h1>' + FOLD_TITLE + '</h1>\n<p class="sentence">' + FOLD_SENTENCE + '</p>\n<p class="front-line">' + FOLD_SCOPE + '</p>\n'
+               '<p class="links"><button type="button" id="graph-about-open" class="linkbtn">About this map</button><span class="hint">Tap a box to open it.</span></p>\n</header>\n'
+               '<div id="graph-intro-bar" class="intro-bar" hidden><span class="bar-title">' + FOLD_TITLE + '</span>'
+               '<button type="button" id="graph-intro-show" class="linkbtn">About this map</button></div>\n')
+FOLD_PHONES = [(360, 640), (390, 844)]
+
+
+def fold_shell(shell, bar=True):
+    a, b = shell.index("<header"), shell.index("</header>") + len("</header>\n")
+    head = FOLD_HEADER if bar else FOLD_HEADER[:FOLD_HEADER.index('<div id="graph-intro-bar"')]
+    return shell[:a] + head + shell[b:]
+
+
+def fold_served(engine, bar=True, mutate=None, live=False, fix=None):
+    root = tempfile.mkdtemp(prefix="pg-fold-")
+    assemble.assemble(root, engine, shell_edit=None if live else (lambda t: fold_shell(t, bar)), mutate=mutate, fix=fix)
+    return Served(root)
+
+
+FOLD_RECTS_JS = """(() => { const r = (q) => { const e = document.querySelector(q); if (!e) return null; const b = e.getBoundingClientRect(), c = getComputedStyle(e);
+  return { top: Math.round(b.top * 10) / 10, h: Math.round(b.height * 10) / 10, w: Math.round(b.width * 10) / 10, disp: c.display, fs: c.fontSize, pos: c.position }; };
+  return { intro: r('.intro'), bar: r('#graph-intro-bar'), h1: r('.intro h1'), sentence: r('.intro .sentence'), front: r('.intro .front-line'), links: r('.intro .links'),
+           toolbar: r('.toolbar'), stage: r('#graph'), barTitle: r('#graph-intro-bar .bar-title'), vh: window.innerHeight }; })()"""
+
+
+def fold_open(b, engine, w, h, bar=True, mutate=None, live=False, fix=None):
+    S = fold_served(engine, bar, mutate, live, fix)
+    pg = Pg(b, S.base + "graph/index.html", w, h, mobile=(w < 700)).settled()
+    return S, pg
+
+
+def fold_is_bar(pg):
+    r = pg.ev(FOLD_RECTS_JS)
+    return r["bar"] is not None and r["bar"]["disp"] != "none" and r["bar"]["h"] > 0 and (r["intro"] is None or r["intro"]["h"] == 0 or r["intro"]["disp"] == "none")
+
+
+def c_fold_start_compact(b, S0, engine):
+    """FD1: on a phone (360x640, 390x844) the header starts compact: at most a quarter of the window, the title in at most two lines, the sentence in full (its words
+    visible, nothing clipped) at a small type, no scope line, the bar not shown; the stage is the rest less the toolbar."""
+    for w, h in FOLD_PHONES:
+        S, pg = fold_open(b, engine, w, h)
+        try:
+            r = pg.ev(FOLD_RECTS_JS)
+            assert r["bar"]["disp"] == "none" and r["intro"]["h"] <= 0.25 * h, (w, h, r["intro"], r["bar"])
+            assert r["front"]["disp"] == "none", (w, h, r["front"])
+            assert float(r["h1"]["fs"][:-2]) <= 16 and float(r["sentence"]["fs"][:-2]) <= 13, (w, h, r["h1"]["fs"], r["sentence"]["fs"])
+            assert pg.ev("(() => { const e = document.querySelector('.intro'); return e.scrollHeight <= e.clientHeight + 1; })()"), "the header clips its own text"
+            assert pg.ev("document.querySelector('.intro h1').getClientRects()[0].height <= 2 * 1.25 * parseFloat(getComputedStyle(document.querySelector('.intro h1')).fontSize) + 1")
+            assert r["toolbar"]["pos"] != "absolute" and r["stage"]["h"] > 0.5 * h, (w, h, r["toolbar"], r["stage"])
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+
+
+def c_fold_short_window_starts_folded(b, S0, engine):
+    """FD2: under 520 px of window height (390x500 stands for the viewer's frame; 800x420 is a phone turned) the page starts FOLDED: the bar (at most 48 px, the title on
+    one line, an ellipsis when it does not fit), the header out of the flow, the map area at least 85 percent of the window, the toolbar a pill over the stage's top
+    edge that is still the topmost thing at the centre of each of its buttons."""
+    for w, h in ((390, 500), (800, 420)):
+        S, pg = fold_open(b, engine, w, h)
+        try:
+            r = pg.ev(FOLD_RECTS_JS)
+            assert fold_is_bar(pg), (w, h, r)
+            assert r["bar"]["h"] <= 48, r["bar"]
+            assert r["barTitle"]["h"] <= 1.4 * float(r["barTitle"]["fs"][:-2]) + 1, ("the bar title is not one line", r["barTitle"])
+            assert r["stage"]["h"] >= 0.85 * h, (w, h, r["stage"], 0.85 * h)
+            assert r["toolbar"]["pos"] == "absolute", r["toolbar"]
+            assert pg.ev("""[...document.querySelectorAll('.toolbar button, .toolbar a')].every((x) => { const b = x.getBoundingClientRect();
+              const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return top === x || x.contains(top); })"""), "a toolbar control is covered"
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+
+
+def c_fold_triggers(b, S0, engine):
+    """FD3: the first pan, wheel, key or tap on a box, and a press on Show all or Key, folds the header into the bar at once (before the press's own click is handled);
+    the map area is then at least 85 percent of the window at 360x640 and 390x844. Nothing folds on a pointerdown in the header itself."""
+    def pan(pg, w, h):
+        pg.page.mouse.move(w / 2, h * 0.7); pg.page.mouse.down(); pg.page.mouse.move(w / 2 + 40, h * 0.7 + 30, steps=4)
+        pg.page.wait_for_timeout(60)
+        assert fold_is_bar(pg), "the pan has not folded the header before the button is released"     # a mouse's release would also click
+        pg.page.mouse.up()
+    def wheel(pg, w, h):
+        pg.page.mouse.move(w / 2, h * 0.7); pg.page.mouse.wheel(0, 120)
+    def key(pg, w, h):
+        pg.ev("document.getElementById('graph-show-all').focus()")
+        pg.page.keyboard.press("ArrowDown")
+    def tapbox(pg, w, h):
+        pg.page.click("#graph .ge-node")
+    def showall(pg, w, h):
+        pg.page.click("#graph-show-all")
+    def keybtn(pg, w, h):
+        pg.page.click("#graph-key")
+    for w, h in FOLD_PHONES:
+        for name, act in (("pan", pan), ("wheel", wheel), ("key", key), ("tap a box", tapbox), ("Show all", showall), ("Key", keybtn)):
+            S, pg = fold_open(b, engine, w, h)
+            try:
+                pg.page.mouse.click(w / 2, 20)           # a press in the header itself changes nothing
+                assert not fold_is_bar(pg), (name, "a press in the header folded it")
+                act(pg, w, h)
+                pg.page.wait_for_timeout(120)
+                r = pg.ev(FOLD_RECTS_JS)
+                assert fold_is_bar(pg), (name, w, h, r)
+                assert r["bar"]["h"] <= 48 and r["stage"]["h"] >= 0.85 * h, (name, w, h, r["bar"], r["stage"])
+                pg.close()
+            finally:
+                S.stop()
+
+
+def c_fold_reopen(b, S0, engine):
+    """FD4: the bar's button opens the header again, in full (the scope line too: nothing the fold hides is lost), never taller than 60 percent of the window and
+    scrollable, and the bar goes; a later pan folds it once more; the header's first control takes the focus."""
+    for w, h in FOLD_PHONES:
+        S, pg = fold_open(b, engine, w, h)
+        try:
+            pg.page.click("#graph-show-all"); pg.page.wait_for_timeout(120)
+            assert fold_is_bar(pg)
+            pg.page.click("#graph-intro-show"); pg.page.wait_for_timeout(120)
+            r = pg.ev(FOLD_RECTS_JS)
+            assert not fold_is_bar(pg) and r["bar"]["disp"] == "none", r
+            assert r["intro"]["h"] <= 0.6 * h + 1 and r["front"]["disp"] != "none", (w, h, r["intro"], r["front"])
+            assert pg.ev("(() => { const a = document.activeElement; return !!a && a.closest('.intro') !== null; })()"), "the focus did not go into the header"
+            pg.page.mouse.move(w / 2, h * 0.8); pg.page.mouse.down(); pg.page.mouse.move(w / 2 + 30, h * 0.8 + 20, steps=3); pg.page.mouse.up(); pg.page.wait_for_timeout(120)
+            assert fold_is_bar(pg), "a pan after the reopen does not fold again"
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+
+
+def c_fold_desktop_unchanged(b, S0, engine):
+    """FD5: at 1280x900 nothing is new: the bar is not shown, a pan, a wheel or a tap folds nothing, the header keeps its type (20 and 16 px) and the toolbar stays in the
+    flow; the rects of the page equal those of the same page WITHOUT the marker (the shell of the live map)."""
+    S, pg = fold_open(b, engine, 1280, 900)
+    S2, pg2 = fold_open(b, engine, 1280, 900, bar=False)
+    try:
+        r, r2 = pg.ev(FOLD_RECTS_JS), pg2.ev(FOLD_RECTS_JS)
+        assert r["bar"]["disp"] == "none" and r["h1"]["fs"] == "20px" and r["sentence"]["fs"] == "16px" and r["toolbar"]["pos"] != "absolute", r
+        for k in ("intro", "h1", "sentence", "front", "toolbar", "stage"):
+            assert r[k] == r2[k], (k, r[k], r2[k])
+        pg.page.mouse.move(640, 600); pg.page.mouse.down(); pg.page.mouse.move(700, 640, steps=3); pg.page.mouse.up(); pg.page.mouse.wheel(0, 100); pg.page.keyboard.press("ArrowDown")
+        pg.page.wait_for_timeout(150)
+        assert not fold_is_bar(pg) and pg.ev(FOLD_RECTS_JS)["intro"]["h"] == r["intro"]["h"], "the header folded on a desktop window"
+        pg.csp_clean(); pg.close(); pg2.close()
+    finally:
+        S.stop(); S2.stop()
+
+
+def c_fold_live_map_unchanged(b, S0, engine):
+    """FD6: the live map's page (its shell has no bar) is identical with and without the fold: the same page built with the FOLD block of graph.css and the fold script
+    taken out has the same rect and computed type for the header, the toolbar and the stage at 390x844 and 1280x900, and a pan folds nothing."""
+    def strip_css(css):
+        a, z = css.index("/* FOLD BEGIN"), css.index("/* FOLD END */")
+        return css[:a] + css[z + len("/* FOLD END */"):]
+    for w, h in ((390, 844), (1280, 900)):
+        S, pg = fold_open(b, engine, w, h, live=True)
+        S2, pg2 = fold_open(b, engine, w, h, live=True, mutate={"graph.css": strip_css})
+        try:
+            r, r2 = pg.ev(FOLD_RECTS_JS), pg2.ev(FOLD_RECTS_JS)
+            assert r == r2, (w, h, r, r2)
+            pg.page.mouse.move(w / 2, h * 0.7); pg.page.mouse.down(); pg.page.mouse.move(w / 2 + 30, h * 0.7 + 20, steps=3); pg.page.mouse.up(); pg.page.wait_for_timeout(120)
+            assert pg.ev(FOLD_RECTS_JS) == r, "a pan changed the live page's layout"
+            pg.csp_clean(); pg.close(); pg2.close()
+        finally:
+            S.stop(); S2.stop()
+
+
+def c_fold_resize_to_desktop(b, S0, engine):
+    """FD7: a window made wider while folded (a turned tablet, a resized browser) unfolds by itself: the header is back and the bar is gone."""
+    S, pg = fold_open(b, engine, 390, 500)
+    try:
+        assert fold_is_bar(pg)
+        pg.page.set_viewport_size({"width": 1280, "height": 900}); pg.page.wait_for_timeout(200)
+        r = pg.ev(FOLD_RECTS_JS)
+        assert not fold_is_bar(pg) and r["intro"]["disp"] != "none" and r["bar"]["disp"] == "none", r
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop()
+
+
+def c_fold_mutants(b, S0, engine):
+    """FD8: four mutants, each turns a case red: the fold on pointerdown removed (FD3), the bar's height raised to 120 px (FD2), the toolbar kept in the flow while
+    folded (FD2), the phone media query widened to 1400 px (FD5)."""
+    muts = {
+        "no fold on a pan": ({"page/viewfold.js": lambda t: t.replace("> PAN_PX", "> 100000")}, c_fold_triggers),
+        "fold on pointerdown": ({"page/viewfold.js": lambda t: t.replace("down = { x: e.clientX, y: e.clientY }; }", "down = { x: e.clientX, y: e.clientY }; fold(null); }")}, c_fold_tap_holds),
+        "no refit after a press": ({"page/app.js": lambda t: t.replace('t.closest("#graph-show-all, .view-switch")', 't.closest("#nothing")')}, c_fold_after),
+        "bar 120 px": ({"graph.css": lambda t: t.replace("height: 40px; padding: 0 12px; background", "height: 120px; padding: 0 12px; background")}, c_fold_short_window_starts_folded),
+        "toolbar in the flow": ({"graph.css": lambda t: t.replace("position: absolute; top: 6px", "position: static; top: 6px")}, c_fold_short_window_starts_folded),
+        "media query widened": ({"graph.css": lambda t: t.replace("(max-width: 600px)", "(max-width: 1400px)")}, c_fold_desktop_unchanged),
+    }
+    for name, (mut, fn) in muts.items():
+        orig = fold_served
+        def served(engine_, bar=True, mutate=None, live=False, fix=None, _m=mut):
+            return orig(engine_, bar, _m, live, fix)
+        globals()["fold_served"] = served
+        try:
+            try:
+                fn(b, S0, engine)
+            except AssertionError:
+                continue
+            raise AssertionError("MUTANT SURVIVED: " + name)
+        finally:
+            globals()["fold_served"] = orig
+
+
+FOLD_TAP_JS = """(() => { const s = document.querySelector('#graph').getBoundingClientRect();
+  return [...document.querySelectorAll('#graph .ge-node')].map((n) => { const b = n.getBoundingClientRect();
+    const t = document.querySelector('.toolbar').getBoundingClientRect(), cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+    return { id: n.getAttribute('data-node'), x: cx, y: cy, inside: b.left >= s.left && b.right <= s.right && b.top >= s.top && b.bottom <= s.bottom,
+             visible: cx > s.left && cx < s.right && cy > s.top && cy < s.bottom && !(cx >= t.left && cx <= t.right && cy >= t.top && cy <= t.bottom) }; }); })()"""
+FOLD_OPENED_JS = "(() => { const a = document.querySelector('#graph-sheet-body article, #graph-sheet-body .card'); return a ? (a.getAttribute('id') || a.getAttribute('data-id')) : null; })()"
+
+
+def fold_tap(pg, x, y):
+    pg.page.touchscreen.tap(x, y)
+
+
+def c_fold_tap_holds(b, S0, engine):
+    """FD9: a TAP ON A BOX IN THE START STATE opens that same box (not a neighbour, not nothing) at 360x640 and 390x844: the fold comes after the click, so the box is
+    under the finger from the touch to the release. Every box fully in view is tapped, each on a fresh page, and compared with the same page without the bar."""
+    for w, h in FOLD_PHONES:
+        S, pg = fold_open(b, engine, w, h, fix="graphview"); S2, pg2 = fold_open(b, engine, w, h, bar=False, fix="graphview")
+        try:
+            boxes = [n for n in pg.ev(FOLD_TAP_JS) if n["inside"]]
+            assert len(boxes) >= 2, boxes
+            pg.close(); pg2.close()
+            for want in [n["id"] for n in boxes]:
+                got = {}
+                for name, bar in (("fold", True), ("plain", False)):
+                    Sx, px = fold_open(b, engine, w, h, bar=bar, fix="graphview")      # the plain page's header is taller: each tree's own box is tapped
+                    try:
+                        n = [x for x in px.ev(FOLD_TAP_JS) if x["id"] == want][0]
+                        fold_tap(px, n["x"], n["y"])
+                        px.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+                        got[name] = px.ev(FOLD_OPENED_JS)
+                        if bar:
+                            px.page.wait_for_timeout(150)
+                            assert fold_is_bar(px), (w, h, want, "a tap did not fold")
+                        px.close()
+                    finally:
+                        Sx.stop()
+                assert got["fold"] == got["plain"] and got["fold"] == want, (w, h, want, got)
+        finally:
+            S.stop(); S2.stop()
+    for w, h in FOLD_PHONES:       # a press on a toolbar button is a click: it must still land on the button (a fold at the pointerdown moves the button away)
+        Sx, px = fold_open(b, engine, w, h, fix="graphview")
+        try:
+            k = px.ev("(() => { const r = document.getElementById('graph-key').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+            fold_tap(px, k[0], k[1])
+            px.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+            px.page.wait_for_timeout(150)
+            assert fold_is_bar(px), (w, h, "a press on Key did not fold")
+            px.close()
+        finally:
+            Sx.stop()
+
+
+def c_fold_after(b, S0, engine):
+    """FD10: after the fold the map uses the new stage: nothing of the page's own header stands where it was (the stage covers the freed band: the element at a point
+    there is inside #graph), a tap on a box drawn on the larger stage opens that box, a press on Show all frames every box inside the larger stage, and a press on Graph
+    (the first, which folds) draws the spine on the larger stage with every box inside it and a tap on one of them opens its panel."""
+    for w, h in FOLD_PHONES:
+        S, pg = fold_open(b, engine, w, h, fix="graphview")
+        try:
+            pg.page.mouse.move(w / 2, h * 0.75); pg.page.mouse.down(); pg.page.mouse.move(w / 2 + 25, h * 0.75 + 10, steps=4); pg.page.mouse.up(); pg.page.wait_for_timeout(150)
+            assert fold_is_bar(pg)
+            r = pg.ev(FOLD_RECTS_JS)
+            assert abs(r["stage"]["top"] - r["bar"]["h"]) < 1.5 and r["stage"]["h"] >= 0.85 * h, (r["bar"], r["stage"])
+            below = pg.ev("Math.ceil(document.querySelector('.toolbar').getBoundingClientRect().bottom) + 6")
+            assert r["bar"]["h"] < below < 0.25 * h, below
+            assert pg.ev("(() => { const e = document.elementFromPoint(%d, %d); return !!e && (e.closest('#graph') !== null); })()" % (w / 2, below)), "the freed band is not the stage"
+            boxes = [n for n in pg.ev(FOLD_TAP_JS) if n["visible"]]
+            assert boxes, "no box in view after the fold"
+            n = boxes[0]
+            fold_tap(pg, n["x"], n["y"])
+            pg.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+            assert pg.ev(FOLD_OPENED_JS) == n["id"], (n, pg.ev(FOLD_OPENED_JS))
+            pg.close()
+        finally:
+            S.stop()
+        S, pg = fold_open(b, engine, w, h, fix="graphview")
+        try:
+            pg.page.click("#graph-show-all"); pg.page.wait_for_timeout(500)
+            first = pg.ev(FOLD_TAP_JS)
+            assert fold_is_bar(pg) and all(x["inside"] for x in first), first
+            pg.page.click("#graph-show-all"); pg.page.wait_for_timeout(500)       # a second press frames the map on the larger stage: the press that folded already did
+            second = pg.ev(FOLD_TAP_JS)
+            assert [x["id"] for x in first] == [x["id"] for x in second] and all(abs(a_["x"] - b_["x"]) < 1.5 and abs(a_["y"] - b_["y"]) < 1.5 for a_, b_ in zip(first, second)), (first, second)
+            pg.close()
+        finally:
+            S.stop()
+        S, pg = fold_open(b, engine, w, h, fix="graphview")
+        try:
+            pg.page.click('button.view-btn[data-id="graph"]')
+            pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000); pg.page.wait_for_timeout(300)
+            assert fold_is_bar(pg)
+            r = pg.ev(FOLD_RECTS_JS)
+            sp = pg.ev("""(() => { const s = document.querySelector('.graph-spine').getBoundingClientRect(), b = s.height;
+              return { h: s.height, inside: [...document.querySelectorAll('.graph-spine .ge-node')].map((n) => { const q = n.getBoundingClientRect();
+                return q.left >= s.left - 1 && q.right <= s.right + 1 && q.top >= s.top - 1 && q.bottom <= s.bottom + 1; }) }; })()""")
+            assert sp["h"] >= 0.85 * h and all(sp["inside"]), (w, h, sp)
+            pg.page.click(".graph-spine .ge-node")
+            pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+
+
+def c_fold_about_copies(b, S0, engine):
+    """FD11: contract (c): what the compact header does not show is also in the About panel. On a phone the panel opened holds, first, copies of the header's sentence and
+    scope line (as the shell wrote them: the scope line is not in the header at the start); opened again after the window is made wider it holds none; a page whose
+    shell has no bar never has them."""
+    for w, h in FOLD_PHONES:
+        S, pg = fold_open(b, engine, w, h, fix="graphview")
+        try:
+            pg.page.click("#graph-about-open"); pg.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+            got = pg.ev("[...document.querySelectorAll('#graph-about [data-fold-copy]')].map((p) => p.textContent)")
+            assert got == [FOLD_SENTENCE, FOLD_SCOPE], got
+            assert pg.ev("document.querySelector('#graph-about').firstElementChild.hasAttribute('data-fold-copy')"), "the copies are not first"
+            assert pg.ev("[...document.querySelectorAll('#graph-about [data-fold-copy]')].every((p) => p.offsetHeight > 0)"), "a copy is not shown"
+            pg.page.click("#graph-sheet-close"); pg.page.wait_for_timeout(100)
+            pg.page.set_viewport_size({"width": 1280, "height": 900}); pg.page.wait_for_timeout(200)
+            pg.page.click("#graph-about-open"); pg.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+            assert pg.ev("document.querySelectorAll('#graph-about [data-fold-copy]').length") == 0, "copies on a desktop window"
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+    S, pg = fold_open(b, engine, 390, 844, live=True, fix="graphview")
+    try:
+        pg.page.click("#graph-about-open"); pg.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+        assert pg.ev("document.querySelectorAll('[data-fold-copy]').length") == 0
+        pg.close()
+    finally:
+        S.stop()
+
+
+FOLD_CASES = [
+    ("FD1: on a phone the header starts compact: a quarter of the window at most, the sentence whole, no scope line", c_fold_start_compact),
+    ("FD2: under 520 px of window height the page starts folded: a bar of 48 px at most, the map area 85 percent, the toolbar a pill over it", c_fold_short_window_starts_folded),
+    ("FD3: a pan, a wheel, a key, a tap on a box, Show all and Key each fold the header at once; a press in the header does not", c_fold_triggers),
+    ("FD4: the bar's button opens the whole header again (scope line too), at most 60 percent of the window; the next pan folds it", c_fold_reopen),
+    ("FD5: desktop is unchanged: no bar, no fold, the type and the toolbar as they were", c_fold_desktop_unchanged),
+    ("FD6: the live map (no bar in its shell) is identical with and without the fold's CSS and script", c_fold_live_map_unchanged),
+    ("FD7: a window made wider while folded unfolds by itself", c_fold_resize_to_desktop),
+    ("FD9: a tap on a box in the start state opens that same box, at both phone sizes", c_fold_tap_holds),
+    ("FD10: after the fold the map uses the larger stage: a tap opens the right box, Show all and Graph frame everything inside it", c_fold_after),
+    ("FD11: on a phone the About panel also holds the header's sentence and scope line, first; none on a desktop window or the live map", c_fold_about_copies),
+    ("FD8: five mutants of the fold each turn a case red", c_fold_mutants),
+]
+
+
 # ---- the Graph view (graphview.js): the switch, the lazy read of spine.json, the spine drawn by a second engine, the failure event ----
 GV_INIT = ("window.__gp = []; window.__gpmeta = []; document.addEventListener('graphpage-failure', function (e) { window.__gp.push(e.detail); "
            "window.__gpmeta.push({ cancelable: e.cancelable, composed: e.composed, bubbles: e.bubbles, type: e.type, isTrusted: e.isTrusted }); });")
@@ -3700,6 +4057,8 @@ def main():
                     run("made B5: a made card's sheet looks the same as a markup card's (claim, status and note placement)" + vw, c_made_looks_like_markup, eng, mw, mh, mm)
                     run("made B6: a page with an article shows it, byte for byte as today; a made card only for an id it has none for" + vw, c_made_markup_wins, eng, mw, mh, mm)
                 run(GV_CASES[0][0], GV_CASES[0][1], eng)
+                for fname, ffn in FOLD_CASES:
+                    run(fname, ffn, eng)
                 if eng == "real":
                     for gname, gfn in GV_CASES[1:]:
                         run(gname, gfn, eng)
