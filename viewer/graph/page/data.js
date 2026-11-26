@@ -140,6 +140,22 @@ function edgeBasisOf(v, strings) {
   return { basis: v.basis, words: v.words };
 }
 
+/* The page's check of the options it is about to hand createGraph (data contract section 24: the floor's bound is the PAGE's check, made by the
+   ENGINE's rule). `check` is the engine's own `checkOptions` (pure; the options normalized, or a TypeError), `floor` is index.openScaleFloor
+   (undefined on the live map). Throws what `check` throws, except in one case: `floor` is given, `check` refuses the options, and `check`
+   accepts the very same options WITHOUT zoom.frameMin; the floor is then the cause, and it is a DataError bad-scale-floor naming the value.
+   No engine message is read. Anything else (the floor is fine, or another option is bad too) is the engine's own TypeError, as before. */
+export function checkedOptions(check, options, floor) {
+  try {
+    return check(options);
+  } catch (e) {
+    if (floor === undefined) throw e;
+    const { frameMin, ...zoom } = options.zoom || {};
+    try { check({ ...options, zoom }); } catch (other) { throw e; }
+    throw new DataError("bad-scale-floor", "index open_scale_floor is outside the range the engine accepts for an opened node's framing: " + shown(floor));
+  }
+}
+
 /* A link may carry `weight` (a positive integer, the distinct names used) and `in_reduction` (a boolean, the link is in the transitive
    reduction of its set): BOTH or NEITHER (data contract section 20). The live map's links have neither.
    ERROR ORDER, pinned for a link with two faults: the key set is checked first, so an unknown key beside a bad flag is `extra-key`; only a
@@ -210,7 +226,8 @@ export function validateIndex(raw) {
   const out = { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
   if (edgeBasis) out.edgeBasis = edgeBasis;
   /* The two optional per-map keys (data contract sections 15 and 24), each absent on the live map and then absent from the record too.
-     `sibling_layout`: the only value is "column". `open_scale_floor`: a finite number above 0 (the engine checks its upper bound). */
+     `sibling_layout`: the only value is "column". `open_scale_floor`: a finite number above 0 here; its range (zoom.min up to the open-framing
+     cap) is the ENGINE's rule, asked of the engine itself at start by checkedOptions below, never copied into the page. */
   if (has(raw, "sibling_layout")) {
     if (raw.sibling_layout !== "column") throw new DataError("bad-layout", "index sibling_layout is not column: " + shown(raw.sibling_layout));
     out.siblingLayout = raw.sibling_layout;
@@ -368,8 +385,9 @@ export function createData(fetchLike) {
 
   /* A link flagged in_reduction false is a use the reduction already implies by a longer chain: it is not handed to the engine as a premise link
      (Kepler's ruling). True, and a link with no flags (the live map), are handed over as before. */
+  const drawnLinks = (rests) => rests.filter((l) => l.in_reduction !== false);   // the ONE rule for which links reach the engine
   function linksFrom(rests, from) {
-    return rests.filter((l) => l.from === from && l.in_reduction !== false).map((l) => ({ to: l.to, toPath: l.to_path.concat(l.to) }));
+    return drawnLinks(rests).filter((l) => l.from === from).map((l) => ({ to: l.to, toPath: l.to_path.concat(l.to) }));
   }
 
   async function loadRoots() {

@@ -17,6 +17,7 @@ Files: `index.js` (an ES module), `engine.css` (structure and states only; link 
 ## Exports
 
 - `createGraph`
+- `checkOptions`
 - `DEFAULTS`
 - `EVENTS`
 - `VERSION`
@@ -24,7 +25,7 @@ Files: `index.js` (an ES module), `engine.css` (structure and states only; link 
 `createGraph(container, options)` returns a handle. `container` is an element the caller owns; the engine adds one
 child to it and removes it on `destroy()`. The container needs a size (the stage fills it). A wrong container or a
 wrong option is a `TypeError` thrown at once: those are programming errors. Wrong DATA is never thrown, always an event.
-`DEFAULTS` is the frozen default of every option. `EVENTS` is the list of event names. `VERSION` is a string.
+`checkOptions(options)` is the engine's own check of an options object, the very one `createGraph` runs first: pure (no DOM, no container), it returns the normalized options or throws the same `TypeError`, so a caller can ask the engine's rule (a bound such as the `zoom.frameMin` range) before it creates a graph, instead of keeping a copy of the numbers. `DEFAULTS` is the frozen default of every option. `EVENTS` is the list of event names. `VERSION` is a string.
 
 ## Options
 

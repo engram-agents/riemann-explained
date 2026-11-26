@@ -1151,7 +1151,7 @@ START_CALL = "start(document, { createGraph, fetch: (address) => fetch(address) 
 def expose_failure(src):
     """Test-only: the page keeps the reason of a failed start in the object start() returns, and nothing reads it; hang it on <html> so a case can."""
     assert START_CALL in src, "the page's last line is not the one this case rewrites"
-    return src.replace(START_CALL, START_CALL[:-1] + ".then((f) => document.documentElement.setAttribute('data-failure', f.reason));")
+    return src.replace(START_CALL, START_CALL[:-1] + ".then((f) => { if (f.reason !== null) document.documentElement.setAttribute('data-failure', f.reason); });")
 
 
 def spoil_card_height(src):

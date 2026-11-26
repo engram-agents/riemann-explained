@@ -8,9 +8,9 @@
 
    THE SEAM: start(doc, {createGraph, fetch}) takes the engine's createGraph and a fetch-like as arguments. The last
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
-import { createGraph } from "../engine/index.js";
+import { createGraph, checkOptions } from "../engine/index.js";
 import { el, isId } from "./dom.js";
-import { createData, DataError, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING } from "./data.js";
+import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING } from "./data.js";
 import { makeRenderFace } from "./face.js";
 import { createSheet } from "./sheet.js";
 
@@ -204,7 +204,7 @@ export async function start(doc, deps) {
     /* What the engine tells us about a failed load is a string; the class of the failure is decided here, from the exception itself:
        id -> the DataError code of the last failed load of that node's parts, or null for anything that was not a DataError. */
     const loadFailures = new Map();
-    handle = deps.createGraph(q["graph"], {
+    const options = {
       roots, maxChildren: index.maxChildren, sizes: { ...CARD_SIZES },
       // the first view never zooms below scale 1 (text at its size); 'Show all' (handle.fit()) still shows all. A map's open_scale_floor
       // (data v3; absent on the live map, and then there is no frameMin key) is merged in as the floor of an opened node's framing.
@@ -213,7 +213,11 @@ export async function start(doc, deps) {
       ...(index.siblingLayout !== undefined ? { layout: { siblings: index.siblingLayout } } : {}),
       loadChildren: (id) => data.loadChildren(id).catch((e) => { loadFailures.set(id, e instanceof DataError ? e.code : null); throw e; }),
       renderFace: makeRenderFace(strings, index.symbols.countWords),
-    });
+    };
+    /* The engine's own rule, asked BEFORE createGraph on the exact options it will get: a floor outside the engine's range is this page's
+       bad-scale-floor (the fallback, through the setup catch), any other refusal is the engine's TypeError as before (data.js checkedOptions). */
+    checkedOptions(checkOptions, options, index.openScaleFloor);
+    handle = deps.createGraph(q["graph"], options);
     const guard = (fn) => (...a) => { if (dead) return; try { fn(...a); } catch (e) { fallback(e && e.message); } };
     offs.push(handle.on("tap", guard((node) => { if (node) routes["open-card"](node.id); else routes["tap-outside"](); })));
     offs.push(handle.on("open", guard((node) => { openIds.add(node.id); sheet.setPartsOpen(node.id, true); })));
