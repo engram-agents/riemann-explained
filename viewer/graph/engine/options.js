@@ -52,9 +52,9 @@ function resolveFitMin(z) {
 }
 
 /* The open-framing cap: the largest scale framing an OPENED node may use. The one definition; the controller calls it too.
-   Inputs: zoom.frameMaxOpen, semantic.frameOpenShare, semantic.openPx and sizes.nodeW (the last three keep a closed child below openPx). */
+   Inputs: zoom.max, zoom.frameMaxOpen, semantic.frameOpenShare, semantic.openPx and sizes.nodeW (the last three keep a closed child below openPx). */
 export function openFrameCap(o) {
-  return Math.min(o.zoom.frameMaxOpen, o.semantic.frameOpenShare * o.semantic.openPx / o.sizes.nodeW);
+  return Math.min(o.zoom.max, o.zoom.frameMaxOpen, o.semantic.frameOpenShare * o.semantic.openPx / o.sizes.nodeW);
 }
 
 /* The whole zoom.frameMin rule, same shape as fitMin: null or undefined means "not given" and resolves to zoom.min,
@@ -64,7 +64,7 @@ function resolveFrameMin(o) {
   const z = o.zoom, f = z.frameMin;
   if (f === null || f === undefined) { z.frameMin = z.min; return; }
   if (!Number.isFinite(f) || f < z.min) fail("zoom.frameMin must be a number with zoom.min <= zoom.frameMin");
-  if (f > openFrameCap(o)) fail("zoom.frameMin must not exceed the open-framing cap, min(zoom.frameMaxOpen, semantic.frameOpenShare * semantic.openPx / sizes.nodeW) = " + openFrameCap(o));
+  if (f > openFrameCap(o)) fail("zoom.frameMin must not exceed the open-framing cap, min(zoom.max, zoom.frameMaxOpen, semantic.frameOpenShare * semantic.openPx / sizes.nodeW) = " + openFrameCap(o));
 }
 
 export function normalizeOptions(raw) {
@@ -92,9 +92,9 @@ export function normalizeOptions(raw) {
   for (const k of ["nodeW", "nodeH", "head"]) if (!(o.sizes[k] > 0)) fail("sizes." + k + " must be > 0");
   if (!(o.zoom.min > 0 && o.zoom.max > o.zoom.min)) fail("zoom.min must be > 0 and below zoom.max");
   resolveFitMin(o.zoom);
-  resolveFrameMin(o);
   if (o.layout.siblings === undefined) o.layout.siblings = DEFAULTS.layout.siblings;
   if (!SIBLINGS.includes(o.layout.siblings)) fail('layout.siblings must be "rows" or "column"');
   if (!(o.semantic.closePx > 0 && o.semantic.openPx > o.semantic.closePx)) fail("semantic.openPx must be above semantic.closePx (the gap is what stops flicker)");
+  resolveFrameMin(o);   // after every check on the inputs openFrameCap reads (zoom.max above, semantic here), so a bad input is blamed, not frameMin
   return o;
 }
