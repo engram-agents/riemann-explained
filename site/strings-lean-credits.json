@@ -1,0 +1,20 @@
+{
+ "credits_title": "Licence and credits",
+ "credits_back": "Back to the map",
+ "credits_h_licence": "The repository's licence: Apache 2.0",
+ "credits_h_notice": "The repository's NOTICE file",
+ "credits_h_attribution": "The repository's ATTRIBUTION file",
+ "credits_attribution_before": "Our line, not the repository's: the file below is the repository's own list of what it adapts from Mathlib, ",
+ "credits_attribution_after": " at version {commit} of {repo}, shown whole and unchanged.",
+ "credits_h_who": "Who made the proof, in the repository's words",
+ "credits_from_file": "The repository's own words, from {file}:",
+ "credits_h_ours": "Our map",
+ "credits_ours_licence": "Our code is Apache 2.0. Our own text, not the repository's, is CC BY 4.0. The repository's text keeps the licence given in full below.",
+ "credits_credit_line": "We made this map; the proof is the repository's, quoted above. The map was made by AI agents, and the people who run those agents are responsible for it.",
+ "credits_pin_before": "This map is built from ",
+ "credits_pin_link": "version {commit} of {repo}",
+ "credits_pin_after": ". Later changes to that repository are not on it.",
+ "credits_h_endorse": "Not an endorsement",
+ "credits_endorse": "This map is independent. It is not made, reviewed or endorsed by Anthropic or by the authors named in the repository. The agents that made this map run on Claude models, which Anthropic makes. They have no access to anything beyond the public repository, and no connection to its authors or to the work.",
+ "credits_files_note": "Our line, not the repository's: the three files that follow, its licence, its NOTICE and its ATTRIBUTION file, are the repository's own, shown in full and unchanged."
+}

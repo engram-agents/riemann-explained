@@ -10,8 +10,9 @@
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
 import { createGraph, checkOptions } from "../engine/index.js";
 import { el, isId } from "./dom.js";
-import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING } from "./data.js";
+import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING, TYPESET_STRINGS } from "./data.js";
 import { makeRenderFace } from "./face.js";
+import { templateParts } from "./note.js";
 import { createSheet } from "./sheet.js";
 
 /* Every way the sheet can close. Each one is a function in `routes` below that begins with the sheet's one close
@@ -120,10 +121,50 @@ export async function start(doc, deps) {
     function say(text) { if (dead) return; notice.replaceChildren(doc.createTextNode(text)); notice.hidden = false; }
     function hush() { notice.hidden = true; }
 
-    function openCard(id) {
-      const art = articles.get(id), m = data.meta(id);
-      const anc = m ? m.path.map((a) => data.meta(a)) : [];
-      if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
+    /* A MAP CARRIES NOTES iff its index strings hold BOTH note_label and note_source (data the page has at start; the live map has neither).
+       On a map that carries notes, the step's own file is loaded (it is cached when the card's parents or a deep link already loaded it) BEFORE
+       the sheet is touched, because the repository's note lives in that file: a failed load changes nothing (the open card stays open) and goes
+       through failed(). On a map that does not, there is no note to fetch, so openCard touches the sheet exactly as it always did: at once, from
+       the markup, with no step load in its path, and no fetch result can delay it or prevent it.
+
+       ONE NAVIGATION TICKET. `nav` is bumped by EVERY route the reader can take (the `routes` table is wrapped once, below, so each entry takes
+       a ticket; an in-sheet close request takes one too). An async route (openCard, go, open-parts) captures its ticket at entry and
+       asks `current(t)` after every await and at the top of its catch: a superseded route does nothing (no sheet change, no camera move,
+       no notice, no failed(), no fallback). A route that continues into another (go into openCard) hands its own ticket on, so the
+       continuation is the same navigation and is not refused by it. */
+    let nav = 0;
+    const current = (t) => !dead && t === nav;
+    /* THE ENGINE'S EVENTS ARE A CHANNEL TOO. The engine says `error` / `refused` BEFORE the promise a route awaits settles (and `invalid-path` inside
+       the call itself), so by the time the route's own post-await check could run, the handler has already spoken. So a route's engine call is
+       recorded here, with the route's ticket and the node ids the call works on, for exactly as long as the call is pending; the handlers ask
+       `supersededCall(node)`: an event is the effect of a superseded route when at least one pending route call covers its node (a null node, as in
+       `path-not-found`, is covered by any) and none of those calls belongs to the current ticket. An event with no route call pending, which is a
+       gesture the reader made on the map, is not covered: it is shown exactly as before. This is the ticket again, not a second sequence. */
+    const engineCalls = new Set();
+    /* THE INVARIANT: a route starts an engine call only while its ticket is current, checked synchronously before each viaRoute. */
+    async function viaRoute(t, ids, call) {
+      const rec = { t, ids: new Set(ids) };
+      engineCalls.add(rec);
+      try { return await call(); } finally { engineCalls.delete(rec); }
+    }
+    function supersededCall(node) {
+      let covered = false;
+      for (const rec of engineCalls) {
+        if (node && !rec.ids.has(node.id)) continue;
+        if (current(rec.t)) return false;
+        covered = true;
+      }
+      return covered;
+    }
+    /* The maths-face view of a note (formulas in the maths face, the line, the button) is on only when the data carries ALL FOUR of its words; the page
+       draws exactly those words. With any one missing it is null and the note renders as it always did. */
+    const typesetWords = TYPESET_STRINGS.every((k) => typeof strings[k] === "string" && strings[k] !== "")
+      ? { label: strings.note_label_typeset, line: strings.note_typeset_line, exactButton: strings.note_exact_button, renderButton: strings.note_render_button }
+      : null;
+    const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    const carriesNotes = hasOwn(strings, "note_label") && hasOwn(strings, "note_source");
+    /* The sheet's one open. `step` is the loaded step on a map that carries notes; on one that does not it is undefined and no `note` key is passed. */
+    function showOpenCard(id, art, m, anc, step) {
       const w = index.symbols.words;
       /* The sheet's one line. A kind whose table row has `card_words` (a folder or file asserts nothing) shows that word and nothing from
          state or proof; every other kind shows the state and the proof, as before. The TABLE's row decides, never the kind's name. The same
@@ -133,10 +174,32 @@ export async function start(doc, deps) {
       const ok = sheet.showCard(art, {
         id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
         currentListed: cardWord === undefined,
+        ...(step === undefined ? {} : {
+          note: step.note ? { label: strings.note_label, text: step.note.text, typeset: typesetWords,
+            sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null }),
         crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
       });
       if (ok) { hush(); handle.select(id); }
       return ok;
+    }
+    /* Not async, on purpose: on a map that carries no notes it returns the boolean at once, as it always did, and an exception from the sheet reaches
+       the caller synchronously (a tap's guard, or go's catch). On a map that carries notes it returns the promise of the open. */
+    function openCard(t, id) {
+      const art = articles.get(id), m = data.meta(id);
+      const anc = m ? m.path.map((a) => data.meta(a)) : [];
+      if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
+      if (!carriesNotes) return showOpenCard(id, art, m, anc, undefined);
+      return openCardWithNote(t, id, art, m, anc);
+    }
+    async function openCardWithNote(t, id, art, m, anc) {
+      try {
+        const step = await data.loadStep(id);
+        if (!current(t)) return false;
+        return showOpenCard(id, art, m, anc, step);
+      } catch (e) {
+        if (!current(t)) return false;
+        return failed(e);
+      }
     }
 
     /* The one rule for a route that fails (the data layer's DataError reaches it directly). After the fallback nothing is said or
@@ -157,17 +220,19 @@ export async function start(doc, deps) {
        transport or data, has changed nothing yet, so the reader's open card is still open and intact, the map is as it was, and
        a tap or an address again is a clean second attempt (data.js drops a failed load from its cache). After every await, a
        dead page does nothing. */
-    async function go(id) {
-      if (dead) return false;
+    async function go(t, id) {
+      if (!current(t)) return false;
       if (!isId(id)) { say(strings.link_refused); return false; }
       try {
         const step = await data.loadStep(id);
-        if (dead) return false;
+        if (!current(t)) return false;
         if (!sheet.close()) return false;
-        await handle.reveal(step.path.concat(id));
-        if (dead) return false;
-        return openCard(id);
+        const path = step.path.concat(id);
+        await viaRoute(t, path, () => handle.reveal(path));
+        if (!current(t)) return false;
+        return openCard(t, id);        // the same ticket: one navigation, not a second one
       } catch (e) {
+        if (!current(t)) return false;
         return failed(e);
       }
     }
@@ -175,23 +240,33 @@ export async function start(doc, deps) {
     routes["close-button"] = () => sheet.close();
     routes["tap-outside"] = () => sheet.close();
     routes["escape"] = () => sheet.close();
-    routes["open-card"] = (id) => openCard(id);
+    routes["open-card"] = (t, id) => openCard(t, id);
     routes["deep-link"] = go;
     routes["toolbar-show-all"] = () => { if (sheet.close()) handle.fit(); };
     routes["toolbar-key"] = () => { if (sheet.shown() === keyEl) sheet.close(); else sheet.showPanel(keyEl, false); };
     routes["toolbar-about"] = () => { if (sheet.shown() === aboutEl) sheet.close(); else sheet.showPanel(aboutEl, true); };
-    routes["open-parts"] = async (id) => {
+    routes["open-parts"] = async (t, id) => {
       try {
-        if (dead || !sheet.close()) return;
+        if (!current(t) || !sheet.close()) return;
         const m = data.meta(id);
-        if (m && await handle.open(id)) {
-          if (dead) return;
-          await handle.reveal(m.path.concat(id));
+        const path = m ? m.path.concat(id) : [];
+        if (m && await viaRoute(t, path, () => handle.open(id))) {
+          if (!current(t)) return;
+          await viaRoute(t, path, () => handle.reveal(path));
         }
       } catch (e) {
+        if (!current(t)) return;
         failed(e);
       }
     };
+    /* The one place a route takes its ticket: every entry above is wrapped here, so a route added later cannot forget it. */
+    for (const name of Object.keys(routes)) {
+      const run = routes[name];
+      routes[name] = (...a) => run(++nav, ...a);
+    }
+    /* The in-sheet close request closes through the sheet's own listener, not through a route: it takes a ticket here, so a card still loading
+       cannot open over a close the reader asked for. */
+    q["graph-sheet"].addEventListener("sheetcloserequest", () => { nav++; }, { signal });
     for (const name of CLOSE_ROUTES) if (typeof routes[name] !== "function") throw new Error("no route for " + name);
 
     q["graph-show-all"].addEventListener("click", () => routes["toolbar-show-all"](), { signal });
@@ -225,11 +300,13 @@ export async function start(doc, deps) {
     offs.push(handle.on("error", guard((node, reason) => {
       const code = node ? loadFailures.get(node.id) : undefined;
       if (node) loadFailures.delete(node.id);
+      if (supersededCall(node)) return;       // the effect of a route the reader has moved on from: no notice, no fallback
       if (reason === "path-not-found") say(strings.link_refused);
       else if (reason === "load-failed" && isTransportCode(code)) say(strings.parts_failed_notice);    // the node stays closed; the reader taps again
       else fallback("engine error " + reason);
     })));
     offs.push(handle.on("refused", guard((node, reason) => {
+      if (supersededCall(node)) return;
       if (reason === "invalid-path") say(strings.link_refused); else fallback("engine refused " + reason);
     })));
 
