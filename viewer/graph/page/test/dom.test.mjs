@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { makeFakeDoc } from "./fakedoc.mjs";
 import * as dom from "../dom.js";
+import { makeRenderFace } from "../face.js";
 
 const HOSTILE = [
   "<img src=x onerror=alert(1)>", "</script><script>alert(1)</script>", "javascript:alert(1)",
@@ -10,7 +11,7 @@ const HOSTILE = [
 ];
 
 test("el: tag table is exactly the R1 list", () => {
-  assert.deepEqual([...dom.TAGS].sort(), ["button", "div", "h2", "li", "nav", "ol", "p", "span", "ul"]);
+  assert.deepEqual([...dom.TAGS].sort(), ["button", "code", "div", "h2", "li", "nav", "ol", "p", "span", "ul"]);
 });
 
 test("el: every allowed tag is created; every other tag THROWS", () => {
@@ -83,4 +84,104 @@ test("the module source has no sink and no URL literal", () => {
   const src = readFileSync(new URL("../dom.js", import.meta.url), "utf8");
   for (const s of ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "DOMParser", "createElementNS", "eval(", "new Function", "http:", "https:"])
     assert.ok(!src.includes(s), "dom.js contains " + s);
+});
+
+/* ---- A6: a step title's backtick spans are typeset as code, by ONE helper. The definition of a span is the builder's
+   (tools/notes_meta.py _BACKTICK_SPAN); backtick-titles.json holds the edge strings with the segments that regex itself finds. ---- */
+const flat = (n) => (typeof n === "string" ? n : n.nodeType === 3 ? n.textContent : n.children.map(flat).join(""));   // a string child becomes one text node under el()
+const render = (title) => { const doc = makeFakeDoc(); const kids = dom.titleChildren(title, dom.makeEl(doc)); return { doc, kids }; };
+const BT = JSON.parse(readFileSync(new URL("./fixtures/backtick-titles.json", import.meta.url), "utf8"));
+
+test("A6 agreement: titleSegments equals the segments the builder's own regex finds, for EVERY fixture title (edge strings and the real span titles)", () => {
+  assert.ok(BT.cases.length >= 16, "the edge strings are there");
+  for (const c of BT.cases) {
+    assert.deepEqual(dom.titleSegments(c.title).map((x) => [x.kind, x.text]), c.segments, JSON.stringify(c.title));
+    // and what is DRAWN: a plain string for text, a code element for a span, with the same characters
+    const drawn = render(c.title).kids.map((k) => (typeof k === "string" ? ["text", k] : [k.tagName.toLowerCase() === "code" ? "code" : "other", flat(k)]));
+    assert.deepEqual(drawn, c.segments, "drawn: " + JSON.stringify(c.title));
+  }
+  assert.ok(BT.cases.some((c) => c.title === "``" && c.segments.length === 1 && c.segments[0][0] === "text"), "an empty pair stays two literal backticks");
+});
+
+test("A6 T1: 'a `x` b' -> text 'a ', code 'x', text ' b'; no backtick shown", () => {
+  const { kids } = render("a `x` b");
+  assert.equal(kids.length, 3);
+  assert.equal(kids[0], "a ");
+  assert.equal(kids[1].tagName, "CODE");
+  assert.equal(flat(kids[1]), "x");
+  assert.equal(kids[2], " b");
+  assert.ok(!kids.map(flat).join("").includes("`"));
+});
+
+test("A6 T2: the real title -> a code element with the text 'P* s P' (the asterisk stays literal)", () => {
+  const { kids } = render("The second moments of the operators `P* s P`, and good forms");
+  const code = kids.filter((k) => typeof k !== "string");
+  assert.equal(code.length, 1);
+  assert.equal(flat(code[0]), "P* s P");
+  assert.equal(kids.map(flat).join(""), "The second moments of the operators P* s P, and good forms");
+});
+
+test("A6 T3: '`<b>&`' -> one code element whose text is '<b>&'; no <b> element exists", () => {
+  const { doc, kids } = render("`<b>&`");
+  assert.equal(kids.length, 1);
+  assert.equal(flat(kids[0]), "<b>&");
+  assert.deepEqual(doc.made.map((n) => n.tagName), ["CODE"]);
+});
+
+test("A6 T4/T5: an unpaired backtick and an empty pair are shown as written (the builder's rule)", () => {
+  assert.equal(render("a `b").kids.map(flat).join(""), "a `b");
+  assert.equal(render("a `b").doc.made.length, 0);
+  assert.equal(render("``").kids.map(flat).join(""), "``");
+  assert.equal(render("``").doc.made.length, 0);
+});
+
+test("A6 T6: a title with no backtick is one plain text node, exactly as before", () => {
+  for (const t of ["Title of step goal-chain", "a <b> & c", "x".repeat(300)]) {
+    const { doc, kids } = render(t);
+    assert.equal(kids.length, 1);
+    assert.equal(kids[0], t, "a plain string child, which el() turns into one text node");
+    assert.equal(doc.made.length, 0);
+  }
+});
+
+test("A6: the helper builds with el() only (text nodes and code elements, never markup)", () => {
+  const src = readFileSync(new URL("../dom.js", import.meta.url), "utf8");
+  const at = src.indexOf("export function titleSegments");
+  assert.ok(at >= 0, "the helper exists");
+  const body = src.slice(at);
+  assert.ok(!/innerHTML|insertAdjacentHTML|outerHTML|DOMParser|createContextualFragment/.test(body));
+});
+
+/* ---- F2: the face's foot. A card with child_kind whose kinds row has count_words says "{n} <kind word>"; every other card keeps parts_n ---- */
+function faceFoot(strings, countWords, data, childCount) {
+  const prev = globalThis.document;
+  globalThis.document = makeFakeDoc();
+  try {
+    const face = makeRenderFace(strings, countWords)({ data: { title: "T", kind: "theorem", state: "read", ...data }, childCount });
+    const foot = face.children.find((c) => c.attrs && c.attrs.class === "face-foot");
+    return foot ? flat(foot) : null;
+  } finally { globalThis.document = prev; }
+}
+const FOOT_STRINGS = { parts_n: "{n} parts", part_one: "1 part", count_group_one: "{n} group", count_group_many: "{n} groups", count_file_one: "{n} file", count_file_many: "{n} files" };
+const COUNTS = { group: { one: "count_group_one", many: "count_group_many" }, file: { one: "count_file_one", many: "count_file_many" } };
+
+test("F2 foot: child_kind with count_words -> the kind's one/many with {n} filled as text; 1 uses one, any other count uses many", () => {
+  assert.equal(faceFoot(FOOT_STRINGS, COUNTS, { childKind: "file" }, 1), "1 file");
+  assert.equal(faceFoot(FOOT_STRINGS, COUNTS, { childKind: "file" }, 3), "3 files");
+  assert.equal(faceFoot(FOOT_STRINGS, COUNTS, { childKind: "group" }, 1), "1 group");
+  assert.equal(faceFoot(FOOT_STRINGS, COUNTS, { childKind: "group" }, 12), "12 groups");
+});
+
+test("F2 foot: no child_kind, or a child_kind whose row has no count_words, or no children -> today's parts_n exactly", () => {
+  assert.equal(faceFoot(FOOT_STRINGS, COUNTS, {}, 1), "1 part");
+  assert.equal(faceFoot(FOOT_STRINGS, COUNTS, {}, 5), "5 parts");
+  assert.equal(faceFoot(FOOT_STRINGS, COUNTS, { childKind: "part" }, 5), "5 parts");
+  assert.equal(faceFoot(FOOT_STRINGS, {}, { childKind: "file" }, 5), "5 parts");
+  assert.equal(faceFoot(FOOT_STRINGS, COUNTS, { childKind: "file" }, 0), null, "no foot without children");
+  assert.equal(faceFoot(FOOT_STRINGS, undefined, {}, 2), "2 parts", "the second argument is optional");
+});
+
+test("F2 foot: {n} is filled as TEXT (a replacement pattern in the words is inert)", () => {
+  const strings = { ...FOOT_STRINGS, count_file_many: "{n} files $& $1" };
+  assert.equal(faceFoot(strings, COUNTS, { childKind: "file" }, 4), "4 files $& $1");
 });

@@ -48,7 +48,8 @@
   "order": {
    "kinds": [
     "theorem",
-    "def"
+    "def",
+    "structure"
    ],
    "proofs": [
     "read",

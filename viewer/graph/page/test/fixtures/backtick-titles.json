@@ -1,0 +1,586 @@
+{
+ "cases": [
+  {
+   "segments": [
+    [
+     "text",
+     "a "
+    ],
+    [
+     "code",
+     "x"
+    ],
+    [
+     "text",
+     " b"
+    ]
+   ],
+   "title": "a `x` b"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "``"
+    ]
+   ],
+   "title": "``"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "``x``"
+    ]
+   ],
+   "title": "``x``"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "`a``b`"
+    ]
+   ],
+   "title": "`a``b`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "a `b"
+    ]
+   ],
+   "title": "a `b"
+  },
+  {
+   "segments": [
+    [
+     "code",
+     " "
+    ]
+   ],
+   "title": "` `"
+  },
+  {
+   "segments": [
+    [
+     "code",
+     "a"
+    ],
+    [
+     "text",
+     "b`"
+    ]
+   ],
+   "title": "`a`b`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "x\n"
+    ],
+    [
+     "code",
+     "y"
+    ]
+   ],
+   "title": "x\n`y`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "x\r"
+    ],
+    [
+     "code",
+     "y"
+    ]
+   ],
+   "title": "x\r`y`"
+  },
+  {
+   "segments": [
+    [
+     "code",
+     "<b>&"
+    ]
+   ],
+   "title": "`<b>&`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "no backtick at all"
+    ]
+   ],
+   "title": "no backtick at all"
+  },
+  {
+   "segments": [
+    [
+     "code",
+     "one"
+    ],
+    [
+     "text",
+     " and "
+    ],
+    [
+     "code",
+     "two"
+    ]
+   ],
+   "title": "`one` and `two`"
+  },
+  {
+   "segments": [
+    [
+     "code",
+     "x"
+    ]
+   ],
+   "title": "`x`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "``` "
+    ],
+    [
+     "code",
+     "x"
+    ],
+    [
+     "text",
+     " ```"
+    ]
+   ],
+   "title": "``` `x` ```"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "a "
+    ],
+    [
+     "code",
+     " b "
+    ],
+    [
+     "text",
+     " c"
+    ]
+   ],
+   "title": "a ` b ` c"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The second moments of the operators "
+    ],
+    [
+     "code",
+     "P* s P"
+    ],
+    [
+     "text",
+     ", and good forms"
+    ]
+   ],
+   "title": "The second moments of the operators `P* s P`, and good forms"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "A bound for non-crystalline cocycles modulo "
+    ],
+    [
+     "code",
+     "ℓ ^ m"
+    ],
+    [
+     "text",
+     " by the Tate dual lattice"
+    ]
+   ],
+   "title": "A bound for non-crystalline cocycles modulo `ℓ ^ m` by the Tate dual lattice"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Denominators: bases of "
+    ],
+    [
+     "code",
+     "A⁺ / I_γ"
+    ],
+    [
+     "text",
+     " and "
+    ],
+    [
+     "code",
+     "γ A⁺ / I_γ"
+    ]
+   ],
+   "title": "Denominators: bases of `A⁺ / I_γ` and `γ A⁺ / I_γ`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Direct and mirror data modulo "
+    ],
+    [
+     "code",
+     "N"
+    ],
+    [
+     "text",
+     ", and the operator "
+    ],
+    [
+     "code",
+     "Up"
+    ]
+   ],
+   "title": "Direct and mirror data modulo `N`, and the operator `Up`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Finite zero terms and the evaluation of pairs of edges in the tower of spaces "
+    ],
+    [
+     "code",
+     "Y_k"
+    ]
+   ],
+   "title": "Finite zero terms and the evaluation of pairs of edges in the tower of spaces `Y_k`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Frobenius congruence for "
+    ],
+    [
+     "code",
+     "θ"
+    ],
+    [
+     "text",
+     " and the coefficient of "
+    ],
+    [
+     "code",
+     "z ^ (p - 1)"
+    ],
+    [
+     "text",
+     " in "
+    ],
+    [
+     "code",
+     "x"
+    ]
+   ],
+   "title": "Frobenius congruence for `θ` and the coefficient of `z ^ (p - 1)` in `x`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Links of isometries, the link isometry Υ_γ, and invariance under "
+    ],
+    [
+     "code",
+     "besselU"
+    ]
+   ],
+   "title": "Links of isometries, the link isometry Υ_γ, and invariance under `besselU`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Marked primes above "
+    ],
+    [
+     "code",
+     "p"
+    ],
+    [
+     "text",
+     ", full marks and the scaled Hecke operator"
+    ]
+   ],
+   "title": "Marked primes above `p`, full marks and the scaled Hecke operator"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Near pairs of "
+    ],
+    [
+     "code",
+     "b"
+    ],
+    [
+     "text",
+     "-places and the losses in the sharpness bound"
+    ]
+   ],
+   "title": "Near pairs of `b`-places and the losses in the sharpness bound"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Resolutions of the identity and power series in the compositions "
+    ],
+    [
+     "code",
+     "y(μ_i z)"
+    ]
+   ],
+   "title": "Resolutions of the identity and power series in the compositions `y(μ_i z)`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Roots of unity "
+    ],
+    [
+     "code",
+     "ζ"
+    ],
+    [
+     "text",
+     " with polynomials hardly more divisible at "
+    ],
+    [
+     "code",
+     "ζ - 1"
+    ],
+    [
+     "text",
+     " than at given points"
+    ]
+   ],
+   "title": "Roots of unity `ζ` with polynomials hardly more divisible at `ζ - 1` than at given points"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Smooth local Witt theorem and the exchange identity for "
+    ],
+    [
+     "code",
+     "V' ⊕ W₁"
+    ],
+    [
+     "text",
+     " and "
+    ],
+    [
+     "code",
+     "V'"
+    ]
+   ],
+   "title": "Smooth local Witt theorem and the exchange identity for `V' ⊕ W₁` and `V'`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The Bessel function as an integral over "
+    ],
+    [
+     "code",
+     "R(F_∞)"
+    ]
+   ],
+   "title": "The Bessel function as an integral over `R(F_∞)`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The finite groups "
+    ],
+    [
+     "code",
+     "Ū"
+    ],
+    [
+     "text",
+     ", "
+    ],
+    [
+     "code",
+     "H̄"
+    ],
+    [
+     "text",
+     " and "
+    ],
+    [
+     "code",
+     "R̄"
+    ]
+   ],
+   "title": "The finite groups `Ū`, `H̄` and `R̄`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The maps "
+    ],
+    [
+     "code",
+     "Θ^♭"
+    ],
+    [
+     "text",
+     " and "
+    ],
+    [
+     "code",
+     "res^♭"
+    ],
+    [
+     "text",
+     ", and the first path"
+    ]
+   ],
+   "title": "The maps `Θ^♭` and `res^♭`, and the first path"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The part in "
+    ],
+    [
+     "code",
+     "X₀"
+    ],
+    [
+     "text",
+     " of a frame, moves, and lifts of a lattice"
+    ]
+   ],
+   "title": "The part in `X₀` of a frame, moves, and lifts of a lattice"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The places "
+    ],
+    [
+     "code",
+     "Σ_N"
+    ],
+    [
+     "text",
+     " above N and the set-up at p = N"
+    ]
+   ],
+   "title": "The places `Σ_N` above N and the set-up at p = N"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The prime number theorem for the remainders "
+    ],
+    [
+     "code",
+     "R_q"
+    ]
+   ],
+   "title": "The prime number theorem for the remainders `R_q`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The valuation bound "
+    ],
+    [
+     "code",
+     "v(l!) + val₁₂(l) ≤ S_p + 2 ∑ v(B_τ)"
+    ],
+    [
+     "text",
+     " for every prime"
+    ]
+   ],
+   "title": "The valuation bound `v(l!) + val₁₂(l) ≤ S_p + 2 ∑ v(B_τ)` for every prime"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "The vectors "
+    ],
+    [
+     "code",
+     "z⁺"
+    ],
+    [
+     "text",
+     " and "
+    ],
+    [
+     "code",
+     "Υ_γ⁻¹ z⁺"
+    ]
+   ],
+   "title": "The vectors `z⁺` and `Υ_γ⁻¹ z⁺`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "Tight frames in "
+    ],
+    [
+     "code",
+     "𝔞₀"
+    ]
+   ],
+   "title": "Tight frames in `𝔞₀`"
+  },
+  {
+   "segments": [
+    [
+     "text",
+     "p-adic gauge bounds for chains of theta lifts and restrictions to "
+    ],
+    [
+     "code",
+     "Y_m"
+    ]
+   ],
+   "title": "p-adic gauge bounds for chains of theta lifts and restrictions to `Y_m`"
+  }
+ ],
+ "definition": "tools/notes_meta.py _BACKTICK_SPAN"
+}

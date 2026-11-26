@@ -38,16 +38,17 @@ function hashId(doc) {
   try { return decodeURIComponent(h.slice(1)); } catch (e) { return ""; }
 }
 
-/* The key: one row per kind, then per state, in symbols.order order, each with its label strings[row.words]. (Proofs have no
-   section in the key: a proof shows only in the sheet's status line.) */
+/* The key: one row per kind, then per state, as the builder's symbols.order lists them (the rows that occur on this map), each
+   with its label strings[row.words]. A states section whose order is empty is absent whole, heading included: the builder says
+   what the key shows. (Proofs have no section in the key: a proof shows only in the sheet's status line.) */
 function buildKey(index) {
   const s = index.strings, w = index.symbols.words;
-  const kindRows = index.symbols.kinds.map((k) => el("li", {}, [el("span", { class: "swatch " + KIND_CLASS[k] }), el("span", {}, [s[w.kinds[k]]])]));
-  const stateRows = index.symbols.states.map((st) => el("li", {}, [el("span", { class: "swatch k-theorem " + STATE_CLASS[st] }), el("span", {}, [s[w.states[st]]])]));
-  return el("div", { class: "key-content" }, [
-    el("h2", {}, [s.key_kinds_heading]), el("ul", {}, kindRows),
-    el("h2", {}, [s.key_states_heading]), el("ul", {}, stateRows),
-  ]);
+  const kindRows = index.symbols.order.kinds.map((k) => el("li", {}, [el("span", { class: "swatch " + KIND_CLASS[k] }), el("span", {}, [s[w.kinds[k]]])]));
+  const stateRows = index.symbols.order.states.map((st) => el("li", {}, [el("span", { class: "swatch k-theorem " + STATE_CLASS[st] }), el("span", {}, [s[w.states[st]]])]));
+  const parts = [el("h2", {}, [s.key_kinds_heading]), el("ul", {}, kindRows)];
+  if (typeof s.key_kinds_note === "string") parts.push(el("p", { class: "key-note" }, [s.key_kinds_note]));   // optional: one plain line under the kind rows
+  if (stateRows.length > 0) parts.push(el("h2", {}, [s.key_states_heading]), el("ul", {}, stateRows));
+  return el("div", { class: "key-content" }, parts);
 }
 
 export async function start(doc, deps) {
@@ -118,10 +119,15 @@ export async function start(doc, deps) {
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
       if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
       const w = index.symbols.words;
-      const status = [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
+      /* The sheet's one line. A kind whose table row has `card_words` (a folder or file asserts nothing) shows that word and nothing from
+         state or proof; every other kind shows the state and the proof, as before. The TABLE's row decides, never the kind's name. The same
+         condition ends the breadcrumb at the PARENT (the open card is not listed; the sheet heading carries its title). */
+      const cardWord = index.symbols.cardWords[m.kind];
+      const status = cardWord !== undefined ? strings[cardWord] : [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
       const ok = sheet.showCard(art, {
         id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
-        crumbs: anc.concat(m).map((x) => ({ id: x.id, title: x.title, role: x.role })),
+        currentListed: cardWord === undefined,
+        crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
       });
       if (ok) { hush(); handle.select(id); }
       return ok;
@@ -196,7 +202,7 @@ export async function start(doc, deps) {
       roots, maxChildren: index.maxChildren, sizes: { ...CARD_SIZES },
       zoom: { fitMin: 1 },      // the first view never zooms below scale 1 (text at its size); 'Show all' (handle.fit()) still shows all
       loadChildren: (id) => data.loadChildren(id).catch((e) => { loadFailures.set(id, e instanceof DataError ? e.code : null); throw e; }),
-      renderFace: makeRenderFace(strings),
+      renderFace: makeRenderFace(strings, index.symbols.countWords),
     });
     const guard = (fn) => (...a) => { if (dead) return; try { fn(...a); } catch (e) { fallback(e && e.message); } };
     offs.push(handle.on("tap", guard((node) => { if (node) routes["open-card"](node.id); else routes["tap-outside"](); })));

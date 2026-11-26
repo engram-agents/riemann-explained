@@ -1,0 +1,27 @@
+{
+ "source": "skeleton-v1 cut 2 of the grh-lean map, built from lsernau/grh-lean at 72fead10",
+ "titles": [
+  "A bound for non-crystalline cocycles modulo `ℓ ^ m` by the Tate dual lattice",
+  "Denominators: bases of `A⁺ / I_γ` and `γ A⁺ / I_γ`",
+  "Direct and mirror data modulo `N`, and the operator `Up`",
+  "Finite zero terms and the evaluation of pairs of edges in the tower of spaces `Y_k`",
+  "Frobenius congruence for `θ` and the coefficient of `z ^ (p - 1)` in `x`",
+  "Links of isometries, the link isometry Υ_γ, and invariance under `besselU`",
+  "Marked primes above `p`, full marks and the scaled Hecke operator",
+  "Near pairs of `b`-places and the losses in the sharpness bound",
+  "Resolutions of the identity and power series in the compositions `y(μ_i z)`",
+  "Roots of unity `ζ` with polynomials hardly more divisible at `ζ - 1` than at given points",
+  "Smooth local Witt theorem and the exchange identity for `V' ⊕ W₁` and `V'`",
+  "The Bessel function as an integral over `R(F_∞)`",
+  "The finite groups `Ū`, `H̄` and `R̄`",
+  "The maps `Θ^♭` and `res^♭`, and the first path",
+  "The part in `X₀` of a frame, moves, and lifts of a lattice",
+  "The places `Σ_N` above N and the set-up at p = N",
+  "The prime number theorem for the remainders `R_q`",
+  "The second moments of the operators `P* s P`, and good forms",
+  "The valuation bound `v(l!) + val₁₂(l) ≤ S_p + 2 ∑ v(B_τ)` for every prime",
+  "The vectors `z⁺` and `Υ_γ⁻¹ z⁺`",
+  "Tight frames in `𝔞₀`",
+  "p-adic gauge bounds for chains of theta lifts and restrictions to `Y_m`"
+ ]
+}

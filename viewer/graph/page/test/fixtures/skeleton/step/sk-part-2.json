@@ -1,0 +1,31 @@
+{
+ "card": {
+  "child_count": 1,
+  "child_kind": "file",
+  "id": "sk-part-2",
+  "kind": "part",
+  "path": [],
+  "proof": "none",
+  "state": "none",
+  "title": "Part sk-part-2"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "sk-file-6",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "sk-part-2"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File sk-file-6"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-part-2",
+ "path": [],
+ "rests_on": []
+}

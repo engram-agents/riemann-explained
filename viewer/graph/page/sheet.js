@@ -14,7 +14,7 @@
    CLOSING: every way the sheet closes goes through close(), the ONE close function. It first dispatches a cancelable
    `sheetclose` event on the thing shown; if a listener cancels it, the sheet stays open and nothing moves. A
    bubbling `sheetcloserequest` from inside the sheet runs the same close(). */
-import { el } from "./dom.js";
+import { el, titleChildren } from "./dom.js";
 
 export function createSheet(parts, strings, hooks, signal) {
   const { root, crumbs, tools, body, closeButton } = parts;
@@ -73,14 +73,17 @@ export function createSheet(parts, strings, hooks, signal) {
     return rec;
   }
 
-  function crumbList(list) {
+  /* The last entry is the open card itself (not a link) unless the page says the list stops at the parent (currentListed false): then every
+     entry is an ancestor and stays a link. */
+  function crumbList(list, currentListed) {
     const items = list.map((c, i) => {
-      const last = i === list.length - 1;
+      const last = currentListed && i === list.length - 1;
       const kids = [];
       if (typeof c.role === "string" && c.role !== "") kids.push(el("span", { class: "crumb-role" }, [c.role]));
-      kids.push(c.title);
+      kids.push(...titleChildren(c.title));
       return el("li", {}, [last ? el("span", { class: "crumb-here" }, kids) : el("button", { type: "button", class: "crumb", "data-id": c.id }, kids)]);
     });
+    if (items.length === 0) return null;   // no ancestor, no landmark: an empty labelled nav is noise to a screen reader
     return el("nav", { "aria-label": strings.crumb_label, class: "crumbs" }, [el("ol", {}, items)]);
   }
 
@@ -91,11 +94,16 @@ export function createSheet(parts, strings, hooks, signal) {
     rec.id = info.id;          // the id this sheet shows: an engine event about any other id never touches it
     if (info.sheetClass) { root.classList.add(info.sheetClass); rec.sheetClass = info.sheetClass; }   // a token from the page's own table
     clear(crumbs);
-    crumbs.appendChild(crumbList(info.crumbs));
+    const nav = crumbList(info.crumbs, info.currentListed !== false);
+    if (nav) crumbs.appendChild(nav);
     const claim = article.querySelector(".claim");
-    rec.status = el("p", { class: "sheet-status" }, [info.status]);
-    if (claim && claim.parentNode) claim.parentNode.insertBefore(rec.status, claim.nextSibling);
-    else article.insertBefore(rec.status, article.firstChild);
+    /* The status line is built only for a non-empty status: a null or empty status gets no element (the page's
+       own path always passes a string today), so the release step finds rec.status null and the card's own content is first under the title. */
+    if (typeof info.status === "string" && info.status !== "") {
+      rec.status = el("p", { class: "sheet-status" }, [info.status]);
+      if (claim && claim.parentNode) claim.parentNode.insertBefore(rec.status, claim.nextSibling);
+      else article.insertBefore(rec.status, article.firstChild);
+    }
     clear(tools);
     if (info.canParts) {
       const b = el("button", { type: "button", class: "sheet-tool" }, [info.partsOpen ? strings.close_parts : strings.open_parts]);

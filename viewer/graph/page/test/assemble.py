@@ -38,8 +38,9 @@ def fill_shell(shell, cards, words):
     return out.replace("{{CARDS}}", cards)
 
 
-def assemble(out, engine="real", mutate=None, index_edit=None, step_edit=None, words_edit=None, cards_edit=None, shell_edit=None):
-    """mutate: {relative path under graph/: function(text)->text}, applied to the copied files (used for mutants)."""
+def assemble(out, engine="real", mutate=None, index_edit=None, step_edit=None, words_edit=None, cards_edit=None, shell_edit=None, fix=None):
+    """fix: the fixture directory under fixtures/ (default "real"; "modules" is the Lean-repository map); the shell words are always real's.
+    mutate: {relative path under graph/: function(text)->text}, applied to the copied files (used for mutants)."""
     g = os.path.join(out, "graph")
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(os.path.join(g, "page"))
@@ -61,8 +62,9 @@ def assemble(out, engine="real", mutate=None, index_edit=None, step_edit=None, w
         src = open(p, encoding="utf-8").read()      # read BEFORE opening for write (which truncates)
         open(p, "w", encoding="utf-8").write(fn(src))
     # data
-    index = json.load(open(os.path.join(FIX, "index.json"), encoding="utf-8"))
-    steps = {f[:-5]: json.load(open(os.path.join(FIX, "step", f), encoding="utf-8")) for f in os.listdir(os.path.join(FIX, "step"))}
+    D = FIX if fix is None else os.path.join(HERE, "fixtures", fix)
+    index = json.load(open(os.path.join(D, "index.json"), encoding="utf-8"))
+    steps = {f[:-5]: json.load(open(os.path.join(D, "step", f), encoding="utf-8")) for f in os.listdir(os.path.join(D, "step"))}
     if index_edit:
         index_edit(index)
     if step_edit:
@@ -75,7 +77,7 @@ def assemble(out, engine="real", mutate=None, index_edit=None, step_edit=None, w
     words = json.load(open(os.path.join(FIX, "shell-strings.json"), encoding="utf-8"))
     if words_edit:
         words_edit(words)
-    cards = open(os.path.join(FIX, "cards.html"), encoding="utf-8").read()
+    cards = open(os.path.join(D, "cards.html"), encoding="utf-8").read()
     if cards_edit:
         cards = cards_edit(cards)
     shell = open(os.path.join(GRAPH, "shell.html"), encoding="utf-8").read()

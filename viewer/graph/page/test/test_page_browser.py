@@ -912,6 +912,218 @@ def c_key_order(b, S0, engine):
         S.stop()
 
 
+def c_skeleton_map(b, S0, engine):
+    """P1, P5, P7 on the skeleton fixture: each face carries its kind class (and its s-none); a card's sheet has exactly one
+    .sheet-status, the kind's card word, with no state or proof word, directly under the title; the key has the three kind rows in
+    order and no states section; closing puts the markup back."""
+    root = tempfile.mkdtemp(prefix="pg-skeleton-")
+    assemble.assemble(root, engine, fix="skeleton")
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        assert pg.ev("document.querySelector('[data-node=\"sk-part\"] .face').className") == "face k-part s-none"
+        before = pg.ev("document.getElementById('graph-cards').outerHTML")
+        foot = lambda i: pg.ev("document.querySelector('[data-node=\"%s\"] .face-foot')?.textContent" % i)
+        assert foot("sk-part") == "2 groups" and foot("sk-part-2") == "1 file", (foot("sk-part"), foot("sk-part-2"))   # F2: the kind's word, one/many
+        crumbs_want = {"sk-part": [], "sk-group-a": ["Part sk-part"], "sk-file-1": ["Part sk-part", "Group sk-group-a"],
+                       "sk-file-5": ["Part sk-part", "Files under Formalism/Basic"]}
+        for card, word in (("sk-part", "Part"), ("sk-group-a", "Group"), ("sk-file-1", "File"), ("sk-file-5", "File")):
+            at_hash(pg, card)
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+            assert pg.ev("document.querySelectorAll('.sheet-status').length") == 1, card
+            text = pg.ev("document.querySelector('#graph-sheet-body .sheet-status').textContent")
+            assert text == word, (card, text)
+            assert not any(w in text for w in ("Statement", "Proof", "statement", "proof")), text
+            nxt = pg.ev("document.querySelector('#graph-sheet-body .claim').nextElementSibling.className")
+            assert nxt == "sheet-status", (card, nxt)
+            # F4: the breadcrumb stops at the PARENT: the current card is not listed (the sheet heading carries its title)
+            crumbs = pg.ev("[...document.querySelectorAll('#graph-crumbs li')].map(e => e.textContent)")
+            assert crumbs == crumbs_want[card], (card, crumbs)
+            assert pg.ev("document.querySelectorAll('#graph-crumbs .crumb-here').length") == 0, card
+            assert pg.ev("document.querySelectorAll('#graph-crumbs button.crumb').length") == len(crumbs_want[card]), card    # every listed ancestor is a link
+            # R2: no ancestor, no landmark: a top-level card draws no breadcrumb nav at all (never an empty labelled one)
+            assert pg.ev("document.querySelectorAll('#graph-crumbs nav').length") == (1 if crumbs_want[card] else 0), card
+        assert foot("sk-group-a") == "3 files", foot("sk-group-a")
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        # a deep link reveals its parents, which opens their parts on the List page's details (the live map does the same): only that attribute may differ
+        after = pg.ev("document.getElementById('graph-cards').outerHTML")
+        assert after.replace(' open=""', "") == before.replace(' open=""', ""), "closing must put the markup back"
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")
+        rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
+        sw = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li .swatch')].map(e => e.className)")
+        assert heads == ["What a box is"], heads
+        assert rows == ["Part of the argument", "Group of files", "Lean file"], rows
+        assert sw == ["swatch k-part", "swatch k-group", "swatch k-file"], sw
+        # F3: the optional note is ONE plain line directly under the kind rows
+        note = pg.ev("""(() => { const c = document.querySelector('#graph-sheet-body .key-content'), p = [...c.querySelectorAll('p')];
+          return { n: p.length, text: p[0] && p[0].textContent, prev: p[0] && p[0].previousElementSibling.tagName, items: c.querySelectorAll('li').length }; })()""")
+        assert note == {"n": 1, "text": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "prev": "UL", "items": 3}, note
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_backtick_title(b, S0, engine):
+    """A6 in the browser: the skeleton fixture's sk-file-4 is titled with a backtick span. Its face shows a <code> element INSIDE the
+    3-line clamp (the span is in view and the title has no backtick character), at the title's size, and the breadcrumb shows a span in an ancestor's title the same way."""
+    root = tempfile.mkdtemp(prefix="pg-bt-")
+    assemble.assemble(root, engine, fix="skeleton")
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        at_hash(pg, "sk-file-4")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-4'", 6000)
+        r = pg.ev("""(() => {
+          const t = document.querySelector('[data-node="sk-file-4"] .face-title'), c = t.querySelector('code');
+          const tr = t.getBoundingClientRect(), cr = c.getBoundingClientRect();
+          const bc = document.querySelector('#graph-crumbs .crumb-here'), lis = [...document.querySelectorAll('#graph-crumbs li')];
+          const gc = lis[lis.length - 1].querySelector('code');
+          return { text: t.textContent, code: c.textContent, n: t.querySelectorAll('code').length, size: parseFloat(getComputedStyle(c).fontSize),
+                   tsize: parseFloat(getComputedStyle(t).fontSize), inside: cr.top >= tr.top - 1 && cr.bottom <= tr.bottom + 1 && cr.right <= tr.right + 1,
+                   ch: t.clientHeight, sh: t.scrollHeight, crumb: bc && bc.textContent, crumbs: lis.map(e => e.textContent), crumbCode: gc && gc.textContent };
+        })()""")
+        assert r["text"] == "The second moments of the operators P* s P, and good forms", r
+        assert r["code"] == "P* s P" and r["n"] == 1 and r["inside"], r
+        assert r["size"] >= 15 and r["size"] == r["tsize"], r
+        assert r["sh"] <= r["ch"] + 1, ("the title is clipped", r)
+        # the breadcrumb stops at the parent, and its group title carries a span as code too
+        assert r["crumb"] is None, r
+        assert r["crumbs"] == ["Part sk-part", "Files under Formalism/Basic"] and r["crumbCode"] == "Formalism/Basic", r
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_sheet_status_level(b, S, engine):
+    """P7 at the sheet's own level: showCard with status null (or empty) builds no .sheet-status; a non-empty status builds exactly
+    today's element, directly after the claim; close() removes it, and with none it still puts the article home."""
+    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    js = """import('./page/sheet.js').then(m => {
+      const d = document, mk = (t, c) => { const e = d.createElement(t); if (c) e.className = c; d.body.appendChild(e); return e; };
+      const out = {};
+      for (const [label, status] of [['null', null], ['empty', ''], ['text', 'Statement read \\u00b7 Proof read']]) {
+        const parts = { root: mk('div'), crumbs: mk('div'), tools: mk('div'), body: mk('div'), closeButton: mk('button') };
+        parts.root.hidden = true;
+        const strings = { open_parts: 'o', close_parts: 'c', claim_more: 'm', claim_less: 'l', crumb_label: 'x' };
+        const hooks = { closeButton() {}, go() {}, openParts() {}, closeParts() {} };
+        const sheet = m.createSheet(parts, strings, hooks, new AbortController().signal);
+        const home = mk('div');
+        const art = d.createElement('article'); art.id = 'z-' + label;
+        art.innerHTML = '<h3 class="claim">T</h3><p class="note">n</p>';
+        home.appendChild(art);
+        const ok = sheet.showCard(art, { id: art.id, status, canParts: false, partsOpen: false, sheetClass: '', crumbs: [{ id: art.id, title: 'T' }] });
+        const claim = art.querySelector('.claim'), st = art.querySelectorAll('.sheet-status');
+        const r = { ok, count: st.length, next: claim.nextElementSibling.className, tag: st[0] ? st[0].tagName : null, text: st[0] ? st[0].textContent : null };
+        r.closed = sheet.close();
+        r.after = art.querySelectorAll('.sheet-status').length;
+        r.home = art.parentNode === home;
+        out[label] = r;
+      }
+      return out;
+    })"""
+    r = pg.ev(js)
+    for label in ("null", "empty"):
+        assert r[label]["ok"] and r[label]["count"] == 0 and r[label]["next"] == "note", (label, r[label])
+        assert r[label]["closed"] and r[label]["home"], (label, r[label])
+    t = r["text"]
+    assert t["ok"] and t["count"] == 1 and t["next"] == "sheet-status" and t["tag"] == "P" and t["text"] == "Statement read \u00b7 Proof read", t
+    assert t["closed"] and t["after"] == 0 and t["home"], t
+    pg.csp_clean()
+    pg.close()
+
+
+def c_look_override(b, S, engine):
+    """P6/F1: part, group and file keep their marks over s-none and s-census whatever the source order; the three are told apart by BAR
+    POSITION, never by ring count (part: solid 2 px with a 6 px TOP bar; group: solid 2 px, no bar; file: solid 1 px with a 4 px LEFT bar),
+    none dashed; the key's swatches carry the same marks as their faces; each kind SELECTED has a ring gap of 3 px so the ring never
+    touches the box border; a theorem with s-none is still dashed and a selected live-map card keeps the engine's own gap (control)."""
+    root = tempfile.mkdtemp(prefix="pg-look-")
+    assemble.assemble(root, engine, fix="skeleton")
+    S2 = Served(root)
+    pg = Pg(b, S2.base + "graph/index.html", 1280, 900).settled()
+    js = """(() => {
+      const mk = (c) => { const e = document.createElement('div'); e.className = c; e.style.cssText = 'position:absolute;left:-999px;top:0;width:50px;height:50px'; document.body.appendChild(e); return e; };
+      const g = (c) => { const s = getComputedStyle(mk(c)); return { style: s.borderTopStyle, w: [s.borderTopWidth, s.borderRightWidth, s.borderBottomWidth, s.borderLeftWidth], bg: s.backgroundColor, radius: s.borderTopLeftRadius }; };
+      const out = { plain: g('face k-theorem s-read'), thmNone: g('face k-theorem s-none'), thmCensus: g('face k-theorem s-census') };
+      for (const k of ['part', 'group', 'file']) for (const s of ['', ' s-none', ' s-census']) out[k + s] = g('face k-' + k + s);
+      return out;
+    })()"""
+    r = pg.ev(js)
+    want = {"part": ["6px", "2px", "2px", "2px"], "group": ["2px", "2px", "2px", "2px"], "file": ["1px", "1px", "1px", "4px"]}
+    for k, w in want.items():
+        for s in ("", " s-none", " s-census"):
+            f = r[k + s]
+            assert f["style"] == "solid" and f["w"] == w, (k + s, f)
+            assert f["bg"] == r["plain"]["bg"] and f["radius"] == "0px", (k + s, f, r["plain"])
+    bars = {tuple(r[k + " s-none"]["w"]) for k in want}
+    assert len(bars) == 3, bars
+    assert r["thmNone"]["style"] == "dashed" and r["thmNone"]["bg"] != r["plain"]["bg"], r["thmNone"]
+    assert r["thmCensus"]["style"] == "dotted" and r["thmCensus"]["w"][0] == "3px", r["thmCensus"]
+    # the key's swatches show the same marks as the faces
+    pg.page.click("#graph-key")
+    wait_sheet(pg, True)
+    sw = pg.ev("""[...document.querySelectorAll('#graph-sheet-body .key-content .swatch')].map(e => { const s = getComputedStyle(e);
+      return { cls: e.className, style: s.borderTopStyle, w: [s.borderTopWidth, s.borderRightWidth, s.borderBottomWidth, s.borderLeftWidth] }; })""")
+    assert [x["cls"] for x in sw] == ["swatch k-part", "swatch k-group", "swatch k-file"], sw
+    for x, k in zip(sw, ("part", "group", "file")):
+        f = r[k + " s-none"]
+        assert (x["style"], x["w"]) == (f["style"], f["w"]), (k, x, f)
+    pg.page.click("#graph-sheet-close")
+    wait_sheet(pg, False)
+    # the selection ring: 3 px gap for each of the three kinds, on a really selected node
+    for card, kind in (("sk-part", "part"), ("sk-group-a", "group"), ("sk-file-1", "file")):
+        at_hash(pg, card)
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        pg.wait("document.querySelectorAll('.ge-selected').length === 1", 4000)
+        got = pg.ev("""(() => { const n = document.querySelector('.ge-selected'); return [n.getAttribute('data-node'), getComputedStyle(n).outlineOffset, getComputedStyle(n).outlineStyle, n.querySelector('.face').className]; })()""")
+        assert got[0] == card and got[1] == "3px" and ("k-" + kind) in got[3], got
+        assert got[2] == ("solid" if engine == "real" else "none"), got       # the real engine's own 3 px ring; the double has no stylesheet
+    pg.csp_clean()
+    pg.close()
+    S2.stop()
+
+
+def c_live_controls(b, S0, engine):
+    """The live map is unchanged (F1, F2, F4 controls): a selected card keeps the ring gap an unselected node has (the engine's own: 2 px
+    from engine.css on the real engine, 0 on the double, which has no stylesheet), a closed card with children keeps the '{n} parts' foot,
+    and the breadcrumb lists the open card itself as its last entry, after its ancestors."""
+    pg = Pg(b, S0.base + "graph/index.html", 1280, 900).settled()
+    assert pg.ev("document.querySelector('[data-node=\"goal-chain\"] .face-foot').textContent") == "6 parts"
+    gap = pg.ev("getComputedStyle(document.querySelector('[data-node=\"goal-chain\"]')).outlineOffset")
+    assert gap == ("2px" if engine == "real" else "0px"), gap
+    at_hash(pg, "a1-a-1")
+    pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a1-a-1'", 6000)
+    pg.wait("document.querySelectorAll('.ge-selected').length === 1", 4000)
+    sel = pg.ev("(() => { const n = document.querySelector('.ge-selected'); return [n.getAttribute('data-node'), getComputedStyle(n).outlineOffset]; })()")
+    assert sel == ["a1-a-1", gap], sel
+    crumbs = pg.ev("[...document.querySelectorAll('#graph-crumbs li')].map(e => e.textContent)")
+    assert len(crumbs) == 4 and [c.endswith(t) for c, t in zip(crumbs, ["goal-chain", "a1", "a1-a", "a1-a-1"])] == [True] * 4, crumbs
+    assert pg.ev("document.querySelectorAll('#graph-crumbs .crumb-here').length") == 1
+    assert pg.ev("document.querySelector('#graph-crumbs .crumb-here').textContent") == crumbs[-1]
+    pg.csp_clean()
+    pg.close()
+
+
+def c_key_real_rows(b, S0, engine):
+    """P4: the live map's key is what it was: both headings, the three kinds then the three states, in the file's order."""
+    pg = Pg(b, S0.base + "graph/index.html", 1280, 900).settled()
+    pg.page.click("#graph-key")
+    wait_sheet(pg, True)
+    heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")
+    rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
+    assert heads == ["Colour and shape: what Lean declares", "Frame: what we have read"], heads
+    assert rows == ["Theorem: a result the Lean code proves", "Definition: a named object or statement", "Structure: a bundle of named fields",
+                    "Statement read", "Statement counted by a program", "Statement not read"], rows
+    assert pg.ev("document.querySelectorAll('#graph-sheet-body .key-content p').length") == 0, "the live map has no key note"
+    pg.csp_clean()
+    pg.close()
+
+
 # ----------------------------------------------------------------- the parts button follows the SHOWN card, not the engine's events (K1)
 
 def open_on_map(pg, engine, node_id, child_id):
@@ -1633,6 +1845,12 @@ def main():
                 run("first fit at 390 x 844: title >= 15 px and other face text >= 14 px at the engine's camera scale, no allowance; nothing overlaps", c_first_fit_size, eng)
                 run("the sheet status line is the data's words (states and proofs); the list's proof line is never read; the key shows kinds then states", c_status_from_data, eng)
                 run("symbols.order sets the key's order", c_key_order, eng)
+                run("module: P4 the live map's key rows are unchanged", c_key_real_rows, eng)
+                run("module: F1/F2/F4 controls on the live map: ring gap, the parts foot, the breadcrumb with the open card", c_live_controls, eng)
+                run("module: P1/P5/P7 the skeleton map (face classes, the card word as the one sheet line, the key has three kind rows and no states section)", c_skeleton_map, eng)
+                run("module: A6 a backtick span in a title is a code element on the face (inside the clamp) and in the breadcrumb, no backtick shown", c_backtick_title, eng)
+                run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
+                run("module: P6/F1 part, group and file told by bar position over s-none and s-census; swatches match; the selection ring gap is 3 px", c_look_override, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:

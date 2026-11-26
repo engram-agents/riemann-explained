@@ -5,10 +5,13 @@ real/        a small build shaped like the contract's section 6 measurement: 23 
              2 top-level rests_on, 5 step-file rests_on, 7 parent_rests_on true. Plus the card markup (nested like the
              list page: a child's article sits inside its parent's details.children) and the shell's word table.
 refusals/    one tiny build per refusal.
+skeleton/    the map of a Lean repository's parts, groups and files: kinds part, group, file, each a table row with `words` (the key's label)
+             and `card_words` (the sheet's one line), the group and file rows with `count_words` (the foot's one/many); state "none", proof "none", no role on every step; symbols.order lists only
+             the rows that occur (kinds [part, group, file], states [], proofs []) while the tables keep every row.
 
 Test-only. Never shipped (lives under test/).
 """
-import json, os, shutil, html
+import importlib.util, json, os, shutil, html
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -42,9 +45,25 @@ SHELL_STRINGS = {
     "fallback_sentence": "The map did not load. Here are the steps as a list.",
     "fallback_link": "Open the list page",
 }
-def _rows(table):
+SKELETON_WORDS = {
+    "symbol_kind_part": "Part of the argument", "symbol_kind_group": "Group of files", "symbol_kind_file": "Lean file",
+    "card_kind_part": "Part", "card_kind_group": "Group", "card_kind_file": "File",
+    "count_group_one": "{n} group", "count_group_many": "{n} groups", "count_file_one": "{n} file", "count_file_many": "{n} files",
+    "key_kinds_heading": "What a box is",
+    "key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+}
+SKELETON_STRINGS = {k: v for k, v in STRINGS.items() if not k.startswith("key_kind_") or k == "key_kinds_heading"}
+SKELETON_STRINGS.update(SKELETON_WORDS)   # 11 fixed + 3 kind labels + 3 card words + 4 count words + 3 states + 3 proofs = 27, plus the optional key_kinds_note
+
+
+def _rows(table, strings=STRINGS, card_words=None, count_words=None):
     # `class` and `text` are the builder's own (the page validates them as strings and ignores them); `words` is a key of strings
-    return {name: {"class": "builder-" + name, "text": STRINGS[words], "words": words} for name, words in table}
+    rows = {name: {"class": "builder-" + name, "text": strings[words], "words": words} for name, words in table}
+    for name, cw in (card_words or {}).items():
+        rows[name]["card_words"] = cw
+    for name, cw in (count_words or {}).items():
+        rows[name]["count_words"] = cw
+    return rows
 
 
 SYMBOLS = {
@@ -53,6 +72,27 @@ SYMBOLS = {
     "proofs": _rows([("read", "sheet_proof_read"), ("not_read", "sheet_proof_not_read"), ("none", "sheet_proof_none")]),
     "states": _rows([("read", "sheet_statement_read"), ("census", "sheet_statement_census"), ("none", "sheet_statement_not_read")]),
 }
+
+SYMBOLS_SKELETON = {
+    "order": {"kinds": ["part", "group", "file"], "proofs": [], "states": []},
+    "kinds": _rows([("part", "symbol_kind_part"), ("group", "symbol_kind_group"), ("file", "symbol_kind_file")], SKELETON_STRINGS,
+                   {"part": "card_kind_part", "group": "card_kind_group", "file": "card_kind_file"},
+                   {"group": {"one": "count_group_one", "many": "count_group_many"}, "file": {"one": "count_file_one", "many": "count_file_many"}}),
+    "proofs": SYMBOLS["proofs"], "states": SYMBOLS["states"],
+}
+# the skeleton map: id -> (parent id or None, parent_rests_on, kind). One part holds two groups (an edgeless sibling set of groups);
+# sk-group-a holds three files with a sibling link between two of them; sk-group-b holds an edgeless sibling set of two files, one
+# of them with the 98-character title below (the clamp case). A second part holds ONE file (the "1 file" foot).
+LONG_TITLE = "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip."
+assert len(LONG_TITLE) == 98 and LONG_TITLE.isascii()
+SK_TREE = [("sk-part", None, False, "part"),
+           ("sk-group-a", "sk-part", False, "group"), ("sk-group-b", "sk-part", True, "group"),
+           ("sk-file-1", "sk-group-a", False, "file"), ("sk-file-2", "sk-group-a", True, "file"), ("sk-file-3", "sk-group-a", False, "file"),
+           ("sk-file-4", "sk-group-b", False, "file"), ("sk-file-5", "sk-group-b", False, "file"),
+           ("sk-part-2", None, False, "part"), ("sk-file-6", "sk-part-2", False, "file")]
+REAL_SPAN_TITLE = "The second moments of the operators `P* s P`, and good forms"
+SK_TITLES = {"sk-file-5": LONG_TITLE, "sk-file-4": REAL_SPAN_TITLE, "sk-group-b": "Files under `Formalism/Basic`"}
+SK_LINKS = [("sk-group-a", "sk-file-1", "sk-file-2")]
 
 # id -> (parent id or None, parent_rests_on)
 TREE = [
@@ -121,6 +161,97 @@ def build():
              "rests_on": [{"from": f, "to": t, "from_path": [], "to_path": []} for (p, f, t) in LINKS if p is None],
              "steps": len(ids), "symbols": SYMBOLS, "assets": {}, "strings": STRINGS}
     return index, steps, kids, parent, num
+
+
+def build_skeleton():
+    ids = [t[0] for t in SK_TREE]
+    parent = {t[0]: t[1] for t in SK_TREE}
+    pro = {t[0]: t[2] for t in SK_TREE}
+    kind = {t[0]: t[3] for t in SK_TREE}
+    kids = {i: [t[0] for t in SK_TREE if t[1] == i] for i in ids}
+
+    def ancestors(i):
+        out, p = [], parent[i]
+        while p:
+            out.insert(0, p)
+            p = parent[p]
+        return out
+
+    def title(i):
+        return SK_TITLES.get(i, kind[i].capitalize() + " " + i)
+
+    def card(i):
+        # a part, group or file asserts nothing: state none, proof none, and no role; a card with children names their kind
+        c = {"id": i, "title": title(i), "kind": kind[i], "state": "none", "proof": "none", "child_count": len(kids[i]), "path": ancestors(i)}
+        if kids[i]:
+            ck = {kind[k] for k in kids[i]}
+            assert len(ck) == 1, "the children of one step share a kind"
+            c["child_kind"] = ck.pop()
+        return c
+
+    steps = {}
+    for i in ids:
+        ch = []
+        for c in kids[i]:
+            d = card(c); d["parent_rests_on"] = pro[c]; ch.append(d)
+        rests = [{"from": f, "to": t, "from_path": ancestors(i) + [i], "to_path": ancestors(i) + [i]} for (p, f, t) in SK_LINKS if p == i]
+        steps[i] = {"format": 1, "commit": COMMIT, "id": i, "path": ancestors(i), "card": card(i), "children": ch, "rests_on": rests}
+    top = [i for i in ids if parent[i] is None]
+    index = {"format": 1, "commit": COMMIT, "max_children": 40, "top": top, "rests_on": [], "steps": len(ids),
+             "symbols": SYMBOLS_SKELETON, "assets": {}, "strings": SKELETON_STRINGS}
+    return index, steps, kids, title
+
+
+def skeleton_article(i, kids, title):
+    e = html.escape
+    out = ['<article class="card" id="%s">' % i,
+           '<h3 class="claim">%s</h3>' % e(title(i)),
+           '<p class="note">The repository\'s own note for %s: what this entry holds.</p>' % e(i)]
+    if kids[i]:
+        out.append('<details class="children"><summary>Go deeper: the parts of this step</summary><ul class="children">')
+        for c in kids[i]:
+            out.append("<li>")
+            out.append(skeleton_article(c, kids, title))
+            out.append("</li>")
+        out.append("</ul></details>")
+    out.append("</article>")
+    return "\n".join(out)
+
+
+def _backtick_span():
+    """The builder's ONE definition of a code span, imported from tools/notes_meta.py (never re-typed here)."""
+    root = os.path.abspath(os.path.join(HERE, "..", "..", "..", "..", ".."))
+    spec = importlib.util.spec_from_file_location("notes_meta_for_fixtures", os.path.join(root, "tools", "notes_meta.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod._BACKTICK_SPAN
+
+
+EDGE_TITLES = ["a `x` b", "``", "``x``", "`a``b`", "a `b", "` `", "`a`b`", "x\n`y`", "x\r`y`", "`<b>&`", "no backtick at all",
+               "`one` and `two`", "`x`", "``` `x` ```", "a ` b ` c", REAL_SPAN_TITLE]
+REAL_TITLES_FILE = os.path.join(HERE, "backtick-real-titles.json")   # a committed static input: the real map's span titles, verbatim
+
+
+def real_span_titles():
+    """The real span titles, read ONLY from the committed input file. A missing or malformed file fails loud (no fallback, no skip)."""
+    with open(REAL_TITLES_FILE, encoding="utf-8") as f:
+        data = json.load(f)
+    titles = data["titles"]
+    assert titles and all(isinstance(t, str) and "`" in t for t in titles), "backtick-real-titles.json holds no span titles"
+    return titles
+
+
+def segments_of(span, title):
+    """The expected segments, computed by the builder's own regex with re.sub semantics: [["text", s] | ["code", s], ...]."""
+    out, pos = [], 0
+    for m in span.finditer(title):
+        if m.start() > pos:
+            out.append(["text", title[pos:m.start()]])
+        out.append(["code", m.group(1)])
+        pos = m.end()
+    if pos < len(title):
+        out.append(["text", title[pos:]])
+    return out
 
 
 def write_json(path, obj):
@@ -205,7 +336,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 
 def main():
-    for sub in ("real", "refusals"):
+    for sub in ("real", "refusals", "skeleton"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -213,6 +344,14 @@ def main():
         write_json(os.path.join(HERE, "real", "step", i + ".json"), s)
     open(os.path.join(HERE, "real", "cards.html"), "w", encoding="utf-8").write(cards_html(index["top"], kids))
     write_json(os.path.join(HERE, "real", "shell-strings.json"), SHELL_STRINGS)
+
+    sindex, ssteps, skids, stitle = build_skeleton()
+    write_json(os.path.join(HERE, "skeleton", "index.json"), sindex)
+    for i, st in ssteps.items():
+        write_json(os.path.join(HERE, "skeleton", "step", i + ".json"), st)
+    parts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, skids, stitle) for t in sindex["top"]] + ["</ul>"]
+    open(os.path.join(HERE, "skeleton", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + parts) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)
 
@@ -250,7 +389,18 @@ def main():
     refusal("missing-words-string", index_edit=lambda i: i["strings"].pop("sheet_proof_read"))
     refusal("extra-string", index_edit=lambda i: i["strings"].__setitem__("bonus_word", "a word the page never reads"))
     refusal("extra-string-proofs-heading", index_edit=lambda i: i["strings"].__setitem__("key_proofs_heading", "Proof: what we have read of it"))
-    refusal("order-not-permutation", index_edit=lambda i: i["symbols"]["order"].__setitem__("kinds", ["theorem", "def"]))
+    # P3 (order is a subset of the table's names): the four refusals, one each. A shorter list is NOT one (it is a subset).
+    # the kinds row's optional `card_words`: a strings key, non-empty
+    refusal("card-words-missing-key", index_edit=lambda i: i["symbols"]["kinds"]["theorem"].__setitem__("card_words", "no_such_card_word"))
+    refusal("card-words-empty", index_edit=lambda i: i["symbols"]["kinds"]["theorem"].__setitem__("card_words", ""))
+    # F2: a card's optional `child_kind` and a kinds row's optional `count_words`
+    refusal("child-kind-unknown", step_edit=lambda st: st["goal-chain"]["card"].__setitem__("child_kind", "nonsense"))
+    refusal("child-kind-on-leaf", step_edit=lambda st: st["goal-chain"]["children"][1].__setitem__("child_kind", "theorem"))
+    refusal("count-words-missing-key", index_edit=lambda i: i["symbols"]["kinds"]["theorem"].__setitem__("count_words", {"one": "no_such_count_word", "many": "parts_n"}))
+    refusal("count-words-bad-shape", index_edit=lambda i: i["symbols"]["kinds"]["theorem"].__setitem__("count_words", {"one": "part_one", "many": "parts_n", "few": "parts_n"}))
+    refusal("order-not-array", index_edit=lambda i: i["symbols"]["order"].__setitem__("kinds", "theorem"))
+    refusal("order-unknown-name", index_edit=lambda i: i["symbols"]["order"].__setitem__("kinds", ["theorem", "lemma"]))
+    refusal("order-kinds-empty", index_edit=lambda i: i["symbols"]["order"].__setitem__("kinds", []))
     refusal("order-repeats", index_edit=lambda i: i["symbols"]["order"].__setitem__("states", ["read", "read", "none"]))
     refusal("class-not-string", index_edit=lambda i: i["symbols"]["kinds"]["theorem"].__setitem__("class", 7))
     refusal("words-not-string", index_edit=lambda i: i["symbols"]["states"]["read"].__setitem__("words", 5))
@@ -259,7 +409,11 @@ def main():
     refusal("role-not-string", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("role", 7))
     refusal("empty-title", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("title", ""))
     refusal("extra-key", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("claim_text", "x"))
-    print("fixtures written; steps:", len(steps))
+    span = _backtick_span()
+    titles = EDGE_TITLES + [t for t in real_span_titles() if t not in EDGE_TITLES]
+    write_json(os.path.join(HERE, "backtick-titles.json"),
+               {"definition": "tools/notes_meta.py _BACKTICK_SPAN", "cases": [{"title": t, "segments": segments_of(span, t)} for t in titles]})
+    print("fixtures written; steps:", len(steps), "; backtick titles:", len(titles))
 
 
 if __name__ == "__main__":
