@@ -587,6 +587,9 @@ MUTATIONS = {
                            "A7b-element is red, A7b-static, A7b-head and A7b-surface and every other A-case stay green", ("A7b-element",)),
     "M-l": ("A19", "skip the static check of the data files (no call of `_graph_static_problems` over the JSON files about to be written): both A19 cases are red (the refusal of a token in "
                    "index, spine, uses and a step file, and the call-site case), every other A-case stays green", ("A19", "A19-call")),
+    "M-m": ("A11b", "skip the ref check of the written page (the call that scans the assembled page's `href`, `src`, `action`, `srcset`, `poster` and `data` values for an absolute, `..` or "
+                    "missing ref is dropped from `_stage_page`; the builder's own checks stay): the A11b case is red (a shell holding `../x.html` or `nothere.html` builds, exit 0), every "
+                    "other A-case stays green", ("A11b",)),
 }
 
 
@@ -649,6 +652,68 @@ def _mutation_case(mid):
     observed = sorted((c for c in CLAUSES if seen[c] != "PASS"), key=CLAUSES.index)
     print(f"  {mid} ({change[:70]}...): red set observed {observed}, specified {list(red)}")
     return _eq(observed, sorted(red, key=CLAUSES.index))
+
+
+# ---------------------------------------------------------------- the A16 scan: an ALLOWLIST over the text of the tool above the marker
+
+A16_IMPORTS = ("importlib.util", "json", "os", "re", "sys")   # `import X`, unaliased, for exactly these modules and no others
+A16_FROM = {"html.parser": ("HTMLParser",)}                    # `from M import N`, unaliased, for exactly these and no others
+A16_OS = ("listdir", "path")                                   # the attributes of `os` the tool uses today
+A16_OS_PATH = ("abspath", "dirname", "exists", "isdir", "islink", "join", "lexists")   # and of `os.path`
+A16_NAMES = ("eval", "exec", "compile", "__import__", "getattr", "setattr", "delattr", "vars", "globals", "locals")   # names that reach anything by a string, in any use
+A16_ATTRS = re.compile(r"system|popen|exec\w*|spawn\w*|posix_spawn\w*|fork\w*|Popen|check_output|check_call|getoutput|getstatusoutput")   # attribute names that run a program, on any base
+
+
+def _scan_source(src, loader="_load"):
+    """The findings of the A16 allowlist over the Python text `src`: an import that is not one of A16_IMPORTS / A16_FROM (or is aliased), a use of a name of A16_NAMES, an attribute that runs
+    a program, an attribute of `os` or `os.path` the tool does not use, `importlib` used outside the function `loader`. [] means clean."""
+    tree = ast.parse(src)
+    inside = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.FunctionDef) and n.name == loader:
+            inside |= {id(x) for x in ast.walk(n)}
+    found = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            found += [f"line {n.lineno}: import {a.name}" + (f" as {a.asname}" if a.asname else "") for a in n.names if a.asname is not None or a.name not in A16_IMPORTS]
+        elif isinstance(n, ast.ImportFrom):
+            if n.level or n.module not in A16_FROM or any(a.asname is not None or a.name not in A16_FROM[n.module] for a in n.names):
+                found.append(f"line {n.lineno}: from {'.' * n.level}{n.module or ''} import {', '.join(a.name for a in n.names)}")
+        elif isinstance(n, ast.Name):
+            if n.id in A16_NAMES:
+                found.append(f"line {n.lineno}: name {n.id}")
+        elif isinstance(n, ast.Attribute):
+            base = n.value
+            if n.attr == "exec_module" and id(n) in inside:   # the one place a module of this folder is executed: `_load`, which loads the two builders
+                continue
+            if A16_ATTRS.fullmatch(n.attr):
+                found.append(f"line {n.lineno}: attribute .{n.attr}")
+            elif isinstance(base, ast.Name) and base.id == "os" and n.attr not in A16_OS:
+                found.append(f"line {n.lineno}: os.{n.attr}")
+            elif isinstance(base, ast.Attribute) and isinstance(base.value, ast.Name) and (base.value.id, base.attr) == ("os", "path") and n.attr not in A16_OS_PATH:
+                found.append(f"line {n.lineno}: os.path.{n.attr}")
+            elif isinstance(base, ast.Name) and base.id == "importlib" and id(n) not in inside:
+                found.append(f"line {n.lineno}: importlib.{n.attr} outside {loader}")
+    return list(dict.fromkeys(found))
+
+
+A16_LURES = (   # (what, source): each must be FLAGGED by the scan, or the scan is blind to it and the case fails
+    ("import subprocess", "import subprocess\n"), ("import subprocess as sp", "import subprocess as sp\n"), ("from subprocess import run", "from subprocess import run\n"),
+    ("from os import system", "from os import system\n"), ("from os import popen", "from os import popen\n"), ("from os import execv", "from os import execv\n"),
+    ("from os import spawnl", "from os import spawnl\n"), ("from os import posix_spawn", "from os import posix_spawn\n"), ("from os import path", "from os import path\n"),
+    ("alias: import os as o; o.system(...)", "import os as o\no.system('x')\n"), ("os.system(...)", "import os\nos.system('x')\n"), ("os.popen(...)", "import os\nos.popen('x')\n"),
+    ("os.execv(...)", "import os\nos.execv('/bin/sh', [])\n"), ("os.spawnl(...)", "import os\nos.spawnl(0, '/bin/sh')\n"), ("os.fork()", "import os\nos.fork()\n"),
+    ("os.remove (an os attribute the tool does not use)", "import os\nos.remove('x')\n"), ("os.path.getsize (an os.path attribute the tool does not use)", "import os\nos.path.getsize('x')\n"),
+    ("getattr(os, 'system')", "import os\ngetattr(os, 'system')('x')\n"), ("sys.modules['os'].system", "import sys\nsys.modules['os'].system('x')\n"),
+    ("eval", "eval('1')\n"), ("exec", "exec('x = 1')\n"), ("compile", "compile('1', 'x', 'eval')\n"), ("__import__", "__import__('os')\n"), ("a name bound to eval", "f = eval\n"),
+    ("import ctypes", "import ctypes\n"), ("import pickle", "import pickle\n"), ("import runpy", "import runpy\n"), ("import marshal", "import marshal\n"), ("bare import importlib", "import importlib\n"),
+    ("exec_module outside _load", "def f(spec, mod):\n    spec.loader.exec_module(mod)\n"), ("from importlib import import_module", "from importlib import import_module\n"), ("importlib used outside _load", "import importlib.util\nimportlib.util.module_from_spec(1)\n"),
+)
+A16_CLEAN = (   # (what, source): each must be NOT flagged (the scan is an allowlist, not a ban on everything)
+    ("os.path and os.listdir", "import os\nos.path.join('a', 'b')\nos.listdir('.')\nos.path.lexists('x')\n"), ("json, re, sys", "import json\nimport re\nimport sys\njson.loads('1')\nre.compile('x')\nsys.exit(0)\n"),
+    ("HTMLParser", "from html.parser import HTMLParser\n\n\nclass P(HTMLParser):\n    pass\n"),
+    ("exec_module inside _load", "def _load(spec, mod):\n    spec.loader.exec_module(mod)\n"), ("importlib inside _load", "import importlib.util\n\n\ndef _load(p):\n    return importlib.util.spec_from_file_location('k', p)\n"),
+)
 
 
 # ---------------------------------------------------------------- the cases
@@ -784,8 +849,9 @@ def _selftest_cases():
             return _refused_like(w, _argv(w), lambda ls: len(ls) == 1 and "index.json" in ls[0], "index.json `steps` not the number of step files (one line naming index.json)")
 
     @case("A4", "EMPTY OUT: OUT_DIR is created by the tool and must NOT exist, or must exist and be empty; a non-empty OUT_DIR is `ASM-OUT <path> not-empty`, exit 1, nothing written "
-                "(its files untouched); writes go to files inside OUT_DIR only (nothing is left beside it). A name with `..` or a leading `/` (`ASM-OUT <name> name`) cannot be reached "
-                "from the command line, because every name comes from a source that is already checked, so no case drives it")
+                "(its files untouched); an OUT_DIR that is a symlink (to a folder) is `ASM-OUT <out> symlink`, one that is an existing file `ASM-OUT <out> not-a-directory`, neither touched; writes go "
+                "to files inside OUT_DIR only (nothing is left beside it). A name with `..` or a leading `/` (`ASM-OUT <name> name`) and two inputs mapping to one path (`ASM-OUT <path> twice`) cannot "
+                "be reached from the command line, because every name comes from a source that is already checked: an IN-PROCESS case (a stand-in `_graph_assets`) drives each")
     def _():
         _need_pr_c()
         with _tmp() as d:
@@ -804,7 +870,45 @@ def _selftest_cases():
             _write_tree(w["out"], {"keep.txt": b"mine", "sub/keep2.txt": b"also mine"})
             before = _read_tree(w["out"])
             rc, lines, err = _cli(_argv(w))
-            return _eq((rc, lines, "Traceback" in err, _read_tree(w["out"]) == before), (1, [f"ASM-OUT {w['out']} not-empty"], False, True))
+            ok, why = _eq((rc, lines, "Traceback" in err, _read_tree(w["out"]) == before), (1, [f"ASM-OUT {w['out']} not-empty"], False, True))
+            if not ok:
+                return ok, why
+        with _tmp() as d:   # OUT is a symlink to a folder: refused, the folder it points to is untouched and still holds only what it held
+            w = _world(d)
+            target = os.path.join(d, "target")
+            _write_tree(target, {"keep.txt": b"mine"})
+            os.symlink(target, w["out"])
+            rc, lines, err = _cli(_argv(w))
+            ok, why = _eq((rc, lines, "Traceback" in err, os.path.islink(w["out"]), os.readlink(w["out"]) == target, _read_tree(target)), (1, [f"ASM-OUT {w['out']} symlink"], False, True, True,
+                                                                                                                                            ({"keep.txt": b"mine"}, [])))
+            if not ok:
+                return ok, "OUT a symlink to a folder: " + why
+        with _tmp() as d:   # OUT is an existing FILE: refused, the file is untouched
+            w = _world(d)
+            with open(w["out"], "wb") as f:
+                f.write(b"mine")
+            before = sorted(os.listdir(d))
+            rc, lines, err = _cli(_argv(w))
+            with open(w["out"], "rb") as f:
+                kept = f.read()
+            ok, why = _eq((rc, lines, "Traceback" in err, kept, sorted(os.listdir(d))), (1, [f"ASM-OUT {w['out']} not-a-directory"], False, b"mine", before))
+            if not ok:
+                return ok, "OUT an existing file: " + why
+        # the two refusals the command line cannot reach, `name` and `twice`: IN-PROCESS (the A7b pattern), stand-ins for `_graph_assets` (one more asset) and the sink gate (which re-reads graph-src)
+        for what, extra, want in (("a name with `..`", "../evil.js", "ASM-OUT ../evil.js name"), ("a name that is also a fixed file", "index.json", "ASM-OUT index.json twice")):
+            with _tmp() as d:
+                w = _world(d)
+                before = sorted(os.listdir(d))
+                real = tool_module()._graph_assets
+
+                def fake(src, extra=extra, real=real):
+                    errs, assets, shell = real(src)
+                    return errs, dict(assets, **{extra: b"export const extra = 1;\n"}), shell
+                rc, lines = inproc(w, {"_graph_assets": fake, "_graph_sink_errors": lambda assets, shell: []})   # the real sink gate re-reads graph-src and counts its files: the extra asset is not there
+                ok, why = _eq((rc, lines, os.path.exists(w["out"]), sorted(os.listdir(d))), (1, [want], False, before))
+                if not ok:
+                    return ok, f"in-process, {what}: " + why
+        return True, ""
 
     @case("A5", "assets by the builder's own function: `_graph_assets(graph_src)` supplies the assets; its errors are `ASM-ASSET <path> <reason>` (the function's own reasons) and stop the "
                 "run; the shell is the file read through --shell, NOT the shell `_graph_assets` returns; an absent or empty asset set is `ASM-ASSET graph no-assets`")
@@ -1069,17 +1173,31 @@ def _selftest_cases():
             good, why = _refused(w, _argv(w), sink_lines, "sink faults are what is left")
             if not good:
                 return good, why
+        with _tmp() as d:   # the pin stage hides the static stage: a bad pin AND a static-check token in a data file, only the pin line is printed
+            w = _world(d, big=True)
+            bad_step = _step_names(w["files"])[3]
+            _write_tree(w["data"], {bad_step: _recommit(w["files"][bad_step], BAD_PIN), "spine.json": with_token(w["files"]["spine.json"])})
+            good, why = _refused(w, _argv(w), [f"ASM-PIN {bad_step} {BAD_PIN}"], "a bad pin hides the static token of the data files")
+            if not good:
+                return good, why
+            _write_tree(w["data"], {bad_step: w["files"][bad_step]})   # fixture control: with the pin right, the token IS refused (by the stage that comes after)
+            good, why = _refused(w, _argv(w), ["ASM-STATIC fetch( found in graph/spine.json"], "the planted token is a static refusal once the pin is right")
+            if not good:
+                return good, why
         _need_pr_c()
         with _tmp() as d:   # a page fault and a non-empty OUT_DIR: the page stage answers, the out stage is never reached
             w = _world(d, strings=_asm_strings(**{ABOUT_KEY: None}))
             _write_tree(w["out"], {"keep.txt": b"mine"})
             return _refused(w, _argv(w), ["ASM-STRINGS about_text missing"], "a page fault hides a non-empty OUT_DIR", out_state=["keep.txt"])
 
-    @case("A16", "never executes anything it reads: no import, eval, subprocess or shell on DATA, strings, shell or assets: the text of the tool above the self-test marker holds no call of "
-                 "eval, exec, compile, __import__, os.system, os.popen, os.exec*, os.spawn*, subprocess, runpy, ctypes, pickle or marshal and imports no module of that kind (importlib only "
-                 "inside `_load`, which loads the two builders of this folder); and lures in every input (code that would create a file) create no file")
+    @case("A16", "never executes anything it reads: no import, eval, subprocess or shell on DATA, strings, shell or assets. STATIC: the text of the tool above the self-test marker passes an "
+                 "ALLOWLIST scan (imports exactly importlib.util, json, os, re, sys and `from html.parser import HTMLParser`, unaliased; no use of eval, exec, compile, __import__, getattr, "
+                 "setattr, delattr, vars, globals or locals; no attribute that runs a program; no attribute of os or os.path beyond the ones the tool uses; importlib and `exec_module` only inside `_load`), and "
+                 "the scan has its own positive controls (small sources, each of which it must FLAG: a scan that flags nothing fails here) and negative controls (five it must pass). "
+                 "DYNAMIC: lures (code that would create a file) in the strings values, the shell and a step file of a world with a VALID pin create no file, the run reaches the page stage "
+                 "and builds, and its tree differs from the same world without lures only where the lures are text")
     def _():
-        with _tmp() as d:
+        with _tmp() as d:   # DYNAMIC, the pin stage: lures in every input and a bad pin
             w = _world(d)
             canary = os.path.join(d, "CANARY")
             lure = f"__import__('os').system('touch {canary}'); $(touch {canary}); `touch {canary}`"
@@ -1094,34 +1212,42 @@ def _selftest_cases():
             good, why = _refused(w, _argv(w), [f"ASM-PIN index.json {BAD_PIN}"], "lures in every input")
             if not good or os.path.exists(canary):
                 return False, why + f" / canary created: {os.path.exists(canary)}"
+        _need_pr_c()
+        with _tmp() as d:   # DYNAMIC, a VALID pin: the lures are in a strings value (and an unused strings key), the shell text and a step file; the run reaches the page stage and builds
+            with _tmp() as d0:
+                base = _ok_run(_world(d0, big=True))[0]
+            w = _world(d, big=True)
+            canary = os.path.join(d, "CANARY")
+            lure = f"__import__('os').system('touch {canary}'); $(touch {canary}); `touch {canary}`"
+            step = _step_names(w["files"])[0]
+            lured_step = _graph_bytes({"x": dict(json.loads(w["files"][step]), zz_lure=lure)})["x"]
+            _write_tree(w["data"], {step: lured_step})
+            lured_shell = SHELL.replace("</header>", f'<p class="hint">{lure}</p>\n</header>')   # shell TEXT (the builder refuses a comment)
+            lured_strings = _asm_strings(**{ABOUT_KEY: lure, "zz_lure": lure})
+            with open(w["shell"], "w", encoding="utf-8") as f:
+                f.write(lured_shell)
+            with open(w["strings"], "w", encoding="utf-8") as f:
+                json.dump(lured_strings, f)
+            rc, lines, err = _cli(_argv(w))
+            if rc != 0 or os.path.exists(canary):
+                return False, f"lures with a valid pin: exit {rc}, stdout {lines!r}, canary created {os.path.exists(canary)}, stderr {err[-200:]!r}"
+            tree = _read_tree(w["out"])[0]
+            changed = sorted(k for k in set(base) | set(tree) if base.get(k) != tree.get(k))
+            ok, why = _eq((changed, tree[step], tree["index.html"].decode("utf-8")), (sorted([step, "index.html", "manifest.json"]), lured_step, _expected_page(w, lured_shell, lured_strings)))
+            if not ok:
+                return ok, "lures with a valid pin, the tree against the same world without lures: " + why
         with open(TOOL, encoding="utf-8") as f:
             src = f.read()
         marker = "\n# ==== self-test" + " ====\n"
         if src.count(marker) != 1:
             raise _FixtureError("the self-test marker must appear once in the tool")
-        tree = ast.parse(src[:src.index(marker)])
-        found = []
-
-        def dotted(n):
-            parts = []
-            while isinstance(n, ast.Attribute):
-                parts.append(n.attr)
-                n = n.value
-            return ".".join(([n.id] if isinstance(n, ast.Name) else []) + parts[::-1])
-
-        loader = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_load")
-        inside_loader = {id(x) for x in ast.walk(loader)}
-        for n in ast.walk(tree):
-            if isinstance(n, ast.Call):
-                name = dotted(n.func)
-                if name in ("eval", "exec", "compile", "__import__") or re.match(r"os\.(system|popen|exec\w*|spawn\w*|posix_spawn\w*)$", name) \
-                        or re.match(r"(subprocess|runpy|ctypes|pickle|marshal)\.", name) or (name.startswith("importlib.") and id(n) not in inside_loader):
-                    found.append(f"line {n.lineno}: call {name}")
-            elif isinstance(n, (ast.Import, ast.ImportFrom)):
-                mods = [a.name for a in n.names] if isinstance(n, ast.Import) else [n.module or ""]
-                found += [f"line {n.lineno}: import {m}" for m in mods if m.split(".")[0] in ("subprocess", "runpy", "ctypes", "pickle", "marshal", "code", "codeop")
-                          or (m.split(".")[0] == "importlib" and m != "importlib.util")]
-        return _eq(found, [])
+        blind = [what for what, text in A16_LURES if not _scan_source(text)]   # the scan's own positive controls
+        if blind:
+            return False, f"the scan is blind to: {blind}"
+        wrong = [what for what, text in A16_CLEAN if _scan_source(text)]       # and its negative controls
+        if wrong:
+            return False, f"the scan flags what it must pass: {wrong}"
+        return _eq(_scan_source(src[:src.index(marker)]), [])
 
     @case("A17", "the live map is untouched: importing this module has no side effect and sets no global (environment, working folder, sys.path, umask, the byte-code flag, build_site's own "
                  "globals): a fresh process imports it and a snapshot taken before and after is identical; the snapshot is shown to be able to see a planted change. (The builder's own live "
@@ -1341,11 +1467,14 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             page = open(os.path.join(w["out"], "index.html"), encoding="utf-8").read()
             return _eq(spans == [real_scan(page)[1]], True)
 
-    @case("A11b", "no absolute refs: in the written index.html every `href`, `src` and `action` is an in-page #fragment, an http(s):// link, or a RELATIVE path (no leading `/`, no `//`, no other "
-                  "scheme, no `..` segment) that exists as a file of the tree; and a shell with an absolute script src makes the builder's page function refuse, which arrives as `ASM-PAGE` with "
-                  "nothing written (the property is the builder's; this case shows the tool does not bypass it)")
+    @case("A11b", "every ref of the written page resolves inside the tree: every `href`, `src`, `action`, `srcset`, `poster` and `data` value of the written index.html, after the part from the "
+                  "first `?` or `#` is dropped, is empty (a bare #fragment or ?query passes), or a path that names a file the tree holds (a trailing-slash folder ref holds a file under it); a "
+                  "`..` segment is `ASM-PAGE <ref> escapes`, a ref that is not a file of the tree (the shared shell's `list/`) is `ASM-PAGE <ref> missing`, every violation of the page is reported "
+                  "together in the order of its first occurrence, exit 1, nothing written; an absolute ref in a shell is refused first, by the builder's own page function (`ASM-PAGE ... is not "
+                  "a relative path or #fragment`: that line is the one accepted here, the tool's `absolute` word is for what the builder does not scan)")
     def _():
         _need_pr_c()
+        fails = []
 
         class R(HTMLParser):
             def __init__(self):
@@ -1354,21 +1483,49 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
 
             def handle_starttag(self, tag, attrs):
                 self.refs += [(tag, k, v) for k, v in attrs if k in ("href", "src", "action")]
-        with _tmp() as d:
+
+        def link(*refs):   # the shared shell stand-in with only the refs changed: one anchor per ref, after the sentence
+            return SHELL.replace('<p class="sentence">{{S:sentence}}</p>\n', '<p class="sentence">{{S:sentence}}</p>\n' + "".join(f'<p class="sentence"><a href="{r}">x</a></p>\n' for r in refs))
+
+        def note(name, ok_why):
+            if not ok_why[0]:
+                fails.append(f"[{name}] {ok_why[1]}")
+
+        def refused_in_order(name, refs, want):   # exit 1, exactly these lines IN THIS ORDER, nothing written
+            with _tmp() as d:
+                w = _world(d, shell=link(*refs))
+                rc, lines, err = _cli(_argv(w))
+                note(name, _eq((rc, lines, "Traceback" in err, os.path.exists(w["out"])), (1, want, False, False)))
+
+        with _tmp() as d:   # a clean world still builds; the refs of its written page all resolve in the tree
             w = _world(d, big=True)
             tree = _ok_run(w)[0]
             p = R()
             p.feed(tree["index.html"].decode("utf-8"))
-            bad = []
-            for tag, k, v in p.refs:
-                if v.startswith("#") or re.match(r"https?://", v, re.I):
-                    continue
-                path = re.split(r"[?#]", v, maxsplit=1)[0]
-                if not v or v.startswith("/") or re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", v) or ".." in path.split("/") or path not in tree:
-                    bad.append((tag, k, v))
-            ok, why = _eq((bad, ("link", "href", "graph.css") in p.refs, ("script", "src", "page/app.js") in p.refs), ([], True, True))
-            if not ok:
-                return ok, "the refs of the written page: " + why
+            bad = [(t, k, v) for t, k, v in p.refs if v and not v.startswith("#") and re.split(r"[?#]", v, maxsplit=1)[0] not in tree]
+            note("clean world", _eq((bad, ("link", "href", "graph.css") in p.refs, ("script", "src", "page/app.js") in p.refs), ([], True, True)))
+        refused_in_order("../x.html escapes", ["../x.html"], ["ASM-PAGE ../x.html escapes"])
+        refused_in_order("a .. segment inside a path escapes", ["step/../../x.json"], ["ASM-PAGE step/../../x.json escapes"])
+        refused_in_order("nothere.html is missing", ["nothere.html"], ["ASM-PAGE nothere.html missing"])
+        refused_in_order("the shared shell's list/ is missing", ["list/"], ["ASM-PAGE list/ missing"])
+        refused_in_order("the query stays in the ref shown", ["nothere.html?v=1"], ["ASM-PAGE nothere.html?v=1 missing"])
+        refused_in_order("every violation together, first occurrence order, a repeated ref once", ["nothere.html", "../x.html", "list/", "#top", "list/", "graph.css", "../x.html"],
+                         ["ASM-PAGE nothere.html missing", "ASM-PAGE ../x.html escapes", "ASM-PAGE list/ missing"])
+        with _tmp() as d:   # refs that pass: a query on an asset, a bare fragment, a file of the tree (a step file), a folder with files under it
+            step = _step_names(_data_files())[0]
+            refs = ["engine/index.js?v=1", "#top", step, "graph.css#x", "step/", "engine/", "?v=2", "page/app.js"]
+            w = _world(d, shell=link(*refs))
+            tree = _ok_run(w)[0]
+            page = tree["index.html"].decode("utf-8")
+            note("refs that pass", _eq([f'<a href="{r}">' in page for r in refs], [True] * len(refs)))
+        with _tmp() as d:   # an absolute ref in a shell: the builder's own refusal, as ASM-PAGE, nothing written
+            shell = link("/abs.html")
+            w = _world(d, shell=shell)
+            errs, _p = _graph_page(shell.encode("utf-8"), set(w["assets"]), _asm_strings(), "<p>" + bs._e(ABOUT_TEXT) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
+            want = ["ASM-PAGE " + " ".join(e[1:]) for e in errs]
+            if not want:
+                raise _FixtureError("the builder accepts a shell with an absolute anchor")
+            note("/abs.html: the builder's own line", _refused(w, _argv(w), want, "an absolute anchor"))
         with _tmp() as d:
             shell = SHELL.replace('src="page/app.js"', 'src="/page/app.js"')
             w = _world(d, shell=shell)
@@ -1376,7 +1533,8 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             want = ["ASM-PAGE " + " ".join(e[1:]) for e in errs]
             if not want:
                 raise _FixtureError("the builder accepts a shell with an absolute script src")
-            return _refused(w, _argv(w), want, "an absolute script src: the builder's own refusal, as ASM-PAGE")
+            note("an absolute script src: the builder's own line", _refused(w, _argv(w), want, "an absolute script src"))
+        return (not fails, "; ".join(fails))
 
     def with_token(raw):
         """The same JSON file with one more key whose text the static check refuses (the token is the builder's own: `fetch(`, from its `_API` table), in the builder's serialisation."""
