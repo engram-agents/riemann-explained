@@ -45,6 +45,7 @@ import io
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -1205,6 +1206,91 @@ def _selftest_cases():
         with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
             overlay = json.load(f)
         return _eq((counts, OPTIONAL_WORDS == typed, {k: full[k] for k in typed}, {k: overlay.get(k) for k in typed}), ((23, 25, 26), True, typed, typed))
+
+    @case("SK28", "hostile folders and CONTENTS.md, one tree per row of the colleague's table, each a named refusal (exit 1, no traceback, OUT not written, no hang: the CLI runs in a "
+                  "subprocess with a 60 second timeout): `src` a symlink to a folder outside, `src/New` a symlink, CONTENTS.md a symlink, CONTENTS.md a FIFO, CONTENTS.md over 4 MiB, "
+                  "an intermediate folder `src/New/S` a symlink to a folder outside")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"
+        srcs = {"New/S/A": _lean(), "New/S/B": _lean()}
+        limit = 4 * 1024 * 1024
+        res = {}
+        for kind in ("src", "srcnew", "contents", "fifo", "big", "inter"):
+            with _tmp() as d:
+                g = _tree(d, body, srcs)
+                if kind == "src":
+                    shutil.move(os.path.join(g, "src"), os.path.join(d, "outside"))
+                    os.symlink(os.path.join(d, "outside"), os.path.join(g, "src"))
+                elif kind == "srcnew":
+                    shutil.move(os.path.join(g, "src", "New"), os.path.join(d, "outside"))
+                    os.symlink(os.path.join(d, "outside"), os.path.join(g, "src", "New"))
+                elif kind == "inter":
+                    shutil.move(os.path.join(g, "src", "New", "S"), os.path.join(d, "outside"))
+                    os.symlink(os.path.join(d, "outside"), os.path.join(g, "src", "New", "S"))
+                else:
+                    c = os.path.join(g, "CONTENTS.md")
+                    if kind == "contents":
+                        shutil.move(c, os.path.join(d, "real.md"))
+                        os.symlink(os.path.join(d, "real.md"), c)
+                    elif kind == "fifo":
+                        os.remove(c)
+                        os.mkfifo(c)
+                    else:
+                        with open(c, "a") as f:
+                            f.write(" " * (limit + 1 - os.path.getsize(c)))
+                out = os.path.join(d, "out")
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=60)
+                res[kind] = (r.returncode, r.stdout.splitlines(), "Traceback" in r.stderr, os.path.exists(out))
+        return _eq(res, {"src": (1, ["SKEL-ESCAPE src symlink"], False, False), "srcnew": (1, ["SKEL-ESCAPE src/New symlink"], False, False),
+                         "contents": (1, ["SKEL-CONTENTS CONTENTS.md symlink"], False, False), "fifo": (1, ["SKEL-CONTENTS CONTENTS.md not-a-regular-file"], False, False),
+                         "big": (1, ["SKEL-CONTENTS CONTENTS.md too-large"], False, False), "inter": (1, ["SKEL-ESCAPE src/New/S symlink"], False, False)})
+
+    @case("SK29", "the two guards against a symlink are each pinned ALONE: with only the lstat guard a symlink is refused `symlink`, with only O_NOFOLLOW it is refused `symlink`, with "
+                  "neither it is read through the link (so each guard is what refuses, not a second copy of the other); with both (the default) it is refused; a FIFO is refused "
+                  "`not-a-regular-file` by fstat whatever the guards, without blocking")
+    def _():
+        with _tmp() as d:
+            real = os.path.join(d, "real.txt")
+            with open(real, "wb") as f:
+                f.write(b"x")
+            link = os.path.join(d, "link.txt")
+            os.symlink(real, link)
+            fifo = os.path.join(d, "fifo")
+            os.mkfifo(fifo)
+
+            def attempt(path, **kw):
+                try:
+                    return ("ok", _read_bounded(path, 100, **kw))
+                except SourceError as e:
+                    return ("err", e.reason)
+            got = (attempt(link), attempt(link, guards=("lstat",)), attempt(link, guards=("nofollow",)), attempt(link, guards=()), attempt(real, guards=()),
+                   attempt(fifo, guards=()), attempt(fifo))
+        return _eq(got, (("err", "symlink"), ("err", "symlink"), ("err", "symlink"), ("ok", b"x"), ("ok", b"x"), ("err", "not-a-regular-file"), ("err", "not-a-regular-file")))
+
+    @case("SK30", "containment by REAL path: _contained(root, path) is true for the root and for a file under it, false for a file reached through a symlinked folder that leads "
+                  "outside (every component is covered, not only the last), false for a sibling folder whose name starts with the root's name; _read_in refuses a path that is not "
+                  "contained with `outside`, reads one that is, and a symlink to a file INSIDE the root is still refused by the descriptor guards (`symlink`)")
+    def _():
+        with _tmp() as d:
+            root = os.path.join(d, "grh")
+            os.makedirs(os.path.join(root, "inside"))
+            os.makedirs(os.path.join(d, "grh2"))
+            os.makedirs(os.path.join(d, "elsewhere"))
+            for p_ in (os.path.join(root, "inside", "f.txt"), os.path.join(d, "grh2", "f.txt"), os.path.join(d, "elsewhere", "f.txt")):
+                with open(p_, "wb") as f:
+                    f.write(b"x")
+            os.symlink(os.path.join(d, "elsewhere"), os.path.join(root, "via"))
+            os.symlink(os.path.join(root, "inside", "f.txt"), os.path.join(root, "inside", "l.txt"))
+
+            def rd(path):
+                try:
+                    return ("ok", _read_in(root, path, 10))
+                except SourceError as e:
+                    return ("err", e.reason)
+            got = (_contained(root, root), _contained(root, os.path.join(root, "inside", "f.txt")), _contained(root, os.path.join(root, "via", "f.txt")),
+                   _contained(root, os.path.join(d, "grh2", "f.txt")), _contained(root, os.path.join(d, "elsewhere", "f.txt")),
+                   rd(os.path.join(root, "inside", "f.txt")), rd(os.path.join(root, "via", "f.txt")), rd(os.path.join(root, "inside", "l.txt")))
+        return _eq(got, (True, True, False, False, False, ("ok", b"x"), ("err", "outside"), ("err", "symlink")))
 
     @case("SK13", "the real source (give `--selftest --grh DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
                   "depth 3, 298 links drawn and 226 imports not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
