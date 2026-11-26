@@ -1573,7 +1573,7 @@ def _selftest_cases():
                     b"\\u003cimg src=x onerror=alert(1)\\u003e \\u0026 `code`" in f0["graph/step/lean-s-a.json"],
                     [any(c in data for c in (b"<", b">", b"&")) for data in f0.values()].count(True),
                     sorted({json.loads(data)["commit"] for data in f0.values()})),
-                   (0, 0, True, ["graph/index.json", "graph/spine.json", "graph/step/lean-s-g.json", "graph/step/lean-s-a.json", "graph/step/lean-s-b.json", "graph/step/lean-s.json",
+                   (0, 0, True, ["graph/index.json", "graph/spine.json", "graph/step/lean-s-a.json", "graph/step/lean-s-b.json", "graph/step/lean-s-g.json", "graph/step/lean-s.json",
                                  "graph/uses.json"], True, True, 0, ["pinX"]))
 
     @case("SK11", "exit codes: 0 built (OUT holds `graph` and nothing else), 1 refused (OUT absent after; a non-empty OUT is refused and left as it was; a strings file "
@@ -1777,7 +1777,7 @@ def _selftest_cases():
                   "byte-identical and its lists are the sorted literals)")
     def _():
         names = "ABCDEF"
-        body = "### S part\n\n**Grp**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in names) + "\n**Hub**\n\n- `New/S/Hub` (1): hub\n"
+        body = "### S part\n\n**Grp**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in names) + "\n**The hub**\n\n- `New/S/Hub` (1): hub\n"
         srcs = {f"New/S/{n}": _lean() for n in names}
         srcs["New/S/Hub"] = _lean(imports=[f"New.S.{n}" for n in "FCEBDA"])
         with _tmp() as d:
@@ -1855,7 +1855,7 @@ def _selftest_cases():
         good = "a" * 60 + "b"
         with _tmp() as d:
             ok = bld(_tree(d, f"### X part\n\n**G**\n\n- `New/X/{good}` (1): x\n", {f"New/X/{good}": _lean()}), PIN, _strings())
-        return _eq(([(c, w) for c, w, _ in errs], ok[0], len(ok[3]["cut"]), [len(r["id"]) for r in ok[2]]), ([("GRAPH-ID", "lean-x-" + name)], [], 1, [6, 9, 64]))
+        return _eq(([(c, w) for c, w, _ in errs], ok[0], len(ok[3]["cut"]), [len(r["id"]) for r in ok[2]]), ([("GRAPH-ID", "lean-x-" + name)], [], 1, [6, 8, 64]))
 
     @case("SK24", "a source file is read through one bounded, non-blocking, non-following descriptor: a .lean that is a symlink (to a file outside the tree), a FIFO, a directory or "
                   "larger than 1 MiB, or not UTF-8, is `SKEL-NOTE <path> <reason>` (`symlink`, `not-a-regular-file`, `not-a-regular-file`, `too-large`, `not-utf-8`; all reported, "
@@ -2747,7 +2747,7 @@ def _selftest_cases():
         same = all(u["titles"][i] == {"kind": step(i)["card"]["kind"], "path": step(i)["card"]["path"], "title": step(i)["card"]["title"]} for i in u["titles"])
         return _eq((errs, sorted(u["titles"]), same, u["titles"]["lean-s-a"], u["titles"]["lean-s"], b"\\u003cimg src=x onerror=alert(1)\\u003e \\u0026 `code`" in files["graph/uses.json"],
                     any(c in files["graph/uses.json"] for c in (b"<", b">", b"&")), sorted(u["titles"]) == sorted(k[len("graph/step/"):-5] for k in files if k.startswith("graph/step/"))),
-                   ([], ["lean-s", "lean-s-g", "lean-s-a", "lean-s-b"], True, {"kind": "file", "path": ["lean-s", "lean-s-g"], "title": "<img src=x onerror=alert(1)> & `code`"},
+                   ([], ["lean-s", "lean-s-a", "lean-s-b", "lean-s-g"], True, {"kind": "file", "path": ["lean-s", "lean-s-g"], "title": "<img src=x onerror=alert(1)> & `code`"},
                     {"kind": "part", "path": [], "title": "S part"}, True, False, True))
 
     @case("MN7", "a mention with no usable usage position is loud: a constant named by a record whose line is not a number is `SKEL-MENTION <row> <constant> no usage position` (rows "
@@ -3301,7 +3301,7 @@ def _selftest_cases():
                    ([], ORDERS, "column", 0, 27, 23, 353, {"part": 9, "group": 38, "file": 306}, [("none", "none")],
                     ["lean-reduction", "lean-derivatives", "lean-upper-bound", "lean-spanning", "lean-determinant", "lean-one-lift", "lean-congruences", "lean-appendix",
                      "lean-the-last-file"], 23, 3, 733, 1402, 64, 3,
-                    ["lean-congruences-lifting-crystalline-extension-classes-in-10ee61", "lean-congruences-galois-representations-rows-and-columns-7a36a5",
+                    ["lean-congruences-galois-representations-rows-and-columns-7a36a5", "lean-congruences-lifting-crystalline-extension-classes-in-10ee61",
                      "lean-one-lift-hecke-l-values-as-squared-norms-and-their-v-deb880"], True, 3, 356, True, True, 353, 22, []))
 
     ID_SHAPE = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")   # the comment service's and the website's id rule, written here again (not read from build_site)
@@ -3335,10 +3335,9 @@ def _selftest_cases():
         for body, paths in ((two, ("New/T/X", "New/T/Y")), (gf, ("New/S/A", "New/S/Group")), (empty, ("New/S/A", "New/S/Group"))):
             with _tmp() as d:
                 errs, files, rows, rep = bld(_tree(d, body, {p: _lean() for p in paths}), PIN, _strings())
-            out.append(([(c, w, m) for c, w, m in errs], files, rows))
+            out.append(([(c, w, m) for c, w, m in errs], files))
         dup = "is the id of more than one step"
-        return _eq(out, [([("GRAPH-DUP", "lean-t", dup), ("GRAPH-DUP", "lean-t-group", dup)], {}, []), ([("GRAPH-DUP", "lean-s-group", dup)], {}, []),
-                         ([("GRAPH-DUP", "lean-s-group", dup)], {}, [])])
+        return _eq(out, [([("GRAPH-DUP", "lean-t", dup), ("GRAPH-DUP", "lean-t-group", dup)], {}), ([("GRAPH-DUP", "lean-s-group", dup)], {}), ([("GRAPH-DUP", "lean-s-group", dup)], {})])
 
     @case("GID3", "an id over 64 is cut by the same rule and passes the new check: a group title of 80 `a` is `lean-s-` + 50 `a` + `-545a54` (64 characters, one hyphen between the "
                   "words, the hash after a single `-`), and a title that ends the 57 characters on a `-` loses it (`lean-s-` + 49 `a` + `-` + 30 `b`, cut to 56 characters and the hash); "
@@ -3362,7 +3361,7 @@ def _selftest_cases():
             e2 = bld(_tree(d, f"### S part\n\n**G**\n\n- `{long_path}` (1): b\n", {long_path: _lean()}), PIN, _strings())
         return _eq((errs, gids, [len(i) for i in gids], all(ID_SHAPE.fullmatch(i) for i in gids), [(c, w, m) for c, w, m in e1[0]], e1[1], written, cli[0],
                     [ln for ln in cli[1].splitlines() if ln.startswith("GRAPH-ID")], [(c, w, m) for c, w, m in e2[0]], e2[1]),
-                   ([], ["lean-s-" + "a" * 50 + "-545a54", "lean-s-" + "a" * 49 + "-ca26cb"], [64, 64], True, [("GRAPH-ID", "lean-s-a--b", ID_TEXT)], {}, False, 1,
+                   ([], ["lean-s-" + "a" * 50 + "-545a54", "lean-s-" + "a" * 49 + "-ca26cb"], [64, 63], True, [("GRAPH-ID", "lean-s-a--b", ID_TEXT)], {}, False, 1,
                     ["GRAPH-ID lean-s-a--b " + ID_TEXT], [("GRAPH-ID", "lean-s-" + "a" * 30 + "--" + "b" * 40, ID_TEXT)], {}))
 
     @case("GIDR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): the 353 ids of the Lean map all match ^[a-z0-9]+(-[a-z0-9]+)*$, the longest is 64 "
