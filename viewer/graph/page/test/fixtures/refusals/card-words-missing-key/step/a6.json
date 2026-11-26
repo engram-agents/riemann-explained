@@ -1,21 +1,22 @@
 {
  "card": {
   "child_count": 0,
-  "id": "mod-core-basic",
-  "kind": "module",
+  "id": "a6",
+  "kind": "structure",
   "path": [
-   "mod-core"
+   "goal-chain"
   ],
   "proof": "none",
-  "state": "none",
-  "title": "Module mod-core-basic"
+  "role": "Structure",
+  "state": "census",
+  "title": "Title of step a6"
  },
  "children": [],
  "commit": "0123456789abcdef0123456789abcdef01234567",
  "format": 1,
- "id": "mod-core-basic",
+ "id": "a6",
  "path": [
-  "mod-core"
+  "goal-chain"
  ],
  "rests_on": []
 }

@@ -4,14 +4,13 @@
  "format": 1,
  "max_children": 40,
  "rests_on": [],
- "steps": 6,
+ "steps": 7,
  "strings": {
   "claim_less": "Show less",
   "claim_more": "Show the whole claim",
   "close_parts": "Close its parts",
   "crumb_label": "Where this step sits",
   "key_kind_def": "Definition: a named object or statement",
-  "key_kind_module": "Module: a folder or file of the Lean repository",
   "key_kind_structure": "Structure: a bundle of named fields",
   "key_kind_theorem": "Theorem: a result the Lean code proves",
   "key_kinds_heading": "Colour and shape: what Lean declares",
@@ -35,17 +34,13 @@
     "text": "Definition: a named object or statement",
     "words": "key_kind_def"
    },
-   "module": {
-    "class": "builder-module",
-    "text": "Module: a folder or file of the Lean repository",
-    "words": "key_kind_module"
-   },
    "structure": {
     "class": "builder-structure",
     "text": "Structure: a bundle of named fields",
     "words": "key_kind_structure"
    },
    "theorem": {
+    "card_words": "",
     "class": "builder-theorem",
     "text": "Theorem: a result the Lean code proves",
     "words": "key_kind_theorem"
@@ -53,10 +48,20 @@
   },
   "order": {
    "kinds": [
-    "module"
+    "theorem",
+    "def",
+    "structure"
    ],
-   "proofs": [],
-   "states": []
+   "proofs": [
+    "read",
+    "not_read",
+    "none"
+   ],
+   "states": [
+    "read",
+    "census",
+    "none"
+   ]
   },
   "proofs": {
    "none": {
@@ -94,7 +99,6 @@
   }
  },
  "top": [
-  "mod-core",
-  "mod-tools"
+  "goal-chain"
  ]
 }

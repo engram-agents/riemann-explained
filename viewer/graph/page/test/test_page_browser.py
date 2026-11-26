@@ -912,35 +912,37 @@ def c_key_order(b, S0, engine):
         S.stop()
 
 
-def c_module_map(b, S0, engine):
-    """P1, P5, P7 on the module-map fixture: the face carries k-module (and its s-none); a module's sheet has NO status element and
-    the repository's own note is the first thing under the title; the key has the one kind row and no states section; closing
-    puts the markup back."""
-    root = tempfile.mkdtemp(prefix="pg-modules-")
-    assemble.assemble(root, engine, fix="modules")
+def c_skeleton_map(b, S0, engine):
+    """P1, P5, P7 on the skeleton fixture: each face carries its kind class (and its s-none); a card's sheet has exactly one
+    .sheet-status, the kind's card word, with no state or proof word, directly under the title; the key has the three kind rows in
+    order and no states section; closing puts the markup back."""
+    root = tempfile.mkdtemp(prefix="pg-skeleton-")
+    assemble.assemble(root, engine, fix="skeleton")
     S = Served(root)
     try:
         pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
-        cls = pg.ev("document.querySelector('[data-node=\"mod-core\"] .face').className")
-        assert cls == "face k-module s-none", cls
+        assert pg.ev("document.querySelector('[data-node=\"sk-part\"] .face').className") == "face k-part s-none"
         before = pg.ev("document.getElementById('graph-cards').outerHTML")
-        for card in ("mod-core", "mod-core-basic"):
+        for card, word in (("sk-part", "Part"), ("sk-group-a", "Group"), ("sk-file-1", "File"), ("sk-file-5", "File")):
             at_hash(pg, card)
             pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
-            assert pg.ev("document.querySelectorAll('.sheet-status').length") == 0, card + ": a module sheet has a status element"
+            assert pg.ev("document.querySelectorAll('.sheet-status').length") == 1, card
+            text = pg.ev("document.querySelector('#graph-sheet-body .sheet-status').textContent")
+            assert text == word, (card, text)
+            assert not any(w in text for w in ("Statement", "Proof", "statement", "proof")), text
             nxt = pg.ev("document.querySelector('#graph-sheet-body .claim').nextElementSibling.className")
-            assert nxt == "note", (card, nxt)
+            assert nxt == "sheet-status", (card, nxt)
         pg.page.click("#graph-sheet-close")
         wait_sheet(pg, False)
-        assert pg.ev("document.getElementById('graph-cards').outerHTML") == before, "closing a status-less sheet must put the markup back"
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == before, "closing must put the markup back"
         pg.page.click("#graph-key")
         wait_sheet(pg, True)
         heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")
         rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
         sw = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li .swatch')].map(e => e.className)")
         assert heads == ["Colour and shape: what Lean declares"], heads
-        assert rows == ["Module: a folder or file of the Lean repository"], rows
-        assert sw == ["swatch k-module"], sw
+        assert rows == ["Part: a top-level folder of the repository", "Group: a folder inside a part", "File: one Lean file"], rows
+        assert sw == ["swatch k-part", "swatch k-group", "swatch k-file"], sw
         pg.csp_clean()
         pg.close()
     finally:
@@ -986,22 +988,43 @@ def c_sheet_status_level(b, S, engine):
 
 
 def c_look_override(b, S, engine):
-    """P6: a face with k-module and s-none (or s-census) has the solid default border and the card background, whatever the
-    source order; a theorem with s-none is still dashed and unread (control)."""
-    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    """P6/A3: a face of kind part, group or file with s-none (or s-census) keeps its own solid or double frame and the card background,
+    whatever the source order; the three are told apart WITHOUT colour (double 4px; solid 2px; solid 1px with a 4px left bar), none
+    dashed; the key's swatches carry the same border marks as their faces; a theorem with s-none is still dashed (control)."""
+    root = tempfile.mkdtemp(prefix="pg-look-")
+    assemble.assemble(root, engine, fix="skeleton")
+    S2 = Served(root)
+    pg = Pg(b, S2.base + "graph/index.html", 1280, 900).settled()
     js = """(() => {
       const mk = (c) => { const e = document.createElement('div'); e.className = c; e.style.cssText = 'position:absolute;left:-999px;top:0;width:50px;height:50px'; document.body.appendChild(e); return e; };
-      const g = (c) => { const s = getComputedStyle(mk(c)); return { style: s.borderTopStyle, width: s.borderTopWidth, bg: s.backgroundColor }; };
-      return { plain: g('face k-theorem s-read'), modNone: g('face k-module s-none'), modCensus: g('face k-module s-census'), modPlain: g('face k-module'),
-               thmNone: g('face k-theorem s-none'), thmCensus: g('face k-theorem s-census') };
+      const g = (c) => { const s = getComputedStyle(mk(c)); return { style: s.borderTopStyle, width: s.borderTopWidth, left: s.borderLeftWidth, leftStyle: s.borderLeftStyle, bg: s.backgroundColor, radius: s.borderTopLeftRadius }; };
+      const out = { plain: g('face k-theorem s-read'), thmNone: g('face k-theorem s-none'), thmCensus: g('face k-theorem s-census') };
+      for (const k of ['part', 'group', 'file']) for (const s of ['', ' s-none', ' s-census']) out[k + s] = g('face k-' + k + s);
+      return out;
     })()"""
     r = pg.ev(js)
-    for k in ("modNone", "modCensus", "modPlain"):
-        assert r[k]["style"] == "solid" and r[k]["width"] == "2px" and r[k]["bg"] == r["plain"]["bg"], (k, r[k], r["plain"])
+    want = {"part": ("double", "4px", "4px"), "group": ("solid", "2px", "2px"), "file": ("solid", "1px", "4px")}
+    for k, (style, w, left) in want.items():
+        for s in ("", " s-none", " s-census"):
+            f = r[k + s]
+            assert (f["style"], f["width"], f["left"]) == (style, w, left), (k + s, f)
+            assert f["bg"] == r["plain"]["bg"] and f["radius"] == "0px", (k + s, f, r["plain"])
+    marks = {(r[k + " s-none"]["style"], r[k + " s-none"]["width"], r[k + " s-none"]["left"]) for k in want}
+    assert len(marks) == 3, marks
     assert r["thmNone"]["style"] == "dashed" and r["thmNone"]["bg"] != r["plain"]["bg"], r["thmNone"]
     assert r["thmCensus"]["style"] == "dotted" and r["thmCensus"]["width"] == "3px", r["thmCensus"]
+    # the key's swatches show the same marks as the faces
+    pg.page.click("#graph-key")
+    wait_sheet(pg, True)
+    sw = pg.ev("""[...document.querySelectorAll('#graph-sheet-body .key-content .swatch')].map(e => { const s = getComputedStyle(e);
+      return { cls: e.className, style: s.borderTopStyle, width: s.borderTopWidth, left: s.borderLeftWidth }; })""")
+    assert [x["cls"] for x in sw] == ["swatch k-part", "swatch k-group", "swatch k-file"], sw
+    for x, k in zip(sw, ("part", "group", "file")):
+        f = r[k + " s-none"]
+        assert (x["style"], x["width"], x["left"]) == (f["style"], f["width"], f["left"]), (k, x, f)
     pg.csp_clean()
     pg.close()
+    S2.stop()
 
 
 def c_key_real_rows(b, S0, engine):
@@ -1740,9 +1763,9 @@ def main():
                 run("the sheet status line is the data's words (states and proofs); the list's proof line is never read; the key shows kinds then states", c_status_from_data, eng)
                 run("symbols.order sets the key's order", c_key_order, eng)
                 run("module: P4 the live map's key rows are unchanged", c_key_real_rows, eng)
-                run("module: P1/P5/P7 the module map (face class, no status element, the key has one kind row and no states section)", c_module_map, eng)
+                run("module: P1/P5/P7 the skeleton map (face classes, the card word as the one sheet line, the key has three kind rows and no states section)", c_skeleton_map, eng)
                 run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
-                run("module: P6 k-module wins over s-none and s-census; a theorem s-none is still dashed", c_look_override, eng)
+                run("module: P6 part, group and file keep their marks over s-none and s-census and differ without colour; swatches match; a theorem s-none is still dashed", c_look_override, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:

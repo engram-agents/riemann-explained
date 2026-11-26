@@ -5,8 +5,9 @@ real/        a small build shaped like the contract's section 6 measurement: 23 
              2 top-level rests_on, 5 step-file rests_on, 7 parent_rests_on true. Plus the card markup (nested like the
              list page: a child's article sits inside its parent's details.children) and the shell's word table.
 refusals/    one tiny build per refusal.
-modules/     a Lean repository's map: every step kind "module", state "none", proof "none", no role; symbols.order lists only
-             the rows that occur (kinds [module], states [], proofs []); the table still carries every row (21 strings).
+skeleton/    the map of a Lean repository's folders and files: kinds part, group, file, each a table row with `words` (the key's label)
+             and `card_words` (the sheet's one line); state "none", proof "none", no role on every step; symbols.order lists only
+             the rows that occur (kinds [part, group, file], states [], proofs []) while the tables keep every row.
 
 Test-only. Never shipped (lives under test/).
 """
@@ -44,12 +45,21 @@ SHELL_STRINGS = {
     "fallback_sentence": "The map did not load. Here are the steps as a list.",
     "fallback_link": "Open the list page",
 }
-MOD_STRINGS = dict(STRINGS, key_kind_module="Module: a folder or file of the Lean repository")   # 11 fixed + 4 kinds + 3 + 3 = 21
+SKELETON_WORDS = {
+    "symbol_kind_part": "Part: a top-level folder of the repository", "symbol_kind_group": "Group: a folder inside a part",
+    "symbol_kind_file": "File: one Lean file",
+    "card_kind_part": "Part", "card_kind_group": "Group", "card_kind_file": "File",
+}
+SKELETON_STRINGS = {k: v for k, v in STRINGS.items() if not k.startswith("key_kind_") or k == "key_kinds_heading"}
+SKELETON_STRINGS.update(SKELETON_WORDS)   # 11 fixed + 3 kind labels + 3 card words + 3 states + 3 proofs = 23
 
 
-def _rows(table, strings=STRINGS):
+def _rows(table, strings=STRINGS, card_words=None):
     # `class` and `text` are the builder's own (the page validates them as strings and ignores them); `words` is a key of strings
-    return {name: {"class": "builder-" + name, "text": strings[words], "words": words} for name, words in table}
+    rows = {name: {"class": "builder-" + name, "text": strings[words], "words": words} for name, words in table}
+    for name, cw in (card_words or {}).items():
+        rows[name]["card_words"] = cw
+    return rows
 
 
 SYMBOLS = {
@@ -59,17 +69,23 @@ SYMBOLS = {
     "states": _rows([("read", "sheet_statement_read"), ("census", "sheet_statement_census"), ("none", "sheet_statement_not_read")]),
 }
 
-SYMBOLS_MOD = {
-    "order": {"kinds": ["module"], "proofs": [], "states": []},
-    "kinds": _rows([("theorem", "key_kind_theorem"), ("def", "key_kind_def"), ("structure", "key_kind_structure"), ("module", "key_kind_module")], MOD_STRINGS),
+SYMBOLS_SKELETON = {
+    "order": {"kinds": ["part", "group", "file"], "proofs": [], "states": []},
+    "kinds": _rows([("part", "symbol_kind_part"), ("group", "symbol_kind_group"), ("file", "symbol_kind_file")], SKELETON_STRINGS,
+                   {"part": "card_kind_part", "group": "card_kind_group", "file": "card_kind_file"}),
     "proofs": SYMBOLS["proofs"], "states": SYMBOLS["states"],
 }
-# the module map: id -> (parent id or None, parent_rests_on); one edgeless sibling set (the top level, and mod-tools' one child),
-# one set with a sibling link (mod-core's children)
-MOD_TREE = [("mod-core", None, False), ("mod-tools", None, False),
-            ("mod-core-basic", "mod-core", False), ("mod-core-defs", "mod-core", True), ("mod-core-lemmas", "mod-core", False),
-            ("mod-tools-main", "mod-tools", False)]
-MOD_LINKS = [("mod-core", "mod-core-basic", "mod-core-defs")]
+# the skeleton map: id -> (parent id or None, parent_rests_on, kind). One part holds two groups (an edgeless sibling set of groups);
+# sk-group-a holds three files with a sibling link between two of them; sk-group-b holds an edgeless sibling set of two files, one
+# of them with the 98-character title below (the clamp case).
+LONG_TITLE = "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip."
+assert len(LONG_TITLE) == 98 and LONG_TITLE.isascii()
+SK_TREE = [("sk-part", None, False, "part"),
+           ("sk-group-a", "sk-part", False, "group"), ("sk-group-b", "sk-part", True, "group"),
+           ("sk-file-1", "sk-group-a", False, "file"), ("sk-file-2", "sk-group-a", True, "file"), ("sk-file-3", "sk-group-a", False, "file"),
+           ("sk-file-4", "sk-group-b", False, "file"), ("sk-file-5", "sk-group-b", False, "file")]
+SK_TITLES = {"sk-file-5": LONG_TITLE}
+SK_LINKS = [("sk-group-a", "sk-file-1", "sk-file-2")]
 
 # id -> (parent id or None, parent_rests_on)
 TREE = [
@@ -140,11 +156,12 @@ def build():
     return index, steps, kids, parent, num
 
 
-def build_modules():
-    ids = [t[0] for t in MOD_TREE]
-    parent = {t[0]: t[1] for t in MOD_TREE}
-    pro = {t[0]: t[2] for t in MOD_TREE}
-    kids = {i: [t[0] for t in MOD_TREE if t[1] == i] for i in ids}
+def build_skeleton():
+    ids = [t[0] for t in SK_TREE]
+    parent = {t[0]: t[1] for t in SK_TREE}
+    pro = {t[0]: t[2] for t in SK_TREE}
+    kind = {t[0]: t[3] for t in SK_TREE}
+    kids = {i: [t[0] for t in SK_TREE if t[1] == i] for i in ids}
 
     def ancestors(i):
         out, p = [], parent[i]
@@ -153,33 +170,36 @@ def build_modules():
             p = parent[p]
         return out
 
+    def title(i):
+        return SK_TITLES.get(i, kind[i].capitalize() + " " + i)
+
     def card(i):
-        # a module asserts nothing: state none, proof none, and no role
-        return {"id": i, "title": "Module " + i, "kind": "module", "state": "none", "proof": "none", "child_count": len(kids[i]), "path": ancestors(i)}
+        # a folder or file asserts nothing: state none, proof none, and no role
+        return {"id": i, "title": title(i), "kind": kind[i], "state": "none", "proof": "none", "child_count": len(kids[i]), "path": ancestors(i)}
 
     steps = {}
     for i in ids:
         ch = []
         for c in kids[i]:
             d = card(c); d["parent_rests_on"] = pro[c]; ch.append(d)
-        rests = [{"from": f, "to": t, "from_path": ancestors(i) + [i], "to_path": ancestors(i) + [i]} for (p, f, t) in MOD_LINKS if p == i]
+        rests = [{"from": f, "to": t, "from_path": ancestors(i) + [i], "to_path": ancestors(i) + [i]} for (p, f, t) in SK_LINKS if p == i]
         steps[i] = {"format": 1, "commit": COMMIT, "id": i, "path": ancestors(i), "card": card(i), "children": ch, "rests_on": rests}
     top = [i for i in ids if parent[i] is None]
     index = {"format": 1, "commit": COMMIT, "max_children": 40, "top": top, "rests_on": [], "steps": len(ids),
-             "symbols": SYMBOLS_MOD, "assets": {}, "strings": MOD_STRINGS}
-    return index, steps, kids
+             "symbols": SYMBOLS_SKELETON, "assets": {}, "strings": SKELETON_STRINGS}
+    return index, steps, kids, title
 
 
-def module_article(i, kids):
+def skeleton_article(i, kids, title):
     e = html.escape
     out = ['<article class="card" id="%s">' % i,
-           '<h3 class="claim">%s</h3>' % e("Module " + i),
+           '<h3 class="claim">%s</h3>' % e(title(i)),
            '<p class="note">The repository\'s own note for %s: what this folder or file holds.</p>' % e(i)]
     if kids[i]:
         out.append('<details class="children"><summary>Go deeper: the parts of this step</summary><ul class="children">')
         for c in kids[i]:
             out.append("<li>")
-            out.append(module_article(c, kids))
+            out.append(skeleton_article(c, kids, title))
             out.append("</li>")
         out.append("</ul></details>")
     out.append("</article>")
@@ -268,7 +288,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 
 def main():
-    for sub in ("real", "refusals", "modules"):
+    for sub in ("real", "refusals", "skeleton"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -277,12 +297,12 @@ def main():
     open(os.path.join(HERE, "real", "cards.html"), "w", encoding="utf-8").write(cards_html(index["top"], kids))
     write_json(os.path.join(HERE, "real", "shell-strings.json"), SHELL_STRINGS)
 
-    mindex, msteps, mkids = build_modules()
-    write_json(os.path.join(HERE, "modules", "index.json"), mindex)
-    for i, st in msteps.items():
-        write_json(os.path.join(HERE, "modules", "step", i + ".json"), st)
-    parts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % module_article(t, mkids) for t in mindex["top"]] + ["</ul>"]
-    open(os.path.join(HERE, "modules", "cards.html"), "w", encoding="utf-8").write(
+    sindex, ssteps, skids, stitle = build_skeleton()
+    write_json(os.path.join(HERE, "skeleton", "index.json"), sindex)
+    for i, st in ssteps.items():
+        write_json(os.path.join(HERE, "skeleton", "step", i + ".json"), st)
+    parts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, skids, stitle) for t in sindex["top"]] + ["</ul>"]
+    open(os.path.join(HERE, "skeleton", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + parts) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)
@@ -322,6 +342,9 @@ def main():
     refusal("extra-string", index_edit=lambda i: i["strings"].__setitem__("bonus_word", "a word the page never reads"))
     refusal("extra-string-proofs-heading", index_edit=lambda i: i["strings"].__setitem__("key_proofs_heading", "Proof: what we have read of it"))
     # P3 (order is a subset of the table's names): the four refusals, one each. A shorter list is NOT one (it is a subset).
+    # the kinds row's optional `card_words`: a strings key, non-empty
+    refusal("card-words-missing-key", index_edit=lambda i: i["symbols"]["kinds"]["theorem"].__setitem__("card_words", "no_such_card_word"))
+    refusal("card-words-empty", index_edit=lambda i: i["symbols"]["kinds"]["theorem"].__setitem__("card_words", ""))
     refusal("order-not-array", index_edit=lambda i: i["symbols"]["order"].__setitem__("kinds", "theorem"))
     refusal("order-unknown-name", index_edit=lambda i: i["symbols"]["order"].__setitem__("kinds", ["theorem", "lemma"]))
     refusal("order-kinds-empty", index_edit=lambda i: i["symbols"]["order"].__setitem__("kinds", []))

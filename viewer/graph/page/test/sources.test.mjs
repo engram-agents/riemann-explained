@@ -303,14 +303,27 @@ test("S5: every css rule that hides a list-page line (p.status, p.roots-only) is
   assert.ok(seen >= 3, "the rules this polices: " + seen);
 });
 
-/* P6: the module look. Structure is fixed now; its colour and shape are Ariadne's (LOOK PENDING). The override must win over the
+/* P6/A3: the part, group and file look. Structure is fixed now; the look is a placeholder (LOOK PENDING). Each override must win over the
    s-none and s-census frames whatever the source order, so it names them in its own selector. */
-test("P6: graph.css has .face.k-module and .swatch.k-module, with the override selectors that out-rank .face.s-none / .face.s-census", () => {
+test("P6: graph.css has .face.k-* and .swatch.k-* for part, group and file, each with the override selectors that out-rank .face.s-none / .face.s-census", () => {
   const css = read(path.join(GRAPH, "graph.css"));
-  assert.match(css, /\.face\.k-module\s*\{/);
-  assert.match(css, /\.swatch\.k-module\s*\{/);
-  assert.match(css, /LOOK PENDING \(Ariadne\)/);
-  const m = /(\.face\.k-module\.s-none[^{]*)\{/.exec(css);
-  assert.ok(m, "an override selector naming .face.k-module.s-none");
-  assert.match(m[1], /\.face\.k-module\.s-census/);
+  assert.match(css, /LOOK PENDING \(Borges proposes, Kepler rules\)/);
+  assert.ok(!/k-module/.test(css), "no module look is left");
+  for (const k of ["part", "group", "file"]) {
+    assert.match(css, new RegExp("\\.swatch\\.k-" + k + "\\s*[,{]"));
+    const m = new RegExp("\\.face\\.k-" + k + "\\.s-none[^{]*\\{").exec(css);
+    assert.ok(m, "an override selector naming .face.k-" + k + ".s-none");
+    assert.match(m[0], new RegExp("\\.face\\.k-" + k + "\\.s-census"));
+  }
+});
+
+test("A1: the page decides nothing by a kind NAME (part, group, file, module appear in no page logic)", () => {
+  for (const f of pageFiles) {
+    const code = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    for (const name of ["part", "group", "file", "module"]) {
+      const quoted = new RegExp("[\"'`]" + name + "[\"'`]");
+      if (rel(f) === "page/data.js") { const noTable = code.replace(/export const KIND_CLASS[^\n]*\n/, ""); assert.ok(!quoted.test(noTable), rel(f) + " names kind " + name); }
+      else assert.ok(!quoted.test(code), rel(f) + " names kind " + name);
+    }
+  }
 });

@@ -1,64 +1,73 @@
 {
  "card": {
   "child_count": 3,
-  "id": "mod-core",
-  "kind": "module",
-  "path": [],
+  "id": "sk-group-a",
+  "kind": "group",
+  "path": [
+   "sk-part"
+  ],
   "proof": "none",
   "state": "none",
-  "title": "Module mod-core"
+  "title": "Group sk-group-a"
  },
  "children": [
   {
    "child_count": 0,
-   "id": "mod-core-basic",
-   "kind": "module",
+   "id": "sk-file-1",
+   "kind": "file",
    "parent_rests_on": false,
    "path": [
-    "mod-core"
+    "sk-part",
+    "sk-group-a"
    ],
    "proof": "none",
    "state": "none",
-   "title": "Module mod-core-basic"
+   "title": "File sk-file-1"
   },
   {
    "child_count": 0,
-   "id": "mod-core-defs",
-   "kind": "module",
+   "id": "sk-file-2",
+   "kind": "file",
    "parent_rests_on": true,
    "path": [
-    "mod-core"
+    "sk-part",
+    "sk-group-a"
    ],
    "proof": "none",
    "state": "none",
-   "title": "Module mod-core-defs"
+   "title": "File sk-file-2"
   },
   {
    "child_count": 0,
-   "id": "mod-core-lemmas",
-   "kind": "module",
+   "id": "sk-file-3",
+   "kind": "file",
    "parent_rests_on": false,
    "path": [
-    "mod-core"
+    "sk-part",
+    "sk-group-a"
    ],
    "proof": "none",
    "state": "none",
-   "title": "Module mod-core-lemmas"
+   "title": "File sk-file-3"
   }
  ],
  "commit": "0123456789abcdef0123456789abcdef01234567",
  "format": 1,
- "id": "mod-core",
- "path": [],
+ "id": "sk-group-a",
+ "path": [
+  "sk-part"
+ ],
  "rests_on": [
   {
-   "from": "mod-core-basic",
+   "from": "sk-file-1",
    "from_path": [
-    "mod-core"
+    "sk-part",
+    "sk-group-a"
    ],
-   "to": "mod-core-defs",
+   "to": "sk-file-2",
    "to_path": [
-    "mod-core"
+    "sk-part",
+    "sk-group-a"
    ]
   }
  ]

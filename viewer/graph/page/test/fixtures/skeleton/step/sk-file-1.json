@@ -1,21 +1,23 @@
 {
  "card": {
   "child_count": 0,
-  "id": "mod-core-lemmas",
-  "kind": "module",
+  "id": "sk-file-1",
+  "kind": "file",
   "path": [
-   "mod-core"
+   "sk-part",
+   "sk-group-a"
   ],
   "proof": "none",
   "state": "none",
-  "title": "Module mod-core-lemmas"
+  "title": "File sk-file-1"
  },
  "children": [],
  "commit": "0123456789abcdef0123456789abcdef01234567",
  "format": 1,
- "id": "mod-core-lemmas",
+ "id": "sk-file-1",
  "path": [
-  "mod-core"
+  "sk-part",
+  "sk-group-a"
  ],
  "rests_on": []
 }
