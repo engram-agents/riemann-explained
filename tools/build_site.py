@@ -4895,7 +4895,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 118 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 119 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -4908,7 +4908,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 118))
+        return _eq((bad, len(STRING_KEYS)), ([], 119))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -11252,13 +11252,14 @@ def _selftest_cases():
                    ([], 0, 19, ["https://x.invalid/a&amp;b&quot;c"], [], [], []))
 
     # ---- the graph data (G1): the symbol table (F38), graph/index.json, graph/step/<id>.json, and the refusals GRAPH-*. Every expectation is a literal.
-    GR_WORDS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
-                "symbol_kind_structure": "Diamond: the part is a structure",
+    GR_WORDS = {"symbol_kind_theorem": "Square corners: a result the Lean code proves",
+                "symbol_kind_def": "Rounded corners, one line: a named object or statement",
+                "symbol_kind_structure": "Rounded corners and an inner line: a bundle of named fields",
                 "sheet_statement_read": "Statement read", "sheet_statement_census": "Statement counted, not read",
                 "sheet_statement_not_read": "Statement not read yet",
                 "sheet_proof_read": "proof read", "sheet_proof_not_read": "proof not read yet", "sheet_proof_none": "no proof to read"}
     GR_LABEL = "No plain statement yet"   # the fixture's no_claim_label
-    GR_ROLE = "This step gives a name to a statement. Steps that use the name take the statement as a hypothesis."   # the fixture's named_statement_use_line
+    GR_ROLE = "Named statement"   # the fixture's role_named_statement: the short word, not the list page's sentence
 
     def gr_row(rid, parent="root", order=1, premises=(), kind="theorem", state="read", title="T", proof="read", **extra):
         return dict({"id": rid, "parent": parent, "order": order, "premises": list(premises), "kind": kind, "state": state, "proof": proof, "title": title},
@@ -11292,13 +11293,13 @@ def _selftest_cases():
     @case("GR2", "G1 S3 (G1b S3, S4): graph/index.json holds exactly the keys assets, commit, format, max_children, rests_on, steps, strings, symbols, top; top "
                  "is the top ids in `order` (g1, g3, g2); rests_on holds the two links between top steps (g3 rests on g1 and on g2, both paths []); symbols "
                  "holds exactly order (kinds, proofs, states), kinds, proofs and states, each row exactly class, text, words, with the resolved words as "
-                 "`text`, the kind `structure` and the state rows that no step uses included; strings is the object of the 20 keys (the 9 words keys and the 11 run-time keys of G2a) with their values; "
+                 "`text`, the kind `structure` and the state rows that no step uses included; strings is the object of the 21 keys (the 9 words keys, the 11 run-time keys of G2a and role_named_statement, which g1a1's role makes part of it) with their values; "
                  "steps is 6; assets is an empty object; commit is the notes commit string as built (`unknown`)")
     def _():
         ix = _base().js("graph/index.json")
         row = lambda cls, key: {"class": cls, "text": GR_WORDS[key], "words": key}
         want = {"assets": {}, "commit": "unknown", "format": 1, "max_children": 40,
-                "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": dict(GR_WORDS, **GA_RUNTIME),
+                "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": dict(GR_WORDS, **GA_RUNTIME, **GA_ROLE),
                 "symbols": {"kinds": {"def": row("kind-def", "symbol_kind_def"),
                                       "structure": row("kind-structure", "symbol_kind_structure"), "theorem": row("kind-theorem", "symbol_kind_theorem")},
                             "order": {"kinds": ["theorem", "def", "structure"], "proofs": ["read", "not_read", "none"], "states": ["read", "census", "none"]},
@@ -11780,7 +11781,7 @@ def _selftest_cases():
                     {"g1a": "not_read", "g1a1": "none", "g1a1x": "not_read"}, []))
 
     @case("GR25", "G1b S3, S4 the strings object: index.json `strings` is {key: text} for exactly the 9 `words` keys of the symbols rows (3 kinds, 3 states, "
-                  "3 proofs) and the 11 run-time keys (G2a) with the strings file's values and no other key; every `words` of every row is a "
+                  "3 proofs) and the 11 run-time keys (G2a) with the strings file's values and no other key (a build with a named-statement step adds role_named_statement: GA14); every `words` of every row is a "
                   "key of `strings`; `text` of every row is `strings[words]`; a value with `{n}` in it stays literal in both places")
     def _():
         ix = _base().js("graph/index.json")
@@ -11790,8 +11791,8 @@ def _selftest_cases():
         sj["sheet_proof_read"] = "{n} proofs read"
         ix2 = _graph_files([gr_row("a")], "c0", sj)[1]["graph/index.json"]
         return _eq((sorted(st), sorted(r["words"] for r in rows), len(rows), all(r["words"] in st for r in rows), all(r["text"] == st[r["words"]] for r in rows),
-                    st == dict(GR_WORDS, **GA_RUNTIME), ix2["strings"]["sheet_proof_read"], ix2["symbols"]["proofs"]["read"]["text"], sorted(ix2["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME))),
-                   (sorted(dict(GR_WORDS, **GA_RUNTIME)), sorted(GR_WORDS), 9, True, True, True, "{n} proofs read", "{n} proofs read", True))
+                    st == dict(GR_WORDS, **GA_RUNTIME, **GA_ROLE), ix2["strings"]["sheet_proof_read"], ix2["symbols"]["proofs"]["read"]["text"], sorted(ix2["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME))),
+                   (sorted(dict(GR_WORDS, **GA_RUNTIME, **GA_ROLE)), sorted(GR_WORDS), 9, True, True, True, "{n} proofs read", "{n} proofs read", True))
 
     @case("GR26", "G1b S5 exact keys and paths: the keys of index.json, of a step file, of a closed card (with and without role) and of a child; a link of a "
                   "depth-4 step (rows a > b > c > d > e, f; f rests on e): from_path and to_path are the ancestors plus the parent, [a, b, c, d]; the "
@@ -12014,12 +12015,12 @@ def _selftest_cases():
                 "importScripts", "document.write", "new Function"]
         return _eq([prod.count(t) for t in toks], [0] * 11)
 
-    @case("GA7", "G2a A4: index.json `strings` is EXACTLY 20 keys, sorted: the 9 `words` keys of the symbols rows and the 11 run-time keys (parts_n, part_one, "
+    @case("GA7", "G2a A4: index.json `strings` of a build with no step that carries a role is EXACTLY 20 keys, sorted: the 9 `words` keys of the symbols rows and the 11 run-time keys (parts_n, part_one, "
                  "open_parts, close_parts, claim_more, claim_less, crumb_label, link_refused, parts_failed_notice, key_kinds_heading, key_states_heading), "
                  "each with its value (literals; `{n}` literal in parts_n; the values of the wording file, link_refused and the two key headings from the "
                  "page layer's fixture); GRAPH_RUNTIME_KEYS is the 11; the fixture strings hold them; no key_proofs_heading")
     def _():
-        ix = _base().js("graph/index.json")
+        ix = _graph_files([gr_row("a")], "c0", _strings())[1]["graph/index.json"]   # no step with a role: the 20 keys
         want = dict(GR_WORDS, **GA_RUNTIME)
         return _eq((ix["strings"], sorted(ix["strings"]) == list(ix["strings"]), len(ix["strings"]), list(GRAPH_RUNTIME_KEYS),
                     {k: _strings().get(k) for k in GA_RUNTIME}, "key_proofs_heading" in ix["strings"]),
@@ -12128,6 +12129,63 @@ def _selftest_cases():
         return _eq((_parse(five + ["--graph-src", "x"]), _parse(five + ["--graph-src", "x", "--graph-src", "y"]), _parse(five + ["--graph-src"]),
                     "[--graph-src DIR]" in __doc__.split("usage:")[1], rc, made),
                    (([*five], {"graph_src": "x"}), None, None, True, 0, ["graph/engine/index.js", "graph/graph.css", "graph/index.json", "graph/page/app.js"]))
+
+    GA_ROLE = {"role_named_statement": "Named statement"}
+
+    @case("GA14", "G2a (contract section 10) the ROLE WORD: `role` of a closed card and of a closed child is the short word of the strings key role_named_statement "
+                  "(\"Named statement\"), not the list page's sentence, and stays ABSENT for a step with no role words; GRAPH_ROLE_WORDS maps the role named_statement "
+                  "to that key; the key joins index.json `strings` only when a step carries a role: the fixture build (g1a1 is a named statement) has the 21 keys, rows "
+                  "with no role give the 20; the full sentence is still in the card markup of the list page; site/strings.json holds the key with the word")
+    def _():
+        b = _base()
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        none = _graph_files([gr_row("a")], "c0", _strings())[1]["graph/index.json"]["strings"]
+        withrole = _graph_files([gr_row("a"), gr_row("b", "a", 1, role="W")], "c0", _strings())[1]["graph/index.json"]["strings"]
+        g1a = {c["id"]: c.get("role") for c in b.js("graph/step/g1a.json")["children"]}
+        return _eq((GRAPH_ROLE_WORDS, g1a, b.js("graph/step/g1a1.json")["card"].get("role"), "role" in b.js("graph/step/g1.json")["card"],
+                    sorted(b.js("graph/index.json")["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME, **GA_ROLE)), len(b.js("graph/index.json")["strings"]),
+                    len(none), "role_named_statement" in none, len(withrole), withrole.get("role_named_statement"),
+                    _strings()["named_statement_use_line"] in b.page, GR_ROLE in b.page, real.get("role_named_statement"),
+                    _strings_problems(real), "role_named_statement" in STRING_KEYS, "role_named_statement" in TEXT_KEYS),
+                   ({"named_statement": "role_named_statement"}, {"g1a1": "Named statement", "g1a1x": None}, "Named statement", False, True, 21,
+                    20, False, 21, "Named statement", True, False, "Named statement", [], True, True))
+
+    @case("GA15", "G2a (section 10) GRAPH-ROLE: a role word of 24 characters is accepted, one of 25 is `GRAPH-ROLE <id> is longer than 24 characters`, one with a line "
+                  "break is `GRAPH-ROLE <id> has a line break`, each through a build with the value planted in the strings file (exit 1 and nothing written for the two "
+                  "refusals, a build with the 24 exits 0 and carries it), naming the step that carries the role (g1a1) and no other GRAPH line")
+    def _():
+        def go(word):
+            s = _strings()
+            s["role_named_statement"] = word
+            b = _build(strings=s)
+            return b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")], (b.js("graph/step/g1a.json")["children"][0].get("role") if b.rc == 0 else None)
+        return _eq((go("x" * 24), go("x" * 25), go("Named\nstatement"), go("x" * 23), GRAPH_ROLE_MAX),
+                   ((0, True, [], "x" * 24), (1, False, ["BUILD-ERROR GRAPH-ROLE g1a1 is longer than 24 characters"], None),
+                    (1, False, ["BUILD-ERROR GRAPH-ROLE g1a1 has a line break"], None), (0, True, [], "x" * 23), 24))
+
+    @case("GA16", "G2a (section 10) the KIND WORDS describe what is drawn: symbol_kind_theorem `Square corners: a result the Lean code proves`, symbol_kind_def `Rounded "
+                  "corners, one line: a named object or statement`, symbol_kind_structure `Rounded corners and an inner line: a bundle of named fields`, the same in "
+                  "site/strings.json and in the fixture strings, and in the `text` of the rows of `symbols` and in index.json `strings`; the keys keep their names "
+                  "(symbol_kind_*, no key_kind_*)")
+    def _():
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        ix = _base().js("graph/index.json")
+        keys = ["symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure"]
+        want = ["Square corners: a result the Lean code proves", "Rounded corners, one line: a named object or statement",
+                "Rounded corners and an inner line: a bundle of named fields"]
+        return _eq(([real[k] for k in keys], [_strings()[k] for k in keys], [ix["strings"][k] for k in keys],
+                    [ix["symbols"]["kinds"][k]["text"] for k in ("theorem", "def", "structure")], [k for k in real if k.startswith("key_kind_")]),
+                   (want, want, want, want, []))
+
+    @case("GA17", "G2a (section 10) ONE constant for the 50-character bound: GRAPH_SHORT_MAX is notes_meta's SHORT_MAX (the same value, 50) and the line in build_site.py "
+                  "that defines it holds no literal (it reads `GRAPH_SHORT_MAX = nm.SHORT_MAX`), so a second literal (51, or a 50 typed again) is caught")
+    def _():
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            text = f.read()
+        defs = re.findall(r"^GRAPH_SHORT_MAX = (.*?)\s*(?:#.*)?$", text, re.M)
+        return _eq((GRAPH_SHORT_MAX, nm.SHORT_MAX, GRAPH_SHORT_MAX == nm.SHORT_MAX, defs), (50, 50, True, ["nm.SHORT_MAX"]))
 
     # G1: the older cases below plant data the graph cannot hold, to test something else: a premise on a step that is neither a sibling nor the step's own
     # child (the premises line, PL*, PRM*), or a root kind outside the symbol table (the proof facts, PRK*, NONE1, F41b, F49*). The graph refuses both (GRAPH-EDGE,
