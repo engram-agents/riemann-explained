@@ -2216,6 +2216,178 @@ def c_note_live_unchanged(b, S, engine):
 
 
 
+# ---------------------------------------------------------------- the maths face on the sheet (fixtures/typeset)
+
+TYPESET_NEW = ("note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button")
+LABEL_TYPESET = "The file's opening note, from the repository"
+LABEL_EXACT = "The file's opening note, from the repository, unchanged"
+LINE_WORDS = "Formulas set in maths type by us; every symbol is the repository's."
+BUTTON_EXACT = "Show the exact text"
+BUTTON_RENDER = "Show the note with formulas set in maths type"
+TYPESET_KIDS = ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "P.note-typeset-line", "BUTTON.note-toggle", "DIV.note-body", "P.note"]
+TYPESET_STATE_JS = """(() => { const b = document.querySelector('#graph-sheet-body .note-body'), t = document.querySelector('#graph-sheet-body .note-toggle');
+  const l = document.querySelector('#graph-sheet-body .note-label'), ln = document.querySelector('#graph-sheet-body .note-typeset-line');
+  return { label: l && l.textContent, line: ln ? ln.textContent : null, button: t ? t.textContent : null, pressed: t ? t.getAttribute('aria-pressed') : null,
+           type: t ? t.getAttribute('type') : null, body: b ? b.innerHTML : null, text: b ? b.textContent : null,
+           kids: b ? [...b.children].map(e => e.tagName) : null, maths: b ? b.querySelectorAll('span.m').length : null,
+           pres: b ? b.querySelectorAll('pre').length : null }; })()"""
+
+
+def _typeset_site(engine, **edits):
+    root = tempfile.mkdtemp(prefix="pg-typeset-")
+    assemble.assemble(root, engine, fix="typeset", **edits)
+    return Served(root)
+
+
+def _fixture_note(step):
+    with open(os.path.join(HERE, "fixtures", "typeset", "step", step + ".json"), encoding="utf-8") as f:
+        return json.load(f)["note"]["text"]
+
+
+def _open_note(pg, card):
+    at_hash(pg, card)
+    pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+    pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+
+
+def c_typeset_sheet(b, S0, engine):
+    """L1/T4/T6: with all four strings present a note's sheet shows label (typeset words), source line, the maths-type line, the button and the
+    note, in that order; formula and one-letter spans are span.m (m1 for one letter) in a serif, upright, unboxed face at the paragraph's size;
+    names stay code. The button (aria-pressed false) replaces the rendering with ONE pre holding the note's text verbatim, backticks included, under
+    the exact-view label, with the render words and aria-pressed true; pressing it again returns the rendering unchanged. Escape closes the sheet and
+    the next opening starts on the rendering."""
+    S = _typeset_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844).settled()
+        _open_note(pg, "sk-file-3")
+        assert pg.ev(NOTE_KIDS_JS) == TYPESET_KIDS, pg.ev(NOTE_KIDS_JS)
+        st = pg.ev(TYPESET_STATE_JS)
+        assert st["label"] == LABEL_TYPESET and st["line"] == LINE_WORDS and st["button"] == BUTTON_EXACT, st
+        assert st["pressed"] == "false" and st["type"] == "button", st
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent") == \
+            "Opening note of grh/src/New/OneLift/ComparisonOperator/LineCoordinates.lean · version 01234567 of lsernau/grh-lean"
+        body = pg.ev(NOTE_BODY_JS)
+        assert body["tags"] == ["CODE", "H3", "H4", "LI", "P", "SPAN", "UL"], body["tags"]
+        assert body["attrs"] == ["H3:class", "H4:class", "SPAN:class"], body["attrs"]
+        assert body["stray"] == 0 and body["handlers"] == 0, body
+        assert st["maths"] >= 10, st["maths"]
+        # the face: serif, upright, the paragraph's size, no box
+        look = pg.ev("""(() => { const m = document.querySelector('#graph-sheet-body .note-body p span.m'), p = m.parentElement;
+          const cm = getComputedStyle(m), cp = getComputedStyle(p), cc = getComputedStyle(document.querySelector('#graph-sheet-body .note-body code'));
+          return { family: cm.fontFamily, style: cm.fontStyle, size: cm.fontSize, psize: cp.fontSize, bg: cm.backgroundColor, bw: cm.borderTopWidth,
+                   pad: cm.paddingLeft, codefamily: cc.fontFamily, pfamily: cp.fontFamily, kids: m.childNodes.length, cls: m.className }; })()""")
+        assert look["style"] == "normal" and look["size"] == look["psize"] and look["bw"] == "0px" and look["bg"] == "rgba(0, 0, 0, 0)", look
+        assert "monospace" not in look["family"] and look["family"] == look["pfamily"] and look["family"] != look["codefamily"], look
+        assert look["kids"] == 1 and look["cls"].split()[0] == "m", look
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body span.m1').length") >= 1
+        assert all(c == "m m1" for c in pg.ev("[...document.querySelectorAll('#graph-sheet-body .note-body span.m1')].map(e => e.className)"))
+        assert pg.ev("document.documentElement.scrollWidth <= window.innerWidth"), "no horizontal overflow at 390"
+        rendered = st
+        # the button: the exact text, verbatim
+        pg.page.click("#graph-sheet-body .note-toggle")
+        ex = pg.ev(TYPESET_STATE_JS)
+        assert ex["pressed"] == "true" and ex["button"] == BUTTON_RENDER and ex["label"] == LABEL_EXACT, ex
+        assert ex["kids"] == ["PRE"] and ex["pres"] == 1 and ex["maths"] == 0, ex
+        assert ex["text"] == _fixture_note("sk-file-3") and "`" in ex["text"], "the exact text, every character, backticks included"
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-body pre').childNodes.length") == 1, "one text node"
+        assert ex["line"] is None, "the maths-type line is told only of the maths-type view"
+        assert pg.ev(NOTE_KIDS_JS)[:4] == ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source"]
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent").startswith("Opening note of grh/src/New/")
+        # and back
+        pg.page.click("#graph-sheet-body .note-toggle")
+        back = pg.ev(TYPESET_STATE_JS)
+        assert back == rendered, (back["pressed"], back["button"], back["label"])
+        assert pg.ev(NOTE_KIDS_JS) == TYPESET_KIDS
+        # Escape (not Back) closes the sheet from the exact view; the next opening starts on the rendering; nothing of the note is left behind
+        pg.page.click("#graph-sheet-body .note-toggle")
+        assert pg.ev(TYPESET_STATE_JS)["pressed"] == "true"
+        pg.page.keyboard.press("Escape")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-toggle, .note-typeset-line, .m').length") == 0
+        _open_note(pg, "sk-file-1")
+        again = pg.ev(TYPESET_STATE_JS)
+        assert again["pressed"] == "false" and again["label"] == LABEL_TYPESET and again["button"] == BUTTON_EXACT and again["pres"] == 0, again
+        # a card without a note has none of it; the button is gone with the sheet's content
+        at_hash(pg, "sk-file-4")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-4'", 6000)
+        assert pg.ev("document.querySelectorAll('.note-label, .note-source, .note-body, .note-toggle, .note-typeset-line').length") == 0
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_typeset_hostile(b, S0, engine):
+    """T4 in the browser: formula-class spans whose characters would be markup (`<b>x</b>`, `a<i>b`, `x&y`) are span.m text; no b, i or other element
+    comes of them; in the exact view they are the characters of one pre."""
+    S = _typeset_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _open_note(pg, "sk-file-2")
+        body = pg.ev(NOTE_BODY_JS)
+        assert body["stray"] == 0 and body["handlers"] == 0, body
+        assert body["tags"] == ["CODE", "H3", "LI", "OL", "P", "PRE", "SPAN", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"], body["tags"]
+        assert body["attrs"] == ["H3:class", "OL:start", "SPAN:class"], body["attrs"]
+        spans = pg.ev("[...document.querySelectorAll('#graph-sheet-body .note-body span.m')].map(e => [e.className, e.childNodes.length, e.textContent])")
+        assert ["m", 1, "<b>x</b>"] in spans and ["m", 1, "a<i>b"] in spans and ["m", 1, "x&y"] in spans, spans
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body b, #graph-sheet-body .note-body i, #graph-sheet-body .note-body img, #graph-sheet-body .note-body script').length") == 0
+        pg.page.click("#graph-sheet-body .note-toggle")
+        ex = pg.ev(TYPESET_STATE_JS)
+        assert ex["kids"] == ["PRE"] and ex["text"] == _fixture_note("sk-file-2"), ex["kids"]
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_typeset_gate(b, S0, engine):
+    """T5/L1 in the browser: a map that has note_label and note_source but lacks ANY ONE of the four maths-face strings renders the note exactly as the
+    round-1 page does (same words, same body markup as the notes map): no span.m, no line, no button, the exact-view label."""
+    S1 = _notes_site(engine)
+    try:
+        pg = Pg(b, S1.base + "graph/index.html", 1280, 900).settled()
+        _open_note(pg, "sk-file-1")
+        round1 = pg.ev(TYPESET_STATE_JS)
+        kids1 = pg.ev(NOTE_KIDS_JS)
+        pg.close()
+    finally:
+        S1.stop()
+    assert round1["button"] is None and round1["line"] is None and round1["maths"] == 0 and round1["label"] == "From the repository, unchanged", round1
+    for drop in TYPESET_NEW:
+        S = _typeset_site(engine, index_edit=lambda i, d=drop: i["strings"].pop(d))
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+            _open_note(pg, "sk-file-1")
+            st = pg.ev(TYPESET_STATE_JS)
+            assert st["button"] is None and st["line"] is None and st["maths"] == 0 and st["pressed"] is None, (drop, st)
+            assert st["label"] == LABEL_EXACT, (drop, st["label"])
+            assert st["body"] == round1["body"], drop
+            assert pg.ev(NOTE_KIDS_JS) == kids1, (drop, pg.ev(NOTE_KIDS_JS))
+            assert pg.ev("document.querySelectorAll('#graph-sheet-body .note-body code').length") == round1["body"].count("<code>")
+            pg.csp_clean()
+            pg.close()
+        finally:
+            S.stop()
+
+
+def c_typeset_review(b, S0, engine):
+    """L2 in the browser: a note carrying review {"state": "converter"} draws exactly what the same note without it draws (the sheet's whole body)."""
+    got = []
+    for strip in (False, True):
+        edit = (lambda steps: steps["sk-file-3"]["note"].pop("review")) if strip else None
+        S = _typeset_site(engine, step_edit=edit)
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+            _open_note(pg, "sk-file-3")
+            got.append(pg.ev("document.getElementById('graph-sheet-body').innerHTML"))
+            assert "review" not in got[-1] and "converter" not in got[-1]
+            pg.csp_clean()
+            pg.close()
+        finally:
+            S.stop()
+    assert got[0] == got[1], "a review field changed what is drawn"
+
+
 def c_mutant(b):
     """R7 MUTANT: a copy of dom.js whose text path uses innerHTML. The hostile cells must go red."""
     def mut(text):
@@ -2296,6 +2468,10 @@ def main():
                 run("note: a failed step load on a tap leaves the open card untouched", c_note_load_failure, eng)
                 run("note: N11 the live map's sheet carries no note", c_note_live_unchanged, eng)
                 run("note: a sheet that throws after the step loaded is the fallback, with no unhandled rejection", c_note_open_throws, eng)
+                run("note: L1/T4/T6 with the four maths-face strings: label, source, line, button, note in order; formulas in the maths face; the button toggles to the exact text and back; Escape closes", c_typeset_sheet, eng)
+                run("note: T4 formula spans that would be markup are span.m text, no element comes of them", c_typeset_hostile, eng)
+                run("note: T5 a map lacking any one of the four maths-face strings renders the note exactly as round 1", c_typeset_gate, eng)
+                run("note: L2 a review {state: converter} changes nothing drawn", c_typeset_review, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:

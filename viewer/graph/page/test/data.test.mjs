@@ -382,7 +382,7 @@ test("P2/A2/F2 skeleton: the strings set is EXACTLY the fixed list, the words of
   const need = requiredStrings(v.symbols);
   assert.equal(need.length, 27);
   assert.deepEqual([...need].sort(), [...FIXED_STRINGS, ...rows, ...cards, ...counts].sort());
-  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note", "key_scope_text", "note_label", "note_source"]);
+  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note", "key_scope_text", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button"]);
   /* the edge basis (PR 98 round 2): key_lines_heading and the strings key edge_basis.words (key_lines_text) are read because edge_basis is present */
   assert.deepEqual(Object.keys(idx.strings).sort(), [...need, "key_kinds_note", "key_scope_text", "key_lines_heading", "key_lines_text"].sort());
   const extra = clone(idx);
@@ -781,8 +781,8 @@ test("N13 strings: the live map's strings (neither note key) validate exactly as
   const v = noteCtx();
   assert.equal(v.strings.note_label, "From the repository, unchanged");
   assert.equal(v.strings.note_source, "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean");
-  assert.equal(OPTIONAL_STRINGS.length, 3, "one definition: exactly three optional keys");
-  assert.equal(new Set(OPTIONAL_STRINGS).size, 3);
+  assert.equal(OPTIONAL_STRINGS.length, 7, "one definition: exactly seven optional keys (key_kinds_note, the two note keys, the four maths-face keys)");
+  assert.equal(new Set(OPTIONAL_STRINGS).size, 7);
 });
 
 test("N13 strings: each note key is optional alone; an empty one is refused; any OTHER extra key is still refused", () => {

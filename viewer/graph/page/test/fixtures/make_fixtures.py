@@ -8,13 +8,18 @@ refusals/    one tiny build per refusal.
 notes/       the skeleton map plus the two optional strings `note_label` and `note_source`, and a top-level `note` on two file steps:
              sk-file-1 carries the REAL note of OneSidedBound.lean (a committed input, note-onesidedbound.txt, the text between the first
              /-! and -/ verbatim) under a card title equal to the note's own first heading; sk-file-2 carries a hostile note. sk-file-3 has none.
+typeset/     the notes map plus the four optional strings of the maths-face step (note_label_typeset, note_typeset_line, note_exact_button,
+             note_render_button; note_label and note_source carry the final words): sk-file-1 the OneSidedBound note, sk-file-2 the hostile note
+             with two formula-class hostile spans, sk-file-3 the REAL LineCoordinates note carrying `review` {"state": "converter"}.
+note-spans-classes.json   Sol's span classes (6,459 distinct real spans, cls3's class and one_letter), a committed input copied BYTE FOR BYTE
+             by `--import-host` and checked here against its pinned sha256; note-linecoordinates.txt and note-onesidedbound.txt likewise.
 skeleton/    the map of a Lean repository's parts, groups and files (data v3: sibling_layout, open_scale_floor, link flags on one group, index_rows and spine_rows on two files): kinds part, group, file, each a table row with `words` (the key's label)
              and `card_words` (the sheet's one line), the group and file rows with `count_words` (the foot's one/many); state "none", proof "none", no role on every step; symbols.order lists only
              the rows that occur (kinds [part, group, file], states [], proofs []) while the tables keep every row.
 
 Test-only. Never shipped (lives under test/).
 """
-import copy, importlib.util, json, os, shutil, html
+import copy, hashlib, importlib.util, json, os, shutil, html, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -247,18 +252,84 @@ HOSTILE_NOTE = (
     "| <b>h</b> | `<i>` |\n|---|---|\n| <u> | &lt; |\n")
 
 
-def notes_build():
-    """The skeleton map with notes: (index, steps, kids, title)."""
+# ---- the committed static inputs of the maths-face step. They are read ONLY from this directory; the one function that touches a host path is
+# import_host() below, run by hand with explicit paths (`--import-host SPANS_JSON NEW_DIR`), never by a test and never by a default run.
+SPANS_FILE = os.path.join(HERE, "note-spans-classes.json")
+SPANS_SHA256 = "026713972092ac9784949e83cd77743525c97a213090d328a5ed5db2135ae8e2"
+SPANS_BYTES = 585259
+SPANS_ROWS = 6459
+LC_NOTE_FILE = os.path.join(HERE, "note-linecoordinates.txt")
+LC_NOTE_SOURCE = "grh/src/New/OneLift/ComparisonOperator/LineCoordinates.lean"
+LC_NOTE_TITLE = "The polynomial map \u03b6, the datum \u03a8^add and the series \u03a5; norm, degree and denominator of \u03b6"
+NOTE_FILES = [("note-onesidedbound.txt", REAL_NOTE_SOURCE), ("note-linecoordinates.txt", LC_NOTE_SOURCE)]
+TYPESET_STRINGS = {
+    "note_label": "The file's opening note, from the repository, unchanged",
+    "note_label_typeset": "The file's opening note, from the repository",
+    "note_source": "Opening note of {source} \u00b7 version {commit} of lsernau/grh-lean",
+    "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
+    "note_exact_button": "Show the exact text",
+    "note_render_button": "Show the note with formulas set in maths type",
+}
+# two formula-class spans whose characters would be markup if they ever reached an HTML parser (tokens of one letter only: class formula)
+HOSTILE_FORMULAS = "\n\n`<b>x</b>` and `a<i>b` and `x&y`\n"
+
+
+def note_of_file(path):
+    """The inner text of a file's first /-! ... -/ block, verbatim (the same rule the builder and Sol's script use)."""
+    with open(path, encoding="utf-8", newline="") as f:
+        s = f.read()
+    i = s.index("/-!")
+    j = s.index("-/", i)
+    return s[i + 3:j]
+
+
+def import_host(spans_json, new_dir):
+    """THE ONLY HOST READ. Copies Sol's span classes byte for byte and cuts the two real notes out of the Lean files, into this directory.
+    Run by hand once; the result is committed and every other run (and every test) reads only the committed copies."""
+    with open(spans_json, "rb") as f:
+        raw = f.read()
+    assert hashlib.sha256(raw).hexdigest() == SPANS_SHA256 and len(raw) == SPANS_BYTES, "not the pinned span classes file"
+    with open(SPANS_FILE, "wb") as f:
+        f.write(raw)
+    for name, source in NOTE_FILES:
+        text = note_of_file(os.path.join(new_dir, source.split("/src/New/", 1)[1]))
+        assert "\r" not in text
+        with open(os.path.join(HERE, name), "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+
+
+def check_inputs():
+    """The committed inputs are what the page's cases assume; a wrong one fails loud here, before any fixture is written."""
+    with open(SPANS_FILE, "rb") as f:
+        raw = f.read()
+    assert hashlib.sha256(raw).hexdigest() == SPANS_SHA256 and len(raw) == SPANS_BYTES, "note-spans-classes.json is not the pinned file"
+    meta = json.loads(raw.decode("utf-8"))
+    assert meta["distinct"] == SPANS_ROWS == len(meta["spans"]), "the span classes file does not hold 6,459 rows"
+    with open(LC_NOTE_FILE, encoding="utf-8", newline="") as f:
+        lc = f.read()
+    assert lc.startswith("\n# " + LC_NOTE_TITLE + "\n") and "\r" not in lc, "note-linecoordinates.txt is not the LineCoordinates note"
+    return lc
+
+
+def notes_build(typeset=False):
+    """The skeleton map with notes: (index, steps, kids, title). typeset=True: the maths-face map (fixtures/typeset)."""
     with open(REAL_NOTE_FILE, encoding="utf-8", newline="") as f:
         real = f.read()
     assert real.startswith("\n# " + REAL_NOTE_TITLE + "\n") and "\r" not in real
     titles = dict(SK_TITLES, **{"sk-file-1": REAL_NOTE_TITLE})
     index, steps, kids, title = build_skeleton(titles)
     index = copy.deepcopy(index)
-    index["strings"]["note_label"] = NOTE_LABEL
-    index["strings"]["note_source"] = NOTE_SOURCE
+    if not typeset:
+        index["strings"]["note_label"] = NOTE_LABEL
+        index["strings"]["note_source"] = NOTE_SOURCE
+        steps["sk-file-1"]["note"] = {"text": real, "source": REAL_NOTE_SOURCE}
+        steps["sk-file-2"]["note"] = {"text": HOSTILE_NOTE, "source": "grh/src/New/Hostile.lean"}
+        return index, steps, kids, title
+    index["strings"].update(TYPESET_STRINGS)
     steps["sk-file-1"]["note"] = {"text": real, "source": REAL_NOTE_SOURCE}
-    steps["sk-file-2"]["note"] = {"text": HOSTILE_NOTE, "source": "grh/src/New/Hostile.lean"}
+    steps["sk-file-2"]["note"] = {"text": HOSTILE_NOTE + HOSTILE_FORMULAS, "source": "grh/src/New/Hostile.lean"}
+    steps["sk-file-3"]["note"] = {"text": check_inputs(), "source": LC_NOTE_SOURCE, "review": {"state": "converter"}}
+    steps["sk-file-3"]["card"]["title"] = LC_NOTE_TITLE
     return index, steps, kids, title
 
 
@@ -396,7 +467,8 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 
 def main():
-    for sub in ("real", "refusals", "skeleton", "notes"):
+    check_inputs()
+    for sub in ("real", "refusals", "skeleton", "notes", "typeset"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -420,6 +492,14 @@ def main():
     nparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, nkids, ntitle) for t in nindex["top"]] + ["</ul>"]
     open(os.path.join(HERE, "notes", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + nparts) + "\n")
+
+    tindex, tsteps, tkids, ttitle = notes_build(typeset=True)
+    write_json(os.path.join(HERE, "typeset", "index.json"), tindex)
+    for i, st in tsteps.items():
+        write_json(os.path.join(HERE, "typeset", "step", i + ".json"), st)
+    tparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, tkids, ttitle) for t in tindex["top"]] + ["</ul>"]
+    open(os.path.join(HERE, "typeset", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + tparts) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)
 
@@ -485,4 +565,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 4 and sys.argv[1] == "--import-host":
+        import_host(sys.argv[2], sys.argv[3])
+        print("inputs imported from the host paths given; now run this script without arguments")
+    else:
+        assert len(sys.argv) == 1, "usage: make_fixtures.py [--import-host SPANS_JSON NEW_DIR]"
+        main()
