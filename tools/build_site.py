@@ -13008,16 +13008,20 @@ def _selftest_cases():
                      ("list_map_link", [("STRINGS-KEY", "list_map_link", "has an unknown placeholder {n}")])],
                     [], [], [], [("STRINGS-KEY", "map_row_notes", "has an unknown placeholder {m}")], []))
 
-    @case("GM2b", "G2c-1 the one wording the rule R3 would refuse: map_row_sketch is `Sketch of the proof` (the wording file's value, a label of a section, not a share of the proof) "
-                  "and the phrase `of the proof` is allowed in that one key and in no other (map_row_uses, list_map_link, mapped_line and map_row_notes still refuse it, "
-                  "STRINGS-FORBIDDEN naming the key); a percent sign is refused in map_row_sketch as everywhere; the builder's own check passes the key with the wording file's value")
+    @case("GM2b", "G2c-1 the one wording the rule R3 would refuse, exactly: OF_THE_PROOF_OK is the literal {\"map_row_sketch\": \"Sketch of the proof\"}, a (key, value) pair and not a key: only that "
+                  "exact value of that key skips the `of the proof` rule (map_row_sketch `Sketch of the proof` passes); any other value of the key that holds the phrase (`Half of the "
+                  "proof`, `sketch of the proof`, `Sketch of  the proof`, `Sketch of the proof.`) is refused, STRINGS-FORBIDDEN naming the key; the same value under another key "
+                  "(map_row_uses, list_map_link) is refused, and so is the phrase in mapped_line and map_row_notes; a percent sign is refused in map_row_sketch as everywhere "
+                  "(also next to the exact value)")
     def _():
         put = lambda k, v: [(c, p) for c, p, _m in _strings_problems(dict(_strings(), **{k: v}))]
-        return _eq((put("map_row_sketch", "Sketch of the proof"), put("map_row_sketch", "Sketch of  the\nproof"), put("map_row_sketch", "50% sketch"),
-                    put("map_row_uses", "What it uses of the proof"), put("list_map_link", "Open the map of the proof"), put("mapped_line", "A sketch of the proof."),
-                    put("map_row_notes", "Our notes ({n}) of the proof")),
-                   ([], [], [("STRINGS-FORBIDDEN", "map_row_sketch")], [("STRINGS-FORBIDDEN", "map_row_uses")], [("STRINGS-FORBIDDEN", "list_map_link")],
-                    [("STRINGS-FORBIDDEN", "mapped_line")], [("STRINGS-FORBIDDEN", "map_row_notes")]))
+        bad = lambda k: [("STRINGS-FORBIDDEN", k)]
+        return _eq((OF_THE_PROOF_OK, put("map_row_sketch", "Sketch of the proof"), put("map_row_sketch", "Half of the proof"), put("map_row_sketch", "sketch of the proof"),
+                    put("map_row_sketch", "Sketch of  the proof"), put("map_row_sketch", "Sketch of the proof."), put("map_row_sketch", "50% sketch"),
+                    put("map_row_sketch", "Sketch of the proof 50%"), put("map_row_uses", "Sketch of the proof"), put("list_map_link", "Sketch of the proof"),
+                    put("mapped_line", "A sketch of the proof."), put("map_row_notes", "Our notes ({n}) of the proof")),
+                   ({"map_row_sketch": "Sketch of the proof"}, [], bad("map_row_sketch"), bad("map_row_sketch"), bad("map_row_sketch"), bad("map_row_sketch"), bad("map_row_sketch"),
+                    bad("map_row_sketch"), bad("map_row_uses"), bad("list_map_link"), bad("mapped_line"), bad("map_row_notes")))
 
     @case("GM3", "G2c-1 ONE source, a flag: `_page_parts(model, strings, facts, dirty, map_rows=False)` is the list page's pair (the default is False and the page `_render_page` returns "
                  "holds no row); with `map_rows=True` the header part is the same string, the main part has the rows (16 on the plain fixture: conditions 1, uses 1, "
@@ -13180,6 +13184,28 @@ def _selftest_cases():
         return _eq((missing, in_row, in_sketch, [kinds(i).count("sketch") for i in missing], len(dom.find("div", "sketch")),
                     sum(kinds(i).count("sketch") for i in rows), page.count('<p class="sketch-missing">'), b.text("index.html").count('<p class="sketch-missing">')),
                    (["g1a1x", "g3"], [], [], [0, 0], 4, 4, 2, 2))
+
+    @case("GM14", "G2c a raise inside the second rendering (the map page's cards) leaves no render state behind: with `_page_parts` standing in for itself, setting the "
+                  "evidence flag and raising when asked for the rows, the build raises and `_IN_EVIDENCE` is False and `_FORMULA_LOG` is None afterwards (the flag steers how a "
+                  "formula in the next build is listed)")
+    def _():
+        real_parts = _page_parts
+
+        def stand_in(m, s, facts, dirty, map_rows=False, raise_it=True):
+            if map_rows:
+                globals()["_IN_EVIDENCE"] = True
+                if raise_it:
+                    raise RuntimeError("second rendering")
+            return real_parts(m, s, facts, dirty, map_rows=map_rows)
+        got = "built"
+        try:
+            with _patched("_page_parts", stand_in):
+                _build(graph_src=_GRAPH_SRC_AT_START)
+        except RuntimeError as e:
+            got = str(e)
+        after = (_IN_EVIDENCE, _FORMULA_LOG)
+        globals()["_IN_EVIDENCE"] = False
+        return _eq((got, after), ("second rendering", (False, None)))
 
     @case("GM8", "G2c-5 (a) the address check trims what a browser trims before it looks at the first characters: an <a href> of ` //evil.example` (a leading space) and of a leading "
                  "tab `//evil.example` is protocol-relative and refused (`is not a relative path or #fragment`), exit 1, nothing written; neighbours that build: ` list/` "
