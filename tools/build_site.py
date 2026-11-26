@@ -671,7 +671,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"note_source": {"source", "commit"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -1838,18 +1838,24 @@ GRAPH_ASSET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")   # the path of an
 GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 
 
-def _graph_strings_keys():
-    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table and the run-time keys, on every build. A role
-    word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
-    return [v["words"] for table in GRAPH_SYMBOLS.values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
+# The page's OPTIONAL strings keys: words the page draws that a map may or may not carry. index.json `strings` is the required keys plus those of these that `strings` holds;
+# the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
+GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source")
 
 
-def _graph_strings_errors(strings):
+def _graph_strings_keys(symbols=None):
+    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table (`symbols`, default GRAPH_SYMBOLS) and the run-time keys,
+    on every build. A role word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
+    rows = [v for table in (GRAPH_SYMBOLS if symbols is None else symbols).values() for v in table.values()]
+    return [v["words"] for v in rows] + [v["card_words"] for v in rows if "card_words" in v] + list(GRAPH_RUNTIME_KEYS)
+
+
+def _graph_strings_errors(strings, symbols=None):
     """[(GRAPH-STRINGS, key, what)] for the `strings` object of index.json against the exact set of keys the page reads: the keys it lacks first, then the
     keys it has that the page does not read, each sorted."""
-    want = set(_graph_strings_keys())
+    want = set(_graph_strings_keys(symbols))
     return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
-            + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want)])
+            + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want - set(GRAPH_OPTIONAL_KEYS))])
 
 
 def _walk_error(ex):
@@ -2058,7 +2064,7 @@ def _graph_rows(m, strings):
     return _graph_line_errors(groups, strings["no_claim_label"]) + role_errors, rows
 
 
-def _graph_count_errors(objs):
+def _graph_count_errors(objs, symbols=None):
     """[(GRAPH-COUNT, where, what)] for the graph objects (relative name -> object): child_count is the number of children on every card and on every
     child entry (of that child's own file), `steps` is the number of step files, and every id in top and in any children has its step file."""
     out = []
@@ -2077,14 +2083,68 @@ def _graph_count_errors(objs):
     for i in dict.fromkeys(list(ix["top"]) + [c["id"] for k in sorted(files) for c in files[k]["children"]]):
         if i not in files:
             out.append(("GRAPH-COUNT", i, "is listed but has no step file"))
-    return out + _graph_strings_errors(ix["strings"])
+    return out + _graph_strings_errors(ix["strings"], symbols)
 
 
-def _graph_files(rows, commit, strings, assets=None):
+GRAPH_STATUS_HIDDEN = ("part", "group", "file")   # a card of one of these (skeleton) kinds draws no state frame and no status line, so its state and proof do not occur on the map
+
+
+def _graph_order_errors(rows, symbols, orders):
+    """[(GRAPH-ORDER, where, what)] for the order lists `orders` ({kinds, states, proofs}: lists of names of the tables of `symbols`). A list must hold no name twice,
+    only names of its table, in the table's own key order, and kinds may not be empty; when the lists are in that shape, every kind of a card, and every state and proof
+    of a card whose kind is not in GRAPH_STATUS_HIDDEN, must be in its list (the key must never be silent about something drawn): `GRAPH-ORDER <kind|state|proof> <value>`."""
+    out = []
+    for name in ("kinds", "states", "proofs"):
+        lst, table = list(orders[name]), list(symbols[name])
+        for v in dict.fromkeys(lst):
+            if lst.count(v) > 1:
+                out.append(("GRAPH-ORDER", name, f"lists {v} twice"))
+        unknown = [v for v in dict.fromkeys(lst) if v not in table]
+        out += [("GRAPH-ORDER", name, f"lists {v}, which is not a row of its table") for v in unknown]
+        if not [e for e in out if e[1] == name] and lst != [v for v in table if v in lst]:
+            out.append(("GRAPH-ORDER", name, "is not in the key order of its table"))
+        if name == "kinds" and not lst:
+            out.append(("GRAPH-ORDER", name, "is empty"))
+    if out:
+        return out
+    seen = set()
+    for r in rows:
+        for field, name in (("kind", "kinds"), ("state", "states"), ("proof", "proofs")):
+            if field != "kind" and r["kind"] in GRAPH_STATUS_HIDDEN:
+                continue
+            if r[field] in symbols[name] and r[field] not in orders[name] and (field, r[field]) not in seen:
+                seen.add((field, r[field]))
+                out.append(("GRAPH-ORDER", field, r[field]))
+    return out
+
+
+GRAPH_LAYOUTS = ("column",)   # the only value of index.json `sibling_layout`; the key is absent when no layout is asked for
+
+
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
-    top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
+    top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
+    hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
+    (default: every row of each table, in its key order; see _graph_order_errors for what a list may hold); `layout` is None (the key `sibling_layout` is absent from
+    index.json) or "column" (the key is written); any other value is GRAPH-LAYOUT. Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
     four stop the run, since what follows needs a tree), then GRAPH-FANOUT, GRAPH-SYMBOL and GRAPH-EDGE together, then GRAPH-COUNT."""
+    if layout is not None and not (isinstance(layout, str) and layout in GRAPH_LAYOUTS):
+        return [("GRAPH-LAYOUT", str(layout), "only column is allowed")], {}
+    symbols = GRAPH_SYMBOLS if symbols is None else symbols
+    if any(n not in symbols for n in ("kinds", "states", "proofs")):
+        return [("GRAPH-SYMBOL", n, "table is missing") for n in ("kinds", "states", "proofs") if n not in symbols], {}
+    orders = {name: list(table) for name, table in symbols.items()} if orders is None else orders
+    if any(n not in orders for n in ("kinds", "states", "proofs")):
+        return [("GRAPH-ORDER", n, "is missing") for n in ("kinds", "states", "proofs") if n not in orders], {}
     errors = []
+    for name, table in symbols.items():   # `card_words` (a key of `strings`) is for a kinds row only, and must be a string
+        for k, v in table.items():
+            if "card_words" in v and name != "kinds":
+                errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has card_words (only a kinds row may)"))
+            elif "card_words" in v and not isinstance(v["card_words"], str):
+                errors.append(("GRAPH-STRINGS", f"{name}.{k}.card_words", "is not a string"))
+    if errors:
+        return errors, {}
     seen = set()
     for r in rows:
         i = r["id"]
@@ -2122,9 +2182,11 @@ def _graph_files(rows, commit, strings, assets=None):
         if n > GRAPH_MAX_CHILDREN:
             errors.append(("GRAPH-FANOUT", i, f"has {n} children (more than {GRAPH_MAX_CHILDREN})"))
     for r in rows:
-        for field, table in (("kind", GRAPH_SYMBOLS["kinds"]), ("state", GRAPH_SYMBOLS["states"]), ("proof", GRAPH_SYMBOLS["proofs"])):
+        for field, table in (("kind", symbols["kinds"]), ("state", symbols["states"]), ("proof", symbols["proofs"])):
             if r[field] not in table:
                 errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}" + (f" {graph_kind_words()}" if field == "kind" else "")))
+    if not errors:   # an order list is judged against cards whose symbols are all in the tables
+        errors += _graph_order_errors(rows, symbols, orders)
     edges = {}   # sibling links, from -> [to]: the premises of a step that name a sibling
     for r in rows:
         for p in dict.fromkeys(r["premises"]):
@@ -2174,16 +2236,19 @@ def _graph_files(rows, commit, strings, assets=None):
                 for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
     objs = {"graph/index.json": {
         "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
-        "strings": {k: strings[k] for k in _graph_strings_keys() if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
-        "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
-                         for name, table in GRAPH_SYMBOLS.items()},
-                        order={name: list(table) for name, table in GRAPH_SYMBOLS.items()}),
+        "strings": {k: strings[k] for k in _graph_strings_keys(symbols) + list(GRAPH_OPTIONAL_KEYS) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
+        "symbols": dict({name: {k: dict({"class": v["class"], "text": strings[v["words"]], "words": v["words"]},
+                                        **({"card_words": v["card_words"]} if "card_words" in v else {})) for k, v in table.items()}
+                         for name, table in symbols.items()},
+                        order={name: list(orders[name]) for name in symbols}),
         "top": [r["id"] for r in kids.get("root", [])]}}
+    if layout is not None:
+        objs["graph/index.json"]["sibling_layout"] = layout
     for r in rows:
         objs[f"graph/step/{r['id']}.json"] = {
             "card": closed(r), "children": [dict(closed(c), parent_rests_on=c["id"] in r["premises"]) for c in kids.get(r["id"], [])],
             "commit": commit, "format": GRAPH_FORMAT, "id": r["id"], "path": list(path[r["id"]]), "rests_on": links(r["id"])}
-    errors = _graph_count_errors(objs)
+    errors = _graph_count_errors(objs, symbols)
     return errors, ({} if errors else objs)
 
 
@@ -13457,6 +13522,168 @@ def _selftest_cases():
                 return fn()
         return run_
     cases[:] = [(cid, desc, without_graph(fn) if cid in no_graph_cases else fn) for cid, desc, fn in cases]
+
+    @case("GRS1", "a caller may hand _graph_files its own symbol table (`symbols=`, default the table of GRAPH_SYMBOLS): a table whose kinds are only part, group and file "
+                  "(classes kind-part|kind-group|kind-file, words symbol_kind_part|group|file) accepts steps of those kinds, writes the three rows in symbols.kinds with their "
+                  "words resolved and the order lists in the table's key order, and makes index.json `strings` the 20 keys of THAT table (the theorem, def and structure "
+                  "words are not in it); without the argument kind part is still GRAPH-SYMBOL and `strings` is still the 20 keys of the live table; passing GRAPH_SYMBOLS "
+                  "itself writes the same bytes as passing nothing")
+    def _():
+        rows3 = {"part": {"class": "kind-part", "words": "symbol_kind_part"}, "group": {"class": "kind-group", "words": "symbol_kind_group"},
+                 "file": {"class": "kind-file", "words": "symbol_kind_file"}}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="Part words", symbol_kind_group="Group words", symbol_kind_file="File words")
+        rows = [gr_row("a", kind="part", state="none", proof="none"), gr_row("b", "a", 1, kind="group", state="none", proof="none"),
+                gr_row("c", "b", 1, kind="file", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
+        d_errs, d_objs = _graph_files(rows, "c0", st)
+        plain = [gr_row("a"), gr_row("b", "a", 1)]
+        same = _graph_bytes(_graph_files(plain, "c0", st)[1]) == _graph_bytes(_graph_files(plain, "c0", st, symbols=GRAPH_SYMBOLS)[1])
+        ix = objs["graph/index.json"]
+        base_ix = _graph_files(plain, "c0", st)[1]["graph/index.json"]
+        return _eq((errs, ix["symbols"]["order"]["kinds"], ix["symbols"]["kinds"]["file"], sorted(ix["symbols"]["kinds"]), len(ix["strings"]),
+                    "symbol_kind_file" in ix["strings"], "symbol_kind_theorem" in ix["strings"], objs["graph/step/c.json"]["card"]["kind"], [(c, w) for c, w, _ in d_errs],
+                    d_objs, len(base_ix["strings"]), base_ix["symbols"]["order"]["kinds"], same),
+                   ([], ["part", "group", "file"], {"class": "kind-file", "text": "File words", "words": "symbol_kind_file"}, ["file", "group", "part"], 20, True, False, "file",
+                    [("GRAPH-SYMBOL", "a"), ("GRAPH-SYMBOL", "b"), ("GRAPH-SYMBOL", "c")], {}, 20, ["theorem", "def", "structure"], True))
+
+    @case("GRO1", "`_graph_files(orders=)`: the default is the full permutation of each table (a call with no argument and a call with those lists give the same bytes, and "
+                  "symbols.order.kinds|states|proofs are the whole tables, as today); a caller's lists are written exactly as given into symbols.order while the tables "
+                  "keep all their rows")
+    def _():
+        plain = [gr_row("a"), gr_row("b", "a", 1)]
+        full = {"kinds": ["theorem", "def", "structure"], "proofs": ["read", "not_read", "none"], "states": ["read", "census", "none"]}
+        a = _graph_files(plain, "c0", _strings())[1]
+        b = _graph_files(plain, "c0", _strings(), orders=dict(full))[1]
+        mod = {"kinds": ["theorem"], "states": ["read"], "proofs": ["read"]}
+        c = _graph_files(plain, "c0", _strings(), orders=mod)
+        ix = c[1]["graph/index.json"]["symbols"]
+        return _eq((_graph_bytes(a) == _graph_bytes(b), a["graph/index.json"]["symbols"]["order"], c[0], ix["order"], sorted(ix["states"]), sorted(ix["kinds"])),
+                   (True, full, [], mod, ["census", "none", "read"], ["def", "structure", "theorem"]))
+
+    @case("GRO2", "GRAPH-ORDER <kind|state|proof> <value>: a row that occurs on a card and is missing from its order list is refused; a `state` or `proof` occurs only on a "
+                  "card whose kind is not one of the skeleton kinds part, group, file (those cards draw no status), so the same state on a file card is accepted with "
+                  "states []; a kind occurs whenever a card has it")
+    def _():
+        extra = dict(GRAPH_SYMBOLS, kinds=dict(GRAPH_SYMBOLS["kinds"], file={"class": "kind-file", "words": "symbol_kind_file"}))
+        st = dict(_strings(), symbol_kind_file="File words")
+        mod = {"kinds": ["theorem", "file"], "states": [], "proofs": []}
+        thm = [gr_row("a", state="read", proof="read")]
+        on_file = [gr_row("a", kind="file", state="read", proof="read")]
+        no_kind = {"kinds": ["def"], "states": [], "proofs": []}
+        two = [gr_row("a", state="read"), gr_row("b", "a", 1, state="read", proof="none")]
+        return _eq(([tuple(e) for e in _graph_files(thm, "c0", st, symbols=extra, orders=mod)[0]],
+                    _graph_files(on_file, "c0", st, symbols=extra, orders=mod)[0],
+                    [tuple(e) for e in _graph_files(thm, "c0", st, symbols=extra, orders=no_kind)[0]],
+                    [tuple(e) for e in _graph_files(two, "c0", st, symbols=extra, orders=dict(mod, states=["read"]))[0]]),
+                   ([("GRAPH-ORDER", "state", "read"), ("GRAPH-ORDER", "proof", "read")], [],
+                    [("GRAPH-ORDER", "kind", "theorem"), ("GRAPH-ORDER", "state", "read"), ("GRAPH-ORDER", "proof", "read")],
+                    [("GRAPH-ORDER", "proof", "read"), ("GRAPH-ORDER", "proof", "none")]))
+
+    @case("GRO3", "an order list that is not a subset of its table in the table's key order, with no duplicate, or an empty kinds list, is refused GRAPH-ORDER with a reason")
+    def _():
+        rows = [gr_row("a")]
+
+        def bad(**lists):
+            lists = dict({"kinds": ["theorem"], "states": [], "proofs": []}, **lists)
+            return [tuple(e) for e in _graph_files(rows, "c0", _strings(), orders=lists)[0]]
+        return _eq((bad(kinds=[]), bad(kinds=["theorem", "theorem"]), bad(kinds=["def", "theorem"]), bad(kinds=["theorem", "zeta"]), bad(states=["none", "read"]),
+                    bad(proofs=["read", "read"]), bad(kinds=["theorem", "def"], states=["read"], proofs=["read", "not_read"])),
+                   ([("GRAPH-ORDER", "kinds", "is empty")], [("GRAPH-ORDER", "kinds", "lists theorem twice")],
+                    [("GRAPH-ORDER", "kinds", "is not in the key order of its table")], [("GRAPH-ORDER", "kinds", "lists zeta, which is not a row of its table")],
+                    [("GRAPH-ORDER", "states", "is not in the key order of its table")], [("GRAPH-ORDER", "proofs", "lists read twice")], []))
+
+    @case("GRL1", "`_graph_files(layout=)`: by default index.json has no `sibling_layout` key and the bytes equal those of an explicit layout=None; layout=\"column\" adds exactly "
+                  "the key `sibling_layout: column` to index.json (keys stay sorted in the bytes) and changes nothing else, the step files included")
+    def _():
+        plain = [gr_row("a"), gr_row("b", "a", 1)]
+        base = _graph_files(plain, "c0", _strings())[1]
+        none = _graph_files(plain, "c0", _strings(), layout=None)[1]
+        col = _graph_files(plain, "c0", _strings(), layout="column")
+        text = _graph_bytes(col[1])["graph/index.json"].decode("utf-8")
+        want = dict(base["graph/index.json"], sibling_layout="column")
+        return _eq(("sibling_layout" in base["graph/index.json"], _graph_bytes(base) == _graph_bytes(none), col[0], col[1]["graph/index.json"] == want,
+                    {k: v for k, v in col[1].items() if k != "graph/index.json"} == {k: v for k, v in base.items() if k != "graph/index.json"},
+                    text.index('"sibling_layout": "column"') > text.index('"rests_on"') and text.index('"sibling_layout": "column"') < text.index('"steps"')),
+                   (False, True, [], True, True, True))
+
+    @case("GRL2", "any other layout is refused `GRAPH-LAYOUT <value>` and nothing is returned: \"rows\", \"\", 5, True and \"Column\"")
+    def _():
+        plain = [gr_row("a")]
+        got = [_graph_files(plain, "c0", _strings(), layout=v) for v in ("rows", "", 5, True, "Column")]
+        return _eq(([[tuple(e) for e in g[0]] for g in got], [g[1] for g in got]),
+                   ([[("GRAPH-LAYOUT", v, "only column is allowed")] for v in ("rows", "", "5", "True", "Column")], [{}] * 5))
+
+    @case("GRC1", "a kinds row of a caller's table may carry `card_words`, a KEY of `strings`: the row in symbols.kinds is {card_words, class, text, words} (`text` the "
+                  "resolved label of `words`, `card_words` the key itself), index.json `strings` holds the words keys AND the card_words keys of the table (23 keys for a "
+                  "table of three such kinds), a card_words naming a key that `strings` lacks is `GRAPH-STRINGS <key> missing` (no crash), a card_words that is not a string, "
+                  "or one on a states or proofs row, is refused; the live table has no card_words: its rows are {class, text, words} and `strings` stays 20 keys")
+    def _():
+        rows3 = {k: {"card_words": f"card_kind_{k}", "class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in ("part", "group", "file")}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="Part words", symbol_kind_group="Group words", symbol_kind_file="File words", card_kind_part="Part", card_kind_group="Group",
+                  card_kind_file="File")
+        rows = [gr_row("a", kind="part", state="none", proof="none"), gr_row("b", "a", 1, kind="file", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
+        ix = objs["graph/index.json"]
+        dangling = {k: v for k, v in st.items() if k != "card_kind_file"}
+        d_errs, d_objs = _graph_files(rows, "c0", dangling, symbols=own)
+        bad_state = dict(own, states=dict(own["states"], read=dict(own["states"]["read"], card_words="card_kind_file")))
+        bad_proof = dict(own, proofs=dict(own["proofs"], none=dict(own["proofs"]["none"], card_words="card_kind_file")))
+        bad_type = dict(own, kinds=dict(rows3, file=dict(rows3["file"], card_words=5)))
+        live = _graph_files([gr_row("a")], "c0", st)[1]["graph/index.json"]
+        return _eq((errs, ix["symbols"]["kinds"]["file"], len(ix["strings"]), sorted(k for k in ix["strings"] if k.startswith("card_kind")), sorted(ix["symbols"]["kinds"]["part"]),
+                    [tuple(e) for e in d_errs], d_objs,
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=bad_state)[0]], [tuple(e) for e in _graph_files(rows, "c0", st, symbols=bad_proof)[0]],
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=bad_type)[0]],
+                    sorted(live["symbols"]["kinds"]["theorem"]), len(live["strings"])),
+                   ([], {"card_words": "card_kind_file", "class": "kind-file", "text": "File words", "words": "symbol_kind_file"}, 23,
+                    ["card_kind_file", "card_kind_group", "card_kind_part"], ["card_words", "class", "text", "words"],
+                    [("GRAPH-STRINGS", "card_kind_file", "missing")], {},
+                    [("GRAPH-SYMBOL", "states.read", "has card_words (only a kinds row may)")], [("GRAPH-SYMBOL", "proofs.none", "has card_words (only a kinds row may)")],
+                    [("GRAPH-STRINGS", "kinds.file.card_words", "is not a string")],
+                    ["class", "text", "words"], 20))
+
+    @case("GRO4", "an `orders=` that lacks one of kinds, states, proofs is `GRAPH-ORDER <name> is missing`, and a `symbols=` that lacks one of the three tables is `GRAPH-SYMBOL <name> "
+                  "table is missing` (named refusals, nothing returned, no KeyError)")
+    def _():
+        rows = [gr_row("a")]
+        full = {"kinds": ["theorem"], "states": ["read"], "proofs": ["read"]}
+        no_proofs = {k: v for k, v in full.items() if k != "proofs"}
+        no_kinds = {k: v for k, v in full.items() if k != "kinds"}
+        no_states = {k: v for k, v in GRAPH_SYMBOLS.items() if k != "states"}
+        no_both = {k: v for k, v in GRAPH_SYMBOLS.items() if k == "kinds"}
+        r = lambda **kw: ([tuple(e) for e in _graph_files(rows, "c0", _strings(), **kw)[0]], _graph_files(rows, "c0", _strings(), **kw)[1])
+        return _eq((r(orders=no_proofs), r(orders=no_kinds), r(symbols=no_states), r(symbols=no_both), r(orders=full)[0]),
+                   (([("GRAPH-ORDER", "proofs", "is missing")], {}), ([("GRAPH-ORDER", "kinds", "is missing")], {}), ([("GRAPH-SYMBOL", "states", "table is missing")], {}),
+                    ([("GRAPH-SYMBOL", "states", "table is missing"), ("GRAPH-SYMBOL", "proofs", "table is missing")], {}), []))
+
+    @case("GRM1", "the page's OPTIONAL strings keys are one constant, GRAPH_OPTIONAL_KEYS = (key_kinds_note, note_label, note_source): index.json `strings` is the required keys (20 on "
+                  "the live table) plus those of the three that `strings` holds, so 20 with none, 21 with one, 22 with two, 23 with all three (the values verbatim); the exact-set "
+                  "check accepts an optional key and still refuses any other extra key (`GRAPH-STRINGS <key> is not a key the page reads`) and a missing required one")
+    def _():
+        rows = [gr_row("a")]
+        opt = {"key_kinds_note": "K", "note_label": "L", "note_source": "Source {source} \\u00b7 {commit}"}
+        count = lambda s: len(_graph_files(rows, "c0", dict(_strings(), **s))[1]["graph/index.json"]["strings"])
+        full = _graph_files(rows, "c0", dict(_strings(), **opt))[1]["graph/index.json"]["strings"]
+        req = {k: "x" for k in _graph_strings_keys()}
+        return _eq((GRAPH_OPTIONAL_KEYS, count({}), count({"note_label": "L"}), count({"note_label": "L", "note_source": "S"}), count(opt),
+                    {k: full[k] for k in opt}, len(_graph_strings_keys()),
+                    _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
+                    _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", bogus="x"))),
+                   (("key_kinds_note", "note_label", "note_source"), 20, 21, 22, 23, opt, 20,
+                    [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
+                    [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
+
+    @case("GRM2", "the strings check lets `note_source` hold exactly the placeholders {source} and {commit} (and requires neither): a value with both builds, one with an unknown "
+                  "placeholder (`{bogus}`) is refused naming the key and the token, and the other two optional keys (key_kinds_note, note_label) declare none")
+    def _():
+        base = _strings()
+        ok = dict(base, note_source="Source file: {source} · version {commit}")
+        bad = dict(base, note_source="Source file: {source} {bogus}")
+        brace = dict(base, note_label="From {source}")
+        return _eq((_strings_problems(ok), _strings_problems(bad), _strings_problems(brace)),
+                   ([], [("STRINGS-KEY", "note_source", "has an unknown placeholder {bogus}")], [("STRINGS-KEY", "note_label", "has an unknown placeholder {source}")]))
 
     return cases
 
