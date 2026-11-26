@@ -3788,7 +3788,7 @@ def _selftest_cases():
     @case("RD9", "contributed notes, control characters in refusal lines: every file name and every detail printed in a `SKEL-READING-<kind>` line is escaped (a character that is not printable becomes \\xNN, "
                  "\\uNNNN or \\UNNNNNNNN, lower-case hex; a backslash and every printable character stay), one function for the file name, the detail and the bytes-that-are-not-UTF-8 path, so each refusal is "
                  "exactly ONE stdout line with no raw control character: a file name holding a newline and a forged `SKEL-READING-...` line, a name with ESC, an `id`, a `date`, a `source_commit` "
-                 "(with U+202E), an `about` name (ESC) and an `attaches` id (U+2028) each with a control character; a folder fault (`FILE`) on a name with a newline, U+2028 and a byte that is not UTF-8")
+                 "(with U+202E), an `about` name (ESC) and an `attaches` id (U+2028) each with a control character; a folder fault (`FILE`) on a name with a newline, U+2028 and a byte that is not UTF-8 (that one name is skipped where the file system refuses to create it, errno EILSEQ or EINVAL, as APFS does; RD16 tests the escape of it with no file)")
     def _():
         with _tmp() as d:
             g = _tree(d, RD_BODY, RD_SRCS, RD_ILEANS)
@@ -3796,9 +3796,15 @@ def _selftest_cases():
             os.makedirs(nd)
             os.makedirs(bad)
             rd_esc_fixture(nd)
+            planted = []
             for name in (b"bad\xff.txt", "x y.txt".encode("utf-8"), b"a\nb.txt"):
-                with open(os.path.join(os.fsencode(bad), name), "wb") as fh:
-                    fh.write(b"x")
+                try:
+                    with open(os.path.join(os.fsencode(bad), name), "wb") as fh:
+                        fh.write(b"x")
+                    planted.append(name)
+                except OSError as e:   # a name that is not UTF-8 cannot be created on every file system (APFS: EILSEQ): that one name is skipped; RD16 covers it with no file
+                    if e.errno not in (errno.EILSEQ, errno.EINVAL) or name != b"bad\xff.txt":
+                        raise
             sps, ol = _strings_file(d), _outline_file(d)
             r = _cli(_args(g, os.path.join(d, "o"), sps, ol) + ["--notes-lean-dir", nd])
             r2 = _cli(_args(g, os.path.join(d, "o2"), sps, ol) + ["--notes-lean-dir", bad])
@@ -3807,7 +3813,7 @@ def _selftest_cases():
         return _eq((r[0], r[1].splitlines(), printable(r[1]), r2[0], sorted(r2[1].splitlines()), printable(r2[1]), ("SKEL-READING-DATE", "dateesc.md", "2026\\x1b[0m") in [tuple(e) for e in errs]),
                    (1, ["SKEL-READING-ABOUT aboutesc.md New.S.\\x1b", "SKEL-READING-ATTACHES attesc.md unknown lean-s-\\u2028x", "SKEL-READING-DATE dateesc.md 2026\\x1b[0m",
                         "SKEL-READING-MISSING esc\\x1b[2J.md date", "SKEL-READING-ID idesc.md a\\x1bb", "SKEL-READING-MISSING n1\\x0aforged.md date", "SKEL-READING-SOURCE srcesc.md x\\u202ey"],
-                    True, 1, sorted(["SKEL-READING-FILE a\\x0ab.txt not-a-note", "SKEL-READING-FILE bad\\xff.txt not-a-note", "SKEL-READING-FILE x\\u2028y.txt not-a-note"]), True, True))
+                    True, 1, sorted(["SKEL-READING-FILE a\\x0ab.txt not-a-note", "SKEL-READING-FILE x\\u2028y.txt not-a-note"] + (["SKEL-READING-FILE bad\\xff.txt not-a-note"] if b"bad\xff.txt" in planted else [])), True, True))
 
     @case("RD10", "contributed notes, length caps (`SKEL-READING-SIZE <file> <field> too-long`, counted in CHARACTERS after trimming): a title of 200 characters is taken and 201 is refused (`title`; 200 two-byte "
                   "characters are taken, so it is not a byte count); `by` and `second_read_by` 100 taken and 101 refused (`by`, `second_read_by`); an `about` name of 200 characters taken and of 201 refused "
@@ -3904,6 +3910,57 @@ def _selftest_cases():
         return _eq((forced, len(calls), calls[0][0] == {k[len("graph/step/"):-len(".json")]: v for k, v in written.items()}, calls[0][1] == _j(on, "graph/index.json")["readings"],
                     errs, rep_on["step_extra"] == rep_off["step_extra"], any("readings" in v for v in rep_on["step_extra"].values())),
                    (([("SKEL-READING-INVARIANT", "forced", "forced")], {}), 1, True, True, [], True, False))
+
+    @case("RD15", "contributed notes, printable text fields: a value of `title`, `by` or `second_read_by` that is not `str.isprintable()` AFTER trimming is refused (`SKEL-READING-TITLE <file> not-printable`, "
+                  "`SKEL-READING-BY <file> by|second_read_by not-printable`): ESC, U+202E, U+2028, a tab and BEL inside the value, each in each of the three fields; the value is trimmed first, so a tab or a U+2028 at "
+                  "either end is trimmed away and taken, while a U+202E at the end is refused (it is not whitespace); a NUL anywhere is `ENCODING nul` (the byte check comes first); non-ASCII printable text (psi, "
+                  "less-or-equal, e-acute, CJK) is taken in all three; the BODY is text and keeps ESC, U+202E, a tab and BEL, written unchanged")
+    def _():
+        bad = {"title": ("SKEL-READING-TITLE", "n.md", "not-printable"), "by": ("SKEL-READING-BY", "n.md", "by not-printable"), "second_read_by": ("SKEL-READING-BY", "n.md", "second_read_by not-printable")}
+        inside = {f: [rd_errs(**{f: "a" + c + "b"}) for c in ("\x1b", "‮", " ", "\t", "\x07")] for f in bad}
+        ends = [rd_errs(title="\tx\t"), rd_errs(title="x "), rd_errs(by="\tHalley\t"), rd_errs(title="x‮"), rd_errs(by="Halley‮")]
+        nul = [rd_errs(**{f: "a\x00b"}) for f in bad]
+        uni = rd_build({"n.md": rd_note(title="ψ ≤ é 漢字", by="Élodie 山田", second_read_by="ψ≤")})
+        body = "esc\x1b rlo‮ tab\t bel\x07\n"
+        kept = rd_build({"n.md": rd_note(body=body)})
+        return _eq(({f: v for f, v in inside.items() if v != [[bad[f]]] * 5}, ends, nul, uni[0], _j(uni[1], "graph/step/lean-s-a.json")["readings"][0]["title"], kept[0],
+                    _j(kept[1], "graph/step/lean-s-a.json")["readings"][0]["text"]),
+                   ({}, [[], [], [], [bad["title"]], [bad["by"]]], [[("SKEL-READING-ENCODING", "n.md", "nul")]] * 3, [], "ψ ≤ é 漢字", [], body))
+
+    @case("RD16", "contributed notes, the escape with no file on disk (it is applied ONCE, by the wrapper `_readings`, over every refusal; `_shown` only turns a name into text, a byte that is not UTF-8 kept as a "
+                  "lone surrogate): `_esc` of a str with a newline, ESC, NUL, U+2028 and U+202E gives the exact text with \\x0a, \\x1b, \\x00, \\u2028 and \\u202e; a backslash is doubled; the bytes name "
+                  "b'bad\\xff.txt' through `_shown` and `_esc` is `bad\\xff.txt`, the same as the `os.fsdecode` str of it; the map is injective: a bad byte 0x85 is `\\x85` and the real character U+0085 is "
+                  "`\\u0085`, a real newline is `\\x0a` and the four characters backslash x 0 a are `\\\\x0a`; the wrapper escapes the file name AND the detail of every refusal of the checker under it "
+                  "(a stand-in returns raw ones) exactly once (a detail with one backslash comes out with two) and nothing that is not printable is left")
+    def _():
+        raw = "a\nb\x1b\x00 ‮"
+        want = "a\\x0ab\\x1b\\x00\\u2028\\u202e"
+        real = globals()["_readings_checked"]
+        globals()["_readings_checked"] = lambda *a: ([("SKEL-READING-DATE", raw, raw), ("SKEL-READING-ID", "ok.md", "plain \\ text")], {}, [])
+        try:
+            wrapped = _readings("unused", PIN, [], "unused")[0]
+        finally:
+            globals()["_readings_checked"] = real
+        outs = [_esc(_shown(b"bad\xff.txt")), _esc(_shown(os.fsdecode(b"bad\xff.txt"))), _esc(raw), _esc("\x85"), _esc(os.fsdecode(b"\x85")), _esc("a\nb"), _esc("a\\x0ab"), _esc("a\\b")] + [x for t in wrapped for x in t[1:]]
+        return _eq((_shown(b"bad\xff.txt"), outs[:8], wrapped, all(c.isprintable() for o in outs for c in o)),
+                   ("bad\udcff.txt", ["bad\\xff.txt", "bad\\xff.txt", want, "\\u0085", "\\x85", "a\\x0ab", "a\\\\x0ab", "a\\\\b"],
+                    [("SKEL-READING-DATE", want, want), ("SKEL-READING-ID", "ok.md", "plain \\\\ text")], True))
+
+    @case("RD17", "contributed notes, the escape is injective and applied once, on the command line: a file named with a real newline and one named with the characters backslash, x, 0, a give two DIFFERENT "
+                  "refusal lines; a name with ONE backslash prints with two, and so does a detail with one (never four); each refusal is one line")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RD_BODY, RD_SRCS, RD_ILEANS)
+            nd = os.path.join(d, "notes")
+            os.makedirs(nd)
+            for name, text in (("a\nb.md", rd_note(id="n-1", drop=("date",))), ("a\\x0ab.md", rd_note(id="n-2", drop=("date",))), ("b\\s.md", rd_note(id="n-3", drop=("date",))),
+                               ("dbs.md", rd_note(id="n-4", date="a\\b"))):
+                with open(os.path.join(nd, name), "wb") as fh:
+                    fh.write(text)
+            r = _cli(_args(g, os.path.join(d, "o"), _strings_file(d), _outline_file(d)) + ["--notes-lean-dir", nd])
+        lines = r[1].splitlines()
+        return _eq((r[0], lines, len(set(lines))),
+                   (1, ["SKEL-READING-MISSING a\\x0ab.md date", "SKEL-READING-MISSING a\\\\x0ab.md date", "SKEL-READING-MISSING b\\\\s.md date", "SKEL-READING-DATE dbs.md a\\\\b"], 4))
 
     @case("RDR", "the real source and the eleven notes (give `--selftest --grh DIR --ilean-dir DIR --notes-lean-dir DIR`; otherwise SKIPPED; the folder holds exactly the eleven numbered notes): the build is accepted with the "
                  "pin 72fead10..., 11 readings on 7 distinct file steps: one-sided-bound 07, 09, 10; zeros-criterion 01, 03; main-inequality 04, 11 (note-id order); bad-types 02; short-and-enough 05; "
