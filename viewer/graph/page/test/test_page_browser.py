@@ -3041,10 +3041,10 @@ GV_INIT = ("window.__gp = []; window.__gpmeta = []; document.addEventListener('g
 GV_PATH = "/graph/spine.json"
 
 
-def gv(b, engine, spine_edit=None, index_edit=None, fix="graphview", width=390, height=844, wait_for="graph"):
+def gv(b, engine, spine_edit=None, index_edit=None, fix="graphview", width=390, height=844, wait_for="graph", cards_edit=None):
     """The graphview fixture (made-up text) served, a listener for the failure event registered BEFORE the page loads, the page open at `width`."""
     root = tempfile.mkdtemp(prefix="pg-gv-")
-    assemble.assemble(root, engine, fix=fix, spine_edit=spine_edit, index_edit=index_edit)
+    assemble.assemble(root, engine, fix=fix, spine_edit=spine_edit, index_edit=index_edit, cards_edit=cards_edit)
     Handler.seen.clear()
     S = Served(root)
     pg = Pg(b, S.base + "graph/index.html", width, height, init=GV_INIT)
@@ -3469,6 +3469,27 @@ def c_gv_unknown_file(b, S0, engine):
         S.stop(); gv_clean()
 
 
+def c_gv_show_file_made_card(b, S0, engine):
+    """GV18: on a tree whose card block is the assembler's (no articles, as on the real map), 'Show its file in Cards' switches to Cards and opens THAT file's sheet
+    as a card the page MADE from the data (a div, no markup id): the Graph view is hidden, the claim is the file's title, the sheet is open and the page is healthy."""
+    S, pg = gv(b, engine, cards_edit=lambda c: MADE_ABOUT_BLOCK)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        assert pg.ev("document.querySelectorAll('#graph-about ~ article, article.card').length") == 0, "the tree has a markup card"
+        tap(pg, "spine-made-a")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        pg.page.click("#graph-sheet-body .spine-show-file")
+        made_expect(pg, "sk-file-1", "DIV", "File sk-file-1", "File")
+        st = gv_state(pg)
+        assert st["cards"] is True and st["spine"] is False and st["pressed"] == ["cards:true", "graph:false"] and st["notice"] is False, st
+        assert st["events"] == [], st["events"]
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
 def c_gv_showall_and_address(b, S0, engine):
     """GV15: in the Graph view 'Show all' frames the spine (its boxes stay) and an address (#id) shows that card in CARDS: the view switches back first, the card's sheet opens."""
     S, pg = gv(b, engine)
@@ -3545,6 +3566,7 @@ GV_CASES = [
     ("GV15: in the Graph view 'Show all' frames the spine and an address shows its card in Cards", c_gv_showall_and_address),
     ("GV16: the Graph view's routes honour a cancelled sheetclose: Cards, another box, 'Show its file' and Graph change nothing", c_gv_view_routes_close),
     ("GV17: a box tapped while its file loads, then another box: the first one's late answer changes nothing", c_gv_stale_spine_open),
+    ("GV18: on a tree with an empty card block, 'Show its file in Cards' opens the file's made card in Cards", c_gv_show_file_made_card),
     ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
 ]
 
