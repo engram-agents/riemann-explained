@@ -1186,6 +1186,27 @@ def _rowtuples(rows):
     return [(r["id"], r["parent"], r["order"], r["premises"], r["kind"], r["title"]) for r in rows]
 
 
+_CHILD_MEM = 2 * 1024 ** 3   # the cap on the address space of the child of GID2
+
+
+def _cap_child_memory(platform=None):
+    """The `preexec_fn` of the children the self-test starts for a build that may loop: on Linux the child may not use more than 2 GiB (a walk that grows a list then ends in
+    MemoryError). Anywhere else nothing is set (macOS refuses the limit with ValueError). A cap that is refused never fails the case: True when it was set, False otherwise."""
+    if not (sys.platform if platform is None else platform).startswith("linux"):
+        return False
+    try:
+        import resource
+        resource.setrlimit(resource.RLIMIT_AS, (_CHILD_MEM, _CHILD_MEM))
+    except (ValueError, OSError):
+        return False
+    return True
+
+
+def _child_timeout(platform=None):
+    """30 s for a child with the memory cap; 10 s for one without it, where an unbounded walk that grows a list would use the machine's memory until the timeout."""
+    return 30 if (sys.platform if platform is None else platform).startswith("linux") else 10
+
+
 def _cli(argv):
     """(exit code, stdout, stderr) of main(argv)."""
     o, e = io.StringIO(), io.StringIO()
