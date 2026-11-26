@@ -781,8 +781,8 @@ test("N13 strings: the live map's strings (neither note key) validate exactly as
   const v = noteCtx();
   assert.equal(v.strings.note_label, "From the repository, unchanged");
   assert.equal(v.strings.note_source, "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean");
-  assert.equal(OPTIONAL_STRINGS.length, 7, "one definition: exactly seven optional keys (key_kinds_note, the two note keys, the four maths-face keys)");
-  assert.equal(new Set(OPTIONAL_STRINGS).size, 7);
+  assert.deepEqual([...OPTIONAL_STRINGS].sort(), ["key_kinds_note", "key_scope_text", "note_exact_button", "note_label", "note_label_typeset", "note_render_button", "note_source", "note_typeset_line"],
+    "one definition: the page's optional keys are exactly these (key_kinds_note, key_scope_text, the two note keys, the four maths-face keys)");
 });
 
 test("N13 strings: each note key is optional alone; an empty one is refused; any OTHER extra key is still refused", () => {
