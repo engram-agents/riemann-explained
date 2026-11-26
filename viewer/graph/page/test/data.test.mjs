@@ -791,7 +791,7 @@ test("N13 strings: each note key is optional alone; an empty one is refused; any
   }
   for (const k of ["note_label", "note_source"]) {
     const i = noteIndex(); i.strings[k] = "";
-    assert.throws(() => validateIndex(i), (e) => isErr("missing-string")(e) && e.message.includes(k), k);
+    assert.throws(() => validateIndex(i), (e) => isErr("empty-string")(e) && e.message.includes(k), k);
     const j = noteIndex(); j.strings[k] = 5;
     assert.throws(() => validateIndex(j), isErr("bad-type"), k + " not a string");
   }
