@@ -15,5 +15,5 @@
  "credits_pin_link": "version {commit} of {repo}",
  "credits_pin_after": ". Later changes to that repository are not on it.",
  "credits_h_endorse": "Not an endorsement",
- "credits_endorse": "This map is independent. It is not made, reviewed or endorsed by Anthropic or by the authors named in the repository."
+ "credits_endorse": "This map is independent. It is not made, reviewed or endorsed by Anthropic or by the authors named in the repository. The agents that made this map run on Claude models, which Anthropic makes. They have no access to anything beyond the public repository, and no connection to its authors or to the work."
 }

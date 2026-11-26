@@ -303,6 +303,13 @@ def selftest():
         case("CR10 a quoted line past the end of its file is refused", lambda: refused(
             lambda: build(tmp, PIN, base, words, sources=short, head=lambda r: PIN), "CREDITS-QUOTE grh/README.md line 5"))
 
+    def c12():
+        root = os.path.join(_HERE, os.pardir, "third-party", "grh-lean")
+        for ours, theirs in (("LICENSE", "LICENSE"), ("grh/NOTICE", "NOTICE"), ("grh/ATTRIBUTION.md", "ATTRIBUTION.md")):
+            with open(os.path.join(root, theirs), "rb") as f:
+                assert hashlib.sha256(f.read()).hexdigest() == SOURCES[ours], f"third-party/grh-lean/{theirs} is not the file SOURCES records for {ours}"
+    case("CR12 the recorded hashes of LICENSE, NOTICE and ATTRIBUTION.md equal those of the copies in third-party/grh-lean/", c12)
+
     def c11():
         page = render({"LICENSE": "L", "grh/NOTICE": "N", "grh/ATTRIBUTION.md": "A", "grh/README.md": "", "README.md": ""}, [("f", ["q"])], words)
         bad = page.replace('<a class="citation" href="https://github.com', '<a href="https://github.com', 1)
