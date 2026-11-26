@@ -331,6 +331,18 @@ test("S1 error order on a link: an unknown key beside a bad flag is extra-key; o
   refuses(() => validateStep(one, validateIndex(skIndex())), "bad-link-flags");
 });
 
+test("S1 error order on a link: a bad flag beside a self-loop (from == to) is bad-link-flags, the flag check before the link-shape check", () => {
+  const sl = skStep("sk-group-a");
+  sl.rests_on[0].to = sl.rests_on[0].from;
+  sl.rests_on[0].weight = 1.5;
+  delete sl.rests_on[0].in_reduction;
+  refuses(() => validateStep(sl, validateIndex(skIndex())), "bad-link-flags");
+  // control: the same self-loop with no bad flag is the link-shape refusal, so the case above is about the order and not about a link that was fine
+  const plain = skStep("sk-group-a");
+  plain.rests_on[0].to = plain.rests_on[0].from;
+  refuses(() => validateStep(plain, validateIndex(skIndex())), "bad-link");
+});
+
 test("the v3 keys do not leak into the live map's record: its index and step records carry exactly the keys they carried", () => {
   const v = validateIndex(realIndex());
   assert.deepEqual(Object.keys(v).sort(), ["assets", "commit", "maxChildren", "rests", "steps", "strings", "symbols", "top"]);

@@ -1024,6 +1024,20 @@ def c_key_edge_basis(b, S0, engine):
     assert got2["kids"][-1]["tag"] == "P" and got2["kids"][-1]["text"] == "The words of a test key", got2["kids"][-1]
 
 
+def c_key_edge_basis_after_states(b, S0, engine):
+    """The line section comes AFTER the states section: a map with a non-empty symbols.order.states AND edge_basis (+ key_scope_text, key_kinds_note)
+    has the key's children, in order, scope p, kinds h2, kinds ul, kinds note p, states h2, states ul, lines h2, lines p."""
+    w = skeleton_words()
+    def edit(i):
+        i["symbols"]["order"]["states"] = ["read", "census", "none"]
+    got, _ = key_of(b, engine, "skeleton", edit)
+    kids = got["kids"]
+    assert [k["tag"] for k in kids] == ["P", "H2", "UL", "P", "H2", "UL", "H2", "P"], [k["tag"] for k in kids]
+    assert kids[0]["cls"] == "key-scope" and kids[3]["cls"] == "key-note", [k["cls"] for k in kids]
+    assert kids[4]["text"] == w["key_states_heading"], kids[4]
+    assert kids[6]["text"] == w["key_lines_heading"] and kids[7]["text"] == w["key_lines_text"], (kids[6], kids[7])
+
+
 def c_key_absent_keys(b, S0, engine):
     """No edge_basis, no key_scope_text, no key_lines_*: nothing is drawn for them (the key is the kinds section and the optional note only)."""
     def edit(i):
@@ -2013,6 +2027,7 @@ def main():
                 run("module: F1/F2/F4 controls on the live map: ring gap, the parts foot, the breadcrumb with the open card", c_live_controls, eng)
                 run("module: P1/P5/P7 the skeleton map (face classes, the card word as the one sheet line, the key has three kind rows and no states section)", c_skeleton_map, eng)
                 run("98: the key's first child is the scope paragraph and its last section is the edge basis's line paragraph (text nodes; the page prints strings[words])", c_key_edge_basis, eng)
+                run("98: with a states section too, the line section comes after it (P, H2, UL, P, H2, UL, H2, P)", c_key_edge_basis_after_states, eng)
                 run("98: without edge_basis and key_scope_text nothing is drawn for them", c_key_absent_keys, eng)
                 run("98: the live map's key DOM is byte-identical to the base head's", c_key_live_unchanged, eng)
                 run("98: hostile key_scope_text and words value are text in the key", c_key_hostile, eng)
