@@ -243,6 +243,7 @@ export async function start(doc, deps) {
         const step = await data.loadStep(id);
         if (!current(t)) return false;
         if (!sheet.close()) return false;
+        if (view && view.view() === "graph") view.hide();      // an address names a card: it is shown in Cards, the view the cards live in
         const path = step.path.concat(id);
         await viaRoute(t, path, () => handle.reveal(path));
         if (!current(t)) return false;
@@ -258,7 +259,7 @@ export async function start(doc, deps) {
     routes["escape"] = () => sheet.close();
     routes["open-card"] = (t, id) => openCard(t, id);
     routes["deep-link"] = go;
-    routes["toolbar-show-all"] = () => { if (sheet.close()) handle.fit(); };
+    routes["toolbar-show-all"] = () => { if (sheet.close()) { if (view && view.view() === "graph") view.fit(); else handle.fit(); } };
     routes["toolbar-key"] = () => {
       const k = view && view.view() === "graph" ? view.key(EDGE_BASIS_HEADING) : keyEl;     // the Graph view's key says what its boxes and lines are
       if (sheet.shown() === k) sheet.close(); else sheet.showPanel(k, false);

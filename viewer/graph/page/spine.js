@@ -99,8 +99,8 @@ function refuseReductionCycle(nodes, links) {
 }
 
 /* validateSpine(raw, ctx): ctx is the VALIDATED index, data.js validateIndex's record: its `commit`, its `strings` and its `edgeBasis` (absent when the
-   index has none; the spine's words key must not be the one it names). A raw index.json (its key is `edge_basis`) is a TypeError: handed one, the
-   comparison with the index's own key would be skipped without a word. Returns {nodes, links, words}. */
+   index has none; the spine's words key must not be the one it names). A raw index.json, recognised by its key `edge_basis`, is a TypeError: handed one, the
+   comparison with the index's own key would be skipped without a word (a raw index without that key is not recognised; the page only ever passes the record). Returns {nodes, links, words}. */
 export function validateSpine(raw, ctx) {
   if (!isObj(ctx) || has(ctx, "edge_basis") || !isObj(ctx.strings)) throw new TypeError("validateSpine takes the validated index");
   exactKeys(raw, ["commit", "edge_basis", "format", "links", "nodes"], "spine");

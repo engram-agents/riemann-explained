@@ -3469,6 +3469,69 @@ def c_gv_unknown_file(b, S0, engine):
         S.stop(); gv_clean()
 
 
+def c_gv_showall_and_address(b, S0, engine):
+    """GV15: in the Graph view 'Show all' frames the spine (its boxes stay) and an address (#id) shows that card in CARDS: the view switches back first, the card's sheet opens."""
+    S, pg = gv(b, engine)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        pg.page.click("#graph-show-all")
+        pg.page.wait_for_timeout(300)
+        st = gv_state(pg)
+        assert st["nodes"] == 4 and st["spine"] is True and st["cards"] is False and not sheet_open(pg), st
+        pg.ev("location.hash = '#sk-file-1'")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-1'", 8000)
+        st = gv_state(pg)
+        assert st["cards"] is True and st["spine"] is False and st["pressed"] == ["cards:true", "graph:false"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_view_routes_close(b, S0, engine):
+    """GV16: the Graph view's routes begin with the sheet's one close function: with a listener that cancels `sheetclose` on the shown panel, pressing Cards, tapping another
+    box, pressing 'Show its file' and pressing Graph each leave the panel and the view exactly as they were. The route names are the module's own VIEW_ROUTES."""
+    S, pg = gv(b, engine)
+    try:
+        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["spine-open", "spine-show-file", "view-cards", "view-graph"]
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        tap(pg, "spine-made-a")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        pg.ev("document.querySelector('#graph-sheet-body .spine-panel').addEventListener('sheetclose', (e) => e.preventDefault())")
+        names = lambda: pg.ev("[...document.querySelectorAll('#graph-sheet-body .spine-panel h2 code')].map((c) => c.textContent)")
+        for what, act in (("Cards", lambda: pg.page.click('button.view-btn[data-id="cards"]')), ("another box", lambda: tap(pg, "spine-made-b")),
+                          ("Show its file", lambda: pg.page.click("#graph-sheet-body .spine-show-file")), ("Graph", lambda: pg.page.click('button.view-btn[data-id="graph"]'))):
+            act()
+            pg.page.wait_for_timeout(300)
+            st = gv_state(pg)
+            assert names() == ["Made.a"] and st["spine"] is True and st["cards"] is False and st["pressed"] == ["cards:false", "graph:true"], (what, names(), st)
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_stale_spine_open(b, S0, engine):
+    """GV17: a tap on a box whose file is still loading, then a tap on another box: the second box's panel is shown, and the first one's late answer changes nothing."""
+    S, pg = gv(b, engine)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        ev = threading.Event()
+        Handler.delay["/graph/step/sk-file-2.json"] = ev
+        tap(pg, "spine-made-b")
+        pg.page.wait_for_timeout(200)
+        tap(pg, "spine-made-c")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel h2 code')?.textContent === 'Made.c'", 6000)
+        ev.set()
+        pg.page.wait_for_timeout(500)
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .spine-panel h2 code')].map((c) => c.textContent)") == ["Made.c"]
+        assert gv_state(pg)["notice"] is False
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
 GV_CASES = [
     ("GV1: the live map has no switch, no Graph stage, no spine request and no event", c_gv_live_silent),
     ("GV2: with both view words the switch is two buttons (Cards pressed), the stage hidden and empty, spine.json not requested", c_gv_switch_present),
@@ -3479,6 +3542,9 @@ GV_CASES = [
     ("GV11: a press of Graph superseded by a press of Cards changes nothing when the spine arrives late", c_gv_ticket),
     ("GV12: one view word without the other is refused at start", c_gv_one_view_word),
     ("GV14: a box whose file is no loadable step shows the refused-link notice and no panel, and leaves the Graph view as it is", c_gv_unknown_file),
+    ("GV15: in the Graph view 'Show all' frames the spine and an address shows its card in Cards", c_gv_showall_and_address),
+    ("GV16: the Graph view's routes honour a cancelled sheetclose: Cards, another box, 'Show its file' and Graph change nothing", c_gv_view_routes_close),
+    ("GV17: a box tapped while its file loads, then another box: the first one's late answer changes nothing", c_gv_stale_spine_open),
     ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
 ]
 

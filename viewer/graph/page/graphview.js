@@ -140,8 +140,10 @@ export function createGraphView(deps) {
       else { flipTo("graph"); handle.fit(); }
       if (!current(t)) { flipTo(view); return false; }
     } catch (e) {
+      /* A superseded press changes nothing the reader can see: when the page is showing the Graph view (a later press drew it) it touches nothing; when it is
+         showing Cards it only makes sure the half-built stage is put back. */
+      if (!current(t)) { if (view !== "graph") rollback(); return false; }
       rollback();
-      if (!current(t)) return false;
       say(strings.graph_failed_notice);
       failure.graph = String(e && e.message ? e.message : "graph failed");
       refused = true;
@@ -155,6 +157,8 @@ export function createGraphView(deps) {
     if (refused) { refused = false; report(null); }
     return true;
   }
+  /* 'Show all' in the Graph view frames the whole spine. */
+  function fit() { if (handle) handle.fit(); }
   function hide() {
     view = "cards";
     flipTo("cards");
@@ -166,7 +170,7 @@ export function createGraphView(deps) {
     if (sw.parentNode) sw.parentNode.removeChild(sw);
   }
   return {
-    show, hide, destroy,
+    show, hide, fit, destroy,
     view: () => view,
     select: (id) => { if (handle) handle.select(id); },
     /* The Graph view's key, made once the spine is known (the toolbar's Key button is the page's; it asks the view that is showing). */
