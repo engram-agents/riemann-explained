@@ -515,7 +515,8 @@ GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number
 their values from the strings file, `{n}` as written), symbols and top (the top ids in `order`). `graph/step/<id>.json`
 holds exactly card, children, commit (the commit of index.json), format, id, path (the ancestors, top first, [] for a top step), rests_on. A closed card holds exactly
 child_count, id, kind, path, proof, state, title, plus `role` when the step has one (absent otherwise, never null, never empty: the words the list page prints for the
-step's root_role, today the strings key named_statement_use_line for the role named_statement); a child also has parent_rests_on (the step rests on this child). A link is
+step's root_role as a SHORT WORD: the strings key role_named_statement for the role named_statement, at most 24 characters with no line break, else GRAPH-ROLE <id>
+reason; the long sentence stays in the card markup); a child also has parent_rests_on (the step rests on this child). A link is
 {from, from_path, to, to_path}: `from` rests on `to`, the direction of the outline's `premises`; the paths are the ancestors plus the parent's id. A premise of a step on a
 sibling is a link in the file of their parent (in index.json for two top steps); a premise on the step's own child is parent_rests_on on that child and in no rests_on; a premise
 on any other step refuses the build (GRAPH-EDGE). `kind` is the Lean kind of the step's root for every step, a null claim too (the first root when there are several): theorem
@@ -544,7 +545,7 @@ folder the page code is copied from: every .js and .css file under it with no `t
 written the assembled tree (assets, and shell.html under its own name) goes through tools/graph_js_check.py, loaded by file path (`gjc`): its non-zero answer is `GRAPH-SINK graph
 <the scanner's REFUSED line>`, one per line. This file keeps no list of forbidden tokens (GA6 counts them). index.json `strings` is exactly the nine `words` keys and the
 GRAPH_RUNTIME_KEYS (parts_n holds {n} as written), checked as an exact set (`GRAPH-STRINGS <key> missing | is not a key the page reads`). A `GRAPH-COUNT` also names an asset whose file or
-sha256 is not the one listed.
+sha256 is not the one listed. `role_named_statement` is in `strings` only when a step carries a role (21 keys; 20 without). GRAPH_SHORT_MAX is nm.SHORT_MAX.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
