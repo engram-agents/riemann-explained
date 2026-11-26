@@ -5976,15 +5976,16 @@ def _selftest_cases():
                                       ["Statement counted by a program, not read, recorded by Reader One on 2026-11-20."]),
                     [(True, False)], ("We have read this statement.", ["Statement read by Reader Two on 2026-11-23."])))
 
-    @case("W1", "a group id that is safe but longer than 100 characters is GROUP-ID-UNSAFE; 100 characters build")
+    @case("W1", "a group id that is safe but longer than 100 characters is GROUP-ID-UNSAFE; up to 100 characters pass that check, and then the id rule of the graph "
+                "(at most 64 characters, GRAPH-ID) applies: 64 characters build, 65 and 100 are `GRAPH-ID <id> is <n> characters (at most 64)`")
     def _():
         res = []
-        for n in (100, 101):
+        for n in (64, 65, 100, 101):
             o = _outline()
             o["groups"][1]["id"] = "a" * n   # g1a1x: no child, no premise, no note names it
             b = _build(outline=o)
-            res.append((b.rc, f"BUILD-ERROR GROUP-ID-UNSAFE {'a' * n} " in b.out, b.existed))
-        return _eq(res, [(0, False, True), (1, True, False)])
+            res.append((b.rc, f"BUILD-ERROR GROUP-ID-UNSAFE {'a' * n} " in b.out, f"BUILD-ERROR GRAPH-ID {'a' * n} is {n} characters (at most 64)" in b.out, b.existed))
+        return _eq(res, [(0, False, False, True), (1, False, True, False), (1, False, True, False), (1, True, False, False)])
 
     @case("W2", "a failure while writing (a full disk, injected) in a fresh run: exit 2, ONE line on stderr and no traceback, nothing "
                 "on stdout, OUT_DIR absent and no temporary directory left beside it")
