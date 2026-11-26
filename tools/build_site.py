@@ -2149,8 +2149,8 @@ def _graph_link_errors(link_info, links):
 
 
 def _graph_note_errors(notes, by, kids):
-    """[(GRAPH-NOTE, id, reason)] for `notes` ({step id: {source, text}}): a note belongs to a step that exists and has no children, is an object with exactly the keys
-    source and text, and both are strings. Sorted by id."""
+    """[(GRAPH-NOTE, id, reason)] for `notes` ({step id: {source, text[, review]}}): a note belongs to a step that exists and has no children, is an object with the keys source and
+    text (both strings) and optionally `review`, which must be exactly {"state": "converter"} (the one state the page accepts). Sorted by id."""
     out = []
     for i in sorted(notes):
         n = notes[i]
@@ -2160,10 +2160,12 @@ def _graph_note_errors(notes, by, kids):
             out.append(("GRAPH-NOTE", i, "has children"))
         elif not isinstance(n, dict):
             out.append(("GRAPH-NOTE", i, "is not an object"))
-        elif set(n) != {"source", "text"}:
+        elif not ({"source", "text"} <= set(n) <= {"source", "text", "review"}):
             out.append(("GRAPH-NOTE", i, "must have exactly the keys source and text"))
         elif not (isinstance(n["source"], str) and isinstance(n["text"], str)):
             out.append(("GRAPH-NOTE", i, "has a value that is not a string"))
+        elif "review" in n and not (isinstance(n["review"], dict) and n["review"] == {"state": "converter"}):
+            out.append(("GRAPH-NOTE", i, 'review must be exactly {"state": "converter"}'))
     return out
 
 
@@ -2348,7 +2350,7 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             "card": closed(r), "children": [dict(closed(c), parent_rests_on=c["id"] in r["premises"]) for c in kids.get(r["id"], [])],
             "commit": commit, "format": GRAPH_FORMAT, "id": r["id"], "path": list(path[r["id"]]), "rests_on": links(r["id"])}
         if notes and r["id"] in notes:
-            objs[f"graph/step/{r['id']}.json"]["note"] = {"source": notes[r["id"]]["source"], "text": notes[r["id"]]["text"]}
+            objs[f"graph/step/{r['id']}.json"]["note"] = {k: json.loads(json.dumps(notes[r["id"]][k])) for k in ("review", "source", "text") if k in notes[r["id"]]}
         if step_extra and r["id"] in step_extra:
             objs[f"graph/step/{r['id']}.json"].update(json.loads(json.dumps(step_extra[r["id"]])))
     errors = _graph_count_errors(objs, symbols)
@@ -13851,6 +13853,28 @@ def _selftest_cases():
                     ([("GRAPH-NOTE", "b", "must have exactly the keys source and text")], {}), ([("GRAPH-NOTE", "b", "must have exactly the keys source and text")], {}),
                     ([("GRAPH-NOTE", "b", "has a value that is not a string")], {}), ([("GRAPH-NOTE", "b", "is not an object")], {}),
                     ([("GRAPH-NOTE", "zz", "is not a step")], {})))
+
+    @case("GRN3", "note review: a note may carry the key `review` whose value is exactly {state: converter} (the only state the page accepts): the step file's note then has the keys "
+                  "review, source and text, sorted in the bytes, and nothing else changes; a note without it is unchanged; a review that is another state (a misspelling, `confirmed`), "
+                  "has an extra key (by, converter_version), lacks `state`, or is not an object is `GRAPH-NOTE <id> review must be exactly {\"state\": \"converter\"}` and nothing is returned; "
+                  "a key other than review, source and text is still refused as before")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1), gr_row("c", "a", 2)]
+        rev = {"state": "converter"}
+        ok = {"source": "s", "text": "t"}
+        errs, objs = _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, review=rev), "c": ok})
+        raw = _graph_bytes(objs)["graph/step/b.json"].decode("utf-8")
+
+        def bad(review):
+            e, o = _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, review=review)})
+            return [tuple(x) for x in e], o
+        msg = 'review must be exactly {"state": "converter"}'
+        return _eq((errs, sorted(objs["graph/step/b.json"]["note"]), sorted(objs["graph/step/c.json"]["note"]), raw.index('"review"') < raw.index('"source"') < raw.index('"text"'),
+                    bad({"state": "convertor"}), bad({"state": "confirmed"}), bad(dict(rev, by="x")), bad(dict(rev, converter_version="1")), bad({}), bad("converter"), bad(None),
+                    [tuple(x) for x in _graph_files(rows, "c0", _strings(), notes={"b": dict(ok, extra="x", review=rev)})[0]]),
+                   ([], ["review", "source", "text"], ["source", "text"], True, ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
+                    ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
+                    [("GRAPH-NOTE", "b", "must have exactly the keys source and text")]))
 
     @case("GRCK1", "`_graph_files(child_kinds=)`: off by default (the bytes equal an explicit child_kinds=False and no card has `child_kind`); on, every card (the step file's card and the "
                    "closed child entry) with children that all share one kind has `child_kind` = that kind, and it is omitted when the children differ and when there are none; the "

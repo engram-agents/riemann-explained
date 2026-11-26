@@ -44,6 +44,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -864,18 +865,47 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
                 row(fid[f["path"]], gid, fi, premises[f["path"]], "file", f["title"])
             groups.append(_group_report(gid, members, adj, kept))
     report = _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info)
-    report["notes"] = {fid[p]: {"source": source_prefix + p + ".lean", "text": note_text[p]} for p in listed}
+    report["notes"] = {fid[p]: {"review": {"state": "converter"}, "source": source_prefix + p + ".lean", "text": note_text[p]} for p in listed}
     errors = _spine_and_index(grh, ilean_dir, fid, rows, report)
     if errors:
         return errors, [], {}
     return [], rows, report
 
 
-def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX):
+def _scale_floor_error(value):
+    """[(GRAPH-SCALE-FLOOR, <value>, "")] unless `value` is a positive finite number (an int or a float; a bool is neither)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return [("GRAPH-SCALE-FLOOR", str(value), "")]
+    try:
+        finite = math.isfinite(value)   # an integer too large for a float is no finite number the page can use: OverflowError here
+    except OverflowError:
+        finite = False
+    if not finite or value <= 0:
+        return [("GRAPH-SCALE-FLOOR", str(value), "")]
+    return []
+
+
+def _scale_from_text(text):
+    """The number a command-line text stands for, as written: an integer text stays an int, a decimal or exponent text a float; any other text is returned as it is (and refused)."""
+    if re.fullmatch(r"[0-9]+", text):
+        try:
+            return int(text)
+        except ValueError:   # more digits than Python's integer parser takes (4300): the text is returned as it is, and refused
+            return text
+    if re.fullmatch(r"(?:[0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?", text):
+        return float(text)
+    return text
+
+
+def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
+    if open_scale_floor is not None:
+        errors = _scale_floor_error(open_scale_floor)
+        if errors:
+            return errors, {}, [], {}
     errors, rows, rep = build_rows(grh, ilean_dir, source_prefix)
     if errors:
         return errors, {}, rows, rep
@@ -888,7 +918,8 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     if missing:
         return missing, {}, rows, rep
     errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"], child_kinds=True,
-                                    step_extra=rep["step_extra"], index_extra=({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else None))
+                                    step_extra=rep["step_extra"], index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
+                                                     **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {})) or None)
     if errors:
         return errors, {}, rows, rep
     objs["graph/uses.json"] = {"commit": pin, "format": USES_FORMAT, "imports": rep["imports"], "lib_index_rows": rep["lib_index_rows"], "titles": rep["titles"], "used_by": rep["used_by"],
@@ -902,7 +933,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--source-prefix PREFIX]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--source-prefix PREFIX] [--open-scale-floor N]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
 
 
@@ -910,7 +941,7 @@ def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--ilean-dir", "--source-prefix") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--ilean-dir", "--source-prefix", "--open-scale-floor") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -957,9 +988,10 @@ def _run(opts):
     problems = bs._strings_problems(strings)
     if problems:
         return refuse(problems)
-    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX))
+    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
+                                       _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None)
     if errors:
-        return refuse(errors)
+        return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
     try:
         bs._publish(opts["out"], files)
     except OSError as e:
@@ -1525,7 +1557,7 @@ def _selftest_cases():
                 row("lean-s-a", "lean-s--g", 0, [], "file", "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "file", "b")]
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
         info = {("lean-s-b", "lean-s-a"): {"weight": 1, "in_reduction": True}}
-        notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n"} for i in ("lean-s-a", "lean-s-b")}
+        notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n", "review": {"state": "converter"}} for i in ("lean-s-a", "lean-s-b")}
         want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS, **NOTE_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True, index_extra={"edge_basis": EDGE_BASIS})
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
@@ -1937,7 +1969,7 @@ def _selftest_cases():
         return raw[a:raw.index(b"-/", a)].decode("utf-8")
 
     @case("N1", "a module note with markdown, backticks, `$`, a CRLF, a tab, trailing spaces and a final newline comes through byte for byte: the step file's note.text equals the "
-                "source slice read in the case, note.source is `grh/src/` + the CONTENTS path + `.lean`, the note has exactly the keys source and text, and the CRLF and the "
+                "source slice read in the case, note.source is `grh/src/` + the CONTENTS path + `.lean`, the note has exactly the keys review, source and text (review is {state: converter}), and the CRLF and the "
                 "trailing spaces are in the written JSON as escapes")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
@@ -1946,7 +1978,7 @@ def _selftest_cases():
         note = _j(files, "graph/step/lean-s-a.json")["note"]
         want = slice1(RAW1)
         return _eq((errs, note["text"] == want, note["source"], sorted(note), len(want), want.count("\r\n"), b"Title\\r\\nSome `code`" in files["graph/step/lean-s-a.json"]),
-                   ([], True, "grh/src/New/S/A.lean", ["source", "text"], 77, 1, True))
+                   ([], True, "grh/src/New/S/A.lean", ["review", "source", "text"], 77, 1, True))
 
     @case("N2", "the equality of N1 can fail: the fixture's note differs from its strip, rstrip, lstrip, CRLF-folded, line-normalised and one-character-shorter versions, so a "
                 "tool that trims, folds a newline or loses a character is caught")
@@ -2852,6 +2884,97 @@ def _selftest_cases():
         return _eq((errs, per, len(allm), kinds, star["counts"]["mentions"], star["counts"]["other_constants"] >= 2, len(_j(files, "graph/uses.json")["titles"])),
                    ([], [(42, 38, 0), (7, 7, 1), (15, 14, 1), (34, 32, 0), (29, 28, 1), (8, 7, 0), (6, 6, 0), (9, 2, 1), (4, 3, 1)], 108,
                     {"lemma": 42, "def": 30, "abbrev": 17, "theorem": 12, "structure": 6, "class": 1}, 29, True, 353))
+
+    @case("NR1", "note review: the note of EVERY file step has `review` equal to exactly {state: converter} (the converter's rendering, read by no one), the note keys are exactly review, source and text, "
+                 "and a part or a group has no note; the review object is a fresh one per note (changing one in the report changes no other)")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": _lean(), "New/S/B": _lean()}), PIN, _strings())
+        notes = {r["id"]: _j(files, f"graph/step/{r['id']}.json").get("note") for r in rows}
+        return _eq((errs, {k: (None if v is None else (v["review"], sorted(v))) for k, v in notes.items()},
+                    rep["notes"]["lean-s-a"]["review"] is not rep["notes"]["lean-s-b"]["review"]),
+                   ([], {"lean-s": None, "lean-s--g": None, "lean-s-a": ({"state": "converter"}, ["review", "source", "text"]), "lean-s-b": ({"state": "converter"}, ["review", "source", "text"])}, True))
+
+    @case("NRR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): all 306 file steps have a note whose review is exactly {state: converter} (306 of 306, no other "
+                 "value, no other key in review), the note keys are review, source and text on every one, and no part or group has a note")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        steps = {r["id"]: (r["kind"], _j(files, f"graph/step/{r['id']}.json").get("note")) for r in rows}
+        files_n = [n for k, n in steps.values() if k == "file"]
+        return _eq((errs, len(files_n), sum(1 for n in files_n if n is not None and n.get("review") == {"state": "converter"}), sorted({tuple(sorted(n)) for n in files_n}),
+                    sum(1 for k, n in steps.values() if k != "file" and n is not None)),
+                   ([], 306, 306, [("review", "source", "text")], 0))
+
+    def sc_build(d, **kw):
+        g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+        return g, build(g, PIN, _strings(), (), _ildir(g), **kw)
+
+    @case("SC1", "`open_scale_floor`: index.json has the top-level key with the value given (1 is written `1`, not `1.0`; 1.5 is `1.5`; a float written 2.0 stays `2.0`), sorted between "
+                 "max_children and rests_on; without the option the key is absent")
+    def _():
+        out = []
+        for v in (None, 1, 1.5, 2.0):
+            with _tmp() as d:
+                g, res = sc_build(d, open_scale_floor=v)
+                raw = res[1]["graph/index.json"].decode("utf-8")
+                ix = json.loads(raw)
+                out.append((res[0], ix.get("open_scale_floor"), re.findall(r'"open_scale_floor": ([^,\n]*)', raw), raw.find('"max_children"') < raw.find('"open_scale_floor"') < raw.find('"rests_on"')
+                            if v is not None else "open_scale_floor" in raw))
+        return _eq(out, [([], None, [], False), ([], 1, ["1"], True), ([], 1.5, ["1.5"], True), ([], 2.0, ["2.0"], True)])
+
+    @case("SC2", "anything but a positive finite number is refused `GRAPH-SCALE-FLOOR <value>` and nothing is returned: zero, a negative, nan, inf, a non-numeric text, a bool, an empty "
+                 "string, the text `1e400` (a number too large to be finite; the command line names it as given), an integer too large for a float (the number 10**400 as a function argument; the texts of 400 and of 5000 digits on the command line, the second beyond the 4300-digit limit of Python\'s integer parser) (the function), and the same texts on the command line (exit 1, OUT not written); a missing value after the option is exit 2; `1`, `1.5` and `1e3` are accepted "
+                 "(and written 1, 1.5 and 1000.0)")
+    def _():
+        bad = [0, -1, float("nan"), float("inf"), "abc", True, False, "", "1e400", 10 ** 400]
+        texts = ("0", "-1", "nan", "inf", "abc", "true", "", "1e400", "-0", "0.0", "1" * 400, "1" * 5000)
+        with _tmp() as d:
+            g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            fn = [(r[0], r[1]) for r in (build(g, PIN, _strings(), (), _ildir(g), open_scale_floor=v) for v in bad)]
+            sp, ol = _strings_file(d), _outline_file(d)
+            cli = {}
+            for i, text in enumerate(texts):
+                rc, out, err = _cli(_args(g, os.path.join(d, f"o{i}"), sp, ol) + ["--open-scale-floor", text])
+                cli[text] = (rc, out.splitlines(), os.path.exists(os.path.join(d, f"o{i}")))
+            miss = _cli(_args(g, os.path.join(d, "om"), sp, ol) + ["--open-scale-floor"])[0]
+            ok = {}
+            for text in ("1", "1.5", "1e3"):
+                o = os.path.join(d, "ok" + text)
+                rc = _cli(_args(g, o, sp, ol) + ["--open-scale-floor", text])[0]
+                ok[text] = (rc, re.findall(r'"open_scale_floor": ([^,\n]*)', _tree_files(o)["graph/index.json"].decode("utf-8")))
+        return _eq((fn, cli, miss, ok),
+                   ([([("GRAPH-SCALE-FLOOR", s, "")], {}) for s in ("0", "-1", "nan", "inf", "abc", "True", "False", "", "1e400", str(10 ** 400))],
+                    {text: (1, ["GRAPH-SCALE-FLOOR " + text], False) for text in texts}, 2, {"1": (0, ["1"]), "1.5": (0, ["1.5"]), "1e3": (0, ["1000.0"])}))
+
+    @case("SC3", "the output with the option equals the output without it apart from that ONE key of index.json (every other file byte for byte, index.json equal once the key is "
+                 "removed), and with the option the files are byte-identical under hash seeds 0 and 1")
+    def _():
+        with _tmp() as d:
+            g, a = sc_build(d)
+            runs = []
+            for seed in ("0", "1"):
+                out = os.path.join(d, "out" + seed)
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)) + ["--open-scale-floor", "1"],
+                                   env=dict(os.environ, PYTHONHASHSEED=seed), capture_output=True, text=True)
+                runs.append((r.returncode, _tree_files(out)))
+        with _tmp() as d:
+            g, b = sc_build(d, open_scale_floor=1)
+        ia, ib = json.loads(a[1]["graph/index.json"]), json.loads(b[1]["graph/index.json"])
+        ib.pop("open_scale_floor")
+        return _eq((sorted(a[1]) == sorted(b[1]), all(a[1][k] == b[1][k] for k in a[1] if k != "graph/index.json"), ia == ib, runs[0][0], runs[1][0], runs[0][1] == runs[1][1]),
+                   (True, True, True, 0, 0, True))
+
+    @case("SCR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): the index has `open_scale_floor` 1 when the option is given, and none without")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
+        on = build(_GRH_FOR_SK13, pin, _strings(), ilean_dir=_ILEAN_FOR_SK13, open_scale_floor=1)
+        off = build(_GRH_FOR_SK13, pin, _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        return _eq((on[0], off[0], _j(on[1], "graph/index.json").get("open_scale_floor"), "open_scale_floor" in _j(off[1], "graph/index.json"), len(on[1]), len(off[1])), ([], [], 1, False, 356, 356))
 
     @case("SK13", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
                   "depth 3, 733 links drawn (in-group uses) and 1402 uses not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
