@@ -12,7 +12,10 @@ GRAPH-CYCLE, GRAPH-EDGE, GRAPH-SYMBOL, GRAPH-COUNT, GRAPH-STRINGS) is that funct
 outline/outline.json of this checkout) names the repository's own outline, whose group ids must not be ids of this tool. --strings-overlay (default:
 site/strings-lean.json) holds keys that replace or add to the strings file for this map only; no file is edited. --strings-overlay-graph (no default; site/strings-lean-graph.json
 holds the Graph view's words) adds the words only the Graph view reads: without it the build is a Cards-only build, the file's keys are not in `strings` and spine.json has no `edge_basis`;
-a key in both overlays, or in it and the strings file, is refused `SKEL-OVERLAY-CLASH <key>`. --notes-lean-dir (no default; absent, the output is today's) reads the contributed notes
+a key in both overlays, or in it and the strings file, is refused `SKEL-OVERLAY-CLASH <key>`; a key of either overlay that the page does not read (not copied into `strings`) is refused `SKEL-OVERLAY-KEY <overlay file name> <key> is not a key the page reads`. A Graph-view build passes --strings-overlay-graph; one that passes only --strings-overlay is Cards-only.
+The Graph overlay is read by the same reader as the Cards overlay and its keys meet the same `{n}` placeholder rule at build time; the value rules (no `[proposal]`, no `[placeholder]`, no
+word `edge`) are not checked by the build: case OVL1 holds them on the checked-in file of each overlay. Every .ilean the tool loads must have `version` exactly 5 (ILEAN_VERSIONS), else
+`SKEL-ILEAN-VERSION <path under --ilean-dir> <value as JSON text, or missing>`. --notes-lean-dir (no default; absent, the output is today's) reads the contributed notes
 (readings) of a folder of `*.md` files and writes them as `readings` into the file steps they attach to and as the list `readings` of index.json: the grammar, the checks and every
 `SKEL-READING-<kind>` refusal are in docs/tools.md. Exit 0 built; 1 refused, OUT_DIR not
 written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
@@ -95,6 +98,9 @@ class SourceError(Exception):
         self.reason = reason
 
 
+class IleanVersionError(SourceError):
+    """An .ilean whose `version` is missing or not one of ILEAN_VERSIONS: `reason` is the value as JSON text, or `missing` (the caller names the file in `SKEL-ILEAN-VERSION`)."""
+
 
 class NoteError(Exception):
     """A source file whose module note cannot be taken: `SKEL-NOTE <path> <reason>`."""
@@ -108,6 +114,7 @@ SOURCE_READ_LIMIT = 1048576   # the most bytes of a source file the tool reads (
 SOURCE_PREFIX = "grh/src/"   # the path of src/ from the repository root; `source` of a note is this and the CONTENTS path and `.lean`
 _IMPORT_LINE = re.compile(r"import\s+\S.*")
 ILEAN_READ_LIMIT = 16 * 1024 * 1024   # the most bytes of an .ilean file the tool reads (16 MiB; the largest of the real source is 260 KB)
+ILEAN_VERSIONS = (5,)   # the `version` of the .ilean files the tool takes (all 803 files of the compiled index of the real source carry 5); any other value, or none, is SKEL-ILEAN-VERSION
 USES_FORMAT = 3   # the format of graph/uses.json
 CONTENTS_READ_LIMIT = 4 * 1024 * 1024   # the most bytes of CONTENTS.md the tool reads (4 MiB)
 INDEX_READ_LIMIT = 1048576   # the most bytes of INDEX.md the tool reads (1 MiB)
@@ -233,7 +240,6 @@ def _comment_end(text, start):
     return None
 
 
-
 def _module_note(raw):
     """The inner text of the FIRST `/-!` ... `-/` block of the source bytes `raw`, delimiters excluded, byte for byte (strict UTF-8, no newline change, no trimming), the
     nesting of `/-` and `-/` counted. Only blank lines and `import` lines may precede the block. Raises NoteError(reason): not-utf-8, no-note, text-before-note, unterminated."""
@@ -298,14 +304,31 @@ def _read_bounded(path, limit, guards=("lstat", "nofollow")):
         os.close(fd)
 
 
+def _check_ilean_version(obj):
+    """Raises IleanVersionError unless the object of an .ilean has a `version` that is exactly one of ILEAN_VERSIONS. `type(v) is int` and not `isinstance(v, int)`: a bool is an int to
+    isinstance (true == 1), and 5.0 == 5 in Python, so neither a bool nor a float is let through by equality; the value of a refusal is its JSON text (`true`, `5.0`, `"5"`, `null`)."""
+    if "version" not in obj:
+        raise IleanVersionError("missing")
+    v = obj["version"]
+    if type(v) is int and v in ILEAN_VERSIONS:
+        return
+    try:
+        text = json.dumps(v, separators=(",", ":"))
+    except (ValueError, RecursionError):
+        text = "unprintable"
+    raise IleanVersionError(text)
+
+
 def _ilean_uses(raw, own_module, new_modules):
     """{module: number of distinct names used} from the bytes of an .ilean: a reference `{"c": {"m", "n"}}` with at least one usage counts for the module `m` when `m` is a module
     of `new_modules` other than `own_module`; the weight of a module is the number of distinct names `n`. Raises SourceError: not-json, bad-ilean, module-mismatch,
-    unknown-reference-shape."""
+    unknown-reference-shape; IleanVersionError (a SourceError) when the object has a bad `version`, before any other fault of the file."""
     try:
         obj = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError, RecursionError):
         raise SourceError("not-json")
+    if isinstance(obj, dict):
+        _check_ilean_version(obj)
     if not (isinstance(obj, dict) and isinstance(obj.get("module"), str) and isinstance(obj.get("references"), dict)):
         raise SourceError("bad-ilean")
     if obj["module"] != own_module:
@@ -406,14 +429,6 @@ def _depths(kept):
         return None
 
 
-def _read(path, what):
-    try:
-        with open(path, "rb") as fh:
-            return fh.read().decode("utf-8")
-    except (OSError, UnicodeDecodeError) as e:
-        raise Unreadable(f"cannot read {what}: {e}")
-
-
 def _src_escapes(grh):
     """[SKEL-ESCAPE errors] for `src` and `src/New` when either is a symlink, or when its REAL path is not under the real path of `grh`: nothing is walked through a symlinked top."""
     out = []
@@ -429,7 +444,9 @@ def _src_escapes(grh):
 
 
 def _ilean_escapes(ilean_dir):
-    """[SKEL-ESCAPE errors] for every folder below `ilean_dir` that is a symlink: it is named and never walked."""
+    """[SKEL-ESCAPE errors] for every folder below `ilean_dir` that is a symlink: it is named and never walked. That covers `ilean/New`, the tree the uses links are read from (a symlinked `ilean/New`
+    is named `ilean/New` and not walked; so is any symlinked folder below it), as `_src_escapes` covers `src` and `src/New` for the source.
+    `ilean_dir` itself and the files are not looked at here: a file that is a symlink is refused by the bounded reader."""
     out = []
     for r, ds, fs in os.walk(ilean_dir):
         out += [("SKEL-ESCAPE", "ilean/" + os.path.relpath(os.path.join(r, n), ilean_dir).replace(os.sep, "/"), "symlink") for n in sorted(ds) if os.path.islink(os.path.join(r, n))]
@@ -489,12 +506,15 @@ def _index_table(lines, heading, ncells):
 
 
 def _load_json_in(root, path, limit):
-    """The parsed JSON of a file read through the contained, bounded reader; raises SourceError (the reader's reasons, `not-json`)."""
+    """The parsed JSON of an .ilean file read through the contained, bounded reader; raises SourceError (the reader's reasons, `not-json`) and IleanVersionError (an object with a bad `version`)."""
     raw = _read_in(root, path, limit)
     try:
-        return json.loads(raw.decode("utf-8"))
+        obj = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError, RecursionError):
         raise SourceError("not-json")
+    if isinstance(obj, dict):
+        _check_ilean_version(obj)
+    return obj
 
 
 def _ilean_index(ilean_dir, row_constants):
@@ -509,6 +529,9 @@ def _ilean_index(ilean_dir, row_constants):
         rel = os.path.relpath(path, ilean_dir)[:-len(".ilean")].replace(os.sep, "/")
         try:
             obj = _load_json_in(ilean_dir, path, ILEAN_READ_LIMIT)
+        except IleanVersionError as e:
+            errors.append(("SKEL-ILEAN-VERSION", rel + ".ilean", e.reason))
+            continue
         except SourceError as e:
             errors.append(("SKEL-USES", rel, e.reason))
             continue
@@ -627,6 +650,10 @@ def _spine_and_index(grh, ilean_dir, fid, rows, report):
         try:
             obj = _load_json_in(ilean_dir, os.path.join(ilean_dir, *path.split("/")) + ".ilean", ILEAN_READ_LIMIT)
             decls = obj["decls"]
+        except IleanVersionError as e:
+            if ("SKEL-ILEAN-VERSION", path + ".ilean", e.reason) not in errors:   # two rows may name one file: it is reported once
+                errors.append(("SKEL-ILEAN-VERSION", path + ".ilean", e.reason))
+            continue
         except (SourceError, KeyError, TypeError):
             errors.append(("SKEL-USES", path, "bad-ilean"))
             continue
@@ -810,12 +837,16 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
     module = {p: p.replace("/", ".") for p in listed}
     file_of = {m: p for p, m in module.items()}
     weight = {}   # file path -> {used file path: weight}
+    bad_versions = []
     for p in listed:
         try:
             raw = _read_in(ilean_dir, os.path.join(ilean_dir, *p.split("/")) + ".ilean", ILEAN_READ_LIMIT)
             weight[p] = {file_of[m]: w for m, w in _ilean_uses(raw, module[p], set(file_of)).items()}
+        except IleanVersionError as e:
+            bad_versions.append(("SKEL-ILEAN-VERSION", p + ".ilean", e.reason))
         except SourceError as e:
             errors.append(("SKEL-USES", p, "missing-ilean" if e.reason == "missing" else e.reason))
+    errors += sorted(bad_versions)   # the files with a bad version, sorted by path, after the other faults of the stage
     for r, _, fs in os.walk(os.path.join(ilean_dir, "New")):
         for n in fs:
             if n.endswith(".ilean"):
@@ -1146,7 +1177,12 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         errors, quote = _readme_quote(grh)
         if errors:
             return errors, {}, rows, rep
-        strings = dict(strings, key_scope_text=value.replace("{readme_quote}", quote))
+        filled = value.replace("{readme_quote}", quote)
+        others = {n for names in bs.PLACEHOLDERS.values() for n in names} - {"readme_quote"}   # every name the format declares for another key
+        found = sorted(set(bs._PLACEHOLDER.findall(filled)) & others)
+        if found:   # the written value holds none: the quote (or the template) must not bring a placeholder of another key into it
+            return [("SKEL-README", "key_scope_text", "placeholder " + n) for n in found], {}, rows, rep
+        strings = dict(strings, key_scope_text=filled)
     step_extra, index_rows = rep["step_extra"], []
     if notes_lean_dir is not None:
         errors, step_readings, index_rows = _readings(notes_lean_dir, pin, rows, ilean_dir)
@@ -1228,6 +1264,10 @@ def _run(opts):
     clash = sorted(set(graph) & set(strings))   # `strings` holds the strings file and the Cards overlay here: a key lives in one class
     if clash:
         return refuse([("SKEL-OVERLAY-CLASH", k, "") for k in clash])
+    page_keys = set(bs._graph_strings_keys(SYMBOLS)) | set(bs.GRAPH_OPTIONAL_KEYS)   # what _graph_files copies into index.json `strings`: anything else of an overlay would be dropped without a word
+    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph)) for k in obj if k not in page_keys)
+    if unknown:
+        return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
     strings.update(graph)
     if os.path.isdir(opts["out"]) and os.listdir(opts["out"]):
         return refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files")])
@@ -1964,14 +2004,14 @@ def _selftest_cases():
                    ([0, 0, 0], True, [f"lean-s-{n}" for n in "abcdef"], [f"lean-s-{n}" for n in "abcdef"]))
 
     @case("SK21", "the strings overlay (`--strings-overlay FILE`): its keys replace or add to the strings file for this map only; with the overlay giving the three kind "
-                  "words and a new heading the index holds exactly the 23 keys with those words (an extra overlay key is not in it); the strings file is not edited; an "
+                  "words and a new heading the index holds exactly the 23 keys with those words (an overlay key the page does not read is refused, case OVK1); the strings file is not edited; an "
                   "overlay without one kind word is refused GRAPH-STRINGS (exit 1); a file that is not there, not JSON or not an object is exit 2; the overlay file of this "
                   "checkout (site/strings-lean.json) holds exactly nineteen words (the five note words final, the two lines words final; `spine_lines_text` is in the Graph overlay, case GO2): the two lines words (placeholders, marked), the four of COUNT_WORDS (final), the seven of OVERLAY_WORDS (the kinds heading, the three kind words and the three card words, "
                   "placeholders) and the three of OPTIONAL_WORDS (final)")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
         full = {"key_kinds_heading": "Replaced heading", "symbol_kind_part": "P words", "symbol_kind_group": "G words", "symbol_kind_file": "F words",
-                "card_kind_part": "P", "card_kind_group": "G", "card_kind_file": "F", "extra_key": "x", **COUNT_WORDS}
+                "card_kind_part": "P", "card_kind_group": "G", "card_kind_file": "F", **COUNT_WORDS}   # no extra key: an overlay key the page does not read is refused, case OVK1
         with _tmp() as d:
             g = _tree(d, body, {"New/S/A": _lean()})
             sp = _strings_file(d, _strings(extra=False))
@@ -3055,8 +3095,8 @@ def _selftest_cases():
                    ((1, ["SKEL-OVERLAY-CLASH spine_lines_text"], False), (1, ["SKEL-OVERLAY-CLASH key_lines_text", "SKEL-OVERLAY-CLASH spine_lines_text"], False),
                     (1, ["SKEL-OVERLAY-CLASH spine_lines_text"], False), 0, True))
 
-    @case("GO4", "the Graph overlay is read as the Cards overlay is: a file that is not there, not JSON or not an object is exit 2 and nothing written; a key the page does not read in it is not in `strings`, "
-                 "as for the Cards overlay (exit 0, nothing refused); the value rules (no value starting `[proposal]` or `[placeholder]`, the word `edge` in none, `{n}` only in the count words) "
+    @case("GO4", "the Graph overlay is read as the Cards overlay is: a file that is not there, not JSON or not an object is exit 2 and nothing written; a key the page does not read in it is refused by name, "
+                 "as for the Cards overlay (`SKEL-OVERLAY-KEY <file> <key> is not a key the page reads`, exit 1, nothing written; case OVK1); the value rules (no value starting `[proposal]` or `[placeholder]`, the word `edge` in none, `{n}` only in the count words) "
                  "are held on the real Graph file by OVL1")
     def _():
         with _tmp() as d:
@@ -3068,9 +3108,9 @@ def _selftest_cases():
             arr = go_run(d, g, sp, ol, "o3", overlay=cards, graph=go_file(d, "arr.json", "[1]"))
             extra = go_run(d, g, sp, ol, "o4", overlay=cards, graph=go_file(d, "ex.json", dict(GO_GRAPH, bogus="x")))
             extra_c = go_run(d, g, sp, ol, "o5", overlay=go_file(d, "cx.json", dict(GO_CARDS, bogus="x")), graph=go_file(d, "g5.json", GO_GRAPH))
-            ixs = [_j(_tree_files(os.path.join(d, n)), "graph/index.json")["strings"] for n in ("o4", "o5")]
-        return _eq((ok[0], (gone[0], gone[3]), (bad[0], bad[3]), (arr[0], arr[3]), (extra[0], extra_c[0]), [("bogus" in s, "spine_lines_text" in s) for s in ixs]),
-                   (0, (2, False), (2, False), (2, False), (0, 0), [(False, True), (False, True)]))
+        return _eq((ok[0], (gone[0], gone[3]), (bad[0], bad[3]), (arr[0], arr[3]), (extra[0], extra[1], extra[3]), (extra_c[0], extra_c[1], extra_c[3])),
+                   (0, (2, False), (2, False), (2, False), (1, ["SKEL-OVERLAY-KEY ex.json bogus is not a key the page reads"], False),
+                    (1, ["SKEL-OVERLAY-KEY cx.json bogus is not a key the page reads"], False)))
 
     @case("GO5", "the option is a usage error as every other option: twice, or last without a value, is exit 2 with the usage text on stderr and nothing written; once with a value it builds (exit 0); "
                  "the usage text (USAGE and the tool's docstring) names `--strings-overlay-graph`")
@@ -3285,6 +3325,7 @@ def _selftest_cases():
             out.append((errs, ix["key_scope_text"]))
         with _tmp() as d:
             g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            os.remove(os.path.join(g, "README.md"))   # no key and no README: the build must not look for one
             errs, files, rows, rep = bld(g, PIN, _strings())
         return _eq((out, errs, "key_scope_text" in _j(files, "graph/index.json")["strings"]),
                    ([([], 'Scope: "`a` and b", and no more.'), ([], 'Scope: "another line", and no more.')], [], False))
@@ -3736,6 +3777,225 @@ def _selftest_cases():
                      "lean-reduction-main-inequality": ["lean-note-04", "lean-note-11"], "lean-spanning-main-term-bad-types": ["lean-note-02"], "lean-reduction-short-and-enough": ["lean-note-05"],
                      "lean-determinant-twist-long-forms": ["lean-note-06"], "lean-reduction-prime-sums": ["lean-note-08"]},
                     11, True, True, 11, True, True, True, []))
+    @case("RB1", "structure of the tool above the self-test section (read with `ast` from this file's own text, everything before the self-test header): exactly ONE call of `os.open` and it is in `_read_bounded` "
+                 "(no allow-list of other sites), no call of the builtin `open` (the tool's own writes go through build_site's `_publish`, which is another module; the writes of this file's fixtures are "
+                 "below the header and are not counted), and no other way to open a file for reading (`io.open`, `Path.open`, `read_text`, `read_bytes`, `os.fdopen`)")
+    def _():
+        import ast
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            text = f.read()
+        above = text[:text.index("# ---------------------------------------------------------------- self-test")]
+        sites = {"os.open": [], "open": [], "other": []}
+
+        def walk(node, fn):
+            for child in ast.iter_child_nodes(node):
+                name = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else fn
+                if isinstance(child, ast.Call):
+                    f = child.func
+                    if isinstance(f, ast.Name) and f.id == "open":
+                        sites["open"].append(name)
+                    elif isinstance(f, ast.Attribute) and f.attr == "open" and isinstance(f.value, ast.Name) and f.value.id == "os":
+                        sites["os.open"].append(name)
+                    elif isinstance(f, ast.Attribute) and f.attr in ("open", "read_text", "read_bytes", "fdopen"):
+                        sites["other"].append(name)
+                walk(child, name)
+        walk(ast.parse(above), None)
+        return _eq(sites, {"os.open": ["_read_bounded"], "open": [], "other": []})
+
+    ILV_BODY = "### S part\n\n**G**\n\n- `New/S/B` (1): b\n- `New/S/A` (1): a\n"   # B is listed before A: sorted order is not the order of CONTENTS
+    MISSING = object()   # a fixture version: the key is removed
+
+    def ilv_ileans(**versions):
+        """The .ilean objects of ILV_BODY (key: path as in CONTENTS) with the `version` of each given (MISSING removes the key)."""
+        out = {}
+        for n in "AB":
+            obj = _ilean("New/S/" + n, {})
+            if n in versions:
+                if versions[n] is MISSING:
+                    del obj["version"]
+                else:
+                    obj["version"] = versions[n]
+            out["New/S/" + n] = obj
+        return out
+
+    def ilv_build(**versions):
+        with _tmp() as d:
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ilv_ileans(**versions))
+            r = bld(g, PIN, _strings())
+        return r[0], r[1] == {}
+
+    @case("ILV1", "an .ilean whose `version` is missing or is not exactly the integer 5 (`ILEAN_VERSIONS`) is refused `SKEL-ILEAN-VERSION <path under --ilean-dir> <the value as JSON text, or `missing`>`, nothing written: "
+                  "4, 6, the string \"5\" (`\"5\"`), true (`true`), null (`null`), the float 5.0 (`5.0`; 5.0 == 5 in Python, so equality alone would take it) and a missing key (`missing`); a bool is told from an "
+                  "int by `type(v) is int` (a bool is an int to isinstance); version 5 builds")
+    def _():
+        out = {}
+        for label, v in (("4", 4), ("6", 6), ("str", "5"), ("true", True), ("null", None), ("5.0", 5.0), ("missing", MISSING), ("5", 5)):
+            out[label] = ilv_build(A=v)
+        return _eq(out, {"4": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")], True), "6": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "6")], True),
+                         "str": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", '"5"')], True), "true": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "true")], True),
+                         "null": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "null")], True), "5.0": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "5.0")], True),
+                         "missing": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "missing")], True), "5": ([], False)})
+
+    @case("ILV2", "every file with a bad version is reported, sorted by path (not in the order of CONTENTS: B is listed first and A is reported first); a bad version is named before any other fault of the same "
+                  "file (a version-4 file whose module is also wrong is `SKEL-ILEAN-VERSION`, not `module-mismatch`) and is reported together with the other faults of the same stage (a missing .ilean); "
+                  "on the command line: exit 1, the lines on stdout, OUT_DIR not written")
+    def _():
+        two = ilv_build(A=4, B="x")
+        with _tmp() as d:
+            ile = ilv_ileans(A=4)
+            ile["New/S/A"]["module"] = "New.S.Other"
+            ile["New/S/B"] = None
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ile)
+            both = bld(g, PIN, _strings())[0]
+        with _tmp() as d:
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ilv_ileans(A=4, B=MISSING))
+            sp, ol = _strings_file(d), _outline_file(d)
+            rc, out, err = _cli(_args(g, os.path.join(d, "out"), sp, ol))
+            written = os.path.exists(os.path.join(d, "out"))
+        return _eq((two, both, rc, out.splitlines(), "REFUSED" in err, written),
+                   (([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4"), ("SKEL-ILEAN-VERSION", "New/S/B.ilean", '"x"')], True),
+                    [("SKEL-USES", "New/S/B", "missing-ilean"), ("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")], 1,
+                    ["SKEL-ILEAN-VERSION New/S/A.ilean 4", "SKEL-ILEAN-VERSION New/S/B.ilean missing"], True, False))
+
+    @case("ILV3", "the other two places an .ilean is loaded check the version too: the index of declared names (`_ilean_index`, which reads every .ilean under --ilean-dir, a file of Lib as well) refuses a "
+                  "Lib file of version 6 or with no version, all such files sorted; the spine's file load (`_spine_and_index`, reached on its own here because the uses stage refuses a bad file of New before it) "
+                  "refuses the file a spine row names; a Lib file of version 5 builds")
+    def _():
+        with _tmp() as d:
+            ile = ilv_ileans()
+            ile["Lib/Z/Y"] = dict(_ilean("Lib/Z/Y", {}), version=6)
+            ile["Lib/X/W"] = _ilean("Lib/X/W", {})
+            del ile["Lib/X/W"]["version"]
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ile)
+            lib = bld(g, PIN, _strings())[:2]
+        with _tmp() as d:
+            ile = ilv_ileans()
+            ile["Lib/Z/Y"] = _ilean("Lib/Z/Y", {})
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ile)
+            fine = bld(g, PIN, _strings())[0]
+        with _tmp() as d:
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ilv_ileans(A=4), index=_index([_srow("`x`", "`New/S/A`", "c")]))
+            spine = _spine_and_index(g, _ildir(g), {"New/S/A": "lean-s-a"}, [], {})
+        return _eq((lib, fine, spine),
+                   (([("SKEL-ILEAN-VERSION", "Lib/X/W.ilean", "missing"), ("SKEL-ILEAN-VERSION", "Lib/Z/Y.ilean", "6")], {}), [], [("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")]))
+
+    @case("ILV4", "a bool is not an int for the version check, and a float is not an int: with ILEAN_VERSIONS set to (1,) for the case (the real tuple is (5,), and true == 1 != 5, so on it a "
+                  "bool taken as an int would still be refused and the first assertion of ILV1 could not tell), `true` is refused `true`, `1.0` is refused `1.0`, and `1` builds; the tuple is restored")
+    def _():
+        global ILEAN_VERSIONS
+        keep, out = ILEAN_VERSIONS, {}
+        ILEAN_VERSIONS = (1,)
+        try:
+            for label, v in (("true", True), ("1.0", 1.0), ("1", 1)):
+                out[label] = ilv_build(A=v, B=v)
+        finally:
+            ILEAN_VERSIONS = keep
+        return _eq((out, ILEAN_VERSIONS),
+                   ({"true": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "true"), ("SKEL-ILEAN-VERSION", "New/S/B.ilean", "true")], True),
+                     "1.0": ([("SKEL-ILEAN-VERSION", "New/S/A.ilean", "1.0"), ("SKEL-ILEAN-VERSION", "New/S/B.ilean", "1.0")], True), "1": ([], False)}, (5,)))
+
+    @case("ILVR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): all 803 .ilean files under --ilean-dir carry `version` 5 (read here, independently of the builder), so the "
+                  "real build is not refused by the version check, and `ILEAN_VERSIONS` is (5,)")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        seen = {}
+        for r, _d, fs in os.walk(_ILEAN_FOR_SK13):
+            for n in fs:
+                if n.endswith(".ilean"):
+                    with open(os.path.join(r, n), encoding="utf-8") as f:
+                        v = json.load(f).get("version", "missing")
+                    seen[repr(v)] = seen.get(repr(v), 0) + 1
+        return _eq((seen, ILEAN_VERSIONS), ({"5": 803}, (5,)))
+
+    @case("KSP", "after `{readme_quote}` is filled, a written key_scope_text that carries a placeholder name the format declares for another key (build_site's PLACEHOLDERS, the union of the declared names "
+                 "without readme_quote) is refused `SKEL-README key_scope_text placeholder <name>`, nothing written: a README line 15 with `{source}`, with `{n}`, and with both (one line each, sorted); a "
+                 "template of the wording seat that itself holds one is refused the same; a line 15 with no placeholder builds")
+    def _():
+        out = []
+        for line15 in ("see {source}:", "{n} files:", "{source} and {n}:", "plain words:"):
+            with _tmp() as d:
+                r = bld(readme_fixture(d, line15), PIN, dict(_strings(), key_scope_text=KS_T))
+            out.append((r[0], r[1] == {}))
+        with _tmp() as d:
+            r = bld(readme_fixture(d, "x:"), PIN, dict(_strings(), key_scope_text='Scope: "{readme_quote}" in {commit}'))
+        out.append((r[0], r[1] == {}))
+        return _eq(out, [([("SKEL-README", "key_scope_text", "placeholder source")], True), ([("SKEL-README", "key_scope_text", "placeholder n")], True),
+                         ([("SKEL-README", "key_scope_text", "placeholder n"), ("SKEL-README", "key_scope_text", "placeholder source")], True), ([], False),
+                         ([("SKEL-README", "key_scope_text", "placeholder commit")], True)])
+
+    @case("KSB", "the README read of key_scope_text is bounded and contained, each reason by its name: a README of exactly the limit (1 MiB) with a good line 15 builds, one byte over is `too-large`; bytes that are "
+                 "not UTF-8 are `not-utf-8`; a directory named README.md is `not-a-regular-file`; a FIFO named README.md is `not-a-regular-file` and the build does NOT block (the command line is run as a "
+                 "child with a timeout; a hang is reported as such); a README that is a symlink to a file outside grh is `symlink` (also KS2). `outside` is not tested: a README that is not a symlink "
+                 "cannot have a real path outside grh, so the reason cannot be reached through the README")
+    def _():
+        out = {}
+        head = "".join("l%d\n" % i for i in range(2, 15))   # lines 2 to 14; line 1 is the filler that brings the file to the limit
+        fill = SOURCE_READ_LIMIT - len((head + "ok:\n").encode("utf-8")) - 1
+        at_limit = ("z" * fill + "\n" + head + "ok:\n").encode("utf-8")
+        assert len(at_limit) == SOURCE_READ_LIMIT
+        for label, data in (("at-limit", at_limit), ("over", at_limit + b"z"), ("not-utf-8", (head + "\xff\xfe:\n").encode("latin-1"))):
+            with _tmp() as d:
+                g = readme_fixture(d, "x:")
+                with open(os.path.join(g, "README.md"), "wb") as f:
+                    f.write(data)
+                r = bld(g, PIN, dict(_strings(), key_scope_text=KS_T))
+            out[label] = (r[0], r[1] == {})
+        with _tmp() as d:
+            g = readme_fixture(d, "x:")
+            os.remove(os.path.join(g, "README.md"))
+            os.mkdir(os.path.join(g, "README.md"))
+            r = bld(g, PIN, dict(_strings(), key_scope_text=KS_T))
+        out["directory"] = (r[0], r[1] == {})
+        with _tmp() as d:
+            g = readme_fixture(d, "x:")
+            os.remove(os.path.join(g, "README.md"))
+            os.mkfifo(os.path.join(g, "README.md"))
+            sp, ol = _strings_file(d, dict(_strings(), key_scope_text=KS_T)), _outline_file(d)
+            empty = os.path.join(d, "empty.json")
+            with open(empty, "w") as f:
+                f.write("{}")
+            try:
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, os.path.join(d, "out"), sp, ol, overlay=empty), capture_output=True, text=True, timeout=30)
+                out["fifo"] = (r.returncode, r.stdout.splitlines(), os.path.exists(os.path.join(d, "out")))
+            except subprocess.TimeoutExpired:
+                out["fifo"] = "HANG"
+        with _tmp() as d:
+            g = readme_fixture(d, "x:")
+            os.rename(os.path.join(g, "README.md"), os.path.join(d, "real.md"))
+            os.symlink(os.path.join(d, "real.md"), os.path.join(g, "README.md"))
+            r = bld(g, PIN, dict(_strings(), key_scope_text=KS_T))
+        out["symlink"] = (r[0], r[1] == {})
+        return _eq(out, {"at-limit": ([], False), "over": ([("SKEL-README", "README.md", "too-large")], True), "not-utf-8": ([("SKEL-README", "README.md", "not-utf-8")], True),
+                         "directory": ([("SKEL-README", "README.md", "not-a-regular-file")], True), "fifo": (1, ["SKEL-README README.md not-a-regular-file"], False),
+                         "symlink": ([("SKEL-README", "README.md", "symlink")], True)})
+
+    @case("ILV5", "the spine's file load reports a file once when two spine rows name it: two rows naming New/S/A, whose version is 4, give ONE `SKEL-ILEAN-VERSION New/S/A.ilean 4` (the file is "
+                  "reported, not the row)")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ilv_ileans(A=4),
+                      index=_index([_srow("`x`", "`New/S/A`", "c"), _srow("`y`", "`New/S/A`", "d")]))
+            spine = _spine_and_index(g, _ildir(g), {"New/S/A": "lean-s-a"}, [], {})
+        return _eq(spine, [("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")])
+
+    @case("OVK1", "a key of --strings-overlay or --strings-overlay-graph that the builder does not copy into index.json `strings` (the page's keys and GRAPH_OPTIONAL_KEYS) is refused by name "
+                  "`SKEL-OVERLAY-KEY <overlay file basename> <key> is not a key the page reads`, all such keys reported sorted (by file name, then key), exit 1, OUT_DIR not written: an unknown key in "
+                  "the Cards overlay, one in the Graph overlay, two in each (sorted); a key of the optional list and a required key still build; the two overlay files of this checkout build")
+    def _():
+        with _tmp() as d:
+            g, sp, ol = go_setup(d)
+            cards = go_file(d, "c.json", GO_CARDS)
+            graph = go_file(d, "g.json", GO_GRAPH)
+            one_c = go_run(d, g, sp, ol, "o1", overlay=go_file(d, "cx.json", dict(GO_CARDS, bogus="x")), graph=graph)
+            one_g = go_run(d, g, sp, ol, "o2", overlay=cards, graph=go_file(d, "gx.json", dict(GO_GRAPH, bogus="x")))
+            many = go_run(d, g, sp, ol, "o3", overlay=go_file(d, "cm.json", dict(GO_CARDS, zeta="x", alpha="x")), graph=go_file(d, "gm.json", dict(GO_GRAPH, mid="x", beta="x")))
+            known = go_run(d, g, sp, ol, "o4", overlay=cards, graph=graph)
+            real = go_run(d, g, sp, ol, "o5", overlay=os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), graph=os.path.join(_HERE, os.pardir, "site", "strings-lean-graph.json"))
+        line = lambda f, k: "SKEL-OVERLAY-KEY %s %s is not a key the page reads" % (f, k)
+        return _eq(((one_c[0], one_c[1], one_c[3]), (one_g[0], one_g[1], one_g[3]), (many[0], many[1], many[3]), known[0], real[0]),
+                   ((1, [line("cx.json", "bogus")], False), (1, [line("gx.json", "bogus")], False),
+                    (1, [line("cm.json", "alpha"), line("cm.json", "zeta"), line("gm.json", "beta"), line("gm.json", "mid")], False), 0, 0))
 
     return cases
 

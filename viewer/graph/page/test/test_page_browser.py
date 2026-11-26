@@ -5,6 +5,9 @@ locally with the graph page's Content-Security-Policy header (spec R8):
   font-src 'self'; form-action 'none'
 
 Run:  ~/.engram/venv/bin/python3 viewer/graph/page/test/test_page_browser.py [--engine double|real|both] [--only TEXT]
+Browser: by default the bundled headless shell under ~/.cache/ms-playwright (as before). If the environment variable
+RH_PLAYWRIGHT_CHANNEL is set to a Playwright channel name (for example `chrome`), the browser of that channel installed on the
+machine is launched instead and the headless shell is not looked for. `--check-browser-choice` runs the choice's own five checks.
 
 Every case runs on the ENGINE TEST DOUBLE (test/double_engine.js, written to INTERFACE.md); cases marked REAL also run on
 the real engine (viewer/graph/engine/), which is where pinch, camera and layout are decided. Exit 0 only if every
@@ -20,6 +23,30 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
        "img-src 'self'; font-src 'self'; form-action 'none'")
 SHELL = glob.glob(os.path.expanduser("~/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"))
+
+
+def browser_launch(env, shell):
+    """The keyword arguments of `chromium.launch` for this machine, or None when there is no browser to launch: with RH_PLAYWRIGHT_CHANNEL set
+    (not empty) the named channel, otherwise the first bundled headless shell exactly as before, otherwise None."""
+    channel = env.get("RH_PLAYWRIGHT_CHANNEL", "")
+    if channel:
+        return {"channel": channel, "args": ["--no-sandbox"]}
+    if shell:
+        return {"executable_path": shell[0], "args": ["--no-sandbox"]}
+    return None
+
+
+def check_browser_choice():
+    shell = ["/x/first-headless-shell", "/x/second-headless-shell"]
+    first = {"executable_path": "/x/first-headless-shell", "args": ["--no-sandbox"]}
+    chrome = {"channel": "chrome", "args": ["--no-sandbox"]}
+    got = [browser_launch({}, shell), browser_launch({}, []), browser_launch({"RH_PLAYWRIGHT_CHANNEL": ""}, shell), browser_launch({"RH_PLAYWRIGHT_CHANNEL": "chrome"}, []),
+           browser_launch({"RH_PLAYWRIGHT_CHANNEL": "chrome"}, shell)]
+    want = [first, None, first, chrome, chrome]
+    print("browser choice: " + ("PASS" if got == want else "FAIL " + repr(got)))
+    return 0 if got == want else 1
+
+
 HOSTILE = ["<img src=x onerror=alert(1)>", "</script><script>alert(1)</script>", "javascript:alert(1)", '" onmouseover="x',
            "a b", "x" * 10000]
 LONG_CLAIMS = {"a1", "a3", "a1-a", "b1", "c1", "a1-a-1"}
@@ -2046,11 +2073,14 @@ def main():
     if "--engine" in argv:
         e = argv[argv.index("--engine") + 1]
         engines = ["double", "real"] if e == "both" else [e]
-    if not SHELL:
+    if "--check-browser-choice" in argv:
+        return check_browser_choice()
+    launch = browser_launch(os.environ, SHELL)
+    if launch is None:
         print("no headless shell under ~/.cache/ms-playwright")
         return 2
     with sync_playwright() as p:
-        br = p.chromium.launch(executable_path=SHELL[0], args=["--no-sandbox"])
+        br = p.chromium.launch(**launch)
         for eng in engines:
             root = tempfile.mkdtemp(prefix="pg-" + eng + "-")
             assemble.assemble(root, eng)
