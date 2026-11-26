@@ -280,12 +280,21 @@ def _ref_reason(ref, names, base=""):
 
 def _credits_link_ok(ref, pin):
     """A27: True when `ref` (as shown: control whitespace dropped) is exactly `CREDITS_REPO` + `tree/<pin>`, or begins with `CREDITS_REPO` + `tree/<pin>/` or `blob/<pin>/`. An exact string compare, no
-    URL parsing: `<pin>x`, `<pin>?x`, `<pin>#x`, another commit, another letter case and a missing commit are all not it."""
+    URL parsing: `<pin>x`, `<pin>?x`, `<pin>#x`, another commit, another letter case and a missing commit are all not it. A27b: a tail with a `.` or `..` segment, an empty segment, a backslash, a control
+    character or an encoded dot, slash or backslash is not it either (the path would leave the pinned repository)."""
     for kind in ("tree/", "blob/"):
         head = CREDITS_REPO + kind
         if ref.startswith(head):
-            commit, sep, _rest = ref[len(head):].partition("/")
-            return commit == pin and (sep == "/" or kind == "tree/")
+            commit, sep, rest = ref[len(head):].partition("/")
+            if not (commit == pin and (sep == "/" or kind == "tree/")):
+                return False
+            if not sep:
+                return True
+            # A27b: the tail may not climb out of the pinned repository: no backslash, encoded dot, slash or backslash, control character, `.`/`..` or empty segment in the path (before `?`/`#`)
+            if "\\" in rest or any(ord(c) < 32 or ord(c) == 127 for c in rest) or any(e in rest.lower() for e in ("%2e", "%2f", "%5c")):
+                return False
+            segs = rest.split("?", 1)[0].split("#", 1)[0].split("/")
+            return not any(g in (".", "..") for g in segs) and "" not in segs[:-1]
     return False
 
 
