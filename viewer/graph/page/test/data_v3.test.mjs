@@ -210,11 +210,11 @@ test("D4 the rows are carried, never drawn: the node handed to the engine has no
 
 /* ---------------------------------------------------------------------------------------------- what stays refused */
 
-test("not in this PR: note on a step stays refused (extra-key); spine_lines_text stays refused (extra-string), with or without edge_basis", () => {
+test("a malformed note on a step is refused (bad-note); spine_lines_text stays refused (extra-string), with or without edge_basis", () => {
   const v = validateIndex(skIndex());
   const s = skStep("sk-file-1");
   s.note = "a note";
-  refuses(() => validateStep(s, v), "extra-key");
+  refuses(() => validateStep(s, v), "bad-note");
   const b = skIndex();
   b.strings.spine_lines_text = "A line means the upper result rests on the lower one.";
   refuses(() => validateIndex(b), "extra-string", "spine_lines_text");

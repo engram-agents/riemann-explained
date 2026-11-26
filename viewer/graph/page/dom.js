@@ -1,12 +1,13 @@
 /* The page's ONE element creator (R1). Every page module builds elements through el(); text goes in only as
    text nodes; a tag or attribute outside the tables below THROWS. Nothing here parses markup. */
 
-/* The tag table. No svg, path or g: links are the engine's div strokes. */
-export const TAGS = Object.freeze(["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code"]);
+/* The tag table. No svg, path or g: links are the engine's div strokes. h3 h4 h5 pre table thead tbody tr th td are the ones the repository's
+   note is built from (note.js); there is no other element table on the page, and no a, img, em or strong in it. */
+export const TAGS = Object.freeze(["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code", "h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"]);
 
-/* Attributes allowed on every tag, and the one extra a button may carry. aria-* is matched by pattern below. */
+/* Attributes allowed on every tag, and the one extra a button may carry and the one extra an ol may carry (`start`, checked below). aria-* is matched by pattern below. */
 const COMMON = new Set(["class", "data-id", "role", "tabindex", "hidden"]);
-const PER_TAG = { button: new Set(["type"]) };
+const PER_TAG = { button: new Set(["type"]), ol: new Set(["start"]) };
 const ARIA = /^aria-[a-z]+$/;
 const CLASS_TOKEN = /^[a-z][a-z0-9_-]*$/;
 
@@ -37,6 +38,8 @@ function checkAttr(tag, name, value) {
     if (!isId(value)) throw new TypeError("data-id is not a valid id");
   } else if (name === "type") {
     if (value !== "button") throw new TypeError("a button's type is only button");
+  } else if (name === "start") {
+    if (!/^[0-9]{1,9}$/.test(value)) throw new TypeError("start is a decimal integer of 1 to 9 digits");
   }
 }
 
