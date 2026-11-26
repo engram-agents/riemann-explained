@@ -46,7 +46,6 @@ import hashlib
 import importlib.util
 import io
 import json
-import math
 import os
 import re
 import shutil
@@ -877,31 +876,6 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
     return [], rows, report
 
 
-def _scale_floor_error(value):
-    """[(GRAPH-SCALE-FLOOR, <value>, "")] unless `value` is a positive finite number (an int or a float; a bool is neither)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return [("GRAPH-SCALE-FLOOR", str(value), "")]
-    try:
-        finite = math.isfinite(value)   # an integer too large for a float is no finite number the page can use: OverflowError here
-    except OverflowError:
-        finite = False
-    if not finite or value <= 0:
-        return [("GRAPH-SCALE-FLOOR", str(value), "")]
-    return []
-
-
-def _scale_from_text(text):
-    """The number a command-line text stands for, as written: an integer text stays an int, a decimal or exponent text a float; any other text is returned as it is (and refused)."""
-    if re.fullmatch(r"[0-9]+", text):
-        try:
-            return int(text)
-        except ValueError:   # more digits than Python's integer parser takes (4300): the text is returned as it is, and refused
-            return text
-    if re.fullmatch(r"(?:[0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?", text):
-        return float(text)
-    return text
-
-
 def _readme_quote(grh):
     """([(SKEL-README, what, reason)], quote): the quote of the repository's own words for key_scope_text: line 15 of grh/README.md minus its closing colon, read through the bounded,
     contained reader. Refused: the README missing, a symlink, unreadable, too large, not UTF-8, with no line 15, or a line 15 that does not end with a colon."""
@@ -928,7 +902,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
     if open_scale_floor is not None:
-        errors = _scale_floor_error(open_scale_floor)
+        errors = bs._scale_floor_error(open_scale_floor)
         if errors:
             return errors, {}, [], {}
     errors, rows, rep = build_rows(grh, ilean_dir, source_prefix)
@@ -1027,7 +1001,7 @@ def _run(opts):
     if problems:
         return refuse(problems)
     errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
-                                       _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None)
+                                       bs._scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None)
     if errors:
         return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
     try:
@@ -3211,6 +3185,34 @@ def _selftest_cases():
         ib.pop("open_scale_floor")
         return _eq((sorted(a[1]) == sorted(b[1]), all(a[1][k] == b[1][k] for k in a[1] if k != "graph/index.json"), ia == ib, runs[0][0], runs[1][0], runs[0][1] == runs[1][1]),
                    (True, True, True, 0, 0, True))
+
+    @case("SCS", "the check of the floor has ONE implementation, the page's (build_site.py): this file defines neither `_scale_floor_error` nor `_scale_from_text` (read from its own syntax tree), has no "
+                 "name of either, and calls the page's by lookup: with both of the page's replaced by ones that accept everything, `--open-scale-floor 0` builds (floor 0 written); with the page's own, "
+                 "the same texts are refused `GRAPH-SCALE-FLOOR <text>` on this tool's command line exactly as the page's check names them")
+    def _():
+        import ast
+        names = ("_scale_floor_error", "_scale_from_text")
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        defined = sorted({n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.name in names}
+                         | {t.id for n in ast.walk(tree) if isinstance(n, (ast.Assign, ast.AnnAssign)) for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+                            if isinstance(t, ast.Name) and t.id in names})
+        texts = ("0", "-0", "0.0", "-1", "nan", "inf", "-inf", "1e400", "abc", "true", "", "0x1", " 1", "1 ", "1" * 400, "1" * 5000)
+        real = {n: getattr(bs, n) for n in names}
+        with _tmp() as d:
+            g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            sp, ol = _strings_file(d), _outline_file(d)
+            theirs = [bs._scale_floor_error(bs._scale_from_text(t)) != [] for t in texts]
+            ours = [_cli(_args(g, os.path.join(d, f"o{i}"), sp, ol) + ["--open-scale-floor", t])[:2] for i, t in enumerate(texts)]
+            try:
+                bs._scale_floor_error, bs._scale_from_text = (lambda v: []), (lambda t: 0)
+                lax = _cli(_args(g, os.path.join(d, "lax"), sp, ol) + ["--open-scale-floor", "0"])[0]
+                written = re.findall(r'"open_scale_floor": ([^,\n]*)', _tree_files(os.path.join(d, "lax"))["graph/index.json"].decode("utf-8")) if lax == 0 else None
+            finally:
+                for n in names:
+                    setattr(bs, n, real[n])
+        return _eq((defined, [n in globals() for n in names], all(theirs), ours, lax, written),
+                   ([], [False, False], True, [(1, "GRAPH-SCALE-FLOOR " + t + "\n") for t in texts], 0, ["0"]))
 
     @case("SCR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): the index has `open_scale_floor` 1 when the option is given, and none without")
     def _():
