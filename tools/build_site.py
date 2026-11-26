@@ -13241,6 +13241,22 @@ def _selftest_cases():
                    (["commits", "counts", "files", "release_archive_sha", "release_id"], None, True, ["blocks", "editions", "groups", "note_editions", "notes"],
                     "ab" * 32, ["commits", "counts", "files", "release_archive_sha", "release_id"]))
 
+    @case("GH6", "the hooks: the value of `data-page-feedback` on the About section is exactly `off` (GRAPH_PAGE_ATTR_VALUES, a declared map beside GRAPH_PAGE_EXTRA: {(element, name): the values the page "
+                 "reads}); `off` is accepted and written as data-page-feedback=\"off\"; `on`, the empty string, `off ` (a trailing space), `OFF`, `https://evil.example/x`, `//evil.example/x`, "
+                 "`javascript:alert(1)` and a 10000-character string are each refused `GRAPH-PAGE section attribute data-page-feedback has a value the page does not read`, no page, and the "
+                 "value is not echoed in the refusal; the raw value is compared (before the escaping: a value with `&` or `\"` is refused too); the map's keys are all (element, name) pairs "
+                 "the graph page's allow-list permits, so a name the allow-list does not permit cannot be given a value list; GRAPH_PAGE_EXTRA stays names only (tuples of str)")
+    def _():
+        bad = ("on", "", "off ", "OFF", "https://evil.example/x", "//evil.example/x", "javascript:alert(1)", "x" * 10000, "o&ff", 'off"')
+        got = [gh_page(GA_SHELL, section_attrs=(("data-page-feedback", v),)) for v in bad]
+        want = ([("GRAPH-PAGE", "section attribute data-page-feedback", "has a value the page does not read")], None)
+        errs, page = gh_page(GA_SHELL, section_attrs=(("data-page-feedback", "off"),))
+        allowed = _graph_allowed()
+        return _eq(([g == want for g in got], any("evil" in repr(g) or "javascript" in repr(g) for g in got), errs, page is not None and '<section id="graph-about" data-page-feedback="off">\n' in page,
+                    isinstance(GRAPH_PAGE_ATTR_VALUES, dict), [k for k in GRAPH_PAGE_ATTR_VALUES if not (isinstance(k, tuple) and len(k) == 2 and k[1] in allowed.get(k[0], ()))],
+                    GRAPH_PAGE_ATTR_VALUES.get(("section", "data-page-feedback")), all(isinstance(n, str) for v in GRAPH_PAGE_EXTRA.values() for n in v)),
+                   ([True] * 10, False, [], True, True, [], ("off",), True))
+
     # ---- G2c: the map page's closed rows, the list links, the robots meta of the shell, the list page's link back to the map, and the pins left out of the first
     # round of the graph page cases. Every expectation is a literal. The notes below give the fixture its sections: conditions (three, one of them with a literal
     # `<li>` in its text), a single premise (g1: a `p.premises`, no row) and two premises (g3: a `div.premises`), sketches (g1, g1a, and two on g2) and notes.
