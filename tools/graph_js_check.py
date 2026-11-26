@@ -409,9 +409,53 @@ def selftest_quiet():
         return selftest()
 
 
+def _leak_check():
+    """`--selftest` must leave its temporary folder EMPTY (the self-test makes a folder per planted file; build_site.py runs this self-test once per
+    case that builds, so a folder left here was 8,910 folders in /tmp per run of build_site.py's own self-test). Two runs, each in a TMPDIR made here
+    (`rh-tmp1-...`): the self-test as a child process of this file, and, in this process, the self-test with the scanner made to raise (the failure path
+    must clean too). A run whose TMPDIR starts `rh-tmp1-` is itself the child of this check and does not run it again (the recursion guard). 0 clean, 4 a
+    leftover (named, at most 20) or a child that did not finish."""
+    import shutil, subprocess
+    if os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-"):
+        return 0
+    bad = []
+    child, inproc = tempfile.mkdtemp(prefix="rh-tmp1-"), tempfile.mkdtemp(prefix="rh-tmp1-")
+    try:
+        try:
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=child),
+                               capture_output=True, text=True, timeout=300)
+            if r.returncode != 0:
+                bad.append("the child self-test exited %d" % r.returncode)
+        except subprocess.TimeoutExpired:
+            bad.append("the child self-test timed out")
+        left = sorted(os.listdir(child))
+        if left:
+            bad.append("self-test left %d in its TMPDIR: %s" % (len(left), ", ".join(left[:20])))
+        real_run, real_dir = globals()["run"], tempfile.tempdir
+        def boom(*args, **kw):
+            raise RuntimeError("planted")
+        globals()["run"], tempfile.tempdir = boom, inproc
+        try:
+            selftest()
+            bad.append("a scanner that raises did not make the self-test raise")
+        except RuntimeError:
+            pass
+        finally:
+            globals()["run"], tempfile.tempdir = real_run, real_dir
+        left = sorted(os.listdir(inproc))
+        if left:
+            bad.append("a failing self-test left %d in its TMPDIR: %s" % (len(left), ", ".join(left[:20])))
+    finally:
+        shutil.rmtree(child, ignore_errors=True)
+        shutil.rmtree(inproc, ignore_errors=True)
+    for b in bad:
+        print("TMPDIR " + b)
+    return 4 if bad else 0
+
+
 def main(a):
     if a[1:] == ["--selftest"]:
-        return selftest()
+        return selftest() or _leak_check()
     if len(a) > 2 or (len(a) == 2 and a[1].startswith("-")):
         print(__doc__.split("usage:")[1].strip(), file=sys.stderr)
         return 2

@@ -3603,6 +3603,23 @@ def _selftest_cases():
                    ((1, [line("cx.json", "bogus")], False), (1, [line("gx.json", "bogus")], False),
                     (1, [line("cm.json", "alpha"), line("cm.json", "zeta"), line("gm.json", "beta"), line("gm.json", "mid")], False), 0, 0))
 
+    @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
+                  "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
+                  "A run whose TMPDIR starts `rh-tmp1-` runs no TMP1: the recursion guard")
+    def _():
+        if os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-"):
+            return True, "nested: not run again"
+        t = tempfile.mkdtemp(prefix="rh-tmp1-")
+        try:
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest", "--only", ",".join(c[0] for c in cases if c[0] != "TMP1")],
+                               env=dict(os.environ, TMPDIR=t), capture_output=True, text=True, timeout=300)
+            left = sorted(os.listdir(t))
+        except subprocess.TimeoutExpired:
+            return False, "the child self-test timed out"
+        finally:
+            shutil.rmtree(t, ignore_errors=True)
+        return (not left and r.returncode == 0), "exit %d, %d left in its TMPDIR: %s" % (r.returncode, len(left), ", ".join(left[:20]))
+
     return cases
 
 
