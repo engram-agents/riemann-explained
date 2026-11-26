@@ -1816,6 +1816,9 @@ assert set(GRAPH_RUNTIME_KEYS) <= set(TEXT_KEYS)
 GRAPH_SRC = os.path.join(os.path.dirname(_HERE), "viewer", "graph")   # <repo root>/viewer/graph, the repo root being the parent of the folder of this file
 _GRAPH_SRC_AT_START = GRAPH_SRC   # the value GRAPH_SRC had when the self-test began (the self-test points it at a folder that does not exist); GA1 and GA11 read it
 GRAPH_ASSET_MAX = 400000          # the most bytes of one asset file
+# The copy set is the scanner's own JS extensions (gjc.JS_EXT, read at the call) plus this one literal: the scanner has no constant for stylesheets, so the builder keeps
+# the one extension it cannot ask the scanner for.
+GRAPH_CSS_EXT = ".css"
 GRAPH_ASSET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")   # the path of an asset under graph/ (and no `..` in it)
 GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 
@@ -1839,13 +1842,15 @@ def _walk_error(ex):
 
 
 def _graph_assets(src):
-    """(errors, {path under graph/: bytes}, the bytes of shell.html or None) for the source directory `src`: every .js and .css file whose path has no `test`
-    directory segment is an asset (sorted by path, the bytes as they are); shell.html at the root of `src` is read apart, it is not an asset (the page
+    """(errors, {path under graph/: bytes}, the bytes of shell.html or None) for the source directory `src`: every file of the copy set (the scanner's JS extensions,
+    gjc.JS_EXT, and .css, as written) whose path has no `test` directory segment is an asset (sorted by path, the bytes as they are); shell.html at the root of `src` is read apart, it is not an asset (the page
     assembly of a later slice uses it, and the sink gate reads it). A directory that is absent holds nothing. Refused, each (GRAPH-ASSET, path, reason): a
     symlink anywhere (file or directory, test/ included: `symlink`), a path that does not match GRAPH_ASSET_NAME or holds `..` (`name`), a path with a folder
     the scanner skips without a word (its SKIP_DIRS but `test`: `skipped-dir`), a .js or .css (or the root shell.html) that is not a regular file (`not-regular`),
-    an .html file other than shell.html at the root and outside test/ (`html`), a file of more than GRAPH_ASSET_MAX bytes (`size`) or that is not UTF-8 (`encoding`). Errors are
-    listed in path order; a file with one refusal is not read for another."""
+    an .html file other than shell.html at the root and outside test/ (`html`), a file outside test/ that is not in the copy set but whose lower-cased extension is one of
+    gjc.JS_EXT, gjc.SHIP_IMPORT_EXT or .css (X.JS, A.Mjs, X.CSS: `not-an-asset-extension`, never copied and never dropped without a word), a file of more than GRAPH_ASSET_MAX
+    bytes (`size`) or that is not UTF-8 (`encoding`). Errors are listed in path order; a file with one refusal is not read for another. This is the ONE read of shell.html:
+    its bytes are what the gate scans and what graph/index.html is assembled from (GA24)."""
     errors, assets, shell = [], {}, None
     if not os.path.isdir(src):
         return errors, assets, shell
@@ -1873,7 +1878,9 @@ def _graph_assets(src):
                 else:
                     with open(full, "rb") as f:
                         shell = f.read()
-            elif not n.endswith((".js", ".css")):
+            elif not n.endswith(tuple(gjc.JS_EXT) + (GRAPH_CSS_EXT,)):
+                if os.path.splitext(n)[1].lower() in {*gjc.JS_EXT, *gjc.SHIP_IMPORT_EXT, GRAPH_CSS_EXT}:   # a case variant (X.JS, A.Mjs, X.CSS) is a file the scanner may read and the copy never makes
+                    errors.append(("GRAPH-ASSET", rel, "not-an-asset-extension"))
                 continue
             elif set(rel.split("/")[:-1]) & (set(gjc.SKIP_DIRS) - {"test"}):   # the scanner prunes these folders without a word, so a file in one would ship unread
                 errors.append(("GRAPH-ASSET", rel, "skipped-dir"))
@@ -12931,7 +12938,7 @@ def _selftest_cases():
                   "or is .css but whose extension as written is not in the copy set is `GRAPH-ASSET <path> not-an-asset-extension`, never copied and never silently dropped: "
                   "X.JS, A.Mjs, a nested engine/deep/B.JS and X.CSS are each refused; a lower-case .mjs is IN the copy set (copied, hashed, scanned); an .md and a .json are still "
                   "ignored, a file under test/ is not looked at (engine/test/Y.JS); X.HTML is still `html`; the tables are read at the call (a scanner table with a new "
-                  "extension refuses that extension, one without .mjs in JS_EXT and SHIP_IMPORT_EXT drops it); through a build the refusal is exit 1 with nothing written, "
+                  "extension refuses that extension, one without .mjs in JS_EXT and SHIP_IMPORT_EXT drops it); a lower-case extension of the table that is not in the copy set is refused as well (b.xyz); through a build the refusal is exit 1 with nothing written, "
                   "and the .mjs is a file of graph/ and an entry of `assets`")
     def _():
         def go(files):
@@ -12960,7 +12967,7 @@ def _selftest_cases():
                     copied.rc, "engine/m.mjs" in copied.js("graph/index.json")["assets"], copied.files.get("graph/engine/m.mjs")),
                    (bad("X.JS"), bad("A.Mjs"), bad("engine/deep/B.JS"), bad("X.CSS"), ([], ["engine/index.js", "m.mjs"]), ([], ok), ([], ok),
                     ([("GRAPH-ASSET", "X.HTML", "html")], ok),
-                    ([("GRAPH-ASSET", "engine/Z.JS", "not-an-asset-extension")], ok), ([("GRAPH-ASSET", "engine/a.XYZ", "not-an-asset-extension")], ok),
+                    ([("GRAPH-ASSET", "engine/Z.JS", "not-an-asset-extension")], ok), ([("GRAPH-ASSET", "engine/a.XYZ", "not-an-asset-extension"), ("GRAPH-ASSET", "engine/b.xyz", "not-an-asset-extension")], ok),
                     ["BUILD-ERROR GRAPH-ASSET X.JS not-an-asset-extension"], 1, False, 0, True, b"y\n"))
 
     @case("GA24", "G2b contract section 12: the shell is read ONCE. The bytes the sink gate scanned are the bytes graph/index.html is assembled from: with a stand-in for open() "
