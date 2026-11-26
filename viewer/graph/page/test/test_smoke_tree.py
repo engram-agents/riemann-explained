@@ -66,8 +66,18 @@ def sub_once(old, new):
     return f
 
 
-ACCEPT_FLOOR = sub_once('"assets", "strings"], [], "index")', '"assets", "strings", "open_scale_floor"], [], "index")')
-ACCEPT_NOTE = sub_once('"children", "rests_on"], [], "step")', '"children", "rests_on"], ["note"], "step")')
+# A page that ignores the map's open_scale_floor (it does not hand it to the engine as the floor of an opened node's framing): the defect the scale-floor check exists to catch.
+IGNORE_FLOOR = sub_once("...(index.openScaleFloor !== undefined ? { frameMin: index.openScaleFloor } : {})", "")
+# A page whose sheet draws no note (the note section is never built), whatever the data carries.
+NO_NOTE_BODY = sub_once("    if (info.note) {\n      const n = info.note, t", "    if (false && info.note) {\n      const n = info.note, t")
+
+
+def no_floor(index):
+    index.pop("open_scale_floor", None)
+
+
+def with_floor(value):
+    return lambda index: index.update({"open_scale_floor": value})
 
 
 def t1_real_fixture(tmp):
@@ -175,15 +185,16 @@ def t5b_no_notes_in_data_is_a_skip(tmp):
 
 
 def t5c_missing_note_section_fails(tmp):
-    """The data has a note on a file step and the page accepts the key but draws no .note-body: FAIL, never a pass (A2)."""
-    def step_edit(steps):
-        steps["sk-file-4"]["note"] = {"text": "A note of the repository, long enough to have its first forty characters taken.", "source": "Formalism/Basic.lean"}
-    out = build(tmp, fix="skeleton", step_edit=step_edit, mutate={"page/data.js": ACCEPT_NOTE})
-    code, o = run_tool(out)
+    """The data carries notes (the `notes` fixture: a file step has a note) and a COPY of the page draws no note on its sheet (the line that builds
+    the `.note-body` is never reached): FAIL note, never a pass (A2). The same data on the real page passes the note check (the positive half)."""
+    out = build(tmp, fix="notes", mutate={"page/sheet.js": NO_NOTE_BODY})
+    code, o = run_tool(out, "--only-viewport", "1280x900")
     assert code == 1, (code, o)
-    assert lines(o, "FAIL", "note"), o
+    assert [l for l in lines(o, "FAIL", "note") if "no .note-body" in l], o
     assert lines(o, "PASS", "boot"), o         # the page booted: this is the note check alone
-    assert [l for l in lines(o, "ID") if "sk-file-4" in l], o     # the file with a note is the one picked
+    good = build(tmp, name="notes-real", fix="notes")
+    code, o = run_tool(good, "--only-viewport", "1280x900")
+    assert lines(o, "PASS", "note") and not lines(o, "FAIL", "note"), (code, o)
 
 
 def t6_console_error_alone_fails_s2(tmp):
@@ -216,21 +227,21 @@ def t8_csp_header_is_checked(tmp):
 
 
 def t9_scale_floor(tmp):
-    """A3 mechanics (the positive case on the real data v3 is deferred to once PR 98 is on main): the base refuses an index key it
-    does not know, so these trees run a page whose data.js has been taught the key, which stands in for PR 98's acceptance only."""
-    ok = build(tmp, name="floor-low", index_edit=lambda i: i.update({"open_scale_floor": 0.01}), mutate={"page/data.js": ACCEPT_FLOOR})
+    """A3 mechanics on the real page, which hands the floor to the engine: a tree whose floor the page honors passes at 390x844 only; the same
+    tree on a COPY of the page that ignores the floor FAILs the check (the opened box's scale is below it)."""
+    ok = build(tmp, name="floor-ok", index_edit=with_floor(0.6))
     code, o = run_tool(ok, "--no-note")
     assert code == 0, (code, o)
     assert [l for l in lines(o, "PASS", "scale-floor") if "390x844" in l], o
     assert not [l for l in lines(o, "PASS", "scale-floor") + lines(o, "FAIL", "scale-floor") if "1280x900" in l], o     # phone only
-    bad = build(tmp, name="floor-high", index_edit=lambda i: i.update({"open_scale_floor": 100}), mutate={"page/data.js": ACCEPT_FLOOR})
+    bad = build(tmp, name="floor-ignored", index_edit=with_floor(0.6), mutate={"page/app.js": IGNORE_FLOOR})
     code, o = run_tool(bad, "--no-note")
     assert code == 1 and [l for l in lines(o, "FAIL", "scale-floor") if "390x844" in l], (code, o)
 
 
 def t9b_base_refuses_unknown_index_key(tmp):
-    """On this base a tree whose index carries open_scale_floor is refused at boot, and the tool fails it (the ruling: correct behaviour)."""
-    out = build(tmp, index_edit=lambda i: i.update({"open_scale_floor": 1}))
+    """A tree whose index carries a key no page file reads (`no_such_index_key`) is refused at boot, and the tool fails it (the ruling: correct behaviour)."""
+    out = build(tmp, index_edit=lambda i: i.update({"no_such_index_key": 1}))
     code, o = run_tool(out, "--no-note")
     assert code == 1 and lines(o, "FAIL", "boot"), (code, o)
 
@@ -265,7 +276,10 @@ def t11_empty_heading_fails(tmp):
 
 def t12_skips_named_in_last_line(tmp):
     """P2: a SKIP is named in the verdict line; a tree with no notes, no scale floor and no credits/ skips all three."""
-    out = build(tmp, fix="skeleton")
+    def no_notes(steps):
+        for st in steps.values():
+            st.pop("note", None)
+    out = build(tmp, fix="skeleton", index_edit=no_floor, step_edit=no_notes)       # each skip's condition is built here, not read off the fixture
     code, o = run_tool(out)
     assert code == 0, (code, o)
     assert lines(o, "SKIP", "note") and lines(o, "SKIP", "scale-floor"), o
@@ -299,14 +313,14 @@ def t13_require_note(tmp):
 
 def t13b_require_floor(tmp):
     """P2: --require-floor turns the scale-floor SKIP into a FAIL that says why; a tree that has the key still passes with it."""
-    out = build(tmp, fix="skeleton")
+    out = build(tmp, fix="skeleton", index_edit=no_floor)       # the missing key is built here, not read off the fixture
     code, o = run_tool(out, "--no-note")
     assert code == 0 and lines(o, "SKIP", "scale-floor"), (code, o)
     code, o = run_tool(out, "--no-note", "--require-floor")
     assert code == 1, (code, o)
     assert [l for l in lines(o, "FAIL", "scale-floor") if "no open_scale_floor" in l], o
     assert not lines(o, "SKIP", "scale-floor"), o
-    ok = build(tmp, name="floor-low", index_edit=lambda i: i.update({"open_scale_floor": 0.01}), mutate={"page/data.js": ACCEPT_FLOOR})
+    ok = build(tmp, name="floor-ok", index_edit=with_floor(0.6))
     code, o = run_tool(ok, "--no-note", "--require-floor")
     assert code == 0 and [l for l in lines(o, "PASS", "scale-floor") if "390x844" in l], (code, o)
 
@@ -1032,8 +1046,9 @@ WORLD_SCALE_JS = ("(() => { const w = document.querySelector('.ge-world'); if (!
                   "const m = /scale\\(([-0-9.e]+)\\)/.exec(w.getAttribute('style') || ''); return m ? parseFloat(m[1]) : null; })()")
 
 
-def floor_tree(tmp, name, floor):
-    return build(tmp, name=name, index_edit=lambda i: i.update({"open_scale_floor": floor}), mutate={"page/data.js": ACCEPT_FLOOR})
+def floor_tree(tmp, name, floor, ignored=False):
+    """A real-fixture tree with open_scale_floor `floor`; ignored=True runs a COPY of the page that does not hand the floor to the engine."""
+    return build(tmp, name=name, index_edit=with_floor(floor), mutate={"page/app.js": IGNORE_FLOOR} if ignored else None)
 
 
 def scale_numbers(o):
@@ -1045,21 +1060,21 @@ def scale_numbers(o):
 def t40_scale_floor_reads_the_opened_box(tmp):
     """F3a: the floor governs framing an OPENED box, so the check deep-links the part, presses the sheet's own parts button, lets the engine settle and
     reads the world scale then. On a tree whose opened framing reaches the floor it passes and the PASS line says the parts were opened."""
-    out = floor_tree(tmp, "floor-ok", 0.2)
+    out = floor_tree(tmp, "floor-ok", 0.6)
     code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
     line, k = scale_numbers(o)
-    assert code == 0 and line.startswith("PASS") and k >= 0.2, (code, o)
+    assert code == 0 and line.startswith("PASS") and k >= 0.6, (code, o)
     assert "after opening the part's parts through the sheet" in line, line
 
 
 def t40b_a_deep_link_only_measurement_is_not_what_the_check_reads(tmp):
-    """F3b: a tree whose floor sits BETWEEN the deep link's scale and the opened box's scale (on this engine opening lowers the scale, so the floor is above
-    the opened one): a measurement right after the deep link would pass, the opened measurement must FAIL. The case reads the deep-link-only scale itself,
-    in the browser, and skips by name when this machine's layout leaves no such split."""
+    """F3b: a page that ignores the floor, on a tree whose floor sits BETWEEN the opened box's scale and the deep link's (opening lowers the scale on this
+    engine): a measurement right after the deep link would pass, the opened measurement must FAIL. The case reads the deep-link-only scale itself, in the
+    browser, and skips by name when this machine's layout leaves no such split."""
     from playwright.sync_api import sync_playwright
     import smoke_tree as S
     floor = 0.6
-    out = floor_tree(tmp, "floor-split", floor)
+    out = floor_tree(tmp, "floor-split", floor, ignored=True)
     part = json.load(open(os.path.join(out, "graph", "index.json")))["top"][0]
     srv, base = S.serve(out)
     try:
@@ -1097,8 +1112,8 @@ CASES = [
     ("T6 K1: a console error alone fails the console check", t6_console_error_alone_fails_s2),
     ("T7 K2: a second fixture with different ids passes and its ids are the data's", t7_second_fixture_different_ids),
     ("T8 K3: the Content-Security-Policy header is sent and reported", t8_csp_header_is_checked),
-    ("T9 A3: the scale floor is read at 390x844 only; a low floor passes and an impossible one fails", t9_scale_floor),
-    ("T9b the base refuses an unknown index key at boot and the tool fails it", t9b_base_refuses_unknown_index_key),
+    ("T9 A3: the scale floor is read at 390x844 only; a floor the page honors passes, one it ignores fails", t9_scale_floor),
+    ("T9b a tree with an unknown index key is refused at boot and the tool fails it", t9b_base_refuses_unknown_index_key),
     ("T10 --only-viewport runs one viewport", t10_only_viewport),
     ("T11 P1: an empty card title fails the heading check", t11_empty_heading_fails),
     ("T12 P2: the verdict line names every skip", t12_skips_named_in_last_line),
