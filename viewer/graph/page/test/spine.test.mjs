@@ -10,8 +10,8 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 const WORDS = "spine_lines_text";
 const STRINGS = { key_lines_text: "made-up lines words", [WORDS]: "made-up spine lines words" };
-/* The context the page holds when it loads the spine: the index's commit, the index's strings, and the index's own edge-basis words key. */
-const CTX = { commit: COMMIT, strings: STRINGS, indexWords: "key_lines_text" };
+/* The context the page holds when it loads the spine: the VALIDATED index (data.js validateIndex's record): its commit, its strings and its own edgeBasis. */
+const CTX = { commit: COMMIT, strings: STRINGS, edgeBasis: { basis: "names-written-in-source-from-compiled-index", words: "key_lines_text" } };
 
 /* A 9-node spine in the data's shape: n1 rests on n2 and n3, n2 on n4, n3 on n4 (so n1 -> n4 is a link but not in the reduction), and so on. */
 function makeSpine() {
@@ -126,6 +126,13 @@ test("S10 edge_basis is exactly {basis, words}: the basis the page knows, a word
   refuses(mutate((s) => { s.edge_basis.words = "key_lines_text"; }), "bad-edge-basis", "index");
   refuses(makeSpine(), "bad-edge-basis", "strings", { ...CTX, strings: { key_lines_text: "x" } });
   refuses(mutate((s) => { s.edge_basis = "x"; }), "bad-edge-basis");
+});
+
+test("S10b the context is the validated index: a raw index (snake-case edge_basis) is a TypeError, never a quietly weaker check; no edgeBasis means no index words to compare", () => {
+  const raw = { commit: COMMIT, strings: STRINGS, edge_basis: { basis: "x", words: "key_lines_text" } };
+  assert.throws(() => validateSpine(makeSpine(), raw), TypeError);
+  assert.throws(() => validateSpine(makeSpine(), null), TypeError);
+  assert.equal(validateSpine(makeSpine(), { commit: COMMIT, strings: STRINGS }).words, WORDS);
 });
 
 test("S11 hostile text is data, not code: content, theorem and names of any characters validate and are returned as the same strings", () => {

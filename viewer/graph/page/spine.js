@@ -32,7 +32,7 @@ function edgeBasisOf(v, ctx) {
     throw new DataError("bad-edge-basis", "spine edge_basis is not exactly {basis, words}");
   if (v.basis !== SPINE_BASIS) throw new DataError("bad-edge-basis", "spine edge_basis basis is not the one this page knows: " + shown(v.basis));
   if (!nonEmpty(v.words)) throw new DataError("bad-edge-basis", "spine edge_basis words is not a key name: " + shown(v.words));
-  if (v.words === ctx.indexWords) throw new DataError("bad-edge-basis", "spine edge_basis words is the index's own words key: " + shown(v.words));
+  if (ctx.edgeBasis && v.words === ctx.edgeBasis.words) throw new DataError("bad-edge-basis", "spine edge_basis words is the index's own words key: " + shown(v.words));
   if (!has(ctx.strings, v.words)) throw new DataError("bad-edge-basis", "spine edge_basis words is not a key of the index strings: " + shown(v.words));
   return v.words;
 }
@@ -82,9 +82,11 @@ function refuseReductionCycle(nodes, links) {
   if (done !== nodes.length) throw new DataError("bad-spine-link", "spine links in the reduction hold a cycle");
 }
 
-/* validateSpine(raw, ctx): ctx = {commit, strings, indexWords}: the index's commit, the index's strings, and the key its own edge_basis names
-   (the spine's words key must not be that one). Returns {nodes, links, words}. */
+/* validateSpine(raw, ctx): ctx is the VALIDATED index, data.js validateIndex's record: its `commit`, its `strings` and its `edgeBasis` (absent when the
+   index has none; the spine's words key must not be the one it names). A raw index.json (its key is `edge_basis`) is a TypeError: handed one, the
+   comparison with the index's own key would be skipped without a word. Returns {nodes, links, words}. */
 export function validateSpine(raw, ctx) {
+  if (!isObj(ctx) || has(ctx, "edge_basis") || !isObj(ctx.strings)) throw new TypeError("validateSpine takes the validated index");
   exactKeys(raw, ["commit", "edge_basis", "format", "links", "nodes"], "spine");
   if (raw.format !== 1) throw new DataError("bad-format", "spine format is not 1");
   if (!nonEmpty(raw.commit) || raw.commit !== ctx.commit) throw new DataError("bad-commit", "spine commit is not the index's commit");
