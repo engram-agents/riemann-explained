@@ -8,8 +8,8 @@ The tool writes, from the data of `build_grh_skeleton.py` (index.json, spine.jso
 and a page made by `build_site._graph_page`, the tree below, FLAT (the page loads its data and scripts relative to its own address):
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
-build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A27 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
-mutation controls M-a to M-t and M-v, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
+build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A28 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
+mutation controls M-a to M-v, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
@@ -64,7 +64,7 @@ sk = _load("build_grh_skeleton")
 
 _FROM_BUILD_SITE = ("_graph_assets", "_graph_sink_errors", "_graph_asset_errors", "_graph_page", "GRAPH_SHELL_KEYS", "_graph_bytes", "_dump", "_sha",
                     "graph_element_problems", "static_problems", "head_meta_problems", "surface_scan",
-                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems", "element_problems", "link_problems")
+                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems", "element_problems", "link_problems", "_GRAPH_TOKEN")
 _FROM_SKELETON = ("_read_in", "_contained")
 _UNRESOLVED = [f"build_site.{n}" for n in _FROM_BUILD_SITE if not hasattr(bs, n)] + [f"build_grh_skeleton.{n}" for n in _FROM_SKELETON if not hasattr(sk, n)]
 if _UNRESOLVED:   # something the contract imports cannot be imported as it stands: stop, never copy it
@@ -89,6 +89,7 @@ _publish = bs._publish
 _graph_static_problems = bs._graph_static_problems
 element_problems = bs.element_problems
 link_problems = bs.link_problems
+_GRAPH_TOKEN = bs._GRAPH_TOKEN
 _read_in, _contained = sk._read_in, sk._contained
 
 TOP_READ_LIMIT = 4 * 1024 * 1024    # index.json, spine.json, uses.json, the strings file, the shell: the most bytes of each read (A1)
@@ -335,6 +336,15 @@ def _stage_page(shell_bytes, assets, strings, index, names, credits=None, pin=No
             lines.append(f"ASM-STRINGS {key} not-a-string")
         elif key in ABOUT_CREDITS_KEYS and not strings[key]:
             lines.append(f"ASM-STRINGS {key} missing")
+    seen = set()   # A28: every other key a shell token names, in the order the tokens first appear (the builder's own token pattern); readings_front is A18's, below
+    for mt in _GRAPH_TOKEN.finditer(shell_bytes.decode("utf-8")):
+        key = mt.group(1)
+        if key in SHELL_KEYS and key != READINGS_FRONT_KEY and key in strings and key not in seen:
+            seen.add(key)
+            if not isinstance(strings[key], str):
+                lines.append(f"ASM-STRINGS {key} not-a-string")
+            elif not strings[key]:
+                lines.append(f"ASM-STRINGS {key} empty")
     if "{{S:" + READINGS_FRONT_KEY + "}}" in shell_bytes.decode("utf-8"):   # A18: the key is used only when the shell holds the token
         template, rows = strings.get(READINGS_FRONT_KEY), index.get(READINGS_KEY)
         bad_template = not (isinstance(template, str) and template.count("{n}") == 1)
