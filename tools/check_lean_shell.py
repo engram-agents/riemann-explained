@@ -170,8 +170,18 @@ def _selftest():
     for cid, text, hexrun in (("L7b", "version 72fead11", "72fead11"), ("L7c", "Version DEADBEEF", "DEADBEEF"), ("L7d", "version deadbeef01", "deadbeef01")):
         case(cid, f"a drifted version {text!r} (S5: any case, any length 7 to 40)", run(w=dict(words, close=f"Close ({text})")),
              [f"LEAN-SHELL close names {hexrun}, which is not a prefix of the pin {pin}"])
+    case("L6d", "a script src that is not an asset (S4 reads src)", run(sh=shell_text.replace('src="page/app.js"', 'src="list/x.js"')),
+         ["LEAN-SHELL ref 'list/x.js' is not an asset or credits/"])
+    case("L6e", "a srcset candidate that is not an asset (S4 reads srcset)", run(sh=shell_text.replace("</header>", '<img srcset="list/a.png 1x" alt="">\n</header>')),
+         ["LEAN-SHELL ref 'list/a.png' is not an asset or credits/"])
+    case("L7f", "a 7-digit run that is not a prefix of the pin (S5 starts at 7)", run(w=dict(words, close="Close 1234567")),
+         [f"LEAN-SHELL close names 1234567, which is not a prefix of the pin {pin}"])
+    case("L7g", "a run inside the pin but not at its start (S5 wants a prefix)", run(w=dict(words, close=f"Close {pin[8:16]}")),
+         [f"LEAN-SHELL close names {pin[8:16]}, which is not a prefix of the pin {pin}"])
     case("L7e", "the full 40-hex pin and a longer prefix pass (S5)", run(w=dict(words, close=f"Close {pin} {pin[:12]}")), [])
     case("L8", "a forbidden word (S3)", run(w=dict(words, close="Close (verified)")), ["LEAN-SHELL close holds the forbidden word 'verified'"])
+    case("L8b", "a forbidden word inside a longer word is not a match (S3: whole words)", run(w=dict(words, close="Close (unverified)")), [])
+    case("L8c", "a forbidden word in capitals (S3: any case)", run(w=dict(words, close="Close (VERIFIED)")), ["LEAN-SHELL close holds the forbidden word 'verified'"])
     case("L9", "an empty word (S3)", run(w=dict(words, close="")), ["LEAN-SHELL close must be a non-empty string"])
     case("L10", "a script in the shell is refused by the builder's page checks (S6)",
          run(sh=shell_text.replace("</body>", '<script>alert(1)</script>\n</body>')), lambda g: bool(g) and all(x.startswith("LEAN-SHELL page") for x in g))
