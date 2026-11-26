@@ -66,7 +66,8 @@ QUOTES = (("grh/README.md", (5, 6, 10)), ("README.md", (9, 10, 11)))   # 1-based
 CREDITS_PLACEHOLDERS = {"credits_attribution_after": {"commit", "repo"}, "credits_pin_link": {"commit", "repo"}, "credits_from_file": {"file"}}
 CREDITS_KEYS = ("credits_title", "credits_back", "credits_h_licence", "credits_h_notice", "credits_h_attribution", "credits_attribution_before",
                 "credits_attribution_after", "credits_h_who", "credits_from_file", "credits_h_ours", "credits_ours_licence", "credits_credit_line",
-                "credits_pin_before", "credits_pin_link", "credits_pin_after", "credits_h_endorse", "credits_endorse")
+                "credits_pin_before", "credits_pin_link", "credits_pin_after", "credits_h_endorse", "credits_endorse", "credits_files_note")
+MIN_PYTHON = (3, 12)   # the version the page checks were run under (Linux and macOS); 3.9 refuses the page falsely (Luria 38895)
 LIMIT = 1 << 20
 CSS = ("body{font-family:system-ui,sans-serif;line-height:1.5;margin:0 auto;max-width:44rem;padding:1rem}"
        "div.verbatim{font-family:ui-monospace,monospace;font-size:.85rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid;padding-left:.75rem}"
@@ -80,7 +81,8 @@ class Refused(Exception):
 def _head(repo):
     """The HEAD commit of the checkout `repo` (git with safe.directory for this path only, hooks and fsmonitor off)."""
     r = subprocess.run(["git", "-c", "safe.directory=" + os.path.realpath(repo), "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null",
-                        "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True)
+                        "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True,
+                       env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")})   # an inherited GIT_DIR would override -C
     return r.stdout.strip() if r.returncode == 0 else None
 
 
@@ -155,13 +157,11 @@ def render(texts, q, w, pin=PIN, repo=REPO):
     verbatim = lambda t: f'<div class="verbatim">{e(t)}</div>'
     parts = [
         "<!doctype html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', bs.META_VIEWPORT, bs.META_ROBOTS,
-        f"<title>{e(w['credits_title'])}</title>", f"<style>{CSS}</style>", "</head>", "<body>",
+        # style BEFORE title: on Python 3.9 html.parser does not read title as raw text, so build_site's opening run ends at it and a later style
+        # is refused as `element style outside head` (Luria 38895); MIN_PYTHON refuses such a Python by name anyway
+        f"<style>{CSS}</style>", f"<title>{e(w['credits_title'])}</title>", "</head>", "<body>",
         f'<header><p><a href="../">{e(w["credits_back"])}</a></p><h1>{e(w["credits_title"])}</h1></header>', "<main>",
-        f'<section class="licence"><h2>{e(w["credits_h_licence"])}</h2>{verbatim(texts["LICENSE"])}</section>',
-        f'<section class="notice"><h2>{e(w["credits_h_notice"])}</h2>{verbatim(texts["grh/NOTICE"])}</section>',
-        f'<section class="attribution"><h2>{e(w["credits_h_attribution"])}</h2><p>{e(w["credits_attribution_before"])}'
-        f'<a class="citation" href="{e(base + "grh/ATTRIBUTION.md")}">grh/ATTRIBUTION.md</a>'
-        f'{e(_fill(w["credits_attribution_after"], commit=short, repo=repo))}</p>{verbatim(texts["grh/ATTRIBUTION.md"])}</section>',
+        # order (Kepler 38897): who made the proof, our map, not an endorsement, then the repository's three files whole
         f'<section class="who"><h2>{e(w["credits_h_who"])}</h2>'
         + "".join(f'<p class="from">{e(_fill(w["credits_from_file"], file=name))}</p>{verbatim(chr(10).join(lines))}' for name, lines in q)
         + "</section>",
@@ -169,6 +169,12 @@ def render(texts, q, w, pin=PIN, repo=REPO):
         f'<p>{e(w["credits_pin_before"])}<a class="citation" href="{e(f"https://github.com/{repo}/tree/{pin}")}">'
         f'{e(_fill(w["credits_pin_link"], commit=short, repo=repo))}</a>{e(w["credits_pin_after"])}</p></section>',
         f'<section class="endorse"><h2>{e(w["credits_h_endorse"])}</h2><p>{e(w["credits_endorse"])}</p></section>',
+        f'<p class="files-note">{e(w["credits_files_note"])}</p>',
+        f'<section class="licence"><h2>{e(w["credits_h_licence"])}</h2>{verbatim(texts["LICENSE"])}</section>',
+        f'<section class="notice"><h2>{e(w["credits_h_notice"])}</h2>{verbatim(texts["grh/NOTICE"])}</section>',
+        f'<section class="attribution"><h2>{e(w["credits_h_attribution"])}</h2><p>{e(w["credits_attribution_before"])}'
+        f'<a class="citation" href="{e(base + "grh/ATTRIBUTION.md")}">grh/ATTRIBUTION.md</a>'
+        f'{e(_fill(w["credits_attribution_after"], commit=short, repo=repo))}</p>{verbatim(texts["grh/ATTRIBUTION.md"])}</section>',
         "</main>", "</body>", "</html>", ""]
     return "\n".join(parts)
 
@@ -178,7 +184,10 @@ def page_problems(page):
             + [f"CREDITS-PAGE head {p}" for p in bs.head_meta_problems(page)] + [f"CREDITS-PAGE link {p}" for p in bs.link_problems(page)])
 
 
-def build(repo, pin, base_strings, credits_strings, sources=SOURCES, head=_head):
+def build(repo, pin, base_strings, credits_strings, sources=SOURCES, head=_head, version=None):
+    v = tuple((version or sys.version_info)[:2])
+    if v < MIN_PYTHON:
+        raise Refused([f"CREDITS-PYTHON {v[0]}.{v[1]} is older than {MIN_PYTHON[0]}.{MIN_PYTHON[1]}: its html.parser reads the page differently, so a page check would be false"])
     if pin != PIN:
         raise Refused([f"CREDITS-PIN {pin} is not the pin this tool records ({PIN})"])
     h = head(repo)
@@ -208,6 +217,9 @@ def main(argv=None):
     if not all((a.grh_repo, a.pin, a.strings, a.credits_strings, a.out)):
         ap.print_usage(sys.stderr)
         return 2
+    if os.path.lexists(a.out):
+        print(f"CREDITS-OUT {a.out} exists")
+        return 1
     try:
         page = build(a.grh_repo, a.pin, _json(a.strings), _json(a.credits_strings))
     except Refused as r:
@@ -274,6 +286,9 @@ def selftest():
             assert "The proof is based on X&#x27;s.\nThis repository is a shorter version, produced with my\ncolleagues, and Claude." in page, "README lines 9-11"
             assert f'href="https://github.com/{REPO}/tree/{PIN}"' in page and f'href="https://github.com/{REPO}/blob/{PIN}/grh/ATTRIBUTION.md"' in page
             assert 'href="../"' in page
+            order = [page.index(f'<section class="{c}">') for c in ("who", "ours", "endorse", "licence", "notice", "attribution")]
+            assert order == sorted(order), "the order ruled: who made the proof, our map, not an endorsement, then the three files"
+            assert page.index('class="files-note"') < page.index('<section class="licence">'), "our note on the files precedes them"
         case("CR1 a fixture builds; the four page checks pass; repository bytes escaped; quotes by line number; links at the pin", c1)
         case("CR2 a pin other than the recorded one is refused", lambda: refused(lambda: build(tmp, "0" * 40, base, words, sources=sha, head=lambda r: "0" * 40), "CREDITS-PIN"))
         case("CR3 a checkout whose HEAD is not the pin is refused", lambda: refused(lambda: build(tmp, PIN, base, words, sources=sha, head=lambda r: "f" * 40), "CREDITS-PIN checkout HEAD"))
@@ -299,6 +314,11 @@ def selftest():
         case("CR9 a source that is a symlink is refused", c9)
 
     with tempfile.TemporaryDirectory() as tmp:
+        blank = fixture(tmp, {"grh/README.md": "# t\n\nR\n\n\nThe Lean text was written by Claude (AI).\n\n\n\nThis project is a rewriting.\n"})
+        case("CR16 a quoted line that is empty is refused", lambda: refused(
+            lambda: build(tmp, PIN, base, words, sources=blank, head=lambda r: PIN), "CREDITS-QUOTE grh/README.md line 5 missing or empty"))
+
+    with tempfile.TemporaryDirectory() as tmp:
         short = fixture(tmp, {"grh/README.md": "# only\n"})
         case("CR10 a quoted line past the end of its file is refused", lambda: refused(
             lambda: build(tmp, PIN, base, words, sources=short, head=lambda r: PIN), "CREDITS-QUOTE grh/README.md line 5"))
@@ -309,6 +329,26 @@ def selftest():
             with open(os.path.join(root, theirs), "rb") as f:
                 assert hashlib.sha256(f.read()).hexdigest() == SOURCES[ours], f"third-party/grh-lean/{theirs} is not the file SOURCES records for {ours}"
     case("CR12 the recorded hashes of LICENSE, NOTICE and ATTRIBUTION.md equal those of the copies in third-party/grh-lean/", c12)
+
+    def c13():
+        r = render({"LICENSE": "L", "grh/NOTICE": "N", "grh/ATTRIBUTION.md": "A", "grh/README.md": "", "README.md": ""}, [("f", ["q"])],
+                   dict(words, credits_endorse="<b>x</b>"), pin=PIN, repo='a"b<c')
+        assert "&lt;b&gt;x&lt;/b&gt;" in r and "<b>" not in r, "our words are escaped"
+        assert 'a&quot;b&lt;c' in r and 'a"b<c' not in r, "the repository name is escaped in the hrefs and the link text"
+    case("CR13 our words and the repository name in the hrefs are escaped", c13)
+
+    def c14():
+        keep = bs.PLACEHOLDERS
+        check_strings(base, words)
+        assert bs.PLACEHOLDERS is keep, "restored after a pass"
+        try:
+            check_strings(base, dict(words, credits_endorse="Built {when}."))
+        except Refused:
+            pass
+        assert bs.PLACEHOLDERS is keep, "restored after a refusal"
+    case("CR14 build_site's placeholder table is restored after the check, pass or refusal", c14)
+    case("CR15 a Python older than MIN_PYTHON is refused by name", lambda: refused(
+        lambda: build("/nonexistent", PIN, base, words, version=(3, 9)), "CREDITS-PYTHON 3.9"))
 
     def c11():
         page = render({"LICENSE": "L", "grh/NOTICE": "N", "grh/ATTRIBUTION.md": "A", "grh/README.md": "", "README.md": ""}, [("f", ["q"])], words)
