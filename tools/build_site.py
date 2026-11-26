@@ -510,12 +510,13 @@ constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISS
 constant is False. F48WORD1 compares definition_label and definition_join with the wording file named by the environment variable
 RH_F48_WORDING and is skipped when it is not set.
 
-G1 THE GRAPH DATA (cases GR1 to GR27). `graph/index.json` holds exactly assets ({}, a later slice fills it), commit, format, max_children (40, the named constant
-GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number of step files), strings (the object of the nine `words` keys of the symbols rows with
-their values from the strings file, `{n}` as written; the keys the page reads at run time are a later slice), symbols and top (the top ids in `order`). `graph/step/<id>.json`
+G1 THE GRAPH DATA (cases GR1 to GR27). `graph/index.json` holds exactly assets (the graph assets of G2a below; {} with none), commit, format, max_children (40, the named constant
+GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number of step files), strings (the object of the nine `words` keys of the symbols rows and the eleven run-time keys of G2a, with
+their values from the strings file, `{n}` as written), symbols and top (the top ids in `order`). `graph/step/<id>.json`
 holds exactly card, children, commit (the commit of index.json), format, id, path (the ancestors, top first, [] for a top step), rests_on. A closed card holds exactly
 child_count, id, kind, path, proof, state, title, plus `role` when the step has one (absent otherwise, never null, never empty: the words the list page prints for the
-step's root_role, today the strings key named_statement_use_line for the role named_statement); a child also has parent_rests_on (the step rests on this child). A link is
+step's root_role as a SHORT WORD: the strings key role_named_statement for the role named_statement, at most 24 characters with no line break, else GRAPH-ROLE <id>
+reason; the long sentence stays in the card markup); a child also has parent_rests_on (the step rests on this child). A link is
 {from, from_path, to, to_path}: `from` rests on `to`, the direction of the outline's `premises`; the paths are the ancestors plus the parent's id. A premise of a step on a
 sibling is a link in the file of their parent (in index.json for two top steps); a premise on the step's own child is parent_rests_on on that child and in no rests_on; a premise
 on any other step refuses the build (GRAPH-EDGE). `kind` is the Lean kind of the step's root for every step, a null claim too (the first root when there are several): theorem
@@ -533,8 +534,20 @@ line break, over 50) is `GRAPH-SHORT <id> <reason>`, once. The refusals, each it
 `^[a-z0-9][a-z0-9-]*$`, or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted; the root's own children count too and the root is
 named `root`), GRAPH-SYMBOL, GRAPH-EDGE (a premise on a step that is neither a sibling nor the step's own child, a premise on no step, or a cycle in rests_on), GRAPH-COUNT
 (`_graph_count_errors`: child_count against the children listed, steps against the files, every listed id has its file) and GRAPH-SHORT. The graph files are written like
-data.js (keys sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in this slice: graph/index.html,
-the shell, {{S:key}}, the sink gate, the asset copy and hash, the run-time strings.
+data.js (keys sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in G1: graph/index.html,
+the shell, {{S:key}} (a later slice); the assets, the sink gate and the run-time strings are G2a.
+
+G2a THE GRAPH ASSETS, THE SINK GATE AND THE RUN-TIME STRINGS (cases GA1 to GA13). `--graph-src DIR` (default GRAPH_SRC, viewer/graph beside the tools folder; read at the call) is the
+folder the page code is copied from: every .js and .css file under it with no `test` directory segment is an asset, copied byte for byte to graph/<path>, listed in index.json
+`assets` as {path under graph/: sha256 of the bytes} and in the manifest's `files`; shell.html (the root one), .md files and test/ are not assets. No folder, or none of those files:
+`assets` is {} and the run prints `graph assets: none (no viewer/graph directory)`. Refused, `GRAPH-ASSET <path> <reason>`: symlink (anywhere under the folder), name (not
+`^[A-Za-z0-9][A-Za-z0-9._/-]*$`, or `..` in it), html (an .html other than the root shell.html, outside test/), size (over 400000 bytes), encoding (not UTF-8). Before anything is
+written the assembled tree (assets, and shell.html under its own name) goes through tools/graph_js_check.py, loaded by file path (`gjc`): its non-zero answer is `GRAPH-SINK graph
+<the scanner's REFUSED line>`, one per line. This file keeps no list of forbidden tokens (GA6 counts them). index.json `strings` is exactly the nine `words` keys and the
+GRAPH_RUNTIME_KEYS (parts_n holds {n} as written), checked as an exact set (`GRAPH-STRINGS <key> missing | is not a key the page reads`). A `GRAPH-COUNT` also names an asset whose file or
+sha256 is not the one listed. `role_named_statement` is never in `strings` (20 keys on every build; the role word is resolved into the card). GRAPH_SHORT_MAX is nm.SHORT_MAX. GR5 and GR21 read tools/fixtures/outline_faces.json, not the live outline (GA18).
+Also refused: a .js or .css under a folder the scanner skips (skipped-dir) or that is not a regular file (not-regular); the gate runs the scanner's quiet self-test first and
+requires its count of files checked to be the files given it (GA19 to GA22); a --graph-src that is not a folder is exit 2.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
@@ -545,7 +558,7 @@ forced high-contrast mode. F51BROWSER measures it by pixels in a real headless C
 that binary (SKIPPED, with the reason, otherwise); docs/tools.md has the numbers and the method.
 
 usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX]
-                     [--notes-commit REV --repo DIR] [--force]
+                     [--notes-commit REV --repo DIR] [--graph-src DIR] [--force]
        build_site.py --selftest [--only ID,ID]
 """
 import contextlib
@@ -594,6 +607,7 @@ def _load_sibling(name):
 nm = _load_sibling("notes_meta")
 rh = _load_sibling("rh_anchor")
 sg = _load_sibling("scan_graph")
+gjc = _load_sibling("graph_js_check")   # the page code's own scanner: the ONE table of forbidden sinks (the sink gate calls it, this file holds no list)
 
 NAME_KEYS = frozenset(["id", "module", "name", "lean_name", "file", "note", "block", "parent", "premises", "sha256", "link",
                        "commits", "files", "release_id", "release_archive_sha"])
@@ -620,7 +634,9 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
             "evidence_sketch_build_line", "title_label", "definition_label", "definition_join", "edition_note_first_screen", "edition_note_card",
             "edition_note_card_note", "edition_link_label", "edition_href_tree", "edition_href_blob",
              "symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure", "sheet_statement_read", "sheet_statement_census",
-             "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none")
+             "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none",
+             "parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused", "parts_failed_notice",
+             "key_kinds_heading", "key_states_heading", "role_named_statement")
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -631,7 +647,7 @@ PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_st
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
-                "shared_note": {"groups"}, "note_href": {"file", "commit"},
+                "shared_note": {"groups"}, "note_href": {"file", "commit"}, "parts_n": {"n"},
                 "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_note_card_note": {"date", "link"},
                 "edition_href_blob": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
@@ -657,7 +673,7 @@ REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "ev
                          "evidence_established_line": ("name", "reader", "date"), "evidence_sketch_build_line": ("build",),
                          "statement_count_line": ("n", "m"), "proof_count_line": ("n", "m"),
                          "steps_statement_line": ("n", "m"), "steps_proof_line": ("n", "m"), "open_items_line": ("n",),
-                         "steps_open_items_line": ("n",),
+                         "steps_open_items_line": ("n",), "parts_n": ("n",),
                          "recognition_result_known_line": ("result",),
                          "recognition_result_variant_line": ("result",),
                          "recognition_result_open_line": ("result", "source_date"),
@@ -1730,11 +1746,13 @@ def _nest(m, gid):
 
 GRAPH_FORMAT = 1
 GRAPH_MAX_CHILDREN = 40   # a step with more children is refused (GRAPH-FANOUT); the page reads the number from graph/index.json
-GRAPH_SHORT_MAX = 50      # the longest `short` (author text) a group may carry, in characters
+GRAPH_SHORT_MAX = nm.SHORT_MAX   # the longest `short` (author text) a group may carry, in characters: the checker's own constant, never a second literal
 GRAPH_ID = re.compile(r"[a-z0-9][a-z0-9-]*")   # a step id; narrower than SAFE_ID, so every graph id is also a file name of the build
-# The strings key whose words a closed card carries as its `role`, by root_role: the words the list page prints for that role (the named-statement
-# line). The key `role` is absent for a root_role with no row here (the list page prints no words of its own for it) and for a step with no root_role.
-GRAPH_ROLE_WORDS = {"named_statement": "named_statement_use_line"}
+# The strings key whose short word a closed card carries as its `role`, by root_role (contract section 10: a word of its own, not the list page's
+# sentence, which stays in the card markup). The key `role` is absent for a root_role with no row here and for a step with no root_role. The key is
+# resolved into the card at build time and is never in index.json `strings`. The word is at most GRAPH_ROLE_MAX characters with no line break (GRAPH-ROLE otherwise).
+GRAPH_ROLE_WORDS = {"named_statement": "role_named_statement"}
+GRAPH_ROLE_MAX = 24
 # F38: THE symbol table. Each row is a css class token and the strings key whose words explain the symbol; graph/index.json `symbols` is built from
 # this table and from nothing else, and the page reads the key from there. The order of the rows is the order of the key. `words` is a key of the
 # `strings` object of index.json (the page reads the label from there); the states and the proofs use the sheet's status words.
@@ -1757,6 +1775,135 @@ def graph_kind_words():
 
 
 assert {row["words"] for table in GRAPH_SYMBOLS.values() for row in table.values()} <= set(TEXT_KEYS)   # every row's words are a required strings key
+
+# G2a: the words the page reads at run time, besides the `words` key of every symbols row. index.json `strings` is exactly those two sets (the page
+# checks it as an exact set: a missing and an extra key are both refusals), so a key is added here and in TEXT_KEYS together, never one of them.
+GRAPH_RUNTIME_KEYS = ("parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused",
+                      "parts_failed_notice", "key_kinds_heading", "key_states_heading")
+assert set(GRAPH_RUNTIME_KEYS) <= set(TEXT_KEYS)
+GRAPH_SRC = os.path.join(os.path.dirname(_HERE), "viewer", "graph")   # <repo root>/viewer/graph, the repo root being the parent of the folder of this file
+_GRAPH_SRC_AT_START = GRAPH_SRC   # the value GRAPH_SRC had when the self-test began (the self-test points it at a folder that does not exist); GA1 and GA11 read it
+GRAPH_ASSET_MAX = 400000          # the most bytes of one asset file
+GRAPH_ASSET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")   # the path of an asset under graph/ (and no `..` in it)
+GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
+
+
+def _graph_strings_keys():
+    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table and the run-time keys, on every build. A role
+    word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
+    return [v["words"] for table in GRAPH_SYMBOLS.values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
+
+
+def _graph_strings_errors(strings):
+    """[(GRAPH-STRINGS, key, what)] for the `strings` object of index.json against the exact set of keys the page reads: the keys it lacks first, then the
+    keys it has that the page does not read, each sorted."""
+    want = set(_graph_strings_keys())
+    return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
+            + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want)])
+
+
+def _walk_error(ex):
+    raise ex
+
+
+def _graph_assets(src):
+    """(errors, {path under graph/: bytes}, the bytes of shell.html or None) for the source directory `src`: every .js and .css file whose path has no `test`
+    directory segment is an asset (sorted by path, the bytes as they are); shell.html at the root of `src` is read apart, it is not an asset (the page
+    assembly of a later slice uses it, and the sink gate reads it). A directory that is absent holds nothing. Refused, each (GRAPH-ASSET, path, reason): a
+    symlink anywhere (file or directory, test/ included: `symlink`), a path that does not match GRAPH_ASSET_NAME or holds `..` (`name`), a path with a folder
+    the scanner skips without a word (its SKIP_DIRS but `test`: `skipped-dir`), a .js or .css (or the root shell.html) that is not a regular file (`not-regular`),
+    an .html file other than shell.html at the root and outside test/ (`html`), a file of more than GRAPH_ASSET_MAX bytes (`size`) or that is not UTF-8 (`encoding`). Errors are
+    listed in path order; a file with one refusal is not read for another."""
+    errors, assets, shell = [], {}, None
+    if not os.path.isdir(src):
+        return errors, assets, shell
+    for base, dirs, names in os.walk(src, onerror=_walk_error):
+        at = os.path.relpath(base, src).replace(os.sep, "/")
+        join = lambda n: n if at == "." else at + "/" + n
+        keep = []
+        for d in sorted(dirs):
+            if os.path.islink(os.path.join(base, d)):
+                errors.append(("GRAPH-ASSET", join(d), "symlink"))
+            else:
+                keep.append(d)
+        dirs[:] = keep
+        for n in sorted(names):
+            full, rel = os.path.join(base, n), join(n)
+            if os.path.islink(full):
+                errors.append(("GRAPH-ASSET", rel, "symlink"))
+            elif "test" in rel.split("/")[:-1]:
+                continue
+            elif n.lower().endswith(".html"):
+                if rel != "shell.html":
+                    errors.append(("GRAPH-ASSET", rel, "html"))
+                elif not os.path.isfile(full):   # a FIFO or a device is never opened: opening one can block for ever
+                    errors.append(("GRAPH-ASSET", rel, "not-regular"))
+                else:
+                    with open(full, "rb") as f:
+                        shell = f.read()
+            elif not n.endswith((".js", ".css")):
+                continue
+            elif set(rel.split("/")[:-1]) & (set(gjc.SKIP_DIRS) - {"test"}):   # the scanner prunes these folders without a word, so a file in one would ship unread
+                errors.append(("GRAPH-ASSET", rel, "skipped-dir"))
+            elif not os.path.isfile(full):
+                errors.append(("GRAPH-ASSET", rel, "not-regular"))
+            elif ".." in rel or not GRAPH_ASSET_NAME.fullmatch(rel):
+                errors.append(("GRAPH-ASSET", rel, "name"))
+            elif os.path.getsize(full) > GRAPH_ASSET_MAX:
+                errors.append(("GRAPH-ASSET", rel, "size"))
+            else:
+                with open(full, "rb") as f:
+                    data = f.read()
+                try:
+                    data.decode("utf-8")
+                except UnicodeDecodeError:
+                    errors.append(("GRAPH-ASSET", rel, "encoding"))
+                    continue
+                assets[rel] = data
+    return sorted(errors), dict(sorted(assets.items())), shell
+
+
+def _graph_sink_errors(assets, shell, scanner=None):
+    """[(GRAPH-SINK, "graph", the scanner's REFUSED line)] from the page code's own scanner (`gjc`, tools/graph_js_check.py: its table is the only list of
+    forbidden sinks, this file keeps none) run over the assembled tree: the assets, and shell.html under its own name when there is one, written into a
+    temporary directory laid out as OUT_DIR/graph (removed afterwards). Nothing is called when there are no assets (the scanner answers 1 for a tree with
+    nothing in it, which is not a refusal here). Any answer but 0 refuses: one error per REFUSED line, and when the scanner refused without one (it checked
+    nothing, or printed nothing) one error with the last line it printed. Before the run the scanner's own quiet self-test must pass (`GRAPH-SINK graph scanner
+    self-test failed` otherwise, and the run is not made); after a run that answers 0 the number of files it says it checked must be the number it was given
+    (the assets plus shell.html): a scanner that skips a file passes a tree it did not read, so a different count is `GRAPH-SINK graph scanner checked N files
+    but M were assets` (M is the number of files in the tree, shell.html included). `scanner` is for the cases (a stand-in with `selftest_quiet()` and
+    `run(dir, out)`); the build passes none."""
+    if not assets:
+        return []
+    scanner = gjc if scanner is None else scanner
+    if scanner.selftest_quiet() != 0:
+        return [("GRAPH-SINK", "graph", "scanner self-test failed")]
+    given = len(assets) + (0 if shell is None else 1)
+    with tempfile.TemporaryDirectory() as tmp:
+        g = os.path.join(tmp, "graph")
+        _write_files(g, dict(assets, **({} if shell is None else {"shell.html": shell})))
+        out = io.StringIO()
+        rc = scanner.run(g, out)
+    if rc == 0:
+        said = re.search(r"^(\d+) files checked", out.getvalue(), re.M)
+        n = int(said.group(1)) if said else 0
+        return [] if n == given else [("GRAPH-SINK", "graph", f"scanner checked {n} files but {given} were assets")]
+    lines = out.getvalue().splitlines()
+    refused = [ln for ln in lines if ln.startswith("REFUSED ")]
+    return [("GRAPH-SINK", "graph", ln) for ln in (refused or [next((ln for ln in reversed(lines) if ln.strip()), "the scanner exited non-zero and printed nothing")])]
+
+
+def _graph_asset_errors(index_assets, files):
+    """[(GRAPH-COUNT, path, what)] for the `assets` of index.json against the files of the build (relative name -> bytes): every listed asset has its file
+    under graph/ and the file's sha256 is the one listed."""
+    out = []
+    for rel in sorted(index_assets):
+        data = files.get("graph/" + rel)
+        if data is None:
+            out.append(("GRAPH-COUNT", rel, "asset has no file"))
+        elif _sha(data) != index_assets[rel]:
+            out.append(("GRAPH-COUNT", rel, "asset sha256 does not match its file"))
+    return out
 
 
 def _card_line(group, no_claim_label):
@@ -1833,12 +1980,12 @@ def _graph_kind(raw):
 
 
 def _graph_rows(m, strings):
-    """([GRAPH-SHORT errors], the rows `_graph_files` takes) from the model: one row per group, in the outline's order, with its kind (the Lean kind of
+    """([GRAPH-SHORT and GRAPH-ROLE errors], the rows `_graph_files` takes) from the model: one row per group, in the outline's order, with its kind (the Lean kind of
     its root, the first root when there are several, for every step, a null claim too), its state (`read` when its statement is read, `census` when it
     is not and its claim's basis is census, else `none`), its proof state (`_graph_proof` of the group's proof_read), its card line (None for a step that
     has no line; the refusal is in the errors) and, when its root_role has words (GRAPH_ROLE_WORDS), its `role`."""
     groups = list(m.groups.values())
-    rows = []
+    rows, role_errors = [], []
     for gid, g in m.groups.items():
         sm = m.summary[gid]
         state = "read" if sm["statement_read"] else ("census" if sm["claim"] is not None and sm["claim"]["basis"] == "census" else "none")
@@ -1847,8 +1994,14 @@ def _graph_rows(m, strings):
                      "kind": _graph_kind(roots[0]["kind"] if roots else None), "state": state, "proof": _graph_proof(sm["proof_read"]),
                      "title": _card_line(g, strings["no_claim_label"])})
         if sm["root_role"] in GRAPH_ROLE_WORDS:
-            rows[-1]["role"] = _unspan(strings[GRAPH_ROLE_WORDS[sm["root_role"]]])
-    return _graph_line_errors(groups, strings["no_claim_label"]), rows
+            word = _unspan(strings[GRAPH_ROLE_WORDS[sm["root_role"]]])
+            if len(word) > GRAPH_ROLE_MAX:
+                role_errors.append(("GRAPH-ROLE", gid, f"is longer than {GRAPH_ROLE_MAX} characters"))
+            elif not nm._one_line(word):
+                role_errors.append(("GRAPH-ROLE", gid, "has a line break"))
+            else:
+                rows[-1]["role"] = word
+    return _graph_line_errors(groups, strings["no_claim_label"]) + role_errors, rows
 
 
 def _graph_count_errors(objs):
@@ -1870,12 +2023,12 @@ def _graph_count_errors(objs):
     for i in dict.fromkeys(list(ix["top"]) + [c["id"] for k in sorted(files) for c in files[k]["children"]]):
         if i not in files:
             out.append(("GRAPH-COUNT", i, "is listed but has no step file"))
-    return out
+    return out + _graph_strings_errors(ix["strings"])
 
 
-def _graph_files(rows, commit, strings):
+def _graph_files(rows, commit, strings, assets=None):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
-    top step is `root`). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
+    top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
     four stop the run, since what follows needs a tree), then GRAPH-FANOUT, GRAPH-SYMBOL and GRAPH-EDGE together, then GRAPH-COUNT."""
     errors = []
     seen = set()
@@ -1966,8 +2119,8 @@ def _graph_files(rows, commit, strings):
         return [{"from": c["id"], "from_path": list(path[c["id"]]), "to": p, "to_path": list(path[p])}
                 for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
     objs = {"graph/index.json": {
-        "assets": {}, "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
-        "strings": {v["words"]: strings[v["words"]] for table in GRAPH_SYMBOLS.values() for v in table.values()},
+        "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
+        "strings": {k: strings[k] for k in _graph_strings_keys() if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
                          for name, table in GRAPH_SYMBOLS.items()},
                         order={name: list(table) for name, table in GRAPH_SYMBOLS.items()}),
@@ -3135,11 +3288,13 @@ def _publish(out, files):
             shutil.rmtree(backup, ignore_errors=True)
 
 
-def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state):
+def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state, graph_src=None):
     if source_check is not None and not os.path.isdir(source_check):
         raise _Unreadable(f"SRC_ROOT is not a directory: {source_check}")
     if os.path.exists(out) and not os.path.isdir(out):
         raise _Unreadable(f"OUT_DIR is not a directory: {out}")
+    if graph_src is not None and not os.path.isdir(graph_src):   # a folder the caller NAMED must be there; the default one may be absent
+        raise _Unreadable(f"--graph-src is not a directory: {graph_src}")
     sj = _read_json(strings, "strings file")
     if os.path.isdir(out) and os.listdir(out) and not force:
         return _refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files; a fresh build would mix two builds; "
@@ -3237,10 +3392,16 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     errors += formula_raw_errors(flog, _formula_locator(m))
     errors += formula_page_errors(fcounts, len(re.findall(r"<math[ >]", page)))
     g_errors, g_rows = _graph_rows(m, sj)
-    g_more, g_objs = _graph_files(g_rows, commits["notes"], sj)
-    errors += g_errors + g_more
+    a_errors, a_files, a_shell = _graph_assets(GRAPH_SRC if graph_src is None else graph_src)   # G2a: the assets, read before anything is written
+    a_index = {rel: _sha(data) for rel, data in a_files.items()}
+    g_more, g_objs = _graph_files(g_rows, commits["notes"], sj, a_index)
+    errors += g_errors + g_more + a_errors
+    if not a_errors:   # a tree with a refused file in it is not the tree that would ship, so the scanner is not run over it
+        errors += _graph_sink_errors(a_files, a_shell)
     graph = _graph_bytes(g_objs)
+    graph.update({"graph/" + rel: data for rel, data in a_files.items()})
     files = _output_files(level0, level1, groups, page, commits, m, odata["release"], archive_sha, graph)
+    errors += _graph_asset_errors(a_index, files)
     for pb in static_problems(page, files["data.js"].decode("utf-8")):
         errors.append(("PAGE-STATIC", pb, "found in " + _origin(pb, sj, level0, level1, groups)))
     errors += _graph_static_problems(graph)
@@ -3262,6 +3423,9 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     for ln in count_lines:
         print(ln)
     print(f"titles: {sum(1 for _g_, has in census if has)} of {len(census)} cards that need one")
+    src_used = GRAPH_SRC if graph_src is None else graph_src
+    print(f"graph assets: {len(a_files)} files, {sum(len(v) for v in a_files.values())} bytes" if a_files
+          else (GRAPH_NO_ASSETS_LINE if not os.path.isdir(src_used) else f"graph assets: none (no .js or .css file under {src_used})"))
     for ln in formula_listing(flog):   # a formula outside the subset stays as written, an unpaired dollar sign stays literal: listed, never refused
         print(ln)
     for ln in candidate_lines(cands) + code_lines(spans):   # S2, S3: what the surface still holds that looks like a formula, and its code spans: listed
@@ -3297,14 +3461,14 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
 
 
 def run(notes_dir, outline, decls, strings, out, source_check=None, archive_sha=None, notes_commit=None, repo=None,
-        force=False, tools_state=None):
+        force=False, tools_state=None, graph_src=None):
     """Build the site into `out` and return the exit code 0, 1, 2 or 3 (see the contract). `tools_state` is (commit, dirty)
-    for the folder of this file; None asks git."""
+    for the folder of this file; None asks git. `graph_src` is the folder the graph assets are copied from (None: GRAPH_SRC, read at the call)."""
     archive_sha = archive_sha.lower() if archive_sha else archive_sha
     buf = io.StringIO()   # nothing reaches stdout on exit 2
     try:
         with contextlib.redirect_stdout(buf):
-            rc = _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state)
+            rc = _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, notes_commit, repo, force, tools_state, graph_src)
     except _Unreadable as ex:
         print("build_site: " + str(ex), file=sys.stderr)
         return 2
@@ -3495,11 +3659,20 @@ F49_STRINGS = {"proof_not_applicable_named_line": "Proof: none to read, and this
 F53_STRINGS = {"unexpanded_detail_heading": "In the Lean files, file by file: the automation used and where, as we found it:"}
 # F38, G1, G1b: the words of the nine rows of the symbol table (GRAPH_SYMBOLS), no placeholder: the kinds the prototype's, the states and the proofs the
 # sheet's status words (the legend and the sheet's status line share one name per symbol). The same literals are in site/strings.json.
-F38_STRINGS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
-               "symbol_kind_structure": "Diamond: the part is a structure",
+F38_STRINGS = {"symbol_kind_theorem": "Square corners: a result the Lean code proves",
+               "symbol_kind_def": "Rounded corners, one line: a named object or statement",
+               "symbol_kind_structure": "Rounded corners and an inner line: a bundle of named fields",
                "sheet_statement_read": "Statement read", "sheet_statement_census": "Statement counted, not read",
                "sheet_statement_not_read": "Statement not read yet",
                "sheet_proof_read": "proof read", "sheet_proof_not_read": "proof not read yet", "sheet_proof_none": "no proof to read"}
+# G2a: the run-time words of the graph page (GRAPH_RUNTIME_KEYS), the values of the wording file; `{n}` is the page's to fill in. The same literals are in
+# site/strings.json. link_refused and the two headings of the key are from the page layer's own fixture (the wording file has no row for them).
+GRAPH_STRINGS = {"role_named_statement": "Named statement",   # the role word of a closed card (GRAPH_ROLE_WORDS), not a run-time key of the page
+                 "parts_n": "{n} parts", "part_one": "1 part", "open_parts": "Open its parts", "close_parts": "Close its parts",
+                 "claim_more": "Show the whole claim", "claim_less": "Show less", "crumb_label": "Where this step sits",
+                 "link_refused": "That address does not name a step on this map.",
+                 "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+                 "key_kinds_heading": "Colour and shape: what Lean declares", "key_states_heading": "Frame: what we have read"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
@@ -3576,6 +3749,7 @@ def _strings():
     s.update(F49_STRINGS)
     s.update(F53_STRINGS)
     s.update(F38_STRINGS)
+    s.update(GRAPH_STRINGS)
     return s
 
 
@@ -3856,7 +4030,7 @@ def _tree(out):
     return files
 
 
-def _build(state=TOOLS_OK, pre=None, force=False, archive=None, notes_commit=None, repo=None, **plant):
+def _build(state=TOOLS_OK, pre=None, force=False, archive=None, notes_commit=None, repo=None, graph_src=None, **plant):
     with tempfile.TemporaryDirectory() as d:
         p = _plant(d, **plant)
         if pre:
@@ -3864,7 +4038,8 @@ def _build(state=TOOLS_OK, pre=None, force=False, archive=None, notes_commit=Non
         buf, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
             rc = run(p["notes"], p["outline"], p["decls"], p["strings"], p["out"], source_check=p["src"],
-                     archive_sha=archive, notes_commit=notes_commit, repo=repo, force=force, tools_state=state)
+                     archive_sha=archive, notes_commit=notes_commit, repo=repo, force=force, tools_state=state,
+                     **({} if graph_src is None else {"graph_src": graph_src}))
         return _B(rc, buf.getvalue(), err.getvalue(), os.path.exists(p["out"]), _tree(p["out"]) if os.path.isdir(p["out"]) else {})
 
 
@@ -4036,8 +4211,10 @@ def _child(args_file, out, seed):
             "s = importlib.util.spec_from_file_location('bs', sys.argv[1]); m = importlib.util.module_from_spec(s)\n"
             "s.loader.exec_module(m)\n"
             "m.CODE_ON_SURFACE_REFUSES = False\n"   # the fixtures carry spans: the child, like every case, does not depend on the constant of the file
+            "m.GRAPH_SRC = sys.argv[3] + '-no-graph-src'\n"   # nor on the folder of this checkout: a build with no graph_src has no assets
             "a = json.load(open(sys.argv[2]))\n"
-            "sys.exit(m.run(a['notes'], a['outline'], a['decls'], a['strings'], sys.argv[3], tools_state=('tools0', False)))\n")
+            "sys.exit(m.run(a['notes'], a['outline'], a['decls'], a['strings'], sys.argv[3], tools_state=('tools0', False),\n"
+            "              **({'graph_src': a['graph_src']} if 'graph_src' in a else {})))\n")
     r = subprocess.run([sys.executable, "-c", code, os.path.abspath(__file__), args_file, out], capture_output=True, text=True,
                        timeout=120, env=dict(os.environ, PYTHONHASHSEED=str(seed)))
     return r.returncode, r.stdout + r.stderr
@@ -4086,7 +4263,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING) + list(F38_STRINGS)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING) + list(F38_STRINGS) + list(GRAPH_STRINGS)
 
 
 def _no_edition(rel, data):
@@ -4752,7 +4929,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 104 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 119 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -4765,7 +4942,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 107))
+        return _eq((bad, len(STRING_KEYS)), ([], 119))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -5560,17 +5737,17 @@ def _selftest_cases():
                          ("`x Foo.bar y`", True, False)])
 
     @case("PHR4", "the keys that must hold their placeholders (the counts and the open-items lines, the recognition lines, the citation lines, "
-                  "established_by_line, sketch_frame, the eight Evidence keys of F37 and the four edition keys of F44) are exactly the 31 listed, each declares exactly the "
+                  "established_by_line, sketch_frame, the eight Evidence keys of F37, the four edition keys of F44 and parts_n of G2a) are exactly the 32 listed, each declares exactly the "
                   "placeholders it must hold; the card keys of F37 (the read lines, the frames, the label line, the compiled basis) and the "
                   "retired second_reader_frame declare none and require none")
     def _():
         keys = ["statement_count_line", "proof_count_line", "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
-        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_note_card_note", "edition_href_blob"]
+        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_note_card_note", "edition_href_blob", "parts_n"]
         none_keys = ["statement_read_line", "statement_census_line", "proof_read_line", "argument_frame", "argument_frame_no_proof",
                      "interpretation_frame", "recognition_label_line", "sketch_basis_compiled", "second_reader_frame", "frames.argument"]
         return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys + new],
                     [PLACEHOLDERS.get(k, set()) for k in none_keys], [k in REQUIRED_PLACEHOLDERS for k in none_keys]),
-                   (sorted(keys + new), [True] * 31, [set()] * 10, [False] * 10))
+                   (sorted(keys + new), [True] * 32, [set()] * 10, [False] * 10))
 
     _REQ = (("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
@@ -11109,13 +11286,14 @@ def _selftest_cases():
                    ([], 0, 19, ["https://x.invalid/a&amp;b&quot;c"], [], [], []))
 
     # ---- the graph data (G1): the symbol table (F38), graph/index.json, graph/step/<id>.json, and the refusals GRAPH-*. Every expectation is a literal.
-    GR_WORDS = {"symbol_kind_theorem": "Square: the part is a theorem", "symbol_kind_def": "Circle: the part is a definition",
-                "symbol_kind_structure": "Diamond: the part is a structure",
+    GR_WORDS = {"symbol_kind_theorem": "Square corners: a result the Lean code proves",
+                "symbol_kind_def": "Rounded corners, one line: a named object or statement",
+                "symbol_kind_structure": "Rounded corners and an inner line: a bundle of named fields",
                 "sheet_statement_read": "Statement read", "sheet_statement_census": "Statement counted, not read",
                 "sheet_statement_not_read": "Statement not read yet",
                 "sheet_proof_read": "proof read", "sheet_proof_not_read": "proof not read yet", "sheet_proof_none": "no proof to read"}
     GR_LABEL = "No plain statement yet"   # the fixture's no_claim_label
-    GR_ROLE = "This step gives a name to a statement. Steps that use the name take the statement as a hypothesis."   # the fixture's named_statement_use_line
+    GR_ROLE = "Named statement"   # the fixture's role_named_statement: the short word, not the list page's sentence
 
     def gr_row(rid, parent="root", order=1, premises=(), kind="theorem", state="read", title="T", proof="read", **extra):
         return dict({"id": rid, "parent": parent, "order": order, "premises": list(premises), "kind": kind, "state": state, "proof": proof, "title": title},
@@ -11149,13 +11327,13 @@ def _selftest_cases():
     @case("GR2", "G1 S3 (G1b S3, S4): graph/index.json holds exactly the keys assets, commit, format, max_children, rests_on, steps, strings, symbols, top; top "
                  "is the top ids in `order` (g1, g3, g2); rests_on holds the two links between top steps (g3 rests on g1 and on g2, both paths []); symbols "
                  "holds exactly order (kinds, proofs, states), kinds, proofs and states, each row exactly class, text, words, with the resolved words as "
-                 "`text`, the kind `structure` and the state rows that no step uses included; strings is the object of the 9 words keys with their values; "
+                 "`text`, the kind `structure` and the state rows that no step uses included; strings is the object of the 20 keys (the 9 words keys and the 11 run-time keys of G2a; role_named_statement is never in it, though g1a1 carries a role) with their values; "
                  "steps is 6; assets is an empty object; commit is the notes commit string as built (`unknown`)")
     def _():
         ix = _base().js("graph/index.json")
         row = lambda cls, key: {"class": cls, "text": GR_WORDS[key], "words": key}
         want = {"assets": {}, "commit": "unknown", "format": 1, "max_children": 40,
-                "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": dict(GR_WORDS),
+                "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": dict(GR_WORDS, **GA_RUNTIME),
                 "symbols": {"kinds": {"def": row("kind-def", "symbol_kind_def"),
                                       "structure": row("kind-structure", "symbol_kind_structure"), "theorem": row("kind-theorem", "symbol_kind_theorem")},
                             "order": {"kinds": ["theorem", "def", "structure"], "proofs": ["read", "not_read", "none"], "states": ["read", "census", "none"]},
@@ -11209,13 +11387,13 @@ def _selftest_cases():
                     cl(short="S", claim=c("")), cl(short="`x` and `y`")],
                    ["A sh line", "The T term", None, "LBL", "LBL", None, "Ti", None, None, "Ti", "LBL", None, "LBL", None, None, "S", "x and y"])
 
-    @case("GR5", "G1 S4, the real outline's shape (outline/outline.json, read from this checkout, kinds and states from its claims since the table of "
+    @case("GR5", "G1 S4, the real outline's shape (tools/fixtures/outline_faces.json, a copy of the fields of outline/outline.json that this case uses: a change to the live outline does not reach the self-test; kinds and states from its claims since the table of "
                  "declarations is not in the repository): 23 step files; top is rh-from-everycharacter, primitive-to-all, three-inputs; the widest step "
                  "(zeros-enter) has 6 children; the path of a depth-5 step (good-pair) is three-inputs, families-from-topg, zeros-enter, window-bound (4 "
                  "ancestors); 14 premise edges: 7 sibling rests_on links (2 in index.json, 5 in the step files: three-inputs 2, zeros-enter 3), 7 "
                  "parent_rests_on true, 0 across subtrees; state read 16, census 1, none 6 (main gave two steps a claim after the first measure, 14 / 1 / 8); 4 steps (root_role named_statement) carry a role, on the card and on the child")
     def _():
-        with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
+        with open(os.path.join(_HERE, "fixtures", "outline_faces.json"), encoding="utf-8") as f:
             og = json.load(f)["groups"]
         rows = [gr_row(g["id"], g["parent"], g["order"], g["premises"], "theorem",
                        "none" if g["claim"] is None else g["claim"].get("basis", "read"), "t",
@@ -11540,11 +11718,11 @@ def _selftest_cases():
         ("window-bound-every-level", "The same bound on every level's windows"),
         ("landau-every-level", "Every level has the Landau property")]
 
-    @case("GR21", "G1b S1: the face line of each of the 23 steps of the REAL outline (outline/outline.json, read from this checkout), written out: 18 steps "
+    @case("GR21", "G1b S1: the face line of each of the 23 steps of the REAL outline (tools/fixtures/outline_faces.json, a copy of its short, title, claim and role fields, so a change to the live outline does not break the self-test), written out: 18 steps "
                   "resolve by their `short` and 5 (topg, window-inequality, landau-property, vwin-proof, linkn) by their `title`, in the outline's order; "
                   "none has no line, the longest is 49 characters, none holds a `$`, and the line errors of the whole outline are none")
     def _():
-        with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
+        with open(os.path.join(_HERE, "fixtures", "outline_faces.json"), encoding="utf-8") as f:
             og = json.load(f)["groups"]
         lines = [(g["id"], _card_line(g, "LBL")) for g in og]
         return _eq((lines, len(lines), max(len(t) for _i, t in lines), sum(1 for g in og if "short" in g), sum(1 for g in og if "short" not in g and "title" in g),
@@ -11637,7 +11815,7 @@ def _selftest_cases():
                     {"g1a": "not_read", "g1a1": "none", "g1a1x": "not_read"}, []))
 
     @case("GR25", "G1b S3, S4 the strings object: index.json `strings` is {key: text} for exactly the 9 `words` keys of the symbols rows (3 kinds, 3 states, "
-                  "3 proofs) with the strings file's values and no other key (the runtime keys of the page are a later slice); every `words` of every row is a "
+                  "3 proofs) and the 11 run-time keys (G2a) with the strings file's values and no other key (role_named_statement is never in it: GA14); every `words` of every row is a "
                   "key of `strings`; `text` of every row is `strings[words]`; a value with `{n}` in it stays literal in both places")
     def _():
         ix = _base().js("graph/index.json")
@@ -11647,8 +11825,8 @@ def _selftest_cases():
         sj["sheet_proof_read"] = "{n} proofs read"
         ix2 = _graph_files([gr_row("a")], "c0", sj)[1]["graph/index.json"]
         return _eq((sorted(st), sorted(r["words"] for r in rows), len(rows), all(r["words"] in st for r in rows), all(r["text"] == st[r["words"]] for r in rows),
-                    st == GR_WORDS, ix2["strings"]["sheet_proof_read"], ix2["symbols"]["proofs"]["read"]["text"], sorted(ix2["strings"]) == sorted(GR_WORDS)),
-                   (sorted(GR_WORDS), sorted(GR_WORDS), 9, True, True, True, "{n} proofs read", "{n} proofs read", True))
+                    st == dict(GR_WORDS, **GA_RUNTIME), ix2["strings"]["sheet_proof_read"], ix2["symbols"]["proofs"]["read"]["text"], sorted(ix2["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME))),
+                   (sorted(dict(GR_WORDS, **GA_RUNTIME)), sorted(GR_WORDS), 9, True, True, True, "{n} proofs read", "{n} proofs read", True))
 
     @case("GR26", "G1b S5 exact keys and paths: the keys of index.json, of a step file, of a closed card (with and without role) and of a child; a link of a "
                   "depth-4 step (rows a > b > c > d > e, f; f rests on e): from_path and to_path are the ancestors plus the parent, [a, b, c, d]; the "
@@ -11705,16 +11883,492 @@ def _selftest_cases():
                     bad.rc, want in bad.out.splitlines(), "REFUSED: notes_meta found errors; nothing written" in bad.err, bad.existed, bad.files),
                    (0, True, 0, True, 1, True, True, False, {}))
 
+    # ---- G2a: the graph assets (copied byte for byte, hashed, passed through the page code's own scanner before anything is written) and the run-time strings
+    # of index.json. Every expectation is a literal; the digests were computed offline from the file texts below.
+    GA_FILES = {"engine/index.js": "export const engine = 1;\n", "page/app.js": "export const page = 2;\n", "graph.css": ".a { margin: 0; }\n",
+                "engine/INTERFACE.md": "# interface\n", "engine/test/x.js": "el.innerHTML = 1;\n", "shell.html": "<!doctype html>\n<p>shell</p>\n"}
+    GA_SHA = {"engine/index.js": "c96ac063ae5d7a8a3a8eafc25634ad957deb69539259ed29365728c1a660defc",
+              "graph.css": "adc13e45fe6db8bbeb105217a821f3cab6a9c0656be43ec512021b2c891a60b2",
+              "page/app.js": "27764975e708e67868903746fc423ec15e5f1319377c8642a5e7fee6b6328fa5"}
+    GA_RUNTIME = {"parts_n": "{n} parts", "part_one": "1 part", "open_parts": "Open its parts", "close_parts": "Close its parts",
+                  "claim_more": "Show the whole claim", "claim_less": "Show less", "crumb_label": "Where this step sits",
+                  "link_refused": "That address does not name a step on this map.",
+                  "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+                  "key_kinds_heading": "Colour and shape: what Lean declares", "key_states_heading": "Frame: what we have read"}
+    GA_LINE_NONE = "graph assets: none (no viewer/graph directory)"
+
+    def ga_src(d, files=None, links=()):
+        """A fixture source directory `g` under d, with the files (name -> text or bytes) and the symlinks (target, name)."""
+        root = os.path.join(d, "g")
+        os.makedirs(root, exist_ok=True)
+        for k, v in (GA_FILES if files is None else files).items():
+            _put(os.path.join(root, *k.split("/")), v)
+        for target, name in links:
+            try:
+                os.symlink(target, os.path.join(root, *name.split("/")))
+            except OSError as ex:
+                raise _SkipCase(f"no symlink here: {ex}")
+        return root
+
+    def ga_graph(b):
+        return sorted(k for k in b.files if k.startswith("graph/") and not k.startswith("graph/step/"))
+
+    @case("GA1", "G2a A1: the DEFAULT folder absent gives NO assets: index.json `assets` is {}, the build is the one of today (every file byte-equal to a build with the "
+                 "pinned default), exit 0, and the run prints the one line `graph assets: none (no viewer/graph directory)` once; an existing folder that holds no .js or .css "
+                 "outside test/ (only an .md, a test file, shell.html) gives the same build and a DIFFERENT line, `graph assets: none (no .js or .css file under <dir>)`, "
+                 "never the first; the constant GRAPH_SRC is <repo root>/viewer/graph, the parent of the tools folder")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            docs = ga_src(d, {"engine/INTERFACE.md": "# i\n", "engine/test/x.js": "x\n", "shell.html": "<p>s</p>\n"})
+            runs = [_build(), _build(graph_src=docs)]
+            line = "graph assets: none (no .js or .css file under " + docs + ")"
+            counts = [(r.out.splitlines().count(GA_LINE_NONE), r.out.splitlines().count(line)) for r in runs]
+        return _eq(([(r.rc, r.js("graph/index.json")["assets"], r.files == _base().files) for r in runs], counts,
+                    os.path.relpath(_GRAPH_SRC_AT_START, os.path.dirname(_HERE)), ga_graph(runs[0])),
+                   ([(0, {}, True)] * 2, [(1, 0), (0, 1)], os.path.join("viewer", "graph"), ["graph/index.json"]))
+
+    @case("GA2", "G2a A2: a source directory with engine/index.js, page/app.js, graph.css, engine/INTERFACE.md, engine/test/x.js (holding a sink token: not read) and "
+                 "shell.html: the assets are exactly the three .js/.css files outside test/, sorted, keyed by the path under graph/ (no `graph/` prefix), each "
+                 "copied byte for byte to graph/<path> and listed in index.json `assets` with its sha256 (literals); the .md, the test file and shell.html are "
+                 "not copied and not assets; the manifest `files` holds the three with the same digests; the run prints `graph assets: 3 files, 66 bytes`; the "
+                 "pure function returns the shell's bytes apart from the assets")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            src = ga_src(d)
+            errs, assets, shell = _graph_assets(src)
+            b = _build(graph_src=src)
+        man = b.js("manifest.json")["files"]
+        return _eq((errs, list(assets), {k: v.decode("utf-8") for k, v in assets.items()}, shell, b.rc, b.js("graph/index.json")["assets"],
+                    ga_graph(b), {k: b.files[k].decode("utf-8") for k in ga_graph(b) if k != "graph/index.json"},
+                    {k: man[k] for k in sorted(man) if k.startswith("graph/") and not k.startswith("graph/step/")},
+                    "graph assets: 3 files, 66 bytes" in b.out.splitlines(), GA_LINE_NONE in b.out.splitlines()),
+                   ([], ["engine/index.js", "graph.css", "page/app.js"],
+                    {"engine/index.js": "export const engine = 1;\n", "graph.css": ".a { margin: 0; }\n", "page/app.js": "export const page = 2;\n"},
+                    b"<!doctype html>\n<p>shell</p>\n", 0, GA_SHA,
+                    ["graph/engine/index.js", "graph/graph.css", "graph/index.json", "graph/page/app.js"],
+                    {"graph/engine/index.js": "export const engine = 1;\n", "graph/graph.css": ".a { margin: 0; }\n",
+                     "graph/page/app.js": "export const page = 2;\n"},
+                    {"graph/engine/index.js": GA_SHA["engine/index.js"], "graph/graph.css": GA_SHA["graph.css"], "graph/index.json": man["graph/index.json"],
+                     "graph/page/app.js": GA_SHA["page/app.js"]}, True, False))
+
+    @case("GA3", "G2a A2 refusals, each `GRAPH-ASSET <path> <reason>`, through the function and (symlink) through a build: a symlink to a file, to a directory "
+                 "(not entered), a broken one, and one under test/ (`symlink`); a name with `..` (a..b.js) or a space, a leading dash, a non-ASCII letter or a `$` "
+                 "(`name`; an .md with an odd name is not an asset and is ignored); an .html under the source dir other than shell.html at its root, also "
+                 "page/shell.html and X.HTML (`html`; one under test/ and a root shell.html are not refused); 400001 bytes (`size`; 400000 is accepted); bytes "
+                 "that are not UTF-8 (`encoding`); several refusals are all listed in path order; a build with a refusal exits 1, writes nothing and prints "
+                 "`BUILD-ERROR GRAPH-ASSET page/link.js symlink`")
+    def _():
+        def refuse(files, links=()):
+            with tempfile.TemporaryDirectory() as d:
+                e, a, _s = _graph_assets(ga_src(d, files, links))
+            return e, sorted(a)
+        base = {"engine/index.js": "x\n", "page/app.js": "y\n"}
+        ok = ["engine/index.js", "page/app.js"]
+        with tempfile.TemporaryDirectory() as d:
+            src = ga_src(d, base, [("app.js", "page/link.js")])
+            b = _build(graph_src=src)
+        return _eq((refuse(base, [("app.js", "page/link.js")]), refuse(base, [("page", "pagelink")]), refuse(base, [("nowhere", "gone.js")]),
+                    refuse(dict(base, **{"engine/test/x.js": "z\n"}), [("x.js", "engine/test/l.js")]),
+                    refuse(dict(base, **{"engine/a..b.js": "x\n"})), refuse(dict(base, **{"my file.js": "x\n"})), refuse(dict(base, **{"-lead.js": "x\n"})),
+                    refuse(dict(base, **{"é.js": "x\n"})), refuse(dict(base, **{"a$b.css": "x\n"})), refuse(dict(base, **{"engine/my notes.md": "x\n"})),
+                    refuse(dict(base, **{"page/other.html": "<p>\n"})), refuse(dict(base, **{"page/shell.html": "<p>\n"})), refuse(dict(base, **{"X.HTML": "<p>\n"})),
+                    refuse(dict(base, **{"shell.html": "<p>\n", "engine/test/t.html": "<p>\n"})),
+                    refuse(dict(base, **{"engine/big.js": "a" * 400001})), refuse(dict(base, **{"engine/big.js": "a" * 400000}))[0],
+                    refuse(dict(base, **{"engine/bad.js": b"\xff\xfe\n"})),
+                    refuse(dict(base, **{"zz/b.js": b"\xff", "a b.css": "x\n", "engine/c.js": "a" * 400001})),
+                    (b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")])),
+                   (([("GRAPH-ASSET", "page/link.js", "symlink")], ok), ([("GRAPH-ASSET", "pagelink", "symlink")], ok),
+                    ([("GRAPH-ASSET", "gone.js", "symlink")], ok), ([("GRAPH-ASSET", "engine/test/l.js", "symlink")], ok),
+                    ([("GRAPH-ASSET", "engine/a..b.js", "name")], ok), ([("GRAPH-ASSET", "my file.js", "name")], ok), ([("GRAPH-ASSET", "-lead.js", "name")], ok),
+                    ([("GRAPH-ASSET", "é.js", "name")], ok), ([("GRAPH-ASSET", "a$b.css", "name")], ok), ([], ok),
+                    ([("GRAPH-ASSET", "page/other.html", "html")], ok), ([("GRAPH-ASSET", "page/shell.html", "html")], ok),
+                    ([("GRAPH-ASSET", "X.HTML", "html")], ok), ([], ok),
+                    ([("GRAPH-ASSET", "engine/big.js", "size")], ok), [],
+                    ([("GRAPH-ASSET", "engine/bad.js", "encoding")], ok),
+                    ([("GRAPH-ASSET", "a b.css", "name"), ("GRAPH-ASSET", "engine/c.js", "size"), ("GRAPH-ASSET", "zz/b.js", "encoding")], ok),
+                    (1, False, ["BUILD-ERROR GRAPH-ASSET page/link.js symlink"])))
+
+    class GaScanner:
+        """A stand-in for the page code's scanner, to show the builder obeys the scanner it calls (it has no list of its own): it records the tree it is
+        given and answers with the exit code and the text it was built with."""
+        def __init__(self, rc, text="", selftest=0):
+            self.rc, self.text, self.tree, self.d, self.selftest, self.calls = rc, text, None, None, selftest, []
+
+        def selftest_quiet(self):
+            self.calls.append("selftest")
+            return self.selftest
+
+        def run(self, d, out):
+            self.calls.append("run")
+            self.d = d
+            self.tree = sorted(os.path.relpath(os.path.join(b, n), d).replace(os.sep, "/") for b, _ds, ns in os.walk(d) for n in ns)
+            out.write(self.text)
+            return self.rc
+
+    @case("GA4", "G2a A3 the sink gate calls the page code's own scanner (tools/graph_js_check.py, loaded by file path under a private name) on the ASSEMBLED tree "
+                 "(the assets and shell.html under its own name; no .md, no test file, never the source dir) in a temporary directory that is removed "
+                 "afterwards, and takes its answer as it is: a scanner that refuses a clean asset refuses the build (`GRAPH-SINK graph REFUSED zz.js:9 x`, "
+                 "the scanner's own line); one that passes an asset holding a sink token passes (the builder keeps no list); an exit 1 with no REFUSED line "
+                 "(CHECKED NOTHING, or no text at all) still refuses; with no assets the scanner is not called")
+    def _():
+        a = {"engine/index.js": b"el.innerHTML = 1;\n", "page/app.js": b"ok\n"}
+        clean = {"engine/index.js": b"ok\n"}
+        refusing, passing, nothing, silent, rec = (GaScanner(1, "REFUSED zz.js:9 x\n1 files checked, 1 refused, 0 skipped as test files\n"),
+                                                 GaScanner(0, "2 files checked, 0 refused, 0 skipped as test files\n"),
+                                                 GaScanner(1, "CHECKED NOTHING: no file under d (0 skipped as test files)\n"), GaScanner(1),
+                                                 GaScanner(0, "3 files checked, 0 refused, 0 skipped as test files\n"))
+        r1 = _graph_sink_errors(clean, None, scanner=refusing)
+        r2 = _graph_sink_errors(a, None, scanner=passing)
+        r3 = _graph_sink_errors(clean, None, scanner=nothing)
+        r4 = _graph_sink_errors(clean, None, scanner=silent)
+        r5 = _graph_sink_errors(a, b"<p>shell</p>\n", scanner=rec)
+        none_called = GaScanner(1, "REFUSED never\n")
+        r6 = _graph_sink_errors({}, b"<p>shell</p>\n", scanner=none_called)
+        return _eq((r1, r2, [(c, w, m.startswith("CHECKED NOTHING")) for c, w, m in r3], [(c, w) for c, w, m in r4], r5, rec.tree, os.path.exists(rec.d),
+                    r6, none_called.tree, gjc.__name__, gjc.__file__ == os.path.join(_HERE, "graph_js_check.py")),
+                   ([("GRAPH-SINK", "graph", "REFUSED zz.js:9 x")], [], [("GRAPH-SINK", "graph", True)], [("GRAPH-SINK", "graph")], [],
+                    ["engine/index.js", "page/app.js", "shell.html"], False, [], None, "_build_site_graph_js_check", True))
+
+    @case("GA5", "G2a A3 through a build, the real scanner: one token planted in an asset (el.innerHTML in engine/index.js) refuses the build, `GRAPH-SINK graph REFUSED "
+                 "engine/index.js:1 innerHTML` (the scanner's own line), exit 1, OUT_DIR not written, no other GRAPH line; a token in graph.css (@import) and one "
+                 "in shell.html (a style element) are refused the same way, each with its own file and line; a token in engine/test/x.js (the clean fixture) "
+                 "is not read, so the clean fixture builds; the sink gate is not reached when an asset itself is refused (a symlink gives GRAPH-ASSET only)")
+    def _():
+        def go(files, links=()):
+            with tempfile.TemporaryDirectory() as d:
+                b = _build(graph_src=ga_src(d, files, links))
+            return b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")]
+        css = dict(GA_FILES, **{"graph.css": '@import "a";\n'})
+        shell = dict(GA_FILES, **{"shell.html": "<style>p{}</style>\n"})
+        sh = go(shell)
+        return _eq((go(dict(GA_FILES, **{"engine/index.js": "el.innerHTML = 1;\n"})), go(css), sh[:2], sh[2][0].startswith("BUILD-ERROR GRAPH-SINK graph REFUSED shell.html:1 "),
+                    go(GA_FILES)[:2], go(dict(GA_FILES, **{"engine/index.js": "el.innerHTML = 1;\n"}), [("app.js", "page/link.js")])),
+                   ((1, False, ["BUILD-ERROR GRAPH-SINK graph REFUSED engine/index.js:1 innerHTML"]),
+                    (1, False, ["BUILD-ERROR GRAPH-SINK graph REFUSED graph.css:1 @import"]), (1, False), True, (0, True),
+                    (1, False, ["BUILD-ERROR GRAPH-ASSET page/link.js symlink"])))
+
+    @case("GA6", "G2a A3: build_site.py holds no sink token list of its own: outside the self-test (everything before `def _selftest_cases`), none of the 11 "
+                 "tokens innerHTML, outerHTML, insertAdjacentHTML, DOMParser, createContextualFragment, setHTMLUnsafe, parseHTMLUnsafe, srcdoc, importScripts, "
+                 "`document.write` and `new Function` occurs (count 0 for each; the cases hold the literals)")
+    def _():
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            text = f.read()
+        prod = text[:text.index("def _selftest_cases():")]
+        toks = ["innerHTML", "outerHTML", "insertAdjacentHTML", "DOMParser", "createContextualFragment", "setHTMLUnsafe", "parseHTMLUnsafe", "srcdoc",
+                "importScripts", "document.write", "new Function"]
+        return _eq([prod.count(t) for t in toks], [0] * 11)
+
+    @case("GA7", "G2a A4: index.json `strings` of EVERY build (the fixture build has a step with a role too) is EXACTLY 20 keys, sorted: the 9 `words` keys of the symbols rows and the 11 run-time keys (parts_n, part_one, "
+                 "open_parts, close_parts, claim_more, claim_less, crumb_label, link_refused, parts_failed_notice, key_kinds_heading, key_states_heading), "
+                 "each with its value (literals; `{n}` literal in parts_n; the values of the wording file, link_refused and the two key headings from the "
+                 "page layer's fixture); GRAPH_RUNTIME_KEYS is the 11; the fixture strings hold them; no key_proofs_heading")
+    def _():
+        ix = _base().js("graph/index.json")
+        want = dict(GR_WORDS, **GA_RUNTIME)
+        return _eq((ix["strings"], sorted(ix["strings"]) == list(ix["strings"]), len(ix["strings"]), list(GRAPH_RUNTIME_KEYS),
+                    {k: _strings().get(k) for k in GA_RUNTIME}, "key_proofs_heading" in ix["strings"]),
+                   (want, True, 20, ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused",
+                                     "parts_failed_notice", "key_kinds_heading", "key_states_heading"], GA_RUNTIME, False))
+
+    @case("GA8", "G2a A4 the exact set is checked, both ways, through the pure functions: a strings object with one key extra is `GRAPH-STRINGS <key> is not a key the "
+                 "page reads`, one with a key missing is `GRAPH-STRINGS <key> missing` (missing first, then extra, each sorted); the same through "
+                 "_graph_count_errors on a planted index object, and role_named_statement planted into the object (also on files whose steps carry a role) is an extra key; _graph_files with a strings dict that lacks a run-time key refuses with GRAPH-STRINGS missing "
+                 "and returns no files; the full set is accepted")
+    def _():
+        full = dict(GR_WORDS, **GA_RUNTIME)
+        extra = dict(full, zeta="z")
+        short = {k: v for k, v in full.items() if k != "open_parts"}
+        both = dict(short, zeta="z", alpha="a")
+        rows = [gr_row("a")]
+        objs = _graph_files(rows, "c0", _strings())[1]
+        objs["graph/index.json"]["strings"] = extra
+        sj = _strings()
+        del sj["claim_more"]
+        e, o = _graph_files(rows, "c0", sj)
+        withrole = _graph_files([gr_row("a"), gr_row("b", "a", 1, role="W")], "c0", _strings())[1]
+        withrole["graph/index.json"]["strings"]["role_named_statement"] = "Named statement"
+        return _eq((_graph_strings_errors(full), _graph_strings_errors(extra), _graph_strings_errors(short), _graph_strings_errors(both),
+                    [x for x in _graph_count_errors(objs) if x[0] == "GRAPH-STRINGS"], e, o,
+                    _graph_strings_errors(dict(full, **GA_ROLE)), [x for x in _graph_count_errors(withrole) if x[0] == "GRAPH-STRINGS"]),
+                   ([], [("GRAPH-STRINGS", "zeta", "is not a key the page reads")], [("GRAPH-STRINGS", "open_parts", "missing")],
+                    [("GRAPH-STRINGS", "open_parts", "missing"), ("GRAPH-STRINGS", "alpha", "is not a key the page reads"),
+                     ("GRAPH-STRINGS", "zeta", "is not a key the page reads")],
+                    [("GRAPH-STRINGS", "zeta", "is not a key the page reads")], [("GRAPH-STRINGS", "claim_more", "missing")], {},
+                    [("GRAPH-STRINGS", "role_named_statement", "is not a key the page reads")],
+                    [("GRAPH-STRINGS", "role_named_statement", "is not a key the page reads")]))
+
+    @case("GA9", "G2a A4 the strings file: site/strings.json of this checkout holds the 11 run-time keys with the values of GA7 (literals) and no key_proofs_heading, "
+                 "and the builder's own check passes it; `{n}` is allowed in parts_n only and is required there (parts_n with no {n}: `is missing the "
+                 "placeholder {n}`; {n} in claim_more: `has an unknown placeholder {n}`); a forbidden word in a run-time value is refused (STRINGS-FORBIDDEN); "
+                 "a missing run-time key is a STRINGS-KEY error naming it")
+    def _():
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        a, b, c, d = _strings(), _strings(), _strings(), _strings()
+        a["parts_n"] = "parts"
+        b["claim_more"] = "{n} more"
+        c["close_parts"] = "Close, verified"
+        del d["link_refused"]
+        return _eq(({k: real.get(k) for k in GA_RUNTIME}, "key_proofs_heading" in real, _strings_problems(real), _strings_problems(a), _strings_problems(b),
+                    [(p[0], p[1]) for p in _strings_problems(c)], _strings_problems(d)),
+                   (GA_RUNTIME, False, [], [("STRINGS-KEY", "parts_n", "is missing the placeholder {n}")],
+                    [("STRINGS-KEY", "claim_more", "has an unknown placeholder {n}")], [("STRINGS-FORBIDDEN", "close_parts")],
+                    [("STRINGS-KEY", "link_refused", "missing")]))
+
+    @case("GA10", "G2a A5: with a source directory the outputs other than graph/** and manifest.json are byte-equal to a build without one (list page, level files, "
+                  "data.js, group files); the build is byte-identical under PYTHONHASHSEED 1 and 2 (child interpreters, 3 asset files and 7 graph json files "
+                  "each); the manifest differs by the asset entries only")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            src = ga_src(d)
+            p = _plant(d)
+            _put(os.path.join(d, "args.json"), json.dumps(dict({k: p[k] for k in ("notes", "outline", "decls", "strings")}, graph_src=src)))
+            r1 = _child(os.path.join(d, "args.json"), os.path.join(d, "o1"), 1)
+            r2 = _child(os.path.join(d, "args.json"), os.path.join(d, "o2"), 2)
+            t1, t2 = _tree(os.path.join(d, "o1")), _tree(os.path.join(d, "o2"))
+            b = _build(graph_src=src)
+        base = _base().files
+        keep = lambda t: {k: v for k, v in t.items() if not k.startswith("graph/") and k != "manifest.json"}
+        man = lambda t: json.loads(t["manifest.json"])["files"]
+        return _eq((r1[0], r2[0], t1 == t2, t1 == b.files, keep(t1) == keep(base), len([k for k in t1 if k.startswith("graph/")]), len([k for k in t1 if k.startswith("graph/step/")]),
+                    sorted(set(man(t1)) - set(man(base))), sorted(set(man(base)) - set(man(t1)))),
+                   (0, 0, True, True, True, 10, 6, ["graph/engine/index.js", "graph/graph.css", "graph/page/app.js"], []))
+
+    @case("GA11", "G2a A5 the real tree: the source directory of this checkout (viewer/graph) gives assets with no test/ segment, no .md and no shell.html, each key under "
+                  "engine/, page/ or graph.css, the 12 engine .js/.css files among them, and the scanner passes the assembled tree (no refusal); a build over it "
+                  "(fixture notes) exits 0 and every file under graph/ that is an asset is byte-equal to the file on disk, its sha256 read here from the disk")
+    def _():
+        errs, assets, shell = _graph_assets(_GRAPH_SRC_AT_START)
+        eng = sorted("engine/" + n for n in ("camera.js", "controller.js", "dom.js", "emitter.js", "engine.css", "ids.js", "index.js", "input.js", "layout.js",
+                                              "links.js", "options.js", "view.js"))
+        b = _build(graph_src=_GRAPH_SRC_AT_START)
+        with open(os.path.join(_GRAPH_SRC_AT_START, "shell.html"), "rb") as f:   # the page layer's shell: read for the gate, never an asset, never copied
+            shell_disk = f.read()
+        disk = {}
+        for k in assets:
+            with open(os.path.join(_GRAPH_SRC_AT_START, *k.split("/")), "rb") as f:
+                disk[k] = f.read()
+        return _eq((errs, [k for k in eng if k not in assets], [k for k in assets if "test/" in k or k.endswith(".md") or k == "shell.html"],
+                    [k for k in assets if k.split("/")[0] not in ("engine", "page") and k != "graph.css"], _graph_sink_errors(assets, shell), b.rc,
+                    b.js("graph/index.json")["assets"] == {k: hashlib.sha256(v).hexdigest() for k, v in disk.items()},
+                    all(b.files["graph/" + k] == v for k, v in disk.items()), shell == shell_disk, "graph/shell.html" in b.files,
+                    [k for k in b.files if k.endswith("shell.html")], [ln for ln in b.out.splitlines() if "shell.html" in ln]),
+                   ([], [], [], [], [], 0, True, True, True, False, [], []))
+
+    @case("GA12", "G2a the count assert for assets (contract section 2): every `assets` entry has its file and the file's sha256 matches: a planted wrong digest is "
+                  "`GRAPH-COUNT <path> asset sha256 does not match its file`, a listed file that is not there is `GRAPH-COUNT <path> asset has no file`; "
+                  "the right digests pass")
+    def _():
+        files = {"graph/engine/index.js": b"abc\n"}
+        good = hashlib.sha256(b"abc\n").hexdigest()
+        return _eq((_graph_asset_errors({"engine/index.js": good}, files), _graph_asset_errors({"engine/index.js": "0" * 64}, files),
+                    _graph_asset_errors({"engine/index.js": good, "page/app.js": good}, files)),
+                   ([], [("GRAPH-COUNT", "engine/index.js", "asset sha256 does not match its file")],
+                    [("GRAPH-COUNT", "page/app.js", "asset has no file")]))
+
+    @case("GA13", "G2a A1: `--graph-src DIR` is a value option, at most once (a second one, or none after it, is a usage error); the usage line in the module text names "
+                  "it; through main() a build with --graph-src copies the fixture's assets into the output")
+    def _():
+        five = ["n", "o", "d", "s", "out"]
+        with tempfile.TemporaryDirectory() as d:
+            src = ga_src(d)
+            p = _plant(d)
+            o, e = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+                rc = main(["build_site.py", p["notes"], p["outline"], p["decls"], p["strings"], p["out"], "--graph-src", src], check=lambda: 0)
+            made = sorted(k for k in _tree(p["out"]) if k.startswith("graph/") and not k.startswith("graph/step/"))
+        return _eq((_parse(five + ["--graph-src", "x"]), _parse(five + ["--graph-src", "x", "--graph-src", "y"]), _parse(five + ["--graph-src"]),
+                    "[--graph-src DIR]" in __doc__.split("usage:")[1], rc, made),
+                   (([*five], {"graph_src": "x"}), None, None, True, 0, ["graph/engine/index.js", "graph/graph.css", "graph/index.json", "graph/page/app.js"]))
+
+    GA_ROLE = {"role_named_statement": "Named statement"}
+
+    @case("GA14", "G2a (contract section 10) the ROLE WORD: `role` of a closed card and of a closed child is the short word of the strings key role_named_statement "
+                  "(\"Named statement\"), not the list page's sentence, and stays ABSENT for a step with no role words; GRAPH_ROLE_WORDS maps the role named_statement "
+                  "to that key, which is resolved into the card's `role` at build time and is NEVER a key of index.json `strings` (20 keys with or without a step that "
+                  "carries a role); the full sentence is still in the card markup of the list page; site/strings.json holds the key with the word")
+    def _():
+        b = _base()
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        none = _graph_files([gr_row("a")], "c0", _strings())[1]["graph/index.json"]["strings"]
+        withrole = _graph_files([gr_row("a"), gr_row("b", "a", 1, role="W")], "c0", _strings())[1]["graph/index.json"]["strings"]
+        g1a = {c["id"]: c.get("role") for c in b.js("graph/step/g1a.json")["children"]}
+        return _eq((GRAPH_ROLE_WORDS, g1a, b.js("graph/step/g1a1.json")["card"].get("role"), "role" in b.js("graph/step/g1.json")["card"],
+                    sorted(b.js("graph/index.json")["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME)), len(b.js("graph/index.json")["strings"]),
+                    len(none), "role_named_statement" in none, len(withrole), withrole.get("role_named_statement"),
+                    _strings()["named_statement_use_line"] in b.page, GR_ROLE in b.page, real.get("role_named_statement"),
+                    _strings_problems(real), "role_named_statement" in STRING_KEYS, "role_named_statement" in TEXT_KEYS),
+                   ({"named_statement": "role_named_statement"}, {"g1a1": "Named statement"}, "Named statement", False, True, 20,
+                    20, False, 20, None, True, False, "Named statement", [], True, True))
+
+    @case("GA15", "G2a (section 10) GRAPH-ROLE: a role word of 24 characters is accepted, one of 25 is `GRAPH-ROLE <id> is longer than 24 characters`, one with a line "
+                  "break is `GRAPH-ROLE <id> has a line break`, each through a build with the value planted in the strings file (exit 1 and nothing written for the two "
+                  "refusals, a build with the 24 exits 0 and carries it), naming the step that carries the role (g1a1) and no other GRAPH line")
+    def _():
+        def go(word):
+            s = _strings()
+            s["role_named_statement"] = word
+            b = _build(strings=s)
+            return b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")], (b.js("graph/step/g1a.json")["children"][0].get("role") if b.rc == 0 else None)
+        return _eq((go("x" * 24), go("x" * 25), go("Named\nstatement"), go("x" * 23), GRAPH_ROLE_MAX),
+                   ((0, True, [], "x" * 24), (1, False, ["BUILD-ERROR GRAPH-ROLE g1a1 is longer than 24 characters"], None),
+                    (1, False, ["BUILD-ERROR GRAPH-ROLE g1a1 has a line break"], None), (0, True, [], "x" * 23), 24))
+
+    @case("GA16", "G2a (section 10) the KIND WORDS describe what is drawn: symbol_kind_theorem `Square corners: a result the Lean code proves`, symbol_kind_def `Rounded "
+                  "corners, one line: a named object or statement`, symbol_kind_structure `Rounded corners and an inner line: a bundle of named fields`, the same in "
+                  "site/strings.json and in the fixture strings, and in the `text` of the rows of `symbols` and in index.json `strings`; the keys keep their names "
+                  "(symbol_kind_*, no key_kind_*)")
+    def _():
+        with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
+            real = json.load(f)
+        ix = _base().js("graph/index.json")
+        keys = ["symbol_kind_theorem", "symbol_kind_def", "symbol_kind_structure"]
+        want = ["Square corners: a result the Lean code proves", "Rounded corners, one line: a named object or statement",
+                "Rounded corners and an inner line: a bundle of named fields"]
+        return _eq(([real[k] for k in keys], [_strings()[k] for k in keys], [ix["strings"][k] for k in keys],
+                    [ix["symbols"]["kinds"][k]["text"] for k in ("theorem", "def", "structure")], [k for k in real if k.startswith("key_kind_")]),
+                   (want, want, want, want, []))
+
+    @case("GA17", "G2a (section 10) ONE constant for the 50-character bound: GRAPH_SHORT_MAX is notes_meta's SHORT_MAX (the same value, 50) and the line in build_site.py "
+                  "that defines it holds no literal (it reads `GRAPH_SHORT_MAX = nm.SHORT_MAX`), so a second literal (51, or a 50 typed again) is caught")
+    def _():
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            text = f.read()
+        defs = re.findall(r"^GRAPH_SHORT_MAX = (.*?)\s*(?:#.*)?$", text, re.M)
+        return _eq((GRAPH_SHORT_MAX, nm.SHORT_MAX, GRAPH_SHORT_MAX == nm.SHORT_MAX, defs), (50, 50, True, ["nm.SHORT_MAX"]))
+
+    @case("GA18", "G2a the builder's own self-test does not read the live outline: a copy of tools/, site/ and outline/ in which the outline has lost the `short` of a "
+                  "step that has no title (so the real build would refuse it, GRAPH-SHORT, which the copy's face-line check shows) passes the self-test cases that "
+                  "used to read outline/outline.json (GR5 and GR21) in a child interpreter (exit 0, SELFTEST PASS); and no case of this file reads outline/outline.json "
+                  "from the checkout (the source holds no such path, counted)")
+    def _():
+        with open(os.path.join(_HERE, "fixtures", "outline_faces.json"), encoding="utf-8") as f:
+            o = json.load(f)
+        victim = next(g for g in o["groups"] if "short" in g and "title" not in g and g["claim"] is not None)
+        del victim["short"]
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            text = f.read()
+        with tempfile.TemporaryDirectory() as d:
+            shutil.copytree(_HERE, os.path.join(d, "tools"), ignore=shutil.ignore_patterns("__pycache__"))
+            shutil.copytree(os.path.join(_HERE, os.pardir, "site"), os.path.join(d, "site"))
+            _put(os.path.join(d, "outline", "outline.json"), json.dumps(o))
+            r = subprocess.run([sys.executable, os.path.join(d, "tools", "build_site.py"), "--selftest", "--only", "GR5,GR21"], capture_output=True, text=True,
+                               timeout=300, env={k: v for k, v in os.environ.items() if k != "RH_CHROME"})
+        return _eq((r.returncode, r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[-200:],
+                    [(c, i) for c, i, _m in _graph_line_errors(o["groups"], "LBL")], text.count('os.pardir, "out' + 'line"')),
+                   (0, "SELFTEST PASS", [("GRAPH-SHORT", victim["id"])], 0))
+
+    @case("GA19", "G2a the gate and the copy rule agree on the scanner's skipped folders: a .js or .css under a `__pycache__` folder (any depth) is refused, "
+                  "`GRAPH-ASSET <path> skipped-dir`, by the folder names the scanner itself prunes (its SKIP_DIRS, minus `test`, which is skipped without refusal), "
+                  "and still so with the name rule loosened to any path; and a structural assert in the gate: a scanner that reports fewer files checked than the "
+                  "tree holds (assets plus shell.html) is `GRAPH-SINK scanner checked N files but M were assets`, one that prints no count the same, a right count passes")
+    def _():
+        def refuse(files):
+            with tempfile.TemporaryDirectory() as d:
+                e, a, _s = _graph_assets(ga_src(d, files))
+            return e, sorted(a)
+        base = {"engine/index.js": "x\n"}
+        loose = re.compile(r".+")
+        with _patched("GRAPH_ASSET_NAME", loose):
+            deep_loose = refuse(dict(base, **{"engine/__pycache__/x.js": "y\n"}))
+            root_loose = refuse(dict(base, **{"__pycache__/x.js": "y\n"}))
+        two = {"engine/index.js": b"ok\n", "page/app.js": b"ok\n"}
+        skip_one = GaScanner(0, "1 files checked, 0 refused, 0 skipped as test files\n")
+        none_printed = GaScanner(0, "")
+        right = GaScanner(0, "3 files checked, 0 refused, 0 skipped as test files\n")
+        with_shell = GaScanner(0, "2 files checked, 0 refused, 0 skipped as test files\n")
+        over = GaScanner(0, "3 files checked, 0 refused, 0 skipped as test files\n")
+        extra = {"engine/index.js": "x\n", "engine/node_modules/y.js": "y\n"}
+        gjc.SKIP_DIRS.add("node_modules")   # the scanner's own table is the one the builder reads: a folder added to it there is refused here
+        try:
+            from_table = refuse(extra)
+        finally:
+            gjc.SKIP_DIRS.discard("node_modules")
+        return _eq((refuse(dict(base, **{"engine/__pycache__/x.js": "y\n"})), refuse(dict(base, **{"__pycache__/x.js": "y\n"})),
+                    refuse(dict(base, **{"engine/__pycache__/x.pyc": "y\n"})), refuse(dict(base, **{"engine/test/x.js": "y\n"})), deep_loose, root_loose,
+                    _graph_sink_errors(two, None, scanner=skip_one), _graph_sink_errors(two, b"<p>s</p>\n", scanner=with_shell),
+                    _graph_sink_errors(two, None, scanner=none_printed), _graph_sink_errors(two, b"<p>s</p>\n", scanner=right), sorted(gjc.SKIP_DIRS),
+                    _graph_sink_errors(two, None, scanner=over), from_table, refuse(extra)),
+                   (([("GRAPH-ASSET", "engine/__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
+                    ([("GRAPH-ASSET", "__pycache__/x.js", "skipped-dir")], ["engine/index.js"]), ([], ["engine/index.js"]), ([], ["engine/index.js"]),
+                    ([("GRAPH-ASSET", "engine/__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
+                    ([("GRAPH-ASSET", "__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
+                    [("GRAPH-SINK", "graph", "scanner checked 1 files but 2 were assets")],
+                    [("GRAPH-SINK", "graph", "scanner checked 2 files but 3 were assets")],
+                    [("GRAPH-SINK", "graph", "scanner checked 0 files but 2 were assets")], [], ["__pycache__", "test"],
+                    [("GRAPH-SINK", "graph", "scanner checked 3 files but 2 were assets")],
+                    ([("GRAPH-ASSET", "engine/node_modules/y.js", "skipped-dir")], ["engine/index.js"]), ([], ["engine/index.js", "engine/node_modules/y.js"])))
+
+    @case("GA20", "G2a an EXPLICIT --graph-src that is not a directory (absent, or a file) is exit 2, a message on stderr naming it, nothing on stdout and OUT_DIR not "
+                  "written, through a build and through main(); the default folder being absent is not an error (GA1)")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            absent = os.path.join(d, "absent")
+            afile = os.path.join(d, "afile")
+            _put(afile, "x")
+            runs = [_build(graph_src=absent), _build(graph_src=afile)]
+            p = _plant(os.path.join(d, "m"))
+            o, e = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+                rc = main(["build_site.py", p["notes"], p["outline"], p["decls"], p["strings"], p["out"], "--graph-src", absent], check=lambda: 0)
+            made = os.path.exists(p["out"])
+        return _eq(([(r.rc, r.out, r.existed, r.err.strip() == "build_site: --graph-src is not a directory: " + w) for r, w in zip(runs, (absent, afile))],
+                    rc, o.getvalue(), e.getvalue().strip() == "build_site: --graph-src is not a directory: " + absent, made),
+                   ([(2, "", False, True)] * 2, 2, "", True, False))
+
+    @case("GA21", "G2a a non-regular file named *.js or *.css (a FIFO) is refused, `GRAPH-ASSET <path> not-regular`, and so is a FIFO named shell.html at the root, "
+                  "without ever being opened (opening one with no writer blocks): the function runs in a child interpreter with a 10-second guard, so a failing "
+                  "implementation fails the case and does not hang the suite; a FIFO with another name (x.md) or under test/ is ignored")
+    def _():
+        if not hasattr(os, "mkfifo"):
+            raise _SkipCase("no mkfifo here")
+        code = ("import importlib.util, json, sys\n"
+                "s = importlib.util.spec_from_file_location('bs', sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)\n"
+                "e, a, sh = m._graph_assets(sys.argv[2])\n"
+                "print(json.dumps([e, sorted(a), sh is None]))\n")
+
+        def go(fifos):
+            with tempfile.TemporaryDirectory() as d:
+                src = ga_src(d, {"engine/index.js": "x\n"})
+                for name in fifos:
+                    os.makedirs(os.path.dirname(os.path.join(src, *name.split("/"))), exist_ok=True)
+                    os.mkfifo(os.path.join(src, *name.split("/")))
+                try:
+                    r = subprocess.run([sys.executable, "-c", code, os.path.abspath(__file__), src], capture_output=True, text=True, timeout=10)
+                except subprocess.TimeoutExpired:
+                    return "hung"
+                return json.loads(r.stdout) if r.returncode == 0 else r.stderr[-200:]
+        return _eq((go(["engine/p.js"]), go(["graph.css"]), go(["shell.html"]), go(["engine/p.md", "engine/test/q.js"])),
+                   ([[["GRAPH-ASSET", "engine/p.js", "not-regular"]], ["engine/index.js"], True],
+                    [[["GRAPH-ASSET", "graph.css", "not-regular"]], ["engine/index.js"], True],
+                    [[["GRAPH-ASSET", "shell.html", "not-regular"]], ["engine/index.js"], True],
+                    [[], ["engine/index.js"], True]))
+
+    @case("GA22", "G2a the gate runs the scanner's own quiet self-test BEFORE its run: a scanner whose self-test fails refuses the build, `GRAPH-SINK graph scanner "
+                  "self-test failed`, and its run is never called; one whose self-test passes goes on to run (self-test first, run second); the real scanner's "
+                  "entry is selftest_quiet and returns 0")
+    def _():
+        two = {"engine/index.js": b"ok\n"}
+        failing = GaScanner(0, "1 files checked, 0 refused, 0 skipped as test files\n", selftest=1)
+        passing = GaScanner(0, "1 files checked, 0 refused, 0 skipped as test files\n")
+        return _eq((_graph_sink_errors(two, None, scanner=failing), failing.calls, _graph_sink_errors(two, None, scanner=passing), passing.calls,
+                    gjc.selftest_quiet()),
+                   ([("GRAPH-SINK", "graph", "scanner self-test failed")], ["selftest"], [], ["selftest", "run"], 0))
+
     # G1: the older cases below plant data the graph cannot hold, to test something else: a premise on a step that is neither a sibling nor the step's own
     # child (the premises line, PL*, PRM*), or a root kind outside the symbol table (the proof facts, PRK*, NONE1, F41b, F49*). The graph refuses both (GRAPH-EDGE,
     # GRAPH-SYMBOL: GR9, GR10), so these cases run with the graph step switched off and keep every literal they had; GR* are the graph's own cases.
     # G1b: two more plant a face line the graph refuses (GRAPH-SHORT): ESC1 puts the hostile text on every strings value, so on the no-claim label (over 50
     # characters), and TT6 a title with a formula (`$`); both test the list page.
-    no_graph_cases = ("PL1", "PL2", "PL3", "PRM1", "PRM2", "PRM3", "PRK1", "PRK2", "NONE1", "F41b", "F49b", "F49c", "ESC1", "TT6")
+    # G2a (section 10): the role word is at most 24 characters, and the cases that put a marker on every strings value (`MARK-role_named_statement` is 25) test
+    # the list page, so they run with the graph step off too: P1b, RO1, RO2, EVD1, DEF4, NAL1, MK1, UD5.
+    no_graph_cases = ("PL1", "PL2", "PL3", "PRM1", "PRM2", "PRM3", "PRK1", "PRK2", "NONE1", "F41b", "F49b", "F49c", "ESC1", "TT6",
+                      "P1b", "RO1", "RO2", "EVD1", "DEF4", "NAL1", "MK1", "UD5")
 
     def without_graph(fn):
         def run_():
-            with _patched("_graph_files", lambda rows, commit, strings: ([], {})), _patched("_graph_rows", lambda m, strings: ([], [])):
+            with _patched("_graph_files", lambda rows, commit, strings, assets=None: ([], {})), _patched("_graph_rows", lambda m, strings: ([], [])):
                 return fn()
         return run_
     cases[:] = [(cid, desc, without_graph(fn) if cid in no_graph_cases else fn) for cid, desc, fn in cases]
@@ -11737,14 +12391,17 @@ def selftest(verbose=True, only=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
-    global _CODE_FLAG_AT_START, _SELFTEST_RUNNING
+    global _CODE_FLAG_AT_START, _GRAPH_SRC_AT_START, _SELFTEST_RUNNING
     was_running = _SELFTEST_RUNNING
     if not _SELFTEST_RUNNING:   # a case that calls selftest() (SEL1) must not overwrite the value read by the outermost run
         _CODE_FLAG_AT_START = CODE_ON_SURFACE_REFUSES
+        _GRAPH_SRC_AT_START = GRAPH_SRC
     _SELFTEST_RUNNING = True
+    no_graph = tempfile.mkdtemp(prefix="no-graph-src-")
+    os.rmdir(no_graph)   # a folder that does not exist: every build of a case that gives no graph_src has no assets, whatever this checkout holds
     for cid, desc, fn in cases:
         try:
-            with _patched("CODE_ON_SURFACE_REFUSES", False):   # the cases do not depend on the constant of the file; CS5 sets it True on purpose
+            with _patched("CODE_ON_SURFACE_REFUSES", False), _patched("GRAPH_SRC", no_graph):   # the cases do not depend on the constants of the file; CS5 sets the first True on purpose
                 good, detail = fn()
         except _SkipCase as e:
             good, detail = None, str(e)
@@ -11772,7 +12429,7 @@ def selftest_quiet():
 
 
 _VALUE_OPTIONS = {"--source-check": "source_check", "--release-archive-sha": "archive_sha", "--notes-commit": "notes_commit",
-                  "--repo": "repo"}
+                  "--repo": "repo", "--graph-src": "graph_src"}
 
 
 def _parse(argv):

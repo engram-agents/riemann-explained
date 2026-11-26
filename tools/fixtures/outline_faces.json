@@ -1,0 +1,267 @@
+{
+ "groups": [
+  {
+   "id": "rh-from-everycharacter",
+   "parent": "root",
+   "order": 1,
+   "premises": [
+    "primitive-to-all"
+   ],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "From every character to the Riemann Hypothesis"
+  },
+  {
+   "id": "rh-from-zeta-right",
+   "parent": "rh-from-everycharacter",
+   "order": 1,
+   "premises": [],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "From zeta right of 1/2 to the Riemann Hypothesis"
+  },
+  {
+   "id": "primitive-to-all",
+   "parent": "root",
+   "order": 2,
+   "premises": [
+    "three-inputs",
+    "zerofreeall"
+   ],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "From primitive characters to all characters"
+  },
+  {
+   "id": "zerofreeall",
+   "parent": "primitive-to-all",
+   "order": 1,
+   "premises": [],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "named_statement",
+   "short": "Zero-freeness right of 1/2: primitive characters",
+   "title": "Zero-freeness to the right of 1/2 for every primitive character"
+  },
+  {
+   "id": "three-inputs",
+   "parent": "root",
+   "order": 3,
+   "premises": [
+    "input-green",
+    "input-vwin",
+    "input-hypsalt"
+   ],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "Three inputs give zero-freeness right of 1/2"
+  },
+  {
+   "id": "families-from-topg",
+   "parent": "three-inputs",
+   "order": 1,
+   "premises": [
+    "topg",
+    "hosts"
+   ],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "Class statement and hosts give zero-freeness"
+  },
+  {
+   "id": "topg",
+   "parent": "families-from-topg",
+   "order": 1,
+   "premises": [],
+   "claim": null,
+   "title": "The statement about classes of families"
+  },
+  {
+   "id": "zeros-enter",
+   "parent": "families-from-topg",
+   "order": 2,
+   "premises": [
+    "window-bound-every-level",
+    "landau-every-level"
+   ],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "Three level properties exclude zeros right of 1/2"
+  },
+  {
+   "id": "window-bound",
+   "parent": "zeros-enter",
+   "order": 3,
+   "premises": [],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "Near-square-root bound on a level's error term"
+  },
+  {
+   "id": "good-pair",
+   "parent": "window-bound",
+   "order": 1,
+   "premises": [],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "For every large range, a good pair of primes"
+  },
+  {
+   "id": "zero-density",
+   "parent": "window-bound",
+   "order": 2,
+   "premises": [],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "Few characters have a zero near the line Re s = 1"
+  },
+  {
+   "id": "window-inequality",
+   "parent": "zeros-enter",
+   "order": 2,
+   "premises": [
+    "window-bound"
+   ],
+   "claim": null,
+   "title": "The window inequality at every level"
+  },
+  {
+   "id": "landau-step",
+   "parent": "zeros-enter",
+   "order": 5,
+   "premises": [],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "A one-sided bound on windows forbids zeros"
+  },
+  {
+   "id": "landau-property",
+   "parent": "zeros-enter",
+   "order": 6,
+   "premises": [],
+   "claim": null,
+   "title": "The Landau property of a level at one scale"
+  },
+  {
+   "id": "input-green",
+   "parent": "three-inputs",
+   "order": 2,
+   "premises": [],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "named_statement",
+   "short": "Polynomials and the library's cuspidal functions",
+   "title": "Input 1"
+  },
+  {
+   "id": "input-vwin",
+   "parent": "three-inputs",
+   "order": 3,
+   "premises": [],
+   "claim": null,
+   "short": "The window supply (Input 2)",
+   "title": "The window supply for every primitive character (Input 2)"
+  },
+  {
+   "id": "vwin-proof",
+   "parent": "input-vwin",
+   "order": 1,
+   "premises": [],
+   "claim": null,
+   "title": "The library's proof of Input 2"
+  },
+  {
+   "id": "hosts",
+   "parent": "three-inputs",
+   "order": 4,
+   "premises": [
+    "input-vwin"
+   ],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "The window supply meets each host requirement"
+  },
+  {
+   "id": "input-hypsalt",
+   "parent": "three-inputs",
+   "order": 5,
+   "premises": [],
+   "claim": {
+    "basis": "census"
+   },
+   "root_role": "named_statement",
+   "short": "The hypothesis package: data with conditions",
+   "title": "The hypothesis package (Input 3)"
+  },
+  {
+   "id": "linkn",
+   "parent": "input-hypsalt",
+   "order": 1,
+   "premises": [],
+   "claim": null,
+   "title": "The link condition"
+  },
+  {
+   "id": "literature-statements",
+   "parent": "input-hypsalt",
+   "order": 2,
+   "premises": [],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "named_statement",
+   "short": "Three literature hypotheses in one structure",
+   "title": "The bundle of the three literature statements"
+  },
+  {
+   "id": "window-bound-every-level",
+   "parent": "zeros-enter",
+   "order": 1,
+   "premises": [
+    "window-inequality"
+   ],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "The same bound on every level's windows"
+  },
+  {
+   "id": "landau-every-level",
+   "parent": "zeros-enter",
+   "order": 4,
+   "premises": [
+    "landau-step"
+   ],
+   "claim": {
+    "basis": "read"
+   },
+   "root_role": "result",
+   "short": "Every level has the Landau property"
+  }
+ ]
+}
