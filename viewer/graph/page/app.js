@@ -121,8 +121,11 @@ export async function start(doc, deps) {
     function say(text) { if (dead) return; notice.replaceChildren(doc.createTextNode(text)); notice.hidden = false; }
     function hush() { notice.hidden = true; }
 
-    /* The step's own file is loaded (it is cached when the card's parents or a deep link already loaded it) BEFORE the sheet is touched, because the
-       repository's note lives in that file: a failed load changes nothing (the open card stays open) and goes through failed().
+    /* A MAP CARRIES NOTES iff its index strings hold BOTH note_label and note_source (data the page has at start; the live map has neither).
+       On a map that carries notes, the step's own file is loaded (it is cached when the card's parents or a deep link already loaded it) BEFORE
+       the sheet is touched, because the repository's note lives in that file: a failed load changes nothing (the open card stays open) and goes
+       through failed(). On a map that does not, there is no note to fetch, so openCard touches the sheet exactly as it always did: at once, from
+       the markup, with no step load in its path, and no fetch result can delay it or prevent it.
 
        ONE NAVIGATION TICKET. `nav` is bumped by EVERY route the reader can take (the `routes` table is wrapped once, below, so each entry takes
        a ticket; an in-sheet close request takes one too). An async route (openCard, go, open-parts) captures its ticket at entry and
@@ -138,6 +141,7 @@ export async function start(doc, deps) {
        `path-not-found`, is covered by any) and none of those calls belongs to the current ticket. An event with no route call pending, which is a
        gesture the reader made on the map, is not covered: it is shown exactly as before. This is the ticket again, not a second sequence. */
     const engineCalls = new Set();
+    /* THE INVARIANT: a route starts an engine call only while its ticket is current, checked synchronously before each viaRoute. */
     async function viaRoute(t, ids, call) {
       const rec = { t, ids: new Set(ids) };
       engineCalls.add(rec);
@@ -157,28 +161,41 @@ export async function start(doc, deps) {
     const typesetWords = TYPESET_STRINGS.every((k) => typeof strings[k] === "string" && strings[k] !== "")
       ? { label: strings.note_label_typeset, line: strings.note_typeset_line, exactButton: strings.note_exact_button, renderButton: strings.note_render_button }
       : null;
-    async function openCard(t, id) {
+    const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    const carriesNotes = hasOwn(strings, "note_label") && hasOwn(strings, "note_source");
+    /* The sheet's one open. `step` is the loaded step on a map that carries notes; on one that does not it is undefined and no `note` key is passed. */
+    function showOpenCard(id, art, m, anc, step) {
+      const w = index.symbols.words;
+      /* The sheet's one line. A kind whose table row has `card_words` (a folder or file asserts nothing) shows that word and nothing from
+         state or proof; every other kind shows the state and the proof, as before. The TABLE's row decides, never the kind's name. The same
+         condition ends the breadcrumb at the PARENT (the open card is not listed; the sheet heading carries its title). */
+      const cardWord = index.symbols.cardWords[m.kind];
+      const status = cardWord !== undefined ? strings[cardWord] : [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
+      const ok = sheet.showCard(art, {
+        id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
+        currentListed: cardWord === undefined,
+        ...(step === undefined ? {} : {
+          note: step.note ? { label: strings.note_label, text: step.note.text, typeset: typesetWords,
+            sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null }),
+        crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
+      });
+      if (ok) { hush(); handle.select(id); }
+      return ok;
+    }
+    /* Not async, on purpose: on a map that carries no notes it returns the boolean at once, as it always did, and an exception from the sheet reaches
+       the caller synchronously (a tap's guard, or go's catch). On a map that carries notes it returns the promise of the open. */
+    function openCard(t, id) {
       const art = articles.get(id), m = data.meta(id);
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
       if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
+      if (!carriesNotes) return showOpenCard(id, art, m, anc, undefined);
+      return openCardWithNote(t, id, art, m, anc);
+    }
+    async function openCardWithNote(t, id, art, m, anc) {
       try {
         const step = await data.loadStep(id);
         if (!current(t)) return false;
-        const w = index.symbols.words;
-        /* The sheet's one line. A kind whose table row has `card_words` (a folder or file asserts nothing) shows that word and nothing from
-           state or proof; every other kind shows the state and the proof, as before. The TABLE's row decides, never the kind's name. The same
-           condition ends the breadcrumb at the PARENT (the open card is not listed; the sheet heading carries its title). */
-        const cardWord = index.symbols.cardWords[m.kind];
-        const status = cardWord !== undefined ? strings[cardWord] : [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
-        const ok = sheet.showCard(art, {
-          id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
-          currentListed: cardWord === undefined,
-          note: step.note ? { label: strings.note_label, text: step.note.text, typeset: typesetWords,
-            sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null,
-          crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
-        });
-        if (ok) { hush(); handle.select(id); }
-        return ok;
+        return showOpenCard(id, art, m, anc, step);
       } catch (e) {
         if (!current(t)) return false;
         return failed(e);
