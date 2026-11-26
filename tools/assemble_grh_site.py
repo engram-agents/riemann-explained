@@ -665,7 +665,7 @@ MUTATIONS = {
 MUTATION_EDITS = {
     "M-a": ('        if found != pin:\n', '        if found != pin and not rel.startswith("step/"):\n'),
     "M-b": ('        raw = _read_in(root, path, limit)\n',
-            '        raw = open(path, "rb").read(limit + 1) if name.startswith("step/") and os.path.islink(path) else _read_in(root, path, limit)\n'),
+            '        raw = sk._read_bounded(path, limit, guards=()) if name.startswith("step/") and os.path.islink(path) else _read_in(root, path, limit)\n'),
     "M-c": ('    index_bytes = _graph_bytes({"x": index})["x"]\n',
             '    index_bytes = (json.dumps({**{k: v for k, v in index.items() if k != "assets"}, "assets": index["assets"]}, indent=1, ensure_ascii=False) + "\\n").encode("utf-8")\n'),
     "M-d": ('    manifest = _manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)\n',
