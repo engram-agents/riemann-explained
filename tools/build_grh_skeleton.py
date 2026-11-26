@@ -92,6 +92,14 @@ class SourceError(Exception):
         self.reason = reason
 
 
+class LaterBlocksError(Exception):
+    """A source whose `/-!` blocks cannot be counted: `SKEL-LATER-BLOCKS <path> <reason>`."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
 class NoteError(Exception):
     """A source file whose module note cannot be taken: `SKEL-NOTE <path> <reason>`."""
 
@@ -227,6 +235,50 @@ def _comment_end(text, start):
         else:
             i += 1
     return None
+
+
+def _top_level_blocks(text):
+    """The number of module-documentation blocks (`/-!`) of the source `text`, counted at the TOP LEVEL: outside any comment a `--` line comment is skipped to its end, a string literal
+    (double quotes, backslash escapes) and the character literals `'"'` and `'\\"'` whole, and a block comment (`/-`, `/--` or `/-!`) is skipped to the `-/` that closes it by `_comment_end`,
+    so an opener inside another comment is never counted; only `/-!` counts, never a `/--` doc comment. Raises LaterBlocksError: unterminated block comment, unterminated string literal."""
+    i, n = 0, len(text)
+    count = 0
+    while i < n:
+        if text.startswith("--", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+        elif text[i] == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                i += 2 if text[i] == "\\" else 1
+            if i >= n:
+                raise LaterBlocksError("unterminated string literal")
+            i += 1
+        elif text.startswith("'\"'", i):
+            i += 3
+        elif text.startswith("'\\\"'", i):
+            i += 4
+        elif text.startswith("/-", i):
+            count += text.startswith("/-!", i)
+            end = _comment_end(text, i)
+            if end is None:
+                raise LaterBlocksError("unterminated block comment")
+            i = end
+        else:
+            i += 1
+    return count
+
+
+def _later_blocks(text):
+    """The number of `/-!` blocks after the first of the source `text`: the top-level walker `_top_level_blocks` minus one, checked against the grep recipe (the lines that start with `/-!`,
+    minus one). Raises LaterBlocksError: the walker's own reasons, `no top-level /-! block`, or `walker=<n> grep=<n>` when the two differ (neither is chosen silently)."""
+    walker = _top_level_blocks(text) - 1
+    grep = sum(1 for ln in text.split("\n") if ln.startswith("/-!")) - 1
+    if walker < 0:
+        raise LaterBlocksError("no top-level /-! block")
+    if walker != grep:
+        raise LaterBlocksError(f"walker={walker} grep={grep}")
+    return walker
 
 
 def _module_note(raw):
@@ -771,7 +823,7 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
     errors = [("SKEL-MISSING", p, "") for p in listed if p not in set(disk)] + [("SKEL-UNLISTED", p, "") for p in disk if p not in set(listed)]
     if errors:
         return errors, [], {}
-    src, note_text = {}, {}
+    src, note_text, later = {}, {}, {}
     for p in listed:
         try:
             raw = _read_in(grh, os.path.join(grh, "src", *p.split("/")) + ".lean", SOURCE_READ_LIMIT)
@@ -779,6 +831,11 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
             src[p] = raw.decode("utf-8")
         except (SourceError, NoteError) as e:
             errors.append(("SKEL-NOTE", p, e.reason))
+            continue
+        try:
+            later[p] = _later_blocks(src[p])
+        except LaterBlocksError as e:
+            errors.append(("SKEL-LATER-BLOCKS", p, e.reason))
     if errors:
         return errors, [], {}
     cut = []
@@ -867,7 +924,7 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
                 row(fid[f["path"]], gid, fi, premises[f["path"]], "file", f["title"])
             groups.append(_group_report(gid, members, adj, kept))
     report = _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info)
-    report["notes"] = {fid[p]: {"review": {"state": "converter"}, "source": source_prefix + p + ".lean", "text": note_text[p]} for p in listed}
+    report["notes"] = {fid[p]: {"later_blocks": later[p], "review": {"state": "converter"}, "source": source_prefix + p + ".lean", "text": note_text[p]} for p in listed}
     errors = _spine_and_index(grh, ilean_dir, fid, rows, report)
     if errors:
         return errors, [], {}
@@ -899,6 +956,7 @@ def _scale_from_text(text):
     return text
 
 
+
 def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build."""
@@ -919,6 +977,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(SYMBOLS) if k in strings}, SYMBOLS)   # only the missing ones: it holds a subset
     if missing:
         return missing, {}, rows, rep
+
     errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"], child_kinds=True,
                                     step_extra=rep["step_extra"], index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
                                                      **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {})) or None)
@@ -1064,6 +1123,7 @@ def _tree(root, body, srcs, ileans=None, index="default"):
     os.makedirs(g)
     with open(os.path.join(g, "CONTENTS.md"), "w", encoding="utf-8") as f:
         f.write(HEAD + body + TAIL)
+
     if index is not None:
         with open(os.path.join(g, "INDEX.md"), "wb") as f:
             f.write(_index() .encode("utf-8") if index == "default" else (index if isinstance(index, bytes) else index.encode("utf-8")))
@@ -1173,6 +1233,7 @@ def _flat(names):
 
 
 EDGE_BASIS = {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}   # index.json edge_basis: a pointer, the sentence is in strings
+
 LINES_WORDS = {"key_lines_heading": "What a line is",
                "key_lines_text": "A line joins two files of the same group: the upper file uses definitions or results from the lower one. Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. Lean also uses results it fills in on its own without naming them; those uses are not counted.",
                "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming "
@@ -1564,7 +1625,7 @@ def _selftest_cases():
                 row("lean-s-a", "lean-s--g", 0, [], "file", "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "file", "b")]
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
         info = {("lean-s-b", "lean-s-a"): {"weight": 1, "in_reduction": True}}
-        notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n", "review": {"state": "converter"}} for i in ("lean-s-a", "lean-s-b")}
+        notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n", "review": {"state": "converter"}, "later_blocks": 0} for i in ("lean-s-a", "lean-s-b")}
         want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS, **NOTE_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True, index_extra={"edge_basis": EDGE_BASIS})
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
@@ -1976,7 +2037,7 @@ def _selftest_cases():
         return raw[a:raw.index(b"-/", a)].decode("utf-8")
 
     @case("N1", "a module note with markdown, backticks, `$`, a CRLF, a tab, trailing spaces and a final newline comes through byte for byte: the step file's note.text equals the "
-                "source slice read in the case, note.source is `grh/src/` + the CONTENTS path + `.lean`, the note has exactly the keys review, source and text (review is {state: converter}), and the CRLF and the "
+                "source slice read in the case, note.source is `grh/src/` + the CONTENTS path + `.lean`, the note has exactly the keys later_blocks, review, source and text (review is {state: converter}, later_blocks 0), and the CRLF and the "
                 "trailing spaces are in the written JSON as escapes")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
@@ -1985,7 +2046,7 @@ def _selftest_cases():
         note = _j(files, "graph/step/lean-s-a.json")["note"]
         want = slice1(RAW1)
         return _eq((errs, note["text"] == want, note["source"], sorted(note), len(want), want.count("\r\n"), b"Title\\r\\nSome `code`" in files["graph/step/lean-s-a.json"]),
-                   ([], True, "grh/src/New/S/A.lean", ["review", "source", "text"], 77, 1, True))
+                   ([], True, "grh/src/New/S/A.lean", ["later_blocks", "review", "source", "text"], 77, 1, True))
 
     @case("N2", "the equality of N1 can fail: the fixture's note differs from its strip, rstrip, lstrip, CRLF-folded, line-normalised and one-character-shorter versions, so a "
                 "tool that trims, folds a newline or loses a character is caught")
@@ -2876,7 +2937,7 @@ def _selftest_cases():
 
     @case("DOC1", "a doc comment is carried to its REAL end, nesting of `/-` and `-/` counted by the one counter the module note uses: a doc holding `/- an inner comment -/` is carried whole "
                   "(the full string typed here, byte for byte), so is one with two nested levels, and a plain doc is unchanged; the case asserts that its first fixture holds `/-` before "
-                  "its end (so dropping the fixture reddens it); a doc that never closes (its inner comment is closed, its own is not) is `SKEL-KIND <constant> unterminated doc comment`")
+                  "its end (so dropping the fixture reddens it); a doc that never closes (its inner comment is closed, its own is not) is refused by the walker that counts the file's `/-!` blocks first, `SKEL-LATER-BLOCKS <path> unterminated block comment`")
     def _():
         assert "/-" in DOC_T1[3:-2] and "/-" in DOC_T2[3:-2]   # the discriminating fact: the fixture docs hold an inner opener before their end
         with _tmp() as d:
@@ -2886,7 +2947,7 @@ def _selftest_cases():
         bad_src = DOC_SRC.replace(DOC_T1, "/-- never closes /- inner -/")
         with _tmp() as d:
             e2 = bld(doc_fixture(d, bad_src), PIN, _strings())[0]
-        return _eq((errs, got, e2), ([], {"New.t1": DOC_T1, "New.t2": DOC_T2, "New.t3": DOC_T3}, [("SKEL-KIND", "New.t1", "unterminated doc comment")]))
+        return _eq((errs, got, e2), ([], {"New.t1": DOC_T1, "New.t2": DOC_T2, "New.t3": DOC_T3}, [("SKEL-LATER-BLOCKS", "New/S/A", "unterminated block comment")]))
 
     @case("DOC2", "the END of every carried doc comment is checked against the source by a counter run independently in the case: doc.text equals the source from the doc's start line "
                   "through its closing delimiter (nesting counted), ends with `-/`, and what follows in the source is not a continuation of the comment; a doc cut at the first `-/` "
@@ -2998,7 +3059,7 @@ def _selftest_cases():
                    ([], [(42, 38, 0), (7, 7, 1), (15, 14, 1), (34, 32, 0), (29, 28, 1), (8, 7, 0), (6, 6, 0), (9, 2, 1), (4, 3, 1)], 108,
                     {"lemma": 42, "def": 30, "abbrev": 17, "theorem": 12, "structure": 6, "class": 1}, 29, True, 353))
 
-    @case("NR1", "note review: the note of EVERY file step has `review` equal to exactly {state: converter} (the converter's rendering, read by no one), the note keys are exactly review, source and text, "
+    @case("NR1", "note review: the note of EVERY file step has `review` equal to exactly {state: converter} (the converter's rendering, read by no one), the note keys are exactly later_blocks, review, source and text, "
                  "and a part or a group has no note; the review object is a fresh one per note (changing one in the report changes no other)")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"
@@ -3007,10 +3068,10 @@ def _selftest_cases():
         notes = {r["id"]: _j(files, f"graph/step/{r['id']}.json").get("note") for r in rows}
         return _eq((errs, {k: (None if v is None else (v["review"], sorted(v))) for k, v in notes.items()},
                     rep["notes"]["lean-s-a"]["review"] is not rep["notes"]["lean-s-b"]["review"]),
-                   ([], {"lean-s": None, "lean-s--g": None, "lean-s-a": ({"state": "converter"}, ["review", "source", "text"]), "lean-s-b": ({"state": "converter"}, ["review", "source", "text"])}, True))
+                   ([], {"lean-s": None, "lean-s--g": None, "lean-s-a": ({"state": "converter"}, ["later_blocks", "review", "source", "text"]), "lean-s-b": ({"state": "converter"}, ["later_blocks", "review", "source", "text"])}, True))
 
     @case("NRR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): all 306 file steps have a note whose review is exactly {state: converter} (306 of 306, no other "
-                 "value, no other key in review), the note keys are review, source and text on every one, and no part or group has a note")
+                 "value, no other key in review), the note keys are later_blocks, review, source and text on every one, and no part or group has a note")
     def _():
         if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
             raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
@@ -3019,7 +3080,49 @@ def _selftest_cases():
         files_n = [n for k, n in steps.values() if k == "file"]
         return _eq((errs, len(files_n), sum(1 for n in files_n if n is not None and n.get("review") == {"state": "converter"}), sorted({tuple(sorted(n)) for n in files_n}),
                     sum(1 for k, n in steps.values() if k != "file" and n is not None)),
-                   ([], 306, 306, [("review", "source", "text")], 0))
+                   ([], 306, 306, [("later_blocks", "review", "source", "text")], 0))
+
+    LB_A = ("/-!\nnote\n-/\n-- see /-! below\ndef s := \"x /-! y\"\ndef c := '\"'\n/- outer /-! inner -/ rest -/\n/-- A doc. -/\ntheorem t : True := trivial\n"
+            "/-- A doc between the blocks. -/\n/-!\nsecond\n-/\n")
+    LB_C = "/-!\na\n-/\n/-!\nb\n-/\n/-!\nc\n-/\n"
+    LB_BODY = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n- `New/S/C` (1): c\n"
+
+    @case("LB1", "later_blocks: every file step's note has `later_blocks`, an integer (not a bool), the number of `/-!` blocks AFTER the first, counted at the top level by one nesting counter: a file with one "
+                 "block is 0 (the key is there), a file with three is 2; in one file a `--` line holding `/-!`, a string literal holding `/-!`, a character literal `\"` before it, a `/-!` inside "
+                 "another block comment and a `/--` doc comment (before and between the blocks) add nothing, and its one later block is counted: 1; a part and a group have no note")
+    def _():
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, LB_BODY, {"New/S/A": LB_A, "New/S/B": _lean(), "New/S/C": LB_C}), PIN, _strings())
+        notes = {r["id"]: _j(files, f"graph/step/{r['id']}.json").get("note") for r in rows}
+        got = {k: (None if n is None else (n["later_blocks"], type(n["later_blocks"]) is int, sorted(n))) for k, n in notes.items()}
+        keys = ["later_blocks", "review", "source", "text"]
+        return _eq((errs, got), ([], {"lean-s": None, "lean-s--g": None, "lean-s-a": (1, True, keys), "lean-s-b": (0, True, keys), "lean-s-c": (2, True, keys)}))
+
+    @case("LB2", "later_blocks refusals, all reported in CONTENTS order, nothing written: a block that never closes is `SKEL-LATER-BLOCKS <path> unterminated block comment`; a source where the walker "
+                 "and the grep recipe (the lines that start with `/-!`, minus one) disagree is `SKEL-LATER-BLOCKS <path> walker=<n> grep=<n>` (a `/-!` that starts a line inside another block "
+                 "comment: walker=0 grep=1; one that starts a line inside a string literal: walker=0 grep=1), never settled silently by one of them")
+    def _():
+        srcs = {"New/S/A": "/-!\nn\n-/\n/-! never closes\n", "New/S/B": "/-!\nn\n-/\n/- outer\n/-! inner\n-/ rest -/\n", "New/S/C": "/-!\nn\n-/\ndef s := \"abc\n/-! x\n\"\n"}
+        with _tmp() as d:
+            errs = bld(_tree(d, LB_BODY, srcs), PIN, _strings())[:2]
+        return _eq(errs, ([("SKEL-LATER-BLOCKS", "New/S/A", "unterminated block comment"), ("SKEL-LATER-BLOCKS", "New/S/B", "walker=0 grep=1"), ("SKEL-LATER-BLOCKS", "New/S/C", "walker=0 grep=1")], {}))
+
+    @case("LBR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): later_blocks is, on every one of the 306 file notes, the number of lines of its source that start "
+                 "with `/-!` minus 1 (the grep recipe, written in the case); 178 files have a later block, 643 in all, at most 12 in one file; 949 such lines in all, 306 of them the first of a file")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        want, got = {}, {}
+        for r in rows:
+            if r["kind"] != "file":
+                continue
+            note = _j(files, f"graph/step/{r['id']}.json")["note"]
+            with open(os.path.join(_GRH_FOR_SK13, *note["source"].split("/")[1:]), encoding="utf-8") as f:
+                want[r["id"]] = sum(1 for ln in f.read().split("\n") if ln.startswith("/-!")) - 1
+            got[r["id"]] = note["later_blocks"]
+        return _eq((errs, got == want, len(got), sum(1 for v in got.values() if v), sum(got.values()), max(got.values()), sum(want.values()) + len(want), all(type(v) is int for v in got.values())),
+                   ([], True, 306, 178, 643, 12, 949, True))
 
     def sc_build(d, **kw):
         g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
