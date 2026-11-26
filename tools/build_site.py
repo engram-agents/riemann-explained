@@ -14083,6 +14083,97 @@ def _selftest_cases():
                     (need, True), (need, True), (emp("note_label"), True),
                     (isn("note_source"), True), []))
 
+    @case("GRW4", "the edge-basis strings, as the page reads them (rule E): with an edge_basis in the index, key_lines_heading AND the key edge_basis.words names must both be present "
+                  "(`GRAPH-STRINGS <key> missing`, sorted, the words key reported once) and, as every key the page reads, a string and not empty (whitespace accepted); with NO edge_basis "
+                  "key_lines_heading and key_lines_text are refused `GRAPH-STRINGS <key> is not a key the page reads without an edge basis` (one line per key, sorted), in "
+                  "`_graph_strings_errors` and so through `_graph_files`; spine_lines_text is NOT conditional (the page learns it with the Graph view: it stays optional with and without "
+                  "an edge basis); the other optional words are unaffected")
+    def _():
+        rows = [gr_row("a")]
+        eb = {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}
+        st = lambda **kw: dict(_strings(), **kw)
+        f = lambda w, with_eb=True: [tuple(x) for x in _graph_files(rows, "c0", st(**w), index_extra=({"edge_basis": eb} if with_eb else None))[0]]
+        miss = lambda k: ("GRAPH-STRINGS", k, "missing")
+        no_eb = lambda k: ("GRAPH-STRINGS", k, "is not a key the page reads without an edge basis")
+        req = {k: "x" for k in _graph_strings_keys()}
+        H, T = {"key_lines_heading": "H"}, {"key_lines_text": "T"}
+        return _eq((f(dict(H, **T)), f(T), f(H), f({}), f(dict(H, key_lines_text="")), f(dict(T, key_lines_heading="")), f(dict(T, key_lines_heading=None)), f(dict(T, key_lines_heading=3)),
+                    f(dict(H, key_lines_text=None)), f(dict(T, key_lines_heading=" ")), f(dict(H, key_lines_text=" ")),
+                    f(H, False), f(T, False), f(dict(H, **T), False), f({}, False), f({"spine_lines_text": "S"}, False), f(dict(H, **T, spine_lines_text="S")),
+                    f(dict(T, spine_lines_text="S", key_lines_heading=""), True),
+                    _graph_strings_errors(dict(req, **H)), _graph_strings_errors(dict(req, **T)), _graph_strings_errors(dict(req, spine_lines_text="S")),
+                    _graph_strings_errors(dict(req, key_kinds_note="K", key_scope_text="Q", note_label_typeset="a", note_typeset_line="b", note_exact_button="c", note_render_button="d"))),
+                   ([], [miss("key_lines_heading")], [miss("key_lines_text")], [miss("key_lines_heading"), miss("key_lines_text")],
+                    [("GRAPH-STRINGS", "key_lines_text", "is empty")], [("GRAPH-STRINGS", "key_lines_heading", "is empty")], [("GRAPH-STRINGS", "key_lines_heading", "is not a string")],
+                    [("GRAPH-STRINGS", "key_lines_heading", "is not a string")], [("GRAPH-STRINGS", "key_lines_text", "is not a string")], [], [],
+                    [no_eb("key_lines_heading")], [no_eb("key_lines_text")], [no_eb("key_lines_heading"), no_eb("key_lines_text")], [], [], [],
+                    [("GRAPH-STRINGS", "key_lines_heading", "is empty")],
+                    [no_eb("key_lines_heading")], [no_eb("key_lines_text")], [], []))
+
+    @case("PGV1", "the builder and the page agree: for each shape of strings the written index.json (the one the builder would write, with the shape's strings and edge_basis) is judged "
+                  "by the builder (`_graph_files`) and by the page's own validateIndex (viewer/graph/page/data.js, run by node), and both accept or both refuse; the two control rows "
+                  "(a normal pair without and with notes) must be accepted by both or the instrument is wrong and the case FAILS saying so. ONE shape is a KNOWN, DOCUMENTED divergence: "
+                  "spine_lines_text beside an edge basis, which the builder accepts and the page at this checkout refuses as extra-string, because the page learns that key with the Graph "
+                  "view; when the page learns it this row reddens and says so. Skipped when node is not on PATH")
+    def _():
+        node = shutil.which("node")
+        if node is None:
+            raise _SkipCase("node is not on PATH: the page's validateIndex cannot be run")
+        data_js = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "viewer", "graph", "page", "data.js"))
+        if not os.path.isfile(data_js):
+            raise _SkipCase("viewer/graph/page/data.js is not in this checkout")
+        rows = [gr_row("a"), gr_row("b", "a", 1)]
+        notes = {"b": {"source": "src/b.lean", "text": "t"}}
+        EB = {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}
+        both = {"note_label": "L", "note_source": "S {source} {commit}"}
+        H, T = {"key_lines_heading": "H"}, {"key_lines_text": "T"}
+        base = _strings()
+        without = lambda *ks: {k: v for k, v in base.items() if k not in ks}
+        shapes = {   # name: (strings, notes, edge_basis)
+            "control pair, no notes": (dict(base, **both), None, None), "control pair, notes": (dict(base, **both), notes, None), "control edge basis": (dict(base, **H, **T), None, EB),
+            "label alone": (dict(base, note_label="L"), None, None), "source alone": (dict(base, note_source="S"), None, None),
+            "both empty": (dict(base, note_label="", note_source=""), None, None), "label empty": (dict(base, note_label="", note_source="S"), None, None),
+            "source empty": (dict(base, note_label="L", note_source=""), None, None), "null": (dict(base, **both, key_kinds_note=None), None, None),
+            "number": (dict(base, **both, key_scope_text=4), None, None), "list": (dict(base, **both, key_kinds_note=["x"]), None, None),
+            "required empty": (dict(base, parts_n=""), None, None), "required missing": (without("parts_n"), None, None), "optional empty": (dict(base, key_kinds_note=""), None, None),
+            "required blank": (dict(base, parts_n=" "), None, None), "optional blank": (dict(base, key_kinds_note=" "), None, None), "unknown key": (dict(base, bogus="x"), None, None),
+            "heading alone, no edge basis": (dict(base, **H), None, None), "text alone, no edge basis": (dict(base, **T), None, None),
+            "spine_lines_text with edge basis (KNOWN DIVERGENCE)": (dict(base, **H, **T, spine_lines_text="S"), None, EB),
+            "edge basis without heading": (dict(base, **T), None, EB), "edge basis, empty heading": (dict(base, key_lines_heading="", **T), None, EB),
+            "edge basis, words key absent": (dict(base, **H), None, EB),
+        }
+        known = "spine_lines_text with edge basis (KNOWN DIVERGENCE)"
+        built, cands = {}, {}
+        for name, (st, nt, eb) in shapes.items():
+            errs, objs = _graph_files(rows, "c0", st, notes=nt, index_extra=({"edge_basis": eb} if eb else None))
+            built[name] = not errs
+            if objs:
+                ix = objs["graph/index.json"]
+            else:   # refused: the index it would have written, from the accepted control with this shape's strings
+                ix = copy.deepcopy(_graph_files(rows, "c0", dict(base, **both))[1]["graph/index.json"])
+                ix["strings"] = {k: st[k] for k in _graph_strings_keys() + list(GRAPH_OPTIONAL_KEYS) if k in st}
+                if eb:
+                    ix["edge_basis"] = eb
+            cands[name] = ix
+        with tempfile.TemporaryDirectory() as d:
+            _put(os.path.join(d, "in.json"), json.dumps(cands))
+            _put(os.path.join(d, "run.mjs"), "import { readFileSync } from 'node:fs';\n"
+                 "import { validateIndex } from " + json.dumps("file://" + data_js) + ";\n"
+                 "const all = JSON.parse(readFileSync(process.argv[2], 'utf8')); const out = {};\n"
+                 "for (const [k, v] of Object.entries(all)) { try { validateIndex(v); out[k] = 'accept'; } catch (e) { out[k] = 'refuse ' + (e.code || e.message); } }\n"
+                 "process.stdout.write(JSON.stringify(out));\n")
+            r = subprocess.run([node, os.path.join(d, "run.mjs"), os.path.join(d, "in.json")], capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            raise _SkipCase("node could not run the page's data.js here: " + (r.stderr.strip().splitlines() or ["?"])[-1])
+        page = json.loads(r.stdout)
+        controls = [page["control pair, no notes"], page["control pair, notes"], page["control edge basis"]]
+        if controls != ["accept"] * 3 or not (built["control pair, no notes"] and built["control pair, notes"] and built["control edge basis"]):
+            return _eq(("INSTRUMENT IS WRONG: a control row is refused", controls, [built[k] for k in shapes if k.startswith("control")]), "controls accepted by both")
+        agree = {k: (built[k], page[k].split()[0] == "accept") for k in shapes if k != known}
+        disagree = sorted(k for k, (a, b) in agree.items() if a != b)
+        return _eq((disagree, (built[known], page[known]), len(shapes)),
+                   ([], (True, "refuse extra-string"), len(shapes)))   # the divergence: the page does not read spine_lines_text yet (it learns it with the Graph view)
+
     @case("GRM2", "the strings check lets `note_source` hold exactly the placeholders {source} and {commit} (and requires neither): a value with both builds, one with an unknown "
                   "placeholder (`{bogus}`) is refused naming the key and the token, and the other two optional keys (key_kinds_note, note_label) declare none")
     def _():

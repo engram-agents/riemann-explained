@@ -1974,6 +1974,27 @@ def _selftest_cases():
                          "req_empty": (1, ["GRAPH-STRINGS card_kind_file is empty"], refused, False), "req_null": (1, ["GRAPH-STRINGS card_kind_file is not a string"], refused, False),
                          "req_blank": (0, [], None, True)})
 
+    @case("SKW3", "the edge-basis strings through the CLI of this tool (the skeleton writes edge_basis only when key_lines_text is in its strings): key_lines_heading without key_lines_text "
+                  "is `GRAPH-STRINGS key_lines_heading is not a key the page reads without an edge basis`, key_lines_text without key_lines_heading is `GRAPH-STRINGS key_lines_heading missing`, "
+                  "nothing written (exit 1); both words build, and so does neither")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            sp = _strings_file(d, {k: v for k, v in _strings().items() if k not in NOTE_PAIR_FIXTURE})
+            ol = _outline_file(d)
+            res = {}
+            for i, (name, w) in enumerate((("heading", {"key_lines_heading": "H"}), ("text", {"key_lines_text": "T"}), ("both", {"key_lines_heading": "H", "key_lines_text": "T"}), ("neither", {}))):
+                path = os.path.join(d, f"ov{i}.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(dict(NOTE_PAIR_FIXTURE, **w), f)
+                out = os.path.join(d, f"o{i}")
+                rc, so, se = _cli(_args(g, out, sp, ol, overlay=path))
+                res[name] = (rc, [ln for ln in so.splitlines() if ln.startswith("GRAPH-STRINGS")], se if rc else None, os.path.exists(out))
+        refused = "REFUSED: nothing written\n"
+        return _eq(res, {"heading": (1, ["GRAPH-STRINGS key_lines_heading is not a key the page reads without an edge basis"], refused, False),
+                         "text": (1, ["GRAPH-STRINGS key_lines_heading missing"], refused, False), "both": (0, [], None, True), "neither": (0, [], None, True)})
+
     @case("U1", "a file's used set and its weights are what its .ilean says: references with usages to another New module count, the weight is the number of DISTINCT names of "
                 "that module (two names count two; two usage records of one name count once); a reference with no usage (a definition only, or an empty list), a reference "
                 "to the file's own module and references to modules outside New are not uses; a planted extra use and a planted missing use each change the result")
