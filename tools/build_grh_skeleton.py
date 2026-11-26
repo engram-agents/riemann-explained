@@ -35,7 +35,7 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
  7 COMPLETENESS. Every .lean file under src/New is a file line of CONTENTS and every file line exists: SKEL-UNLISTED / SKEL-MISSING (`<path>` as in CONTENTS,
    without `.lean`); a line of the section that does not parse, or a file whose folder is not its section's, is SKEL-LINE <n> (n is the line of CONTENTS.md).
    All of one kind are reported together.
- 8 STRINGS. The strings file is read and checked as build_site does and overlaid; `_graph_files` checks the exact key set (20 keys: the three kind words come from the overlay).
+ 8 STRINGS. The strings file is read and checked as build_site does and overlaid; `_graph_files` checks the exact key set (23 keys: the kind words and the card words come from the overlay).
 """
 import contextlib
 import hashlib
@@ -82,7 +82,7 @@ ID_MAX = 64           # the longest id (the page's router refuses a longer targe
 ID_KEEP = 57          # an id longer than ID_MAX keeps this many characters, then `-` and ID_HASH hex digits of the sha256 of the whole id
 ID_HASH = 6
 KINDS = ("part", "group", "file")   # a part is a `###` heading, a group a bold line, a file a file line
-SYMBOLS = dict(bs.GRAPH_SYMBOLS, kinds={k: {"class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in KINDS})   # this tool's table: its three kinds, today's states and proofs
+SYMBOLS = dict(bs.GRAPH_SYMBOLS, kinds={k: {"card_words": f"card_kind_{k}", "class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in KINDS})   # this tool's table: its three kinds, today's states and proofs
 MAP_ORDERS = {"kinds": list(KINDS), "states": [], "proofs": []}   # what is drawn on this map: the three kinds; no state or proof (a card of these kinds has no status)
 OVERLAY = os.path.join(_HERE, os.pardir, "site", "strings-lean.json")
 OUTLINE = os.path.join(_HERE, os.pardir, "outline", "outline.json")
@@ -444,8 +444,9 @@ def _eq(actual, expected):
 PIN = "0123456789abcdef0123456789abcdef01234567"
 HEAD = "# Contents\n\nIntro.\n\n## New\n\n"   # the body of a fixture CONTENTS starts on line 7
 TAIL = "\n## Lib\n\n- `Lib/Other/File` (1): Not read\n"
-KIND_ROWS = {"part": {"class": "kind-part", "words": "symbol_kind_part"}, "group": {"class": "kind-group", "words": "symbol_kind_group"},
-             "file": {"class": "kind-file", "words": "symbol_kind_file"}}
+KIND_ROWS = {"part": {"card_words": "card_kind_part", "class": "kind-part", "words": "symbol_kind_part"},
+             "group": {"card_words": "card_kind_group", "class": "kind-group", "words": "symbol_kind_group"},
+             "file": {"card_words": "card_kind_file", "class": "kind-file", "words": "symbol_kind_file"}}
 ORDERS = {"kinds": ["part", "group", "file"], "states": [], "proofs": []}
 OVERLAY_WORDS = {"key_kinds_heading": "What a box is", "symbol_kind_part": "Part of the argument", "symbol_kind_group": "Group of files",
                  "symbol_kind_file": "Lean file", "card_kind_part": "Part", "card_kind_group": "Group", "card_kind_file": "File"}

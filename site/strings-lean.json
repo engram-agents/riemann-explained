@@ -1,4 +1,7 @@
 {
+ "card_kind_file": "File",
+ "card_kind_group": "Group",
+ "card_kind_part": "Part",
  "key_kinds_heading": "What a box is",
  "symbol_kind_file": "Lean file",
  "symbol_kind_group": "Group of files",

@@ -324,8 +324,9 @@ The rules are mechanical; nothing is typed by hand, and the kind and the face li
 - **Kind, state, proof**: kinds are `part`, `group` and `file`, read off the structure of `CONTENTS.md`; every step has state `none` and proof `none`. No
   declaration is read. The symbol table for this tool (`_graph_files(symbols=)`) has only those three kind rows; its order lists are kinds `[part, group, file]`,
   states `[]`, proofs `[]` (`orders=`; a row that occurs and is drawn but is missing from its list is `GRAPH-ORDER`; a state or proof occurs only on a card
-  whose kind is not one of the three). `index.json` also carries `sibling_layout: column` (`layout=`; any other value is `GRAPH-LAYOUT`). The words of the
-  three kinds and the kinds heading come from an overlay file, `--strings-overlay` (default `site/strings-lean.json`, placeholder wording): its keys replace or
+  whose kind is not one of the three). `index.json` also carries `sibling_layout: column` (`layout=`; any other value is `GRAPH-LAYOUT`). Each kinds row also has `card_words`
+  (a strings key for the word on the opened card; only a kinds row may have it), so `index.json` `strings` is 23 keys here (20 on the live map). The words of the
+  three kinds, their card words and the kinds heading come from an overlay file, `--strings-overlay` (default `site/strings-lean.json`, placeholder wording): its keys replace or
   add to the strings file for this map only, and no file is edited. The live map's table, order lists, key set and output are unchanged: with no argument the
   key is absent and the lists are the whole tables.
 - **Links** (`rests_on`) join only sibling files of one group, from `import New.X.Y` lines at the start of a line, after the transitive reduction of the

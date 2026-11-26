@@ -1841,7 +1841,8 @@ GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 def _graph_strings_keys(symbols=None):
     """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table (`symbols`, default GRAPH_SYMBOLS) and the run-time keys,
     on every build. A role word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
-    return [v["words"] for table in (GRAPH_SYMBOLS if symbols is None else symbols).values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
+    rows = [v for table in (GRAPH_SYMBOLS if symbols is None else symbols).values() for v in table.values()]
+    return [v["words"] for v in rows] + [v["card_words"] for v in rows if "card_words" in v] + list(GRAPH_RUNTIME_KEYS)
 
 
 def _graph_strings_errors(strings, symbols=None):
@@ -2127,6 +2128,14 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     symbols = GRAPH_SYMBOLS if symbols is None else symbols
     orders = {name: list(table) for name, table in symbols.items()} if orders is None else orders
     errors = []
+    for name, table in symbols.items():   # `card_words` (a key of `strings`) is for a kinds row only, and must be a string
+        for k, v in table.items():
+            if "card_words" in v and name != "kinds":
+                errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has card_words (only a kinds row may)"))
+            elif "card_words" in v and not isinstance(v["card_words"], str):
+                errors.append(("GRAPH-STRINGS", f"{name}.{k}.card_words", "is not a string"))
+    if errors:
+        return errors, {}
     seen = set()
     for r in rows:
         i = r["id"]
@@ -2219,7 +2228,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     objs = {"graph/index.json": {
         "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
         "strings": {k: strings[k] for k in _graph_strings_keys(symbols) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
-        "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
+        "symbols": dict({name: {k: dict({"class": v["class"], "text": strings[v["words"]], "words": v["words"]},
+                                        **({"card_words": v["card_words"]} if "card_words" in v else {})) for k, v in table.items()}
                          for name, table in symbols.items()},
                         order={name: list(orders[name]) for name in symbols}),
         "top": [r["id"] for r in kids.get("root", [])]}}
