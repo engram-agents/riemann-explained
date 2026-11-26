@@ -740,7 +740,7 @@ def _limit_writes(n):
 
 # ---------------------------------------------------------------- the mutation controls: exact specifications, for phase 2 to turn into live checks
 
-CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 27))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
+CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 28))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
 MUTATIONS = {
     "M-a": ("A3", "in the pin stage, skip the comparison of `commit` with --pin for every step/<id>.json (index.json, spine.json and uses.json are still compared)", ("A3",)),
     "M-b": ("A1", "in the data stage, read a step/<id>.json that is a symlink as if it were a regular file (follow it; no `symlink` refusal for it). Every other symlink refusal "
@@ -2099,6 +2099,58 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             if not good:
                 return good, why
             return _eq(sorted(os.listdir(d)), before)
+
+    @case("A27", "outbound links of the credits page: on credits/index.html ONLY, an `<a href>` whose value is exactly `https://github.com/lsernau/grh-lean/tree/<PIN>`, or begins with `.../tree/<PIN>/` or "
+                 "`.../blob/<PIN>/` (PIN the run's own --pin, compared as a string after the control whitespace is dropped) is not an `absolute` refusal and the tree is built; everything else is still "
+                 "`ASM-PAGE credits/index.html: <ref> absolute`, exit 1, nothing written: another host, `http:`, another repository, the same repository at another commit or with none (`tree/main`, the bare "
+                 "repository, `<PIN>x`, `<PIN>#frag`), a scheme-relative value, another letter case, the allowed URL in any attribute but `href` of an `a` (driven in-process through `_ref_problems`, the "
+                 "A7b pattern: `data`, `poster`, `action`, `srcset`, and `a data`/`a action`; `src` is A11b-attrs' pin and stays out of this case) or in the `href` of another element; and the same "
+                 "URL in index.html stays `absolute` (in-process, the page string of `_ref_problems` with its default)")
+    def _():
+        _need_pr_c()
+        fails = []
+        repo, other = "https://github.com/lsernau/grh-lean/", "a" * 40   # the repository is a literal here, not read from the tool: a loosened constant must redden this case
+        anchors = lambda *refs: page_of(add_body="".join(f'<p><a class="note-link" href="{r}">x</a></p>\n' for r in refs))   # class note-link: the builder's static check lets an https `a` with it through, so only the ref check is under test
+
+        def note(name, ok_why):
+            if not ok_why[0]:
+                fails.append(f"[{name}] {ok_why[1]}")
+
+        allowed = [repo + "tree/" + PIN, repo + "tree/" + PIN + "/grh", repo + "blob/" + PIN + "/grh/ATTRIBUTION.md"]
+        with _tmp() as d:
+            w = _page_world(d, text=anchors(*allowed))
+            rc, lines, err = _cli(_argv(w))
+            tree = _read_tree(w["out"])[0] if os.path.isdir(w["out"]) else {}
+            note("allowed links build", _eq((rc, lines, err, tree.get(TEST_REL) == anchors(*allowed).encode("utf-8")),
+                                            (0, [f"assembled {len(_step_names(w['files']))} steps, {len(tree)} files, into {w['out']}"], "", True)))
+        static = "ASM-PAGE href=http found in credits/index.html"   # the builder's own line for an `http:`, `//` or upper-case `HTTPS://` value, which its static check refuses first
+        refused = [("another host", "https://example.org/lsernau/grh-lean/tree/" + PIN, False), ("http:", "http://github.com/lsernau/grh-lean/tree/" + PIN, True),
+                   ("another repository", "https://github.com/lsernau/other/tree/" + PIN, False), ("another commit", repo + "tree/" + other, False), ("a branch", repo + "tree/main", False),
+                   ("the bare repository", repo, False), ("the commit and one more character", repo + "tree/" + PIN + "x", False), ("the commit and a fragment", repo + "tree/" + PIN + "#frag", False),
+                   ("the commit and a query", repo + "tree/" + PIN + "?x", False), ("blob with no path", repo + "blob/" + PIN, False), ("blob at another commit", repo + "blob/" + other + "/x", False),
+                   ("scheme-relative", "//github.com/lsernau/grh-lean/tree/" + PIN, True), ("upper-case scheme and host", "HTTPS://GITHUB.COM/lsernau/grh-lean/tree/" + PIN, True),
+                   ("upper-case owner", "https://github.com/LSERNAU/grh-lean/tree/" + PIN, False)]
+        with _tmp() as d:
+            w = _page_world(d)
+            for what, ref, flagged in refused:
+                _put(w["page"], anchors(ref))
+                note("refused: " + what, _refused(w, _argv(w), ([static] if flagged else []) + [f"ASM-PAGE credits/index.html: {ref} absolute"], what))
+        m = tool_module()
+        url, names = repo + "tree/" + PIN, {"index.html", "graph.css"}
+        note("index.html: the allowed URL stays absolute", _eq(m._ref_problems(f'<p><a href="{url}">x</a></p>', names), [f"ASM-PAGE {url} absolute"]))   # the page of the shell: the call without the allowance
+        if "link_pin" not in inspect.signature(m._ref_problems).parameters:
+            fails.append("[in-process] behaviour absent: `_ref_problems` has no `link_pin` keyword")
+        else:
+            refs = lambda page, pin=PIN: m._ref_problems(page, names, "credits/", TEST_REL, link_pin=pin)
+            want = [f"ASM-PAGE credits/index.html: {url} absolute"]
+            note("a link allowed with the pin", _eq(refs(f'<p><a href="{url}">x</a></p>'), []))
+            note("the same link with no pin given is absolute", _eq(m._ref_problems(f'<p><a href="{url}">x</a></p>', names, "credits/", TEST_REL), want))
+            note("the same link with another pin is absolute", _eq(refs(f'<p><a href="{url}">x</a></p>', other), want))
+            for what, tag in (("a: data", f'<a data="{url}">x</a>'), ("a: action", f'<a action="{url}">x</a>'), ("a: poster", f'<a poster="{url}">x</a>'), ("form action", f'<form action="{url}"></form>'),
+                              ("object data", f'<object data="{url}"></object>'), ("video poster", f'<video poster="{url}"></video>'), ("img srcset", f'<img srcset="{url} 1x">'),
+                              ("link href", f'<link rel="x" href="{url}">'), ("p href", f'<p href="{url}">x</p>')):
+                note("in-process refused: " + what, _eq(refs("<p>" + tag + "</p>"), want))
+        return (not fails, "; ".join(fails))
 
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(
