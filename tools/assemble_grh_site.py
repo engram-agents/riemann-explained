@@ -637,7 +637,7 @@ MUTATIONS = {
                   "ensure_ascii=False) + '\\n'` (`assets` LAST, no sort_keys, no `_graph_bytes`, so no \\u003c escapes): the parsed object is the same, its key order and bytes are not", ("A9",)),
     "M-d": ("A12", "build the manifest `files` map from every written file EXCEPT index.html", ("A12",)),
     "M-e": ("A12", "write the manifest with `\"release_id\": null` present (build the manifest object by hand with release_id None instead of omitting the key)", ("A12",)),
-    "M-f": ("A13", "list the step files (for reading and for the order of the refusal lines) in ascending st_mtime order instead of sorted by name", ("A13",)),
+    "M-f": ("A13", "list the step files (for reading and for the order of the refusal lines) in REVERSE name order instead of ascending name order", ("A13",)),
     "M-g": ("A4", "skip the not-empty check: a non-empty OUT_DIR is written into, no `ASM-OUT <path> not-empty`", ("A4",)),
     "M-h": ("A7", "call `_graph_page` with `section_attrs=()` so the section carries no `data-page-feedback`", ("A7", "A8")),
     "M-i": ("A5", "take the shell bytes from the third return value of `_graph_assets(graph_src)` when it is not None (and from --shell only when it is None)", ("A5",)),
@@ -664,7 +664,7 @@ MUTATION_EDITS = {
             '    manifest = _manifest_bytes({k: v for k, v in files.items() if k != "index.html"}, {"notes": pin}, {"steps": len(steps)}, None, None)\n'),
     "M-e": ('    manifest = _manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)\n',
             '    manifest = (_dump(dict(json.loads(_manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)), release_id=None)) + "\\n").encode("utf-8")\n'),
-    "M-f": ('names = sorted(os.listdir(path))', 'names = sorted(os.listdir(path), key=lambda x: bs.os.lstat(os.path.join(path, x)).st_mtime)'),   # `bs.os`: A16's allowlist refuses `os.lstat` in the tool, and M-f is about the ORDER, not about A16
+    "M-f": ('names = sorted(os.listdir(path))', 'names = sorted(os.listdir(path), reverse=True)'),   # the step files are read in REVERSE name order
     "M-g": ('    elif os.path.isdir(out) and os.listdir(out):\n', '    elif False:\n'),
     "M-h": ('"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)', '"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=())'),
     "M-i": ('    shell_bytes = raws["shell"]\n', '    shell_bytes = _graph_src_shell if _graph_src_shell is not None else raws["shell"]\n'),
@@ -758,6 +758,9 @@ def _scan_source(src, loader="_load"):
 
 
 A16_LURES = (   # (what, source): each must be FLAGGED by the scan, or the scan is blind to it and the case fails
+    ("bs.os.system(...)", "bs.os.system('x')\n"), ("sk.os.remove(p)", "sk.os.remove(p)\n"), ("bs.subprocess.run(...)", "bs.subprocess.run(['x'])\n"),
+    ("bs.os.path.getsize(p) (an os attribute reached through another module)", "bs.os.path.getsize(p)\n"), ("x = bs.os; x.system(...)", "x = bs.os\nx.system('y')\n"),
+    ("getattr(bs, 'os')", "getattr(bs, 'os')\n"), ("bs.sys.modules", "bs.sys.modules\n"),
     ("import subprocess", "import subprocess\n"), ("import subprocess as sp", "import subprocess as sp\n"), ("from subprocess import run", "from subprocess import run\n"),
     ("from os import system", "from os import system\n"), ("from os import popen", "from os import popen\n"), ("from os import execv", "from os import execv\n"),
     ("from os import spawnl", "from os import spawnl\n"), ("from os import posix_spawn", "from os import posix_spawn\n"), ("from os import path", "from os import path\n"),
@@ -772,6 +775,7 @@ A16_LURES = (   # (what, source): each must be FLAGGED by the scan, or the scan 
 A16_CLEAN = (   # (what, source): each must be NOT flagged (the scan is an allowlist, not a ban on everything)
     ("os.path and os.listdir", "import os\nos.path.join('a', 'b')\nos.listdir('.')\nos.path.lexists('x')\n"), ("json, re, sys", "import json\nimport re\nimport sys\njson.loads('1')\nre.compile('x')\nsys.exit(0)\n"),
     ("HTMLParser", "from html.parser import HTMLParser\n\n\nclass P(HTMLParser):\n    pass\n"),
+    ("bs.<function> and sk.<function> uses", "x = bs._graph_assets(1)\ny = sk._read_in(1, 2, 3)\nz = sk.SourceError\n"), ("bs.CODE_ON_SURFACE_REFUSES", "if bs.CODE_ON_SURFACE_REFUSES:\n    pass\n"),
     ("exec_module inside _load", "def _load(spec, mod):\n    spec.loader.exec_module(mod)\n"), ("importlib inside _load", "import importlib.util\n\n\ndef _load(p):\n    return importlib.util.spec_from_file_location('k', p)\n"),
 )
 
