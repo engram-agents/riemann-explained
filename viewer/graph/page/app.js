@@ -14,12 +14,16 @@ import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STA
 import { makeRenderFace } from "./face.js";
 import { templateParts } from "./note.js";
 import { createSheet } from "./sheet.js";
+import { createGraphView, buildSpinePanel } from "./graphview.js";
 
 /* Every way the sheet can close. Each one is a function in `routes` below that begins with the sheet's one close
    function; a case drives each of these with a cancelling listener installed. */
 export const CLOSE_ROUTES = Object.freeze([
   "close-button", "tap-outside", "escape", "open-card", "deep-link", "toolbar-show-all", "toolbar-key", "toolbar-about", "open-parts",
 ]);
+/* The routes of the Graph view (graphview.js); they exist on every map but do something only on one that carries the view. Each begins with the sheet's close
+   function like the routes above, so the same cancelling-listener case drives them on a map that has the view. */
+export const VIEW_ROUTES = Object.freeze(["view-graph", "view-cards", "spine-open", "spine-show-file"]);
 
 /* ONE fixed closed size, chosen by measuring in the browser (the browser case "one fixed closed size"): a 50-character title of
    the widest glyphs takes three lines at 15 px in the engine's default 300 px width, and with the role word and the foot at
@@ -68,7 +72,7 @@ function buildKey(index) {
 
 export async function start(doc, deps) {
   const failure = { reason: null };
-  let handle = null, sheet = null, layer = null, fallbackEl = null, cardsEl = null;
+  let handle = null, sheet = null, layer = null, fallbackEl = null, cardsEl = null, view = null;
 
   /* THE ONE TEARDOWN. `signal` goes to EVERY addEventListener in page code (the sheet's too), `offs` holds the unsubscribe
      function of EVERY engine subscription, and `dead` is the mark each async continuation checks after an await. The
@@ -87,6 +91,7 @@ export async function start(doc, deps) {
     ctl.abort();
     for (const off of offs.splice(0)) { try { off(); } catch (e) { /* the page is being put back; carry on */ } }
     try { if (handle) handle.destroy(); } catch (e) { /* the same */ }
+    try { if (view) view.destroy(); } catch (e) { /* the same */ }
     try { if (sheet) sheet.dispose(); } catch (e) { /* the same */ }
     if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
     if (fallbackEl) fallbackEl.hidden = false;
@@ -254,7 +259,10 @@ export async function start(doc, deps) {
     routes["open-card"] = (t, id) => openCard(t, id);
     routes["deep-link"] = go;
     routes["toolbar-show-all"] = () => { if (sheet.close()) handle.fit(); };
-    routes["toolbar-key"] = () => { if (sheet.shown() === keyEl) sheet.close(); else sheet.showPanel(keyEl, false); };
+    routes["toolbar-key"] = () => {
+      const k = view && view.view() === "graph" ? view.key(EDGE_BASIS_HEADING) : keyEl;     // the Graph view's key says what its boxes and lines are
+      if (sheet.shown() === k) sheet.close(); else sheet.showPanel(k, false);
+    };
     routes["toolbar-about"] = () => { if (sheet.shown() === aboutEl) sheet.close(); else sheet.showPanel(aboutEl, true); };
     routes["open-parts"] = async (t, id) => {
       try {
@@ -268,6 +276,52 @@ export async function start(doc, deps) {
       } catch (e) {
         if (!current(t)) return;
         failed(e);
+      }
+    };
+    /* THE GRAPH VIEW's routes (graphview.js). They exist on every map and do nothing on one without the view (`view` stays null: no switch is drawn, no
+       request is made). Each begins with the sheet's close function and takes its ticket like the routes above. */
+    routes["view-graph"] = async (t) => {
+      if (!view || !current(t) || !sheet.close()) return false;
+      return view.show(t);
+    };
+    routes["view-cards"] = (t) => {
+      if (!view || !current(t) || !sheet.close()) return false;
+      view.hide();
+      return true;
+    };
+    /* A spine box tapped: the file's own title is wanted for the sheet's line, so the step is loaded BEFORE the sheet is touched (a failed load changes nothing:
+       the retry story of go). The sheet shows the box's names, its sentence, where it lives and the button to the file's sheet in Cards. */
+    routes["spine-open"] = async (t, id) => {
+      if (!view || !current(t)) return false;
+      const node = view.node(id);
+      if (!node) { say(strings.link_refused); return false; }
+      try {
+        const step = await data.loadStep(node.file);
+        if (!current(t)) return false;
+        if (!sheet.close()) return false;
+        const panel = buildSpinePanel(strings, node, titleChildren(step.card.title), (file) => routes["spine-show-file"](file), signal);
+        if (!sheet.showPanel(panel, false)) return false;
+        hush();
+        view.select(id);
+        return true;
+      } catch (e) {
+        if (!current(t)) return false;
+        return failed(e);
+      }
+    };
+    /* 'Show its file': switch to Cards and open that file's sheet there. The file's step is loaded first, so an id that is no step the page can load is the
+       refused-link notice and leaves the Graph view as it is; then the one navigation continues into go with the same ticket. */
+    routes["spine-show-file"] = async (t, id) => {
+      if (!view || !current(t)) return false;
+      try {
+        await data.loadStep(id);
+        if (!current(t)) return false;
+        if (!sheet.close()) return false;
+        view.hide();
+        return await go(t, id);
+      } catch (e) {
+        if (!current(t)) return false;
+        return failed(e);
       }
     };
     /* The one place a route takes its ticket: every entry above is wrapped here, so a route added later cannot forget it. */
@@ -328,6 +382,17 @@ export async function start(doc, deps) {
     if (dead) return failure;
     fallbackEl.hidden = true;     // only after the first graph frame is drawn
     cardsEl.hidden = true;
+    /* The Graph view, only on a map whose index carries both view words (validateIndex says so in index.graphView): the switch and the view's stage are made
+       now, and nothing is requested until the reader presses Graph. */
+    if (index.graphView) {
+      failure.graph = null;
+      view = createGraphView({
+        doc, layer, cardsStage: q["graph"], strings, index, fetch: deps.fetch, createGraph: deps.createGraph, checkOptions, checkedOptions, say, hush, failure, current: (t) => current(t),
+        onSwitch: (which) => routes[which === "graph" ? "view-graph" : "view-cards"](),
+        onTap: (node) => { if (node) routes["spine-open"](node.id); else routes["tap-outside"](); },
+        signal,
+      });
+    }
     const first = hashId(doc);
     if (first !== null) await routes["deep-link"](first);
   } catch (e) {
