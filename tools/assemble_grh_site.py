@@ -418,12 +418,12 @@ def _tmp():
 
 # ---------------------------------------------------------------- fixtures: every one is built in a temp folder from literals and from the skeleton builder's own machinery
 
-SMALL_BODY = "### The last file\n\n- `New/Main` (1): From non-vanishing in Re s > 1/2 to zeros on the critical line\n"   # builds exactly the smallest step file of the real data
+SMALL_BODY = "### The last file\n\n- `New/Main` (1): Plum breadcrumbs with Ox q > 3/4 for ducks at a bright doorway\n"   # a synthetic step file of the same size as the smallest real one
 SMALL_SRCS = {"New/Main": sk._lean()}
 TEMPLATE_STEP = ('{"card":{"child_count":1,"child_kind":"file","id":"lean-the-last-file","kind":"part","path":[],"proof":"none","state":"none","title":"The last file"},'
                  '"children":[{"child_count":0,"id":"lean-main","kind":"file","parent_rests_on":false,"path":["lean-the-last-file"],"proof":"none","state":"none",'
-                 '"title":"From non-vanishing in Re s > 1/2 to zeros on the critical line"}],"commit":"72fead102f663d5c7a407964a13dc0cf9d977207","format":1,'
-                 '"id":"lean-the-last-file","path":[],"rests_on":[]}')   # the smallest step file of the real data (the template of every extra step file below)
+                 '"title":"Plum breadcrumbs with Ox q > 3/4 for ducks at a bright doorway"}],"commit":"72fead102f663d5c7a407964a13dc0cf9d977207","format":1,'
+                 '"id":"lean-the-last-file","path":[],"rests_on":[]}')   # a synthetic step file of the same size as the smallest real one (the template of every extra step file below)
 INDEX_KEYS = ["assets", "commit", "edge_basis", "format", "max_children", "rests_on", "sibling_layout", "steps", "strings", "symbols", "top"]   # the keys of the real index.json
 
 GRAPH_SRC_FILES = {"engine/index.js": b"export const engine = 1;\n", "page/app.js": b"export const page = 2;\n", "graph.css": b"body { margin: 0; }\n"}   # scanner-clean, and NO .html
