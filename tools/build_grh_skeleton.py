@@ -1905,7 +1905,7 @@ def _selftest_cases():
         return _eq(out, [[("SKEL-LINE", "9", "")], [("SKEL-LINE", "8", "")], [("SKEL-LINE", "7", "")], [("SKEL-LINE", "8", "")]])
 
     @case("SK26", "the three optional page words (key_kinds_note, note_label, note_source; final, `{source}` and `{commit}` kept literal) are index.json `strings` keys when the strings "
-                  "hold them: 29 keys with the pair alone (a map that writes notes needs it, so the fixture carries it; GRW1), 29 with two, 30 with all three, the values exactly the literals of OPTIONAL_WORDS (typed in this case as well); the overlay file of "
+                  "hold them: 29 keys with the pair alone (a map that writes notes needs it, so the fixture carries it; GRW1), 30 with all three, and a pair given other values replaces the fixture's pair verbatim (the row that tells the pair's values from the fixture's), the values exactly the literals of OPTIONAL_WORDS (typed in this case as well); the overlay file of "
                   "this checkout holds those three values")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
@@ -1915,10 +1915,12 @@ def _selftest_cases():
             g = _tree(d, body, {"New/S/A": _lean()})
             n = lambda extra: len(_j(bld(g, PIN, dict(_strings(), **extra))[1], "graph/index.json")["strings"])
             full = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS))[1], "graph/index.json")["strings"]
-            counts = (n({}), n({"note_label": "L", "note_source": "S"}), n(OPTIONAL_WORDS))
+            counts = (n({}), n(OPTIONAL_WORDS))
+            other = {"note_label": "Lx", "note_source": "Sx {source}"}
+            over = _j(bld(g, PIN, dict(_strings(), **other))[1], "graph/index.json")["strings"]
         with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
             overlay = json.load(f)
-        return _eq((counts, OPTIONAL_WORDS == typed, {k: full[k] for k in typed}, {k: overlay.get(k) for k in typed}), ((29, 29, 30), True, typed, typed))
+        return _eq((counts, OPTIONAL_WORDS == typed, {k: full[k] for k in typed}, {k: overlay.get(k) for k in typed}, {k: over[k] for k in other}), ((29, 30), True, typed, typed, other))
 
     @case("SKW1", "the pair rule through the CLI of this tool (the builder's own check, not a copy): the Lean map writes a note on every file step, so an overlay holding neither "
                   "word is refused `GRAPH-STRINGS note_label missing: notes are present and need both note_label and note_source` (and the same line for note_source; exit 1, "
@@ -1944,6 +1946,29 @@ def _selftest_cases():
                          "label": (1, ["GRAPH-STRINGS note_source missing: note_label is present and the two words come together"], "REFUSED: nothing written\n", False),
                          "source": (1, ["GRAPH-STRINGS note_label missing: note_source is present and the two words come together"], "REFUSED: nothing written\n", False),
                          "both": (0, [], "", True)})
+
+    @case("SKW2", "an OPTIONAL strings value that is empty or not a string is refused by name through the CLI of this tool, nothing written (exit 1, no output directory): an overlay "
+                  "with note_label `\"\"` is `GRAPH-STRINGS note_label is empty`, with note_label null `GRAPH-STRINGS note_label is not a string`, with both words empty two empty lines "
+                  "(and no pair line); the same rule as the builder's, since the check is the builder's")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        src = "S {source} {commit}"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            sp = _strings_file(d, {k: v for k, v in _strings().items() if k not in NOTE_PAIR_FIXTURE})
+            ol = _outline_file(d)
+            res = {}
+            for i, (name, w) in enumerate((("empty", {"note_label": "", "note_source": src}), ("null", {"note_label": None, "note_source": src}),
+                                           ("both", {"note_label": "", "note_source": ""}), ("blank", {"note_label": " ", "note_source": src}))):
+                path = os.path.join(d, f"ov{i}.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(w, f)
+                out = os.path.join(d, f"o{i}")
+                rc, so, se = _cli(_args(g, out, sp, ol, overlay=path))
+                res[name] = (rc, [ln for ln in so.splitlines() if ln.startswith("GRAPH-STRINGS")], se if rc else None, os.path.exists(out))
+        refused = "REFUSED: nothing written\n"
+        return _eq(res, {"empty": (1, ["GRAPH-STRINGS note_label is empty"], refused, False), "null": (1, ["GRAPH-STRINGS note_label is not a string"], refused, False),
+                         "both": (1, ["GRAPH-STRINGS note_label is empty", "GRAPH-STRINGS note_source is empty"], refused, False), "blank": (0, [], None, True)})
 
     @case("U1", "a file's used set and its weights are what its .ilean says: references with usages to another New module count, the weight is the number of DISTINCT names of "
                 "that module (two names count two; two usage records of one name count once); a reference with no usage (a definition only, or an empty list), a reference "

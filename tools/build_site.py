@@ -14021,7 +14021,7 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")], [], []))
 
     @case("GRW2", "the pair rule through main() on the live inputs (the fixture strings, no notes): a strings file with note_label alone, or note_source alone, is refused "
-                  "`GRAPH-STRINGS <the missing word> missing: ...` (exit 1, the named BUILD-ERROR line on stdout, nothing written, no output directory); both words build (exit 0), and neither builds (the live map)")
+                  "`GRAPH-STRINGS <the missing word> missing: ...` (exit 1, the named BUILD-ERROR line on stdout, nothing written, no output directory); both words build (exit 0; for a build only rc and the output directory are pinned, not stderr), and neither builds (the live map)")
     def _():
         out = {}
         for name, w in (("label", {"note_label": "L"}), ("source", {"note_source": "S {source} {commit}"}), ("both", {"note_label": "L", "note_source": "S {source} {commit}"}), ("none", {})):
@@ -14031,10 +14031,48 @@ def _selftest_cases():
                 o, e = io.StringIO(), io.StringIO()
                 with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
                     rc = main(["build_site.py", p["notes"], p["outline"], p["decls"], p["strings"], p["out"], "--graph-src", src], check=lambda: 0)
-                out[name] = (rc, [ln for ln in o.getvalue().splitlines() if "GRAPH-STRINGS" in ln], e.getvalue(), os.path.exists(p["out"]))
+                out[name] = (rc, [ln for ln in o.getvalue().splitlines() if "GRAPH-STRINGS" in ln], e.getvalue() if rc else None, os.path.exists(p["out"]))   # stderr is pinned on a refusal only; a build is pinned by rc and the output directory
         return _eq(out, {"label": (1, ["BUILD-ERROR GRAPH-STRINGS note_source missing: note_label is present and the two words come together"], "REFUSED: nothing written\n", False),
                          "source": (1, ["BUILD-ERROR GRAPH-STRINGS note_label missing: note_source is present and the two words come together"], "REFUSED: nothing written\n", False),
-                         "both": (0, [], out["both"][2], True), "none": (0, [], out["none"][2], True)})
+                         "both": (0, [], None, True), "none": (0, [], None, True)})
+
+    @case("GRW3", "an OPTIONAL strings value (any key of GRAPH_OPTIONAL_KEYS, eleven) that is present must be a non-empty string, the page's own rule at load: None, a number or a list "
+                  "is `GRAPH-STRINGS <key> is not a string`, `\"\"` is `GRAPH-STRINGS <key> is empty`, one line per key, in `_graph_strings_errors`, after the missing and unread lines "
+                  "and before the pair lines; a whitespace-only value is ACCEPTED (the rule is the empty string only, not blank text); an empty word beside the other word is a complete "
+                  "pair by key (the empty-value line only), both empty is two empty-value lines and no pair line; a REQUIRED key's value is not checked (unchanged); and the notes rule "
+                  "does not fire on `step_extra` or `index_extra` (no notes, no pair: no error), while notes with no pair name both words whether or not an extra is given")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1)]
+        req = {k: "x" for k in _graph_strings_keys()}
+        both = {"note_label": "L", "note_source": "S {source} {commit}"}
+        e = lambda **kw: _graph_strings_errors(dict(req, **kw))
+        isn = lambda k: [("GRAPH-STRINGS", k, "is not a string")]
+        emp = lambda k: [("GRAPH-STRINGS", k, "is empty")]
+        first_req = sorted(req)[0]
+        need = [("GRAPH-STRINGS", "note_label", "missing: notes are present and need both note_label and note_source"),
+                ("GRAPH-STRINGS", "note_source", "missing: notes are present and need both note_label and note_source")]
+        notes = {"b": {"source": "src/b.lean", "text": "t"}}
+        files = lambda w, **kw: (lambda r: (r[0], r[1] == {}))(_graph_files(rows, "c0", dict(_strings(), **w), **kw))
+        return _eq((e(**dict(both, note_label=None)), e(**dict(both, note_source=5)), e(**dict(both, note_source=[1])), e(**dict(both, note_label=True)),
+                    e(**dict(both, note_label="")), e(**dict(both, note_source="")), e(**dict(both, key_kinds_note="")), e(**dict(both, key_scope_text=None)),
+                    e(**dict(both, note_label=" ", note_source="\t")), e(**dict(both, key_kinds_note=" ")),
+                    e(note_label="", note_source=""), e(note_label=""), e(note_source=""),
+                    _graph_strings_errors(dict(req, bogus="x", note_label="", note_source="S")), _graph_strings_errors({k: v for k, v in dict(req, note_label="").items() if k != first_req}),
+                    e(**{first_req: ""}), e(**{first_req: None}), e(**dict(both, note_label_typeset="", key_lines_text=3)),
+                    files(both, step_extra={"b": {"k": 1}}), files({}, step_extra={"b": {"k": 1}}), files({}, index_extra={"k": 1}),
+                    files({}, step_extra={"b": {"k": 1}}, notes=notes), files({}, index_extra={"k": 1}, notes=notes), files(dict(both, note_label=""), notes=notes),
+                    files(dict(both, note_source=None)), files(both, notes=notes)[0]),
+                   ((isn("note_label")), isn("note_source"), isn("note_source"), isn("note_label"),
+                    emp("note_label"), emp("note_source"), emp("key_kinds_note"), isn("key_scope_text"),
+                    [], [],
+                    emp("note_label") + emp("note_source"), emp("note_label") + [("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")],
+                    emp("note_source") + [("GRAPH-STRINGS", "note_label", "missing: note_source is present and the two words come together")],
+                    [("GRAPH-STRINGS", "bogus", "is not a key the page reads")] + emp("note_label"),
+                    [("GRAPH-STRINGS", first_req, "missing")] + emp("note_label") + [("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")],
+                    [], [], emp("note_label_typeset") + isn("key_lines_text"),
+                    ([], False), ([], False), ([], False),
+                    (need, True), (need, True), (emp("note_label"), True),
+                    (isn("note_source"), True), []))
 
     @case("GRM2", "the strings check lets `note_source` hold exactly the placeholders {source} and {commit} (and requires neither): a value with both builds, one with an unknown "
                   "placeholder (`{bogus}`) is refused naming the key and the token, and the other two optional keys (key_kinds_note, note_label) declare none")
