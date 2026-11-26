@@ -300,7 +300,7 @@ card. The
 LIMIT paragraph in the file lists what is not checked.
 `python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--graph-src DIR] [--force]`
 
-**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json]`** answers: what is the
+**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--source-prefix PREFIX]`** answers: what is the
 skeleton of the map for a Lean repository that keeps its own index? `DIR` holds `CONTENTS.md` and `src/`. The tool reads the `## New` section of
 `CONTENTS.md` (`###` headings are sections, a line that is only `**title**` is a group, a line ``- `New/<path>` (<n>): <title>`` is a file) and the import
 lines of the files under `src/New`, and writes `graph/index.json`, `graph/step/<id>.json` and `graph/uses.json` under `OUT_DIR`. It writes graph data only: no
@@ -344,9 +344,21 @@ The rules are mechanical; nothing is typed by hand, and the kind and the face li
 - **`graph/uses.json`** (format 2) is `{"commit", "format", "imports", "uses"}`. `imports` lists, for every file step, the ids of the `New` files it directly imports (from
   its `import` lines), sorted. `uses` lists, for every file step, `{"id", "names", "same_group"}` for every file it uses, in any group, sorted by id (`names` is the weight).
   Both keys are present for every file (a list may be empty). It is not part of `index.json`.
+- **Notes**: the step file of every file step gains one key, `note`: `{"source", "text"}`. `text` is the inner text of the first `/-!` ... `-/` block of the
+  source file, byte for byte: the delimiters are excluded, nothing is trimmed, no newline is changed (a CRLF stays a CRLF), and the nesting of `/-` and `-/` is
+  counted (Lean comments nest). Only blank lines and `import` lines may come before the block. `source` is `--source-prefix` (default `grh/src/`) followed by the
+  CONTENTS path and `.lean` (`New/A/B` gives `grh/src/New/A/B.lean`). Parts and groups carry no note, and `index.json` and `uses.json` are unchanged. The note is
+  carried, not rendered: the data holds the text and the page escapes and typesets it. A file with no note, an unterminated block, text before the block, bytes that
+  are not UTF-8, a file that is not a regular file (a symlink, a directory, a FIFO) or one over 1 MiB is `SKEL-NOTE <path> <reason>` (`no-note`, `unterminated`,
+  `text-before-note`, `not-utf-8`, `symlink`, `not-a-regular-file`, `too-large`), all of them reported. The file is read through one descriptor that is opened without
+  following a symlink and without blocking, checked with `fstat`, and read at most the limit plus one byte. `build_site.py`'s `_graph_files(notes=)` writes the key
+  and refuses `GRAPH-NOTE <id> <reason>` (an unknown id, a step with children, keys other than `source` and `text`, a value that is not a string). A module note is
+  prose, not a declaration, so the attribution lookup for the code the repository takes from Mathlib does not apply to it; it does apply to the next phase, the
+  declarations, and no declaration sentence or snippet may be displayed before that lookup is wired. Nothing of the repository's text is published before the
+  Sources and licences page ships in the same deploy.
 - **Completeness**: every `.lean` file under `src/New` must be a file line and every file line must exist (`SKEL-UNLISTED <path>`, `SKEL-MISSING <path>`, all
   reported); CONTENTS.md (at most 4 MiB) and each source file (at most 1 MiB) are read through one descriptor opened without following a symlink and without blocking, checked with `fstat`, and read at most the limit plus one byte, and the REAL path of `src`, of `src/New` and of every file read must be under the real path of `--grh` (every component is resolved, not only the last: `SKEL-ESCAPE <path> symlink|outside` for a symlinked `src`, `src/New` or folder below it; `SKEL-CONTENTS CONTENTS.md <reason>` for a CONTENTS.md that is a symlink, not a regular file, over the limit or not UTF-8) (a symlink, a
-  FIFO, a directory, a larger file, or bytes that are not UTF-8 are `SKEL-SOURCE <path> <reason>`, all reported); a line of the section that does not parse, or a file whose folder is not its section's, is `SKEL-LINE <n>`.
+  FIFO, a directory, a larger file, or bytes that are not UTF-8 are `SKEL-NOTE <path> <reason>`, see Notes); a line of the section that does not parse, or a file whose folder is not its section's, is `SKEL-LINE <n>`.
 
 The report prints: steps, the number of steps of each kind, the top ids, the widest step, the depth, the uses in all, the links drawn (uses inside a group), the uses not drawn (across groups), the links in the transitive reduction, the
 ids that were cut, and one line per group (files, use edges, reduction edges, files with at least one drawn link, files with none, the longest path of

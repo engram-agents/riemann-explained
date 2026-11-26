@@ -2137,7 +2137,26 @@ def _graph_link_errors(link_info, links):
     return out
 
 
-def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None):
+def _graph_note_errors(notes, by, kids):
+    """[(GRAPH-NOTE, id, reason)] for `notes` ({step id: {source, text}}): a note belongs to a step that exists and has no children, is an object with exactly the keys
+    source and text, and both are strings. Sorted by id."""
+    out = []
+    for i in sorted(notes):
+        n = notes[i]
+        if i not in by:
+            out.append(("GRAPH-NOTE", i, "is not a step"))
+        elif kids.get(i):
+            out.append(("GRAPH-NOTE", i, "has children"))
+        elif not isinstance(n, dict):
+            out.append(("GRAPH-NOTE", i, "is not an object"))
+        elif set(n) != {"source", "text"}:
+            out.append(("GRAPH-NOTE", i, "must have exactly the keys source and text"))
+        elif not (isinstance(n["source"], str) and isinstance(n["text"], str)):
+            out.append(("GRAPH-NOTE", i, "has a value that is not a string"))
+    return out
+
+
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
     hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
@@ -2197,6 +2216,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     for i, n in [("root", len(kids.get("root", [])))] + [(r["id"], len(kids.get(r["id"], []))) for r in rows]:   # the root's own children (top) count too
         if n > GRAPH_MAX_CHILDREN:
             errors.append(("GRAPH-FANOUT", i, f"has {n} children (more than {GRAPH_MAX_CHILDREN})"))
+    if notes:
+        errors += _graph_note_errors(notes, by, kids)
     for r in rows:
         for field, table in (("kind", symbols["kinds"]), ("state", symbols["states"]), ("proof", symbols["proofs"])):
             if r[field] not in table:
@@ -2267,6 +2288,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
         objs[f"graph/step/{r['id']}.json"] = {
             "card": closed(r), "children": [dict(closed(c), parent_rests_on=c["id"] in r["premises"]) for c in kids.get(r["id"], [])],
             "commit": commit, "format": GRAPH_FORMAT, "id": r["id"], "path": list(path[r["id"]]), "rests_on": links(r["id"])}
+        if notes and r["id"] in notes:
+            objs[f"graph/step/{r['id']}.json"]["note"] = {"source": notes[r["id"]]["source"], "text": notes[r["id"]]["text"]}
     errors = _graph_count_errors(objs, symbols)
     return errors, ({} if errors else objs)
 
@@ -13734,6 +13757,38 @@ def _selftest_cases():
                     ([("GRAPH-LINK", "c b", "must have exactly the keys weight and in_reduction")], {}), ([("GRAPH-LINK", "c b", "must have exactly the keys weight and in_reduction")], {}),
                     ([("GRAPH-LINK", "c b", "has a weight that is not an integer")], {}), ([("GRAPH-LINK", "c b", "has a weight that is not an integer")], {}),
                     ([("GRAPH-LINK", "c b", "has an in_reduction that is not a boolean")], {}), ([("GRAPH-LINK", "c b", "must have exactly the keys weight and in_reduction")], {})))
+    @case("GRN1", "`_graph_files(notes=)`: with None (the default) no step file has a `note` key and the bytes equal those of an explicit notes=None; with a dict id -> {source, "
+                  "text} exactly the step files of those ids gain the top-level key `note` ({source, text}, keys sorted in the bytes), the text kept byte for byte (CRLF, tabs, "
+                  "trailing spaces), and nothing else changes: index.json and the other step files are equal to the default output")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1), gr_row("c", "a", 2)]
+        base = _graph_files(rows, "c0", _strings())[1]
+        none = _graph_files(rows, "c0", _strings(), notes=None)[1]
+        text = "\n# T\r\n\tx  \n"
+        notes = {"b": {"source": "src/b.lean", "text": text}, "c": {"source": "src/c.lean", "text": ""}}
+        errs, objs = _graph_files(rows, "c0", _strings(), notes=notes)
+        raw = _graph_bytes(objs)["graph/step/b.json"].decode("utf-8")
+        return _eq((errs, sorted(k for k, v in base.items() if "note" in v), _graph_bytes(base) == _graph_bytes(none), sorted(k for k, v in objs.items() if "note" in v),
+                    objs["graph/step/b.json"]["note"], {k: v for k, v in objs.items() if "note" not in v} == {k: v for k, v in base.items() if k in objs and "note" not in objs[k]},
+                    {k: {x: y for x, y in v.items() if x != "note"} for k, v in objs.items()} == base,
+                    raw.rindex('"id"') < raw.index('"note"') < raw.rindex('"path"'), '"source": "src/b.lean"' in raw and raw.index('"source"') < raw.index('"text"')),
+                   ([], [], True, ["graph/step/b.json", "graph/step/c.json"], {"source": "src/b.lean", "text": text}, True, True, True, True))
+
+    @case("GRN2", "GRAPH-NOTE <id> <reason>: a note on an id that is not a step, on a step with children, whose keys are not exactly source and text (missing, extra), with a "
+                  "value that is not a string, or that is not an object, is refused and nothing is returned; a valid note on a leaf beside them is not named")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1)]
+        ok = {"source": "s", "text": "t"}
+
+        def bad(notes):
+            e, o = _graph_files(rows, "c0", _strings(), notes=notes)
+            return [tuple(x) for x in e], o
+        return _eq((bad({"zz": ok}), bad({"a": ok}), bad({"b": {"source": "s"}}), bad({"b": dict(ok, extra="x")}), bad({"b": {"source": "s", "text": 5}}),
+                    bad({"b": "text"}), bad({"b": ok, "zz": ok})),
+                   (([("GRAPH-NOTE", "zz", "is not a step")], {}), ([("GRAPH-NOTE", "a", "has children")], {}),
+                    ([("GRAPH-NOTE", "b", "must have exactly the keys source and text")], {}), ([("GRAPH-NOTE", "b", "must have exactly the keys source and text")], {}),
+                    ([("GRAPH-NOTE", "b", "has a value that is not a string")], {}), ([("GRAPH-NOTE", "b", "is not an object")], {}),
+                    ([("GRAPH-NOTE", "zz", "is not a step")], {})))
 
     return cases
 

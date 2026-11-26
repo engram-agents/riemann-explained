@@ -89,7 +89,17 @@ class SourceError(Exception):
         self.reason = reason
 
 
+class NoteError(Exception):
+    """A source file whose module note cannot be taken: `SKEL-NOTE <path> <reason>`."""
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
 SOURCE_READ_LIMIT = 1048576   # the most bytes of a source file the tool reads (1 MiB)
+SOURCE_PREFIX = "grh/src/"   # the path of src/ from the repository root; `source` of a note is this and the CONTENTS path and `.lean`
+_IMPORT_LINE = re.compile(r"import\s+\S.*")
 ILEAN_READ_LIMIT = 16 * 1024 * 1024   # the most bytes of an .ilean file the tool reads (16 MiB; the largest of the real source is 260 KB)
 USES_FORMAT = 2   # the format of graph/uses.json
 CONTENTS_READ_LIMIT = 4 * 1024 * 1024   # the most bytes of CONTENTS.md the tool reads (4 MiB)
@@ -187,6 +197,34 @@ def parse_contents(text):
                 errors.append(("SKEL-LINE", str(f["line"]), ""))
     errors.sort(key=lambda e: int(e[1]))
     return sections, errors
+
+
+def _module_note(raw):
+    """The inner text of the FIRST `/-!` ... `-/` block of the source bytes `raw`, delimiters excluded, byte for byte (strict UTF-8, no newline change, no trimming), the
+    nesting of `/-` and `-/` counted. Only blank lines and `import` lines may precede the block. Raises NoteError(reason): not-utf-8, no-note, text-before-note, unterminated."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise NoteError("not-utf-8")
+    start = text.find("/-!")
+    if start < 0:
+        raise NoteError("no-note")
+    before = text[:start].split("\n")
+    if not all(ln.strip() == "" or _IMPORT_LINE.fullmatch(ln.strip()) for ln in before[:-1]) or before[-1].strip() != "":
+        raise NoteError("text-before-note")
+    depth, i = 1, start + 3
+    while i < len(text):
+        if text.startswith("/-", i):
+            depth += 1
+            i += 2
+        elif text.startswith("-/", i):
+            depth -= 1
+            if depth == 0:
+                return text[start + 3:i]
+            i += 2
+        else:
+            i += 1
+    raise NoteError("unterminated")
 
 
 def _contained(root, path):
@@ -431,8 +469,9 @@ def _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info
             "kinds": {k: sum(1 for r in rows if r["kind"] == k) for k in KINDS}, "uses": uses, "imports": imports, "link_info": link_info}
 
 
-def build_rows(grh, ilean_dir):
-    """(errors, rows, report) from the folder `grh` and the folder of the .ilean files: SKEL-LINE, then SKEL-MISSING and SKEL-UNLISTED, then SKEL-USES, then SKEL-USES-CYCLE,
+def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
+    """(errors, rows, report) from the folder `grh` and the folder of the .ilean files: SKEL-LINE, then SKEL-MISSING and SKEL-UNLISTED, then SKEL-NOTE (every source file with no
+    usable note or that cannot be read, all reported), then SKEL-USES, then SKEL-USES-CYCLE,
     each stops the run before the next stage."""
     errors = _src_escapes(grh)
     if errors:
@@ -450,14 +489,14 @@ def build_rows(grh, ilean_dir):
     errors = [("SKEL-MISSING", p, "") for p in listed if p not in set(disk)] + [("SKEL-UNLISTED", p, "") for p in disk if p not in set(listed)]
     if errors:
         return errors, [], {}
-    src = {}
+    src, note_text = {}, {}
     for p in listed:
         try:
-            src[p] = _read_in(grh, os.path.join(grh, "src", *p.split("/")) + ".lean", SOURCE_READ_LIMIT).decode("utf-8")
-        except SourceError as e:
-            errors.append(("SKEL-SOURCE", p, e.reason))
-        except UnicodeDecodeError:
-            errors.append(("SKEL-SOURCE", p, "not-utf-8"))
+            raw = _read_in(grh, os.path.join(grh, "src", *p.split("/")) + ".lean", SOURCE_READ_LIMIT)
+            note_text[p] = _module_note(raw)
+            src[p] = raw.decode("utf-8")
+        except (SourceError, NoteError) as e:
+            errors.append(("SKEL-NOTE", p, e.reason))
     if errors:
         return errors, [], {}
     cut = []
@@ -545,15 +584,17 @@ def build_rows(grh, ilean_dir):
             for fi, f in enumerate(g["files"]):
                 row(fid[f["path"]], gid, fi, premises[f["path"]], "file", f["title"])
             groups.append(_group_report(gid, members, adj, kept))
-    return [], rows, _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info)
+    report = _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info)
+    report["notes"] = {fid[p]: {"source": source_prefix + p + ".lean", "text": note_text[p]} for p in listed}
+    return [], rows, report
 
 
-def build(grh, pin, strings, live_ids=(), ilean_dir=None):
+def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
-    errors, rows, rep = build_rows(grh, ilean_dir)
+    errors, rows, rep = build_rows(grh, ilean_dir, source_prefix)
     if errors:
         return errors, {}, rows, rep
     errors = [("SKEL-ID-CLASH", i, "") for i in sorted({r["id"] for r in rows} & set(live_ids))]
@@ -562,14 +603,14 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None):
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(SYMBOLS) if k in strings}, SYMBOLS)   # only the missing ones: it holds a subset
     if missing:
         return missing, {}, rows, rep
-    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"])
+    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"])
     if errors:
         return errors, {}, rows, rep
     objs["graph/uses.json"] = {"commit": pin, "format": USES_FORMAT, "imports": rep["imports"], "uses": rep["uses"]}
     return [], bs._graph_bytes(objs), rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--source-prefix PREFIX]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
 
 
@@ -577,7 +618,7 @@ def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--ilean-dir") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--ilean-dir", "--source-prefix") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -624,7 +665,7 @@ def _run(opts):
     problems = bs._strings_problems(strings)
     if problems:
         return refuse(problems)
-    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"])
+    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX))
     if errors:
         return refuse(errors)
     try:
@@ -677,8 +718,9 @@ OPTIONAL_WORDS = {"key_kinds_note": "Parts and groups follow the repository's ow
                   "note_source": "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean"}   # the three optional page-drawn words, final
 
 
-def _lean(decl="theorem t : True := trivial", note="", imports=()):
-    return "".join(f"import {m}\n" for m in imports) + (f"/-!\n{note}\n-/\n" if note else "") + decl + "\n"
+def _lean(decl="theorem t : True := trivial", note="n", imports=()):
+    """A source file: the imports, then a module note (every file must have one), then the declaration."""
+    return "".join(f"import {m}\n" for m in imports) + f"/-!\n{note}\n-/\n" + decl + "\n"
 
 
 def _tree(root, body, srcs, ileans=None):
@@ -969,7 +1011,7 @@ def _selftest_cases():
                  "23 keys with the overlay words and has no symbol_kind_module; index.json has sibling_layout column; site/strings.json has no symbol_kind_module")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n\n### T part\n\n- `New/T/C` (1): c\n"
-        srcs = {"New/S/A": _lean("theorem x : True := trivial"), "New/S/B": "", "New/T/C": "-- nothing here\n"}
+        srcs = {"New/S/A": _lean("theorem x : True := trivial"), "New/S/B": _lean(""), "New/T/C": _lean("-- nothing here")}
         with _tmp() as d:
             errs, files, rows, rep = bld(_tree(d, body, srcs), PIN, _strings())
             ix = _j(files, "graph/index.json")
@@ -1145,7 +1187,8 @@ def _selftest_cases():
                 row("lean-s-a", "lean-s--g", 0, [], "file", "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "file", "b")]
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
         info = {("lean-s-b", "lean-s-a"): {"weight": 1, "in_reduction": True}}
-        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info)
+        notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n"} for i in ("lean-s-a", "lean-s-b")}
+        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes)
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -1362,7 +1405,7 @@ def _selftest_cases():
         return _eq(([(c, w) for c, w, _ in errs], ok[0], len(ok[3]["cut"]), [len(r["id"]) for r in ok[2]]), ([("GRAPH-ID", "lean-x-" + name)], [], 1, [6, 9, 64]))
 
     @case("SK24", "a source file is read through one bounded, non-blocking, non-following descriptor: a .lean that is a symlink (to a file outside the tree), a FIFO, a directory or "
-                  "larger than 1 MiB, or not UTF-8, is `SKEL-SOURCE <path> <reason>` (`symlink`, `not-a-regular-file`, `not-a-regular-file`, `too-large`, `not-utf-8`; all reported, "
+                  "larger than 1 MiB, or not UTF-8, is `SKEL-NOTE <path> <reason>` (`symlink`, `not-a-regular-file`, `not-a-regular-file`, `too-large`, `not-utf-8`; all reported, "
                   "exit 1, OUT not written), and one of exactly 1 MiB is read. The case runs the CLI in a subprocess with a 60 second timeout, so a tool that blocked on the FIFO "
                   "would fail the case, not hang the self-test")
     def _():
@@ -1370,7 +1413,7 @@ def _selftest_cases():
         limit = 1048576
         srcs = {f"New/S/{n}": _lean() for n in "ABCDEFG"}
         srcs["New/S/D"] = "-" * (limit + 1)
-        srcs["New/S/E"] = "-" * limit
+        srcs["New/S/E"] = "/-!\nn\n-/\n" + "-" * (limit - 9)
         srcs["New/S/G"] = b"\xff\xfe"
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -1388,8 +1431,8 @@ def _selftest_cases():
             r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=60)
             absent = not os.path.exists(out)
         return _eq((r.returncode, r.stdout.splitlines(), "Traceback" in r.stderr, absent),
-                   (1, ["SKEL-SOURCE New/S/A symlink", "SKEL-SOURCE New/S/B not-a-regular-file", "SKEL-SOURCE New/S/C not-a-regular-file", "SKEL-SOURCE New/S/D too-large",
-                        "SKEL-SOURCE New/S/G not-utf-8"], False, True))
+                   (1, ["SKEL-NOTE New/S/A symlink", "SKEL-NOTE New/S/B not-a-regular-file", "SKEL-NOTE New/S/C not-a-regular-file", "SKEL-NOTE New/S/D too-large",
+                        "SKEL-NOTE New/S/G not-utf-8"], False, True))
 
     @case("SK25", "the other branches of the CONTENTS reader each give `SKEL-LINE <n>` with their own line: a bold line that holds another bold span (`**one** and **two**`), a file "
                   "before the first bold line of a section that has bold lines, a `###` heading with no file, and a bold line with no file in a section that has files")
@@ -1541,6 +1584,179 @@ def _selftest_cases():
                    ([], 2135, 733, 1402, 12688, 325, 325, 408, 733, [7, 5, 4, 3, 2, 2, 2, 1, 1, 1, 1, 1], 7, 5, 4, 3, 2, 2,
                     (22, 114, 27), (23, 79, 32), (19, 72, 22), (16, 45, 22), (15, 42, 20), 733, 325))
 
+    def note_of(raw):
+        """('ok', text) or ('err', reason) of _module_note(raw)."""
+        try:
+            return ("ok", _module_note(raw))
+        except NoteError as e:
+            return ("err", e.reason)
+
+    RAW1 = (b"import X.Y\n\n/-!\n# Title\r\nSome `code` and $x^2$ and *emph*,\ttab  \n    indented  \nlast line  \n-/\ndef f := 1\n")
+
+    def slice1(raw):   # the second, simpler implementation: the first `/-!` and the first `-/` after it (valid when the note holds no nested comment)
+        a = raw.index(b"/-!") + 3
+        return raw[a:raw.index(b"-/", a)].decode("utf-8")
+
+    @case("N1", "a module note with markdown, backticks, `$`, a CRLF, a tab, trailing spaces and a final newline comes through byte for byte: the step file's note.text equals the "
+                "source slice read in the case, note.source is `grh/src/` + the CONTENTS path + `.lean`, the note has exactly the keys source and text, and the CRLF and the "
+                "trailing spaces are in the written JSON as escapes")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": RAW1}), PIN, _strings())
+        note = _j(files, "graph/step/lean-s-a.json")["note"]
+        want = slice1(RAW1)
+        return _eq((errs, note["text"] == want, note["source"], sorted(note), len(want), want.count("\r\n"), b"Title\\r\\nSome `code`" in files["graph/step/lean-s-a.json"]),
+                   ([], True, "grh/src/New/S/A.lean", ["source", "text"], 77, 1, True))
+
+    @case("N2", "the equality of N1 can fail: the fixture's note differs from its strip, rstrip, lstrip, CRLF-folded, line-normalised and one-character-shorter versions, so a "
+                "tool that trims, folds a newline or loses a character is caught")
+    def _():
+        w = slice1(RAW1)
+        return _eq([w != w.strip(), w != w.rstrip(), w != w.lstrip(), w != w.replace("\r\n", "\n"), w != "\n".join(w.splitlines()), w != w[:-1], w != w + " "],
+                   [True] * 7)
+
+    @case("N3", "_module_note: the inner text of the FIRST `/-!` ... `-/` block, nesting of `/-` and `-/` counted (a note holding `/- inner -/` is taken whole, also two levels "
+                "deep); a first `-/` that comes before an inner opener closes the note by depth; an unterminated block, one whose inner opener is never closed, a file with no "
+                "block and bytes that are not UTF-8 are refused with their reason")
+    def _():
+        return _eq([note_of(b"/-! a /- inner -/ b -/\ndef x"), note_of(b"/-! a /- b /- c -/ d -/ e -/ tail"), note_of(b"/-! one -/ two /- three -/"),
+                    note_of(b"/-! never"), note_of(b"/-! a /- b -/"), note_of(b"def x\n"), note_of(b"/-! \xff -/"), note_of(b"/-!-/"), note_of(b"/-!\r\n-/")],
+                   [("ok", " a /- inner -/ b "), ("ok", " a /- b /- c -/ d -/ e "), ("ok", " one "), ("err", "unterminated"), ("err", "unterminated"), ("err", "no-note"),
+                    ("err", "not-utf-8"), ("ok", ""), ("ok", "\r\n")])
+
+    @case("N4", "only blank lines and `import ...` lines may precede the block: other text (a comment line, a declaration, text on the line of the opener) is "
+                "`SKEL-NOTE <path> text-before-note`; blank lines with spaces, tabs and CRLF, and several imports, are accepted")
+    def _():
+        ok = note_of(b"import A.B\r\n\n  \t\nimport C\n/-! n -/")
+        bad = [note_of(b"-- c\n/-! n -/"), note_of(b"def x\n/-! n -/"), note_of(b"x /-! n -/"), note_of(b"/- copyright -/\n/-! n -/"), note_of(b"imports\n/-! n -/")]
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            errs = brows(_tree(d, body, {"New/S/A": b"def x\n/-! n -/\n"}))[0]
+        return _eq((ok, bad, errs), (("ok", " n "), [("err", "text-before-note")] * 5, [("SKEL-NOTE", "New/S/A", "text-before-note")]))
+
+    @case("N5", "all bad files are reported, each named with its reason, in CONTENTS order, and the CLI exits 1 with OUT not written: a file with no note, an unterminated "
+                "one, one that is not UTF-8, one with text before the note (a good file is not named)")
+    def _():
+        body = "### S part\n\n**G**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in "ABCDE")
+        srcs = {"New/S/A": b"def x\n", "New/S/B": b"/-! never closed\n", "New/S/C": _lean(), "New/S/D": b"/-! \xff -/\n", "New/S/E": b"-- hi\n/-! n -/\n"}
+        want = [("SKEL-NOTE", "New/S/A", "no-note"), ("SKEL-NOTE", "New/S/B", "unterminated"), ("SKEL-NOTE", "New/S/D", "not-utf-8"),
+                ("SKEL-NOTE", "New/S/E", "text-before-note")]
+        with _tmp() as d:
+            g = _tree(d, body, srcs)
+            errs = brows(g)[0]
+            rc, out, err = _cli(_args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)))
+            absent = not os.path.exists(os.path.join(d, "out"))
+        return _eq((errs, rc, out.splitlines(), absent),
+                   (want, 1, ["SKEL-NOTE New/S/A no-note", "SKEL-NOTE New/S/B unterminated", "SKEL-NOTE New/S/D not-utf-8", "SKEL-NOTE New/S/E text-before-note"], True))
+
+    @case("N6", "a .lean that is a symlink, a directory or a FIFO, or is larger than 1 MiB, is refused (`symlink`, `not-a-regular-file`, `not-a-regular-file`, `too-large`) "
+                "without hanging, and one of exactly 1 MiB is accepted. The tool opens with O_NONBLOCK and O_NOFOLLOW, fstat's the descriptor and reads at most the limit plus "
+                "one byte; the case runs the CLI in a subprocess with a 60 second timeout, so a tool that blocked on the FIFO would fail the case, not hang the self-test")
+    def _():
+        body = "### S part\n\n**G**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in "ABCDEF")
+        head = b"/-!\nn\n-/\n"
+        limit = 1048576
+        srcs = {"New/S/A": _lean(), "New/S/B": _lean(), "New/S/C": _lean(), "New/S/D": head + b"-" * (limit + 1 - len(head)), "New/S/E": head + b"-" * (limit - len(head)),
+                "New/S/F": _lean()}
+        with _tmp() as d:
+            g = _tree(d, body, srcs)
+            base = os.path.join(g, "src", "New", "S")
+            os.remove(os.path.join(base, "A.lean"))
+            os.symlink(os.path.join(base, "F.lean"), os.path.join(base, "A.lean"))
+            os.remove(os.path.join(base, "B.lean"))
+            os.mkdir(os.path.join(base, "B.lean"))
+            os.remove(os.path.join(base, "C.lean"))
+            os.mkfifo(os.path.join(base, "C.lean"))
+            sizes = (os.path.getsize(os.path.join(base, "D.lean")), os.path.getsize(os.path.join(base, "E.lean")))
+            out = os.path.join(d, "out")
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=60)
+            absent = not os.path.exists(out)
+            body_ok = body.replace("- `New/S/A` (1): A\n", "").replace("- `New/S/B` (1): B\n", "").replace("- `New/S/C` (1): C\n", "").replace("- `New/S/D` (1): D\n", "")
+            for n in "ABCD":
+                p = os.path.join(base, n + ".lean")
+                (os.rmdir if os.path.isdir(p) and not os.path.islink(p) else os.remove)(p)
+                os.remove(os.path.join(d, "ilean", "New", "S", n + ".ilean"))
+            with open(os.path.join(g, "CONTENTS.md"), "w", encoding="utf-8") as f:
+                f.write(HEAD + body_ok + TAIL)
+            errs_ok, files_ok = bld(g, PIN, _strings())[:2]
+        return _eq((sizes, r.returncode, r.stdout.splitlines(), absent, errs_ok, len(_j(files_ok, "graph/step/lean-s-e.json")["note"]["text"])),
+                   ((limit + 1, limit), 1, ["SKEL-NOTE New/S/A symlink", "SKEL-NOTE New/S/B not-a-regular-file", "SKEL-NOTE New/S/C not-a-regular-file", "SKEL-NOTE New/S/D too-large"],
+                    True, [], 3))
+
+    @case("N7", "only FILE steps carry a note: a part and a group step file have no `note` key; the exact key set of a file step with a note is card, children, commit, "
+                "format, id, note, path, rests_on; index.json and uses.json have no note")
+    def _():
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, SK1_BODY, SK1_SRCS), PIN, _strings())
+        keys = lambda n: sorted(_j(files, f"graph/step/{n}.json"))
+        return _eq((errs, keys("lean-alpha"), keys("lean-alpha--first-group"), keys("lean-alpha-one"), sorted(_j(files, "graph/index.json")), sorted(_j(files, "graph/uses.json")),
+                    sorted(k for k in files if k.startswith("graph/step/") and "note" in _j(files, k))),
+                   ([], ["card", "children", "commit", "format", "id", "path", "rests_on"], ["card", "children", "commit", "format", "id", "path", "rests_on"],
+                    ["card", "children", "commit", "format", "id", "note", "path", "rests_on"],
+                    ["assets", "commit", "format", "max_children", "rests_on", "sibling_layout", "steps", "strings", "symbols", "top"], ["commit", "format", "imports", "uses"],
+                    ["graph/step/lean-alpha-one.json", "graph/step/lean-alpha-three.json", "graph/step/lean-alpha-two-parts.json", "graph/step/lean-beta-four.json",
+                     "graph/step/lean-beta-six.json", "graph/step/lean-beta-sub-five.json"]))
+
+    @case("N8", "`<`, `>` and `&` in a note are written as \\u003c \\u003e \\u0026 (no raw one in any file), and the JSON parses back to the exact text")
+    def _():
+        text = " <img src=x onerror=alert(1)> & </script> \"quoted\" \\ back\u2028slash\n"
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": ("/-!" + text + "-/\n").encode("utf-8")}), PIN, _strings())
+        raw = files["graph/step/lean-s-a.json"]
+        return _eq((errs, _j(files, "graph/step/lean-s-a.json")["note"]["text"] == text, [any(c in data for c in (b"<", b">", b"&")) for data in files.values()].count(True),
+                    b"\\u003cimg src=x onerror=alert(1)\\u003e \\u0026 \\u003c/script\\u003e" in raw, b"\\u2028" in raw),
+                   ([], True, 0, True, True))
+
+    @case("N9", "the static check passes on the output with notes (the fixture's notes hold markdown, backticks, `$`, a table, an indented block)")
+    def _():
+        raw = b"/-!\n# T\n| a | b |\n|---|---|\n| `x` | $y$ |\n\n    indented block\n-/\n"
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"
+        with _tmp() as d:
+            errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": raw, "New/S/B": RAW1}), PIN, _strings())
+        return _eq((errs, bs._graph_static_problems(files), sorted(files)[:2], [b'"note"' in files[k] for k in ("graph/step/lean-s-a.json", "graph/step/lean-s-b.json")]),
+                   ([], [], ["graph/index.json", "graph/step/lean-s--g.json"], [True, True]))
+
+    @case("N11", "determinism with notes: the files, the notes included, are byte-identical under PYTHONHASHSEED 0, 1 and 2")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": RAW1, "New/S/B": _lean(imports=["New.S.A"])})
+            sp, ol = _strings_file(d), _outline_file(d)
+            runs = []
+            for seed in ("0", "1", "2"):
+                out = os.path.join(d, "out" + seed)
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, sp, ol), env=dict(os.environ, PYTHONHASHSEED=seed), capture_output=True, text=True)
+                runs.append((r.returncode, _tree_files(out)))
+        return _eq(([r[0] for r in runs], runs[0][1] == runs[1][1] == runs[2][1], b'"note"' in runs[0][1]["graph/step/lean-s-a.json"]), ([0, 0, 0], True, True))
+
+    @case("N12", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): 306 of 306 file steps carry a note and no part or group does; the sum of the lengths of the "
+                 "texts in UTF-8 bytes is 729752, the upper median (sorted[n // 2]) 2246, the largest 5386; every text equals the block read independently by the simpler "
+                 "implementation (the first `/-!` and the first `-/` after it), and no note holds a nested comment (0); sources all start `grh/src/New/` and end `.lean`; "
+                 "the static check passes")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        steps = {k[len("graph/step/"):-len(".json")]: _j(files, k) for k in files if k.startswith("graph/step/")}
+        with_note = {i: s for i, s in steps.items() if "note" in s}
+        file_ids = {r["id"] for r in rows if r["kind"] == "file"}
+        root = os.path.dirname(os.path.abspath(_GRH_FOR_SK13))
+        same, nested, lens = 0, 0, []
+        for i, s in with_note.items():
+            with open(os.path.join(root, *s["note"]["source"].split("/")), "rb") as f:
+                raw = f.read()
+            if s["note"]["text"] == slice1(raw):
+                same += 1
+            nested += s["note"]["text"].count("/-")
+            lens.append(len(s["note"]["text"].encode("utf-8")))
+        lens.sort()
+        sizes = [len(v) for k, v in files.items() if k.startswith("graph/step/")]
+        return _eq((errs, len(with_note), set(with_note) == file_ids, len(steps), same, nested, sum(lens), lens[len(lens) // 2], lens[-1],
+                    all(s["note"]["source"].startswith("grh/src/New/") and s["note"]["source"].endswith(".lean") for s in with_note.values()),
+                    bs._graph_static_problems(files), max(sizes) > 0),
+                   ([], 306, True, 353, 306, 0, 729752, 2246, 5386, True, [], True))
     @case("SK28", "hostile folders and CONTENTS.md, one tree per row of the colleague's table, each a named refusal (exit 1, no traceback, OUT not written, no hang: the CLI runs in a "
                   "subprocess with a 60 second timeout): `src` a symlink to a folder outside, `src/New` a symlink, CONTENTS.md a symlink, CONTENTS.md a FIFO, CONTENTS.md over 4 MiB, "
                   "an intermediate folder `src/New/S` a symlink to a folder outside")
