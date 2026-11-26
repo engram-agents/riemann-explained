@@ -2180,6 +2180,27 @@ def c_note_load_failure(b, S0, engine):
         S.stop()
 
 
+def c_note_open_throws(b, S0, engine):
+    """A card opening whose sheet THROWS after the step loaded (a plain exception, not a data refusal) is the page's fallback and an
+    unhandled rejection is not left behind: the tap route is now asynchronous, so its exception must be caught inside it."""
+    def mut(text):
+        old = "    const rec = adopt(article, true);\n"
+        assert text.count(old) == 1
+        return text.replace(old, old + '    throw new Error("the sheet failed after the load");\n')
+    root = tempfile.mkdtemp(prefix="pg-open-throws-")
+    assemble.assemble(root, engine, mutate={os.path.join("page", "sheet.js"): mut})
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, "goal-chain")
+        pg.wait("!document.getElementById('graph-layer')", 6000)
+        assert pg.page.is_visible("#graph-fallback") and pg.ev("document.querySelectorAll('#graph-cards article').length") == 23
+        assert not [c for c in pg.console if c[0] == "pageerror"], pg.console
+        pg.close()
+    finally:
+        S.stop()
+
+
 def c_note_live_unchanged(b, S, engine):
     """N11: on the live real fixture no step carries a note, so a card's sheet holds no note label, source line or body, and its children
     are the claim, the status line and the builder's own lines as before."""
@@ -2274,6 +2295,7 @@ def main():
                 run("note: N13 a map lacking a note key is the page's failure when a note step opens; a template with markup is text", c_note_strings, eng)
                 run("note: a failed step load on a tap leaves the open card untouched", c_note_load_failure, eng)
                 run("note: N11 the live map's sheet carries no note", c_note_live_unchanged, eng)
+                run("note: a sheet that throws after the step loaded is the fallback, with no unhandled rejection", c_note_open_throws, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:
