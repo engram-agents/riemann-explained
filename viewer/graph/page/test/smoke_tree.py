@@ -10,9 +10,10 @@ SITE_DIR is the folder a web server would serve. Either shape is accepted and th
 A folder with neither is refused with exit 2.
 
 The tool serves SITE_DIR read-only on 127.0.0.1 (a random port) with the page browser suite's own server class, so the
-Content-Security-Policy and the other headers are the suite's, never a copy. Every request by every method the server serves (GET and
-HEAD, through one guard), and every file the tool itself reads, is resolved and must stay inside SITE_DIR; one that leaves it (a
-symlink pointing out) is a FAIL named `containment`.
+Content-Security-Policy and the other headers are the suite's, never a copy. Every file the server sends (GET and HEAD share one open
+function) is the file whose real path was resolved and checked just before it was opened, after the stdlib chose any directory index, so a
+`/d/` that serves a linked-out index.html is caught; every file the tool itself reads is checked the same way. One that leaves SITE_DIR
+(a symlink pointing out) is a FAIL named `containment`. A directory is never listed (403).
 
 In Chromium, for each viewport (390x844 mobile with touch; 1280x900):
   boot          #graph-layer visible, #graph-fallback and #graph-notice hidden, within 15 s (S1)
@@ -27,7 +28,7 @@ In Chromium, for each viewport (390x844 mobile with touch; 1280x900):
                 (A2). An absent or empty .note-body is a FAIL; no file step carries a note, or --no-note, is a SKIP, never a pass
                 (and a FAIL with --require-note: the merge seat's run that must have the real check).
   scale-floor   390x844 only: after the part is opened, the engine world's rendered scale is >= index.json open_scale_floor (A3).
-                No such key in the data: SKIP, never a pass (a FAIL with --require-floor). (Opened by deep link, the path every tree has; a tap on the card needs
+                No such key in the data: SKIP, never a pass (a FAIL with --require-floor, which is a usage error, exit 2, with --only-viewport 1280x900: the floor runs at 390x844 only). (Opened by deep link, the path every tree has; a tap on the card needs
                 the engine's pointer path, which a tree without its engine cannot offer.)
 
 The heading of a sheet is the title shown in its breadcrumb's current entry (the .crumb-here, role word left out) when the sheet has
@@ -55,7 +56,6 @@ LAUNCH_ARGS = ["--no-sandbox"]       # the page browser suite's own launch args 
 VIEWPORTS = {"390x844": (390, 844, True), "1280x900": (1280, 900, False)}
 BOOT_TIMEOUT_MS = 15000
 OUTSIDE = []                      # every request path or tool read that resolved outside SITE_DIR
-LINES = []
 FAILED = [0]
 SKIPPED = []                      # the check name of every SKIP, once each (the verdict line sorts them)
 
@@ -63,7 +63,6 @@ SKIPPED = []                      # the check name of every SKIP, once each (the
 def out(kind, vp, check, detail=""):
     if kind == "FAIL":
         FAILED[0] += 1
-    LINES.append(kind)
     if kind == "SKIP" and check not in SKIPPED:
         SKIPPED.append(check)
     print(("%s %s %s %s" % (kind, vp, check, detail)).rstrip(), flush=True)
@@ -98,9 +97,19 @@ def plain(s):
     return collapse((s or "").replace("`", ""))
 
 
+def reset_state():
+    """Module state of one run, cleared in place (main calls this first, so a second run in one process starts clean)."""
+    OUTSIDE.clear()
+    SKIPPED.clear()
+    FAILED[0] = 0
+
+
 def inside(root_real, path):
     real = os.path.realpath(path)
-    return real == root_real or real.startswith(root_real + os.sep)
+    try:
+        return os.path.commonpath([root_real, real]) == root_real       # component-wise: /x/site2 is not inside /x/site
+    except ValueError:                                                  # a different drive, or a mix of absolute and relative
+        return False
 
 
 class Contained(Exception):
@@ -116,23 +125,56 @@ def tree_shape(site):
 
 
 class SmokeHandler(T.Handler):
-    """The suite's own handler (its headers come from its end_headers), plus: a request whose path resolves outside the root is refused,
-    whatever the method (GET and HEAD are the methods it serves; both go through _guard)."""
-    def _guard(self):
-        path = self.path.split("?")[0].split("#")[0]
-        if inside(self.root_real, self.translate_path(path)):
-            return True
-        OUTSIDE.append(path)
-        self.send_error(403)
-        return False
+    """The suite's own handler (its headers come from its end_headers), with ONE choke point at the open: send_head, which GET and HEAD
+    share, resolves the real path of the exact file it is about to open (after the stdlib's rule has chosen any index file) and opens that
+    resolved path, so what was checked is what is read. A file whose real path is outside the root is a 403 recorded in OUTSIDE; a directory
+    is never listed (403)."""
+    INDEX_NAMES = ("index.html", "index.htm")        # the stdlib's own choice of a directory's page; containment is checked on whatever is chosen
 
-    def do_GET(self):
-        if self._guard():
-            super().do_GET()
+    def send_head(self):
+        try:
+            return self._open_contained()
+        except ValueError:                           # an embedded NUL in the path: a bad request, answered cleanly
+            self.send_error(400)
+            return None
 
-    def do_HEAD(self):
-        if self._guard():
-            super().do_HEAD()
+    def _open_contained(self):
+        raw = self.path.split("?")[0].split("#")[0]
+        path = self.translate_path(raw)
+        if os.path.isdir(path):
+            if not raw.endswith("/"):
+                return super().send_head()           # the stdlib's redirect to the slash form; it reads no file
+            for name in self.INDEX_NAMES:
+                if os.path.isfile(os.path.join(path, name)):
+                    path = os.path.join(path, name)
+                    break
+            else:
+                self.send_error(403, "No permission to list directory")
+                return None
+        elif raw.endswith("/"):
+            self.send_error(404, "File not found")
+            return None
+        real = os.path.realpath(path)
+        if not inside(self.root_real, real):
+            OUTSIDE.append(raw)
+            self.send_error(403)
+            return None
+        try:
+            f = open(real, "rb")
+        except OSError:
+            self.send_error(404, "File not found")
+            return None
+        try:
+            st = os.fstat(f.fileno())
+            self.send_response(200)
+            self.send_header("Content-type", self.guess_type(path))
+            self.send_header("Content-Length", str(st.st_size))
+            self.send_header("Last-Modified", self.date_time_string(st.st_mtime))
+            self.end_headers()
+            return f
+        except BaseException:
+            f.close()
+            raise
 
 
 def serve(site):
@@ -277,6 +319,9 @@ def note_check(v, vp, p, no_note, opened, require_note):
         out("FAIL", vp, "note", "#%s: the sheet did not open, so its note was not checked" % p["id"])
         return
     want = collapse(n["text"])[:40]
+    if want == "":
+        out("FAIL", vp, "note", "#%s: the note text is empty after whitespace collapse (note text empty), so there is nothing to look for" % p["id"])
+        return
     got = v.ev("(() => { const b = document.querySelector('#graph-sheet-body .note-body'); return b ? b.textContent : null; })()")
     if got is None:
         out("FAIL", vp, "note", "#%s carries a note but the sheet has no .note-body" % p["id"])
@@ -342,6 +387,7 @@ def run_viewport(browser, vp, base, site, index, picked, no_note, require_note, 
 
 
 def main(argv):
+    reset_state()
     args = argv[1:]
     only = None
     if "--only-viewport" in args:
@@ -356,6 +402,9 @@ def main(argv):
     args = [a for a in args if a not in flags]
     if len(args) != 1 or args[0].startswith("-") or (no_note and require_note):
         print("usage: smoke_tree.py SITE_DIR [--no-note | --require-note] [--require-floor] [--only-viewport 390x844|1280x900]", file=sys.stderr)
+        return 2
+    if require_floor and only == "1280x900":
+        print("--require-floor cannot be combined with --only-viewport 1280x900: the floor check runs only at 390x844", file=sys.stderr)
         return 2
     site = os.path.abspath(args[0])
     sub, shape = tree_shape(site)
