@@ -919,6 +919,48 @@ def c_nav_b7(b, S0, engine):
         S.stop()
 
 
+def c_nav_c1(b, S0, engine):
+    """C1: suppression is scoped to the pending call's nodes. Open-parts on card C (node X = a1) is pending (its children's load is held); the reader
+    taps card D (a2), which supersedes it; then the reader's OWN gesture opens the parts of an UNRELATED node Y (inputs, not on X's path) whose
+    load is slow and then fails (http-500, held in the page's data-layer copy like X's: the top step's file is cached, so the server cannot hold
+    it): Y's parts notice APPEARS even though a superseded call is still pending. The reader then taps card a3 (clears the notice, so a
+    later notice could only be new), X's load is released as a failure: no notice and no fallback come from it. Discriminates a `supersededCall`
+    that ignores the node filter, or that looks only at the newest pending call."""
+    S = hold_kids_root(engine)
+    try:
+        pg = nav_page(b, S)
+        assert pg.ev(HOLD_KIDS_JS)
+        assert pg.ev("(() => { const h = { fail: false }; h.p = new Promise((r) => { window.__releaseY = (fail) => { h.fail = !!fail; r(); }; }); window.__holdKids.inputs = h; return true; })()")
+        pg.page.click("#graph-sheet-tools .sheet-tool")                 # X's parts: the route waits on the held load
+        wait_sheet(pg, False)
+        tap(pg, "a2")                                                    # supersedes it
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+        if engine == "double":
+            pg.ev("(() => { document.getElementById('graph').__open('inputs'); return true; })()")
+        else:
+            pg.page.click("#graph-show-all")       # Y is below the fold on the real map: the reader shows all (a route that closes D's sheet and fits the camera; X's call is still pending)
+            wait_sheet(pg, False)
+            pg.page.wait_for_timeout(800)
+            open_on_map(pg, engine, "inputs", "b1", wait=False)
+        pg.page.wait_for_timeout(300)
+        assert notice_text(pg) is None, "Y's load is still held"
+        pg.ev("(() => { window.__releaseY(true); return true; })()")
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert notice_text(pg) == PARTS_FAILED, "Y's own failed load was swallowed by an unrelated superseded call: %r" % notice_text(pg)
+        tap(pg, "a3")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a3'", 5000)
+        assert notice_text(pg) is None, "the card opening clears the notice"
+        pg.ev("(() => { window.__releaseKids(true); return true; })()")
+        pg.page.wait_for_timeout(700)
+        assert notice_text(pg) is None, "a notice from the superseded call: %r" % notice_text(pg)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "the page fell back"
+        assert shown_id(pg) == "a3" and sheet_open(pg)
+        assert not [c for c in pg.console if c[0] == "pageerror"]
+        pg.close()
+    finally:
+        S.stop()
+
+
 # ---------------------------------------------------------------------------------------------- the open-parts route (S1)
 
 def c_open_parts_rejects(b):
@@ -2893,6 +2935,7 @@ def main():
                 run("nav B5b: open-parts whose load fails (slow), the reader taps another card first: that card's sheet is open and no notice when the failure arrives", c_nav_b5b_b6b, eng, True)
                 run("nav B6b control: the same failing open-parts with nothing after it: the parts notice appears, as before", c_nav_b5b_b6b, eng, False)
                 run("nav B7 control: the reader's own open of a node's parts that fails to load (slow, 500) is still the parts notice", c_nav_b7, eng)
+                run("nav C1: a superseded open-parts is pending on one node, the reader's own open of an unrelated node fails to load: its parts notice appears; the superseded load's failure later says nothing", c_nav_c1, eng)
                 if eng == "real":
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
