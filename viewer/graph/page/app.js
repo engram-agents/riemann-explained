@@ -9,7 +9,7 @@
    THE SEAM: start(doc, {createGraph, fetch}) takes the engine's createGraph and a fetch-like as arguments. The last
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
 import { createGraph, checkOptions } from "../engine/index.js";
-import { el, isId } from "./dom.js";
+import { el, isId, titleChildren } from "./dom.js";
 import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING, TYPESET_STRINGS } from "./data.js";
 import { makeRenderFace } from "./face.js";
 import { templateParts } from "./note.js";
@@ -29,6 +29,14 @@ export const CLOSE_ROUTES = Object.freeze([
    14.49 px at fit. gapY 56 (still room for the link arrow, 20 px) takes the world from 572 to 532 px high and the scale to
    1.038. The engine's other sizes stay at its defaults. */
 const CARD_SIZES = Object.freeze({ nodeH: 140, gapY: 56 });
+
+/* THE MADE CARD. The builder's card block may hold no card articles at all (the Lean map's assembler writes the About section only); a card the
+   markup lacks for an id the data knows is MADE here, from the step's title alone: a div.card holding one h3.claim (the title through titleChildren,
+   so a backtick span is a code element and nothing in a title is markup). Nothing else is invented: no paragraph, no list of parts, and no id of any
+   kind on it (the page keys cards by its own Map, never by a DOM id). The sheet adds the status line and the note, as for any card. */
+export function madeCard(title, elFn = el) {
+  return elFn("div", { class: "card" }, [elFn("h3", { class: "claim" }, titleChildren(title, elFn))]);
+}
 
 const SHELL = ["graph-layer", "graph", "graph-sheet", "graph-crumbs", "graph-sheet-tools", "graph-sheet-body", "graph-sheet-close",
   "graph-show-all", "graph-key", "graph-about-open", "graph-fallback", "graph-cards", "graph-notice", "graph-about"];
@@ -97,7 +105,8 @@ export async function start(doc, deps) {
     const strings = index.strings;
     const roots = await data.loadRoots();
 
-    /* The cards: id -> the builder's own <article>, read once. Keys are checked ids; a lookup never builds a selector. */
+    /* The cards: id -> the builder's own <article>, read once. Keys are checked ids; a lookup never builds a selector. A card the markup lacks is
+       made on its first open (openCard) and kept in this same Map, so a reopen shows the same element. */
     const articles = new Map();
     cardsEl.querySelectorAll("article[id]").forEach((a) => { if (isId(a.id) && !articles.has(a.id)) articles.set(a.id, a); });
     const aboutEl = q["graph-about"];
@@ -185,9 +194,11 @@ export async function start(doc, deps) {
     /* Not async, on purpose: on a map that carries no notes it returns the boolean at once, as it always did, and an exception from the sheet reaches
        the caller synchronously (a tap's guard, or go's catch). On a map that carries notes it returns the promise of the open. */
     function openCard(t, id) {
-      const art = articles.get(id), m = data.meta(id);
+      const m = data.meta(id);
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
-      if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
+      if (!m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
+      let art = articles.get(id);       // the markup's own card wins; only an id it has none for gets a made one
+      if (!art) { art = madeCard(m.title); articles.set(id, art); }
       if (!carriesNotes) return showOpenCard(id, art, m, anc, undefined);
       return openCardWithNote(t, id, art, m, anc);
     }
