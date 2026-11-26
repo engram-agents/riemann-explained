@@ -300,7 +300,7 @@ card. The
 LIMIT paragraph in the file lists what is not checked.
 `python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--graph-src DIR] [--force]`
 
-**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--source-prefix PREFIX]`** answers: what is the
+**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX]`** answers: what is the
 skeleton of the map for a Lean repository that keeps its own index? `DIR` holds `CONTENTS.md` and `src/`. The tool reads the `## New` section of
 `CONTENTS.md` (`###` headings are sections, a line that is only `**title**` is a group, a line ``- `New/<path>` (<n>): <title>`` is a file) and the import
 lines of the files under `src/New`, and writes `graph/index.json`, `graph/step/<id>.json` and `graph/uses.json` under `OUT_DIR`. It writes graph data only: no
@@ -331,6 +331,7 @@ The rules are mechanical; nothing is typed by hand, and the kind and the face li
   page's OPTIONAL words (`GRAPH_OPTIONAL_KEYS` in `build_site.py`: `key_kinds_note`, `note_label`, `note_source`, `note_label_typeset`, `note_typeset_line`, `note_exact_button`, `key_lines_heading`, `key_lines_text`, `spine_lines_text`; the wording is final, and `note_source` holds
   the placeholders `{source}` and `{commit}`): `strings` is 27 keys without them, 30 with the first three, 36 with all nine, and any other extra key is refused `GRAPH-STRINGS`. The live map's table, order lists, key set and output are unchanged: with no argument the
   key is absent and the lists are the whole tables.
+- **Graph overlay**: `--strings-overlay-graph FILE` (no default) adds the words only the Graph view reads; they live in `site/strings-lean-graph.json` (today the one key `spine_lines_text`), not in the Cards overlay. Without the option the build is a Cards-only build: none of the file's keys is in `index.json` `strings`, and `spine.json` has no `edge_basis` (its words key is absent, and the omission is legal); with it every key is in `strings` and `spine.json` carries its `edge_basis`. The file is read and checked as the Cards overlay is. A key in both overlay files, or in the Graph overlay and the strings file, is refused `SKEL-OVERLAY-CLASH <key>` and nothing is written.
 - **Links** (`rests_on`) mean USES: file F rests on file G when a constant reference of F's compiled index (the `.ilean` file of its module, read as JSON data only;
   `--ilean-dir` is the `lib/lean` folder of the build, has no default, and nothing is run or written there) names a name of G and has at least one usage. G is another
   `New` file; references to the file's own module and to modules outside `New` are ignored. The weight of the link is the number of distinct names of G that F uses.
