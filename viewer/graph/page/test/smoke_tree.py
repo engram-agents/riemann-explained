@@ -324,12 +324,16 @@ def diagnose(v):
 
 def pick_ids(site, index, no_note):
     """S3: ids FROM THE DATA. Returns (part, group, file) as dicts {id, title, rule, note} and prints them."""
-    top = index["top"]
-    part = top[0]
-    pstep = read_json(site, "step/%s.json" % part)
-    kids = pstep["children"]
-    if not kids:
-        raise ValueError("the part %s has no children" % part)
+    # the part is the first top part that HAS children (a parts button to open; a leaf in front of it does not end the run)
+    part, pstep, kids = None, None, []
+    for n, tid in enumerate(index["top"]):
+        step = read_json(site, "step/%s.json" % tid)
+        if step["children"]:
+            part, pstep, kids = tid, step, step["children"]
+            prule = "first id of index top" if n == 0 else "first id of index top that has children"
+            break
+    if part is None:
+        raise ValueError("no top part has children (every top part is a leaf)")
     nonfile = [c for c in kids if c.get("kind") != "file"]
     gchild = nonfile[0] if nonfile else kids[0]
     grule = "first child of the part whose kind is not file" if nonfile else "first child of the part (every child is a file)"
@@ -348,7 +352,7 @@ def pick_ids(site, index, no_note):
     else:
         fid, frule = files[0], "first %s in step-id order%s" % (frule_base, " (--no-note)" if no_note else " (none carries note)")
     picked = (
-        {"id": part, "title": pstep["card"]["title"], "rule": "first id of index top"},
+        {"id": part, "title": pstep["card"]["title"], "rule": prule},
         {"id": gchild["id"], "title": gchild["title"], "rule": grule},
         {"id": fid, "title": steps[fid]["card"]["title"], "rule": frule, "note": steps[fid].get("note") if not no_note else None},
     )
@@ -429,7 +433,7 @@ def settled_scale(v):
     return None
 
 
-def scale_check(v, vp, index, require_floor):
+def scale_check(v, vp, index, require_floor, part_id):
     """The floor governs framing an OPENED box (a deep link frames its target closed): press the open sheet's own parts button, wait for the engine's
     open to settle, then read the scale."""
     if "open_scale_floor" not in index:
@@ -440,10 +444,10 @@ def scale_check(v, vp, index, require_floor):
     pressed = v.ev("(() => { const b = [...document.querySelectorAll('#graph-sheet .sheet-tool')].find((x) => x.textContent === %s); if (b) b.click(); return !!b; })()"
                    % json.dumps(label))
     if not pressed:
-        out("FAIL", vp, "scale-floor", "the open sheet has no %r button, so the opened framing was not measured" % label)
+        out("FAIL", vp, "scale-floor", "no parts button on %s (the open sheet has no %r button, so the opened framing was not measured)" % (part_id, label))
         return
     if not v.wait("document.querySelector('.ge-node.ge-open') && !document.querySelector('.ge-loading')", 10000):
-        out("FAIL", vp, "scale-floor", "the part's parts did not open after %r, so the opened framing was not measured" % label)
+        out("FAIL", vp, "scale-floor", "parts did not open on %s (nothing opened after %r, so the opened framing was not measured)" % (part_id, label))
         return
     k = settled_scale(v)
     how = "after opening the part's parts through the sheet"
@@ -480,7 +484,7 @@ def run_viewport(browser, vp, base, site, index, picked, no_note, require_note, 
         if what == "file":
             note_check(v, vp, p, no_note, opened, require_note)
         if what == "part" and vp == "390x844":
-            scale_check(v, vp, index, require_floor)
+            scale_check(v, vp, index, require_floor, p["id"])
         v.page.wait_for_timeout(200)
         csp_events += v.ev("window.__csp || []") or []
         v.close()

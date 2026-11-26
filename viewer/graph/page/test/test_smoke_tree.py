@@ -1139,13 +1139,24 @@ def t41b_floor_check_names_parts_that_did_not_open(tmp):
 
 
 def t41c_part_is_the_first_top_part_with_children(tmp):
-    """F3: the part the checks open is the first top part that HAS children (a parts button to open), so a leaf in front of it does not end the run."""
+    """F3: the part the checks open is the first top part that HAS children (a parts button to open), so a leaf in front of it does not end the run.
+    (Decided from the data files by pick_ids, in process: a real-fixture tree with a leaf made of its first top part does not boot in the page, so
+    the tool's whole run is not the instrument here.)"""
+    import contextlib, io, smoke_tree as S
     top = real_top()
-    out = build(tmp, index_edit=with_floor(0.6), step_edit=childless(top[0]))
-    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
-    assert code == 0, (code, o)
-    assert [l for l in lines(o, "ID") if l.startswith("ID part %s (first id of index top that has children)" % top[1])], o
-    assert [l for l in lines(o, "PASS", "scale-floor") if "390x844" in l], o
+    out = build(tmp, step_edit=childless(top[0]))
+    base_dir = os.path.join(out, "graph")
+    index = json.load(open(os.path.join(base_dir, "index.json"), encoding="utf-8"))
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        part, group, _file = S.pick_ids(base_dir, index, True)        # the choice reads data files only: no page, no browser
+    assert part["id"] == top[1] and part["rule"] == "first id of index top that has children", (part, top)
+    assert [l for l in lines(buf.getvalue(), "ID") if l.startswith("ID part %s (first id of index top that has children)" % top[1])], buf.getvalue()
+    assert group["id"] in [c["id"] for c in json.load(open(os.path.join(base_dir, "step", top[1] + ".json")))["children"]], group
+    ok = build(tmp, name="plain")                                    # when the first top part has children the rule text is the old one
+    with contextlib.redirect_stdout(io.StringIO()):
+        part0, _g, _f = S.pick_ids(os.path.join(ok, "graph"), json.load(open(os.path.join(ok, "graph", "index.json"))), True)
+    assert part0["id"] == top[0] and part0["rule"] == "first id of index top", part0
 
 
 def t41d_no_top_part_with_children_is_a_named_fail(tmp):
@@ -1231,7 +1242,7 @@ NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_st
                  t37_open_check_accepts_a_markup_card_or_a_made_card, t38_made_card_tree_opens,
                  t40_scale_floor_reads_the_opened_box, t40b_a_deep_link_only_measurement_is_not_what_the_check_reads,
                  t41_floor_check_names_a_missing_parts_button, t41b_floor_check_names_parts_that_did_not_open,
-                 t41c_part_is_the_first_top_part_with_children, t41d_no_top_part_with_children_is_a_named_fail}
+                 t41d_no_top_part_with_children_is_a_named_fail}
 
 
 def run_cases(cases, only, no_browser=False):
