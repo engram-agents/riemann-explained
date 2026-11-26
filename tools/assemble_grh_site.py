@@ -62,14 +62,14 @@ sk = _load("build_grh_skeleton")
 
 _FROM_BUILD_SITE = ("_graph_assets", "_graph_sink_errors", "_graph_asset_errors", "_graph_page", "GRAPH_SHELL_KEYS", "_graph_bytes", "_dump", "_sha",
                     "graph_element_problems", "static_problems", "head_meta_problems", "surface_scan",
-                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish")
+                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems")
 _FROM_SKELETON = ("_read_in", "_contained")
 _UNRESOLVED = [f"build_site.{n}" for n in _FROM_BUILD_SITE if not hasattr(bs, n)] + [f"build_grh_skeleton.{n}" for n in _FROM_SKELETON if not hasattr(sk, n)]
 if _UNRESOLVED:   # something the contract imports cannot be imported as it stands: stop, never copy it
     raise ImportError("assemble_grh_site: cannot import " + ", ".join(_UNRESOLVED))
 _graph_assets, _graph_sink_errors, _graph_asset_errors, _graph_page, GRAPH_SHELL_KEYS, _graph_bytes, _dump, _sha = (getattr(bs, n) for n in _FROM_BUILD_SITE[:8])
 graph_element_problems, static_problems, head_meta_problems, surface_scan = (getattr(bs, n) for n in _FROM_BUILD_SITE[8:12])
-_manifest_bytes, _e, code_spans, GRAPH_ID, _publish = (getattr(bs, n) for n in _FROM_BUILD_SITE[12:])
+_manifest_bytes, _e, code_spans, GRAPH_ID, _publish, _graph_static_problems = (getattr(bs, n) for n in _FROM_BUILD_SITE[12:])
 _read_in, _contained = sk._read_in, sk._contained
 
 TOP_READ_LIMIT = 4 * 1024 * 1024    # index.json, spine.json, uses.json, the strings file, the shell: the most bytes of each read (A1)
@@ -82,7 +82,7 @@ READINGS_FRONT_KEY = "readings_front"   # the shell key whose strings value is t
 READINGS_KEY = "readings"           # the key of index.json that holds the list of reading notes, one row per note (A18; the real name is still being asked: ONE constant, used everywhere)
 SHELL_KEYS = bs.GRAPH_SHELL_KEYS + ("front_scope_line", "readings_front")   # the `{{S:key}}` tokens the shell may hold: the builder's eleven, the scope line (A7), the readings front line (A18)
 PAGE_SECTION_ATTRS = (("data-page-feedback", "off"),)   # A7, A8
-CODES = ("ASM-DATA", "ASM-PIN", "ASM-OUT", "ASM-ASSET", "ASM-SINK", "ASM-PAGE", "ASM-STRINGS", "ASM-READINGS")   # the codes of a refusal line: `<CODE> <what> <reason>`
+CODES = ("ASM-DATA", "ASM-PIN", "ASM-OUT", "ASM-ASSET", "ASM-SINK", "ASM-PAGE", "ASM-STRINGS", "ASM-READINGS", "ASM-STATIC")   # the codes of a refusal line: `<CODE> <what> <reason>`
 DATA_REASONS = ("symlink", "not-regular", "too-large", "encoding", "unexpected", "missing")   # the reasons of ASM-DATA
 
 _OPTIONS = ("--data", "--pin", "--strings", "--shell", "--out", "--graph-src")
@@ -253,7 +253,15 @@ def run(opts):
     if lines:
         print("\n".join(lines))
         return 1
-    errors, assets, _graph_src_shell = _graph_assets(opts["graph-src"])
+    errors, assets, _graph_src_shell = _graph_assets(opts["graph-src"])   # READ here (the index of the written tree carries the assets' hashes); the asset faults are reported after the static stage
+    steps = sorted(k for k in raws if k.startswith("step/"))
+    index = dict(objs["index.json"], assets={rel: _sha(data) for rel, data in assets.items()})
+    index_bytes = _graph_bytes({"x": index})["x"]
+    json_files = {"graph/" + rel: data for rel, data in [("index.json", index_bytes), ("spine.json", raws["spine.json"]), ("uses.json", raws["uses.json"])] + [(rel, raws[rel]) for rel in steps]}
+    lines = ["ASM-STATIC " + " ".join(e[1:]) for e in _graph_static_problems(json_files)]   # A19: after the pin stage, before the asset faults are reported; the builder's function, as `_run` calls it
+    if lines:
+        print("\n".join(lines))
+        return 1
     if errors:
         print("\n".join("ASM-ASSET " + " ".join(e[1:]) for e in errors))
         return 1
@@ -269,9 +277,6 @@ def run(opts):
     if lines:
         print("\n".join(lines))
         return 1
-    steps = sorted(k for k in raws if k.startswith("step/"))
-    index = dict(objs["index.json"], assets={rel: _sha(data) for rel, data in assets.items()})
-    index_bytes = _graph_bytes({"x": index})["x"]
     pairs = ([("index.json", index_bytes), ("spine.json", raws["spine.json"]), ("uses.json", raws["uses.json"])] + [(rel, raws[rel]) for rel in steps]
              + sorted(assets.items()) + [("index.html", page.encode("utf-8"))])
     names = [rel for rel, _data in pairs]
