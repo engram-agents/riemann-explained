@@ -144,5 +144,16 @@
  "sheet_statement_not_read": "Statement not read yet",
  "sheet_proof_read": "proof read",
  "sheet_proof_not_read": "proof not read yet",
- "sheet_proof_none": "no proof to read"
+ "sheet_proof_none": "no proof to read",
+ "parts_n": "{n} parts",
+ "part_one": "1 part",
+ "open_parts": "Open its parts",
+ "close_parts": "Close its parts",
+ "claim_more": "Show the whole claim",
+ "claim_less": "Show less",
+ "crumb_label": "Where this step sits",
+ "link_refused": "That address does not name a step on this map.",
+ "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+ "key_kinds_heading": "Colour and shape: what Lean declares",
+ "key_states_heading": "Frame: what we have read"
 }
