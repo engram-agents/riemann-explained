@@ -1,0 +1,30 @@
+{
+ "card": {
+  "child_count": 1,
+  "id": "mod-tools",
+  "kind": "module",
+  "path": [],
+  "proof": "none",
+  "state": "none",
+  "title": "Module mod-tools"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "mod-tools-main",
+   "kind": "module",
+   "parent_rests_on": false,
+   "path": [
+    "mod-tools"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Module mod-tools-main"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "mod-tools",
+ "path": [],
+ "rests_on": []
+}

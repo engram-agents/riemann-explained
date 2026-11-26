@@ -159,7 +159,7 @@ const REFUSALS = [
   // contract section 8
   ["unrenderable-proof", "unknown-proof"], ["bad-proof-value", "unknown-proof"], ["missing-proof", "missing-key"],
   ["missing-words-string", "missing-string"], ["extra-string", "extra-string"], ["extra-string-proofs-heading", "extra-string"],
-  ["order-not-permutation", "bad-order"], ["order-repeats", "bad-order"], ["class-not-string", "bad-type"], ["words-not-string", "bad-type"],
+  ["order-not-array", "bad-order"], ["order-unknown-name", "bad-order"], ["order-kinds-empty", "bad-order"], ["order-repeats", "bad-order"], ["class-not-string", "bad-type"], ["words-not-string", "bad-type"],
   ["symbols-old-shape", "missing-key"], ["missing-parts-failed-notice", "missing-string"],
 ];
 
@@ -191,8 +191,8 @@ test("one bad step file among the roots rejects the whole root load", async () =
 test("validateIndex / validateStep are pure and exported; requiredStrings is generated from the closed lists", async () => {
   const idx = JSON.parse(readFileSync(path.join(FIX, "real", "index.json"), "utf8"));
   const v = validateIndex(idx);
-  assert.deepEqual(v.symbols.kinds, ["theorem", "def", "structure"]);
-  assert.deepEqual(v.symbols.states, ["read", "census", "none"]);
+  assert.deepEqual(v.symbols.order.kinds, ["theorem", "def", "structure"]);
+  assert.deepEqual(v.symbols.order.states, ["read", "census", "none"]);
   const req = requiredStrings(v.symbols);
   assert.deepEqual(FIXED_STRINGS, ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused",
     "parts_failed_notice", "key_kinds_heading", "key_states_heading"], "the fixed runtime list (no proofs heading: the key has no proofs section)");
@@ -284,9 +284,9 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 
 test("SECTION 8 symbols: the exact shape is accepted, with order, words by table, and the page's own class tables", () => {
   const v = validateIndex(realIndex());
-  assert.deepEqual(v.symbols.kinds, ["theorem", "def", "structure"]);
-  assert.deepEqual(v.symbols.proofs, ["read", "not_read", "none"]);
-  assert.deepEqual(v.symbols.states, ["read", "census", "none"]);
+  assert.deepEqual(v.symbols.order.kinds, ["theorem", "def", "structure"]);
+  assert.deepEqual(v.symbols.order.proofs, ["read", "not_read", "none"]);
+  assert.deepEqual(v.symbols.order.states, ["read", "census", "none"]);
   assert.deepEqual(v.symbols.words.proofs, { read: "sheet_proof_read", not_read: "sheet_proof_not_read", none: "sheet_proof_none" });
   assert.deepEqual(v.symbols.words.states, { read: "sheet_statement_read", census: "sheet_statement_census", none: "sheet_statement_not_read" });
   assert.deepEqual(Object.keys(PROOF_CLASS), ["read", "not_read", "none"]);
@@ -294,22 +294,118 @@ test("SECTION 8 symbols: the exact shape is accepted, with order, words by table
   assert.deepEqual(Object.keys(STATE_CLASS), ["read", "census", "none"]);
 });
 
-test("SECTION 8 order: a permutation is accepted and changes the order; a repeat, a missing name, a stranger and a non-list are refused", () => {
+test("SECTION 8 order: a permutation is accepted and changes the order; a repeat, a stranger and a non-list are refused", () => {
   const idx = realIndex();
   const ok = clone(idx);
   ok.symbols.order.kinds = ["structure", "theorem", "def"];
   ok.symbols.order.proofs = ["none", "read", "not_read"];
   const v = validateIndex(ok);
-  assert.deepEqual(v.symbols.kinds, ["structure", "theorem", "def"]);
-  assert.deepEqual(v.symbols.proofs, ["none", "read", "not_read"]);
+  assert.deepEqual(v.symbols.order.kinds, ["structure", "theorem", "def"]);
+  assert.deepEqual(v.symbols.order.proofs, ["none", "read", "not_read"]);
   for (const t of ["kinds", "proofs", "states"]) {
     const names = idx.symbols.order[t];
-    for (const bad of [names.slice(0, -1), [...names, names[0]], [names[0], names[0], ...names.slice(2)], [...names.slice(0, -1), "stranger"], "x", null, []]) {
+    for (const bad of [[...names, names[0]], [names[0], names[0], ...names.slice(2)], [...names.slice(0, -1), "stranger"], "x", null, {}, 7]) {
       const b = clone(idx);
       b.symbols.order[t] = bad;
       assert.throws(() => validateIndex(b), (e) => e instanceof DataError && e.code === "bad-order", t + " " + JSON.stringify(bad));
     }
   }
+});
+
+/* P3: an order list is a SUBSET of its table's names, in the order given. */
+test("P3 order is a subset: any subset in the order given is accepted; kinds may not be empty, states and proofs may", () => {
+  const idx = realIndex();
+  for (const [t, list] of [["kinds", ["structure"]], ["kinds", ["structure", "theorem"]], ["states", []], ["states", ["none"]], ["proofs", []], ["proofs", ["none", "read"]]]) {
+    const b = clone(idx);
+    b.symbols.order[t] = list;
+    const v = validateIndex(b);
+    assert.deepEqual(v.symbols.order[t], list, t + " " + JSON.stringify(list));
+    assert.equal(v.symbols.names[t].length, 3, "the table's names are untouched by the order");
+  }
+  const b = clone(idx);
+  b.symbols.order.kinds = [];
+  assert.throws(() => validateIndex(b), (e) => e instanceof DataError && e.code === "bad-order" && /kinds/.test(e.message));
+});
+
+test("P3 the four refusals each carry their own reason text", () => {
+  const idx = realIndex();
+  const reason = (t, bad) => {
+    const b = clone(idx);
+    b.symbols.order[t] = bad;
+    try { validateIndex(b); } catch (e) { assert.ok(e instanceof DataError && e.code === "bad-order", JSON.stringify(bad)); return e.reason; }
+    assert.fail("accepted " + JSON.stringify(bad));
+  };
+  const texts = [reason("states", "read"), reason("states", ["read", "stranger"]), reason("states", ["read", "read"]), reason("kinds", [])];
+  assert.equal(new Set(texts).size, 4, JSON.stringify(texts));
+});
+
+/* P1, P2, P8: the module map. */
+const modIndex = () => JSON.parse(readFileSync(path.join(FIX, "modules", "index.json"), "utf8"));
+const modStep = (id) => JSON.parse(readFileSync(path.join(FIX, "modules", "step", id + ".json"), "utf8"));
+
+test("P1 KIND_CLASS has module: k-module", () => {
+  assert.equal(KIND_CLASS.module, "k-module");
+  assert.deepEqual(Object.keys(KIND_CLASS).sort(), ["def", "module", "structure", "theorem"]);
+});
+
+test("P2 module map: validates although its order lists omit rows; the table names and the order are kept apart", () => {
+  const v = validateIndex(modIndex());
+  assert.deepEqual(v.symbols.order, { kinds: ["module"], proofs: [], states: [] });
+  assert.deepEqual([...v.symbols.names.kinds].sort(), ["def", "module", "structure", "theorem"]);
+  assert.deepEqual([...v.symbols.names.states].sort(), ["census", "none", "read"]);
+  assert.deepEqual([...v.symbols.names.proofs].sort(), ["none", "not_read", "read"]);
+});
+
+test("P2 module map: the strings set is EXACTLY the fixed list plus the words of every TABLE row (21 keys), not of the ordered rows", () => {
+  const idx = modIndex();
+  const v = validateIndex(idx);
+  const rows = ["kinds", "proofs", "states"].flatMap((t) => Object.values(idx.symbols[t]).map((r) => r.words));
+  const need = requiredStrings(v.symbols);
+  assert.equal(need.length, 21);
+  assert.deepEqual([...need].sort(), [...FIXED_STRINGS, ...rows].sort());
+  assert.deepEqual(Object.keys(idx.strings).sort(), [...need].sort());
+  const extra = clone(idx);
+  extra.strings.bonus = "x";
+  assert.throws(() => validateIndex(extra), (e) => e instanceof DataError && e.code === "extra-string");
+  const missing = clone(idx);
+  delete missing.strings.sheet_statement_read;          // a row that is in the table but NOT in the order
+  assert.throws(() => validateIndex(missing), (e) => e instanceof DataError && e.code === "missing-string" && e.message.includes("sheet_statement_read"));
+});
+
+test("P2 module map: a card is checked against the TABLE (state none, proof none are table names although the order omits them); a stranger is refused", () => {
+  const v = validateIndex(modIndex());
+  const st = validateStep(modStep("mod-core"), v);
+  assert.equal(st.card.kind, "module");
+  assert.equal(st.card.state, "none");
+  assert.equal(st.card.proof, "none");
+  assert.equal(st.children.length, 3);
+  for (const [field, code] of [["kind", "unknown-kind"], ["state", "unknown-state"], ["proof", "unknown-proof"]]) {
+    const b = modStep("mod-core");
+    b.card[field] = "lemma";
+    assert.throws(() => validateStep(b, v), (e) => e instanceof DataError && e.code === code, field);
+  }
+});
+
+test("P2 module map: loads end to end (index, roots, children, the sibling link)", async () => {
+  const d = createData(dirFetch(path.join(FIX, "modules")));
+  const idx = await d.loadIndex();
+  assert.deepEqual(idx.top, ["mod-core", "mod-tools"]);
+  const roots = await d.loadRoots();
+  assert.equal(roots.length, 2);
+  assert.ok(roots.every((r) => r.data.kind === "module"));
+  const kids = await d.loadChildren("mod-core");
+  assert.equal(kids.length, 3);
+  assert.equal(kids.reduce((n, k) => n + k.links.length, 0), 1);
+  assert.equal(d.meta("mod-core-basic").kind, "module");
+});
+
+test("P4 the live map: the full orders, the same 20 strings, nothing moved", () => {
+  const idx = realIndex();
+  const v = validateIndex(idx);
+  assert.deepEqual(v.symbols.order, { kinds: ["theorem", "def", "structure"], proofs: ["read", "not_read", "none"], states: ["read", "census", "none"] });
+  assert.deepEqual(v.symbols.names, v.symbols.order, "on the live map the table names and the order are the same lists");
+  assert.deepEqual([...requiredStrings(v.symbols)].sort(), Object.keys(idx.strings).sort());
+  assert.equal(requiredStrings(v.symbols).length, 20);
 });
 
 test("SECTION 8 symbols: exact key sets at every level (an extra or a missing key is refused)", () => {

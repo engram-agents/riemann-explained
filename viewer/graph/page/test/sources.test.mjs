@@ -302,3 +302,15 @@ test("S5: every css rule that hides a list-page line (p.status, p.roots-only) is
   }
   assert.ok(seen >= 3, "the rules this polices: " + seen);
 });
+
+/* P6: the module look. Structure is fixed now; its colour and shape are Ariadne's (LOOK PENDING). The override must win over the
+   s-none and s-census frames whatever the source order, so it names them in its own selector. */
+test("P6: graph.css has .face.k-module and .swatch.k-module, with the override selectors that out-rank .face.s-none / .face.s-census", () => {
+  const css = read(path.join(GRAPH, "graph.css"));
+  assert.match(css, /\.face\.k-module\s*\{/);
+  assert.match(css, /\.swatch\.k-module\s*\{/);
+  assert.match(css, /LOOK PENDING \(Ariadne\)/);
+  const m = /(\.face\.k-module\.s-none[^{]*)\{/.exec(css);
+  assert.ok(m, "an override selector naming .face.k-module.s-none");
+  assert.match(m[1], /\.face\.k-module\.s-census/);
+});

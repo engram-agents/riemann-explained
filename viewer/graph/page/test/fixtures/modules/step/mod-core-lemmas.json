@@ -1,0 +1,21 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "mod-core-lemmas",
+  "kind": "module",
+  "path": [
+   "mod-core"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Module mod-core-lemmas"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "mod-core-lemmas",
+ "path": [
+  "mod-core"
+ ],
+ "rests_on": []
+}

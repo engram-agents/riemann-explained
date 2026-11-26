@@ -1,0 +1,65 @@
+{
+ "card": {
+  "child_count": 3,
+  "id": "mod-core",
+  "kind": "module",
+  "path": [],
+  "proof": "none",
+  "state": "none",
+  "title": "Module mod-core"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "mod-core-basic",
+   "kind": "module",
+   "parent_rests_on": false,
+   "path": [
+    "mod-core"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Module mod-core-basic"
+  },
+  {
+   "child_count": 0,
+   "id": "mod-core-defs",
+   "kind": "module",
+   "parent_rests_on": true,
+   "path": [
+    "mod-core"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Module mod-core-defs"
+  },
+  {
+   "child_count": 0,
+   "id": "mod-core-lemmas",
+   "kind": "module",
+   "parent_rests_on": false,
+   "path": [
+    "mod-core"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Module mod-core-lemmas"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "mod-core",
+ "path": [],
+ "rests_on": [
+  {
+   "from": "mod-core-basic",
+   "from_path": [
+    "mod-core"
+   ],
+   "to": "mod-core-defs",
+   "to_path": [
+    "mod-core"
+   ]
+  }
+ ]
+}

@@ -912,6 +912,112 @@ def c_key_order(b, S0, engine):
         S.stop()
 
 
+def c_module_map(b, S0, engine):
+    """P1, P5, P7 on the module-map fixture: the face carries k-module (and its s-none); a module's sheet has NO status element and
+    the repository's own note is the first thing under the title; the key has the one kind row and no states section; closing
+    puts the markup back."""
+    root = tempfile.mkdtemp(prefix="pg-modules-")
+    assemble.assemble(root, engine, fix="modules")
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        cls = pg.ev("document.querySelector('[data-node=\"mod-core\"] .face').className")
+        assert cls == "face k-module s-none", cls
+        before = pg.ev("document.getElementById('graph-cards').outerHTML")
+        for card in ("mod-core", "mod-core-basic"):
+            at_hash(pg, card)
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+            assert pg.ev("document.querySelectorAll('.sheet-status').length") == 0, card + ": a module sheet has a status element"
+            nxt = pg.ev("document.querySelector('#graph-sheet-body .claim').nextElementSibling.className")
+            assert nxt == "note", (card, nxt)
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == before, "closing a status-less sheet must put the markup back"
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")
+        rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
+        sw = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li .swatch')].map(e => e.className)")
+        assert heads == ["Colour and shape: what Lean declares"], heads
+        assert rows == ["Module: a folder or file of the Lean repository"], rows
+        assert sw == ["swatch k-module"], sw
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_sheet_status_level(b, S, engine):
+    """P7 at the sheet's own level: showCard with status null (or empty) builds no .sheet-status; a non-empty status builds exactly
+    today's element, directly after the claim; close() removes it, and with none it still puts the article home."""
+    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    js = """import('./page/sheet.js').then(m => {
+      const d = document, mk = (t, c) => { const e = d.createElement(t); if (c) e.className = c; d.body.appendChild(e); return e; };
+      const out = {};
+      for (const [label, status] of [['null', null], ['empty', ''], ['text', 'Statement read \\u00b7 Proof read']]) {
+        const parts = { root: mk('div'), crumbs: mk('div'), tools: mk('div'), body: mk('div'), closeButton: mk('button') };
+        parts.root.hidden = true;
+        const strings = { open_parts: 'o', close_parts: 'c', claim_more: 'm', claim_less: 'l', crumb_label: 'x' };
+        const hooks = { closeButton() {}, go() {}, openParts() {}, closeParts() {} };
+        const sheet = m.createSheet(parts, strings, hooks, new AbortController().signal);
+        const home = mk('div');
+        const art = d.createElement('article'); art.id = 'z-' + label;
+        art.innerHTML = '<h3 class="claim">T</h3><p class="note">n</p>';
+        home.appendChild(art);
+        const ok = sheet.showCard(art, { id: art.id, status, canParts: false, partsOpen: false, sheetClass: '', crumbs: [{ id: art.id, title: 'T' }] });
+        const claim = art.querySelector('.claim'), st = art.querySelectorAll('.sheet-status');
+        const r = { ok, count: st.length, next: claim.nextElementSibling.className, tag: st[0] ? st[0].tagName : null, text: st[0] ? st[0].textContent : null };
+        r.closed = sheet.close();
+        r.after = art.querySelectorAll('.sheet-status').length;
+        r.home = art.parentNode === home;
+        out[label] = r;
+      }
+      return out;
+    })"""
+    r = pg.ev(js)
+    for label in ("null", "empty"):
+        assert r[label]["ok"] and r[label]["count"] == 0 and r[label]["next"] == "note", (label, r[label])
+        assert r[label]["closed"] and r[label]["home"], (label, r[label])
+    t = r["text"]
+    assert t["ok"] and t["count"] == 1 and t["next"] == "sheet-status" and t["tag"] == "P" and t["text"] == "Statement read \u00b7 Proof read", t
+    assert t["closed"] and t["after"] == 0 and t["home"], t
+    pg.csp_clean()
+    pg.close()
+
+
+def c_look_override(b, S, engine):
+    """P6: a face with k-module and s-none (or s-census) has the solid default border and the card background, whatever the
+    source order; a theorem with s-none is still dashed and unread (control)."""
+    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    js = """(() => {
+      const mk = (c) => { const e = document.createElement('div'); e.className = c; e.style.cssText = 'position:absolute;left:-999px;top:0;width:50px;height:50px'; document.body.appendChild(e); return e; };
+      const g = (c) => { const s = getComputedStyle(mk(c)); return { style: s.borderTopStyle, width: s.borderTopWidth, bg: s.backgroundColor }; };
+      return { plain: g('face k-theorem s-read'), modNone: g('face k-module s-none'), modCensus: g('face k-module s-census'), modPlain: g('face k-module'),
+               thmNone: g('face k-theorem s-none'), thmCensus: g('face k-theorem s-census') };
+    })()"""
+    r = pg.ev(js)
+    for k in ("modNone", "modCensus", "modPlain"):
+        assert r[k]["style"] == "solid" and r[k]["width"] == "2px" and r[k]["bg"] == r["plain"]["bg"], (k, r[k], r["plain"])
+    assert r["thmNone"]["style"] == "dashed" and r["thmNone"]["bg"] != r["plain"]["bg"], r["thmNone"]
+    assert r["thmCensus"]["style"] == "dotted" and r["thmCensus"]["width"] == "3px", r["thmCensus"]
+    pg.csp_clean()
+    pg.close()
+
+
+def c_key_real_rows(b, S0, engine):
+    """P4: the live map's key is what it was: both headings, the three kinds then the three states, in the file's order."""
+    pg = Pg(b, S0.base + "graph/index.html", 1280, 900).settled()
+    pg.page.click("#graph-key")
+    wait_sheet(pg, True)
+    heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")
+    rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
+    assert heads == ["Colour and shape: what Lean declares", "Frame: what we have read"], heads
+    assert rows == ["Theorem: a result the Lean code proves", "Definition: a named object or statement", "Structure: a bundle of named fields",
+                    "Statement read", "Statement counted by a program", "Statement not read"], rows
+    pg.csp_clean()
+    pg.close()
+
+
 # ----------------------------------------------------------------- the parts button follows the SHOWN card, not the engine's events (K1)
 
 def open_on_map(pg, engine, node_id, child_id):
@@ -1633,6 +1739,10 @@ def main():
                 run("first fit at 390 x 844: title >= 15 px and other face text >= 14 px at the engine's camera scale, no allowance; nothing overlaps", c_first_fit_size, eng)
                 run("the sheet status line is the data's words (states and proofs); the list's proof line is never read; the key shows kinds then states", c_status_from_data, eng)
                 run("symbols.order sets the key's order", c_key_order, eng)
+                run("module: P4 the live map's key rows are unchanged", c_key_real_rows, eng)
+                run("module: P1/P5/P7 the module map (face class, no status element, the key has one kind row and no states section)", c_module_map, eng)
+                run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
+                run("module: P6 k-module wins over s-none and s-census; a theorem s-none is still dashed", c_look_override, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:
