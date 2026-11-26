@@ -224,6 +224,9 @@ export function validateIndex(raw) {
     if (raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty edge basis key " + k);
   }
   refuseEmptyOptional(raw.strings, OPTIONAL_STRINGS);
+  /* The page treats a map as carrying notes only when strings hold BOTH note words; one alone would open note-carrying cards silently without their note. */
+  if (has(raw.strings, "note_label") !== has(raw.strings, "note_source"))
+    throw new DataError("bad-note-strings", "index strings holds only one of note_label and note_source: both or neither");
   for (const k of Object.keys(raw.strings)) {
     if (!need.includes(k) && !edgeStrings.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   }
