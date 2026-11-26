@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createController } from "../controller.js";
-import { normalizeOptions, DEFAULTS } from "../options.js";
+import { normalizeOptions, DEFAULTS, openFrameCap } from "../options.js";
 import { recordingView, generated, tiny } from "./helpers.mjs";
 
 const VP = { w: 390, h: 844 };
@@ -51,7 +51,7 @@ test("F1: above zoom.frameMaxOpen is a TypeError naming zoom.frameMin", () => {
 test("F1: NaN is a TypeError naming zoom.frameMin", () => assert.throws(() => normalizeOptions({ zoom: { frameMin: NaN } }), isErr));
 test("F1: a string is a TypeError naming zoom.frameMin", () => assert.throws(() => normalizeOptions({ zoom: { frameMin: "1" } }), isErr));
 test("F1: the bounds themselves are accepted, and createController refuses at creation", () => {
-  for (const ok of [ZMIN, 1, 1.25]) assert.doesNotThrow(() => normalizeOptions({ zoom: { frameMin: ok } }));
+  for (const ok of [ZMIN, 1, openFrameCap(normalizeOptions({}))]) assert.doesNotThrow(() => normalizeOptions({ zoom: { frameMin: ok } }));
   assert.throws(() => createController({ roots: [], zoom: { frameMin: 5 } }, recordingView()), isErr);
 });
 
@@ -98,7 +98,7 @@ test("F2 route 3, semantic open: zooming in on a closed node opens it and frames
 
 /* ---- F3 closed framing unchanged ---- */
 test("F3: framing a CLOSED node keeps floor zoom.min whatever frameMin is", async () => {
-  for (const fm of [undefined, 1, 1.25]) {
+  for (const fm of [undefined, 1, openFrameCap(normalizeOptions({}))]) {
     const zoom = fm === undefined ? undefined : { frameMin: fm };
     const { ctl } = await start(zoom);
     await ctl.reveal(["q"]);

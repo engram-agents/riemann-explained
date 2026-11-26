@@ -7,7 +7,7 @@
 //   viewport() -> {w, h}   destroy()
 // All state lives in the closure of createController: two controllers share nothing.
 
-import { normalizeOptions } from "./options.js";
+import { normalizeOptions, openFrameCap } from "./options.js";
 import { EVENTS, createEmitter } from "./emitter.js";
 import { checkSpec, isId } from "./ids.js";
 import { layoutTree } from "./layout.js";
@@ -154,7 +154,7 @@ export function createController(rawOptions, view) {
   /* ---------- camera and semantic zoom ---------- */
   function frameNode(n) {
     const open = n.open && n.children && n.children.length > 0, S = o.semantic, Z = o.zoom;
-    const kmax = open ? Math.min(Z.frameMaxOpen, S.frameOpenShare * S.openPx / o.sizes.nodeW) : Math.min(Z.frameMaxClosed, S.frameClosedShare * S.openPx / o.sizes.nodeW);
+    const kmax = open ? openFrameCap(o) : Math.min(Z.frameMaxClosed, S.frameClosedShare * S.openPx / o.sizes.nodeW);
     const v = vp();
     if (!(v.w > 0 && v.h > 0 && n.w > 0 && n.h > 0)) return;
     setCam(frame(v, n.x, n.y, n.w, n.h, kmax, open ? Z.framePadOpen : Z.framePadClosed, open ? Z.frameMin : Z.min));
