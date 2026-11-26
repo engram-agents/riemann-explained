@@ -44,6 +44,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -864,18 +865,38 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
                 row(fid[f["path"]], gid, fi, premises[f["path"]], "file", f["title"])
             groups.append(_group_report(gid, members, adj, kept))
     report = _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info)
-    report["notes"] = {fid[p]: {"source": source_prefix + p + ".lean", "text": note_text[p]} for p in listed}
+    report["notes"] = {fid[p]: {"review": {"state": "converter"}, "source": source_prefix + p + ".lean", "text": note_text[p]} for p in listed}
     errors = _spine_and_index(grh, ilean_dir, fid, rows, report)
     if errors:
         return errors, [], {}
     return [], rows, report
 
 
-def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX):
+def _scale_floor_error(value):
+    """[(GRAPH-SCALE-FLOOR, <value>, "")] unless `value` is a positive finite number (an int or a float; a bool is neither)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return [("GRAPH-SCALE-FLOOR", str(value), "")]
+    return []
+
+
+def _scale_from_text(text):
+    """The number a command-line text stands for, as written: an integer text stays an int, a decimal or exponent text a float; any other text is returned as it is (and refused)."""
+    if re.fullmatch(r"[0-9]+", text):
+        return int(text)
+    if re.fullmatch(r"(?:[0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?", text):
+        return float(text)
+    return text
+
+
+def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
+    if open_scale_floor is not None:
+        errors = _scale_floor_error(open_scale_floor)
+        if errors:
+            return errors, {}, [], {}
     errors, rows, rep = build_rows(grh, ilean_dir, source_prefix)
     if errors:
         return errors, {}, rows, rep
@@ -888,7 +909,8 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     if missing:
         return missing, {}, rows, rep
     errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"], child_kinds=True,
-                                    step_extra=rep["step_extra"], index_extra=({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else None))
+                                    step_extra=rep["step_extra"], index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
+                                                     **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {})) or None)
     if errors:
         return errors, {}, rows, rep
     objs["graph/uses.json"] = {"commit": pin, "format": USES_FORMAT, "imports": rep["imports"], "lib_index_rows": rep["lib_index_rows"], "titles": rep["titles"], "used_by": rep["used_by"],
@@ -902,7 +924,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--source-prefix PREFIX]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--source-prefix PREFIX] [--open-scale-floor N]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
 
 
@@ -910,7 +932,7 @@ def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--ilean-dir", "--source-prefix") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--ilean-dir", "--source-prefix", "--open-scale-floor") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -957,9 +979,10 @@ def _run(opts):
     problems = bs._strings_problems(strings)
     if problems:
         return refuse(problems)
-    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX))
+    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
+                                       _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None)
     if errors:
-        return refuse(errors)
+        return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
     try:
         bs._publish(opts["out"], files)
     except OSError as e:

@@ -2149,8 +2149,8 @@ def _graph_link_errors(link_info, links):
 
 
 def _graph_note_errors(notes, by, kids):
-    """[(GRAPH-NOTE, id, reason)] for `notes` ({step id: {source, text}}): a note belongs to a step that exists and has no children, is an object with exactly the keys
-    source and text, and both are strings. Sorted by id."""
+    """[(GRAPH-NOTE, id, reason)] for `notes` ({step id: {source, text[, review]}}): a note belongs to a step that exists and has no children, is an object with the keys source and
+    text (both strings) and optionally `review`, which must be exactly {"state": "converter"} (the one state the page accepts). Sorted by id."""
     out = []
     for i in sorted(notes):
         n = notes[i]
@@ -2160,10 +2160,12 @@ def _graph_note_errors(notes, by, kids):
             out.append(("GRAPH-NOTE", i, "has children"))
         elif not isinstance(n, dict):
             out.append(("GRAPH-NOTE", i, "is not an object"))
-        elif set(n) != {"source", "text"}:
+        elif not ({"source", "text"} <= set(n) <= {"source", "text", "review"}):
             out.append(("GRAPH-NOTE", i, "must have exactly the keys source and text"))
         elif not (isinstance(n["source"], str) and isinstance(n["text"], str)):
             out.append(("GRAPH-NOTE", i, "has a value that is not a string"))
+        elif "review" in n and not (isinstance(n["review"], dict) and n["review"] == {"state": "converter"}):
+            out.append(("GRAPH-NOTE", i, 'review must be exactly {"state": "converter"}'))
     return out
 
 
@@ -2348,7 +2350,7 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             "card": closed(r), "children": [dict(closed(c), parent_rests_on=c["id"] in r["premises"]) for c in kids.get(r["id"], [])],
             "commit": commit, "format": GRAPH_FORMAT, "id": r["id"], "path": list(path[r["id"]]), "rests_on": links(r["id"])}
         if notes and r["id"] in notes:
-            objs[f"graph/step/{r['id']}.json"]["note"] = {"source": notes[r["id"]]["source"], "text": notes[r["id"]]["text"]}
+            objs[f"graph/step/{r['id']}.json"]["note"] = {k: json.loads(json.dumps(notes[r["id"]][k])) for k in ("review", "source", "text") if k in notes[r["id"]]}
         if step_extra and r["id"] in step_extra:
             objs[f"graph/step/{r['id']}.json"].update(json.loads(json.dumps(step_extra[r["id"]])))
     errors = _graph_count_errors(objs, symbols)
