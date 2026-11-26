@@ -31,6 +31,7 @@ Exit codes: 0 built, 1 refused (OUT_DIR not created and not touched), 2 usage. -
 self-test command line.
 """
 import importlib.util
+import json
 import os
 import re
 import sys
@@ -60,14 +61,16 @@ bs = _load("build_site")
 sk = _load("build_grh_skeleton")
 
 _FROM_BUILD_SITE = ("_graph_assets", "_graph_sink_errors", "_graph_asset_errors", "_graph_page", "GRAPH_SHELL_KEYS", "_graph_bytes", "_dump", "_sha",
-                    "graph_element_problems", "static_problems", "head_meta_problems", "surface_scan")
+                    "graph_element_problems", "static_problems", "head_meta_problems", "surface_scan",
+                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish")
 _FROM_SKELETON = ("_read_in", "_contained")
 _UNRESOLVED = [f"build_site.{n}" for n in _FROM_BUILD_SITE if not hasattr(bs, n)] + [f"build_grh_skeleton.{n}" for n in _FROM_SKELETON if not hasattr(sk, n)]
 if _UNRESOLVED:   # something the contract imports cannot be imported as it stands: stop, never copy it
     raise ImportError("assemble_grh_site: cannot import " + ", ".join(_UNRESOLVED))
 _graph_assets, _graph_sink_errors, _graph_asset_errors, _graph_page, GRAPH_SHELL_KEYS, _graph_bytes, _dump, _sha = (getattr(bs, n) for n in _FROM_BUILD_SITE[:8])
-graph_element_problems, static_problems, head_meta_problems, surface_scan = (getattr(bs, n) for n in _FROM_BUILD_SITE[8:])
-_read_in, _contained = sk._read_in, sk._contained   # not used yet: phase 2
+graph_element_problems, static_problems, head_meta_problems, surface_scan = (getattr(bs, n) for n in _FROM_BUILD_SITE[8:12])
+_manifest_bytes, _e, code_spans, GRAPH_ID, _publish = (getattr(bs, n) for n in _FROM_BUILD_SITE[12:])
+_read_in, _contained = sk._read_in, sk._contained
 
 TOP_READ_LIMIT = 4 * 1024 * 1024    # index.json, spine.json, uses.json, the strings file, the shell: the most bytes of each read (A1)
 STEP_READ_LIMIT = 1024 * 1024       # one step file (A1)
@@ -103,9 +106,198 @@ def _parse(a):
     return opts
 
 
+_REASON = {"not-a-regular-file": "not-regular"}   # `_read_in`'s word -> the contract's word
+
+
+def _other(path):
+    """The reason of an entry of DATA that the data set does not name: a symlink is a symlink, anything else is unexpected."""
+    return "symlink" if os.path.islink(path) else "unexpected"
+
+
+def _data_read(root, path, limit, name, lines):
+    """The bytes of one input, read bounded and contained (`_read_in`) and checked UTF-8; None, and one `ASM-DATA <name> <reason>` line in `lines`, when it cannot be taken."""
+    try:
+        raw = _read_in(root, path, limit)
+    except sk.SourceError as e:
+        lines.append(f"ASM-DATA {name} {_REASON.get(e.reason, e.reason)}")
+        return None
+    try:
+        raw.decode("utf-8")
+    except UnicodeDecodeError:
+        lines.append(f"ASM-DATA {name} encoding")
+        return None
+    return raw
+
+
+def _data_steps(data, path, raws, lines):
+    """The step/ folder of DATA: every entry is a step file `<slug>.json` or a refusal line; at most MAX_STEP_FILES entries."""
+    if os.path.islink(path):
+        lines.append("ASM-DATA step symlink")
+    elif not os.path.lexists(path):
+        lines.append("ASM-DATA step missing")
+    elif not os.path.isdir(path):
+        lines.append("ASM-DATA step unexpected")
+    else:
+        try:
+            names = sorted(os.listdir(path))
+        except OSError:
+            lines.append("ASM-DATA step unreadable")
+            return
+        if len(names) > MAX_STEP_FILES:
+            lines.append("ASM-DATA step too-many")
+            return
+        for n in names:
+            rel, q = "step/" + n, os.path.join(path, n)
+            if not (n.endswith(".json") and GRAPH_ID.fullmatch(n[:-5])) or (os.path.isdir(q) and not os.path.islink(q)):
+                lines.append(f"ASM-DATA {rel} {_other(q)}")
+            else:
+                raws[rel] = _data_read(data, q, STEP_READ_LIMIT, rel, lines)
+
+
+def _stage_data(opts):
+    """(lines, raws, objs): A1 and A2. `raws` {name: bytes} holds every input that could be read (the three fixed files, `step/<id>.json`, and `strings` and `shell` by those names),
+    `objs` {name: object} the parsed JSON of all but the shell. Every fault of the stage is a line."""
+    data, lines, raws = opts["data"], [], {}
+    try:
+        entries = sorted(set(os.listdir(data)) | set(DATA_FIXED) | {"step"})
+    except OSError:
+        lines.append(f"ASM-DATA {data} missing")
+        entries = []
+    for name in entries:
+        path = os.path.join(data, name)
+        if name in DATA_FIXED:
+            if os.path.lexists(path):
+                raws[name] = _data_read(data, path, TOP_READ_LIMIT, name, lines)
+            else:
+                lines.append(f"ASM-DATA {name} missing")
+        elif name == "step":
+            _data_steps(data, path, raws, lines)
+        else:
+            lines.append(f"ASM-DATA {name} {_other(path)}")
+    for key in ("strings", "shell"):   # named as given on the command line
+        p = opts[key]
+        raws[key] = _data_read(os.path.dirname(os.path.abspath(p)), p, TOP_READ_LIMIT, p, lines)
+    objs = {}
+    for name, raw in raws.items():
+        if raw is None or name == "shell":
+            continue
+        try:
+            obj = json.loads(raw.decode("utf-8"))
+        except (ValueError, RecursionError):
+            obj = None
+        if isinstance(obj, dict):
+            objs[name] = obj
+        else:
+            lines.append(f"ASM-DATA {opts[name] if name == 'strings' else name} not-json")
+    return lines, raws, objs
+
+
+def _found(v):
+    """How a `commit` that is not the pin is shown in an ASM-PIN line."""
+    return v if isinstance(v, str) else json.dumps(v)
+
+
+def _stage_pin(pin, objs):
+    """The lines of A3: `commit` of index, spine, uses and every step file equals the pin; every step's `id` is its file name; index `steps` is the number of step files."""
+    lines = []
+    for rel in sorted(k for k in objs if k != "strings"):
+        found = objs[rel].get("commit", "missing")
+        if found != pin:
+            lines.append(f"ASM-PIN {rel} {_found(found)}")
+    steps = sorted(k for k in objs if k.startswith("step/"))
+    for rel in steps:
+        if objs[rel].get("id") != rel[len("step/"):-len(".json")]:
+            lines.append(f"ASM-PIN {rel} id={_found(objs[rel].get('id', 'missing'))}")
+    if objs["index.json"].get("steps") != len(steps):
+        lines.append(f"ASM-PIN index.json steps={_found(objs['index.json'].get('steps', 'missing'))}/files={len(steps)}")
+    return lines
+
+
+def _stage_page(shell_bytes, assets, strings, index):
+    """(lines, page): A7 and A18. The page is the builder's `_graph_page` over the Lean shell, `cards` empty, `about` the escaped about_text in one paragraph, the section carrying
+    `data-page-feedback="off"`; then the builder's own element, static, head and surface checks over the assembled page."""
+    lines = []
+    for key in (ABOUT_KEY, "root_only_note_single"):
+        if key not in strings:
+            lines.append(f"ASM-STRINGS {key} missing")
+        elif not isinstance(strings[key], str):
+            lines.append(f"ASM-STRINGS {key} not-a-string")
+    if "{{S:" + READINGS_FRONT_KEY + "}}" in shell_bytes.decode("utf-8"):   # A18: the key is used only when the shell holds the token
+        template, rows = strings.get(READINGS_FRONT_KEY), index.get(READINGS_KEY)
+        bad_template = not (isinstance(template, str) and template.count("{n}") == 1)
+        bad_rows = not (isinstance(rows, list) and all(isinstance(r, dict) for r in rows))
+        if bad_template:
+            lines.append(f"ASM-READINGS {READINGS_FRONT_KEY} template")
+        if bad_rows:
+            lines.append(f"ASM-READINGS {READINGS_KEY} shape")
+        if not (bad_template or bad_rows):
+            strings = dict(strings, **{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows)))})
+    if lines:
+        return lines, None
+    errors, page = _graph_page(shell_bytes, set(assets), strings, "<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
+    if errors:
+        return ["ASM-PAGE " + " ".join(e[1:]) for e in errors], None
+    found = static_problems(page, "") + graph_element_problems(page) + head_meta_problems(page)
+    lines = [f"ASM-PAGE {pb} found in index.html" for pb in found]
+    if bs.CODE_ON_SURFACE_REFUSES:   # read at the call, as `_run` does
+        lines += [f"ASM-PAGE CODE-ON-SURFACE index.html:{card} {text[:60]} x{k}" for card, text, k in code_spans(surface_scan(page)[1])]
+    return lines, (None if lines else page)
+
+
 def run(opts):
-    """PHASE 1 STUB: the behaviour of A1 to A17 is not written. Phase 2 replaces this body."""
-    raise NotImplementedError("phase 2")
+    """The whole of A1 to A18: every check before the first write; one `ASM-<CODE> <what> <reason>` line per refusal of the first stage that fails, exit 1; 0 built."""
+    pin, out = opts["pin"], opts["out"]
+    lines, raws, objs = _stage_data(opts)
+    if not lines:
+        lines = _stage_pin(pin, objs)
+    if lines:
+        print("\n".join(lines))
+        return 1
+    errors, assets, _graph_src_shell = _graph_assets(opts["graph-src"])
+    if errors:
+        print("\n".join("ASM-ASSET " + " ".join(e[1:]) for e in errors))
+        return 1
+    if not assets:
+        print("ASM-ASSET graph no-assets")
+        return 1
+    shell_bytes = raws["shell"]
+    errors = _graph_sink_errors(assets, shell_bytes)
+    if errors:
+        print("\n".join("ASM-SINK " + e[2] for e in errors))
+        return 1
+    lines, page = _stage_page(shell_bytes, assets, objs["strings"], objs["index.json"])
+    if lines:
+        print("\n".join(lines))
+        return 1
+    steps = sorted(k for k in raws if k.startswith("step/"))
+    index = dict(objs["index.json"], assets={rel: _sha(data) for rel, data in assets.items()})
+    index_bytes = _graph_bytes({"x": index})["x"]
+    pairs = ([("index.json", index_bytes), ("spine.json", raws["spine.json"]), ("uses.json", raws["uses.json"])] + [(rel, raws[rel]) for rel in steps]
+             + sorted(assets.items()) + [("index.html", page.encode("utf-8"))])
+    names = [rel for rel, _data in pairs]
+    lines = ["ASM-ASSET " + " ".join(e[1:]) for e in _graph_asset_errors(index["assets"], {"graph/" + rel: data for rel, data in pairs})]   # empty by construction
+    lines += [f"ASM-OUT {rel} twice" for rel in sorted(set(r for r in names if names.count(r) > 1))]
+    lines += [f"ASM-OUT {rel} name" for rel in names if not rel or rel.startswith("/") or "" in rel.split("/") or ".." in rel.split("/")
+              or not _contained(out, os.path.join(out, *rel.split("/")))]
+    if os.path.islink(out):
+        lines.append(f"ASM-OUT {out} symlink")
+    elif os.path.exists(out) and not os.path.isdir(out):
+        lines.append(f"ASM-OUT {out} not-a-directory")
+    elif os.path.isdir(out) and os.listdir(out):
+        lines.append(f"ASM-OUT {out} not-empty")
+    if lines:
+        print("\n".join(lines))
+        return 1
+    files = dict(sorted(pairs))
+    manifest = _manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)
+    files["manifest.json"] = manifest
+    try:
+        _publish(out, files)
+    except OSError as e:
+        print(f"ASM-OUT {out} {e.strerror or type(e).__name__}")
+        return 1
+    print(f"assembled {len(steps)} steps, {len(files)} files, into {out}")
+    return 0
 
 
 def main(argv):
@@ -355,7 +547,7 @@ def _ok_run(w, argv=None, **kw):
 
 def _expected_page(w, shell_text, strings):
     """The page the builder's own function makes (the contract's A7 call), for the comparison of the written index.html."""
-    errs, page = _graph_page(shell_text.encode("utf-8"), set(w["assets"]), strings, bs._e(strings[ABOUT_KEY]), "",
+    errs, page = _graph_page(shell_text.encode("utf-8"), set(w["assets"]), strings, "<p>" + bs._e(strings[ABOUT_KEY]) + "</p>", "",
                              shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
     if errs:
         raise _FixtureError(f"the builder refuses the fixture page: {errs}")
