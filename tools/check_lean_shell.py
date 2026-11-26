@@ -10,20 +10,26 @@ Checks, each a `LEAN-SHELL <what> <reason>` line on failure (exit 1; 0 when clea
      itself (ASSEMBLER_KEYS): no token without a word, no word without a reader;
   S3 every word is a non-empty string, and no word holds a word of the forbidden list (build_site.FROZEN_WORDS and site/strings.json's
      forbidden_words, as whole words, any case), `of the proof` in its fraction sense, or a percent sign;
-  S4 the shell links to nothing but `credits/` (no `list/`: this map has no list page);
-  S5 every `version <8 hex>` in the words is the first eight characters of the pin (--pin, default build_grh_credits.PIN, the pin the credits page
-     is built for), so the version the words name cannot drift from it;
-  S6 the page the assembler would write passes: build_site._graph_page over the shell and the words (the About block the escaped about_text, the
-     section carrying data-page-feedback="off", cards empty), then build_site's static, element, head and code-on-surface checks over that page.
+  S4 every ref of the shell (href, src, srcset; read by html.parser, quoted or not) is an asset of viewer/graph or `credits/`, the Licence and
+     credits page that the assembler's --page run puts in the tree: the names the assembler's own ref check (PR 103, A11b) resolves against
+     on a --page run. No `list/`: this map has no list page. (Without --page the assembler refuses `credits/ missing`, correctly.)
+  S5 every run of 7 to 40 hex digits in the words (any case, standing alone) is a prefix of the pin (--pin, default build_grh_credits.PIN, the
+     pin the credits page is built for), so a version the words name cannot drift from it;
+  S6 the page the assembler would write passes: build_site._graph_page over the shell and the words, called as the assembler calls it (the
+     About block: the escaped about_text paragraph, then the credits paragraph `<p>BEFORE<a href="credits/">LINK</a>AFTER</p>` as Luria's
+     --page change writes it; the section carrying data-page-feedback="off"; cards empty), then build_site's static, element and head checks
+     over that page, and the code-on-surface check only when build_site.CODE_ON_SURFACE_REFUSES is set, as the assembler does. With inputs
+     limited to a shell and escaped words, the element and head checks cannot find what _graph_page's own shell checks did not; they are run
+     because the assembler runs them, and no case can tell them apart (said here so it is not mistaken for coverage).
 It reads the shell and the strings file and imports build_site and build_grh_credits; it writes nothing.
 """
 import argparse
+import html.parser
 import importlib.util
 import json
 import os
 import re
 import sys
-import tempfile
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -46,13 +52,37 @@ SHELL = os.path.join(_ROOT, "site", "shell-lean.html")
 STRINGS = os.path.join(_ROOT, "site", "strings-lean-shell.json")
 REPO_STRINGS = os.path.join(_ROOT, "site", "strings.json")
 SHELL_KEYS = bs.GRAPH_SHELL_KEYS + ("front_scope_line", "readings_front")   # the tokens the assembler lets a shell hold (PR 103, SHELL_KEYS)
-CREDITS_KEYS = ()   # the about_credits words the assembler's --page change reads (Luria); filled when that change names them
+CREDITS_KEYS = ("about_credits_before", "about_credits_link", "about_credits_after")   # the About credits words the assembler's --page change reads (Luria, 39195)
 ASSEMBLER_KEYS = ("about_text", "root_only_note_single") + CREDITS_KEYS   # words the assembler reads itself, not through a token
 SECTION_ATTRS = (("data-page-feedback", "off"),)
-LINKS = ("credits/",)
+CREDITS_REF = "credits/"
 _TOKEN = re.compile(r"\{\{S:([A-Za-z0-9_]+)\}\}")
-_HREF = re.compile(r"""\bhref\s*=\s*["']([^"']*)["']""", re.I)
-_VERSION = re.compile(r"\bversion ([0-9a-f]{8})\b")
+_HEX = re.compile(r"(?<![0-9A-Za-z])[0-9A-Fa-f]{7,40}(?![0-9A-Za-z])")
+
+
+def _refs(text):
+    """Every value of href, src and each srcset candidate in `text`, as html.parser reads it (quoted or not)."""
+    found = []
+
+    class P(html.parser.HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            for k, v in attrs:
+                if v is not None and k in ("href", "src"):
+                    found.append(v.strip())
+                elif v is not None and k == "srcset":
+                    found.extend(c.split()[0] for c in v.split(",") if c.split())
+
+    p = P()
+    p.feed(text)
+    p.close()
+    return found
+
+
+def about_markup(words):
+    """The About block's inner html as the assembler writes it with --page: the about_text paragraph, then the credits paragraph."""
+    e = bs._e
+    return ("<p>" + e(words["about_text"]) + "</p>\n<p>" + e(words["about_credits_before"]) + f'<a href="{CREDITS_REF}">'
+            + e(words["about_credits_link"]) + "</a>" + e(words["about_credits_after"]) + "</p>")
 
 
 def problems(shell_text, words, pin, forbidden):
@@ -74,20 +104,22 @@ def problems(shell_text, words, pin, forbidden):
             out.append(f"LEAN-SHELL {k} holds 'of the proof' as a fraction")
         elif "%" in v:
             out.append(f"LEAN-SHELL {k} holds a percent sign")
-        out += [f"LEAN-SHELL {k} names version {h}, not the pin's {pin[:8]}" for h in _VERSION.findall(v) if h != pin[:8]]           # S5
-    out += [f"LEAN-SHELL href {h!r} is not one of {', '.join(LINKS)}" for h in _HREF.findall(shell_text) if h not in LINKS and not h.endswith(".css")]   # S4
+        out += [f"LEAN-SHELL {k} names {h}, which is not a prefix of the pin {pin}" for h in _HEX.findall(v) if not pin.startswith(h.lower())]   # S5
+    errs, assets, _src_shell = bs._graph_assets(bs.GRAPH_SRC)
+    if errs:
+        return out + [f"LEAN-SHELL graph assets {e}" for e in errs]
+    names = set(assets) | {CREDITS_REF}
+    out += [f"LEAN-SHELL ref {r!r} is not an asset or {CREDITS_REF}" for r in dict.fromkeys(_refs(shell_text)) if r not in names]          # S4
     if out:
         return out
-    errs, assets, _src_shell = bs._graph_assets(bs.GRAPH_SRC)                                                                        # S6
-    if errs:
-        return [f"LEAN-SHELL graph assets {e}" for e in errs]
-    errs, page = bs._graph_page(shell_text.encode("utf-8"), set(assets), words, "<p>" + bs._e(words["about_text"]) + "</p>", "",
+    errs, page = bs._graph_page(shell_text.encode("utf-8"), set(assets), words, about_markup(words), "",                               # S6
                                 shell_keys=SHELL_KEYS, section_attrs=SECTION_ATTRS)
     if errs:
         return ["LEAN-SHELL page " + " ".join(e[1:]) for e in errs]
     found = bs.static_problems(page, "") + bs.graph_element_problems(page) + bs.head_meta_problems(page)
     out += [f"LEAN-SHELL page {f}" for f in found]
-    out += [f"LEAN-SHELL page code on the surface: {text[:60]} x{k}" for _card, text, k in bs.code_spans(bs.surface_scan(page)[1])]
+    if bs.CODE_ON_SURFACE_REFUSES:   # read at the call, as the assembler does
+        out += [f"LEAN-SHELL page code on the surface: {text[:60]} x{k}" for _card, text, k in bs.code_spans(bs.surface_scan(page)[1])]
     return out
 
 
@@ -127,16 +159,29 @@ def _selftest():
          lambda g: g[:1] == ["LEAN-SHELL {{S:labels}} is not a key the assembler lets a shell hold"])
     case("L5", "an assembler key missing (S2)", run(w={k: v for k, v in words.items() if k != "root_only_note_single"}),
          ["LEAN-SHELL root_only_note_single missing (the assembler reads it)"])
-    case("L6", "a link to list/ (S4)", run(sh=shell_text.replace('href="credits/"', 'href="list/"')), ["LEAN-SHELL href 'list/' is not one of credits/"])
+    case("L6", "a link to list/ (S4)", run(sh=shell_text.replace('href="credits/"', 'href="list/"')), ["LEAN-SHELL ref 'list/' is not an asset or credits/"])
+    case("L6b", "an unquoted link to list/ (S4)", run(sh=shell_text.replace('href="credits/"', 'href=list/')), ["LEAN-SHELL ref 'list/' is not an asset or credits/"])
+    case("L6c", "a stylesheet that is not an asset (S4: no blanket .css pass)", run(sh=shell_text.replace('href="graph.css"', 'href="list/x.css"')),
+         ["LEAN-SHELL ref 'list/x.css' is not an asset or credits/"])
     other = "0" * 40
     case("L7", "the words name a version that is not the pin (S5)", run(p=other),
-         [f"LEAN-SHELL {k} names version {pin[:8]}, not the pin's 00000000" for k in words if _VERSION.search(words[k])])
+         [f"LEAN-SHELL {k} names {pin[:8]}, which is not a prefix of the pin {other}" for k in words if pin[:8] in words[k]])
+    for cid, text, hexrun in (("L7b", "version 72fead11", "72fead11"), ("L7c", "Version DEADBEEF", "DEADBEEF"), ("L7d", "version deadbeef01", "deadbeef01")):
+        case(cid, f"a drifted version {text!r} (S5: any case, any length 7 to 40)", run(w=dict(words, close=f"Close ({text})")),
+             [f"LEAN-SHELL close names {hexrun}, which is not a prefix of the pin {pin}"])
+    case("L7e", "the full 40-hex pin and a longer prefix pass (S5)", run(w=dict(words, close=f"Close {pin} {pin[:12]}")), [])
     case("L8", "a forbidden word (S3)", run(w=dict(words, close="Close (verified)")), ["LEAN-SHELL close holds the forbidden word 'verified'"])
     case("L9", "an empty word (S3)", run(w=dict(words, close="")), ["LEAN-SHELL close must be a non-empty string"])
     case("L10", "a script in the shell is refused by the builder's page checks (S6)",
          run(sh=shell_text.replace("</body>", '<script>alert(1)</script>\n</body>')), lambda g: bool(g) and all(x.startswith("LEAN-SHELL page") for x in g))
     case("L11", "markup in a word is escaped, not refused, and the page stays clean (S6)", run(w=dict(words, close="<b>Close</b>")), [])
-    case("L12", "the real words name the pin at least once (S5 is not vacuous)", sum(len(_VERSION.findall(v)) for v in words.values()) >= 1, True)
+    case("L12", "the real words name the pin at least once (S5 is not vacuous)", sum(len(_HEX.findall(v)) for v in words.values()) >= 1, True)
+    case("L13", "a percent sign (S3)", run(w=dict(words, close="5% done")), ["LEAN-SHELL close holds a percent sign"])
+    case("L14", "'of the proof' as a fraction (S3)", run(w=dict(words, close="half of the proof")), ["LEAN-SHELL close holds 'of the proof' as a fraction"])
+    case("L15", "a word that reads as code is refused by the static check after the page is made (S6)", run(w=dict(words, close="call fetch(x) here")),
+         lambda g: bool(g) and all(x.startswith("LEAN-SHELL page") and "fetch(" in x for x in g))
+    case("L16", "the About block carries the credits link as the assembler writes it (S6)",
+         about_markup(words).count('<a href="credits/">Licence and credits</a>'), 1)
     print(f"{sum(results)}/{len(results)} pass")
     return 0 if all(results) else 4
 
