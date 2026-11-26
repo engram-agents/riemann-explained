@@ -655,7 +655,11 @@ TEXT_KEYS = ("page_title", "mapped_line", "no_claim_label", "statement_read_line
              "sheet_statement_not_read", "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none",
              "parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused", "parts_failed_notice",
              "key_kinds_heading", "key_states_heading", "role_named_statement",
-             "title", "sentence", "about_link", "tap_hint", "map", "list", "show_all", "key", "close", "fallback_sentence", "fallback_link")
+             "title", "sentence", "about_link", "tap_hint", "map", "list", "show_all", "key", "close", "fallback_sentence", "fallback_link",
+             "map_row_conditions", "map_row_uses", "map_row_sketch", "map_row_literature", "map_row_notes", "map_row_react", "list_map_link")
+# G2c: the one key the strings rule R3 lets hold `of the proof` (it refuses the phrase in every other value): the label of the map page's sketch row, `Sketch of the
+# proof`, names a section of a card and says nothing about how much of the proof is read. A percent sign is refused in it as in every value.
+OF_THE_PROOF_OK = frozenset(["map_row_sketch"])
 EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of the first edition (the tree, and one file of it): https, not sentences
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
@@ -667,6 +671,7 @@ PLACEHOLDERS = {"evidence_statement_read_line": {"reader", "date"}, "evidence_st
                 "statement_count_line": {"n", "m"}, "proof_count_line": {"n", "m"}, "open_items_line": {"n"},
                 "steps_statement_line": {"n", "m"}, "steps_proof_line": {"n", "m"}, "steps_open_items_line": {"n"},
                 "shared_note": {"groups"}, "note_href": {"file", "commit"}, "parts_n": {"n"},
+                "map_row_conditions": {"n"}, "map_row_notes": {"n"},   # G2c: the number of items of the list, filled by the builder
                 "edition_note_first_screen": {"date", "link"}, "edition_note_card": {"date", "link"}, "edition_note_card_note": {"date", "link"},
                 "edition_href_blob": {"file"},
                 # a value nested in a list or object is declared under its path without the list indexes
@@ -1351,7 +1356,7 @@ def _strings_problems(s):
             if old:
                 bad(path, f"holds {old!r}, a word of the retired coverage scale (exact-case match; the lowercase phrase "
                           "`not read yet` is allowed inside status wording)", "STRINGS-FORBIDDEN")
-            elif "%" in v or re.search(r"of\s+the\s+proof", v, re.I):
+            elif "%" in v or (path not in OF_THE_PROOF_OK and re.search(r"of\s+the\s+proof", v, re.I)):
                 bad(path, "holds a percent sign or `of the proof`, which the page never says in its own sentences",
                     "STRINGS-FORBIDDEN")
     return out
@@ -2310,6 +2315,12 @@ def _graph_page(shell, assets, strings, about, cards):
     scan.close()
     errors = scan.errors
     head = ([] if scan.doctype else [("GRAPH-PAGE", "shell.html", "has no doctype")]) + ([] if scan.charset else [("GRAPH-PAGE", "shell.html", "has no charset meta")])
+    found = head_meta_problems(raw)   # G2c: the same rule as the list page's head: the viewport and robots tags are in the head and in no other place, in that order
+    for name, _tag in _HEAD_TAGS:
+        if name + " missing" in found:
+            head.append(("GRAPH-PAGE", "head", f"has no {name} meta" if name == "viewport" else "has no robots noindex meta"))
+        if name + " outside head" in found:
+            head.append(("GRAPH-PAGE", name + " meta", "is outside the head"))
     place = lambda lo, hi, spans: any(a <= lo and hi <= b for a, b, *_rest in spans)
     n_cards, swaps = raw.count("{{CARDS}}"), []
     if n_cards != 1:
@@ -3006,10 +3017,12 @@ def _edition_html(template, date, href, label):
     return "".join(out)
 
 
-def _page_parts(m, s, facts, dirty):
+def _page_parts(m, s, facts, dirty, map_rows=False):
     """(the header's inner html without the h1, the main's inner html) of the list page: the first screen, the facts and the notes about the whole, then the h2 and
     the chain of cards. The ONE place the list page's words and cards are written: _assemble_page puts the list page together from them and the graph page's About
-    section and cards are made from the same two strings (G2b), so neither can drift from the other."""
+    section and cards are made from the same two strings (G2b), so neither can drift from the other. With `map_rows` (G2c: the map page's cards, never the list page's) each of
+    six sections of a card is wrapped in a closed `<details class="map-row map-row-<kind>">` whose summary is the label of the strings key `map_row_<kind>`; the section's own
+    markup is inside it unchanged, so the main part with every row replaced by its inner markup is the main part of the list page."""
     lab, kinds = s["labels"], s["labels"]["kinds"]
     files = m.files
     out = [f"<p>{_e(x)}</p>" for x in s["first_screen"]]
@@ -3083,6 +3096,12 @@ def _page_parts(m, s, facts, dirty):
         o.append("</div>")
         return o
 
+    def row(kind, lines, n=None):
+        """G2c: the lines of a section of a card as they are, or, for the map page, one closed row holding them (`n`, an integer, fills {n} of the label)."""
+        if not map_rows:
+            return lines
+        return [f'<details class="map-row map-row-{kind}"><summary>{_e(_fill(s["map_row_" + kind], n=n))}</summary>' + "\n".join(lines) + "</details>"]
+
     def sketch(sk):
         """The sketch of a root: its frame (the basis string filled first, then the frame), its paragraphs and lists, the places
         Lean finishes by automation when there are any, and the note that it is a sketch."""
@@ -3137,7 +3156,8 @@ def _page_parts(m, s, facts, dirty):
                 o.append(f'<p class="definition-statement">{_rich(ttl, where=gid)} {_e(s["definition_join"])} '
                          f'{_rich(sm["claim"]["text"], where=gid)}</p>')
             if sm["claim"]["conditions"]:
-                o.append('<ul class="conditions">' + "".join(f"<li>{_rich(c, where=gid)}</li>" for c in sm["claim"]["conditions"]) + "</ul>")
+                o += row("conditions", ['<ul class="conditions">' + "".join(f"<li>{_rich(c, where=gid)}</li>" for c in sm["claim"]["conditions"]) + "</ul>"],
+                         len(sm["claim"]["conditions"]))
         elif ttl is None:
             o.append(f'<h3 class="claim unread-claim"><code>{_e(sm["lean_name"])}</code> '
                      f'<span class="label">{_e(sm["claim_label"])}</span></h3>')
@@ -3155,10 +3175,9 @@ def _page_parts(m, s, facts, dirty):
             if len(links) == 1:   # one premise: the sentence line, as it was
                 o.append(f'<p class="premises">{_e(lab["premises"])} {links[0]}</p>')
             else:   # F40: two or more: the label, then a list with one premise per item, in the outline's order
-                o.append(f'<div class="premises"><p>{_e(lab["premises"])}</p><ul>'
-                         + "".join(f"<li>{x}</li>" for x in links) + "</ul></div>")
+                o += row("uses", [f'<div class="premises"><p>{_e(lab["premises"])}</p><ul>' + "".join(f"<li>{x}</li>" for x in links) + "</ul></div>"])
         if sm["claim"]:   # the recognition of the statement: after the premises line, before the two status lines (F24)
-            o += recognition(sm, role)
+            o += row("literature", recognition(sm, role))
         c, by = sm["counts"], sm["statement_by"]
         # the line of a card with no proof: the builder does not know what a declaration of an unknown kind is
         none_line = (s["proof_none_other_line"] if any(r["kind"] not in KNOWN_KINDS for r in fl["roots"])
@@ -3192,7 +3211,7 @@ def _page_parts(m, s, facts, dirty):
             sent = f" {_rich(b['first_sentence'], True, b['block'])}" if b.get("first_sentence") else ""
             o.append(f'<p class="argument">{frames(b, fl["roots"])}{sent} {_note_open(link)}{_e(lab["read_more"])}</a></p>')
         for sk in fl["sketches"]:
-            o += sketch(sk)
+            o += row("sketch", sketch(sk))
         if not fl["sketches"] and sm["proof_read"] is True:   # a card whose proof is read and that has no sketch says so
             o.append(f'<p class="sketch-missing">{_e(s["sketch_missing_line"])}</p>')
         corr = [b for b in fl["blocks"] if b["kind"] == "correction"]
@@ -3204,13 +3223,14 @@ def _page_parts(m, s, facts, dirty):
                 o.append(f'<li><span class="kind">{_e(kinds["correction"])}</span> {_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>')
             o.append("</ul>")
         if sm["notes"]:
-            o.append(f'<p class="notes">{_e(lab["notes"])}</p><ul class="notes">'
-                     + "".join(f'<li>{_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>' for n in sm["notes"]) + "</ul>")
-        o.append('<ul class="reactions">')
+            o.append(f'<p class="notes">{_e(lab["notes"])}</p>' + "".join(row("notes", [
+                '<ul class="notes">' + "".join(f'<li>{_note_open(n["link"])}{_rich(n["list_title"], where=n["note"])}</a></li>' for n in sm["notes"]) + "</ul>"],
+                len(sm["notes"]))))
+        lines = ['<ul class="reactions">']
         for r in s["reactions"]:
             href = _fill(r["href"], card=urllib.parse.quote(gid, safe=""))
-            o.append(f'<li><a class="reaction" href="{_e(href)}">{_e(r["label"])}</a></li>')
-        o.append("</ul>")
+            lines.append(f'<li><a class="reaction" href="{_e(href)}">{_e(r["label"])}</a></li>')
+        o += row("react", lines + ["</ul>"])
         global _IN_EVIDENCE
         _IN_EVIDENCE = True   # everything up to the closing tag below is Evidence: a formula logged now is listed, never refused (FORMULA-RAW)
         o += ['<details class="evidence">', f"<summary>{_e(s['evidence_label'])}</summary>"]
@@ -3305,10 +3325,12 @@ def _page_parts(m, s, facts, dirty):
 
 
 def _assemble_page(s, header, main):
-    """The list page from the two parts of _page_parts: the head, the h1 and the header's inner html, then the main."""
+    """The list page from the two parts of _page_parts: the head, the h1 and the header's inner html, then (G2c) the link back to the map as the header's last line,
+    which is in no part of _page_parts (so the graph page's About section has none), then the main."""
     out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', META_VIEWPORT, META_ROBOTS,
            f"<title>{_e(s['page_title'])}</title>",
-           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>", header, "</header>", "<main>", main,
+           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>", header,
+           f'<p class="map-link"><a href="../">{_e(s["list_map_link"])}</a></p>', "</header>", "<main>", main,
            "</main>", "</body>", "</html>"]
     return "\n".join(out) + "\n"
 
@@ -3616,6 +3638,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         flog = _FORMULA_LOG
     finally:
         _FORMULA_LOG, _IN_EVIDENCE = None, False
+    map_main = _page_parts(m, sj, facts, dirty, map_rows=True)[1]   # G2c: the map page's cards (the same rendering with the rows), made after the formula log is closed
     fcounts = formula_counts(flog)
     errors += formula_sum_errors(fcounts)
     errors += formula_raw_errors(flog, _formula_locator(m))
@@ -3629,7 +3652,7 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     if not a_errors:   # a tree with a refused file in it is not the tree that would ship, so the scanner is not run over it
         errors += _graph_sink_errors(a_files, a_shell)
         if a_shell is not None:   # G2b: the shell is read, never copied; graph/index.html is the page made from it
-            gp_errors, gpage = _graph_page(a_shell, a_index, sj, *(parts[0] if parts else ("", "")))
+            gp_errors, gpage = _graph_page(a_shell, a_index, sj, parts[0][0], map_main)   # no fallback: an empty parts list is an IndexError, never an empty About
             errors += gp_errors
     graph = _graph_bytes(g_objs)
     graph.update({"graph/" + rel: data for rel, data in a_files.items()})
@@ -3921,6 +3944,10 @@ GRAPH_SHELL_STRINGS = {"title": "Reading the Riemann Hypothesis proof",
                        "about_link": "About this page", "tap_hint": "Tap a step to read it.", "map": "Map", "list": "List", "show_all": "Show all", "key": "Key",
                        "close": "Close", "fallback_sentence": "The steps are listed below until the map has loaded, or if it cannot load.",
                        "fallback_link": "Open the full list page"}
+# G2c: the words of the map page's closed rows and of the list page's link back to the map. The same literals are in site/strings.json; `{n}` is the builder's to fill in
+# (the number of items of the list). list_map_link is a placeholder wording, pending the wording seat's own.
+G2C_STRINGS = {"map_row_conditions": "Conditions ({n})", "map_row_uses": "What it uses", "map_row_sketch": "Sketch of the proof",
+               "map_row_literature": "In the literature", "map_row_notes": "Our notes ({n})", "map_row_react": "React", "list_map_link": "Open the map"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
 # the keys the wording file says stay as they were on the card (their values at the head of F35, the real file's)
 F37_UNCHANGED = {
@@ -3999,6 +4026,7 @@ def _strings():
     s.update(F38_STRINGS)
     s.update(GRAPH_STRINGS)
     s.update(GRAPH_SHELL_STRINGS)
+    s.update(G2C_STRINGS)
     return s
 
 
@@ -4512,7 +4540,7 @@ STRING_KEYS = ["page_title", "first_screen", "mapped_line", "no_claim_label", "s
                "labels.blocks", "labels.open_items", "labels.file", "labels.lines", "labels.sha256", "labels.read_more",
                "labels.lines_missing", "labels.kinds", "labels.kinds.machine_fact", "labels.kinds.reading",
                "labels.kinds.interpretation", "labels.kinds.correction", "labels.kinds.not_read", "labels.kinds.argument",
-               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING) + list(F38_STRINGS) + list(GRAPH_STRINGS) + list(GRAPH_SHELL_STRINGS)
+               "labels.kinds.sketch", "argument_frame_no_proof"] + list(WORDING) + list(F37_EVIDENCE) + list(F48_STRINGS) + list(F49_STRINGS) + list(F53_STRINGS) + list(EDITION_WORDING) + list(F38_STRINGS) + list(GRAPH_STRINGS) + list(GRAPH_SHELL_STRINGS) + list(G2C_STRINGS)
 
 
 def _no_edition(rel, data):
@@ -5090,7 +5118,7 @@ def _selftest_cases():
         page = _dom(b.page)
         top = [a.text() for a in page.find("header")[0].find("a")]
         return _eq(("00" in listed, top, c.rc, c_listed, c.js("level0.json")["header_notes"][0]["note"]),
-                   (False, ["Whole one"], 0, ["01", "02"], "00"))
+                   (False, ["Whole one", "Open the map"], 0, ["01", "02"], "00"))
 
     @case("B5a", "every JSON file (and the payload of data.js) carries commits {notes, release, tools}: `unknown`, the outline's "
                  "release id and the tools id given")
@@ -5178,7 +5206,7 @@ def _selftest_cases():
                    in _base().out.splitlines(), True)
 
     # ---- page
-    @case("P1a", "a missing key of the strings file (each of the 130 keys in turn) is a build error that names it, exit 1, nothing "
+    @case("P1a", "a missing key of the strings file (each of the 137 keys in turn) is a build error that names it, exit 1, nothing "
                  "written; control: the full file builds")
     def _():
         bad = []
@@ -5191,7 +5219,7 @@ def _selftest_cases():
             b = _build(strings=s)
             if not (b.rc == 1 and f"BUILD-ERROR STRINGS-KEY {key} " in b.out and not b.existed):
                 bad.append((key, b.rc, b.out[:120]))
-        return _eq((bad, len(STRING_KEYS)), ([], 130))
+        return _eq((bad, len(STRING_KEYS)), ([], 137))
 
     @case("P1b", "every strings value a distinct marker: the page shows only markers and data (every word on it is in the "
                  "marker tokens or the fixture's own data), the markers of first_screen come first, and no typed sentence")
@@ -6677,7 +6705,7 @@ def _selftest_cases():
                     show_links(_direct(g1, "ul", "corrections")[0]), "`" in b.page, "Note <code>x &lt; y</code> two</a>" in b.page,
                     l0["header_notes"][0]["list_title"], [n["list_title"] for n in l0["steps"][0]["notes"]],
                     "Note `x \\u003c y` two" in b.text("data.js")),
-                   (0, [("Whole one", ["one"])], [("Note one", ["one"]), ("Note x < y two", ["x < y"])], [("Note one", ["one"])],
+                   (0, [("Whole one", ["one"]), ("Open the map", [])], [("Note one", ["one"]), ("Note x < y two", ["x < y"])], [("Note one", ["one"])],
                     False, True, "Whole `one`", ["Note `one`", "Note `x < y` two"], True))
 
     @case("TITLE2", "in a title doubled backticks, an unpaired backtick and an empty pair stay literal text, with no <code> (the level-0 `Whole "
@@ -6687,7 +6715,7 @@ def _selftest_cases():
         g1 = _card(b, "g1")
         return _eq((b.rc, show_links(_dom(b.page).find("header")[0]), show_links(_direct(g1, "ul", "notes")[0]),
                     ">Whole ``one``</a>" in b.page, ">Note `one</a>" in b.page),
-                   (0, [("Whole ``one``", [])], [("Note `one", []), ("Note ok two", ["ok"])], True, True))
+                   (0, [("Whole ``one``", []), ("Open the map", [])], [("Note `one", []), ("Note ok two", ["ok"])], True, True))
 
     @case("SPAN1", "the source check compares what a reader sees: a claim that is a release line inside single backticks is refused "
                    "(SOURCE-LEAK naming data.js, level0.json and level1.json: the text of the JSON with the backticks of the span removed; "
@@ -8966,7 +8994,7 @@ def _selftest_cases():
                   "and none rendered")
     def _():
         import hashlib
-        h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
+        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(("\n" + GM_LINK).encode(), b"", 1)).hexdigest()   # G2c: without the link back to the map
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], _build(notes=_ud(d4=[], d5=[])).page == _sbase().page),
                    (["4a0051149033d3e997242b7b3bdeb96bcdb77368d6a81f66e129359b1695156a",
                      "36d01ea6473bb5395f848627fb383c47abf74c0e33ac690333b482bbec60351e",
@@ -9186,7 +9214,7 @@ def _selftest_cases():
                     "ED4 and UD12 pinned from the tree before F51 (the same four values)")
     def _():
         import hashlib
-        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(F51_NEW.encode(), F51_OLD.encode())).hexdigest()
+        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(("\n" + GM_LINK).encode(), b"", 1).replace(F51_NEW.encode(), F51_OLD.encode())).hexdigest()   # G2c: without the link back
         return _eq([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())],
                    ["5bd3d3aa953a3025302078cd884bb4f3d6f0f2cafc10bd806812a08c6f02aa48",
                     "4f0c02e1f477d4721bd446460973e4962ca2420bd775d28a62d9a51038895d3f",
@@ -9302,7 +9330,7 @@ def _selftest_cases():
                  "pinned before F55 (literal)")
     def _():
         import hashlib
-        h = lambda p: hashlib.sha256(p.replace(VPT + "\n" + ROB + "\n", "", 1).replace(F51_NEW, F51_OLD).encode("utf-8")).hexdigest()
+        h = lambda p: hashlib.sha256(p.replace(VPT + "\n" + ROB + "\n", "", 1).replace("\n" + GM_LINK, "", 1).replace(F51_NEW, F51_OLD).encode("utf-8")).hexdigest()   # G2c: and without the link back
         pages = [x.page for x in (_base(), _zbase(), _sbase(), _bbase())]
         return _eq(([VPT + "\n" + ROB + "\n" in p for p in pages], [h(p) for p in pages]),
                    ([True] * 4, ["928bcd4f98056de133b58eb5a83a74c02400afe6d4eb9f483027c49490b42192",
@@ -10043,7 +10071,7 @@ def _selftest_cases():
         for g in one["groups"]:
             g["edition"] = 1
         e1 = _build(outline=one, strings=_strings())
-        h = lambda b_: hashlib.sha256(b_.files["index.html"]).hexdigest()
+        h = lambda b_: hashlib.sha256(b_.files["index.html"].replace(("\n" + GM_LINK).encode(), b"", 1)).hexdigest()   # G2c: without the link back to the map
         return _eq(([h(x) for x in (_base(), _zbase(), _sbase(), _bbase())], e1.rc, e1.page == _base().page),
                    (["4a0051149033d3e997242b7b3bdeb96bcdb77368d6a81f66e129359b1695156a",
                      "36d01ea6473bb5395f848627fb383c47abf74c0e33ac690333b482bbec60351e",
@@ -11836,7 +11864,7 @@ def _selftest_cases():
             t1, t2 = _tree(os.path.join(d, "o1")), _tree(os.path.join(d, "o2"))
         b = _base()
         g = lambda t: {k: v for k, v in t.items() if k.startswith("graph/")}
-        sha = lambda k: hashlib.sha256(b.files[k]).hexdigest()
+        sha = lambda k: hashlib.sha256(b.files[k].replace(("\n" + GM_LINK).encode(), b"", 1)).hexdigest()   # G2c: index.html without the link back to the map
         raw = b.text("graph/step/g1.json")
         return _eq((r1[0], r2[0], len(g(t1)), g(t1) == g(t2), t1 == t2, raw == json.dumps(json.loads(raw), sort_keys=True, indent=1, ensure_ascii=False) + "\n",
                     {k: sha(k) for k in sorted(b.files) if not k.startswith("graph/") and k != "manifest.json"}),
@@ -12550,7 +12578,7 @@ def _selftest_cases():
         return [a.attrs["id"] for a in _dom(page).find("article")]
 
     def gp_text_minus_h1(node):
-        return " ".join(" ".join(k.pieces()) if isinstance(k, _Node) else k for k in node.kids if not (isinstance(k, _Node) and k.tag == "h1")).split()
+        return " ".join(" ".join(k.pieces()) if isinstance(k, _Node) else k for k in node.kids if not (isinstance(k, _Node) and (k.tag == "h1" or "map-link" in k.cls))).split()
 
     @case("GP1", "G2b the shell's words: site/strings.json and the fixture strings hold the 11 keys of the shell's `{{S:key}}` tokens (title, sentence, about_link, tap_hint, "
                  "map, list, show_all, key, close, fallback_sentence, fallback_link) with the values of the wording file (literals; the wording file's link line `About this "
@@ -12571,10 +12599,10 @@ def _selftest_cases():
                    (want, want, [], [], [], GP_SHELL_KEYS, sorted(GP_SHELL_KEYS)))
 
     @case("GP2", "G2b the real shell, the fixture notes, the real source directory: exit 0 and graph/index.html is written and listed in the manifest with its sha256; exactly one "
-                 "section#graph-about; the same article ids as the list page (6, in the list page's order); the cards (from the opening of the chain to its close) are "
+                 "section#graph-about; the same article ids as the list page (6, in the list page's order); the cards (from the opening of the chain to its close), each map row replaced by its inner markup (G2c), are "
                  "byte-equal to the list page's; one <h1>, the shell's, holding the title; every script src and link href is a key of index.json `assets` (page/app.js; "
                  "engine/engine.css and graph.css); no `{{` left; the shell is not copied (no graph/shell.html); the list page index.html is byte-equal to a build with no source "
-                 "directory (sha256 literal, 13431 bytes) and so is every other file outside graph/ and the manifest")
+                 "directory (sha256 literal, 13486 bytes: the list page of the head before G2c, 13431 bytes, plus the one line of its link back to the map, GM6) and so is every other file outside graph/ and the manifest")
     def _():
         b = gp_real()
         page, lp = b.text("graph/index.html"), b.text("index.html")
@@ -12583,13 +12611,13 @@ def _selftest_cases():
         man = b.js("manifest.json")["files"]
         keep = lambda t: {k: v for k, v in t.items() if not k.startswith("graph/") and k != "manifest.json"}
         return _eq((b.rc, man.get("graph/index.html") == hashlib.sha256(b.files["graph/index.html"]).hexdigest(), len(dom.find("section", id="graph-about")),
-                    gp_ids(page), gp_ids(lp), gp_chain(page, "\n</div>") == gp_chain(lp, "\n</main>"), len(dom.find("h1")), dom.find("h1")[0].text(),
+                    gp_ids(page), gp_ids(lp), gp_chain(gm_unwrap(page), "\n</div>") == gp_chain(lp, "\n</main>"), len(dom.find("h1")), dom.find("h1")[0].text(),
                     sorted(s.attrs.get("src") for s in dom.find("script")), sorted(s.attrs.get("href") for s in dom.find("link")),
                     all(s.attrs["src"] in assets for s in dom.find("script")) and all(s.attrs["href"] in assets for s in dom.find("link")),
                     "{{" in page, [k for k in b.files if k.endswith("shell.html")], hashlib.sha256(b.files["index.html"]).hexdigest(), len(b.files["index.html"]),
                     keep(b.files) == keep(_base().files)),
                    (0, True, 1, GP_IDS, GP_IDS, True, 1, "Reading the Riemann Hypothesis proof", ["page/app.js"], ["engine/engine.css", "graph.css"], True,
-                    False, [], GP_LIST_SHA, 13431, True))
+                    False, [], GM_LIST_LINK_SHA, 13486, True))
 
     @case("GP3", "G2b the About section: section#graph-about is inside #graph-cards, before the chain; its text is the list page's header text without the h1 (first screen, "
                  "edition note, facts, mapped line, the section.whole block: compared after the tags are stripped), then the list page's own root_only_note_single sentence in ONE "
@@ -12891,7 +12919,7 @@ def _selftest_cases():
                         ("g1a1x", [("notes", "Our notes (2)"), ("react", "React")]),
                         ("g3", [("uses", "What it uses"), ("literature", "In the literature"), ("notes", "Our notes (2)"), ("react", "React")]),
                         ("g2", [("sketch", "Sketch of the proof"), ("sketch", "Sketch of the proof"), ("notes", "Our notes (3)"), ("react", "React")])],
-                    20, [], True, [], 6, 3, [1] * 6, [1, 1, 0, 0, 0, 0], False, 1, 0,
+                    20, [], True, [], 6, 3, [1] * 6, [1, 1, 1, 0, 0, 0], False, 1, 0,
                     [("conditions", '<ul class="conditions">'), ("literature", '<div class="recognition">'), ("notes", '<ul class="notes">'), ("react", '<ul class="reactions">'),
                      ("sketch", '<div class="sketch">'), ("uses", '<div class="premises">')]))
 

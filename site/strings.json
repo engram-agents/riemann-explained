@@ -167,5 +167,12 @@
  "key": "Key",
  "close": "Close",
  "fallback_sentence": "The steps are listed below until the map has loaded, or if it cannot load.",
- "fallback_link": "Open the full list page"
+ "fallback_link": "Open the full list page",
+ "map_row_conditions": "Conditions ({n})",
+ "map_row_uses": "What it uses",
+ "map_row_sketch": "Sketch of the proof",
+ "map_row_literature": "In the literature",
+ "map_row_notes": "Our notes ({n})",
+ "map_row_react": "React",
+ "list_map_link": "Open the map"
 }

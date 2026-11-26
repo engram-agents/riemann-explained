@@ -396,7 +396,7 @@ def c_fallback(b, S, engine, build):
     assert pg.page.is_visible("#graph-cards")
     assert not pg.page.is_visible("#graph-layer")
     assert pg.page.inner_text("#graph-fallback").startswith("The map did not load")
-    assert pg.page.get_attribute("#graph-fallback a", "href") == "../list/"
+    assert pg.page.get_attribute("#graph-fallback a", "href") == "list/"
     pg.close()
 
 
@@ -415,7 +415,7 @@ def c_fallback_404(b, S):
 
 def c_list_link(b, S):
     pg = Pg(b, S.base + "graph/index.html").settled()
-    assert pg.page.get_attribute(".seg-link", "href") == "../list/"
+    assert pg.page.get_attribute(".seg-link", "href") == "list/"
     pg.page.click(".seg-link")
     pg.page.wait_for_url("**/list/")
     assert pg.page.is_visible("#list-page")
@@ -1623,7 +1623,7 @@ def main():
                 run("deep link ids refused visibly (R3)", c_deep_link_refused)
                 run("fallback with scripts off", c_fallback, eng, None)
                 run("fallback on a 404 step file", c_fallback_404)
-                run("List link reaches ../list/", c_list_link)
+                run("List link reaches list/", c_list_link)
                 run("phone layout at 390: intro <= 200, targets >= 44, no h-scroll, sheet <= 85%", c_phone_layout)
                 run("claim clamp: the six long claims clamp, the others do not", c_clamp)
                 run("face text sizes: the title >= 15 px, every other face text >= 14 px (generated over every text node)", c_face_text_sizes, eng)
