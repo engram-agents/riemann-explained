@@ -671,7 +671,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"note_source": {"source", "commit"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -1852,8 +1852,8 @@ GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 
 # The page's OPTIONAL strings keys: words the page draws that a map may or may not carry. index.json `strings` is the required keys plus those of these that `strings` holds;
 # the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
-GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "key_lines_heading", "key_lines_text",
-                       "spine_lines_text")
+GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text",
+                       "spine_lines_text", "key_scope_text")
 
 
 def _graph_strings_keys(symbols=None):
@@ -2178,6 +2178,7 @@ def _graph_note_errors(notes, by, kids):
             out.append(("GRAPH-NOTE", i, "has a value that is not a string"))
         elif "review" in n and not (isinstance(n["review"], dict) and n["review"] == {"state": "converter"}):
             out.append(("GRAPH-NOTE", i, 'review must be exactly {"state": "converter"}'))
+
     return out
 
 
@@ -13973,7 +13974,7 @@ def _selftest_cases():
                     {k: full[k] for k in opt}, len(_graph_strings_keys()),
                     _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
                     _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", bogus="x"))),
-                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "key_lines_heading", "key_lines_text", "spine_lines_text"),
+                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text"),
                     20, 21, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
@@ -14072,6 +14073,30 @@ def _selftest_cases():
                    ([], ["review", "source", "text"], ["source", "text"], True, ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
                     ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
                     [("GRAPH-NOTE", "b", "must have exactly the keys source and text")]))
+
+    @case("GRM5", "`{readme_quote}` is a declared placeholder of exactly key_scope_text (the builder fills it from the repository's README before the text is written to index.json): the strings "
+                  "check passes a value of that key holding it and refuses it in any other key (`STRINGS-KEY <key> has an unknown placeholder {readme_quote}`), and in key_scope_text it "
+                  "refuses another name; key_scope_text is an optional page key")
+    def _():
+        base = _strings()
+        ok = dict(base, key_scope_text='In the words of the file: "{readme_quote}".')
+        bad = dict(base, note_label="{readme_quote}")
+        bad2 = dict(base, key_scope_text="{quote}")
+        return _eq((_strings_problems(ok), _strings_problems(bad), _strings_problems(bad2), PLACEHOLDERS.get("key_scope_text"), "key_scope_text" in GRAPH_OPTIONAL_KEYS),
+                   ([], [("STRINGS-KEY", "note_label", "has an unknown placeholder {readme_quote}")], [("STRINGS-KEY", "key_scope_text", "has an unknown placeholder {quote}")],
+                    {"readme_quote"}, True))
+
+    @case("GRM6", "strings rule R3 (no `of the proof`) has one exemption only, the map_row_sketch pair: the Lean scope text holds no exemption of its own. The template of key_scope_text (with "
+                  "`{readme_quote}`) and the text built with the README quote in it pass the strings check; `proves` is not a forbidden word; the earlier wording of the scope text (`of the "
+                  "proof's own argument`) is refused `STRINGS-FORBIDDEN key_scope_text`")
+    def _():
+        quote = "`src/Statements.lean` states the theorems in Mathlib's terms. `src/Main.lean` proves five theorems"
+        T = "The map holds the 306 Lean files of the argument itself (the folder New). Two short files at the top of the repository are not on it. In the repository's words (grh/README.md): \"{readme_quote}\", the Riemann Hypothesis among them, each in a line or two from results on this map or from one another. (The map's file named Main is New/Main.lean, a different file.) The map also leaves out the repository's own 495 library files (the folder Lib) and Mathlib. A file's uses of those are not drawn."
+        old = T.replace("of the argument itself", "of the proof's own argument")
+        res = lambda s: [tuple(x[:2]) for x in _strings_problems(s)]
+        base = _strings()
+        return _eq((res(dict(base, key_scope_text=T)), res(dict(base, note_label=T.replace("{readme_quote}", quote))), res(dict(base, key_scope_text=old)), sorted(OF_THE_PROOF_OK)),
+                   ([], [], [("STRINGS-FORBIDDEN", "key_scope_text")], ["map_row_sketch"]))
 
     @case("GRCK1", "`_graph_files(child_kinds=)`: off by default (the bytes equal an explicit child_kinds=False and no card has `child_kind`); on, every card (the step file's card and the "
                    "closed child entry) with children that all share one kind has `child_kind` = that kind, and it is omitted when the children differ and when there are none; the "
@@ -14203,7 +14228,7 @@ def _selftest_cases():
         return _eq((GRAPH_OPTIONAL_KEYS, [tuple(e) for e in ok[0]], ix["edge_basis"], len(ix["strings"]), sorted(k for k in ix["strings"] if k.startswith(("key_lines", "spine_lines"))),
                     [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H")),
                     _graph_strings_errors(dict(req, bogus="x"))),
-                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "key_lines_heading", "key_lines_text", "spine_lines_text"), [], eb, 23,
+                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text"), [], eb, 23,
                     ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
     return cases

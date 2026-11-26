@@ -92,6 +92,7 @@ class SourceError(Exception):
         self.reason = reason
 
 
+
 class NoteError(Exception):
     """A source file whose module note cannot be taken: `SKEL-NOTE <path> <reason>`."""
 
@@ -227,6 +228,7 @@ def _comment_end(text, start):
         else:
             i += 1
     return None
+
 
 
 def _module_note(raw):
@@ -779,6 +781,7 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
             src[p] = raw.decode("utf-8")
         except (SourceError, NoteError) as e:
             errors.append(("SKEL-NOTE", p, e.reason))
+
     if errors:
         return errors, [], {}
     cut = []
@@ -899,6 +902,26 @@ def _scale_from_text(text):
     return text
 
 
+def _readme_quote(grh):
+    """([(SKEL-README, what, reason)], quote): the quote of the repository's own words for key_scope_text: line 15 of grh/README.md minus its closing colon, read through the bounded,
+    contained reader. Refused: the README missing, a symlink, unreadable, too large, not UTF-8, with no line 15, or a line 15 that does not end with a colon."""
+    try:
+        raw = _read_in(grh, os.path.join(grh, "README.md"), SOURCE_READ_LIMIT)
+        text = raw.decode("utf-8")
+    except SourceError as e:
+        return [("SKEL-README", "README.md", e.reason)], ""
+    except UnicodeDecodeError:
+        return [("SKEL-README", "README.md", "not-utf-8")], ""
+    lines = text.split("\n")
+    if text.endswith("\n"):
+        lines.pop()
+    if len(lines) < 15:
+        return [("SKEL-README", "README.md", "has no line 15")], ""
+    if not lines[14].endswith(":"):
+        return [("SKEL-README", "README.md", "line 15 does not end with a colon")], ""
+    return [], lines[14][:-1]
+
+
 def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build."""
@@ -919,6 +942,14 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(SYMBOLS) if k in strings}, SYMBOLS)   # only the missing ones: it holds a subset
     if missing:
         return missing, {}, rows, rep
+    if "key_scope_text" in strings:   # the builder quotes the repository's words from its README, never from a typed copy
+        value = strings["key_scope_text"]
+        if value.count("{readme_quote}") != 1:
+            return [("SKEL-README", "key_scope_text", "has no {readme_quote}" if "{readme_quote}" not in value else "has {readme_quote} twice")], {}, rows, rep
+        errors, quote = _readme_quote(grh)
+        if errors:
+            return errors, {}, rows, rep
+        strings = dict(strings, key_scope_text=value.replace("{readme_quote}", quote))
     errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"], child_kinds=True,
                                     step_extra=rep["step_extra"], index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
                                                      **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {})) or None)
@@ -1046,11 +1077,11 @@ COUNT_WORDS = {"count_group_one": "{n} group", "count_group_many": "{n} groups",
 ORDERS = {"kinds": ["part", "group", "file"], "states": [], "proofs": []}
 OVERLAY_WORDS = {"key_kinds_heading": "What a box is", "symbol_kind_part": "Part of the argument", "symbol_kind_group": "Group of files",
                  "symbol_kind_file": "Lean file", "card_kind_part": "Part", "card_kind_group": "Group", "card_kind_file": "File"}
-OPTIONAL_WORDS = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+OPTIONAL_WORDS = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md); the titles of parts, groups and files are copied from it word for word.",
                   "note_label": "The file's opening note, from the repository, unchanged",
                   "note_source": "Opening note of {source} \u00b7 version {commit} of lsernau/grh-lean"}   # the three optional page-drawn words, final
 NOTE_WORDS = {"note_label_typeset": "The file's opening note, from the repository", "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
-              "note_exact_button": "Show the exact text"}   # the note words, final
+              "note_exact_button": "Show the exact text", "note_render_button": "Show in maths type"}   # the note words, final
 
 
 def _lean(decl="theorem t : True := trivial", note="n", imports=()):
@@ -1064,6 +1095,8 @@ def _tree(root, body, srcs, ileans=None, index="default"):
     os.makedirs(g)
     with open(os.path.join(g, "CONTENTS.md"), "w", encoding="utf-8") as f:
         f.write(HEAD + body + TAIL)
+    with open(os.path.join(g, "README.md"), "w", encoding="utf-8") as f:   # the repository's README: line 15 is quoted by key_scope_text
+        f.write("".join("line %d\n" % i for i in range(1, 15)) + "line 15 of the README:\n")
     if index is not None:
         with open(os.path.join(g, "INDEX.md"), "wb") as f:
             f.write(_index() .encode("utf-8") if index == "default" else (index if isinstance(index, bytes) else index.encode("utf-8")))
@@ -1173,6 +1206,8 @@ def _flat(names):
 
 
 EDGE_BASIS = {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}   # index.json edge_basis: a pointer, the sentence is in strings
+SCOPE_FULL = "The map holds the 306 Lean files of the argument itself (the folder New). Two short files at the top of the repository are not on it. In the repository's words (grh/README.md): \"`src/Statements.lean` states the theorems in Mathlib's terms. `src/Main.lean` proves five theorems\", the Riemann Hypothesis among them, each in a line or two from results on this map or from one another. (The map's file named Main is New/Main.lean, a different file.) The map also leaves out the repository's own 495 library files (the folder Lib) and Mathlib. A file's uses of those are not drawn."   # key_scope_text as the page prints it
+SCOPE_TEMPLATE = "The map holds the 306 Lean files of the argument itself (the folder New). Two short files at the top of the repository are not on it. In the repository's words (grh/README.md): \"{readme_quote}\", the Riemann Hypothesis among them, each in a line or two from results on this map or from one another. (The map's file named Main is New/Main.lean, a different file.) The map also leaves out the repository's own 495 library files (the folder Lib) and Mathlib. A file's uses of those are not drawn."   # the same, with `{readme_quote}` where the repository's README line 15 (minus its colon) is quoted by the builder
 LINES_WORDS = {"key_lines_heading": "What a line is",
                "key_lines_text": "A line joins two files of the same group: the upper file uses definitions or results from the lower one. Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. Lean also uses results it fills in on its own without naming them; those uses are not counted.",
                "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming "
@@ -1565,7 +1600,7 @@ def _selftest_cases():
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
         info = {("lean-s-b", "lean-s-a"): {"weight": 1, "in_reduction": True}}
         notes = {i: {"source": f"grh/src/New/S/{i[-1].upper()}.lean", "text": "\nn\n", "review": {"state": "converter"}} for i in ("lean-s-a", "lean-s-b")}
-        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS, **NOTE_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True, index_extra={"edge_basis": EDGE_BASIS})
+        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS, **LINES_WORDS, **NOTE_WORDS, key_scope_text=SCOPE_TEMPLATE.replace("{readme_quote}", "line 15 of the README")), symbols=table, orders=ORDERS, layout="column", link_info=info, notes=notes, child_kinds=True, index_extra={"edge_basis": EDGE_BASIS})
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -1755,7 +1790,7 @@ def _selftest_cases():
                     ix["strings"]["card_kind_file"], "extra_key" in ix["strings"], unchanged, short[0], short[1].splitlines(), nocard[0], nocard[1].splitlines(), gone, bad, arr,
                     absent, repo_overlay),
                    (0, 27, "Replaced heading", "F words", "card_kind_file", "F", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 1,
-                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, {k: v for k, v in dict(OVERLAY_WORDS, **OPTIONAL_WORDS, **COUNT_WORDS, **LINES_WORDS, **NOTE_WORDS).items() if k != "spine_lines_text"}))
+                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, {k: v for k, v in dict(OVERLAY_WORDS, **OPTIONAL_WORDS, **COUNT_WORDS, **LINES_WORDS, **NOTE_WORDS, key_scope_text=SCOPE_TEMPLATE).items() if k != "spine_lines_text"}))
 
     @case("SK22", "a section of one file with no folder whose first bold line holds no file (`### X`, `**A**`, `**B**`, the file `New/Main`) is `SKEL-LINE <n>` for the empty bold line "
                   "(a named refusal, exit 1, no traceback), and the same section with its one bold line over the file builds")
@@ -1830,7 +1865,7 @@ def _selftest_cases():
                   "this checkout holds those three values")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
-        typed = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "note_label": "The file's opening note, from the repository, unchanged",
+        typed = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md); the titles of parts, groups and files are copied from it word for word.", "note_label": "The file's opening note, from the repository, unchanged",
                  "note_source": "Opening note of {source} \u00b7 version {commit} of lsernau/grh-lean"}
         with _tmp() as d:
             g = _tree(d, body, {"New/S/A": _lean()})
@@ -2711,13 +2746,13 @@ def _selftest_cases():
         return inv
 
     @case("OVL1", "the overlay of this checkout holds the page's optional words with these values, each equal to the literal typed here (and to the constants of the cases): note_label, "
-                  "note_label_typeset, note_source, note_typeset_line, note_exact_button (final), key_kinds_note (final), and the three lines words, "
+                  "note_label_typeset, note_source, note_typeset_line, note_exact_button, note_render_button (final), key_kinds_note (final), and the three lines words, "
                   "which are FINAL too: no value starts with `[proposal]` or `[placeholder]`, and the word `edge` is in none of the page words (the data key edge_basis is not a page word); `{n}` appears only in the four count words; with the three old optional words `strings` is 30 keys, "
-                  "with all six new ones 36, with none of the optional 27")
+                  "with all seven new ones 37, with none of the optional 27")
     def _():
         typed = {"note_label": "The file's opening note, from the repository, unchanged", "note_label_typeset": "The file's opening note, from the repository",
                  "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
-                 "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.", "note_exact_button": "Show the exact text", "key_lines_heading": "What a line is",
+                 "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.", "note_exact_button": "Show the exact text", "note_render_button": "Show in maths type", "key_lines_heading": "What a line is",
                  "key_lines_text": LINES_WORDS["key_lines_text"],   # the one literal of the test: LINES_WORDS
                  "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming "
                                      "them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real."}
@@ -2735,7 +2770,7 @@ def _selftest_cases():
                     sorted(k for k, v in ov.items() if v.startswith(("[proposal]", "[placeholder]"))), sorted(k for k, v in ov.items() if re.search(r"\bedges?\b", v, re.I)),
                     sorted(k for k, v in ov.items() if "{n}" in v), counts),
                    (typed, True, [], [],
-                    ["count_file_many", "count_file_one", "count_group_many", "count_group_one", ], (27, 30, 36, 33)))
+                    ["count_file_many", "count_file_one", "count_group_many", "count_group_one", ], (27, 30, 37, 34)))
 
     GO_CARDS = dict(OVERLAY_WORDS, **COUNT_WORDS, **OPTIONAL_WORDS, **NOTE_WORDS, key_lines_heading=LINES_WORDS["key_lines_heading"], key_lines_text=LINES_WORDS["key_lines_text"])   # every word but the Graph one
     GO_GRAPH = {"spine_lines_text": LINES_WORDS["spine_lines_text"]}
@@ -2784,7 +2819,7 @@ def _selftest_cases():
                    (0, 0, 0, False, False, True, {"basis": "reaches-through-any-chain-of-uses", "words": "spine_lines_text"}, ["graph/index.json", "graph/spine.json"], True, True, True,
                     (0, 0, sorted(LINES_WORDS), [], True, False), (0, False, False)))
 
-    @case("GO2", "the files of this checkout: site/strings-lean.json (the Cards overlay) has 19 keys and no `spine_lines_text`; site/strings-lean-graph.json holds exactly that one key, with the value of "
+    @case("GO2", "the files of this checkout: site/strings-lean.json (the Cards overlay) has 21 keys (19, key_scope_text and note_render_button) and no `spine_lines_text`; site/strings-lean-graph.json holds exactly that one key, with the value of "
                  "LINES_WORDS (the literal of this tool); the Graph overlay is not read by default (`OVERLAY` names only the Cards file)")
     def _():
         site = os.path.join(_HERE, os.pardir, "site")
@@ -2793,7 +2828,7 @@ def _selftest_cases():
             with open(os.path.join(site, n), encoding="utf-8") as f:
                 return json.load(f)
         cards, graph = rd("strings-lean.json"), rd("strings-lean-graph.json")
-        return _eq((len(cards), "spine_lines_text" in cards, graph, os.path.basename(OVERLAY)), (19, False, GO_GRAPH, "strings-lean.json"))
+        return _eq((len(cards), "spine_lines_text" in cards, graph, os.path.basename(OVERLAY)), (21, False, GO_GRAPH, "strings-lean.json"))
 
     @case("GO3", "a key in both overlay files, or in the Graph overlay and in the base strings, is refused by name `SKEL-OVERLAY-CLASH <key>` (one line per key, sorted), exit 1, nothing written; "
                  "a key in the Cards overlay and in the base strings is NOT a clash (the overlay replaces it, as before); a Graph overlay disjoint from both builds (exit 0)")
@@ -3020,6 +3055,103 @@ def _selftest_cases():
         return _eq((errs, len(files_n), sum(1 for n in files_n if n is not None and n.get("review") == {"state": "converter"}), sorted({tuple(sorted(n)) for n in files_n}),
                     sum(1 for k, n in steps.values() if k != "file" and n is not None)),
                    ([], 306, 306, [("review", "source", "text")], 0))
+
+    def readme_fixture(d, line15, lines=None):
+        g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+        with open(os.path.join(g, "README.md"), "w", encoding="utf-8") as f:
+            f.write("\n".join((["filler %d" % i for i in range(14)] if lines is None else lines) + ([line15] if line15 is not None else [])) + "\n")
+        return g
+
+    KS_T = 'Scope: "{readme_quote}", and no more.'
+
+    @case("KS1", "key_scope_text: the value of the strings holds `{readme_quote}` and the builder fills it with line 15 of grh/README.md minus its closing colon, read from the file (a second fixture with "
+                 "another line 15 gives another text, so the quote is never a constant of the builder), the rest of the value unchanged, the backticks kept; the key is in index.json `strings`; without the key the "
+                 "README is not read (none needed) and the key is not there")
+    def _():
+        out = []
+        for line15 in ("`a` and b:", "another line:"):
+            with _tmp() as d:
+                errs, files, rows, rep = bld(readme_fixture(d, line15), PIN, dict(_strings(), key_scope_text=KS_T))
+            ix = _j(files, "graph/index.json")["strings"]
+            out.append((errs, ix["key_scope_text"]))
+        with _tmp() as d:
+            g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            errs, files, rows, rep = bld(g, PIN, _strings())
+        return _eq((out, errs, "key_scope_text" in _j(files, "graph/index.json")["strings"]),
+                   ([([], 'Scope: "`a` and b", and no more.'), ([], 'Scope: "another line", and no more.')], [], False))
+
+    @case("KS2", "key_scope_text refusals (`SKEL-README <what> <reason>`, nothing written): README.md missing (`README.md missing`), a README that is a symlink (`README.md symlink`), fewer than 15 lines "
+                 "(`README.md has no line 15`), a line 15 that does not end with a colon (`README.md line 15 does not end with a colon`), and a value without `{readme_quote}` "
+                 "(`key_scope_text has no {readme_quote}`), a value with it twice (`key_scope_text has {readme_quote} twice`)")
+    def _():
+        res = []
+        for name, line15, lines in (("ok", "x:", None), ("short", "x:", ["a"] * 5), ("nocolon", "x", None)):
+            with _tmp() as d:
+                res.append(bld(readme_fixture(d, line15, lines), PIN, dict(_strings(), key_scope_text=KS_T))[:2])
+        with _tmp() as d:
+            g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            os.remove(os.path.join(g, "README.md"))
+            res.append(bld(g, PIN, dict(_strings(), key_scope_text=KS_T))[:2])
+        with _tmp() as d:
+            g = readme_fixture(d, "x:")
+            os.rename(os.path.join(g, "README.md"), os.path.join(d, "real.md"))
+            os.symlink(os.path.join(d, "real.md"), os.path.join(g, "README.md"))
+            res.append(bld(g, PIN, dict(_strings(), key_scope_text=KS_T))[:2])
+        for tmpl in ("no placeholder", "{readme_quote} {readme_quote}"):
+            with _tmp() as d:
+                res.append(bld(readme_fixture(d, "x:"), PIN, dict(_strings(), key_scope_text=tmpl))[:2])
+        return _eq([(r[0], r[1] == {}) for r in res[1:]] + [res[0][0]],
+                   [([("SKEL-README", "README.md", "has no line 15")], True), ([("SKEL-README", "README.md", "line 15 does not end with a colon")], True),
+                    ([("SKEL-README", "README.md", "missing")], True), ([("SKEL-README", "README.md", "symlink")], True),
+                    ([("SKEL-README", "key_scope_text", "has no {readme_quote}")], True), ([("SKEL-README", "key_scope_text", "has {readme_quote} twice")], True), []])
+
+    @case("KSR", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): with the strings of the Lean map (the wording file and the overlay of this checkout): the overlay's "
+                 "key_scope_text is the template (the wording seat's text with `{readme_quote}` where the README is quoted), equal to the literal typed here; "
+                 "the built index.json key_scope_text is the text with line 15 of the real grh/README.md minus its colon (read in the case, found once in it, byte for byte), equal to the literal; "
+                 "index.json `strings` has 37 keys (the Cards overlay carries no spine_lines_text)")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
+            ov = json.load(f)
+        with open(os.path.join(_GRH_FOR_SK13, "README.md"), encoding="utf-8") as f:
+            line15 = f.read().split("\n")[14]
+        strings = dict(_strings(extra=False), **ov)
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", strings, ilean_dir=_ILEAN_FOR_SK13)
+        ix = _j(files, "graph/index.json")["strings"]
+        full = ix["key_scope_text"]
+        quote = line15[:-1]
+        return _eq((errs, "front_scope_line" in ov, ov.get("key_scope_text"), full, line15.endswith(":"), full.count(quote), "{" in full, len(ix),
+                    full.replace(quote, "{readme_quote}") == ov["key_scope_text"], bs._strings_problems(strings)),
+                   ([], False, SCOPE_TEMPLATE, SCOPE_FULL, True, 1, False, 37, True, []))
+
+    @case("NW1", "the maths-view note words of the Lean map: the overlay of this checkout holds note_label_typeset `The file's opening note, from the repository`, note_typeset_line `Formulas set in "
+                 "maths type by us; every symbol is the repository's.`, note_exact_button `Show the exact text` and note_render_button `Show in maths type`, each equal to the literal typed here, with "
+                 "no placeholder; a Lean build with the overlay's words carries all four in index.json `strings` with those values; the builder's own check takes each of the four as an optional page "
+                 "key (a build that holds only three carries those three: whether the page shows the maths view without all four is the page's rule, not pinned here)")
+    def _():
+        four = {"note_label_typeset": "The file's opening note, from the repository", "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
+                "note_exact_button": "Show the exact text", "note_render_button": "Show in maths type"}
+        with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
+            ov = json.load(f)
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            full = _j(bld(g, PIN, dict(_strings(), **{k: ov[k] for k in four}))[1], "graph/index.json")["strings"]
+            three = _j(bld(g, PIN, dict(_strings(), **{k: v for k, v in four.items() if k != "note_render_button"}))[1], "graph/index.json")["strings"]
+        return _eq(({k: ov.get(k) for k in four}, {k: full.get(k) for k in four}, sorted(k for k in four if k in three), [k for k in four if "{" in four[k]]),
+                   (four, four, sorted(k for k in four if k != "note_render_button"), []))
+
+    @case("KKN1", "key_kinds_note of the Lean map: the overlay of this checkout holds exactly `Parts and groups follow the repository's own contents list (CONTENTS.md); the titles of parts, groups "
+                  "and files are copied from it word for word.` (typed here; read back from the file) and a build with it carries that value in index.json `strings`")
+    def _():
+        want = "Parts and groups follow the repository's own contents list (CONTENTS.md); the titles of parts, groups and files are copied from it word for word."
+        with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
+            ov = json.load(f)
+        with _tmp() as d:
+            g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
+            got = _j(bld(g, PIN, dict(_strings(), key_kinds_note=ov["key_kinds_note"]))[1], "graph/index.json")["strings"]["key_kinds_note"]
+        return _eq((ov["key_kinds_note"], got), (want, want))
 
     def sc_build(d, **kw):
         g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
