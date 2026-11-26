@@ -874,7 +874,13 @@ def build_rows(grh, ilean_dir, source_prefix=SOURCE_PREFIX):
 
 def _scale_floor_error(value):
     """[(GRAPH-SCALE-FLOOR, <value>, "")] unless `value` is a positive finite number (an int or a float; a bool is neither)."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return [("GRAPH-SCALE-FLOOR", str(value), "")]
+    try:
+        finite = math.isfinite(value)   # an integer too large for a float is no finite number the page can use: OverflowError here
+    except OverflowError:
+        finite = False
+    if not finite or value <= 0:
         return [("GRAPH-SCALE-FLOOR", str(value), "")]
     return []
 
@@ -882,7 +888,10 @@ def _scale_floor_error(value):
 def _scale_from_text(text):
     """The number a command-line text stands for, as written: an integer text stays an int, a decimal or exponent text a float; any other text is returned as it is (and refused)."""
     if re.fullmatch(r"[0-9]+", text):
-        return int(text)
+        try:
+            return int(text)
+        except ValueError:   # more digits than Python's integer parser takes (4300): the text is returned as it is, and refused
+            return text
     if re.fullmatch(r"(?:[0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?", text):
         return float(text)
     return text
