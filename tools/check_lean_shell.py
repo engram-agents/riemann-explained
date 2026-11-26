@@ -14,7 +14,8 @@ Checks, each a `LEAN-SHELL <what> <reason>` line on failure (exit 1; 0 when clea
      credits page that the assembler's --page run puts in the tree: the names the assembler's own ref check (PR 103, A11b) resolves against
      on a --page run. No `list/`: this map has no list page. (Without --page the assembler refuses `credits/ missing`, correctly.)
   S5 every run of 7 to 40 hex digits in the words (any case, standing alone) is a prefix of the pin (--pin, default build_grh_credits.PIN, the
-     pin the credits page is built for), so a version the words name cannot drift from it;
+     pin the credits page is built for), so a version the words name cannot drift from it. Deliberately loose: an ordinary word made only of
+     the letters a to f (`defaced`) or a 7-digit number is refused too, loudly, and the fix is rewording; a run of 41 or more is not looked at;
   S6 the page the assembler would write passes: build_site._graph_page over the shell and the words, called as the assembler calls it (the
      About block: the escaped about_text paragraph, then the credits paragraph `<p>BEFORE<a href="credits/">LINK</a>AFTER</p>` as Luria's
      --page change writes it; the section carrying data-page-feedback="off"; cards empty), then build_site's static, element and head checks
@@ -182,6 +183,15 @@ def _selftest():
          lambda g: bool(g) and all(x.startswith("LEAN-SHELL page") and "fetch(" in x for x in g))
     case("L16", "the About block carries the credits link as the assembler writes it (S6)",
          about_markup(words).count('<a href="credits/">Licence and credits</a>'), 1)
+    keep = bs.CODE_ON_SURFACE_REFUSES
+    bs.CODE_ON_SURFACE_REFUSES = True
+    try:
+        coded = shell_text.replace('<p class="sentence">', '<p class="sentence"><code>x = f(1)</code> ', 1)
+        case("L17", "with the builder's code-on-surface flag set, a code span on the page is found (S6)", run(sh=coded),
+             ["LEAN-SHELL page code on the surface: x = f(1) x1"])
+        case("L17b", "with the flag set, the real pair stays clean (S6)", run(), [])
+    finally:
+        bs.CODE_ON_SURFACE_REFUSES = keep
     print(f"{sum(results)}/{len(results)} pass")
     return 0 if all(results) else 4
 
