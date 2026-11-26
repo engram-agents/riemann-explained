@@ -66,7 +66,12 @@ Corrections are the most useful thing you can send. Open an issue that names the
 
 ## Licence
 
-The text of this repository is released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the full terms are in [LICENSE](LICENSE). Short quotations from the Lean release remain the author's.
+Two licences, by kind of file.
+
+- **Text.** The text of this repository is released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the full terms are in [LICENSE](LICENSE). That is the notes under `docs/`, the outline, the words of the pages under `site/`, and this page.
+- **Code.** The programs under `tools/` and `viewer/`, with their tests, are released under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0); the full terms are in [LICENSE-CODE](LICENSE-CODE).
+
+Neither licence covers what is not ours. Short quotations from the Lean release remain the author's. A few test files copy text from the readable edition of the proof, which has its own licence; [third-party/grh-lean](third-party/grh-lean/README.md) lists them and carries that repository's licence and notices.
 
 *Correction, 2026-11-22: four words in this page referred to the author with a gendered pronoun. The only place we have read one is the Lean community's joint statement; the notes now use "the author" throughout. Nothing else changed.*
 
