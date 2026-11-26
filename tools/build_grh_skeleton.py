@@ -1791,14 +1791,14 @@ def _selftest_cases():
                    ([0, 0, 0], True, [f"lean-s-{n}" for n in "abcdef"], [f"lean-s-{n}" for n in "abcdef"]))
 
     @case("SK21", "the strings overlay (`--strings-overlay FILE`): its keys replace or add to the strings file for this map only; with the overlay giving the three kind "
-                  "words and a new heading the index holds exactly the 23 keys with those words (an extra overlay key is not in it); the strings file is not edited; an "
+                  "words and a new heading the index holds exactly the 23 keys with those words (an overlay key the page does not read is refused, case OVK1); the strings file is not edited; an "
                   "overlay without one kind word is refused GRAPH-STRINGS (exit 1); a file that is not there, not JSON or not an object is exit 2; the overlay file of this "
                   "checkout (site/strings-lean.json) holds exactly nineteen words (the five note words final, the two lines words final; `spine_lines_text` is in the Graph overlay, case GO2): the two lines words (placeholders, marked), the four of COUNT_WORDS (final), the seven of OVERLAY_WORDS (the kinds heading, the three kind words and the three card words, "
                   "placeholders) and the three of OPTIONAL_WORDS (final)")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
         full = {"key_kinds_heading": "Replaced heading", "symbol_kind_part": "P words", "symbol_kind_group": "G words", "symbol_kind_file": "F words",
-                "card_kind_part": "P", "card_kind_group": "G", "card_kind_file": "F", "extra_key": "x", **COUNT_WORDS}
+                "card_kind_part": "P", "card_kind_group": "G", "card_kind_file": "F", **COUNT_WORDS}   # no extra key: an overlay key the page does not read is refused, case OVK1
         with _tmp() as d:
             g = _tree(d, body, {"New/S/A": _lean()})
             sp = _strings_file(d, _strings(extra=False))
@@ -2882,8 +2882,8 @@ def _selftest_cases():
                    ((1, ["SKEL-OVERLAY-CLASH spine_lines_text"], False), (1, ["SKEL-OVERLAY-CLASH key_lines_text", "SKEL-OVERLAY-CLASH spine_lines_text"], False),
                     (1, ["SKEL-OVERLAY-CLASH spine_lines_text"], False), 0, True))
 
-    @case("GO4", "the Graph overlay is read as the Cards overlay is: a file that is not there, not JSON or not an object is exit 2 and nothing written; a key the page does not read in it is not in `strings`, "
-                 "as for the Cards overlay (exit 0, nothing refused); the value rules (no value starting `[proposal]` or `[placeholder]`, the word `edge` in none, `{n}` only in the count words) "
+    @case("GO4", "the Graph overlay is read as the Cards overlay is: a file that is not there, not JSON or not an object is exit 2 and nothing written; a key the page does not read in it is refused by name, "
+                 "as for the Cards overlay (`SKEL-OVERLAY-KEY <file> <key> is not a key the page reads`, exit 1, nothing written; case OVK1); the value rules (no value starting `[proposal]` or `[placeholder]`, the word `edge` in none, `{n}` only in the count words) "
                  "are held on the real Graph file by OVL1")
     def _():
         with _tmp() as d:
@@ -2895,9 +2895,9 @@ def _selftest_cases():
             arr = go_run(d, g, sp, ol, "o3", overlay=cards, graph=go_file(d, "arr.json", "[1]"))
             extra = go_run(d, g, sp, ol, "o4", overlay=cards, graph=go_file(d, "ex.json", dict(GO_GRAPH, bogus="x")))
             extra_c = go_run(d, g, sp, ol, "o5", overlay=go_file(d, "cx.json", dict(GO_CARDS, bogus="x")), graph=go_file(d, "g5.json", GO_GRAPH))
-            ixs = [_j(_tree_files(os.path.join(d, n)), "graph/index.json")["strings"] for n in ("o4", "o5")]
-        return _eq((ok[0], (gone[0], gone[3]), (bad[0], bad[3]), (arr[0], arr[3]), (extra[0], extra_c[0]), [("bogus" in s, "spine_lines_text" in s) for s in ixs]),
-                   (0, (2, False), (2, False), (2, False), (0, 0), [(False, True), (False, True)]))
+        return _eq((ok[0], (gone[0], gone[3]), (bad[0], bad[3]), (arr[0], arr[3]), (extra[0], extra[1], extra[3]), (extra_c[0], extra_c[1], extra_c[3])),
+                   (0, (2, False), (2, False), (2, False), (1, ["SKEL-OVERLAY-KEY ex.json bogus is not a key the page reads"], False),
+                    (1, ["SKEL-OVERLAY-KEY cx.json bogus is not a key the page reads"], False)))
 
     @case("GO5", "the option is a usage error as every other option: twice, or last without a value, is exit 2 with the usage text on stderr and nothing written; once with a value it builds (exit 0); "
                  "the usage text (USAGE and the tool's docstring) names `--strings-overlay-graph`")
@@ -3492,6 +3492,33 @@ def _selftest_cases():
         return _eq(out, {"at-limit": ([], False), "over": ([("SKEL-README", "README.md", "too-large")], True), "not-utf-8": ([("SKEL-README", "README.md", "not-utf-8")], True),
                          "directory": ([("SKEL-README", "README.md", "not-a-regular-file")], True), "fifo": (1, ["SKEL-README README.md not-a-regular-file"], False),
                          "symlink": ([("SKEL-README", "README.md", "symlink")], True)})
+
+    @case("ILV5", "the spine's file load reports a file once when two spine rows name it: two rows naming New/S/A, whose version is 4, give ONE `SKEL-ILEAN-VERSION New/S/A.ilean 4` (the file is "
+                  "reported, not the row)")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, ILV_BODY, {"New/S/A": _lean(), "New/S/B": _lean()}, ileans=ilv_ileans(A=4),
+                      index=_index([_srow("`x`", "`New/S/A`", "c"), _srow("`y`", "`New/S/A`", "d")]))
+            spine = _spine_and_index(g, _ildir(g), {"New/S/A": "lean-s-a"}, [], {})
+        return _eq(spine, [("SKEL-ILEAN-VERSION", "New/S/A.ilean", "4")])
+
+    @case("OVK1", "a key of --strings-overlay or --strings-overlay-graph that the builder does not copy into index.json `strings` (the page's keys and GRAPH_OPTIONAL_KEYS) is refused by name "
+                  "`SKEL-OVERLAY-KEY <overlay file basename> <key> is not a key the page reads`, all such keys reported sorted (by file name, then key), exit 1, OUT_DIR not written: an unknown key in "
+                  "the Cards overlay, one in the Graph overlay, two in each (sorted); a key of the optional list and a required key still build; the two overlay files of this checkout build")
+    def _():
+        with _tmp() as d:
+            g, sp, ol = go_setup(d)
+            cards = go_file(d, "c.json", GO_CARDS)
+            graph = go_file(d, "g.json", GO_GRAPH)
+            one_c = go_run(d, g, sp, ol, "o1", overlay=go_file(d, "cx.json", dict(GO_CARDS, bogus="x")), graph=graph)
+            one_g = go_run(d, g, sp, ol, "o2", overlay=cards, graph=go_file(d, "gx.json", dict(GO_GRAPH, bogus="x")))
+            many = go_run(d, g, sp, ol, "o3", overlay=go_file(d, "cm.json", dict(GO_CARDS, zeta="x", alpha="x")), graph=go_file(d, "gm.json", dict(GO_GRAPH, mid="x", beta="x")))
+            known = go_run(d, g, sp, ol, "o4", overlay=cards, graph=graph)
+            real = go_run(d, g, sp, ol, "o5", overlay=os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), graph=os.path.join(_HERE, os.pardir, "site", "strings-lean-graph.json"))
+        line = lambda f, k: "SKEL-OVERLAY-KEY %s %s is not a key the page reads" % (f, k)
+        return _eq(((one_c[0], one_c[1], one_c[3]), (one_g[0], one_g[1], one_g[3]), (many[0], many[1], many[3]), known[0], real[0]),
+                   ((1, [line("cx.json", "bogus")], False), (1, [line("gx.json", "bogus")], False),
+                    (1, [line("cm.json", "alpha"), line("cm.json", "zeta"), line("gm.json", "beta"), line("gm.json", "mid")], False), 0, 0))
 
     return cases
 
