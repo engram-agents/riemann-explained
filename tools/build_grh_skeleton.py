@@ -3982,6 +3982,16 @@ def _selftest_cases():
         return _eq((r[0], lines, len(set(lines))),
                    (1, ["SKEL-READING-MISSING a\\x0ab.md date", "SKEL-READING-MISSING a\\\\x0ab.md date", "SKEL-READING-MISSING b\\\\s.md date", "SKEL-READING-DATE dbs.md a\\\\b"], 4))
 
+    @case("RD18", "contributed notes, the id (the page's element rule is `^[a-z0-9][a-z0-9._-]*$`, the builder's is narrower: `[a-z0-9][a-z0-9-]{0,63}`, the first character a-z or 0-9, at most 64 characters, no dot or "
+                  "underscore): `-x`, `-`, `--a`, `aB`, `a.b`, `a_b`, `.a` and 65 characters are refused (`SKEL-READING-ID <file> <id>`); `x-`, `a-b`, `0a`, `a`, `0` and 64 characters are taken; the id of a note "
+                  "after the first is checked too")
+    def _():
+        bad = ("-x", "-", "--a", "aB", "a.b", "a_b", ".a", "a" * 65, "a-" + "b" * 63)
+        ok = ("x-", "a-b", "0a", "a", "0", "a" * 64, "0" + "-" * 63)
+        second = rd_build({"a.md": rd_note(id="good-one"), "b.md": rd_note(id="-x")})[0]
+        return _eq(([rd_errs(id=v) for v in bad], [rd_errs(id=v) for v in ok], second),
+                   ([[("SKEL-READING-ID", "n.md", v)] for v in bad], [[] for v in ok], [("SKEL-READING-ID", "b.md", "-x")]))
+
     @case("RDR", "the real source and the eleven notes (give `--selftest --grh DIR --ilean-dir DIR --notes-lean-dir DIR`; otherwise SKIPPED; the folder holds exactly the eleven numbered notes): the build is accepted with the "
                  "pin 72fead10..., 11 readings on 7 distinct file steps: one-sided-bound 07, 09, 10; zeros-criterion 01, 03; main-inequality 04, 11 (note-id order); bad-types 02; short-and-enough 05; "
                  "twist-long-forms 06; prime-sums 08; index.json `readings` has 11 rows (every row's "
