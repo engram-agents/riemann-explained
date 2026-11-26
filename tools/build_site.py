@@ -13458,6 +13458,25 @@ def _selftest_cases():
         return run_
     cases[:] = [(cid, desc, without_graph(fn) if cid in no_graph_cases else fn) for cid, desc, fn in cases]
 
+    @case("GRS1", "a caller may hand _graph_files its own symbol table (`symbols=`, default the table of GRAPH_SYMBOLS): a table with one more kind row, module (class "
+                  "kind-module, words symbol_kind_module), accepts a step of kind module, lists the row last in symbols.order.kinds and in symbols.kinds with its words "
+                  "resolved, and makes index.json `strings` 21 keys (the 20 and symbol_kind_module); without the argument kind module is still GRAPH-SYMBOL and `strings` "
+                  "is still the 20 keys; passing GRAPH_SYMBOLS itself writes the same bytes as passing nothing")
+    def _():
+        extra = dict(GRAPH_SYMBOLS, kinds=dict(GRAPH_SYMBOLS["kinds"], module={"class": "kind-module", "words": "symbol_kind_module"}))
+        st = dict(_strings(), symbol_kind_module="Module words")
+        rows = [gr_row("a", kind="module"), gr_row("b", "a", 1)]
+        errs, objs = _graph_files(rows, "c0", st, symbols=extra)
+        d_errs, d_objs = _graph_files(rows, "c0", st)
+        plain = [gr_row("a"), gr_row("b", "a", 1)]
+        same = _graph_bytes(_graph_files(plain, "c0", st)[1]) == _graph_bytes(_graph_files(plain, "c0", st, symbols=GRAPH_SYMBOLS)[1])
+        ix = objs["graph/index.json"]
+        base_ix = _graph_files(plain, "c0", st)[1]["graph/index.json"]
+        return _eq((errs, ix["symbols"]["order"]["kinds"], ix["symbols"]["kinds"]["module"], len(ix["strings"]), "symbol_kind_module" in ix["strings"],
+                    objs["graph/step/a.json"]["card"]["kind"], [(c, w) for c, w, _ in d_errs], d_objs, len(base_ix["strings"]), base_ix["symbols"]["order"]["kinds"], same),
+                   ([], ["theorem", "def", "structure", "module"], {"class": "kind-module", "text": "Module words", "words": "symbol_kind_module"}, 21, True,
+                    "module", [("GRAPH-SYMBOL", "a")], {}, 20, ["theorem", "def", "structure"], True))
+
     return cases
 
 
