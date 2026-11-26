@@ -11307,13 +11307,13 @@ def _selftest_cases():
     @case("GR2", "G1 S3 (G1b S3, S4): graph/index.json holds exactly the keys assets, commit, format, max_children, rests_on, steps, strings, symbols, top; top "
                  "is the top ids in `order` (g1, g3, g2); rests_on holds the two links between top steps (g3 rests on g1 and on g2, both paths []); symbols "
                  "holds exactly order (kinds, proofs, states), kinds, proofs and states, each row exactly class, text, words, with the resolved words as "
-                 "`text`, the kind `structure` and the state rows that no step uses included; strings is the object of the 21 keys (the 9 words keys, the 11 run-time keys of G2a and role_named_statement, which g1a1's role makes part of it) with their values; "
+                 "`text`, the kind `structure` and the state rows that no step uses included; strings is the object of the 20 keys (the 9 words keys and the 11 run-time keys of G2a; role_named_statement is never in it, though g1a1 carries a role) with their values; "
                  "steps is 6; assets is an empty object; commit is the notes commit string as built (`unknown`)")
     def _():
         ix = _base().js("graph/index.json")
         row = lambda cls, key: {"class": cls, "text": GR_WORDS[key], "words": key}
         want = {"assets": {}, "commit": "unknown", "format": 1, "max_children": 40,
-                "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": dict(GR_WORDS, **GA_RUNTIME, **GA_ROLE),
+                "rests_on": [gr_link("g3", "g1", [], []), gr_link("g3", "g2", [], [])], "steps": 6, "strings": dict(GR_WORDS, **GA_RUNTIME),
                 "symbols": {"kinds": {"def": row("kind-def", "symbol_kind_def"),
                                       "structure": row("kind-structure", "symbol_kind_structure"), "theorem": row("kind-theorem", "symbol_kind_theorem")},
                             "order": {"kinds": ["theorem", "def", "structure"], "proofs": ["read", "not_read", "none"], "states": ["read", "census", "none"]},
@@ -11795,7 +11795,7 @@ def _selftest_cases():
                     {"g1a": "not_read", "g1a1": "none", "g1a1x": "not_read"}, []))
 
     @case("GR25", "G1b S3, S4 the strings object: index.json `strings` is {key: text} for exactly the 9 `words` keys of the symbols rows (3 kinds, 3 states, "
-                  "3 proofs) and the 11 run-time keys (G2a) with the strings file's values and no other key (a build with a named-statement step adds role_named_statement: GA14); every `words` of every row is a "
+                  "3 proofs) and the 11 run-time keys (G2a) with the strings file's values and no other key (role_named_statement is never in it: GA14); every `words` of every row is a "
                   "key of `strings`; `text` of every row is `strings[words]`; a value with `{n}` in it stays literal in both places")
     def _():
         ix = _base().js("graph/index.json")
@@ -11805,8 +11805,8 @@ def _selftest_cases():
         sj["sheet_proof_read"] = "{n} proofs read"
         ix2 = _graph_files([gr_row("a")], "c0", sj)[1]["graph/index.json"]
         return _eq((sorted(st), sorted(r["words"] for r in rows), len(rows), all(r["words"] in st for r in rows), all(r["text"] == st[r["words"]] for r in rows),
-                    st == dict(GR_WORDS, **GA_RUNTIME, **GA_ROLE), ix2["strings"]["sheet_proof_read"], ix2["symbols"]["proofs"]["read"]["text"], sorted(ix2["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME))),
-                   (sorted(dict(GR_WORDS, **GA_RUNTIME, **GA_ROLE)), sorted(GR_WORDS), 9, True, True, True, "{n} proofs read", "{n} proofs read", True))
+                    st == dict(GR_WORDS, **GA_RUNTIME), ix2["strings"]["sheet_proof_read"], ix2["symbols"]["proofs"]["read"]["text"], sorted(ix2["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME))),
+                   (sorted(dict(GR_WORDS, **GA_RUNTIME)), sorted(GR_WORDS), 9, True, True, True, "{n} proofs read", "{n} proofs read", True))
 
     @case("GR26", "G1b S5 exact keys and paths: the keys of index.json, of a step file, of a closed card (with and without role) and of a child; a link of a "
                   "depth-4 step (rows a > b > c > d > e, f; f rests on e): from_path and to_path are the ancestors plus the parent, [a, b, c, d]; the "
@@ -12029,12 +12029,12 @@ def _selftest_cases():
                 "importScripts", "document.write", "new Function"]
         return _eq([prod.count(t) for t in toks], [0] * 11)
 
-    @case("GA7", "G2a A4: index.json `strings` of a build with no step that carries a role is EXACTLY 20 keys, sorted: the 9 `words` keys of the symbols rows and the 11 run-time keys (parts_n, part_one, "
+    @case("GA7", "G2a A4: index.json `strings` of EVERY build (the fixture build has a step with a role too) is EXACTLY 20 keys, sorted: the 9 `words` keys of the symbols rows and the 11 run-time keys (parts_n, part_one, "
                  "open_parts, close_parts, claim_more, claim_less, crumb_label, link_refused, parts_failed_notice, key_kinds_heading, key_states_heading), "
                  "each with its value (literals; `{n}` literal in parts_n; the values of the wording file, link_refused and the two key headings from the "
                  "page layer's fixture); GRAPH_RUNTIME_KEYS is the 11; the fixture strings hold them; no key_proofs_heading")
     def _():
-        ix = json.loads(_graph_bytes(_graph_files([gr_row("a")], "c0", _strings())[1])["graph/index.json"])   # no step with a role: the 20 keys, as written
+        ix = _base().js("graph/index.json")
         want = dict(GR_WORDS, **GA_RUNTIME)
         return _eq((ix["strings"], sorted(ix["strings"]) == list(ix["strings"]), len(ix["strings"]), list(GRAPH_RUNTIME_KEYS),
                     {k: _strings().get(k) for k in GA_RUNTIME}, "key_proofs_heading" in ix["strings"]),
@@ -12043,7 +12043,7 @@ def _selftest_cases():
 
     @case("GA8", "G2a A4 the exact set is checked, both ways, through the pure functions: a strings object with one key extra is `GRAPH-STRINGS <key> is not a key the "
                  "page reads`, one with a key missing is `GRAPH-STRINGS <key> missing` (missing first, then extra, each sorted); the same through "
-                 "_graph_count_errors on a planted index object; _graph_files with a strings dict that lacks a run-time key refuses with GRAPH-STRINGS missing "
+                 "_graph_count_errors on a planted index object, and role_named_statement planted into the object (also on files whose steps carry a role) is an extra key; _graph_files with a strings dict that lacks a run-time key refuses with GRAPH-STRINGS missing "
                  "and returns no files; the full set is accepted")
     def _():
         full = dict(GR_WORDS, **GA_RUNTIME)
@@ -12056,12 +12056,17 @@ def _selftest_cases():
         sj = _strings()
         del sj["claim_more"]
         e, o = _graph_files(rows, "c0", sj)
+        withrole = _graph_files([gr_row("a"), gr_row("b", "a", 1, role="W")], "c0", _strings())[1]
+        withrole["graph/index.json"]["strings"]["role_named_statement"] = "Named statement"
         return _eq((_graph_strings_errors(full), _graph_strings_errors(extra), _graph_strings_errors(short), _graph_strings_errors(both),
-                    [x for x in _graph_count_errors(objs) if x[0] == "GRAPH-STRINGS"], e, o),
+                    [x for x in _graph_count_errors(objs) if x[0] == "GRAPH-STRINGS"], e, o,
+                    _graph_strings_errors(dict(full, **GA_ROLE)), [x for x in _graph_count_errors(withrole) if x[0] == "GRAPH-STRINGS"]),
                    ([], [("GRAPH-STRINGS", "zeta", "is not a key the page reads")], [("GRAPH-STRINGS", "open_parts", "missing")],
                     [("GRAPH-STRINGS", "open_parts", "missing"), ("GRAPH-STRINGS", "alpha", "is not a key the page reads"),
                      ("GRAPH-STRINGS", "zeta", "is not a key the page reads")],
-                    [("GRAPH-STRINGS", "zeta", "is not a key the page reads")], [("GRAPH-STRINGS", "claim_more", "missing")], {}))
+                    [("GRAPH-STRINGS", "zeta", "is not a key the page reads")], [("GRAPH-STRINGS", "claim_more", "missing")], {},
+                    [("GRAPH-STRINGS", "role_named_statement", "is not a key the page reads")],
+                    [("GRAPH-STRINGS", "role_named_statement", "is not a key the page reads")]))
 
     @case("GA9", "G2a A4 the strings file: site/strings.json of this checkout holds the 11 run-time keys with the values of GA7 (literals) and no key_proofs_heading, "
                  "and the builder's own check passes it; `{n}` is allowed in parts_n only and is required there (parts_n with no {n}: `is missing the "
@@ -12108,6 +12113,8 @@ def _selftest_cases():
         eng = sorted("engine/" + n for n in ("camera.js", "controller.js", "dom.js", "emitter.js", "engine.css", "ids.js", "index.js", "input.js", "layout.js",
                                               "links.js", "options.js", "view.js"))
         b = _build(graph_src=_GRAPH_SRC_AT_START)
+        with open(os.path.join(_GRAPH_SRC_AT_START, "shell.html"), "rb") as f:   # the page layer's shell: read for the gate, never an asset, never copied
+            shell_disk = f.read()
         disk = {}
         for k in assets:
             with open(os.path.join(_GRAPH_SRC_AT_START, *k.split("/")), "rb") as f:
@@ -12115,8 +12122,9 @@ def _selftest_cases():
         return _eq((errs, [k for k in eng if k not in assets], [k for k in assets if "test/" in k or k.endswith(".md") or k == "shell.html"],
                     [k for k in assets if k.split("/")[0] not in ("engine", "page") and k != "graph.css"], _graph_sink_errors(assets, shell), b.rc,
                     b.js("graph/index.json")["assets"] == {k: hashlib.sha256(v).hexdigest() for k, v in disk.items()},
-                    all(b.files["graph/" + k] == v for k, v in disk.items())),
-                   ([], [], [], [], [], 0, True, True))
+                    all(b.files["graph/" + k] == v for k, v in disk.items()), shell == shell_disk, "graph/shell.html" in b.files,
+                    [k for k in b.files if k.endswith("shell.html")], [ln for ln in b.out.splitlines() if "shell.html" in ln]),
+                   ([], [], [], [], [], 0, True, True, True, False, [], []))
 
     @case("GA12", "G2a the count assert for assets (contract section 2): every `assets` entry has its file and the file's sha256 matches: a planted wrong digest is "
                   "`GRAPH-COUNT <path> asset sha256 does not match its file`, a listed file that is not there is `GRAPH-COUNT <path> asset has no file`; "
@@ -12148,8 +12156,8 @@ def _selftest_cases():
 
     @case("GA14", "G2a (contract section 10) the ROLE WORD: `role` of a closed card and of a closed child is the short word of the strings key role_named_statement "
                   "(\"Named statement\"), not the list page's sentence, and stays ABSENT for a step with no role words; GRAPH_ROLE_WORDS maps the role named_statement "
-                  "to that key; the key joins index.json `strings` only when a step carries a role: the fixture build (g1a1 is a named statement) has the 21 keys, rows "
-                  "with no role give the 20; the full sentence is still in the card markup of the list page; site/strings.json holds the key with the word")
+                  "to that key, which is resolved into the card's `role` at build time and is NEVER a key of index.json `strings` (20 keys with or without a step that "
+                  "carries a role); the full sentence is still in the card markup of the list page; site/strings.json holds the key with the word")
     def _():
         b = _base()
         with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
@@ -12158,12 +12166,12 @@ def _selftest_cases():
         withrole = _graph_files([gr_row("a"), gr_row("b", "a", 1, role="W")], "c0", _strings())[1]["graph/index.json"]["strings"]
         g1a = {c["id"]: c.get("role") for c in b.js("graph/step/g1a.json")["children"]}
         return _eq((GRAPH_ROLE_WORDS, g1a, b.js("graph/step/g1a1.json")["card"].get("role"), "role" in b.js("graph/step/g1.json")["card"],
-                    sorted(b.js("graph/index.json")["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME, **GA_ROLE)), len(b.js("graph/index.json")["strings"]),
+                    sorted(b.js("graph/index.json")["strings"]) == sorted(dict(GR_WORDS, **GA_RUNTIME)), len(b.js("graph/index.json")["strings"]),
                     len(none), "role_named_statement" in none, len(withrole), withrole.get("role_named_statement"),
                     _strings()["named_statement_use_line"] in b.page, GR_ROLE in b.page, real.get("role_named_statement"),
                     _strings_problems(real), "role_named_statement" in STRING_KEYS, "role_named_statement" in TEXT_KEYS),
-                   ({"named_statement": "role_named_statement"}, {"g1a1": "Named statement"}, "Named statement", False, True, 21,
-                    20, False, 21, "Named statement", True, False, "Named statement", [], True, True))
+                   ({"named_statement": "role_named_statement"}, {"g1a1": "Named statement"}, "Named statement", False, True, 20,
+                    20, False, 20, None, True, False, "Named statement", [], True, True))
 
     @case("GA15", "G2a (section 10) GRAPH-ROLE: a role word of 24 characters is accepted, one of 25 is `GRAPH-ROLE <id> is longer than 24 characters`, one with a line "
                   "break is `GRAPH-ROLE <id> has a line break`, each through a build with the value planted in the strings file (exit 1 and nothing written for the two "
@@ -12200,6 +12208,27 @@ def _selftest_cases():
             text = f.read()
         defs = re.findall(r"^GRAPH_SHORT_MAX = (.*?)\s*(?:#.*)?$", text, re.M)
         return _eq((GRAPH_SHORT_MAX, nm.SHORT_MAX, GRAPH_SHORT_MAX == nm.SHORT_MAX, defs), (50, 50, True, ["nm.SHORT_MAX"]))
+
+    @case("GA18", "G2a the builder's own self-test does not read the live outline: a copy of tools/, site/ and outline/ in which the outline has lost the `short` of a "
+                  "step that has no title (so the real build would refuse it, GRAPH-SHORT, which the copy's face-line check shows) passes the self-test cases that "
+                  "used to read outline/outline.json (GR5 and GR21) in a child interpreter (exit 0, SELFTEST PASS); and no case of this file reads outline/outline.json "
+                  "from the checkout (the source holds no such path, counted)")
+    def _():
+        with open(os.path.join(_HERE, "fixtures", "outline_faces.json"), encoding="utf-8") as f:
+            o = json.load(f)
+        victim = next(g for g in o["groups"] if "short" in g and "title" not in g and g["claim"] is not None)
+        del victim["short"]
+        with open(os.path.abspath(__file__), encoding="utf-8") as f:
+            text = f.read()
+        with tempfile.TemporaryDirectory() as d:
+            shutil.copytree(_HERE, os.path.join(d, "tools"), ignore=shutil.ignore_patterns("__pycache__"))
+            shutil.copytree(os.path.join(_HERE, os.pardir, "site"), os.path.join(d, "site"))
+            _put(os.path.join(d, "outline", "outline.json"), json.dumps(o))
+            r = subprocess.run([sys.executable, os.path.join(d, "tools", "build_site.py"), "--selftest", "--only", "GR5,GR21"], capture_output=True, text=True,
+                               timeout=300, env={k: v for k, v in os.environ.items() if k != "RH_CHROME"})
+        return _eq((r.returncode, r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[-200:],
+                    [(c, i) for c, i, _m in _graph_line_errors(o["groups"], "LBL")], text.count('os.pardir, "out' + 'line"')),
+                   (0, "SELFTEST PASS", [("GRAPH-SHORT", victim["id"])], 0))
 
     # G1: the older cases below plant data the graph cannot hold, to test something else: a premise on a step that is neither a sibling nor the step's own
     # child (the premises line, PL*, PRM*), or a root kind outside the symbol table (the proof facts, PRK*, NONE1, F41b, F49*). The graph refuses both (GRAPH-EDGE,
