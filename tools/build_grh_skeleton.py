@@ -448,7 +448,7 @@ KIND_ROWS = {"part": {"class": "kind-part", "words": "symbol_kind_part"}, "group
              "file": {"class": "kind-file", "words": "symbol_kind_file"}}
 ORDERS = {"kinds": ["part", "group", "file"], "states": [], "proofs": []}
 OVERLAY_WORDS = {"key_kinds_heading": "What a box is", "symbol_kind_part": "Part of the argument", "symbol_kind_group": "Group of files",
-                 "symbol_kind_file": "Lean file"}
+                 "symbol_kind_file": "Lean file", "card_kind_part": "Part", "card_kind_group": "Group", "card_kind_file": "File"}
 
 
 def _lean(decl="theorem t : True := trivial", note="", imports=()):
@@ -704,10 +704,10 @@ def _selftest_cases():
                     ix["strings"]["key_kinds_heading"], "symbol_kind_module" in ix["strings"], ix["sibling_layout"], "symbol_kind_module" in _strings(extra=False),
                     sorted({c["state"] for k, v in files.items() if k.startswith("graph/step/") for c in [json.loads(v.decode("utf-8"))["card"]]})),
                    ([], ["part", "group", "file", "file", "part", "group", "file"], {"part": 2, "group": 2, "file": 3}, [("none", "none")], ORDERS,
-                    {"part": {"class": "kind-part", "text": "Part of the argument", "words": "symbol_kind_part"},
-                     "group": {"class": "kind-group", "text": "Group of files", "words": "symbol_kind_group"},
-                     "file": {"class": "kind-file", "text": "Lean file", "words": "symbol_kind_file"}},
-                    ["census", "none", "read"], ["none", "not_read", "read"], 20, "What a box is", False, "column", False, ["none"]))
+                    {"part": {"card_words": "card_kind_part", "class": "kind-part", "text": "Part of the argument", "words": "symbol_kind_part"},
+                     "group": {"card_words": "card_kind_group", "class": "kind-group", "text": "Group of files", "words": "symbol_kind_group"},
+                     "file": {"card_words": "card_kind_file", "class": "kind-file", "text": "Lean file", "words": "symbol_kind_file"}},
+                    ["census", "none", "read"], ["none", "not_read", "read"], 23, "What a box is", False, "column", False, ["none"]))
 
     @case("SK6", "uses sidecar: graph/uses.json is {commit: the pin, format: 1, uses: {file id: [ids of every New file it imports, in any group, sorted, no self]}} "
                  "with an entry for every FILE step and none for a section or a group; an import outside New is not in it; it is not in index.json `steps`")
@@ -1021,7 +1021,8 @@ def _selftest_cases():
                   "checkout (site/strings-lean.json) holds exactly the four placeholder words")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
-        full = {"key_kinds_heading": "Replaced heading", "symbol_kind_part": "P words", "symbol_kind_group": "G words", "symbol_kind_file": "F words", "extra_key": "x"}
+        full = {"key_kinds_heading": "Replaced heading", "symbol_kind_part": "P words", "symbol_kind_group": "G words", "symbol_kind_file": "F words",
+                "card_kind_part": "P", "card_kind_group": "G", "card_kind_file": "F", "extra_key": "x"}
         with _tmp() as d:
             g = _tree(d, body, {"New/S/A": _lean()})
             sp = _strings_file(d, _strings(extra=False))
@@ -1037,6 +1038,7 @@ def _selftest_cases():
             ix = _j(_tree_files(os.path.join(d, "o1")), "graph/index.json")
             part = {k: v for k, v in full.items() if k != "symbol_kind_group"}
             short = _cli(_args(g, os.path.join(d, "o2"), sp, ol, overlay=overlay(part, "ov2.json")))
+            nocard = _cli(_args(g, os.path.join(d, "o6"), sp, ol, overlay=overlay({k: v for k, v in full.items() if k != "card_kind_group"}, "ov6.json")))
             gone = _cli(_args(g, os.path.join(d, "o3"), sp, ol, overlay=os.path.join(d, "nothing.json")))[0]
             bad = _cli(_args(g, os.path.join(d, "o4"), sp, ol, overlay=overlay("{x", "ov4.json")))[0]
             arr = _cli(_args(g, os.path.join(d, "o5"), sp, ol, overlay=overlay("[1]", "ov5.json")))[0]
@@ -1044,9 +1046,11 @@ def _selftest_cases():
             absent = [os.path.exists(os.path.join(d, n)) for n in ("o2", "o3", "o4", "o5")]
         with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
             repo_overlay = json.load(f)
-        return _eq((ok[0], len(ix["strings"]), ix["strings"]["key_kinds_heading"], ix["symbols"]["kinds"]["file"]["text"], "extra_key" in ix["strings"], unchanged,
-                    short[0], short[1].splitlines(), gone, bad, arr, absent, repo_overlay),
-                   (0, 20, "Replaced heading", "F words", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 2, 2, 2, [False] * 4, OVERLAY_WORDS))
+        return _eq((ok[0], len(ix["strings"]), ix["strings"]["key_kinds_heading"], ix["symbols"]["kinds"]["file"]["text"], ix["symbols"]["kinds"]["file"]["card_words"],
+                    ix["strings"]["card_kind_file"], "extra_key" in ix["strings"], unchanged, short[0], short[1].splitlines(), nocard[0], nocard[1].splitlines(), gone, bad, arr,
+                    absent, repo_overlay),
+                   (0, 23, "Replaced heading", "F words", "card_kind_file", "F", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 1,
+                    ["GRAPH-STRINGS card_kind_group missing"], 2, 2, 2, [False] * 4, OVERLAY_WORDS))
 
     @case("SK13", "the real source (give `--selftest --grh DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
                   "depth 3, 298 links drawn and 226 imports not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
@@ -1067,9 +1071,9 @@ def _selftest_cases():
         kids = _j(files, f"graph/step/{gid}.json")["children"][:3]
         order = _j(files, "graph/index.json")["symbols"]["order"]
         stems = sum(1 for k, v in files.items() if k.startswith("graph/step/") for c in json.loads(v.decode("utf-8"))["children"] if c["parent_rests_on"])
-        return _eq((errs, order, _j(files, "graph/index.json")["sibling_layout"], stems, len(live), rep["steps"], rep["kinds"], sorted({(r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
+        return _eq((errs, order, _j(files, "graph/index.json")["sibling_layout"], stems, len(_j(files, "graph/index.json")["strings"]), len(live), rep["steps"], rep["kinds"], sorted({(r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
                     rep["not_drawn"], max(len(r["id"]) for r in rows), len(rep["cut"]), cut_ids, [c["title"] for c in kids] == first3, len(first3), len(files)),
-                   ([], ORDERS, "column", 0, 23, 353, {"part": 9, "group": 38, "file": 306}, [("none", "none")],
+                   ([], ORDERS, "column", 0, 23, 23, 353, {"part": 9, "group": 38, "file": 306}, [("none", "none")],
                     ["lean-reduction", "lean-derivatives", "lean-upper-bound", "lean-spanning", "lean-determinant", "lean-one-lift", "lean-congruences", "lean-appendix",
                      "lean-the-last-file"], 23, 3, 298, 226, 64, 3,
                     ["lean-congruences--lifting-crystalline-extension-classes-i-07869b", "lean-congruences-galois-representations-rows-and-columns-7a36a5",

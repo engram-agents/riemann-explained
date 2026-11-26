@@ -13595,6 +13595,36 @@ def _selftest_cases():
         return _eq(([[tuple(e) for e in g[0]] for g in got], [g[1] for g in got]),
                    ([[("GRAPH-LAYOUT", v, "only column is allowed")] for v in ("rows", "", "5", "True", "Column")], [{}] * 5))
 
+    @case("GRC1", "a kinds row of a caller's table may carry `card_words`, a KEY of `strings`: the row in symbols.kinds is {card_words, class, text, words} (`text` the "
+                  "resolved label of `words`, `card_words` the key itself), index.json `strings` holds the words keys AND the card_words keys of the table (23 keys for a "
+                  "table of three such kinds), a card_words naming a key that `strings` lacks is `GRAPH-STRINGS <key> missing` (no crash), a card_words that is not a string, "
+                  "or one on a states or proofs row, is refused; the live table has no card_words: its rows are {class, text, words} and `strings` stays 20 keys")
+    def _():
+        rows3 = {k: {"card_words": f"card_kind_{k}", "class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in ("part", "group", "file")}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="Part words", symbol_kind_group="Group words", symbol_kind_file="File words", card_kind_part="Part", card_kind_group="Group",
+                  card_kind_file="File")
+        rows = [gr_row("a", kind="part", state="none", proof="none"), gr_row("b", "a", 1, kind="file", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
+        ix = objs["graph/index.json"]
+        dangling = {k: v for k, v in st.items() if k != "card_kind_file"}
+        d_errs, d_objs = _graph_files(rows, "c0", dangling, symbols=own)
+        bad_state = dict(own, states=dict(own["states"], read=dict(own["states"]["read"], card_words="card_kind_file")))
+        bad_proof = dict(own, proofs=dict(own["proofs"], none=dict(own["proofs"]["none"], card_words="card_kind_file")))
+        bad_type = dict(own, kinds=dict(rows3, file=dict(rows3["file"], card_words=5)))
+        live = _graph_files([gr_row("a")], "c0", st)[1]["graph/index.json"]
+        return _eq((errs, ix["symbols"]["kinds"]["file"], len(ix["strings"]), sorted(k for k in ix["strings"] if k.startswith("card_kind")), sorted(ix["symbols"]["kinds"]["part"]),
+                    [tuple(e) for e in d_errs], d_objs,
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=bad_state)[0]], [tuple(e) for e in _graph_files(rows, "c0", st, symbols=bad_proof)[0]],
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=bad_type)[0]],
+                    sorted(live["symbols"]["kinds"]["theorem"]), len(live["strings"])),
+                   ([], {"card_words": "card_kind_file", "class": "kind-file", "text": "File words", "words": "symbol_kind_file"}, 23,
+                    ["card_kind_file", "card_kind_group", "card_kind_part"], ["card_words", "class", "text", "words"],
+                    [("GRAPH-STRINGS", "card_kind_file", "missing")], {},
+                    [("GRAPH-SYMBOL", "states.read", "has card_words (only a kinds row may)")], [("GRAPH-SYMBOL", "proofs.none", "has card_words (only a kinds row may)")],
+                    [("GRAPH-STRINGS", "kinds.file.card_words", "is not a string")],
+                    ["class", "text", "words"], 20))
+
     return cases
 
 
