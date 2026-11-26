@@ -2917,11 +2917,11 @@ def _selftest_cases():
         return _eq(out, [([], None, [], False), ([], 1, ["1"], True), ([], 1.5, ["1.5"], True), ([], 2.0, ["2.0"], True)])
 
     @case("SC2", "anything but a positive finite number is refused `GRAPH-SCALE-FLOOR <value>` and nothing is returned: zero, a negative, nan, inf, a non-numeric text, a bool, an empty "
-                 "string, the text `1e400` (a number too large to be finite; the command line names it as given) (the function), and the same texts on the command line (exit 1, OUT not written); a missing value after the option is exit 2; `1`, `1.5` and `1e3` are accepted "
+                 "string, the text `1e400` (a number too large to be finite; the command line names it as given), an integer too large for a float (the number 10**400 as a function argument; the texts of 400 and of 5000 digits on the command line, the second beyond the 4300-digit limit of Python\'s integer parser) (the function), and the same texts on the command line (exit 1, OUT not written); a missing value after the option is exit 2; `1`, `1.5` and `1e3` are accepted "
                  "(and written 1, 1.5 and 1000.0)")
     def _():
-        bad = [0, -1, float("nan"), float("inf"), "abc", True, False, "", "1e400"]
-        texts = ("0", "-1", "nan", "inf", "abc", "true", "", "1e400", "-0", "0.0")
+        bad = [0, -1, float("nan"), float("inf"), "abc", True, False, "", "1e400", 10 ** 400]
+        texts = ("0", "-1", "nan", "inf", "abc", "true", "", "1e400", "-0", "0.0", "1" * 400, "1" * 5000)
         with _tmp() as d:
             g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})
             fn = [(r[0], r[1]) for r in (build(g, PIN, _strings(), (), _ildir(g), open_scale_floor=v) for v in bad)]
@@ -2937,7 +2937,7 @@ def _selftest_cases():
                 rc = _cli(_args(g, o, sp, ol) + ["--open-scale-floor", text])[0]
                 ok[text] = (rc, re.findall(r'"open_scale_floor": ([^,\n]*)', _tree_files(o)["graph/index.json"].decode("utf-8")))
         return _eq((fn, cli, miss, ok),
-                   ([([("GRAPH-SCALE-FLOOR", s, "")], {}) for s in ("0", "-1", "nan", "inf", "abc", "True", "False", "", "1e400")],
+                   ([([("GRAPH-SCALE-FLOOR", s, "")], {}) for s in ("0", "-1", "nan", "inf", "abc", "True", "False", "", "1e400", str(10 ** 400))],
                     {text: (1, ["GRAPH-SCALE-FLOOR " + text], False) for text in texts}, 2, {"1": (0, ["1"]), "1.5": (0, ["1.5"]), "1e3": (0, ["1000.0"])}))
 
     @case("SC3", "the output with the option equals the output without it apart from that ONE key of index.json (every other file byte for byte, index.json equal once the key is "
