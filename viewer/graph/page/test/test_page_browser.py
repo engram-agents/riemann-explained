@@ -31,6 +31,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     blocked = set()
     garbage = set()     # paths answered 200 with a body that is not JSON
     delay = {}          # path -> threading.Event: the response waits until the event is set (at most 15 s)
+    status = {}         # path -> int: after any delay, the response is that error status (a slow-then-failing step file)
     seen = []
 
     def __init__(self, *a, **k):
@@ -41,6 +42,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path in Handler.delay:
             Handler.delay[path].wait(15)
+        if path in Handler.status:
+            self.send_error(Handler.status[path])
+            return
         if path in Handler.blocked:
             self.send_error(404)
             return
@@ -533,6 +537,180 @@ def c_dead_inflight(b, S, engine):
         gate.set()
         Handler.garbage = set()
         Handler.delay = {}
+
+
+# ------------------------------------------------------------------------------- ONE navigation ticket (the latest route wins)
+
+def hold_step(step_id, status=None):
+    """The server holds ONE step file until the returned event is set; with a status, it then answers that error."""
+    gate = threading.Event()
+    path = "/graph/step/%s.json" % step_id
+    Handler.delay[path] = gate
+    if status is not None:
+        Handler.status[path] = status
+    Handler.seen.clear()
+    return gate, path
+
+
+def held_arrived(pg, path):
+    waited = 0
+    while path not in Handler.seen and waited < 5000:
+        pg.page.wait_for_timeout(50)
+        waited += 50
+    assert path in Handler.seen, "the held request never arrived: " + path
+
+
+def nav_page(b, S, prep=True):
+    """A settled page. The page's own start fetches the three top step files, so a tap on a top card is served from the cache and has no
+    load in flight. With prep, the address #a1 is followed first: that opens a1's sheet (card C) and puts its siblings a2 and a3 on the
+    map with their step files NOT yet fetched, which is what a slow tap needs."""
+    pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+    if prep:
+        at_hash(pg, "a1")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a1'", 6000)
+    return pg
+
+
+def nav_clear():
+    Handler.delay = {}
+    Handler.status = {}
+
+
+def click_by_id(pg, i):
+    pg.ev("document.getElementById(%s).click()" % json.dumps(i))
+
+
+def c_nav_r1(b, S, engine):
+    """R1: tap A (slow, then a 500), then tap B (fast): B's sheet is open, no notice, no fallback, also after A answers."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2", 500)
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        tap(pg, "a3")
+        wait_sheet(pg, True)
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a3'", 5000)
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert shown_id(pg) == "a3" and sheet_open(pg), "B's sheet is the open one"
+        assert notice_text(pg) is None, "no notice for a card the reader left: %r" % notice_text(pg)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "no fallback"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r2(b, S, engine, how):
+    """R2: tap A (slow), then Escape (or the close button): when A resolves the sheet stays closed."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        if how == "escape":
+            pg.page.keyboard.press("Escape")
+        else:
+            click_by_id(pg, "graph-sheet-close")
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert not sheet_open(pg), "the close was undone by the load that resolved after it (%s)" % how
+        assert shown_id(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r3(b, S, engine):
+    """R3: tap A (slow), then the toolbar key: when A resolves the key panel is still the one shown."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        click_by_id(pg, "graph-key")
+        wait_sheet(pg, True)
+        assert pg.ev("document.querySelector('#graph-sheet-body .key-content') !== null")
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert pg.ev("document.querySelector('#graph-sheet-body .key-content') !== null"), "the key panel was replaced by the late card"
+        assert shown_id(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r4(b, S, engine):
+    """R4: deep link #A (slow) then #B (fast): the page ends on B (the sheet shows B; the address is #B)."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S, False)
+        gate, path = hold_step("a1")
+        at_hash(pg, "a1")
+        held_arrived(pg, path)
+        at_hash(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 6000)
+        gate.set()
+        pg.page.wait_for_timeout(900)
+        assert shown_id(pg) == "a2", "the page ended on %r, not on the later address" % shown_id(pg)
+        assert pg.ev("location.hash") == "#a2"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r5(b, S, engine):
+    """R5: card C open; tap A (slow); an in-sheet close request: when A resolves the sheet stays closed."""
+    gate = threading.Event()   # the hold is placed AFTER the page settles (the page's own start reads step files); set in finally
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        held_arrived(pg, path)
+        pg.ev("document.getElementById('a1').dispatchEvent(new CustomEvent('sheetcloserequest', {bubbles: true}))")
+        wait_sheet(pg, False)
+        gate.set()
+        pg.page.wait_for_timeout(700)
+        assert not sheet_open(pg), "an in-sheet close was undone by the load that resolved after it"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_nav_r6(b, S, engine):
+    """R6 control, unchanged: a single slow tap opens its sheet; a single failed load shows the parts notice; a 4xx the refused-link notice."""
+    gate = threading.Event()
+    try:
+        for code, want in ((None, None), (500, PARTS_FAILED), (404, LINK_REFUSED)):
+            nav_clear()
+            pg = nav_page(b, S)
+            gate, path = hold_step("a2", code)
+            tap(pg, "a2")
+            held_arrived(pg, path)
+            gate.set()
+            if code is None:
+                pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 5000)
+                assert sheet_open(pg)
+            else:
+                pg.wait("!document.getElementById('graph-notice').hidden", 5000)
+                assert notice_text(pg) == want, (code, notice_text(pg))
+                assert shown_id(pg) == "a1" and pg.ev("!!document.getElementById('graph-layer')"), "a single failure is a notice, the open card stays, no fallback"
+            pg.close()
+    finally:
+        gate.set()
+        nav_clear()
 
 
 # ---------------------------------------------------------------------------------------------- the open-parts route (S1)
@@ -2491,6 +2669,13 @@ def main():
                 run("after a fallback: a hash change, a premise link click and the keys move nothing", c_dead_after_fallback, eng)
                 run("after a fallback: a step load that was in flight moves nothing when it resolves", c_dead_inflight, eng)
                 run("a failed load (404) leaves the reader's open card open and shows the notice", c_failed_load_keeps_card)
+                run("nav R1: tap A (slow, then 500) then tap B (fast): B's sheet is open, no notice, no fallback", c_nav_r1, eng)
+                run("nav R2: tap A (slow) then Escape: when A resolves the sheet stays closed", c_nav_r2, eng, "escape")
+                run("nav R2: tap A (slow) then the close button: when A resolves the sheet stays closed", c_nav_r2, eng, "button")
+                run("nav R3: tap A (slow) then the toolbar key: the key panel is still the one shown", c_nav_r3, eng)
+                run("nav R4: deep link #A (slow) then #B (fast): the page ends on B", c_nav_r4, eng)
+                run("nav R5: card C open, tap A (slow), an in-sheet close request: the sheet stays closed", c_nav_r5, eng)
+                run("nav R6 control: a single slow tap opens; a single 500 is the parts notice; a 4xx the refused-link notice", c_nav_r6, eng)
                 if eng == "real":
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
