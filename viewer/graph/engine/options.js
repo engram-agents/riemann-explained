@@ -26,13 +26,17 @@ export const DEFAULTS = deepFreeze({
     frameOpenShare: 0.9, frameClosedShare: 0.85,   // framing keeps a closed node below this share of openPx
   },
   input: { tapSlopPx: 8, tapMs: 300, wheelStep: 0.0016, wheelCtrlStep: 0.01, keyZoom: 1.25, keyPanPx: 60 },
+  layout: {
+    siblings: "rows",              // "rows": siblings in rows by dependency depth; "column": a set with no drawn edge is a column (see layout.js)
+  },
   maxChildren: 40,                 // the fan-out the layout is designed for; more is refused
   maxHeld: 16,                     // closed one-level subtrees kept in the LRU cache
   fitOnStart: true,
   onListenerError: null,           // (error, eventType) -> void; null = rethrow outside the engine's call
 });
 
-const GROUPS = ["sizes", "zoom", "semantic", "input"];
+const GROUPS = ["sizes", "zoom", "semantic", "input", "layout"];
+const SIBLINGS = ["rows", "column"];
 const fail = (m) => { throw new TypeError("graph options: " + m); };
 const num = (g, k, v, min) => { if (!Number.isFinite(v) || v < min) fail(g + "." + k + " must be a finite number >= " + min); };
 
@@ -57,7 +61,7 @@ export function normalizeOptions(raw) {
       if (r === null || typeof r !== "object" || Array.isArray(r)) fail(k + " must be an object");
       for (const sub of Object.keys(r)) if (!Object.hasOwn(DEFAULTS[k], sub)) fail("unknown option " + k + "." + sub);
       o[k] = { ...DEFAULTS[k], ...r };
-      for (const [sub, v] of Object.entries(o[k])) if (!(k === "zoom" && sub === "fitMin")) num(k, sub, v, 0);
+      for (const [sub, v] of Object.entries(o[k])) if (k !== "layout" && !(k === "zoom" && sub === "fitMin")) num(k, sub, v, 0);
     } else o[k] = raw[k] === undefined ? DEFAULTS[k] : raw[k];
   }
   if (!Array.isArray(o.roots)) fail("roots must be an array");
@@ -71,6 +75,8 @@ export function normalizeOptions(raw) {
   for (const k of ["nodeW", "nodeH", "head"]) if (!(o.sizes[k] > 0)) fail("sizes." + k + " must be > 0");
   if (!(o.zoom.min > 0 && o.zoom.max > o.zoom.min)) fail("zoom.min must be > 0 and below zoom.max");
   resolveFitMin(o.zoom);
+  if (o.layout.siblings === undefined) o.layout.siblings = DEFAULTS.layout.siblings;
+  if (!SIBLINGS.includes(o.layout.siblings)) fail('layout.siblings must be "rows" or "column"');
   if (!(o.semantic.closePx > 0 && o.semantic.openPx > o.semantic.closePx)) fail("semantic.openPx must be above semantic.closePx (the gap is what stops flicker)");
   return o;
 }
