@@ -135,5 +135,14 @@
  "edition_href_blob": "https://github.com/engram-agents/riemann-explained/blob/notes-edition-1/{file}",
  "title_label": "What this step is:",
  "definition_label": "Definition.",
- "definition_join": "is defined as:"
+ "definition_join": "is defined as:",
+ "symbol_kind_theorem": "Square: the part is a theorem",
+ "symbol_kind_def": "Circle: the part is a definition",
+ "symbol_kind_structure": "Diamond: the part is a structure",
+ "sheet_statement_read": "Statement read",
+ "sheet_statement_census": "Statement counted, not read",
+ "sheet_statement_not_read": "Statement not read yet",
+ "sheet_proof_read": "proof read",
+ "sheet_proof_not_read": "proof not read yet",
+ "sheet_proof_none": "no proof to read"
 }
