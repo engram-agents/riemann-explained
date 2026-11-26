@@ -546,6 +546,8 @@ written the assembled tree (assets, and shell.html under its own name) goes thro
 <the scanner's REFUSED line>`, one per line. This file keeps no list of forbidden tokens (GA6 counts them). index.json `strings` is exactly the nine `words` keys and the
 GRAPH_RUNTIME_KEYS (parts_n holds {n} as written), checked as an exact set (`GRAPH-STRINGS <key> missing | is not a key the page reads`). A `GRAPH-COUNT` also names an asset whose file or
 sha256 is not the one listed. `role_named_statement` is never in `strings` (20 keys on every build; the role word is resolved into the card). GRAPH_SHORT_MAX is nm.SHORT_MAX. GR5 and GR21 read tools/fixtures/outline_faces.json, not the live outline (GA18).
+Also refused: a .js or .css under a folder the scanner skips (skipped-dir) or that is not a regular file (not-regular); the gate runs the scanner's quiet self-test first and
+requires its count of files checked to be the files given it (GA19 to GA22); a --graph-src that is not a folder is exit 2.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
@@ -12276,17 +12278,27 @@ def _selftest_cases():
         none_printed = GaScanner(0, "")
         right = GaScanner(0, "3 files checked, 0 refused, 0 skipped as test files\n")
         with_shell = GaScanner(0, "2 files checked, 0 refused, 0 skipped as test files\n")
+        over = GaScanner(0, "3 files checked, 0 refused, 0 skipped as test files\n")
+        extra = {"engine/index.js": "x\n", "engine/node_modules/y.js": "y\n"}
+        gjc.SKIP_DIRS.add("node_modules")   # the scanner's own table is the one the builder reads: a folder added to it there is refused here
+        try:
+            from_table = refuse(extra)
+        finally:
+            gjc.SKIP_DIRS.discard("node_modules")
         return _eq((refuse(dict(base, **{"engine/__pycache__/x.js": "y\n"})), refuse(dict(base, **{"__pycache__/x.js": "y\n"})),
                     refuse(dict(base, **{"engine/__pycache__/x.pyc": "y\n"})), refuse(dict(base, **{"engine/test/x.js": "y\n"})), deep_loose, root_loose,
                     _graph_sink_errors(two, None, scanner=skip_one), _graph_sink_errors(two, b"<p>s</p>\n", scanner=with_shell),
-                    _graph_sink_errors(two, None, scanner=none_printed), _graph_sink_errors(two, b"<p>s</p>\n", scanner=right), sorted(gjc.SKIP_DIRS)),
+                    _graph_sink_errors(two, None, scanner=none_printed), _graph_sink_errors(two, b"<p>s</p>\n", scanner=right), sorted(gjc.SKIP_DIRS),
+                    _graph_sink_errors(two, None, scanner=over), from_table, refuse(extra)),
                    (([("GRAPH-ASSET", "engine/__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
                     ([("GRAPH-ASSET", "__pycache__/x.js", "skipped-dir")], ["engine/index.js"]), ([], ["engine/index.js"]), ([], ["engine/index.js"]),
                     ([("GRAPH-ASSET", "engine/__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
                     ([("GRAPH-ASSET", "__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
                     [("GRAPH-SINK", "graph", "scanner checked 1 files but 2 were assets")],
                     [("GRAPH-SINK", "graph", "scanner checked 2 files but 3 were assets")],
-                    [("GRAPH-SINK", "graph", "scanner checked 0 files but 2 were assets")], [], ["__pycache__", "test"]))
+                    [("GRAPH-SINK", "graph", "scanner checked 0 files but 2 were assets")], [], ["__pycache__", "test"],
+                    [("GRAPH-SINK", "graph", "scanner checked 3 files but 2 were assets")],
+                    ([("GRAPH-ASSET", "engine/node_modules/y.js", "skipped-dir")], ["engine/index.js"]), ([], ["engine/index.js", "engine/node_modules/y.js"])))
 
     @case("GA20", "G2a an EXPLICIT --graph-src that is not a directory (absent, or a file) is exit 2, a message on stderr naming it, nothing on stdout and OUT_DIR not "
                   "written, through a build and through main(); the default folder being absent is not an error (GA1)")
