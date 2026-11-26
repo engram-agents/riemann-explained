@@ -2080,12 +2080,46 @@ def _graph_count_errors(objs, symbols=None):
     return out + _graph_strings_errors(ix["strings"], symbols)
 
 
-def _graph_files(rows, commit, strings, assets=None, symbols=None):
+GRAPH_STATUS_HIDDEN = ("module",)   # a card of one of these kinds draws no state frame and no status line, so its state and proof do not occur on the map
+
+
+def _graph_order_errors(rows, symbols, orders):
+    """[(GRAPH-ORDER, where, what)] for the order lists `orders` ({kinds, states, proofs}: lists of names of the tables of `symbols`). A list must hold no name twice,
+    only names of its table, in the table's own key order, and kinds may not be empty; when the lists are in that shape, every kind of a card, and every state and proof
+    of a card whose kind is not in GRAPH_STATUS_HIDDEN, must be in its list (the key must never be silent about something drawn): `GRAPH-ORDER <kind|state|proof> <value>`."""
+    out = []
+    for name in ("kinds", "states", "proofs"):
+        lst, table = list(orders[name]), list(symbols[name])
+        for v in dict.fromkeys(lst):
+            if lst.count(v) > 1:
+                out.append(("GRAPH-ORDER", name, f"lists {v} twice"))
+        unknown = [v for v in dict.fromkeys(lst) if v not in table]
+        out += [("GRAPH-ORDER", name, f"lists {v}, which is not a row of its table") for v in unknown]
+        if not [e for e in out if e[1] == name] and lst != [v for v in table if v in lst]:
+            out.append(("GRAPH-ORDER", name, "is not in the key order of its table"))
+        if name == "kinds" and not lst:
+            out.append(("GRAPH-ORDER", name, "is empty"))
+    if out:
+        return out
+    seen = set()
+    for r in rows:
+        for field, name in (("kind", "kinds"), ("state", "states"), ("proof", "proofs")):
+            if field != "kind" and r["kind"] in GRAPH_STATUS_HIDDEN:
+                continue
+            if r[field] in symbols[name] and r[field] not in orders[name] and (field, r[field]) not in seen:
+                seen.add((field, r[field]))
+                out.append(("GRAPH-ORDER", field, r[field]))
+    return out
+
+
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
-    hand one with more rows, whose `words` keys are then also keys of index.json `strings`). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
+    hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
+    (default: every row of each table, in its key order; see _graph_order_errors for what a list may hold). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
     four stop the run, since what follows needs a tree), then GRAPH-FANOUT, GRAPH-SYMBOL and GRAPH-EDGE together, then GRAPH-COUNT."""
     symbols = GRAPH_SYMBOLS if symbols is None else symbols
+    orders = {name: list(table) for name, table in symbols.items()} if orders is None else orders
     errors = []
     seen = set()
     for r in rows:
@@ -2127,6 +2161,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None):
         for field, table in (("kind", symbols["kinds"]), ("state", symbols["states"]), ("proof", symbols["proofs"])):
             if r[field] not in table:
                 errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}" + (f" {graph_kind_words()}" if field == "kind" else "")))
+    if not errors:   # an order list is judged against cards whose symbols are all in the tables
+        errors += _graph_order_errors(rows, symbols, orders)
     edges = {}   # sibling links, from -> [to]: the premises of a step that name a sibling
     for r in rows:
         for p in dict.fromkeys(r["premises"]):
@@ -2179,7 +2215,7 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None):
         "strings": {k: strings[k] for k in _graph_strings_keys(symbols) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
                          for name, table in symbols.items()},
-                        order={name: list(table) for name, table in symbols.items()}),
+                        order={name: list(orders[name]) for name in symbols}),
         "top": [r["id"] for r in kids.get("root", [])]}}
     for r in rows:
         objs[f"graph/step/{r['id']}.json"] = {
@@ -13487,7 +13523,7 @@ def _selftest_cases():
         full = {"kinds": ["theorem", "def", "structure"], "proofs": ["read", "not_read", "none"], "states": ["read", "census", "none"]}
         a = _graph_files(plain, "c0", _strings())[1]
         b = _graph_files(plain, "c0", _strings(), orders=dict(full))[1]
-        mod = {"kinds": ["theorem"], "states": [], "proofs": []}
+        mod = {"kinds": ["theorem"], "states": ["read"], "proofs": ["read"]}
         c = _graph_files(plain, "c0", _strings(), orders=mod)
         ix = c[1]["graph/index.json"]["symbols"]
         return _eq((_graph_bytes(a) == _graph_bytes(b), a["graph/index.json"]["symbols"]["order"], c[0], ix["order"], sorted(ix["states"]), sorted(ix["kinds"])),

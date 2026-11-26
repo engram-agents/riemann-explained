@@ -82,6 +82,7 @@ ID_KEEP = 57          # an id longer than ID_MAX keeps this many characters, the
 ID_HASH = 6
 MODULE_ROW = {"class": "kind-module", "words": "symbol_kind_module"}
 SYMBOLS = dict(bs.GRAPH_SYMBOLS, kinds=dict(bs.GRAPH_SYMBOLS["kinds"], module=MODULE_ROW))   # the table of this tool: today's, with the one more kind row
+MAP_ORDERS = {"kinds": ["module"], "states": [], "proofs": []}   # what is drawn on this map: only the module look (it hides state and proof)
 OUTLINE = os.path.join(_HERE, os.pardir, "outline", "outline.json")
 _FILE_LINE = re.compile(r"- `(New/[^`]+)` \((\d+)\): (.*)")
 _GROUP_LINE = re.compile(r"\*\*(.+)\*\*")
@@ -337,7 +338,7 @@ def build(grh, pin, strings, live_ids=()):
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(SYMBOLS) if k in strings}, SYMBOLS)   # only the missing ones: it holds a subset
     if missing:
         return missing, {}, rows, rep
-    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS)
+    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS)
     if errors:
         return errors, {}, rows, rep
     objs["graph/uses.json"] = {"commit": pin, "format": bs.GRAPH_FORMAT, "uses": rep["uses"]}
