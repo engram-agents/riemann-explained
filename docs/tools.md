@@ -300,6 +300,40 @@ card. The
 LIMIT paragraph in the file lists what is not checked.
 `python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--graph-src DIR] [--force]`
 
+**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json]`** answers: what is the
+skeleton of the map for a Lean repository that keeps its own index? `DIR` holds `CONTENTS.md` and `src/`. The tool reads the `## New` section of
+`CONTENTS.md` (`###` headings are sections, a line that is only `**title**` is a group, a line ``- `New/<path>` (<n>): <title>`` is a file) and the import
+lines of the files under `src/New`, and writes `graph/index.json`, `graph/step/<id>.json` and `graph/uses.json` under `OUT_DIR`. It writes graph data only: no
+page and no assets (`assets` is `{}`). It builds rows and hands them to `build_site.py`'s `_graph_files` and `_graph_bytes`; it has no writer of its own, so
+every refusal of the graph data (`GRAPH-FANOUT`, `GRAPH-ID`, `GRAPH-DUP`, `GRAPH-EDGE`, `GRAPH-STRINGS`, `GRAPH-ORDER` and the others) is that function's.
+`--pin` is written as the `commit` of every file. `--outline` (default `outline/outline.json` of this checkout) is the repository's own outline.
+A normal run does not run the self-test; `--selftest [--only ID,ID]` does, and `--selftest --grh DIR` also runs case SK13 on a real source (without `--grh` it
+is skipped and says so).
+
+The rules are mechanical; nothing is typed by hand, and the kind and the face line are the skeleton's own rules, not reading:
+
+- **Order** is the order of the lines of `CONTENTS.md`; nothing is sorted and nothing comes from the file system.
+- **Steps** are section (top), group, file. A section of one file with no folder (`New/Main`) is a top step that is that file. A section whose files have no
+  group line gets one anonymous group (its id ends in `--`, its title is empty).
+- **Ids** start with `lean-`, so they cannot meet the ids of the repository's outline (`SKEL-ID-CLASH` if one does). A section id is its folder name in kebab
+  case; a group id is `<section id>--<slug of the group title>`; a file id is its path after `New/` in kebab case. An id longer than 64 characters is cut to its
+  first 57, a trailing `-` removed, then `-` and the first 6 hex digits of the sha256 of the whole id.
+- **Titles** are the `CONTENTS.md` text, with the backticks removed. The 50-character bound of the graph contract is not applied here (it lives in
+  `build_site.py`'s `_graph_line_errors`, which this tool does not call): most titles of the real source are longer.
+- **Kind, state, proof**: every step has kind `module`, state `none`, proof `none`. No declaration is read. The kind `module` is a fourth row of the symbol table
+  for this tool only, and its order lists are exactly kinds `[module]`, states `[]`, proofs `[]`; the live map's table and output are unchanged.
+- **Links** (`rests_on`) join only sibling files of one group, from `import New.X.Y` lines at the start of a line, after the transitive reduction of the
+  group's edges. Groups and sections have no premises. A cycle among the files of a group is `GRAPH-EDGE`.
+- **`graph/uses.json`** lists, for every file step, the ids of every `New` file it imports, in any group, sorted, never itself. It is not part of `index.json`.
+- **Completeness**: every `.lean` file under `src/New` must be a file line and every file line must exist (`SKEL-UNLISTED <path>`, `SKEL-MISSING <path>`, all
+  reported); a line of the section that does not parse, or a file whose folder is not its section's, is `SKEL-LINE <n>`.
+
+The report prints: steps, the top ids, the widest step, the depth, the links drawn, the imports not drawn (a cross-group import or a reduced one), the
+self-imports ignored, the ids that were cut, and one line per group (files, files with at least one drawn link, files with none, the longest path of
+`rests_on`, and the depth row with most files, a file that rests on nothing being depth 0). An import outside `New` is counted nowhere.
+Exit: 0 built; 1 refused, `OUT_DIR` not written; 2 usage error or an input that cannot be read; 4 is not used by a normal run.
+`python3 tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings site/strings.json --out OUT_DIR`
+
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
 file compiled before the start module (INSIDE, with one shortest import path) or not (OUTSIDE)? Give at
 least one control, a module you know is inside; if a control is not, the run stops and says BROKEN.
@@ -322,6 +356,7 @@ row. Exit codes, tool by tool (4 always means the self-test failed and nothing w
 - `note_cite.py`: 0 done (or a dry run printed); 2 usage error, an input that cannot be read (also a `--src` file that is not UTF-8), or a note that cannot be written; 4 the self-test failed, nothing done; 5 REFUSED (the one-line reason on stdout), nothing written; 6 a post-condition failed (a bug in the helper), nothing written. `--selftest`: 0 all pass, 1 any fails, 3 no case ran.
 - `build_site.py`: 0 built; 1 refused, nothing written (an error of `notes_meta.py`, a strings key missing or a forbidden word, a build rule that failed, a non-empty OUT_DIR without `--force`, a release line found in an output); 2 usage error, an input that cannot be read or a site that cannot be written (one line, nothing on stdout, nothing left behind); 3 checked nothing (no note matches, or no `.lean` file under SRC_ROOT); 4 the self-test failed. `--selftest`: 0 all pass, 4 any fails, 2 an unknown id after `--only`.
 - `formula_oracle.py`: 0 a completed `--run` (whatever the number of differences) or a passing `--selftest`; 2 usage error (the two-line usage block on stderr, nothing on stdout), or pandoc missing from the PATH, a formulas file that cannot be read, or pandoc failing (one line on stderr, nothing on stdout); 4 the self-test failed.
+- `build_grh_skeleton.py`: 0 built; 1 refused, nothing written (`SKEL-*` or a `GRAPH-*` code, a strings file `build_site.py` refuses, a non-empty OUT_DIR); 2 usage error or an input that cannot be read; `--selftest`: 0 all pass, 4 any fails, 2 an unknown id after `--only` or a bad command line.
 - `graph_js_check.py`: 0 every file clean and at least one checked; 1 a refusal, or `CHECKED NOTHING`; 2 usage error or DIR not a directory; 4 the self-test failed, nothing reported.
 - `in_closure.py`: 0 only if every site is INSIDE or OUTSIDE; 1 for an AMBIGUOUS or NOT A MODULE site, or no site; 2 usage or input error, or a control equal to the start; 3 a broken control.
 - `import_closure.py`: 0 printed; 1 unresolved imports under the root's own folders (closure would be under-counted); 2 usage error or no file for the start module.
