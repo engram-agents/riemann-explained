@@ -83,6 +83,7 @@ export function createSheet(parts, strings, hooks, signal) {
       kids.push(...titleChildren(c.title));
       return el("li", {}, [last ? el("span", { class: "crumb-here" }, kids) : el("button", { type: "button", class: "crumb", "data-id": c.id }, kids)]);
     });
+    if (items.length === 0) return null;   // no ancestor, no landmark: an empty labelled nav is noise to a screen reader
     return el("nav", { "aria-label": strings.crumb_label, class: "crumbs" }, [el("ol", {}, items)]);
   }
 
@@ -93,7 +94,8 @@ export function createSheet(parts, strings, hooks, signal) {
     rec.id = info.id;          // the id this sheet shows: an engine event about any other id never touches it
     if (info.sheetClass) { root.classList.add(info.sheetClass); rec.sheetClass = info.sheetClass; }   // a token from the page's own table
     clear(crumbs);
-    crumbs.appendChild(crumbList(info.crumbs, info.currentListed !== false));
+    const nav = crumbList(info.crumbs, info.currentListed !== false);
+    if (nav) crumbs.appendChild(nav);
     const claim = article.querySelector(".claim");
     /* The status line is built only for a non-empty status: a null or empty status gets no element (the page's
        own path always passes a string today), so the release step finds rec.status null and the card's own content is first under the title. */

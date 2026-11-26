@@ -941,6 +941,8 @@ def c_skeleton_map(b, S0, engine):
             assert crumbs == crumbs_want[card], (card, crumbs)
             assert pg.ev("document.querySelectorAll('#graph-crumbs .crumb-here').length") == 0, card
             assert pg.ev("document.querySelectorAll('#graph-crumbs button.crumb').length") == len(crumbs_want[card]), card    # every listed ancestor is a link
+            # R2: no ancestor, no landmark: a top-level card draws no breadcrumb nav at all (never an empty labelled one)
+            assert pg.ev("document.querySelectorAll('#graph-crumbs nav').length") == (1 if crumbs_want[card] else 0), card
         assert foot("sk-group-a") == "3 files", foot("sk-group-a")
         pg.page.click("#graph-sheet-close")
         wait_sheet(pg, False)

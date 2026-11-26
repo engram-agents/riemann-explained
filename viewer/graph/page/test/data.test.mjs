@@ -394,6 +394,29 @@ test("P2/A2/F2 skeleton: the strings set is EXACTLY the fixed list, the words of
   }
 });
 
+test("R3 the empty-optional refusal is keyed to the OPTIONAL set it is handed, not to a name: a second optional key in a test-local set gets the same named code", () => {
+  const check = DATA.refuseEmptyOptional;
+  assert.equal(typeof check, "function");
+  const set = Object.freeze(["key_kinds_note", "other_note"]);
+  check({ key_kinds_note: "a", other_note: "b", plain: "" }, set);   // an empty key outside the set is not this rule's business
+  check({}, set);
+  for (const k of set) {
+    assert.throws(() => check({ key_kinds_note: "a", other_note: "b", [k]: "" }, set), (e) => e instanceof DataError && e.code === "empty-string" && e.message.includes(k), k);
+  }
+  check({ other_note: "" }, ["key_kinds_note"]);                    // outside the set it is handed: silent
+});
+
+test("R3 a REQUIRED key present but empty keeps missing-string, and an absent required key is missing-string; neither is empty-string", () => {
+  const idx = realIndex();
+  const k = "sheet_statement_read";
+  const empty = clone(idx);
+  empty.strings[k] = "";
+  assert.throws(() => validateIndex(empty), (e) => e instanceof DataError && e.code === "missing-string" && e.message.includes(k));
+  const gone = clone(idx);
+  delete gone.strings[k];
+  assert.throws(() => validateIndex(gone), (e) => e instanceof DataError && e.code === "missing-string" && e.message.includes(k));
+});
+
 test("F3 key_kinds_note is an OPTIONAL strings key: accepted present, accepted absent, refused when empty; nothing else extra gets in", () => {
   const idx = skIndex();
   assert.match(idx.strings.key_kinds_note, /CONTENTS\.md/);
@@ -405,7 +428,7 @@ test("F3 key_kinds_note is an OPTIONAL strings key: accepted present, accepted a
   assert.ok(!("key_kinds_note" in realIndex().strings));
   const empty = clone(idx);
   empty.strings.key_kinds_note = "";
-  assert.throws(() => validateIndex(empty), (e) => e instanceof DataError && e.code === "missing-string" && e.message.includes("key_kinds_note"));
+  assert.throws(() => validateIndex(empty), (e) => e instanceof DataError && e.code === "empty-string" && e.message.includes("key_kinds_note"));
   const live = realIndex();
   live.strings.key_kinds_note = "a note";
   validateIndex(live);

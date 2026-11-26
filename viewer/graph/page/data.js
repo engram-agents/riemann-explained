@@ -55,6 +55,14 @@ export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts",
   "link_refused", "parts_failed_notice", "key_kinds_heading", "key_states_heading"]);
 /* Strings keys the page reads when the builder supplies them and ignores otherwise (the live map has none): allowed in `strings`, never required. */
 export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note"]);
+
+/* An optional strings key that is present but empty is refused under its own code (a required key that is absent or empty is
+   "missing-string"). The rule is keyed to the set it is handed, never to a name. */
+export function refuseEmptyOptional(strings, optional) {
+  for (const k of optional) {
+    if (has(strings, k) && strings[k] === "") throw new DataError("empty-string", "index strings holds an empty optional key " + k);
+  }
+}
 const TABLES = Object.freeze([["kinds", KIND_CLASS, "unknown-kind"], ["proofs", PROOF_CLASS, "unknown-proof"], ["states", STATE_CLASS, "unknown-state"]]);
 
 export function requiredStrings(symbols) {
@@ -154,9 +162,7 @@ export function validateIndex(raw) {
   for (const k of need) {
     if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("missing-string", "index strings lacks the runtime key " + k);
   }
-  for (const k of OPTIONAL_STRINGS) {
-    if (has(raw.strings, k) && raw.strings[k] === "") throw new DataError("missing-string", "index strings holds an empty optional key " + k);
-  }
+  refuseEmptyOptional(raw.strings, OPTIONAL_STRINGS);
   for (const k of Object.keys(raw.strings)) {
     if (!need.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   }
