@@ -41,7 +41,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   X4 A fresh run into a non-empty OUT_DIR says OUT-NOT-EMPTY and refuses (exit 1) unless --force; --force removes only
      what a build writes (the five files and the folder `group`), never another file. Cases OUT1 OUT2.
   X5 A group id that is not safe as a file name (letters, digits, `.`, `_`, `-`, not starting with `.`, at most 100
-     characters; no two ids that differ only in case) is GROUP-ID-UNSAFE. Cases ID1 ID2 W1.
+     characters; no two ids that differ only in case) is GROUP-ID-UNSAFE; a group id of 65 to 100 characters passes that
+     check and is then GRAPH-ID (the id rule of the graph data: at most 64). Cases ID1 ID2 W1.
   X6 A normal run first runs the self-test quietly and refuses with exit 4 if it fails; `--selftest` runs it (0 pass, 4
      fail); `--selftest --only ID,ID` runs exactly those cases and an unknown id exits 2. Cases EXIT4 SEL1.
   X7 The build is written into a temporary sibling directory of OUT_DIR and renamed into place at the end: a failure before
@@ -2246,16 +2247,22 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
                 errors.append(("GRAPH-STRINGS", f"{name}.{k}.count_words", "must be an object with exactly the keys many and one, both strings"))
     if errors:
         return errors, {}
-    seen = set()
+    seen, refused = set(), set()
     for r in rows:
         i = r["id"]
         if not (isinstance(i, str) and GRAPH_SHAPE.fullmatch(i)):   # one refusal per id: the shape first, the length only for an id of good shape
-            errors.append(("GRAPH-ID", str(i), "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"))
+            refusal = ("GRAPH-ID", str(i), "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)")
         elif i == "root":
-            errors.append(("GRAPH-ID", i, "is the id of the root, which is not a step"))
+            refusal = ("GRAPH-ID", i, "is the id of the root, which is not a step")
         elif len(i) > GRAPH_ID_MAX:
-            errors.append(("GRAPH-ID", i, f"is {len(i)} characters (at most {GRAPH_ID_MAX})"))
-        if i in seen:
+            refusal = ("GRAPH-ID", i, f"is {len(i)} characters (at most {GRAPH_ID_MAX})")
+        else:
+            refusal = None
+        if refusal is not None:   # an id refused for what it is, shared by two steps or more, is refused once, and is never also GRAPH-DUP
+            if str(i) not in refused:
+                errors.append(refusal)
+            refused.add(str(i))
+        elif i in seen:
             errors.append(("GRAPH-DUP", str(i), "is the id of more than one step"))
         seen.add(i)
     if errors:
