@@ -33,9 +33,11 @@ In Chromium, for each viewport (390x844 mobile with touch; 1280x900):
   note          for the file: the sheet's .note-body contains the first 30 letters and digits of THAT step's note.text, both sides lowercased
                 and cut to letters and digits (the renderer drops markdown markers: a leading '# ', backticks, list marks) (A2). An absent or empty .note-body is a FAIL; no file step carries a note, or --no-note, is a SKIP, never a pass
                 (and a FAIL with --require-note: the merge seat's run that must have the real check).
-  scale-floor   390x844 only: after the part is opened, the engine world's rendered scale is >= index.json open_scale_floor (A3).
-                No such key in the data: SKIP, never a pass (a FAIL with --require-floor, which is a usage error, exit 2, with --only-viewport 1280x900: the floor runs at 390x844 only). (Opened by deep link, the path every tree has; a tap on the card needs
-                the engine's pointer path, which a tree without its engine cannot offer.)
+  scale-floor   390x844 only: the engine world's rendered scale is >= index.json open_scale_floor (A3), read where the floor applies: on an OPENED
+                box. A deep link frames its target CLOSED and is not floored, so the part is deep-linked, then its parts are opened through the sheet's
+                own parts button (the page's open-parts route, as a reader does), the engine is let settle, and only then is the scale read. A sheet with
+                no such button, or parts that do not open, is a FAIL (the opened framing was not measured).
+                No such key in the data: SKIP, never a pass (a FAIL with --require-floor, which is a usage error, exit 2, with --only-viewport 1280x900: the floor runs at 390x844 only).
 
   credits       if SITE_DIR holds credits/index.html: at 1280x900 it answers 200, its console and requests are clean, and a link ON THE PAGE
                 (read from the page, never guessed) resolves to the map's index (the folder of the tree's index.html) and that loads and boots.
@@ -410,20 +412,47 @@ def note_check(v, vp, p, no_note, opened, require_note):
         out("PASS", vp, "note", "#%s .note-body holds the first 30 letters and digits of the note, %r" % (p["id"], want))
 
 
+WORLD_SCALE = """(() => { const w = document.querySelector('.ge-world'); if (!w) return null;
+    const m = /scale\\(([-0-9.e]+)\\)/.exec(w.getAttribute('style') || ''); return m ? parseFloat(m[1]) : null; })()"""
+
+
+def settled_scale(v):
+    """The world scale once the camera has stopped: four reads, 100 ms apart, that agree (None if it never does within 6 s)."""
+    prev, same = None, 0
+    for _ in range(60):
+        k = v.ev(WORLD_SCALE)
+        same = same + 1 if (k is not None and prev is not None and abs(k - prev) < 1e-6) else 0
+        if same >= 4:
+            return k
+        prev = k
+        v.page.wait_for_timeout(100)
+    return None
+
+
 def scale_check(v, vp, index, require_floor):
+    """The floor governs framing an OPENED box (a deep link frames its target closed): press the open sheet's own parts button, wait for the engine's
+    open to settle, then read the scale."""
     if "open_scale_floor" not in index:
         skip_or_fail(vp, "scale-floor", "the index has no open_scale_floor", require_floor, "--require-floor")
         return
     floor = index["open_scale_floor"]
-    v.page.wait_for_timeout(900)           # the engine's camera settles after the open
-    k = v.ev("""(() => { const w = document.querySelector('.ge-world'); if (!w) return null;
-        const m = /scale\\(([-0-9.e]+)\\)/.exec(w.getAttribute('style') || ''); return m ? parseFloat(m[1]) : null; })()""")
+    label = index["strings"]["open_parts"]
+    pressed = v.ev("(() => { const b = [...document.querySelectorAll('#graph-sheet .sheet-tool')].find((x) => x.textContent === %s); if (b) b.click(); return !!b; })()"
+                   % json.dumps(label))
+    if not pressed:
+        out("FAIL", vp, "scale-floor", "the open sheet has no %r button, so the opened framing was not measured" % label)
+        return
+    if not v.wait("document.querySelector('.ge-node.ge-open') && !document.querySelector('.ge-loading')", 10000):
+        out("FAIL", vp, "scale-floor", "the part's parts did not open after %r, so the opened framing was not measured" % label)
+        return
+    k = settled_scale(v)
+    how = "after opening the part's parts through the sheet"
     if k is None:
-        out("FAIL", vp, "scale-floor", "no .ge-world with a scale() to read (via deep link)")
+        out("FAIL", vp, "scale-floor", "no settled .ge-world scale() to read %s" % how)
     elif k + 1e-9 < floor:
-        out("FAIL", vp, "scale-floor", "world scale %.3f < open_scale_floor %s (part opened by deep link)" % (k, floor))
+        out("FAIL", vp, "scale-floor", "world scale %.3f < open_scale_floor %s (%s)" % (k, floor, how))
     else:
-        out("PASS", vp, "scale-floor", "world scale %.3f >= open_scale_floor %s (part opened by deep link)" % (k, floor))
+        out("PASS", vp, "scale-floor", "world scale %.3f >= open_scale_floor %s (%s)" % (k, floor, how))
 
 
 def run_viewport(browser, vp, base, site, index, picked, no_note, require_note, require_floor):
