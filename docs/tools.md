@@ -410,6 +410,32 @@ ids that were cut, and one line per group (files, use edges, reduction edges, fi
 Exit: 0 built; 1 refused, `OUT_DIR` not written (a `SKEL-*` or `GRAPH-*` code, a strings file `build_site.py` refuses, or `OUT-NOT-EMPTY` when `OUT_DIR` already holds files); 2 usage error or an input that cannot be read; 4 is not used by a normal run.
 `python3 tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings site/strings.json --out OUT_DIR --ilean-dir DIR`
 
+**`tools/assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR]`** answers: what is the page of a map whose data
+the skeleton builder wrote? `DIR` is the skeleton's `graph/` folder (`index.json`, `spine.json`, `uses.json`, `step/<id>.json` and nothing else). The tool writes ONE flat tree into
+`OUT_DIR`, the way the page reads it (the page fetches `index.json` and `step/<id>.json` and loads its scripts relative to its own address): `index.html`, `index.json`, `spine.json`,
+`uses.json`, `step/`, the engine and page files and `graph.css` (every asset of `build_site._graph_assets` over `--graph-src`, default `viewer/graph/`), and `manifest.json`. This tree is the map's files and their manifest, and it is NOT yet the tree the website keeps: the website's `place.mjs` refuses a kept map folder unless `credits/index.html` is kept and listed in the manifest and the map's `index.html` links `credits/`, and a run without a credits page writes neither. Until the `--page` change adds the Licence and credits page, the website refuses this tree, loudly and by name. It has no
+second implementation of anything `build_site.py` or `build_grh_skeleton.py` already does: it imports `_graph_assets`, `_graph_sink_errors`, `_graph_asset_errors`, `_graph_page`,
+`_graph_bytes`, `_manifest_bytes`, `_graph_static_problems`, `_publish` and the page checks (`static_problems`, `graph_element_problems`, `head_meta_problems`, the code-on-surface scan)
+from the one, and the bounded, non-following reader `_read_in` from the other.
+- **Inputs** are read bounded and contained (4 MiB each for the three data files, the strings file and the shell, 1 MiB a step file, at most 2,000 step files); a symlink, a FIFO, a
+  directory where a file belongs, a file over its limit or bytes that are not UTF-8 is `ASM-DATA <path> <reason>`, as is a file DATA should not hold (`unexpected`) or lacks (`missing`).
+  `--shell` is the page's own shell (it lives outside `viewer/graph/`, where a second `.html` is refused); the shell `_graph_assets` finds in `--graph-src` is not used.
+- **The pin.** `--pin` is a lower-case 40-hex commit; `index.json`, `spine.json`, `uses.json` and every step file must carry it as `commit`, every step's `id` must be its file name and
+  `index.json` `steps` the number of step files (`ASM-PIN <file> <found>`).
+- **The page** is `_graph_page` over the shell with `cards` empty, the About block `<p>` + the escaped strings key `about_text`, and `data-page-feedback="off"` on `<section id="graph-about">`
+  (the page has no card articles and no page-level comment thread). The shell may hold the `{{S:front_scope_line}}` and `{{S:readings_front}}` tokens besides the builder's own; the
+  strings value of `readings_front` is a template with one `{n}`, filled with the length of the `readings` list of `index.json` (`ASM-READINGS`). The assembled page then passes the builder's
+  element, static, head and code-on-surface checks (`ASM-PAGE`), and every ref of the written page resolves inside the tree: an absolute, `..` or missing ref is `ASM-PAGE <ref> absolute|escapes|missing`. The refs of the written page must be files of the tree, exactly as named (`./graph.css` is `missing`, a link to `list/` is `missing`), so the shell given to the tool must not be the repository's shared `viewer/graph/shell.html`, which links `list/` twice. Every JSON file about to be written passes the static check as `build_site.py` runs it (`ASM-STATIC`).
+- **Data is carried, not changed.** `spine.json`, `uses.json`, every step file and every asset are written exactly as read; `index.json` is the builder's index with ONLY `assets` replaced by
+  the sha256 of each asset, written by the builder's own serialiser.
+- **`manifest.json`** is `{"commits": {"notes": PIN}, "counts": {"steps": N}, "files": {path: sha256}}`: the sha256 of every other written file, `index.html` included. There is no release id
+  and no archive hash.
+- **Nothing is written on a refusal.** Every check runs first; `OUT_DIR` must be absent or empty (`ASM-OUT`); the tree is written into a temporary sibling and renamed into place, so a
+  failure leaves `OUT_DIR` as it was. Two runs give byte-identical trees.
+Exit: 0 built; 1 refused (one `ASM-<CODE> <what> <reason>` line per refusal of the first stage that fails); 2 usage. `python3 tools/assemble_grh_site.py --selftest [--only ID,ID]` runs the
+cases (about 8 minutes: thirteen of them run the other cases against a deliberately wrong copy of the tool and compare the red cases both ways). It never executes anything it reads. The tool holds all step files in memory at once (at most 2000 files of at most 1 MiB each).
+`python3 tools/assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR`
+
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
 file compiled before the start module (INSIDE, with one shortest import path) or not (OUTSIDE)? Give at
 least one control, a module you know is inside; if a control is not, the run stops and says BROKEN.
