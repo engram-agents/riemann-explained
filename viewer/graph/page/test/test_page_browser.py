@@ -1081,26 +1081,22 @@ def c_live_sheets_match_main(b, S, engine):
     assert n == 26
 
 
-def c_note_one_key_opens_at_once(b, S0, engine):
-    """A map holding only ONE of note_label and note_source does not carry notes: a tap opens the sheet at once, with its step fetch held."""
+def c_note_one_key_refused(b, S0, engine):
+    """A map holding only ONE of note_label and note_source is refused at START: the page's usual fallback, the code bad-note-strings recorded as the
+    failure reason, and no card opens (round 7)."""
     for drop in ("note_source", "note_label"):
-        S = _notes_site(engine, index_edit=lambda i, d=drop: i["strings"].pop(d))
-        gate = threading.Event()
+        root = tempfile.mkdtemp(prefix="pg-notes1-")
+        assemble.assemble(root, engine, fix="notes", index_edit=lambda i, d=drop: i["strings"].pop(d),
+                          mutate={os.path.join("page", "app.js"): expose_failure})
+        S = Served(root)
         try:
-            pg = Pg(b, S.base + "graph/index.html#sk-file-3", 1280, 900).settled()      # a card without a note: no refusal for the missing key
-            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
-            gate, path = hold_step("sk-file-2")
-            tap(pg, "sk-file-2")
-            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-2'", 3000)
-            assert sheet_open(pg) and notice_text(pg) is None, drop
-            assert pg.ev("document.getElementById('graph-fallback').hidden"), drop
-            gate.set()
-            pg.page.wait_for_timeout(300)
-            assert shown_id(pg) == "sk-file-2" and pg.ev("document.getElementById('graph-fallback').hidden"), drop
+            pg = Pg(b, S.base + "graph/index.html#sk-file-3", 1280, 900)
+            pg.wait("document.documentElement.hasAttribute('data-failure')", 6000)
+            assert pg.ev("document.documentElement.getAttribute('data-failure')").startswith("bad-note-strings"), drop
+            assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards"), drop
+            assert not pg.ev("!!document.querySelector('#graph-sheet-body article')"), drop
             pg.close()
         finally:
-            gate.set()
-            nav_clear()
             S.stop()
 
 
@@ -2647,10 +2643,13 @@ def c_note_tap_and_hostile(b, S0, engine):
 
 
 def c_note_strings(b, S0, engine):
-    """N13 in the browser: a map lacking either note key whose reader opens a step carrying a note gets the page's usual failure (the
+    """N13 in the browser: a map lacking the note keys (both: one alone is refused at start, round 7) whose reader opens a step carrying a note gets the page's usual failure (the
     fallback; no half-filled label); a note_source template with markup in it is text; the live map's sheet carries none of it."""
-    for drop in ("note_source", "note_label"):
-        S = _notes_site(engine, index_edit=lambda i, d=drop: i["strings"].pop(d))
+    def no_note_words(i):
+        i["strings"].pop("note_source")
+        i["strings"].pop("note_label")
+    for drop in ("neither",):
+        S = _notes_site(engine, index_edit=no_note_words)
         try:
             pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
             at_hash(pg, "sk-file-1")
@@ -2661,7 +2660,7 @@ def c_note_strings(b, S0, engine):
         finally:
             S.stop()
     # the same map with a card that has no note: no failure at all
-    S = _notes_site(engine, index_edit=lambda i: i["strings"].pop("note_source"))
+    S = _notes_site(engine, index_edit=no_note_words)
     try:
         pg = Pg(b, S.base + "graph/index.html#sk-file-3", 1280, 900).settled()
         pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
@@ -3043,7 +3042,7 @@ def main():
                 run("round 6 C1: on the live map a tap whose step fetch FAILS (500) opens the sheet, no notice", c_live_open_fetch_fails, eng)
                 run("round 6 C2: on the live map a tap whose step fetch never settles (held) has the sheet open before it settles", c_live_open_fetch_held, eng)
                 run("round 6 C3: the 26 live sheet snapshots (23 by address, 3 by tap) equal what main's page drew", c_live_sheets_match_main, eng)
-                run("round 6: a map with only ONE of note_label and note_source carries no notes: a tap opens at once, its step fetch held", c_note_one_key_opens_at_once, eng)
+                run("round 7: a map with only ONE of note_label and note_source is refused at start: the fallback, bad-note-strings recorded, no card opens", c_note_one_key_refused, eng)
                 if eng == "real":
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)

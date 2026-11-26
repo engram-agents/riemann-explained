@@ -785,10 +785,8 @@ test("N13 strings: the live map's strings (neither note key) validate exactly as
     "one definition: the page's optional keys are exactly these (key_kinds_note, key_scope_text, the two note keys, the four maths-face keys)");
 });
 
-test("N13 strings: each note key is optional alone; an empty one is refused; any OTHER extra key is still refused", () => {
-  for (const drop of ["note_label", "note_source"]) {
-    const i = noteIndex(); delete i.strings[drop]; validateIndex(i);
-  }
+test("N13 strings: the note keys are optional as a pair (one alone is H1); an empty one is refused; any OTHER extra key is still refused", () => {
+  { const i = noteIndex(); delete i.strings.note_label; delete i.strings.note_source; validateIndex(i); }
   for (const k of ["note_label", "note_source"]) {
     const i = noteIndex(); i.strings[k] = "";
     assert.throws(() => validateIndex(i), (e) => isErr("empty-string")(e) && e.message.includes(k), k);
@@ -853,20 +851,33 @@ test("N10 refusals: a note that is not an object, has an extra or a missing key,
   validateStep(withNote({ text: "x", source: "a..b/c" }), ctx);     // '..' is refused as a SEGMENT, not as a substring
 });
 
+for (const [name, drop] of [["note_source alone", "note_label"], ["note_label alone", "note_source"]]) {
+  test("H1 validateIndex refuses a strings set holding " + name + " (`bad-note-strings`, both or neither)", () => {
+    const idx = noteIndex(); delete idx.strings[drop];
+    assert.throws(() => validateIndex(idx), (e) => e.code === "bad-note-strings" && /both or neither/.test(e.message), name);
+  });
+}
+
+test("H1 validateIndex accepts a strings set holding both note keys, and one holding neither", () => {
+  validateIndex(noteIndex());
+  const none = noteIndex(); delete none.strings.note_label; delete none.strings.note_source;
+  validateIndex(none);
+});
+
 test("N13 a step carrying `note` on a map lacking either note key is `bad-note-strings`; a step without one never is", () => {
-  for (const drop of [["note_label"], ["note_source"], ["note_label", "note_source"]]) {
+  for (const drop of [["note_label", "note_source"]]) {   // one key alone is refused at the index (H1 below); only a map with neither reaches the step check
     const idx = noteIndex(); for (const k of drop) delete idx.strings[k];
     const ctx = validateIndex(idx);
     assert.throws(() => validateStep(noteStep("sk-file-1"), ctx), (e) => isErr("bad-note-strings")(e), drop.join("+"));
     validateStep(noteStep("sk-file-3"), ctx);
   }
   // the shape is checked first: a malformed note on a map that lacks the keys is `bad-note`
-  const idx = noteIndex(); delete idx.strings.note_label;
+  const idx = noteIndex(); delete idx.strings.note_label; delete idx.strings.note_source;
   assert.throws(() => validateStep(withNote("x"), validateIndex(idx)), isErr("bad-note"));
 });
 
-test("N13 through createData: loadStep of a note step on a map lacking a key rejects with `bad-note-strings`, and nothing partial is cached as good", async () => {
-  const idx = noteIndex(); delete idx.strings.note_source;
+test("N13 through createData: loadStep of a note step on a map lacking the note keys rejects with `bad-note-strings`, and nothing partial is cached as good", async () => {
+  const idx = noteIndex(); delete idx.strings.note_source; delete idx.strings.note_label;
   const f = dirFetch(path.join(FIX, "notes"), { "index.json": { ok: true, status: 200, json: async () => idx } });
   const d = createData(f);
   await assert.rejects(() => d.loadStep("sk-file-1"), isErr("bad-note-strings"));
