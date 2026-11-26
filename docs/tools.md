@@ -321,7 +321,9 @@ The rules are mechanical; nothing is typed by hand, and the kind and the face li
 - **Titles** are the `CONTENTS.md` text, with the backticks removed. The 50-character bound of the graph contract is not applied here (it lives in
   `build_site.py`'s `_graph_line_errors`, which this tool does not call): most titles of the real source are longer.
 - **Kind, state, proof**: every step has kind `module`, state `none`, proof `none`. No declaration is read. The kind `module` is a fourth row of the symbol table
-  for this tool only, and its order lists are exactly kinds `[module]`, states `[]`, proofs `[]`; the live map's table and output are unchanged.
+  for this tool only, and its order lists are exactly kinds `[module]`, states `[]`, proofs `[]` (`_graph_files(orders=)`; a row that occurs and is drawn but is
+  missing from its list is `GRAPH-ORDER`). `index.json` also carries `sibling_layout: column` (`_graph_files(layout=)`; any other value is `GRAPH-LAYOUT`). The live map's
+  table, order lists and output are unchanged: with no argument the key is absent and the lists are the whole tables.
 - **Links** (`rests_on`) join only sibling files of one group, from `import New.X.Y` lines at the start of a line, after the transitive reduction of the
   group's edges. Groups and sections have no premises. A cycle among the files of a group is `GRAPH-EDGE`.
 - **`graph/uses.json`** lists, for every file step, the ids of every `New` file it imports, in any group, sorted, never itself. It is not part of `index.json`.

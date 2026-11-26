@@ -2112,12 +2112,18 @@ def _graph_order_errors(rows, symbols, orders):
     return out
 
 
-def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None):
+GRAPH_LAYOUTS = ("column",)   # the only value of index.json `sibling_layout`; the key is absent when no layout is asked for
+
+
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
     hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
-    (default: every row of each table, in its key order; see _graph_order_errors for what a list may hold). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
+    (default: every row of each table, in its key order; see _graph_order_errors for what a list may hold); `layout` is None (the key `sibling_layout` is absent from
+    index.json) or "column" (the key is written); any other value is GRAPH-LAYOUT. Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
     four stop the run, since what follows needs a tree), then GRAPH-FANOUT, GRAPH-SYMBOL and GRAPH-EDGE together, then GRAPH-COUNT."""
+    if layout is not None and not (isinstance(layout, str) and layout in GRAPH_LAYOUTS):
+        return [("GRAPH-LAYOUT", str(layout), "only column is allowed")], {}
     symbols = GRAPH_SYMBOLS if symbols is None else symbols
     orders = {name: list(table) for name, table in symbols.items()} if orders is None else orders
     errors = []
@@ -2217,6 +2223,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None):
                          for name, table in symbols.items()},
                         order={name: list(orders[name]) for name in symbols}),
         "top": [r["id"] for r in kids.get("root", [])]}}
+    if layout is not None:
+        objs["graph/index.json"]["sibling_layout"] = layout
     for r in rows:
         objs[f"graph/step/{r['id']}.json"] = {
             "card": closed(r), "children": [dict(closed(c), parent_rests_on=c["id"] in r["premises"]) for c in kids.get(r["id"], [])],

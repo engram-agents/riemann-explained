@@ -338,7 +338,7 @@ def build(grh, pin, strings, live_ids=()):
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(SYMBOLS) if k in strings}, SYMBOLS)   # only the missing ones: it holds a subset
     if missing:
         return missing, {}, rows, rep
-    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS)
+    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column")
     if errors:
         return errors, {}, rows, rep
     objs["graph/uses.json"] = {"commit": pin, "format": bs.GRAPH_FORMAT, "uses": rep["uses"]}
