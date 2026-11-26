@@ -2296,8 +2296,6 @@ def _graph_page(shell, assets, strings, about, cards):
         elif run is None:
             if key is None and n_cards == 1:
                 errors.append(("GRAPH-PAGE", "{{CARDS}}", "is not in element-content position"))
-            elif key is not None:
-                errors.append(("GRAPH-PAGE", "{{", "is left after replacement"))
         elif key is None:
             if n_cards == 1 and run[2] in _GRAPH_CARD_PARENTS:
                 swaps.append((lo, hi, None))
@@ -2307,9 +2305,6 @@ def _graph_page(shell, assets, strings, about, cards):
             errors.append(("GRAPH-PAGE", mt.group(0), "is an unknown string key"))
         else:
             swaps.append((lo, hi, key))
-    covered = [(mt.start(), mt.end()) for mt in _GRAPH_TOKEN.finditer(raw)]
-    if any(not place(mt.start(), mt.start() + 2, covered) for mt in re.finditer(r"\{\{", raw)):
-        errors.append(("GRAPH-PAGE", "{{", "is left after replacement"))
     for f in graph_element_problems(raw):
         if f.startswith("element style") or (f.startswith("attribute ") and (f.split()[1], f.split()[3]) in scan.reported):
             continue   # said above, by its own line
@@ -12589,11 +12584,19 @@ def _selftest_cases():
                  "charset meta; {{CARDS}} 0 times and 2 times; {{CARDS}} in an attribute, in <title> and in <h1> (not element content); an unknown {{S:zeta}} and a real strings key "
                  "that is not a shell key ({{S:page_title}}); {{S:title}} in an attribute, inside a script and inside a style; a `{{` left in the shell and a malformed token; through "
                  "the pure function _graph_page, since the strings check already refuses a brace in a value: a value that holds `{{b}}` or `{{CARDS}}` is `{{ is left after "
-                 "replacement` and is never replaced a second time, while `{{` in the cards markup (not the shell's, not a value) is no refusal; control: the fixture shell builds, exit 0")
+                 "replacement` and is never replaced a second time, while `{{` in the cards markup (not the shell's, not a value) is no refusal; an invalid shell and a refused asset (a symlink) give the asset's line only (the page is not built "
+                 "from a tree with a refused file in it); control: the fixture shell builds, exit 0")
     def _():
         def go(shell, **kw):
             rc, existed, lines, _b2 = gp_go(shell, **kw)
             return rc, existed, lines
+
+        def asset_refused():
+            """An invalid shell and a refused asset (a symlink): the page is not built from a tree with a refused file in it, so only the asset's line is printed."""
+            with tempfile.TemporaryDirectory() as d:
+                src = ga_src(d, dict(GA_FILES, **{"shell.html": gp_swap(("<h1>{{S:title}}</h1>", "<h1>{{S:zeta}}</h1>"))}), [("app.js", "page/link.js")])
+                b = _build(graph_src=src)
+            return b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")]
         ok = (0, True, [])
         no = lambda lines: (1, False, lines)
         return _eq({"control": go(GA_SHELL),
@@ -12612,7 +12615,8 @@ def _selftest_cases():
                     "stray": go(gp_swap(("<h1>{{S:title}}</h1>", "<h1>{{S:title}} {{ x</h1>"))),
                     "malformed": go(gp_swap(("<h1>{{S:title}}</h1>", "<h1>{{S:title}</h1>"))),
                     "value": [_graph_page(GA_SHELL.encode("utf-8"), ["graph.css", "page/app.js"], dict(_strings(), title=t), "", "") for t in ("a {{b}} c", "{{CARDS}}")],
-                    "cards_braces": _graph_page(GA_SHELL.encode("utf-8"), ["graph.css", "page/app.js"], _strings(), "<p>{{a}}</p>", "<p>{{b}}</p>")[0]},
+                    "cards_braces": _graph_page(GA_SHELL.encode("utf-8"), ["graph.css", "page/app.js"], _strings(), "<p>{{a}}</p>", "<p>{{b}}</p>")[0],
+                    "asset_refused": asset_refused()},
                    {"control": ok,
                     "doctype": no(["shell.html has no doctype"]),
                     "charset": no(["shell.html has no charset meta"]),
@@ -12629,7 +12633,8 @@ def _selftest_cases():
                     "stray": no(["{{ is left after replacement"]),
                     "malformed": no(["{{ is left after replacement"]),
                     "value": [([("GRAPH-PAGE", "{{", "is left after replacement")], None)] * 2,
-                    "cards_braces": []})
+                    "cards_braces": [],
+                    "asset_refused": (1, False, ["BUILD-ERROR GRAPH-ASSET page/link.js symlink"])})
 
     @case("GP6", "G2b scripts, links, event attributes and addresses of the shell, each refused with its own line (exit 1, nothing written): a script that is not type=\"module\"; "
                  "an inline script (no src, text); a script src that is absolute (https), protocol-relative, `javascript:` or `data:`, or a relative path that is not an asset; "
@@ -12651,6 +12656,7 @@ def _selftest_cases():
                     "js": go(gp_swap((script, '<script type="module" src="javascript:alert(1)"></script>'))),
                     "data": go(gp_swap((script, '<script type="module" src="data:text/javascript,1"></script>'))),
                     "not_asset": go(gp_swap((script, '<script type="module" src="page/other.js"></script>'))),
+                    "fragment": go(gp_swap((script, '<script type="module" src="#x"></script>'))),
                     "second_ok": go(gp_swap((script, script + '\n<script type="module" src="engine/index.js"></script>')))[:3],
                     "link_icon": go(gp_swap(('<link rel="stylesheet" href="graph.css">', '<link rel="icon" href="graph.css">'))),
                     "link_not_asset": go(gp_swap(('href="graph.css"', 'href="style.css"'))),
@@ -12669,6 +12675,7 @@ def _selftest_cases():
                     "js": no("javascript:alert(1) is not a relative address"),
                     "data": no("data:text/javascript,1 is not a relative address"),
                     "not_asset": no("page/other.js is not an asset"),
+                    "fragment": no("#x is not a relative address"),
                     "second_ok": (0, True, []),
                     "link_icon": no('link is not rel="stylesheet"'),
                     "link_not_asset": no("style.css is not an asset"),
@@ -12774,6 +12781,20 @@ def _selftest_cases():
                     "<h1" in header, '<ul class="facts">' in header, main.startswith("<h2>The chain of steps</h2>\n<ul class=\"chain\">\n"), main.endswith("</ul>"),
                     page.count("<h1>"), page.index(header) < page.index(main)),
                    (True, True, True, True, False, True, True, True, 1, True))
+
+    @case("GP11", "G2b the tokens are replaced where they stand, in a shell of several lines with character references and other markup around them: `R&amp;D {{S:title}} &copy; "
+                  "{{S:key}} &#65;` in the h1, one after a tag and one after a line break in a p; the references stay as written (not converted), each token is the "
+                  "escaped value of its own key, and the rest of the page is the shell byte for byte (the text before and after the cards)")
+    def _():
+        shell = gp_swap(("<h1>{{S:title}}</h1>", "<h1>R&amp;D {{S:title}} &copy; {{S:key}} &#65;</h1>\n<p><span>x</span>{{S:close}}\n{{S:map}}</p>"))
+        s = _strings()
+        s["title"], s["key"], s["close"], s["map"] = "T <1>", "K & 2", "C", "M"
+        rc, existed, lines, b = gp_go(shell, strings=s)
+        page = b.text("graph/index.html")
+        pre, post = shell.split("{{CARDS}}")
+        done = lambda t: t.replace("{{S:title}}", "T &lt;1&gt;").replace("{{S:key}}", "K &amp; 2").replace("{{S:close}}", "C").replace("{{S:map}}", "M")
+        return _eq((rc, lines, page.startswith(done(pre)), page.endswith(done(post)), "<h1>R&amp;D T &lt;1&gt; &copy; K &amp; 2 &#65;</h1>\n<p><span>x</span>C\nM</p>" in page),
+                   (0, [], True, True, True))
 
     # G1: the older cases below plant data the graph cannot hold, to test something else: a premise on a step that is neither a sibling nor the step's own
     # child (the premises line, PL*, PRM*), or a root kind outside the symbol table (the proof facts, PRK*, NONE1, F41b, F49*). The graph refuses both (GRAPH-EDGE,
