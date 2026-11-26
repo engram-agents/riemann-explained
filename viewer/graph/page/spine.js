@@ -34,6 +34,8 @@ function edgeBasisOf(v, ctx) {
   if (!nonEmpty(v.words)) throw new DataError("bad-edge-basis", "spine edge_basis words is not a key name: " + shown(v.words));
   if (ctx.edgeBasis && v.words === ctx.edgeBasis.words) throw new DataError("bad-edge-basis", "spine edge_basis words is the index's own words key: " + shown(v.words));
   if (!has(ctx.strings, v.words)) throw new DataError("bad-edge-basis", "spine edge_basis words is not a key of the index strings: " + shown(v.words));
+  /* On a map with the Graph view the index carries exactly one spine sentence key (validateIndex's graphView): the spine must name that one. */
+  if (ctx.graphView && v.words !== ctx.graphView.spineWords) throw new DataError("bad-edge-basis", "spine edge_basis words is not the spine sentence key the index carries: " + shown(v.words));
   return v.words;
 }
 

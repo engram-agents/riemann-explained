@@ -58,6 +58,10 @@ export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts",
    The four TYPESET_STRINGS are the words of the maths-face view of a note (its label, the line under the source line, the two button labels); the page
    sets formulas in the maths face and draws the line and the button ONLY when all four are present, and otherwise renders the note as it always did. */
 export const TYPESET_STRINGS = Object.freeze(["note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button"]);
+/* The Graph view's words (the page reads them ONLY when the map carries both view words; see validateIndex): the switch's two labels, what a box is in the
+   view, the sheet's label and its two lines, and the notice for a failed read of the spine. The spine's own sentence is one more key, whose NAME the page does
+   not know: spine.json's edge_basis names it (spine.js), and the index may carry exactly one key beyond the lists. */
+export const GRAPH_VIEW_STRINGS = Object.freeze(["view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"]);
 export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source", ...TYPESET_STRINGS]);
 /* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
    `edge_basis.words` names. They are neither fixed nor optional: validateIndex adds them to the required set when edge_basis is there, and
@@ -227,11 +231,25 @@ export function validateIndex(raw) {
   /* The page treats a map as carrying notes only when strings hold BOTH note words; one alone would open note-carrying cards silently without their note. */
   if (has(raw.strings, "note_label") !== has(raw.strings, "note_source"))
     throw new DataError("bad-note-strings", "index strings holds only one of note_label and note_source: both or neither");
-  for (const k of Object.keys(raw.strings)) {
-    if (!need.includes(k) && !edgeStrings.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
+  /* THE GRAPH VIEW exists iff the strings hold BOTH view_cards and view_graph (a build with the Graph overlay); one alone is refused by name. Then every
+     word of the view is required and not empty, and ONE key more is taken: the spine's sentence (graphView.spineWords), checked against spine.json later. */
+  const viewPair = ["view_cards", "view_graph"];
+  for (const k of viewPair) if (!has(raw.strings, k) && viewPair.some((o) => has(raw.strings, o))) throw new DataError("bad-view-words", "index strings holds only one of view_cards and view_graph, lacks " + k);
+  const viewOn = has(raw.strings, "view_cards");
+  if (viewOn) {
+    for (const k of GRAPH_VIEW_STRINGS) {
+      if (!has(raw.strings, k)) throw new DataError("missing-string", "index strings lacks the Graph view word " + k);
+      if (raw.strings[k] === "") throw new DataError(viewPair.includes(k) ? "bad-view-words" : "empty-string", "index strings holds an empty Graph view word " + k);
+    }
   }
+  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k));
+  const leftover = Object.keys(raw.strings).filter((k) => !known(k));
+  if (viewOn && leftover.length === 0) throw new DataError("bad-view-words", "index strings carries no spine sentence key beside the Graph view words");
+  for (const k of viewOn ? leftover.slice(1) : leftover) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
+  if (viewOn && raw.strings[leftover[0]] === "") throw new DataError("empty-string", "index strings holds an empty spine sentence key " + leftover[0]);
   const out = { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
   if (edgeBasis) out.edgeBasis = edgeBasis;
+  if (viewOn) out.graphView = { spineWords: leftover[0] };
   /* The two optional per-map keys (data contract sections 15 and 24), each absent on the live map and then absent from the record too.
      `sibling_layout`: the only value is "column". `open_scale_floor`: a finite number above 0 here; its range (zoom.min up to the open-framing
      cap) is the ENGINE's rule, asked of the engine itself at start by checkedOptions below, never copied into the page. */
@@ -366,7 +384,7 @@ export function isTransportCode(code) {
 }
 
 /* Response -> parsed JSON, with a named reason for each way it can fail. */
-async function fetchJson(fetchLike, address) {
+export async function fetchJson(fetchLike, address) {
   let r;
   try { r = await fetchLike(address); } catch (e) { throw new DataError("fetch-failed", "the request for " + address + " failed"); }
   if (!r || !r.ok) throw new DataError("http-" + (r && r.status), "the request for " + address + " was refused");
