@@ -1,0 +1,28 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-3",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Synthetic three"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-3",
+ "note": {
+  "later_blocks": 0,
+  "source": "src/Synthetic/Three.lean",
+  "text": "# Synthetic three\n\nA third note, and a formula `y = z`.\n"
+ },
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "rests_on": []
+}

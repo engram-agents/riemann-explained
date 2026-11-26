@@ -1,0 +1,23 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-5",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-b"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Synthetic five, with a title long enough to wrap on a narrow screen when it is drawn in a card"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-5",
+ "path": [
+  "sk-part",
+  "sk-group-b"
+ ],
+ "rests_on": []
+}

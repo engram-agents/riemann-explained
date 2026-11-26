@@ -13,7 +13,7 @@ Every case runs on the ENGINE TEST DOUBLE (test/double_engine.js, written to INT
 the real engine (viewer/graph/engine/), which is where pinch, camera and layout are decided. Exit 0 only if every
 case that ran passed. Nothing is written outside a temporary directory.
 """
-import glob, http.server, json, os, sys, tempfile, threading, urllib.parse
+import glob, hashlib, http.server, json, os, sys, tempfile, threading, urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -2939,6 +2939,188 @@ def c_typeset_review(b, S0, engine):
     assert got[0] == got[1], "a review field changed what is drawn"
 
 
+# ---------------------------------------------------------------- the later-blocks line on the sheet (fixtures/later)
+
+LATER_ONE = "We count 1 more repository note in this file. This map does not show it."
+LATER_MANY_2 = "We count 2 more repository notes in this file. This map does not show them."
+LATER_MANY_12 = "We count 12 more repository notes in this file. This map does not show them."
+LATER_KIDS = ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "P.note-typeset-line", "BUTTON.note-toggle", "DIV.note-body", "P.note-more", "P.note"]
+LATER_KIDS_EXACT = ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "BUTTON.note-toggle", "DIV.note-body note-exact", "P.note-more", "P.note"]
+LATER_KIDS_PLAIN = ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "DIV.note-body", "P.note-more", "P.note"]
+MORE_JS = """(() => { const m = [...document.querySelectorAll('#graph-sheet-body .note-more')];
+  const x = m[0], s = document.getElementById('graph-sheet-body');
+  return { n: m.length, text: x ? x.textContent : null, tag: x ? x.tagName : null, nodes: x ? [...x.childNodes].map(c => c.nodeType) : null,
+           before: x && x.previousElementSibling ? x.previousElementSibling.className : null, elems: x ? x.querySelectorAll('*').length : null,
+           stray: s.querySelectorAll('img, script, a, iframe, b, u, i, em, strong, style, svg').length,
+           handlers: [...s.querySelectorAll('*')].filter(e => [...e.attributes].some(a => /^on/i.test(a.name))).length }; })()"""
+# the sheet's whole body (outerHTML) on the base head (the merged main a7929617), for a note WITHOUT later_blocks: (length, sha256). Captured from the base
+# head's own code on the SAME synthetic map with the two strings and every `later_blocks` taken out (_without_later: the base head refuses the full map);
+# the double and the real engine draw the same bytes. Keyed by (step, exact view).
+LATER_GOLDEN = {
+    ("sk-file-1", False): (870, "738ad344740c5d6cf0e7137f9aeb3a260de824605ce0a3a9c6bb543e043e6872"),
+    ("sk-file-1", True): (726, "ad7d8f7dd9d541f2f876253f54781500617a78d3fb16d8d2912e8c40d4eedb8d"),
+    ("sk-file-2", False): (747, "b5b7cea317e2c12f5e23ae9ae7797cf7bbb2a65c956a08725ede3c900bf4ea27"),
+    ("sk-file-3", False): (746, "baf05e705f3975b566b54fabfc1b969dbfd8887511cfe2ecced7053d3dc7e865"),
+    ("sk-file-4", False): (718, "90499426dfe4d3c0d111cd94a54fce326f620919d647feabb5a515c5fc3f4297"),
+}
+
+
+def _without_later():
+    """Edits that take the later-blocks words and every `later_blocks` out of the later map: the map as a build without the key would write it."""
+    def ie(i):
+        i["strings"].pop("note_more_one")
+        i["strings"].pop("note_more_many")
+    def se(steps):
+        for st in steps.values():
+            if "note" in st:
+                st["note"].pop("later_blocks", None)
+    return {"index_edit": ie, "step_edit": se}
+
+
+def _later_site(engine, fix="later", **edits):
+    root = tempfile.mkdtemp(prefix="pg-later-")
+    assemble.assemble(root, engine, fix=fix, **edits)
+    return Served(root)
+
+
+def _sheet_html(b, S, card, toggle=False, width=1280):
+    pg = Pg(b, S.base + "graph/index.html", width, 900).settled()
+    _open_note(pg, card)
+    if toggle:
+        pg.page.click("#graph-sheet-body .note-toggle")
+    out = pg.ev("document.getElementById('graph-sheet-body').outerHTML")
+    pg.csp_clean()
+    pg.close()
+    return out
+
+
+def c_later_sheet(b, S0, engine):
+    """L3: a note whose later_blocks n > 0 shows ONE line, p.note-more, directly after the note body, in BOTH views of the maths face (the rendering and
+    the exact text): note_more_one for n == 1, note_more_many otherwise, {n} filled as TEXT (one text node per part, no element). Nothing for n == 0,
+    for a note without later_blocks, or for a card without a note. Closing and Escape leave none behind; the next opening draws it once."""
+    S = _later_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844).settled()
+        _open_note(pg, "sk-file-1")
+        assert pg.ev(NOTE_KIDS_JS) == LATER_KIDS, pg.ev(NOTE_KIDS_JS)
+        m = pg.ev(MORE_JS)
+        assert m["n"] == 1 and m["text"] == LATER_ONE and m["tag"] == "P", m
+        assert m["nodes"] == [3, 3, 3] and m["elems"] == 0 and m["before"] == "note-body", m
+        rendered = pg.ev(TYPESET_STATE_JS)
+        # the exact view: the line is still there, once, after the body; the maths-type line is gone (as before)
+        pg.page.click("#graph-sheet-body .note-toggle")
+        assert pg.ev(NOTE_KIDS_JS) == LATER_KIDS_EXACT, pg.ev(NOTE_KIDS_JS)
+        mx = pg.ev(MORE_JS)
+        assert mx == dict(m, before="note-body note-exact"), mx          # the same line; its neighbour is the body, now carrying note-exact
+        assert pg.ev(TYPESET_STATE_JS)["pressed"] == "true"
+        # and back to the rendering: the same line, the same place
+        pg.page.click("#graph-sheet-body .note-toggle")
+        assert pg.ev(NOTE_KIDS_JS) == LATER_KIDS and pg.ev(MORE_JS) == m
+        assert pg.ev(TYPESET_STATE_JS) == rendered
+        # more than one: the many form, {n} as text
+        _open_note(pg, "sk-file-2")
+        m2 = pg.ev(MORE_JS)
+        assert m2["n"] == 1 and m2["text"] == LATER_MANY_2 and m2["nodes"] == [3, 3, 3] and m2["elems"] == 0, m2
+        # n == 0, no key, no note: nothing
+        _open_note(pg, "sk-file-3")
+        assert pg.ev(MORE_JS)["n"] == 0 and pg.ev(NOTE_KIDS_JS) == TYPESET_KIDS, pg.ev(NOTE_KIDS_JS)
+        _open_note(pg, "sk-file-4")
+        assert pg.ev(MORE_JS)["n"] == 0 and "P.note-more" not in pg.ev(NOTE_KIDS_JS), pg.ev(NOTE_KIDS_JS)
+        at_hash(pg, "sk-file-5")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-5'", 6000)
+        assert pg.ev("document.querySelectorAll('.note-more').length") == 0
+        # Escape from the exact view, then the next opening starts on the rendering with the line drawn once
+        _open_note(pg, "sk-file-1")
+        pg.page.click("#graph-sheet-body .note-toggle")
+        pg.page.keyboard.press("Escape")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.note-more').length") == 0
+        _open_note(pg, "sk-file-2")          # the address is still sk-file-1 after Escape, so go via another card
+        _open_note(pg, "sk-file-1")
+        assert pg.ev(MORE_JS) == m and pg.ev(NOTE_KIDS_JS) == LATER_KIDS
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.note-more').length") == 0
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+    # a two-digit n, from the data (not from a fixed word)
+    S = _later_site(engine, step_edit=lambda steps: steps["sk-file-2"]["note"].__setitem__("later_blocks", 12))
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _open_note(pg, "sk-file-2")
+        assert pg.ev(MORE_JS)["text"] == LATER_MANY_12, pg.ev(MORE_JS)
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_later_plain(b, S0, engine):
+    """L3 without the maths face: a map lacking one of the four maths-face strings draws the note as in round 1 (no line, no button), and the later-blocks
+    line still comes directly after the note body, once."""
+    S = _later_site(engine, index_edit=lambda i: i["strings"].pop("note_exact_button"))
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _open_note(pg, "sk-file-1")
+        assert pg.ev(NOTE_KIDS_JS) == LATER_KIDS_PLAIN, pg.ev(NOTE_KIDS_JS)
+        m = pg.ev(MORE_JS)
+        assert m["n"] == 1 and m["text"] == LATER_ONE and m["before"] == "note-body", m
+        _open_note(pg, "sk-file-2")
+        assert pg.ev(MORE_JS)["text"] == LATER_MANY_2
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_later_hostile(b, S0, engine):
+    """L5: a template holding markup is text: no element, no handler, in the rendering and in the exact view, and the {n} inside it is still filled."""
+    payload = "<img src=x onerror=1> {n} &amp; <b>x</b>"
+    def edit(i):
+        i["strings"]["note_more_one"] = payload
+        i["strings"]["note_more_many"] = payload
+    S = _later_site(engine, index_edit=edit)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _open_note(pg, "sk-file-1")
+        for view in ("rendered", "exact"):
+            if view == "exact":
+                pg.page.click("#graph-sheet-body .note-toggle")
+            m = pg.ev(MORE_JS)
+            assert m["n"] == 1 and m["text"] == "<img src=x onerror=1> 1 &amp; <b>x</b>", (view, m)
+            assert m["elems"] == 0 and m["stray"] == 0 and m["handlers"] == 0 and m["nodes"] == [3, 3, 3], (view, m)
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_later_unchanged(b, S0, engine):
+    """L4: a map without later_blocks draws byte-identical sheets: on the later map with the two strings and every `later_blocks` taken out, the sheet
+    body's outerHTML for each note matches the literal taken from the base head (rendering and exact view), and on the FULL later map a note with no key,
+    and one with 0, draw exactly what that stripped map draws."""
+    for (card, toggle), (size, digest) in LATER_GOLDEN.items():
+        S = _later_site(engine, **_without_later())
+        try:
+            h = _sheet_html(b, S, card, toggle)
+        finally:
+            S.stop()
+        assert len(h) > 300, (card, len(h))
+        assert (len(h), hashlib.sha256(h.encode("utf-8")).hexdigest()) == (size, digest), (card, toggle, len(h))
+        assert "note-more" not in h
+    for card in ("sk-file-4", "sk-file-3"):
+        S1 = _later_site(engine)
+        S2 = _later_site(engine, **_without_later())
+        try:
+            a, c = _sheet_html(b, S1, card), _sheet_html(b, S2, card)
+        finally:
+            S1.stop()
+            S2.stop()
+        assert len(a) > 300 and a == c and "note-more" not in a, (card, len(a), len(c))
+
+
 def c_mutant(b):
     """R7 MUTANT: a copy of dom.js whose text path uses innerHTML. The hostile cells must go red."""
     def mut(text):
@@ -3031,6 +3213,10 @@ def main():
                 run("note: T4 formula spans that would be markup are span.m text, no element comes of them", c_typeset_hostile, eng)
                 run("note: T5 a map lacking any one of the four maths-face strings renders the note exactly as round 1", c_typeset_gate, eng)
                 run("note: L2 a review {state: converter} changes nothing drawn", c_typeset_review, eng)
+                run("later: L3 the line after the note, in the rendering and in the exact view; one form or the other; {n} as text; none for 0, no key, no note", c_later_sheet, eng)
+                run("later: L3 without the maths face the line is still directly after the note", c_later_plain, eng)
+                run("later: L5 a template holding markup is text in both views", c_later_hostile, eng)
+                run("later: L4 a note without later_blocks draws the base head's bytes; a note with 0 draws what the same map without the strings draws", c_later_unchanged, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:

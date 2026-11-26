@@ -1,0 +1,28 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-2",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Synthetic two"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-2",
+ "note": {
+  "later_blocks": 2,
+  "source": "src/Synthetic/Two.lean",
+  "text": "# Synthetic two\n\nA second note with a span `f(x) = 2` in it.\n"
+ },
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "rests_on": []
+}
