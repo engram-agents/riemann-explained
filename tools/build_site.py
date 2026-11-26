@@ -2080,7 +2080,7 @@ def _graph_count_errors(objs, symbols=None):
     return out + _graph_strings_errors(ix["strings"], symbols)
 
 
-GRAPH_STATUS_HIDDEN = ("module",)   # a card of one of these kinds draws no state frame and no status line, so its state and proof do not occur on the map
+GRAPH_STATUS_HIDDEN = ("part", "group", "file")   # a card of one of these (skeleton) kinds draws no state frame and no status line, so its state and proof do not occur on the map
 
 
 def _graph_order_errors(rows, symbols, orders):

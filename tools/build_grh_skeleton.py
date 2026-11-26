@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """The skeleton of the map for a Lean repository that keeps its own index (CONTENTS.md) and its own folders.
 
-usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json]
+usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json] [--strings-overlay overlay.json]
        build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]
 
 DIR is the folder that holds CONTENTS.md and src/. The tool reads the `## New` section of CONTENTS.md and the .lean files under src/New and writes
 OUT_DIR/graph/index.json, OUT_DIR/graph/step/<id>.json and OUT_DIR/graph/uses.json, and nothing else: no page, no assets (`assets` is {}). It builds ROWS (id,
-parent, order, premises, kind, state, proof, title) and hands them to build_site's `_graph_files` and `_graph_bytes`, with a symbol table that has one more kind
-row (module); it has no writer of its own for the graph objects, and every refusal of the graph contract (GRAPH-FANOUT, GRAPH-ID, GRAPH-DUP, GRAPH-PARENT,
+parent, order, premises, kind, state, proof, title) and hands them to build_site's `_graph_files` and `_graph_bytes`, with a symbol table of its own (`symbols=`) that has
+only the three kinds (part, group, file) as rows, its order lists (`orders=`) and `layout="column"`; it has no writer of its own for the graph objects, and every refusal of the graph contract (GRAPH-FANOUT, GRAPH-ID, GRAPH-DUP, GRAPH-PARENT,
 GRAPH-CYCLE, GRAPH-EDGE, GRAPH-SYMBOL, GRAPH-COUNT, GRAPH-STRINGS) is that function's. --pin is written as the `commit` of every file. --outline (default:
-outline/outline.json of this checkout) names the repository's own outline, whose group ids must not be ids of this tool. Exit 0 built; 1 refused, OUT_DIR not
+outline/outline.json of this checkout) names the repository's own outline, whose group ids must not be ids of this tool. --strings-overlay (default:
+site/strings-lean.json) holds keys that replace or add to the strings file for this map only; no file is edited. Exit 0 built; 1 refused, OUT_DIR not
 written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
 self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 reads the real source and runs only when --grh is given to the self-test;
 otherwise it is skipped.
@@ -18,7 +19,7 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
  1 TREE. CONTENTS.md, section `## New` only, in the order of its lines (nothing is sorted, nothing comes from the file system). Each `### heading` is a section;
    a line that is only `**title**` is a group of that section; a line `- `New/<path>` (<n>): <title>` is a file of the latest group. A section whose files have
    no group line gets one anonymous group (id `<section>--`, empty title). A section of exactly one file whose path has no folder (`New/Main`) is a top step
-   that is that file. Steps: section > group > file.
+   that is the child of a part made from the heading (its id is the slug of the heading), with no group between. Steps: part > group > file.
  2 IDS. Every id starts with `lean-`. Section: the folder name (the second path segment) in kebab case (a lower-case letter followed by an upper-case one gets
    `-`; `_` becomes `-`; then lower case). Group: `<section id>--<slug of its title>` (NFKD, accents dropped, lower case, each run of characters outside a-z0-9
    one `-`, trimmed). File: its path after `New/`, each segment in kebab case, joined by `-`. An id longer than 64 characters is cut to its first 57, a trailing
@@ -29,12 +30,12 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
  4 PREMISES. A file rests on a file of the SAME group that it imports (`import New.X.Y` at the start of a line), after the transitive reduction of each group's
    edges. A self-import and an import outside New are ignored; an import of a New file of another group (and a reduced one) is not drawn but is listed in
    graph/uses.json. Groups and sections have no premises. A cycle among the files of a group is left as it is (GRAPH-EDGE).
- 5 KIND, STATE, PROOF. Every step has kind `module`, state `none`, proof `none`: no declaration is read.
+ 5 KIND, STATE, PROOF. A `###` heading is a `part`, a bold line a `group`, a file line a `file`; every step has state `none`, proof `none`. No declaration is read.
  6 USES. graph/uses.json holds, for every file step, the ids of every New file it imports, in any group, sorted, never itself. It is not part of index.json.
  7 COMPLETENESS. Every .lean file under src/New is a file line of CONTENTS and every file line exists: SKEL-UNLISTED / SKEL-MISSING (`<path>` as in CONTENTS,
    without `.lean`); a line of the section that does not parse, or a file whose folder is not its section's, is SKEL-LINE <n> (n is the line of CONTENTS.md).
    All of one kind are reported together.
- 8 STRINGS. The strings file is read and checked as build_site does and must hold symbol_kind_module; `_graph_files` checks the exact key set (21 keys here).
+ 8 STRINGS. The strings file is read and checked as build_site does and overlaid; `_graph_files` checks the exact key set (20 keys: the three kind words come from the overlay).
 """
 import contextlib
 import hashlib
@@ -80,9 +81,10 @@ PREFIX = "lean-"      # every id of this tool starts with it: its own namespace,
 ID_MAX = 64           # the longest id (the page's router refuses a longer target)
 ID_KEEP = 57          # an id longer than ID_MAX keeps this many characters, then `-` and ID_HASH hex digits of the sha256 of the whole id
 ID_HASH = 6
-MODULE_ROW = {"class": "kind-module", "words": "symbol_kind_module"}
-SYMBOLS = dict(bs.GRAPH_SYMBOLS, kinds=dict(bs.GRAPH_SYMBOLS["kinds"], module=MODULE_ROW))   # the table of this tool: today's, with the one more kind row
-MAP_ORDERS = {"kinds": ["module"], "states": [], "proofs": []}   # what is drawn on this map: only the module look (it hides state and proof)
+KINDS = ("part", "group", "file")   # a part is a `###` heading, a group a bold line, a file a file line
+SYMBOLS = dict(bs.GRAPH_SYMBOLS, kinds={k: {"class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in KINDS})   # this tool's table: its three kinds, today's states and proofs
+MAP_ORDERS = {"kinds": list(KINDS), "states": [], "proofs": []}   # what is drawn on this map: the three kinds; no state or proof (a card of these kinds has no status)
+OVERLAY = os.path.join(_HERE, os.pardir, "site", "strings-lean.json")
 OUTLINE = os.path.join(_HERE, os.pardir, "outline", "outline.json")
 _FILE_LINE = re.compile(r"- `(New/[^`]+)` \((\d+)\): (.*)")
 _GROUP_LINE = re.compile(r"\*\*(.+)\*\*")
@@ -290,22 +292,24 @@ def build_rows(grh):
             group_files[(si, gi)] = (members, kept)
     rows = []
 
-    def row(i, parent, order, prem, title):
-        rows.append({"id": i, "parent": parent, "order": order, "premises": prem, "kind": "module", "state": "none", "proof": "none", "title": title})
+    def row(i, parent, order, prem, kind, title):
+        rows.append({"id": i, "parent": parent, "order": order, "premises": prem, "kind": kind, "state": "none", "proof": "none", "title": title})
     for ti, s in enumerate(sections):
-        if s["top_file"]:
+        if s["top_file"]:   # a part whose one file has no folder: the part is made from the heading, the file is its child (no group between)
             f = s["groups"][0]["files"][0]
-            row(fid[f["path"]], "root", ti, [], f["title"])
+            pid = ident(PREFIX + slug(s["heading"]))
+            row(pid, "root", ti, [], "part", s["heading"])
+            row(fid[f["path"]], pid, 0, [], "file", f["title"])
             continue
         sid = PREFIX + kebab(s["folder"])
         sid_id = ident(sid)
-        row(sid_id, "root", ti, [], s["heading"])
+        row(sid_id, "root", ti, [], "part", s["heading"])
         for gi, g in enumerate(s["groups"]):
             gid = ident(f"{sid}--{slug(g['title'] or '')}")
-            row(gid, sid_id, gi, [], g["title"] or "")
+            row(gid, sid_id, gi, [], "group", g["title"] or "")
             members, kept = group_files[(ti, gi)]
             for fi, f in enumerate(g["files"]):
-                row(fid[f["path"]], gid, fi, premises[f["path"]], f["title"])
+                row(fid[f["path"]], gid, fi, premises[f["path"]], "file", f["title"])
             ends = {p for p in members if kept[p]} | {q for p in members for q in kept[p]}
             depth = _depths(kept)
             per = {}
@@ -324,6 +328,7 @@ def build_rows(grh):
         depth_max = max(depth_max, d)
     return [], rows, {"steps": len(rows), "top": [r["id"] for r in rows if r["parent"] == "root"], "widest": max([v for k, v in kids.items() if k != "root"] or [0]),
                       "depth": depth_max, "drawn": drawn, "not_drawn": total - drawn, "ignored": {"self": self_imports}, "groups": groups, "cut": cut,
+                      "kinds": {k: sum(1 for r in rows if r["kind"] == k) for k in KINDS},
                       "uses": uses}
 
 
@@ -345,15 +350,15 @@ def build(grh, pin, strings, live_ids=()):
     return [], bs._graph_bytes(objs), rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json] [--strings-overlay overlay.json]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
 
 
 def _parse(a):
-    """{grh, pin, strings, out[, outline]} or None: each option once, with a value; --pin not empty; nothing else."""
+    """{grh, pin, strings, out[, outline][, strings-overlay]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -365,7 +370,7 @@ def report_lines(rep):
     cuts = [f"cut id {full} -> {final}" for full, final in rep["cut"]]
     table = [f"group {g['group']}: files {g['files']}, linked {g['linked']}, unlinked {g['unlinked']}, longest {g['longest']}, "
              f"widest row depth {g['widest_depth']} ({g['widest_count']} files)" for g in rep["groups"]]
-    return ([f"steps: {rep['steps']}", "top: " + ", ".join(rep["top"]), f"widest: {rep['widest']}", f"depth: {rep['depth']}",
+    return ([f"steps: {rep['steps']}", "kinds: " + ", ".join(f"{k} {rep['kinds'][k]}" for k in KINDS), "top: " + ", ".join(rep["top"]), f"widest: {rep['widest']}", f"depth: {rep['depth']}",
              f"links drawn: {rep['drawn']}", f"imports not drawn: {rep['not_drawn']}", f"self-imports ignored: {rep['ignored']['self']}",
              f"ids cut: {len(cuts)}"] + cuts + table)
 
@@ -378,8 +383,12 @@ def _run(opts):
     try:
         strings = bs._read_json(opts["strings"], "strings file")
         outline = bs._read_json(opts.get("outline", OUTLINE), "outline")
+        overlay = bs._read_json(opts.get("strings-overlay", OVERLAY), "strings overlay")
     except bs._Unreadable as e:
         raise Unreadable(str(e))
+    if not (isinstance(overlay, dict) and isinstance(strings, dict)):
+        raise Unreadable("cannot read the strings overlay: it and the strings file must be JSON objects")
+    strings = dict(strings, **overlay)   # the overlay's keys replace or add to the strings file, for this map only (no file is edited)
     if not (isinstance(outline, dict) and isinstance(outline.get("groups"), list) and all(isinstance(g, dict) and isinstance(g.get("id"), str) for g in outline["groups"])):
         raise Unreadable("cannot read the outline: no `groups` list of objects with an `id`")
 

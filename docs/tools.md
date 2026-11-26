@@ -300,37 +300,41 @@ card. The
 LIMIT paragraph in the file lists what is not checked.
 `python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--graph-src DIR] [--force]`
 
-**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json]`** answers: what is the
+**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json] [--strings-overlay overlay.json]`** answers: what is the
 skeleton of the map for a Lean repository that keeps its own index? `DIR` holds `CONTENTS.md` and `src/`. The tool reads the `## New` section of
 `CONTENTS.md` (`###` headings are sections, a line that is only `**title**` is a group, a line ``- `New/<path>` (<n>): <title>`` is a file) and the import
 lines of the files under `src/New`, and writes `graph/index.json`, `graph/step/<id>.json` and `graph/uses.json` under `OUT_DIR`. It writes graph data only: no
 page and no assets (`assets` is `{}`). It builds rows and hands them to `build_site.py`'s `_graph_files` and `_graph_bytes`; it has no writer of its own, so
 every refusal of the graph data (`GRAPH-FANOUT`, `GRAPH-ID`, `GRAPH-DUP`, `GRAPH-EDGE`, `GRAPH-STRINGS`, `GRAPH-ORDER` and the others) is that function's.
-`--pin` is written as the `commit` of every file. `--outline` (default `outline/outline.json` of this checkout) is the repository's own outline.
+`--pin` is written as the `commit` of every file. `--outline` (default `outline/outline.json` of this checkout) is the repository's own outline; `--strings-overlay` is described under Kind.
 A normal run does not run the self-test; `--selftest [--only ID,ID]` does, and `--selftest --grh DIR` also runs case SK13 on a real source (without `--grh` it
 is skipped and says so).
 
 The rules are mechanical; nothing is typed by hand, and the kind and the face line are the skeleton's own rules, not reading:
 
 - **Order** is the order of the lines of `CONTENTS.md`; nothing is sorted and nothing comes from the file system.
-- **Steps** are section (top), group, file. A section of one file with no folder (`New/Main`) is a top step that is that file. A section whose files have no
+- **Steps** are part (top, one per `###` heading), group (one per bold line) and file (one per file line): 353 steps on the real source. A part whose one
+  file has no folder (`New/Main`) has that file as its child, with no group between; the part's id is the slug of the heading. A section whose files have no
   group line gets one anonymous group (its id ends in `--`, its title is empty).
 - **Ids** start with `lean-`, so they cannot meet the ids of the repository's outline (`SKEL-ID-CLASH` if one does). A section id is its folder name in kebab
   case; a group id is `<section id>--<slug of the group title>`; a file id is its path after `New/` in kebab case. An id longer than 64 characters is cut to its
   first 57, a trailing `-` removed, then `-` and the first 6 hex digits of the sha256 of the whole id.
 - **Titles** are the `CONTENTS.md` text, with the backticks removed. The 50-character bound of the graph contract is not applied here (it lives in
   `build_site.py`'s `_graph_line_errors`, which this tool does not call): most titles of the real source are longer.
-- **Kind, state, proof**: every step has kind `module`, state `none`, proof `none`. No declaration is read. The kind `module` is a fourth row of the symbol table
-  for this tool only, and its order lists are exactly kinds `[module]`, states `[]`, proofs `[]` (`_graph_files(orders=)`; a row that occurs and is drawn but is
-  missing from its list is `GRAPH-ORDER`). `index.json` also carries `sibling_layout: column` (`_graph_files(layout=)`; any other value is `GRAPH-LAYOUT`). The live map's
-  table, order lists and output are unchanged: with no argument the key is absent and the lists are the whole tables.
+- **Kind, state, proof**: kinds are `part`, `group` and `file`, read off the structure of `CONTENTS.md`; every step has state `none` and proof `none`. No
+  declaration is read. The symbol table for this tool (`_graph_files(symbols=)`) has only those three kind rows; its order lists are kinds `[part, group, file]`,
+  states `[]`, proofs `[]` (`orders=`; a row that occurs and is drawn but is missing from its list is `GRAPH-ORDER`; a state or proof occurs only on a card
+  whose kind is not one of the three). `index.json` also carries `sibling_layout: column` (`layout=`; any other value is `GRAPH-LAYOUT`). The words of the
+  three kinds and the kinds heading come from an overlay file, `--strings-overlay` (default `site/strings-lean.json`, placeholder wording): its keys replace or
+  add to the strings file for this map only, and no file is edited. The live map's table, order lists, key set and output are unchanged: with no argument the
+  key is absent and the lists are the whole tables.
 - **Links** (`rests_on`) join only sibling files of one group, from `import New.X.Y` lines at the start of a line, after the transitive reduction of the
   group's edges. Groups and sections have no premises. A cycle among the files of a group is `GRAPH-EDGE`.
 - **`graph/uses.json`** lists, for every file step, the ids of every `New` file it imports, in any group, sorted, never itself. It is not part of `index.json`.
 - **Completeness**: every `.lean` file under `src/New` must be a file line and every file line must exist (`SKEL-UNLISTED <path>`, `SKEL-MISSING <path>`, all
   reported); a line of the section that does not parse, or a file whose folder is not its section's, is `SKEL-LINE <n>`.
 
-The report prints: steps, the top ids, the widest step, the depth, the links drawn, the imports not drawn (a cross-group import or a reduced one), the
+The report prints: steps, the number of steps of each kind, the top ids, the widest step, the depth, the links drawn, the imports not drawn (a cross-group import or a reduced one), the
 self-imports ignored, the ids that were cut, and one line per group (files, files with at least one drawn link, files with none, the longest path of
 `rests_on`, and the depth row with most files, a file that rests on nothing being depth 0). An import outside `New` is counted nowhere.
 Exit: 0 built; 1 refused, `OUT_DIR` not written; 2 usage error or an input that cannot be read; 4 is not used by a normal run.
