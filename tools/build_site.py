@@ -510,9 +510,9 @@ constant TITLE_MISSING_REFUSES is True the same cards are BUILD-ERROR TITLE-MISS
 constant is False. F48WORD1 compares definition_label and definition_join with the wording file named by the environment variable
 RH_F48_WORDING and is skipped when it is not set.
 
-G1 THE GRAPH DATA (cases GR1 to GR27). `graph/index.json` holds exactly assets ({}, a later slice fills it), commit, format, max_children (40, the named constant
-GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number of step files), strings (the object of the nine `words` keys of the symbols rows with
-their values from the strings file, `{n}` as written; the keys the page reads at run time are a later slice), symbols and top (the top ids in `order`). `graph/step/<id>.json`
+G1 THE GRAPH DATA (cases GR1 to GR27). `graph/index.json` holds exactly assets (the graph assets of G2a below; {} with none), commit, format, max_children (40, the named constant
+GRAPH_MAX_CHILDREN), rests_on (the links among the top steps), steps (the number of step files), strings (the object of the nine `words` keys of the symbols rows and the eleven run-time keys of G2a, with
+their values from the strings file, `{n}` as written), symbols and top (the top ids in `order`). `graph/step/<id>.json`
 holds exactly card, children, commit (the commit of index.json), format, id, path (the ancestors, top first, [] for a top step), rests_on. A closed card holds exactly
 child_count, id, kind, path, proof, state, title, plus `role` when the step has one (absent otherwise, never null, never empty: the words the list page prints for the
 step's root_role, today the strings key named_statement_use_line for the role named_statement); a child also has parent_rests_on (the step rests on this child). A link is
@@ -533,8 +533,18 @@ line break, over 50) is `GRAPH-SHORT <id> <reason>`, once. The refusals, each it
 `^[a-z0-9][a-z0-9-]*$`, or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted; the root's own children count too and the root is
 named `root`), GRAPH-SYMBOL, GRAPH-EDGE (a premise on a step that is neither a sibling nor the step's own child, a premise on no step, or a cycle in rests_on), GRAPH-COUNT
 (`_graph_count_errors`: child_count against the children listed, steps against the files, every listed id has its file) and GRAPH-SHORT. The graph files are written like
-data.js (keys sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in this slice: graph/index.html,
-the shell, {{S:key}}, the sink gate, the asset copy and hash, the run-time strings.
+data.js (keys sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in G1: graph/index.html,
+the shell, {{S:key}} (a later slice); the assets, the sink gate and the run-time strings are G2a.
+
+G2a THE GRAPH ASSETS, THE SINK GATE AND THE RUN-TIME STRINGS (cases GA1 to GA13). `--graph-src DIR` (default GRAPH_SRC, viewer/graph beside the tools folder; read at the call) is the
+folder the page code is copied from: every .js and .css file under it with no `test` directory segment is an asset, copied byte for byte to graph/<path>, listed in index.json
+`assets` as {path under graph/: sha256 of the bytes} and in the manifest's `files`; shell.html (the root one), .md files and test/ are not assets. No folder, or none of those files:
+`assets` is {} and the run prints `graph assets: none (no viewer/graph directory)`. Refused, `GRAPH-ASSET <path> <reason>`: symlink (anywhere under the folder), name (not
+`^[A-Za-z0-9][A-Za-z0-9._/-]*$`, or `..` in it), html (an .html other than the root shell.html, outside test/), size (over 400000 bytes), encoding (not UTF-8). Before anything is
+written the assembled tree (assets, and shell.html under its own name) goes through tools/graph_js_check.py, loaded by file path (`gjc`): its non-zero answer is `GRAPH-SINK graph
+<the scanner's REFUSED line>`, one per line. This file keeps no list of forbidden tokens (GA6 counts them). index.json `strings` is exactly the nine `words` keys and the
+GRAPH_RUNTIME_KEYS (parts_n holds {n} as written), checked as an exact set (`GRAPH-STRINGS <key> missing | is not a key the page reads`). A `GRAPH-COUNT` also names an asset whose file or
+sha256 is not the one listed.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
