@@ -70,15 +70,17 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .face.k-structure { --kc: var(--struct); border-radius: 18px; box-shadow: inset 0 0 0 3px var(--card), inset 0 0 0 4.5px var(--kc); }
 .face.s-census { border-style: dotted; border-width: 3px; }
 .face.s-none { border-style: dashed; background: var(--card-unread); }
-/* The part, group and file looks win over the state frame. A folder or file asserts nothing, and `.face.s-none` means "statement not read
+/* The part, group and file looks win over the state frame. A part, group or file asserts nothing, and `.face.s-none` means "statement not read
    yet", so these cards must not show it. Each override names the s-* classes in its own selector, so it out-ranks `.face.s-none` and
-   `.face.s-census` whatever the source order. The three are told apart WITHOUT colour: part a 4px double frame, group a 2px solid frame,
-   file a 1px solid frame with a 4px bar on the left. One family: square corners, the card background, the muted colour.
-   LOOK PENDING (Borges proposes, Kepler rules): a placeholder, to be ruled on a screenshot. */
+   `.face.s-census` whatever the source order. The kind is told by BAR POSITION, never by ring count: part a solid 2 px frame with a 6 px
+   bar on TOP, group a solid 2 px frame with no bar, file a solid 1 px frame with a 4 px bar on the LEFT. One family: square corners, the
+   card background, the muted colour. LOOK PENDING (Borges proposes, Kepler rules): a placeholder, to be ruled on a screenshot. */
 .face.k-part, .face.k-group, .face.k-file { --kc: var(--muted); }
-.face.k-part, .face.k-part.s-none, .face.k-part.s-census { border-style: double; border-width: 4px; background: var(--card); border-radius: 0; box-shadow: none; }
+.face.k-part, .face.k-part.s-none, .face.k-part.s-census { border-style: solid; border-width: 6px 2px 2px 2px; background: var(--card); border-radius: 0; box-shadow: none; }
 .face.k-group, .face.k-group.s-none, .face.k-group.s-census { border-style: solid; border-width: 2px; background: var(--card); border-radius: 0; box-shadow: none; }
 .face.k-file, .face.k-file.s-none, .face.k-file.s-census { border-style: solid; border-width: 1px 1px 1px 4px; background: var(--card); border-radius: 0; box-shadow: none; }
+/* On this map only: the selection ring stands 3 px off the box (engine.css gives 2 px) so it never touches a bar or a border. */
+.ge-node.ge-selected:has(.face.k-part, .face.k-group, .face.k-file) { outline-offset: 3px; }
 .face-role { font-family: var(--sans); font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kc); white-space: nowrap; }
 .face-title { font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 /* a code span in a title keeps the title's size (the browser's own monospace default is smaller, under the 15 px floor) */
@@ -128,13 +130,14 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 /* ---- the key: rows generated from the closed lists ---- */
 .key-content h2 { font-family: var(--sans); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 8px 0 6px; }
 .key-content ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.key-content .key-note { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
 .key-content li { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 14px; }
 .swatch { --kc: var(--muted); justify-self: center; width: 24px; height: 16px; border: 2px solid var(--kc); background: var(--card); }
 .swatch.k-theorem { --kc: var(--theorem); }
 .swatch.k-def { --kc: var(--defn); border-radius: 6px; }
 .swatch.k-structure { --kc: var(--struct); border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--card), inset 0 0 0 2.5px var(--kc); }
 /* the key's swatches carry the same marks as the faces; LOOK PENDING (Borges proposes, Kepler rules) */
-.swatch.k-part { --kc: var(--muted); border-radius: 0; border-style: double; border-width: 4px; }
+.swatch.k-part { --kc: var(--muted); border-radius: 0; border-style: solid; border-width: 6px 2px 2px 2px; }
 .swatch.k-group { --kc: var(--muted); border-radius: 0; border-style: solid; border-width: 2px; }
 .swatch.k-file { --kc: var(--muted); border-radius: 0; border-style: solid; border-width: 1px 1px 1px 4px; }
 .swatch.s-census { border-style: dotted; }

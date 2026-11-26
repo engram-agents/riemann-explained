@@ -940,6 +940,7 @@ def c_skeleton_map(b, S0, engine):
             crumbs = pg.ev("[...document.querySelectorAll('#graph-crumbs li')].map(e => e.textContent)")
             assert crumbs == crumbs_want[card], (card, crumbs)
             assert pg.ev("document.querySelectorAll('#graph-crumbs .crumb-here').length") == 0, card
+            assert pg.ev("document.querySelectorAll('#graph-crumbs button.crumb').length") == len(crumbs_want[card]), card    # every listed ancestor is a link
         assert foot("sk-group-a") == "3 files", foot("sk-group-a")
         pg.page.click("#graph-sheet-close")
         wait_sheet(pg, False)
@@ -1078,7 +1079,8 @@ def c_look_override(b, S, engine):
         pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
         pg.wait("document.querySelectorAll('.ge-selected').length === 1", 4000)
         got = pg.ev("""(() => { const n = document.querySelector('.ge-selected'); return [n.getAttribute('data-node'), getComputedStyle(n).outlineOffset, getComputedStyle(n).outlineStyle, n.querySelector('.face').className]; })()""")
-        assert got[0] == card and got[1] == "3px" and got[2] == "solid" and ("k-" + kind) in got[3], got
+        assert got[0] == card and got[1] == "3px" and ("k-" + kind) in got[3], got
+        assert got[2] == ("solid" if engine == "real" else "none"), got       # the real engine's own 3 px ring; the double has no stylesheet
     pg.csp_clean()
     pg.close()
     S2.stop()

@@ -53,12 +53,15 @@ const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]
    EXACTLY this set. */
 export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label",
   "link_refused", "parts_failed_notice", "key_kinds_heading", "key_states_heading"]);
+/* Strings keys the page reads when the builder supplies them and ignores otherwise (the live map has none): allowed in `strings`, never required. */
+export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note"]);
 const TABLES = Object.freeze([["kinds", KIND_CLASS, "unknown-kind"], ["proofs", PROOF_CLASS, "unknown-proof"], ["states", STATE_CLASS, "unknown-state"]]);
 
 export function requiredStrings(symbols) {
   const out = FIXED_STRINGS.slice();
   for (const [t] of TABLES) for (const name of symbols.names[t]) out.push(symbols.words[t][name]);
   for (const name of Object.keys(symbols.cardWords)) out.push(symbols.cardWords[name]);
+  for (const name of Object.keys(symbols.countWords)) out.push(symbols.countWords[name].one, symbols.countWords[name].many);
   return out;
 }
 
@@ -68,11 +71,12 @@ export function requiredStrings(symbols) {
    key list (what the key draws, in that order). An `order` list is a subset of the table's names with no duplicates; the builder
    lists exactly the rows that occur on the map, so states and proofs may be empty and kinds may not. `class` and `text` are
    strings and otherwise ignored; `words` is a string (that it is a key of `strings` is checked with the strings). A kinds row may
-   also carry `card_words`, a non-empty string (the sheet's one line for that kind); `cardWords` maps the kind to it. */
+   also carry `card_words`, a non-empty string (the sheet's one line for that kind); `cardWords` maps the kind to it. It may carry `count_words` too,
+   {one, many}, each a non-empty string (the foot's words for a card whose children are of this kind); `countWords` maps the kind to it. */
 function symbolsOf(v) {
   exactKeys(v, ["order", "kinds", "proofs", "states"], [], "symbols");
   exactKeys(v.order, ["kinds", "proofs", "states"], [], "symbols.order");
-  const out = { words: {}, names: {}, order: {}, cardWords: {} };
+  const out = { words: {}, names: {}, order: {}, cardWords: {}, countWords: {} };
   for (const [t, table, code] of TABLES) {
     const rows = v[t];
     if (!isObj(rows) || Object.keys(rows).length === 0) throw new DataError("bad-type", "symbols." + t + " is not a non-empty object");
@@ -80,13 +84,19 @@ function symbolsOf(v) {
     out.words[t] = {};
     for (const n of names) {
       if (!has(table, n)) throw new DataError(code, "symbols." + t + " names a value this page cannot draw");
-      exactKeys(rows[n], ["class", "text", "words"], t === "kinds" ? ["card_words"] : [], "symbols." + t + " row");
+      exactKeys(rows[n], ["class", "text", "words"], t === "kinds" ? ["card_words", "count_words"] : [], "symbols." + t + " row");
       if (!isStr(rows[n].class) || !isStr(rows[n].text) || !isStr(rows[n].words))
         throw new DataError("bad-type", "symbols." + t + " row has a class, text or words that is not a string");
       out.words[t][n] = rows[n].words;
       if (has(rows[n], "card_words")) {
         if (!isStr(rows[n].card_words) || rows[n].card_words === "") throw new DataError("bad-card-words", "symbols.kinds row has a card_words that is not a non-empty string");
         out.cardWords[n] = rows[n].card_words;
+      }
+      if (has(rows[n], "count_words")) {
+        const cw = rows[n].count_words;
+        if (!isObj(cw) || Object.keys(cw).length !== 2 || !has(cw, "one") || !has(cw, "many") || !isStr(cw.one) || cw.one === "" || !isStr(cw.many) || cw.many === "")
+          throw new DataError("bad-count-words", "symbols.kinds row has a count_words that is not exactly {one, many} of non-empty strings");
+        out.countWords[n] = { one: cw.one, many: cw.many };
       }
     }
     out.names[t] = names;
@@ -138,18 +148,23 @@ export function validateIndex(raw) {
   for (const k of Object.keys(raw.strings)) if (!isStr(raw.strings[k])) throw new DataError("bad-type", "index strings holds a non-string");
   for (const k of Object.values(symbols.cardWords))
     if (!has(raw.strings, k)) throw new DataError("missing-card-words", "index strings lacks the card word " + k);
+  for (const k of Object.values(symbols.countWords).flatMap((c) => [c.one, c.many]))
+    if (!has(raw.strings, k)) throw new DataError("missing-count-words", "index strings lacks the count word " + k);
   const need = requiredStrings(symbols);
   for (const k of need) {
     if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("missing-string", "index strings lacks the runtime key " + k);
   }
+  for (const k of OPTIONAL_STRINGS) {
+    if (has(raw.strings, k) && raw.strings[k] === "") throw new DataError("missing-string", "index strings holds an empty optional key " + k);
+  }
   for (const k of Object.keys(raw.strings)) {
-    if (!need.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
+    if (!need.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   }
   return { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
 }
 
 function closedOf(c, ctx, isChild, where) {
-  exactKeys(c, ["id", "title", "kind", "state", "proof", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role"], where);
+  exactKeys(c, ["id", "title", "kind", "state", "proof", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role", "child_kind"], where);
   idOf(c.id, where + ".id");
   if (!isStr(c.title) || c.title === "") throw new DataError("bad-title", where + " has no title");
   if (!isStr(c.kind) || !ctx.symbols.names.kinds.includes(c.kind)) throw new DataError("unknown-kind", where + " has a kind that symbols does not list");
@@ -159,8 +174,13 @@ function closedOf(c, ctx, isChild, where) {
   const path = idList(c.path, where + ".path");
   if (has(c, "role") && (!isStr(c.role) || c.role === "")) throw new DataError("bad-role", where + " role is not a non-empty string");
   if (isChild && typeof c.parent_rests_on !== "boolean") throw new DataError("bad-type", where + " parent_rests_on is not a boolean");
+  if (has(c, "child_kind")) {
+    if (!isStr(c.child_kind) || !ctx.symbols.names.kinds.includes(c.child_kind)) throw new DataError("unknown-child-kind", where + " has a child_kind that symbols does not list");
+    if (c.child_count === 0) throw new DataError("bad-child-kind", where + " has a child_kind but no children");
+  }
   const out = { id: c.id, title: c.title, kind: c.kind, state: c.state, proof: c.proof, child_count: c.child_count, path };
   if (has(c, "role")) out.role = c.role;
+  if (has(c, "child_kind")) out.child_kind = c.child_kind;
   if (isChild) out.parent_rests_on = c.parent_rests_on;
   return out;
 }
@@ -281,9 +301,10 @@ export function createData(fetchLike) {
   return { loadIndex, loadRoots, loadStep, loadChildren, meta };
 }
 
-/* What the engine carries and hands back to renderFace: no role key when the builder gave none. */
+/* What the engine carries and hands back to renderFace: no role key when the builder gave none, no childKind key when the card names none. */
 function dataOf(c) {
   const d = { title: c.title, kind: c.kind, state: c.state };
   if (has(c, "role")) d.role = c.role;
+  if (has(c, "child_kind")) d.childKind = c.child_kind;
   return d;
 }

@@ -73,9 +73,11 @@ export function createSheet(parts, strings, hooks, signal) {
     return rec;
   }
 
-  function crumbList(list) {
+  /* The last entry is the open card itself (not a link) unless the page says the list stops at the parent (currentListed false): then every
+     entry is an ancestor and stays a link. */
+  function crumbList(list, currentListed) {
     const items = list.map((c, i) => {
-      const last = i === list.length - 1;
+      const last = currentListed && i === list.length - 1;
       const kids = [];
       if (typeof c.role === "string" && c.role !== "") kids.push(el("span", { class: "crumb-role" }, [c.role]));
       kids.push(...titleChildren(c.title));
@@ -91,7 +93,7 @@ export function createSheet(parts, strings, hooks, signal) {
     rec.id = info.id;          // the id this sheet shows: an engine event about any other id never touches it
     if (info.sheetClass) { root.classList.add(info.sheetClass); rec.sheetClass = info.sheetClass; }   // a token from the page's own table
     clear(crumbs);
-    crumbs.appendChild(crumbList(info.crumbs));
+    crumbs.appendChild(crumbList(info.crumbs, info.currentListed !== false));
     const claim = article.querySelector(".claim");
     /* The status line is built only for a non-empty status: a null or empty status gets no element (the page's
        own path always passes a string today), so the release step finds rec.status null and the card's own content is first under the title. */
