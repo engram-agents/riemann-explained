@@ -64,7 +64,7 @@ sk = _load("build_grh_skeleton")
 
 _FROM_BUILD_SITE = ("_graph_assets", "_graph_sink_errors", "_graph_asset_errors", "_graph_page", "GRAPH_SHELL_KEYS", "_graph_bytes", "_dump", "_sha",
                     "graph_element_problems", "static_problems", "head_meta_problems", "surface_scan",
-                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems")
+                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems", "element_problems", "link_problems")
 _FROM_SKELETON = ("_read_in", "_contained")
 _UNRESOLVED = [f"build_site.{n}" for n in _FROM_BUILD_SITE if not hasattr(bs, n)] + [f"build_grh_skeleton.{n}" for n in _FROM_SKELETON if not hasattr(sk, n)]
 if _UNRESOLVED:   # something the contract imports cannot be imported as it stands: stop, never copy it
@@ -87,6 +87,8 @@ code_spans = bs.code_spans
 GRAPH_ID = bs.GRAPH_ID
 _publish = bs._publish
 _graph_static_problems = bs._graph_static_problems
+element_problems = bs.element_problems
+link_problems = bs.link_problems
 _read_in, _contained = sk._read_in, sk._contained
 
 TOP_READ_LIMIT = 4 * 1024 * 1024    # index.json, spine.json, uses.json, the strings file, the shell: the most bytes of each read (A1)
@@ -94,6 +96,10 @@ STEP_READ_LIMIT = 1024 * 1024       # one step file (A1)
 MAX_STEP_FILES = 2000               # the most step files (A1)
 DATA_FIXED = ("index.json", "spine.json", "uses.json")   # DATA holds these, step/<id>.json, and nothing else (A2)
 ABOUT_KEY = "about_text"            # the strings key whose text fills #graph-about (contract, Open 3: the default; `ASM-STRINGS about_text missing` when absent)
+CREDITS_REL = "credits/index.html"  # the one path `--page` may name: the page the website's place.mjs requires beside the map (A20)
+CREDITS_DIR = "credits/"            # its folder: the href of the About link (A24) and the base its refs resolve against (A23)
+ABOUT_CREDITS_KEYS = ("about_credits_before", "about_credits_link", "about_credits_after")   # the three strings keys of the About link, required when --page is given (A24)
+NO_PAGE_NOTE = "note: no credits page (--page credits/index.html=PATH); place.mjs refuses a tree without it"   # the second line of the success report of a run without --page (A20)
 SCOPE_KEY = "front_scope_line"      # the shell key PR C lets the page carry besides GRAPH_SHELL_KEYS (A7)
 READINGS_FRONT_KEY = "readings_front"   # the shell key whose strings value is the template of the readings front line (A18)
 READINGS_KEY = "readings"           # the key of index.json that holds the list of reading notes, one row per note (A18; the real name is still being asked: ONE constant, used everywhere)
@@ -102,18 +108,24 @@ PAGE_SECTION_ATTRS = (("data-page-feedback", "off"),)   # A7, A8
 CODES = ("ASM-DATA", "ASM-PIN", "ASM-OUT", "ASM-ASSET", "ASM-SINK", "ASM-PAGE", "ASM-STRINGS", "ASM-READINGS", "ASM-STATIC")   # the codes of a refusal line: `<CODE> <what> <reason>`
 DATA_REASONS = ("symlink", "not-regular", "too-large", "encoding", "unexpected", "missing")   # the reasons of ASM-DATA
 
-_OPTIONS = ("--data", "--pin", "--strings", "--shell", "--out", "--graph-src")
+_OPTIONS = ("--data", "--pin", "--strings", "--shell", "--out", "--graph-src", "--page")
 _PIN = re.compile(r"[0-9a-f]{40}")
-USAGE = ("usage: assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR]\n"
+USAGE = ("usage: assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR] [--page credits/index.html=PATH]\n"
          "       assemble_grh_site.py --selftest [--only ID,ID]")
 
 
 def _parse(a):
-    """{data, pin, strings, shell, out, graph-src} or None: each option once, with a value; --pin a 40-hex string (lower case); nothing else; --graph-src defaults to build_site.GRAPH_SRC."""
+    """{data, pin, strings, shell, out, graph-src[, page]} or None: each option once, with a value; --pin a 40-hex string (lower case); --page `credits/index.html=PATH` with a non-empty PATH
+    (`page` is the PATH); nothing else; --graph-src defaults to build_site.GRAPH_SRC."""
     opts, i = {}, 0
     while i < len(a):
         if a[i] in _OPTIONS and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
+            if a[i] == "--page":   # REL=PATH: REL exactly CREDITS_REL, PATH not empty (split at the first `=`)
+                rel, eq, path = a[i + 1].partition("=")
+                if rel != CREDITS_REL or not eq or not path:
+                    return None
+                opts["page"] = path
             i += 2
         else:
             return None
@@ -191,12 +203,12 @@ def _stage_data(opts):
             _data_steps(data, path, raws, lines)
         else:
             lines.append(f"ASM-DATA {name} {_other(path)}")
-    for key in ("strings", "shell"):   # named as given on the command line
+    for key in ("strings", "shell") + (("page",) if "page" in opts else ()):   # named as given on the command line
         p = opts[key]
         raws[key] = _data_read(os.path.dirname(os.path.abspath(p)), p, TOP_READ_LIMIT, p, lines)
     objs = {}
     for name, raw in raws.items():
-        if raw is None or name == "shell":
+        if raw is None or name in ("shell", "page"):
             continue
         try:
             obj = json.loads(raw.decode("utf-8"))
@@ -233,15 +245,31 @@ def _stage_pin(pin, objs):
 REF_ATTRS = ("href", "src", "action", "srcset", "poster", "data")   # the attributes of the written page whose value is an address (A11b)
 
 
-def _ref_reason(ref, names):
+def _ref_reason(ref, names, base=""):
     """None when `ref` resolves inside the tree whose file names are `names`, else `absolute`, `escapes` or `missing` (A11b). The part from the first `?` or `#` is dropped; an empty path
     (a bare #fragment or ?query) passes; a leading `/` or `//`, or a scheme (a `:` in the first segment), is `absolute`; a `..` segment is `escapes`; a path that is not a name of the tree
-    (a trailing-slash folder holds one when some name lies under it) is `missing`. A backslash counts as `/`, as a browser reads it."""
+    (a trailing-slash folder holds one when some name lies under it) is `missing`. A backslash counts as `/`, as a browser reads it.
+    `base` is the folder of the page the ref is on (A23): "" for index.html (the rules above, unchanged); for credits/index.html it is `credits/`, and the ref is resolved from there: a `..` that stays
+    inside the tree resolves, one that leaves it is `escapes`, `.` and an empty segment stay in the folder, and a ref that names a folder (a trailing `/`, or a last segment `.` or `..`) passes when
+    some name lies under that folder (the tree's root holds names)."""
     path = re.split(r"[?#]", "".join(ch for ch in ref if ch not in "\t\n\r").strip().replace("\\", "/"), maxsplit=1)[0]
     if not path:
         return None
     if path.startswith("/") or ":" in path.split("/")[0]:
         return "absolute"
+    if base:
+        stack = [seg for seg in base.split("/") if seg]
+        for seg in path.split("/"):
+            if seg == "..":
+                if not stack:
+                    return "escapes"
+                stack.pop()
+            elif seg not in ("", "."):
+                stack.append(seg)
+        target = "/".join(stack)
+        if path.endswith("/") or path.split("/")[-1] in (".", ".."):
+            return None if any(n.startswith(target + "/") for n in names) or (not target and names) else "missing"
+        return None if target in names else "missing"
     if ".." in path.split("/"):
         return "escapes"
     if path in names or (path.endswith("/") and any(n.startswith(path) for n in names)):
@@ -249,8 +277,8 @@ def _ref_reason(ref, names):
     return "missing"
 
 
-def _ref_problems(page, names):
-    """[`ASM-PAGE <ref> absolute|escapes|missing`] for every ref of the written page (the values of REF_ATTRS; each candidate of a srcset), a repeated (ref, reason) once, ordered by the
+def _ref_problems(page, names, base="", label=None):
+    """[`ASM-PAGE <ref> absolute|escapes|missing`] (with `label`, the page's name: `ASM-PAGE <label>: <ref> <reason>`) for every ref of the written page (the values of REF_ATTRS; each candidate of a srcset), a repeated (ref, reason) once, ordered by the
     place of its first occurrence in the page, then by ref. The ref is shown as the page holds it (control whitespace dropped)."""
     seen = {}
 
@@ -261,25 +289,28 @@ def _ref_problems(page, names):
                     continue
                 for ref in ([c.split()[0] for c in v.split(",") if c.split()] if k == "srcset" else [v]):
                     shown = "".join(ch for ch in ref if ch not in "\t\n\r").strip()
-                    reason = _ref_reason(shown, names)
+                    reason = _ref_reason(shown, names, base)
                     if reason:
                         seen.setdefault((shown, reason), (self.getpos(), shown))
 
     parser = P()
     parser.feed(page)
     parser.close()
-    return [f"ASM-PAGE {ref} {reason}" for (ref, reason), _where in sorted(seen.items(), key=lambda kv: kv[1])]
+    return [f"ASM-PAGE {label + ': ' if label else ''}{ref} {reason}" for (ref, reason), _where in sorted(seen.items(), key=lambda kv: kv[1])]
 
 
-def _stage_page(shell_bytes, assets, strings, index, names):
+def _stage_page(shell_bytes, assets, strings, index, names, credits=None):
     """(lines, page): A7 and A18. The page is the builder's `_graph_page` over the Lean shell, `cards` empty, `about` the escaped about_text in one paragraph, the section carrying
-    `data-page-feedback="off"`; then the builder's own element, static, head and surface checks over the assembled page."""
+    `data-page-feedback="off"`; then the builder's own element, static, head and surface checks over the assembled page. With `credits` (the bytes of the credits page, A21) the About block holds a
+    second paragraph, the link to it (A24), and the credits page is checked (A22, A23) in the same stage: its lines come after the index.html lines."""
     lines = []
-    for key in (ABOUT_KEY, "root_only_note_single"):
+    for key in (ABOUT_KEY, "root_only_note_single") + (ABOUT_CREDITS_KEYS if credits is not None else ()):
         if key not in strings:
             lines.append(f"ASM-STRINGS {key} missing")
         elif not isinstance(strings[key], str):
             lines.append(f"ASM-STRINGS {key} not-a-string")
+        elif key in ABOUT_CREDITS_KEYS and not strings[key]:
+            lines.append(f"ASM-STRINGS {key} missing")
     if "{{S:" + READINGS_FRONT_KEY + "}}" in shell_bytes.decode("utf-8"):   # A18: the key is used only when the shell holds the token
         template, rows = strings.get(READINGS_FRONT_KEY), index.get(READINGS_KEY)
         bad_template = not (isinstance(template, str) and template.count("{n}") == 1)
@@ -292,7 +323,11 @@ def _stage_page(shell_bytes, assets, strings, index, names):
             strings = dict(strings, **{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows)))})
     if lines:
         return lines, None
-    errors, page = _graph_page(shell_bytes, set(assets), strings, "<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
+    about = "<p>" + _e(strings[ABOUT_KEY]) + "</p>"
+    if credits is not None:   # A24: the href is the folder of REL, never a strings value
+        before, link, after = (strings[k] for k in ABOUT_CREDITS_KEYS)
+        about += "<p>" + _e(before) + '<a href="' + CREDITS_DIR + '">' + _e(link) + "</a>" + _e(after) + "</p>"
+    errors, page = _graph_page(shell_bytes, set(assets), strings, about, "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
     if errors:
         return ["ASM-PAGE " + " ".join(e[1:]) for e in errors], None
     found = static_problems(page, "") + graph_element_problems(page) + head_meta_problems(page)
@@ -300,6 +335,10 @@ def _stage_page(shell_bytes, assets, strings, index, names):
     if bs.CODE_ON_SURFACE_REFUSES:   # read at the call, as `_run` does
         lines += [f"ASM-PAGE CODE-ON-SURFACE index.html:{card} {text[:60]} x{k}" for card, text, k in code_spans(surface_scan(page)[1])]
     lines += _ref_problems(page, names)   # A11b: after the builder's checks, which do not look at `..` or at a ref to a file that is not in the tree
+    if credits is not None:   # A22, A23: the credits page is a plain document (the DOCUMENT table, not the graph page's), its refs resolve from its own folder
+        cpage = credits.decode("utf-8")
+        lines += [f"ASM-PAGE {pb} found in {CREDITS_REL}" for pb in static_problems(cpage, "") + element_problems(cpage) + head_meta_problems(cpage) + link_problems(cpage)]
+        lines += _ref_problems(cpage, names, CREDITS_DIR, CREDITS_REL)
     return lines, (None if lines else page)
 
 
@@ -332,13 +371,13 @@ def run(opts):
     if errors:
         print("\n".join("ASM-SINK " + e[2] for e in errors))
         return 1
-    names = set(DATA_FIXED) | set(steps) | set(assets) | {"index.html", "manifest.json"}   # the names the tree will hold (manifest.json is written after the page, and is a file of the tree)
-    lines, page = _stage_page(shell_bytes, assets, objs["strings"], objs["index.json"], names)
+    names = set(DATA_FIXED) | set(steps) | set(assets) | {"index.html", "manifest.json"} | ({CREDITS_REL} if "page" in raws else set())   # the names the tree will hold (manifest.json is written after the page, and is a file of the tree)
+    lines, page = _stage_page(shell_bytes, assets, objs["strings"], objs["index.json"], names, raws.get("page"))
     if lines:
         print("\n".join(lines))
         return 1
     pairs = ([("index.json", index_bytes), ("spine.json", raws["spine.json"]), ("uses.json", raws["uses.json"])] + [(rel, raws[rel]) for rel in steps]
-             + sorted(assets.items()) + [("index.html", page.encode("utf-8"))])
+             + ([(CREDITS_REL, raws["page"])] if "page" in raws else []) + sorted(assets.items()) + [("index.html", page.encode("utf-8"))])
     names = [rel for rel, _data in pairs]
     lines = ["ASM-ASSET " + " ".join(e[1:]) for e in _graph_asset_errors(index["assets"], {"graph/" + rel: data for rel, data in pairs})]   # empty by construction
     lines += [f"ASM-OUT {rel} twice" for rel in sorted(set(r for r in names if names.count(r) > 1))]
@@ -362,6 +401,8 @@ def run(opts):
         print(f"ASM-OUT {out} {e.strerror or type(e).__name__}")
         return 1
     print(f"assembled {len(steps)} steps, {len(files)} files, into {out}")
+    if "page" not in raws:   # A20
+        print(NO_PAGE_NOTE)
     return 0
 
 
@@ -1924,6 +1965,7 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             ok, why = _eq(tree.get("credits/index.html") == anchors(*fine).encode("utf-8"), True)
             if not ok:
                 return ok, "refs that resolve inside the tree: " + why
+            _unlink(w["out"])   # the clean build above wrote OUT_DIR; the refusals below need it absent
             refused = [("../../x.html", "escapes"), ("../../", "escapes"), ("../../../x", "escapes"), ("../x/../../y", "escapes"), ("/x.html", "absolute"), ("mailto:a@b.c", "absolute"),
                        ("nothere.html", "missing"), ("../nothere.css", "missing"), ("../list/", "missing"), ("credits/index.html", "missing"), ("../" + step.replace("lean", "zzzz"), "missing")]
             _put(w["page"], anchors(*(r for r, _why in refused), "nothere.html", "../graph.css"))
