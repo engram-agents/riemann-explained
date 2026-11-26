@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The skeleton of the map for a Lean repository that keeps its own index (CONTENTS.md) and its own folders.
 
-usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json] [--strings-overlay overlay.json]
-       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]
+usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json]
+       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR]
 
 DIR is the folder that holds CONTENTS.md and src/. The tool reads the `## New` section of CONTENTS.md and the .lean files under src/New and writes
 OUT_DIR/graph/index.json, OUT_DIR/graph/step/<id>.json and OUT_DIR/graph/uses.json, and nothing else: no page, no assets (`assets` is {}). It builds ROWS (id,
@@ -12,8 +12,8 @@ GRAPH-CYCLE, GRAPH-EDGE, GRAPH-SYMBOL, GRAPH-COUNT, GRAPH-STRINGS) is that funct
 outline/outline.json of this checkout) names the repository's own outline, whose group ids must not be ids of this tool. --strings-overlay (default:
 site/strings-lean.json) holds keys that replace or add to the strings file for this map only; no file is edited. Exit 0 built; 1 refused, OUT_DIR not
 written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
-self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 reads the real source and runs only when --grh is given to the self-test;
-otherwise it is skipped.
+self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 and U5 read the real source and run only when --grh and --ilean-dir are given to
+the self-test; otherwise they are skipped.
 
 THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the skeleton's own rules, not reading)
  1 TREE. CONTENTS.md, section `## New` only, in the order of its lines (nothing is sorted, nothing comes from the file system). Each `### heading` is a section;
@@ -27,12 +27,13 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
    GRAPH-ID, never corrected; an id that is also an id of the outline is SKEL-ID-CLASH.
  3 TITLES. A file: the text after the colon, exactly as written (a backtick span keeps its backticks). A group: its bold text. A section: its heading. The 50-character bound of the graph
    contract (the face line) is NOT applied here: it lives in build_site's `_graph_line_errors`, which this tool does not call.
- 4 PREMISES. A file rests on a file of the SAME group that it imports (`import New.X.Y` at the start of a line), after the transitive reduction of each group's
-   edges. A self-import and an import outside New are ignored; an import of a New file of another group (and a reduced one) is not drawn but is listed in
-   graph/uses.json. Groups and sections have no premises. A cycle among the files of a group is left as it is (GRAPH-EDGE).
+ 4 LINKS. A file rests on another New file of the SAME group that it USES: a constant reference of its .ilean (read from --ilean-dir as data) with at least one usage;
+   the weight is the number of distinct names used. The data is not reduced; each link has weight and in_reduction (membership in the transitive reduction of the
+   group's uses). A use across groups is not drawn, only listed in uses.json. Groups and sections have no premises. The uses of files must be acyclic (SKEL-USES-CYCLE).
  5 KIND, STATE, PROOF. A `###` heading is a `part`, a bold line a `group`, a file line a `file`; every step has state `none`, proof `none`. No declaration is read.
- 6 USES. graph/uses.json holds, for every file step, the ids of every New file it imports, in any group, sorted, never itself. It is not part of index.json.
- 7 COMPLETENESS. Every .lean file under src/New is a file line of CONTENTS and every file line exists: SKEL-UNLISTED / SKEL-MISSING (`<path>` as in CONTENTS,
+ 6 USES. graph/uses.json (format 2) holds, for every file step, `imports` (the New files it directly imports, sorted) and `uses` ({id, names, same_group} for every New
+   file it uses, in any group, sorted by id). It is not part of index.json.
+ 7 COMPLETENESS. (SKEL-USES: a missing, odd, mismatched or unlisted .ilean, all reported.) Every .lean file under src/New is a file line of CONTENTS and every file line exists: SKEL-UNLISTED / SKEL-MISSING (`<path>` as in CONTENTS,
    without `.lean`); a line of the section that does not parse, or a file whose folder is not its section's, is SKEL-LINE <n> (n is the line of CONTENTS.md).
    All of one kind are reported together.
  8 STRINGS. The strings file is read and checked as build_site does and overlaid; `_graph_files` checks the exact key set (23 keys: the kind words and the card words come from the overlay).
@@ -89,6 +90,8 @@ class SourceError(Exception):
 
 
 SOURCE_READ_LIMIT = 1048576   # the most bytes of a source file the tool reads (1 MiB)
+ILEAN_READ_LIMIT = 16 * 1024 * 1024   # the most bytes of an .ilean file the tool reads (16 MiB; the largest of the real source is 260 KB)
+USES_FORMAT = 2   # the format of graph/uses.json
 CONTENTS_READ_LIMIT = 4 * 1024 * 1024   # the most bytes of CONTENTS.md the tool reads (4 MiB)
 
 
@@ -231,6 +234,62 @@ def _read_bounded(path, limit, guards=("lstat", "nofollow")):
         os.close(fd)
 
 
+def _ilean_uses(raw, own_module, new_modules):
+    """{module: number of distinct names used} from the bytes of an .ilean: a reference `{"c": {"m", "n"}}` with at least one usage counts for the module `m` when `m` is a module
+    of `new_modules` other than `own_module`; the weight of a module is the number of distinct names `n`. Raises SourceError: not-json, bad-ilean, module-mismatch,
+    unknown-reference-shape."""
+    try:
+        obj = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        raise SourceError("not-json")
+    if not (isinstance(obj, dict) and isinstance(obj.get("module"), str) and isinstance(obj.get("references"), dict)):
+        raise SourceError("bad-ilean")
+    if obj["module"] != own_module:
+        raise SourceError("module-mismatch")
+    names = {}
+    for key, val in obj["references"].items():
+        try:
+            ref = json.loads(key)
+        except (ValueError, RecursionError):
+            raise SourceError("unknown-reference-shape")
+        if not isinstance(val, dict) or not isinstance(val.get("usages"), list):
+            raise SourceError("bad-ilean")
+        if isinstance(ref, dict) and set(ref) == {"f"}:   # a local variable: not a constant, never a use
+            continue
+        if not (isinstance(ref, dict) and set(ref) == {"c"} and isinstance(ref["c"], dict) and set(ref["c"]) == {"m", "n"}
+                and isinstance(ref["c"]["m"], str) and isinstance(ref["c"]["n"], str)):
+            raise SourceError("unknown-reference-shape")
+        m = ref["c"]["m"]
+        if val["usages"] and m in new_modules and m != own_module:
+            names.setdefault(m, set()).add(ref["c"]["n"])
+    return {m: len(v) for m, v in names.items()}
+
+
+def _find_cycle(order, adj):
+    """The first cycle of the graph {node: [successors]} as a list of nodes in the order of the cycle, searching in the order of `order` (and of each successor list); None when
+    there is none."""
+    state = {}
+    for start in order:
+        if state.get(start):
+            continue
+        stack, iters = [start], {start: iter(adj[start])}
+        state[start] = 1
+        while stack:
+            node = stack[-1]
+            for nxt in iters[node]:
+                if state.get(nxt) == 1:
+                    return stack[stack.index(nxt):]
+                if not state.get(nxt):
+                    state[nxt] = 1
+                    stack.append(nxt)
+                    iters[nxt] = iter(adj[nxt])
+                    break
+            else:
+                state[node] = 2
+                stack.pop()
+    return None
+
+
 def _imports(src_text):
     mods = []
     for line in src_text.split("\n"):
@@ -305,6 +364,20 @@ def _src_escapes(grh):
     return out
 
 
+def _ilean_escapes(ilean_dir):
+    """[SKEL-ESCAPE errors] for the folders of the .ilean files under `ilean_dir/New`: the folder itself, or one below it, that is a symlink (or whose real path is not under the real
+    path of `ilean_dir`) is named and never walked."""
+    top = os.path.join(ilean_dir, "New")
+    if os.path.islink(top):
+        return [("SKEL-ESCAPE", "ilean/New", "symlink")]
+    if os.path.exists(top) and not _contained(ilean_dir, top):
+        return [("SKEL-ESCAPE", "ilean/New", "outside")]
+    out = []
+    for r, ds, fs in os.walk(top):
+        out += [("SKEL-ESCAPE", "ilean/" + os.path.relpath(os.path.join(r, n), ilean_dir).replace(os.sep, "/"), "symlink") for n in sorted(ds) if os.path.islink(os.path.join(r, n))]
+    return out
+
+
 def _disk_paths(grh):
     """(the sorted paths of the .lean files under src/New, [SKEL-ESCAPE errors]): a folder under src/New that is a symlink is not walked and is named."""
     def fail(e):
@@ -330,20 +403,20 @@ def _read_contents(grh):
         return None, [("SKEL-CONTENTS", "CONTENTS.md", "not-utf-8")]
 
 
-def _group_report(gid, members, kept):
-    """The numbers of one group for the report: files, files that are an end of a drawn link, files with none, the longest path of `rests_on` and the depth row with most files
-    (depth 0 = a file that rests on nothing; the smallest depth wins a tie)."""
-    ends = {p for p in members if kept[p]} | {q for p in members for q in kept[p]}
-    depth = _depths(kept)
+def _group_report(gid, members, adj, kept):
+    """The numbers of one group for the report: files, use edges, reduction edges, files that are an end of a drawn link, files with none, the longest path of `rests_on` and the
+    depth row with most files (depth 0 = a file that rests on nothing; the smallest depth wins a tie). `adj` is the group's use relation, `kept` its transitive reduction."""
+    ends = {p for p in members if adj[p]} | {q for p in members for q in adj[p]}
+    depth = _depths(adj)
     per = {}
     for v in (depth or {}).values():
         per[v] = per.get(v, 0) + 1
     wide = min((k for k in per if per[k] == max(per.values())), default=0)
-    return {"group": gid, "files": len(members), "linked": len(ends), "unlinked": len(members) - len(ends),
+    return {"group": gid, "files": len(members), "uses": sum(len(v) for v in adj.values()), "reduction": sum(len(v) for v in kept.values()), "linked": len(ends), "unlinked": len(members) - len(ends),
             "longest": max((depth or {}).values(), default=0), "widest_depth": wide, "widest_count": per.get(wide, 0)}
 
 
-def _report(rows, drawn, total, self_imports, groups, cut, uses):
+def _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info):
     """The report of a build: the steps, the top ids, the widest step, the depth, the counts of the links and of the kinds, the groups, the ids that were cut, the uses."""
     kids, depth_max = {}, 0
     parent = {r["id"]: r["parent"] for r in rows}
@@ -354,12 +427,13 @@ def _report(rows, drawn, total, self_imports, groups, cut, uses):
             d, i = d + 1, parent[i]
         depth_max = max(depth_max, d)
     return {"steps": len(rows), "top": [r["id"] for r in rows if r["parent"] == "root"], "widest": max([v for k, v in kids.items() if k != "root"] or [0]),
-            "depth": depth_max, "drawn": drawn, "not_drawn": total - drawn, "ignored": {"self": self_imports}, "groups": groups, "cut": cut,
-            "kinds": {k: sum(1 for r in rows if r["kind"] == k) for k in KINDS}, "uses": uses}
+            "depth": depth_max, "drawn": drawn, "not_drawn": total - drawn, "reduction": reduction, "uses_total": total, "groups": groups, "cut": cut,
+            "kinds": {k: sum(1 for r in rows if r["kind"] == k) for k in KINDS}, "uses": uses, "imports": imports, "link_info": link_info}
 
 
-def build_rows(grh):
-    """(errors, rows, report) from the folder `grh`: SKEL-LINE, then SKEL-MISSING and SKEL-UNLISTED, then SKEL-SOURCE (a source file that cannot be read, all reported), each stops the run before the next stage."""
+def build_rows(grh, ilean_dir):
+    """(errors, rows, report) from the folder `grh` and the folder of the .ilean files: SKEL-LINE, then SKEL-MISSING and SKEL-UNLISTED, then SKEL-USES, then SKEL-USES-CYCLE,
+    each stops the run before the next stage."""
     errors = _src_escapes(grh)
     if errors:
         return errors, [], {}
@@ -403,30 +477,53 @@ def build_rows(grh):
         for gi, g in enumerate(s["groups"]):
             for f in g["files"]:
                 where[f["path"]] = (si, gi)
-    self_imports = drawn = total = 0
-    premises, uses, groups = {}, {}, []
+    errors = _ilean_escapes(ilean_dir)
+    if errors:
+        return errors, [], {}
+    module = {p: p.replace("/", ".") for p in listed}
+    file_of = {m: p for p, m in module.items()}
+    weight = {}   # file path -> {used file path: weight}
+    for p in listed:
+        try:
+            raw = _read_in(ilean_dir, os.path.join(ilean_dir, *p.split("/")) + ".ilean", ILEAN_READ_LIMIT)
+            weight[p] = {file_of[m]: w for m, w in _ilean_uses(raw, module[p], set(file_of)).items()}
+        except SourceError as e:
+            errors.append(("SKEL-USES", p, "missing-ilean" if e.reason == "missing" else e.reason))
+    for r, _, fs in os.walk(os.path.join(ilean_dir, "New")):
+        for n in fs:
+            if n.endswith(".ilean"):
+                q = os.path.relpath(os.path.join(r, n), ilean_dir)[:-len(".ilean")].replace(os.sep, "/")
+                if q not in module:
+                    errors.append(("SKEL-USES", q, "no-contents-line"))
+    errors[:] = errors[:len(errors) - sum(1 for e in errors if e[2] == "no-contents-line")] + sorted(e for e in errors if e[2] == "no-contents-line")
+    if errors:
+        return errors, [], {}
+    order = {p: i for i, p in enumerate(listed)}
+    cycle = _find_cycle(listed, {p: sorted(weight[p], key=order.get) for p in listed})
+    if cycle:
+        return [("SKEL-USES-CYCLE", " ".join(fid[p] for p in cycle), "")], [], {}
+    where = {}   # file path -> (section, group) it belongs to
+    for si, s in enumerate(sections):
+        for gi, g in enumerate(s["groups"]):
+            for f in g["files"]:
+                where[f["path"]] = (si, gi)
+    drawn = total = reduction = 0
+    premises, uses, imports, groups, link_info = {}, {}, {}, [], {}
     group_files = {}
+    for p in listed:
+        uses[fid[p]] = [{"id": fid[q], "names": weight[p][q], "same_group": where[q] == where[p]} for q in sorted(weight[p], key=lambda q: fid[q])]
+        imports[fid[p]] = sorted({fid[file_of[m]] for m in _imports(src[p]) if m in file_of and m != module[p]})
+        total += len(weight[p])
     for si, s in enumerate(sections):
         for gi, g in enumerate(s["groups"]):
             members = [f["path"] for f in g["files"]]
-            adj = {p: [] for p in members}
-            for p in members:
-                mine = set()
-                for mod in _imports(src[p]):
-                    q = mod.replace(".", "/")
-                    if q == p:
-                        self_imports += 1
-                    elif q in where:
-                        mine.add(q)
-                        total += 1
-                        if where[q] == (si, gi):
-                            adj[p].append(q)
-                adj[p].sort(key=members.index)
-                uses[fid[p]] = sorted(fid[q] for q in mine)
+            adj = {p: sorted((q for q in weight[p] if where[q] == (si, gi)), key=members.index) for p in members}
             kept = _reduce(adj)
-            drawn += sum(len(v) for v in kept.values())
-            premises.update({p: [fid[q] for q in v] for p, v in kept.items()})
-            group_files[(si, gi)] = (members, kept)
+            drawn += sum(len(v) for v in adj.values())
+            reduction += sum(len(v) for v in kept.values())
+            premises.update({p: [fid[q] for q in v] for p, v in adj.items()})
+            link_info.update({(fid[p], fid[q]): {"weight": weight[p][q], "in_reduction": q in kept[p]} for p in members for q in adj[p]})
+            group_files[(si, gi)] = (members, adj, kept)
     rows = []
 
     def row(i, parent, order, prem, kind, title):
@@ -444,16 +541,19 @@ def build_rows(grh):
         for gi, g in enumerate(s["groups"]):
             gid = ident(f"{sid}--{slug(g['title'] or '')}")
             row(gid, sid_id, gi, [], "group", g["title"] or "")
-            members, kept = group_files[(ti, gi)]
+            members, adj, kept = group_files[(ti, gi)]
             for fi, f in enumerate(g["files"]):
                 row(fid[f["path"]], gid, fi, premises[f["path"]], "file", f["title"])
-            groups.append(_group_report(gid, members, kept))
-    return [], rows, _report(rows, drawn, total, self_imports, groups, cut, uses)
+            groups.append(_group_report(gid, members, adj, kept))
+    return [], rows, _report(rows, drawn, total, reduction, groups, cut, uses, imports, link_info)
 
 
-def build(grh, pin, strings, live_ids=()):
-    """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline."""
-    errors, rows, rep = build_rows(grh)
+def build(grh, pin, strings, live_ids=(), ilean_dir=None):
+    """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
+    the folder of the .ilean files of the build."""
+    if ilean_dir is None:
+        raise TypeError("ilean_dir is required")
+    errors, rows, rep = build_rows(grh, ilean_dir)
     if errors:
         return errors, {}, rows, rep
     errors = [("SKEL-ID-CLASH", i, "") for i in sorted({r["id"] for r in rows} & set(live_ids))]
@@ -462,14 +562,14 @@ def build(grh, pin, strings, live_ids=()):
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(SYMBOLS) if k in strings}, SYMBOLS)   # only the missing ones: it holds a subset
     if missing:
         return missing, {}, rows, rep
-    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column")
+    errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"])
     if errors:
         return errors, {}, rows, rep
-    objs["graph/uses.json"] = {"commit": pin, "format": bs.GRAPH_FORMAT, "uses": rep["uses"]}
+    objs["graph/uses.json"] = {"commit": pin, "format": USES_FORMAT, "imports": rep["imports"], "uses": rep["uses"]}
     return [], bs._graph_bytes(objs), rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json] [--strings-overlay overlay.json]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
 
 
@@ -477,26 +577,29 @@ def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--ilean-dir") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
             return None
-    return opts if {"grh", "pin", "strings", "out"} <= set(opts) and opts["pin"] else None
+    return opts if {"grh", "pin", "strings", "out", "ilean-dir"} <= set(opts) and opts["pin"] else None
 
 
 def report_lines(rep):
     cuts = [f"cut id {full} -> {final}" for full, final in rep["cut"]]
-    table = [f"group {g['group']}: files {g['files']}, linked {g['linked']}, unlinked {g['unlinked']}, longest {g['longest']}, "
+    table = [f"group {g['group']}: files {g['files']}, use edges {g['uses']}, reduction edges {g['reduction']}, linked {g['linked']}, unlinked {g['unlinked']}, longest {g['longest']}, "
              f"widest row depth {g['widest_depth']} ({g['widest_count']} files)" for g in rep["groups"]]
     return ([f"steps: {rep['steps']}", "kinds: " + ", ".join(f"{k} {rep['kinds'][k]}" for k in KINDS), "top: " + ", ".join(rep["top"]), f"widest: {rep['widest']}", f"depth: {rep['depth']}",
-             f"links drawn: {rep['drawn']}", f"imports not drawn: {rep['not_drawn']}", f"self-imports ignored: {rep['ignored']['self']}",
+             f"uses: {rep['uses_total']}", f"links drawn (uses inside a group): {rep['drawn']}", f"uses not drawn (across groups): {rep['not_drawn']}",
+             f"links in the transitive reduction: {rep['reduction']}",
              f"ids cut: {len(cuts)}"] + cuts + table)
 
 
 def _run(opts):
     if not os.path.isdir(opts["grh"]):
         raise Unreadable(f"--grh is not a directory: {opts['grh']}")
+    if not os.path.isdir(opts["ilean-dir"]):
+        raise Unreadable(f"--ilean-dir is not a directory: {opts['ilean-dir']}")
     if os.path.exists(opts["out"]) and not os.path.isdir(opts["out"]):
         raise Unreadable(f"OUT_DIR is not a directory: {opts['out']}")
     try:
@@ -521,7 +624,7 @@ def _run(opts):
     problems = bs._strings_problems(strings)
     if problems:
         return refuse(problems)
-    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]])
+    errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"])
     if errors:
         return refuse(errors)
     try:
@@ -554,6 +657,7 @@ class _SkipCase(Exception):
 
 
 _GRH_FOR_SK13 = None   # the folder given to `--selftest --grh`; SK13 reads it
+_ILEAN_FOR_SK13 = None   # the folder given to `--selftest --ilean-dir`; SK13 reads it with the one above
 
 
 def _eq(actual, expected):
@@ -577,7 +681,7 @@ def _lean(decl="theorem t : True := trivial", note="", imports=()):
     return "".join(f"import {m}\n" for m in imports) + (f"/-!\n{note}\n-/\n" if note else "") + decl + "\n"
 
 
-def _tree(root, body, srcs):
+def _tree(root, body, srcs, ileans=None):
     """Write <root>/grh/CONTENTS.md (HEAD, body, TAIL) and one src/<path>.lean per entry of `srcs` (path as in CONTENTS, e.g. New/A/B); return <root>/grh."""
     g = os.path.join(root, "grh")
     os.makedirs(g)
@@ -588,6 +692,21 @@ def _tree(root, body, srcs):
         os.makedirs(os.path.dirname(fp), exist_ok=True)
         with open(fp, "wb") as f:
             f.write(text if isinstance(text, bytes) else text.encode("utf-8"))
+    # one .ilean per New file: from its import lines (each imported module is used once, by the name n1) unless `ileans` gives the object, a raw string, or None (no file)
+    ileans = dict(ileans or {})
+    for p, text in srcs.items():
+        if p.startswith("New/") and p not in ileans:
+            refs = {}
+            for m in re.findall(r"^import[ \t]+(\S+)", text if isinstance(text, str) else text.decode("utf-8", "replace"), re.M):
+                refs.update(_ref(m, "n1"))
+            ileans[p] = _ilean(p, refs)
+    for p, obj in ileans.items():
+        if obj is None:
+            continue
+        fp = os.path.join(root, "ilean", *p.split("/")) + ".ilean"
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(obj if isinstance(obj, str) else json.dumps(obj))
     return g
 
 
@@ -623,8 +742,30 @@ def _outline_file(d, ids=(), name="outline.json"):
     return p
 
 
+def _ildir(g):
+    return os.path.join(os.path.dirname(g), "ilean")
+
+
 def _args(g, out, strings_path, outline, pin=PIN, overlay=None):
-    return ["--grh", g, "--pin", pin, "--strings", strings_path, "--out", out, "--outline", outline] + (["--strings-overlay", overlay] if overlay else [])
+    return (["--grh", g, "--pin", pin, "--strings", strings_path, "--out", out, "--outline", outline, "--ilean-dir", _ildir(g)]
+            + (["--strings-overlay", overlay] if overlay else []))
+
+
+def bld(g, pin, strings, live_ids=()):
+    return build(g, pin, strings, live_ids, _ildir(g))
+
+
+def brows(g):
+    return build_rows(g, _ildir(g))
+
+
+def _ref(module, *names, usages=1, definition=None):
+    """The `references` entries of an .ilean for the names of one module: {key: {definition, usages}}; `usages` is the number of usage records of each."""
+    return {json.dumps({"c": {"m": module, "n": n}}, separators=(",", ":")): {"definition": definition, "usages": [[1, 1, 1, 2, "x"]] * usages} for n in names}
+
+
+def _ilean(path, refs, module=None):
+    return {"decls": [], "directImports": [], "module": module or path.replace("/", "."), "references": refs, "version": 5}
 
 
 def _strings_file(d, s=None, name="strings.json"):
@@ -689,7 +830,7 @@ SK3_BODY = """### S part
 - `New/S/D` (1): d
 """
 SK3_SRCS = {"New/S/A": _lean(imports=["New.S.D", "New.S.C", "New.S.B", "New.S.A", "Mathlib.Data.Nat", "Lib.Foo.Bar"]),
-            "New/S/B": _lean(imports=["New.S.C"]), "New/S/C": _lean(), "New/S/D": _lean(imports=["New.S.A"])}
+            "New/S/B": _lean(imports=["New.S.C", "New.S.D"]), "New/S/C": _lean(), "New/S/D": _lean()}
 CHAIN_BODY = """### T part
 
 **Grp**
@@ -718,7 +859,7 @@ def _selftest_cases():
     def _():
         with _tmp() as d:
             g = _tree(d, SK1_BODY, SK1_SRCS)
-            errs, files, rows, rep = build(g, PIN, _strings())
+            errs, files, rows, rep = bld(g, PIN, _strings())
             ix = _j(files, "graph/index.json")
             steps = sorted(k for k in files if k.startswith("graph/step/"))
             ok, why = _eq((errs, _rowtuples(rows)), ([], [
@@ -769,7 +910,7 @@ def _selftest_cases():
         srcs = {"New/Alpha/One": _lean(), "New/Anon/Solo": _lean("def s : Nat := 1"), "New/Main": _lean("theorem main_thm : True := trivial")}
         with _tmp() as d:
             g = _tree(d, body, srcs)
-            errs, files, rows, rep = build(g, PIN, _strings())
+            errs, files, rows, rep = bld(g, PIN, _strings())
             main_step = _j(files, "graph/step/lean-main.json")
             last = _j(files, "graph/step/lean-the-last-file.json")
             return _eq((errs, _rowtuples(rows), _j(files, "graph/index.json")["top"], main_step["path"], main_step["children"], main_step["card"]["child_count"],
@@ -782,36 +923,45 @@ def _selftest_cases():
                              ("lean-main", "lean-the-last-file", 0, [], "file", "From here to there")],
                         ["lean-alpha", "lean-anon", "lean-the-last-file"], ["lean-the-last-file"], [], 0, ["lean-main"], "part", "file", []))
 
-    @case("SK3", "premises: a imports b, b imports c, a imports c inside one group: the group's rests_on has a->b and b->c only (a->c is reduced away); an import of a "
-                 "file of another group and an import outside New draw no edge; counts are literals (drawn 2, not drawn 3, self-imports 1; an import outside New "
-                 "is counted nowhere); a longer chain (a->b->c->d with a->c and a->d) reduces to the chain (drawn 3, not drawn 2)")
+    @case("SK3", "premises and links are USES, from the .ilean: a uses b, c and d, b uses c and d, d is in another group: the group's rests_on has the three in-group uses a->b, "
+                 "a->c, b->c (the data is NOT reduced), each with weight 1 and in_reduction (a->c is false, the others true); the uses of another group are not drawn "
+                 "(drawn 3, not drawn 2, reduction 2, 5 uses in all); a longer chain (a->b->c->d with a->c and a->d) has 5 links and 3 in the reduction")
     def _():
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
+            errs, files, rows, rep = bld(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
             grp = _j(files, "graph/step/lean-s--grp.json")
         with _tmp() as d:
-            cerrs, cfiles, crows, crep = build(_tree(d, CHAIN_BODY, CHAIN_SRCS), PIN, _strings())
+            cerrs, cfiles, crows, crep = bld(_tree(d, CHAIN_BODY, CHAIN_SRCS), PIN, _strings())
+            cgrp = _j(cfiles, "graph/step/lean-t--grp.json")
+        pth = ["lean-s", "lean-s--grp"]
+        link = lambda f, to, w, r: {"from": f"lean-s-{f}", "from_path": pth, "in_reduction": r, "to": f"lean-s-{to}", "to_path": pth, "weight": w}
         return _eq((errs, [(r["id"], r["premises"]) for r in rows if r["parent"] == "lean-s--grp"], grp["rests_on"], grp["children"][0]["parent_rests_on"],
-                    (rep["drawn"], rep["not_drawn"], rep["ignored"]),
-                    cerrs, [(r["id"], r["premises"]) for r in crows if r["parent"] == "lean-t--grp"], (crep["drawn"], crep["not_drawn"])),
-                   ([], [("lean-s-a", ["lean-s-b"]), ("lean-s-b", ["lean-s-c"]), ("lean-s-c", [])],
-                    [{"from": "lean-s-a", "from_path": ["lean-s", "lean-s--grp"], "to": "lean-s-b", "to_path": ["lean-s", "lean-s--grp"]},
-                     {"from": "lean-s-b", "from_path": ["lean-s", "lean-s--grp"], "to": "lean-s-c", "to_path": ["lean-s", "lean-s--grp"]}], False,
-                    (2, 3, {"self": 1}),
-                    [], [("lean-t-a", ["lean-t-b"]), ("lean-t-b", ["lean-t-c"]), ("lean-t-c", ["lean-t-d"]), ("lean-t-d", [])], (3, 2)))
+                    (rep["drawn"], rep["not_drawn"], rep["reduction"], rep["uses_total"]),
+                    cerrs, [(r["id"], r["premises"]) for r in crows if r["parent"] == "lean-t--grp"], [(l["from"][-1], l["to"][-1], l["in_reduction"]) for l in cgrp["rests_on"]],
+                    (crep["drawn"], crep["not_drawn"], crep["reduction"])),
+                   ([], [("lean-s-a", ["lean-s-b", "lean-s-c"]), ("lean-s-b", ["lean-s-c"]), ("lean-s-c", [])],
+                    [link("a", "b", 1, True), link("a", "c", 1, False), link("b", "c", 1, True)], False, (3, 2, 2, 5),
+                    [], [("lean-t-a", ["lean-t-b", "lean-t-c", "lean-t-d"]), ("lean-t-b", ["lean-t-c"]), ("lean-t-c", ["lean-t-d"]), ("lean-t-d", [])],
+                    [("a", "b", True), ("a", "c", False), ("a", "d", False), ("b", "c", True), ("c", "d", True)], (5, 0, 3)))
 
-    @case("SK4", "a cycle among files of one group is refused GRAPH-EDGE (named, from _graph_files), also with a chord; nothing is returned")
+    @case("SK4", "a cycle among the uses of files is refused `SKEL-USES-CYCLE <ids of the cycle>` (the ids in the order of the cycle, from its first file in CONTENTS), "
+                 "also with a chord and across groups; nothing is returned")
     def _():
         body = "### S part\n\n**Grp**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"
         srcs = {"New/S/A": _lean(imports=["New.S.B"]), "New/S/B": _lean(imports=["New.S.A"])}
         three = body + "- `New/S/C` (1): c\n"
         tsrcs = {"New/S/A": _lean(imports=["New.S.B", "New.S.C"]), "New/S/B": _lean(imports=["New.S.C"]), "New/S/C": _lean(imports=["New.S.A"])}
+        cross = "### S part\n\n**G1**\n\n- `New/S/A` (1): a\n\n**G2**\n\n- `New/S/B` (1): b\n"
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
+            errs, files, rows, rep = bld(_tree(d, body, srcs), PIN, _strings())
         with _tmp() as d:
-            e3, f3, r3, rep3 = build(_tree(d, three, tsrcs), PIN, _strings())
-        return _eq((errs, files, sorted({c for c, _, _ in e3}), bool(e3), f3),
-                   ([("GRAPH-EDGE", "lean-s-b lean-s-a", "cycle in rests_on")], {}, ["GRAPH-EDGE"], True, {}))
+            e3, f3, r3, rep3 = bld(_tree(d, three, tsrcs), PIN, _strings())
+        with _tmp() as d:
+            e4, f4, r4, rep4 = bld(_tree(d, cross, srcs), PIN, _strings())
+            rc, out, err = _cli(_args(os.path.join(d, "grh"), os.path.join(d, "out"), _strings_file(d), _outline_file(d)))
+        return _eq((errs, files, e3, f3, e4, rc, out.splitlines()),
+                   ([("SKEL-USES-CYCLE", "lean-s-a lean-s-b", "")], {}, [("SKEL-USES-CYCLE", "lean-s-a lean-s-b lean-s-c", "")], {}, [("SKEL-USES-CYCLE", "lean-s-a lean-s-b", "")],
+                    1, ["SKEL-USES-CYCLE lean-s-a lean-s-b"]))
 
     @case("SK5", "kinds are read off CONTENTS: `part` for each `###` heading, `group` for each bold line (an anonymous group too), `file` for each file line; the table of "
                  "this tool has exactly the rows part, group, file (classes kind-part|kind-group|kind-file, words symbol_kind_part|group|file) and the three rows of the "
@@ -821,7 +971,7 @@ def _selftest_cases():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n\n### T part\n\n- `New/T/C` (1): c\n"
         srcs = {"New/S/A": _lean("theorem x : True := trivial"), "New/S/B": "", "New/T/C": "-- nothing here\n"}
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
+            errs, files, rows, rep = bld(_tree(d, body, srcs), PIN, _strings())
             ix = _j(files, "graph/index.json")
         return _eq((errs, [r["kind"] for r in rows], rep["kinds"], sorted({(r["state"], r["proof"]) for r in rows}), ix["symbols"]["order"],
                     {k: v for k, v in ix["symbols"]["kinds"].items()}, sorted(ix["symbols"]["states"]), sorted(ix["symbols"]["proofs"]), len(ix["strings"]),
@@ -833,15 +983,18 @@ def _selftest_cases():
                      "file": {"card_words": "card_kind_file", "class": "kind-file", "text": "Lean file", "words": "symbol_kind_file"}},
                     ["census", "none", "read"], ["none", "not_read", "read"], 23, "What a box is", False, "column", False, ["none"]))
 
-    @case("SK6", "uses sidecar: graph/uses.json is {commit: the pin, format: 1, uses: {file id: [ids of every New file it imports, in any group, sorted, no self]}} "
-                 "with an entry for every FILE step and none for a section or a group; an import outside New is not in it; it is not in index.json `steps`")
+    @case("SK6", "uses sidecar (format 2): graph/uses.json is {commit: the pin, format: 2, imports: {file id: [ids of the New files it imports, sorted]}, uses: {file id: "
+                 "[{id, names, same_group}, ... sorted by id]}} with both keys for every FILE step (empty lists allowed) and none for a section or a group; an import outside "
+                 "New is not in it; a use across groups is in `uses` with same_group false; it is not in index.json `steps`")
     def _():
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
+            errs, files, rows, rep = bld(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
         u = _j(files, "graph/uses.json")
+        e = lambda i, n, g: {"id": f"lean-s-{i}", "names": n, "same_group": g}
         return _eq((errs, u, files["graph/uses.json"].endswith(b"\n"), _j(files, "graph/index.json")["steps"]),
-                   ([], {"commit": PIN, "format": 1,
-                         "uses": {"lean-s-a": ["lean-s-b", "lean-s-c", "lean-s-d"], "lean-s-b": ["lean-s-c"], "lean-s-c": [], "lean-s-d": ["lean-s-a"]}},
+                   ([], {"commit": PIN, "format": 2,
+                         "imports": {"lean-s-a": ["lean-s-b", "lean-s-c", "lean-s-d"], "lean-s-b": ["lean-s-c", "lean-s-d"], "lean-s-c": [], "lean-s-d": []},
+                         "uses": {"lean-s-a": [e("b", 1, True), e("c", 1, True), e("d", 1, False)], "lean-s-b": [e("c", 1, True), e("d", 1, False)], "lean-s-c": [], "lean-s-d": []}},
                     True, 7))
 
     @case("SK7", "completeness: a file listed in CONTENTS and not on disk is `SKEL-MISSING <path>` and a .lean file under src/New that is not listed is `SKEL-UNLISTED "
@@ -855,14 +1008,14 @@ def _selftest_cases():
         flat = "### Sec\n\n**G**\n\n- `New/X` (1): no folder\n- `New/S/B` (1): has one\n"
         with _tmp() as d:
             g = _tree(d, body, srcs)
-            errs = build_rows(g)[0]
+            errs = brows(g)[0]
             sp = _strings_file(d)
             rc, out, err = _cli(_args(g, os.path.join(d, "out"), sp, _outline_file(d)))
             absent = not os.path.exists(os.path.join(d, "out"))
         lines = []
         for b in (bad, folders, flat):
             with _tmp() as d2:
-                lines.append(build_rows(_tree(d2, b, {}))[0])
+                lines.append(brows(_tree(d2, b, {}))[0])
         return _eq((errs, rc, out.splitlines(), absent, lines),
                    ([("SKEL-MISSING", "New/S/B", ""), ("SKEL-MISSING", "New/S/C", ""), ("SKEL-UNLISTED", "New/S/Y", ""), ("SKEL-UNLISTED", "New/S/Z", "")],
                     1, ["SKEL-MISSING New/S/B", "SKEL-MISSING New/S/C", "SKEL-UNLISTED New/S/Y", "SKEL-UNLISTED New/S/Z"], True,
@@ -874,9 +1027,9 @@ def _selftest_cases():
             body = "### W part\n\n**G**\n\n" + "".join(f"- `New/W/F{i:02d}` (1): f\n" for i in range(1, n + 1))
             return body, {f"New/W/F{i:02d}": _lean() for i in range(1, n + 1)}
         with _tmp() as d:
-            e41, f41, r41, _r = build(_tree(d, *fx(41)), PIN, _strings())
+            e41, f41, r41, _r = bld(_tree(d, *fx(41)), PIN, _strings())
         with _tmp() as d:
-            e40, f40, r40, _r = build(_tree(d, *fx(40)), PIN, _strings())
+            e40, f40, r40, _r = bld(_tree(d, *fx(40)), PIN, _strings())
         return _eq((e41, f41, e40, len(f40), _j(f40, "graph/index.json")["steps"]),
                    ([("GRAPH-FANOUT", "lean-w--g", "has 41 children (more than 40)")], {}, [], 44, 42))
 
@@ -887,9 +1040,9 @@ def _selftest_cases():
         body = "### S part\n\n**Alpha, beta**\n\n- `New/S/A` (1): a\n\n**Alpha beta!**\n\n- `New/S/B` (1): b\n"
         dot = "### U part\n\n**G**\n\n- `New/Bad.Dir/X` (1): x\n"
         with _tmp() as d:
-            edup = build(_tree(d, body, {"New/S/A": _lean(), "New/S/B": _lean()}), PIN, _strings())[0]
+            edup = bld(_tree(d, body, {"New/S/A": _lean(), "New/S/B": _lean()}), PIN, _strings())[0]
         with _tmp() as d:
-            eid = build(_tree(d, dot, {"New/Bad.Dir/X": _lean()}), PIN, _strings())[0]
+            eid = bld(_tree(d, dot, {"New/Bad.Dir/X": _lean()}), PIN, _strings())[0]
         return _eq((slug("Café, Théorème & `x`!"), slug("Mind's \"eye\""), slug("  --A  b--  "), slug("aθb"), kebab("OneLift"), kebab("UpperBound"), kebab("a_Bc"),
                     kebab("FieldsAndPlaces"), kebab("Main"), edup, [(c, w) for c, w, _ in eid]),
                    ("cafe-theoreme-x", "mind-s-eye", "a-b", "a-b", "one-lift", "upper-bound", "a-bc", "fields-and-places", "main",
@@ -969,10 +1122,10 @@ def _selftest_cases():
             built_nokey = os.path.exists(os.path.join(d, "o8"))
             s3 = _strings()
             del s3["parts_n"]
-            errs3 = build(g, PIN, s3)[0]
+            errs3 = bld(g, PIN, s3)[0]
             s4 = _strings()
             del s4["symbol_kind_file"]
-            errs4 = build(g, PIN, s4)[0]
+            errs4 = bld(g, PIN, s4)[0]
             absent = [os.path.exists(os.path.join(d, n)) for n in ("o2", "o3", "o4", "o5", "o6", "o7")]
         return _eq((rc0[0], rc0[1].splitlines()[:1] != [], called, listing, rc_full, held, nopin[0], nopin[1], nopin[2] != "", dup, unk, emptypin, nofolder, notjson,
                     nokey[0], nokey[1].splitlines(), built_nokey, errs3, errs4, absent),
@@ -991,7 +1144,8 @@ def _selftest_cases():
         rows = [row("lean-s", "root", 0, [], "part", "S part"), row("lean-s--g", "lean-s", 0, [], "group", "G"),
                 row("lean-s-a", "lean-s--g", 0, [], "file", "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "file", "b")]
         table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
-        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS), symbols=table, orders=ORDERS, layout="column")
+        info = {("lean-s-b", "lean-s-a"): {"weight": 1, "in_reduction": True}}
+        want_errs, want_objs = bs._graph_files(rows, PIN, dict(_strings(), **OPTIONAL_WORDS), symbols=table, orders=ORDERS, layout="column", link_info=info)
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -1011,7 +1165,7 @@ def _selftest_cases():
         two = [("a" * 49 + "c" * 10), ("a" * 49 + "d" * 10)]
         body = ("### S part\n\n**" + long_title + "**\n\n- `New/S/A` (1): a\n\n**" + two[0] + "**\n\n- `New/S/B` (1): b\n\n**" + two[1] + "**\n\n- `New/S/C` (1): c\n")
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, body, {"New/S/A": _lean(), "New/S/B": _lean(), "New/S/C": _lean()}), PIN, _strings())
+            errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": _lean(), "New/S/B": _lean(), "New/S/C": _lean()}), PIN, _strings())
         ids = [r["id"] for r in rows if r["parent"] == "lean-s"]
         full = "lean-s--" + "a" * 80
         return _eq((_cap("x" * 64) == "x" * 64, _cap("x" * 65), len(_cap("x" * 65)), _cap("short"),
@@ -1026,8 +1180,8 @@ def _selftest_cases():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
         with _tmp() as d:
             g = _tree(d, body, {"New/S/A": _lean()})
-            clash = build(g, PIN, _strings(), live_ids=["zeta", "lean-s-a", "lean-s"])[0]
-            fine = build(g, PIN, _strings(), live_ids=["zeta", "lean-sa"])[0]
+            clash = bld(g, PIN, _strings(), live_ids=["zeta", "lean-s-a", "lean-s"])[0]
+            fine = bld(g, PIN, _strings(), live_ids=["zeta", "lean-sa"])[0]
             sp = _strings_file(d)
             bad = _cli(_args(g, os.path.join(d, "o1"), sp, _outline_file(d, ["lean-s-a"])))
             good = _cli(_args(g, os.path.join(d, "o2"), sp, _outline_file(d, ["other"], "ol2.json")))[0]
@@ -1065,7 +1219,7 @@ def _selftest_cases():
 """
         srcs = {"New/Zeta/Zz": _lean(), "New/Zeta/Aa": _lean(), "New/Zeta/Mm": _lean(), "New/Alpha/Bb": _lean()}
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
+            errs, files, rows, rep = bld(_tree(d, body, srcs), PIN, _strings())
         kids = lambda i: [c["id"] for c in _j(files, f"graph/step/{i}.json")["children"]]
         return _eq((errs, _j(files, "graph/index.json")["top"], kids("lean-zeta"), kids("lean-zeta--zed-group"), [r["order"] for r in rows]),
                    ([], ["lean-zeta", "lean-alpha"], ["lean-zeta--zed-group", "lean-zeta--abe-group"], ["lean-zeta-zz", "lean-zeta-aa"], [0, 0, 0, 1, 1, 0, 1, 0, 0]))
@@ -1074,40 +1228,44 @@ def _selftest_cases():
                   "links among its own files (empty and present when it has none)")
     def _():
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
+            errs, files, rows, rep = bld(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
         return _eq((errs, [r["premises"] for r in rows if r["proof"] == "none" and r["id"] in ("lean-s", "lean-s--grp", "lean-s--other")],
                     _j(files, "graph/index.json")["rests_on"], _j(files, "graph/step/lean-s.json")["rests_on"],
                     _j(files, "graph/step/lean-s--other.json")["rests_on"], len(_j(files, "graph/step/lean-s--grp.json")["rests_on"]),
                     "rests_on" in _j(files, "graph/step/lean-s-d.json"), _j(files, "graph/step/lean-s-d.json")["rests_on"]),
-                   ([], [[], [], []], [], [], [], 2, True, []))
+                   ([], [[], [], []], [], [], [], 3, True, []))
 
-    @case("SK18", "the per-group table of the report: files, files with at least one drawn link (either end), files with none, the longest path of rests_on and the "
-                  "widest depth row (depth 0 = a file that rests on nothing; the smallest depth wins a tie)")
+    @case("SK18", "the per-group table of the report: files, use edges (in the group), reduction edges, files with at least one drawn link (either end), files with none, the "
+                  "longest path of rests_on and the widest depth row (depth 0 = a file that rests on nothing; the smallest depth wins a tie)")
     def _():
         fan = "### F part\n\n**Fan**\n\n" + "".join(f"- `New/F/{n}` (1): {n}\n" for n in "XYZWV")
         fsrcs = {"New/F/X": _lean(), "New/F/Y": _lean(imports=["New.F.X"]), "New/F/Z": _lean(imports=["New.F.X"]), "New/F/W": _lean(imports=["New.F.X"]),
                  "New/F/V": _lean()}
         with _tmp() as d:
-            fe, ff, fr, frep = build(_tree(d, fan, fsrcs), PIN, _strings())
+            fe, ff, fr, frep = bld(_tree(d, fan, fsrcs), PIN, _strings())
         with _tmp() as d:
-            ce, cf, cr, crep = build(_tree(d, CHAIN_BODY, CHAIN_SRCS), PIN, _strings())
+            ce, cf, cr, crep = bld(_tree(d, CHAIN_BODY, CHAIN_SRCS), PIN, _strings())
         with _tmp() as d:
-            se, sf, sr, srep = build(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
+            se, sf, sr, srep = bld(_tree(d, SK3_BODY, SK3_SRCS), PIN, _strings())
         return _eq((fe, frep["groups"], ce, crep["groups"], se, srep["groups"]),
-                   ([], [{"group": "lean-f--fan", "files": 5, "linked": 4, "unlinked": 1, "longest": 1, "widest_depth": 1, "widest_count": 3}],
-                    [], [{"group": "lean-t--grp", "files": 4, "linked": 4, "unlinked": 0, "longest": 3, "widest_depth": 0, "widest_count": 1}],
-                    [], [{"group": "lean-s--grp", "files": 3, "linked": 3, "unlinked": 0, "longest": 2, "widest_depth": 0, "widest_count": 1},
-                         {"group": "lean-s--other", "files": 1, "linked": 0, "unlinked": 1, "longest": 0, "widest_depth": 0, "widest_count": 1}]))
+                   ([], [{"group": "lean-f--fan", "files": 5, "uses": 3, "reduction": 3, "linked": 4, "unlinked": 1, "longest": 1, "widest_depth": 1, "widest_count": 3}],
+                    [], [{"group": "lean-t--grp", "files": 4, "uses": 5, "reduction": 3, "linked": 4, "unlinked": 0, "longest": 3, "widest_depth": 0, "widest_count": 1}],
+                    [], [{"group": "lean-s--grp", "files": 3, "uses": 3, "reduction": 2, "linked": 3, "unlinked": 0, "longest": 2, "widest_depth": 0, "widest_count": 1},
+                         {"group": "lean-s--other", "files": 1, "uses": 0, "reduction": 0, "linked": 0, "unlinked": 1, "longest": 0, "widest_depth": 0, "widest_count": 1}]))
 
-    @case("SK3b", "a link inside a group is never reduced by a path that leaves the group: a imports b (same group), a imports x and x imports b (x in another group): "
-                  "a still rests on b (drawn 1, not drawn 2)")
+    @case("SK3b", "a use across groups is never a link and never takes part in the reduction of a group: a uses b (same group), a uses x and x uses b (x in another group): "
+                  "a still has the link to b, in_reduction true (drawn 1, not drawn 2); the uses across groups are in uses.json with same_group false")
     def _():
         body = "### S part\n\n**Grp**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n\n**Other**\n\n- `New/S/X` (1): x\n"
         srcs = {"New/S/A": _lean(imports=["New.S.B", "New.S.X"]), "New/S/B": _lean(), "New/S/X": _lean(imports=["New.S.B"])}
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
-        return _eq((errs, [(r["id"], r["premises"]) for r in rows if r["parent"] == "lean-s--grp"], rep["drawn"], rep["not_drawn"]),
-                   ([], [("lean-s-a", ["lean-s-b"]), ("lean-s-b", [])], 1, 2))
+            errs, files, rows, rep = bld(_tree(d, body, srcs), PIN, _strings())
+        links = _j(files, "graph/step/lean-s--grp.json")["rests_on"]
+        u = _j(files, "graph/uses.json")["uses"]
+        return _eq((errs, [(r["id"], r["premises"]) for r in rows if r["parent"] == "lean-s--grp"], [(l["from"], l["to"], l["in_reduction"]) for l in links], rep["drawn"], rep["not_drawn"],
+                    u["lean-s-a"], u["lean-s-x"]),
+                   ([], [("lean-s-a", ["lean-s-b"]), ("lean-s-b", [])], [("lean-s-a", "lean-s-b", True)], 1, 2,
+                    [{"id": "lean-s-b", "names": 1, "same_group": True}, {"id": "lean-s-x", "names": 1, "same_group": False}], [{"id": "lean-s-b", "names": 1, "same_group": False}]))
 
     @case("SK19", "titles are the CONTENTS text with no bound: a file title of 98 characters, a group title and a section heading of 60, both with a backtick span, are kept whole (no refusal, no cut, backticks kept)")
     def _():
@@ -1116,11 +1274,11 @@ def _selftest_cases():
         st = "s" * 30 + " `" + "t" * 27 + "`"
         body = f"### {st}\n\n**{gt}**\n\n- `New/S/A` (1): {ft}\n"
         with _tmp() as d:
-            errs, files, rows, rep = build(_tree(d, body, {"New/S/A": _lean()}), PIN, _strings())
+            errs, files, rows, rep = bld(_tree(d, body, {"New/S/A": _lean()}), PIN, _strings())
         return _eq((errs, [len(r["title"]) for r in rows], [r["title"] for r in rows] == [st, gt, ft]), ([], [60, 60, 98], True))
 
-    @case("SK20", "determinism of the sidecar: a file that imports six files has its uses listed in sorted order under both hash seeds (graph/uses.json is byte-identical "
-                  "and its list is the sorted literal)")
+    @case("SK20", "determinism of the sidecar: a file that uses six files has its uses and its imports listed in sorted order under hash seeds 0, 1 and 2 (graph/uses.json is "
+                  "byte-identical and its lists are the sorted literals)")
     def _():
         names = "ABCDEF"
         body = "### S part\n\n**Grp**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in names) + "\n**Hub**\n\n- `New/S/Hub` (1): hub\n"
@@ -1136,8 +1294,9 @@ def _selftest_cases():
                 r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, sp, ol), env=dict(os.environ, PYTHONHASHSEED=seed),
                                    capture_output=True, text=True)
                 got.append((r.returncode, _tree_files(out)["graph/uses.json"]))
-        u = json.loads(got[0][1].decode("utf-8"))["uses"]["lean-s-hub"]
-        return _eq(([g[0] for g in got], got[0][1] == got[1][1] == got[2][1], u), ([0, 0, 0], True, [f"lean-s-{n}" for n in "abcdef"]))
+        u = json.loads(got[0][1].decode("utf-8"))
+        return _eq(([g[0] for g in got], got[0][1] == got[1][1] == got[2][1], [e["id"] for e in u["uses"]["lean-s-hub"]], u["imports"]["lean-s-hub"]),
+                   ([0, 0, 0], True, [f"lean-s-{n}" for n in "abcdef"], [f"lean-s-{n}" for n in "abcdef"]))
 
     @case("SK21", "the strings overlay (`--strings-overlay FILE`): its keys replace or add to the strings file for this map only; with the overlay giving the three kind "
                   "words and a new heading the index holds exactly the 23 keys with those words (an extra overlay key is not in it); the strings file is not edited; an "
@@ -1184,10 +1343,10 @@ def _selftest_cases():
         good = "### X\n**B**\n- `New/Main` (1): m\n"
         with _tmp() as d:
             g = _tree(d, bad, {"New/Main": _lean()})
-            errs = build_rows(g)[0]
+            errs = brows(g)[0]
             rc, out, err = _cli(_args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)))
         with _tmp() as d:
-            ok = build(_tree(d, good, {"New/Main": _lean()}), PIN, _strings())
+            ok = bld(_tree(d, good, {"New/Main": _lean()}), PIN, _strings())
         return _eq((errs, rc, out.splitlines(), "Traceback" in err, ok[0], [r["id"] for r in ok[2]]), ([("SKEL-LINE", "8", "")], 1, ["SKEL-LINE 8"], False, [], ["lean-x", "lean-main"]))
 
     @case("SK23", "an id that is cut cannot hide a bad character: the UNCUT id is checked against the id pattern first, so a file name with a non-ASCII character past the 57th "
@@ -1196,10 +1355,10 @@ def _selftest_cases():
         name = "a" * 60 + "\u00e9"
         body = f"### X part\n\n**G**\n\n- `New/X/{name}` (1): x\n"
         with _tmp() as d:
-            errs = build(_tree(d, body, {f"New/X/{name}": _lean()}), PIN, _strings())[0]
+            errs = bld(_tree(d, body, {f"New/X/{name}": _lean()}), PIN, _strings())[0]
         good = "a" * 60 + "b"
         with _tmp() as d:
-            ok = build(_tree(d, f"### X part\n\n**G**\n\n- `New/X/{good}` (1): x\n", {f"New/X/{good}": _lean()}), PIN, _strings())
+            ok = bld(_tree(d, f"### X part\n\n**G**\n\n- `New/X/{good}` (1): x\n", {f"New/X/{good}": _lean()}), PIN, _strings())
         return _eq(([(c, w) for c, w, _ in errs], ok[0], len(ok[3]["cut"]), [len(r["id"]) for r in ok[2]]), ([("GRAPH-ID", "lean-x-" + name)], [], 1, [6, 9, 64]))
 
     @case("SK24", "a source file is read through one bounded, non-blocking, non-following descriptor: a .lean that is a symlink (to a file outside the tree), a FIFO, a directory or "
@@ -1242,7 +1401,7 @@ def _selftest_cases():
         out = []
         for b in (bold, loose, empty, group):
             with _tmp() as d:
-                out.append(build_rows(_tree(d, b, {}))[0])
+                out.append(brows(_tree(d, b, {}))[0])
         return _eq(out, [[("SKEL-LINE", "9", "")], [("SKEL-LINE", "8", "")], [("SKEL-LINE", "7", "")], [("SKEL-LINE", "8", "")]])
 
     @case("SK26", "the three optional page words (key_kinds_note, note_label, note_source; final, `{source}` and `{commit}` kept literal) are index.json `strings` keys when the strings "
@@ -1254,12 +1413,133 @@ def _selftest_cases():
                  "note_source": "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean"}
         with _tmp() as d:
             g = _tree(d, body, {"New/S/A": _lean()})
-            n = lambda extra: len(_j(build(g, PIN, dict(_strings(), **extra))[1], "graph/index.json")["strings"])
-            full = _j(build(g, PIN, dict(_strings(), **OPTIONAL_WORDS))[1], "graph/index.json")["strings"]
+            n = lambda extra: len(_j(bld(g, PIN, dict(_strings(), **extra))[1], "graph/index.json")["strings"])
+            full = _j(bld(g, PIN, dict(_strings(), **OPTIONAL_WORDS))[1], "graph/index.json")["strings"]
             counts = (n({}), n({"note_label": "L", "note_source": "S"}), n(OPTIONAL_WORDS))
         with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
             overlay = json.load(f)
         return _eq((counts, OPTIONAL_WORDS == typed, {k: full[k] for k in typed}, {k: overlay.get(k) for k in typed}), ((23, 25, 26), True, typed, typed))
+
+    @case("U1", "a file's used set and its weights are what its .ilean says: references with usages to another New module count, the weight is the number of DISTINCT names of "
+                "that module (two names count two; two usage records of one name count once); a reference with no usage (a definition only, or an empty list), a reference "
+                "to the file's own module and references to modules outside New are not uses; a planted extra use and a planted missing use each change the result")
+    def _():
+        body = "### S part\n\n**Grp**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n- `New/S/C` (1): c\n\n**Other**\n\n- `New/S/X` (1): x\n"
+        srcs = {f"New/S/{n}": _lean() for n in "ABCX"}
+
+        def refs(**kw):
+            r = {}
+            r.update(_ref("New.S.B", "b1", "b2"))                                   # two names: weight 2
+            r.update(_ref("New.S.B", "b3", usages=0, definition=[1, 1, 1, 2]))       # a definition only: not a use
+            r.update(_ref("New.S.C", "c1", usages=2))                                # two usage records of one name: weight 1
+            r.update(_ref("New.S.C", "c2", usages=0))                                # no usage at all: not a use
+            r.update(_ref("New.S.X", "x1"))                                          # another group
+            r.update(_ref("New.S.A", "a1", "a2"))                                    # the file's own module
+            r.update(_ref("Mathlib.Data.Nat", "m1"))
+            r.update(_ref("Lib.Foo", "l1"))
+            for k, v in kw.items():
+                r.update(v)
+            return r
+
+        def uses(refs_a):
+            with _tmp() as d:
+                errs, files, rows, rep = bld(_tree(d, body, srcs, {"New/S/A": _ilean("New/S/A", refs_a)}), PIN, _strings())
+            return errs, _j(files, "graph/uses.json")["uses"]["lean-s-a"]
+        base = uses(refs())
+        extra = uses(refs(extra=_ref("New.S.C", "c3")))
+        missing_refs = refs()
+        del missing_refs[json.dumps({"c": {"m": "New.S.B", "n": "b2"}}, separators=(",", ":"))]
+        missing = uses(missing_refs)
+        e = lambda i, n, g: {"id": f"lean-s-{i}", "names": n, "same_group": g}
+        return _eq((base, extra, missing),
+                   (([], [e("b", 2, True), e("c", 1, True), e("x", 1, False)]), ([], [e("b", 2, True), e("c", 2, True), e("x", 1, False)]),
+                    ([], [e("b", 1, True), e("c", 1, True), e("x", 1, False)])))
+
+    @case("U2", "the options: `--ilean-dir` has NO default and is required like --pin, --grh, --strings and --out (a missing one is exit 2, nothing on stdout); an --ilean-dir that "
+                "is not a folder is exit 2; with all of them the run is exit 0")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            sp, ol = _strings_file(d), _outline_file(d)
+            full = _args(g, os.path.join(d, "out"), sp, ol)
+
+            def without(opt):
+                i = full.index(opt)
+                return full[:i] + full[i + 2:]
+            missing = {o: _cli(without(o)) for o in ("--ilean-dir", "--pin", "--grh", "--strings", "--out")}
+            nodir = _cli(full[:full.index("--ilean-dir") + 1] + [os.path.join(d, "nothing")] + full[full.index("--ilean-dir") + 2:])
+            ok = _cli(full)
+        return _eq(({o: (r[0], r[1]) for o, r in missing.items()}, nodir[0], nodir[1], ok[0]), ({o: (2, "") for o in missing}, 2, "", 0))
+
+    @case("U3", "refusals `SKEL-USES <path> <reason>`, all of them, in CONTENTS order and then the unlisted .ilean files sorted: a New file with no .ilean (missing-ilean), an .ilean whose "
+                "module is not the file's (module-mismatch), one that is not JSON (not-json), one whose top level is not an object with module and references (bad-ilean), one "
+                "with a reference key of an unknown shape (unknown-reference-shape), and an .ilean with no CONTENTS line (no-contents-line); the CLI exits 1 with OUT not written")
+    def _():
+        body = "### S part\n\n**G**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in "ABCDEF")
+        srcs = {f"New/S/{n}": _lean() for n in "ABCDEF"}
+        bad_key = _ilean("New/S/D", {json.dumps({"x": 1}): {"definition": None, "usages": []}})
+        ileans = {"New/S/A": None, "New/S/B": _ilean("New/S/B", {}, module="New.S.Other"), "New/S/C": "{not json", "New/S/D": bad_key, "New/S/E": [], "New/S/Z": _ilean("New/S/Z", {})}
+        want = [("SKEL-USES", "New/S/A", "missing-ilean"), ("SKEL-USES", "New/S/B", "module-mismatch"), ("SKEL-USES", "New/S/C", "not-json"),
+                ("SKEL-USES", "New/S/D", "unknown-reference-shape"), ("SKEL-USES", "New/S/E", "bad-ilean"), ("SKEL-USES", "New/S/Z", "no-contents-line")]
+        with _tmp() as d:
+            g = _tree(d, body, srcs, ileans)
+            errs = brows(g)[0]
+            rc, out, err = _cli(_args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)))
+            absent = not os.path.exists(os.path.join(d, "out"))
+        return _eq((errs, rc, out.splitlines(), absent),
+                   (want, 1, ["SKEL-USES New/S/A missing-ilean", "SKEL-USES New/S/B module-mismatch", "SKEL-USES New/S/C not-json", "SKEL-USES New/S/D unknown-reference-shape",
+                              "SKEL-USES New/S/E bad-ilean", "SKEL-USES New/S/Z no-contents-line"], True))
+
+    @case("U4", "an .ilean that is a symlink, a directory or a FIFO, or is larger than 16 MiB, is refused (`symlink`, `not-a-regular-file`, `not-a-regular-file`, `too-large`) "
+                "without hanging, and one of exactly 16 MiB is read. The tool opens with O_NONBLOCK and O_NOFOLLOW, fstat's the descriptor and reads at most the limit plus one "
+                "byte; the case runs the CLI in a subprocess with a 60 second timeout, so a tool that blocked on the FIFO would fail the case, not hang the self-test")
+    def _():
+        body = "### S part\n\n**G**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in "ABCDEF")
+        srcs = {f"New/S/{n}": _lean() for n in "ABCDEF"}
+        limit = 16 * 1024 * 1024
+        pad = lambda n: json.dumps({"decls": [], "directImports": [], "module": "New.S.X", "references": {}, "version": 5}) + " " * n
+        with _tmp() as d:
+            g = _tree(d, body, srcs)
+            base = os.path.join(d, "ilean", "New", "S")
+            for n in "ABC":
+                os.remove(os.path.join(base, n + ".ilean"))
+            os.symlink(os.path.join(base, "F.ilean"), os.path.join(base, "A.ilean"))
+            os.mkdir(os.path.join(base, "B.ilean"))
+            os.mkfifo(os.path.join(base, "C.ilean"))
+            for n, size in (("D", limit + 1), ("E", limit)):
+                body_text = pad(0).replace("New.S.X", f"New.S.{n}")
+                with open(os.path.join(base, n + ".ilean"), "w") as f:
+                    f.write(body_text + " " * (size - len(body_text)))
+            sizes = (os.path.getsize(os.path.join(base, "D.ilean")), os.path.getsize(os.path.join(base, "E.ilean")))
+            out = os.path.join(d, "out")
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=60)
+        return _eq((sizes, r.returncode, r.stdout.splitlines()),
+                   ((limit + 1, limit), 1, ["SKEL-USES New/S/A symlink", "SKEL-USES New/S/B not-a-regular-file", "SKEL-USES New/S/C not-a-regular-file", "SKEL-USES New/S/D too-large"]))
+
+    @case("U5", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): 2135 use edges in all, 733 inside groups (drawn) and 1402 across, 0 cycles, "
+                "the weights over all edges sum to 12688, the transitive reduction of the groups' use relations has 325 edges (true on 325 links, false on 408); "
+                "MainInequality uses 12 New files with weights AdmissibleData 7, ShortAndEnough 5, TwistedLattice 4, PrimeSums 3, Magnitudes 2, IntegralTargetForms 2, Rows 2 "
+                "and five with 1, and has exactly 2 imports; the five densest groups have the files, edges and reduction edges pinned")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        u = _j(files, "graph/uses.json")
+        edges = [e for v in u["uses"].values() for e in v]
+        main = {e["id"]: e["names"] for e in u["uses"]["lean-reduction-main-inequality"]}
+        links = [l for k, v in files.items() if k.startswith("graph/step/") for l in json.loads(v.decode("utf-8"))["rests_on"]]
+        dense = {g["group"]: (g["files"], g["uses"], g["reduction"]) for g in rep["groups"] if g["files"] >= 15}
+        return _eq((errs, len(edges), sum(1 for e in edges if e["same_group"]), sum(1 for e in edges if not e["same_group"]), sum(e["names"] for e in edges),
+                    rep["reduction"], sum(1 for l in links if l["in_reduction"]), sum(1 for l in links if not l["in_reduction"]), len(links),
+                    sorted(main.values(), reverse=True), main["lean-reduction-data-admissible-data"], main["lean-reduction-short-and-enough"],
+                    main["lean-reduction-lattices-twisted-lattice"], main["lean-reduction-prime-sums"], main["lean-upper-bound-objects-rows"],
+                    len(u["imports"]["lean-reduction-main-inequality"]),
+                    dense["lean-spanning--two-frames-at-one-place"], dense["lean-spanning--the-remaining-terms"],
+                    dense["lean-spanning--unfolding-and-the-proof-of-the-moments"], dense["lean-congruences--anticyclotomic-twists-with-small-selmer-groups"],
+                    dense["lean-upper-bound--the-seesaw-identity"], sum(g["uses"] for g in rep["groups"]), sum(g["reduction"] for g in rep["groups"])),
+                   ([], 2135, 733, 1402, 12688, 325, 325, 408, 733, [7, 5, 4, 3, 2, 2, 2, 1, 1, 1, 1, 1], 7, 5, 4, 3, 2, 2,
+                    (22, 114, 27), (23, 79, 32), (19, 72, 22), (16, 45, 22), (15, 42, 20), 733, 325))
 
     @case("SK28", "hostile folders and CONTENTS.md, one tree per row of the colleague's table, each a named refusal (exit 1, no traceback, OUT not written, no hang: the CLI runs in a "
                   "subprocess with a 60 second timeout): `src` a symlink to a folder outside, `src/New` a symlink, CONTENTS.md a symlink, CONTENTS.md a FIFO, CONTENTS.md over 4 MiB, "
@@ -1346,16 +1626,40 @@ def _selftest_cases():
                    rd(os.path.join(root, "inside", "f.txt")), rd(os.path.join(root, "via", "f.txt")), rd(os.path.join(root, "inside", "l.txt")))
         return _eq(got, (True, True, False, False, False, ("ok", b"x"), ("err", "outside"), ("err", "symlink")))
 
-    @case("SK13", "the real source (give `--selftest --grh DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
-                  "depth 3, 298 links drawn and 226 imports not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
+    @case("SK31", "the .ilean folder is contained by real path under its own root (--ilean-dir): `New` a symlink to a folder outside, a folder below it (`New/S`) a symlink to a folder "
+                  "outside that holds valid files, and an .ilean file that is a symlink to a file outside are each a named refusal (`SKEL-ESCAPE ilean/New symlink`, `SKEL-ESCAPE "
+                  "ilean/New/S symlink`, `SKEL-USES New/S/A symlink`; exit 1, no traceback, OUT not written)")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        res = {}
+        for kind in ("new", "sub", "file"):
+            with _tmp() as d:
+                g = _tree(d, body, {"New/S/A": _lean()})
+                base = os.path.join(d, "ilean")
+                if kind == "new":
+                    shutil.move(os.path.join(base, "New"), os.path.join(d, "outside"))
+                    os.symlink(os.path.join(d, "outside"), os.path.join(base, "New"))
+                elif kind == "sub":
+                    shutil.move(os.path.join(base, "New", "S"), os.path.join(d, "outside"))
+                    os.symlink(os.path.join(d, "outside"), os.path.join(base, "New", "S"))
+                else:
+                    shutil.move(os.path.join(base, "New", "S", "A.ilean"), os.path.join(d, "real.ilean"))
+                    os.symlink(os.path.join(d, "real.ilean"), os.path.join(base, "New", "S", "A.ilean"))
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, os.path.join(d, "out"), _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=60)
+                res[kind] = (r.returncode, r.stdout.splitlines(), "Traceback" in r.stderr, os.path.exists(os.path.join(d, "out")))
+        return _eq(res, {"new": (1, ["SKEL-ESCAPE ilean/New symlink"], False, False), "sub": (1, ["SKEL-ESCAPE ilean/New/S symlink"], False, False),
+                         "file": (1, ["SKEL-USES New/S/A symlink"], False, False)})
+
+    @case("SK13", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
+                  "depth 3, 733 links drawn (in-group uses) and 1402 uses not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
                   "lean-reduction are the first 3 file lines of that group in CONTENTS, the live outline's ids are disjoint from the build's, "
                   "every title (353 of 353, in the rows and in the step files) equals its CONTENTS text byte for byte and 22 of them hold a backtick, and the static check passes on the output")
     def _():
-        if _GRH_FOR_SK13 is None:
-            raise _SkipCase("SKIPPED: no --grh given to the self-test")
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
         with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
             live = [g["id"] for g in json.load(f)["groups"]]
-        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), live_ids=live)
+        errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), live_ids=live, ilean_dir=_ILEAN_FOR_SK13)
         cut_ids = sorted(final for _, final in rep["cut"])
         with open(os.path.join(_GRH_FOR_SK13, "CONTENTS.md"), encoding="utf-8") as f:
             lines = f.read().split("\n")
@@ -1384,16 +1688,16 @@ def _selftest_cases():
                     [r["title"] for r in rows] == src_titles, card_titles == src_titles, len(src_titles), sum("`" in s for s in src_titles), bs._graph_static_problems(files)),
                    ([], ORDERS, "column", 0, 23, 23, 353, {"part": 9, "group": 38, "file": 306}, [("none", "none")],
                     ["lean-reduction", "lean-derivatives", "lean-upper-bound", "lean-spanning", "lean-determinant", "lean-one-lift", "lean-congruences", "lean-appendix",
-                     "lean-the-last-file"], 23, 3, 298, 226, 64, 3,
+                     "lean-the-last-file"], 23, 3, 733, 1402, 64, 3,
                     ["lean-congruences--lifting-crystalline-extension-classes-i-07869b", "lean-congruences-galois-representations-rows-and-columns-7a36a5",
                      "lean-one-lift--hecke-l-values-as-squared-norms-and-their-25fb42"], True, 3, 355, True, True, 353, 22, []))
 
     return cases
 
 
-def selftest(verbose=True, only=None, grh=None):
-    """Run the cases: 0 all pass (a skipped case does not fail), 4 one fails, 2 an unknown id in `only`. `grh` is the folder SK13 reads."""
-    global _GRH_FOR_SK13
+def selftest(verbose=True, only=None, grh=None, ilean=None):
+    """Run the cases: 0 all pass (a skipped case does not fail), 4 one fails, 2 an unknown id in `only`. `grh` and `ilean` are the folders SK13 reads."""
+    global _GRH_FOR_SK13, _ILEAN_FOR_SK13
     cases = _selftest_cases()
     if only is not None:
         bad = [i for i in only if i not in {c[0] for c in cases}]
@@ -1401,8 +1705,8 @@ def selftest(verbose=True, only=None, grh=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
-    ok, skipped, before = True, 0, _GRH_FOR_SK13
-    _GRH_FOR_SK13 = grh
+    ok, skipped, before = True, 0, (_GRH_FOR_SK13, _ILEAN_FOR_SK13)
+    _GRH_FOR_SK13, _ILEAN_FOR_SK13 = grh, ilean
     try:
         for cid, desc, fn in cases:
             try:
@@ -1420,25 +1724,27 @@ def selftest(verbose=True, only=None, grh=None):
                 if not good:
                     print(f"  detail: {detail}")
     finally:
-        _GRH_FOR_SK13 = before
+        _GRH_FOR_SK13, _ILEAN_FOR_SK13 = before
     if verbose:
         print("SELFTEST " + ("PASS" if ok else "FAIL") + (f" ({skipped} skipped)" if ok and skipped else ""))
     return 0 if ok else 4
 
 
 def _selftest_main(rest):
-    """`--selftest [--only ID,ID] [--grh DIR]`, in either order, each once."""
-    only = grh = None
+    """`--selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR]`, in any order, each once."""
+    only = grh = ilean = None
     i = 0
     while i < len(rest):
         if rest[i] == "--only" and only is None and i + 1 < len(rest):
             only = [x for x in rest[i + 1].split(",") if x]
         elif rest[i] == "--grh" and grh is None and i + 1 < len(rest):
             grh = rest[i + 1]
+        elif rest[i] == "--ilean-dir" and ilean is None and i + 1 < len(rest):
+            ilean = rest[i + 1]
         else:
             return 2
         i += 2
-    return selftest(only=only, grh=grh)
+    return selftest(only=only, grh=grh, ilean=ilean)
 
 
 if __name__ == "__main__":

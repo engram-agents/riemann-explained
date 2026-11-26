@@ -300,7 +300,7 @@ card. The
 LIMIT paragraph in the file lists what is not checked.
 `python3 tools/build_site.py NOTES_DIR outline.json decls.tsv strings.json OUT_DIR [--source-check SRC_ROOT] [--release-archive-sha HEX] [--notes-commit REV --repo DIR] [--graph-src DIR] [--force]`
 
-**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR [--outline outline.json] [--strings-overlay overlay.json]`** answers: what is the
+**`tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json]`** answers: what is the
 skeleton of the map for a Lean repository that keeps its own index? `DIR` holds `CONTENTS.md` and `src/`. The tool reads the `## New` section of
 `CONTENTS.md` (`###` headings are sections, a line that is only `**title**` is a group, a line ``- `New/<path>` (<n>): <title>`` is a file) and the import
 lines of the files under `src/New`, and writes `graph/index.json`, `graph/step/<id>.json` and `graph/uses.json` under `OUT_DIR`. It writes graph data only: no
@@ -331,18 +331,28 @@ The rules are mechanical; nothing is typed by hand, and the kind and the face li
   page's OPTIONAL words (`GRAPH_OPTIONAL_KEYS` in `build_site.py`: `key_kinds_note`, `note_label`, `note_source`; final wording, and `note_source` holds the placeholders `{source}` and
   `{commit}`): `strings` is 23 keys without them, 25 with two and 26 with all three, and any other extra key is refused `GRAPH-STRINGS`. The live map's table, order lists, key set and output are unchanged: with no argument the
   key is absent and the lists are the whole tables.
-- **Links** (`rests_on`) join only sibling files of one group, from `import New.X.Y` lines at the start of a line, after the transitive reduction of the
-  group's edges. Groups and sections have no premises. A cycle among the files of a group is `GRAPH-EDGE`.
-- **`graph/uses.json`** lists, for every file step, the ids of every `New` file it imports, in any group, sorted, never itself. It is not part of `index.json`.
+- **Links** (`rests_on`) mean USES: file F rests on file G when a constant reference of F's compiled index (the `.ilean` file of its module, read as JSON data only;
+  `--ilean-dir` is the `lib/lean` folder of the build, has no default, and nothing is run or written there) names a name of G and has at least one usage. G is another
+  `New` file; references to the file's own module and to modules outside `New` are ignored. The weight of the link is the number of distinct names of G that F uses.
+  A link is drawn only between two files of one group. The data is NOT reduced: every in-group use is a link, and each link has `weight` and `in_reduction` (true when it
+  belongs to the transitive reduction of that group's use relation); the exact key set of a link on this map is `from`, `from_path`, `in_reduction`, `to`, `to_path`,
+  `weight` (`_graph_files(link_info=)`; the live map's links keep four keys). A use across groups is not drawn: it is listed in `graph/uses.json`. There is no link on a part or a
+  group. The graph of uses must be acyclic: a cycle is `SKEL-USES-CYCLE <ids of the cycle>`. A `New` file with no `.ilean`, an `.ilean` whose module is not the file's, an
+  `.ilean` with no `CONTENTS.md` line, one that is not JSON or has no `module` and `references`, one with a reference key of an unknown shape, and one that is a symlink, not a
+  regular file or over 16 MiB are `SKEL-USES <path> <reason>`, all reported. The file is read through one descriptor opened without following a symlink and without blocking,
+  checked with `fstat`, and read at most the limit plus one byte, and its real path must be under the real path of `--ilean-dir`; a folder of `ilean-dir/New` that is a symlink is `SKEL-ESCAPE ilean/<path> symlink` and is never walked.
+- **`graph/uses.json`** (format 2) is `{"commit", "format", "imports", "uses"}`. `imports` lists, for every file step, the ids of the `New` files it directly imports (from
+  its `import` lines), sorted. `uses` lists, for every file step, `{"id", "names", "same_group"}` for every file it uses, in any group, sorted by id (`names` is the weight).
+  Both keys are present for every file (a list may be empty). It is not part of `index.json`.
 - **Completeness**: every `.lean` file under `src/New` must be a file line and every file line must exist (`SKEL-UNLISTED <path>`, `SKEL-MISSING <path>`, all
   reported); CONTENTS.md (at most 4 MiB) and each source file (at most 1 MiB) are read through one descriptor opened without following a symlink and without blocking, checked with `fstat`, and read at most the limit plus one byte, and the REAL path of `src`, of `src/New` and of every file read must be under the real path of `--grh` (every component is resolved, not only the last: `SKEL-ESCAPE <path> symlink|outside` for a symlinked `src`, `src/New` or folder below it; `SKEL-CONTENTS CONTENTS.md <reason>` for a CONTENTS.md that is a symlink, not a regular file, over the limit or not UTF-8) (a symlink, a
   FIFO, a directory, a larger file, or bytes that are not UTF-8 are `SKEL-SOURCE <path> <reason>`, all reported); a line of the section that does not parse, or a file whose folder is not its section's, is `SKEL-LINE <n>`.
 
-The report prints: steps, the number of steps of each kind, the top ids, the widest step, the depth, the links drawn, the imports not drawn (a cross-group import or a reduced one), the
-self-imports ignored, the ids that were cut, and one line per group (files, files with at least one drawn link, files with none, the longest path of
-`rests_on`, and the depth row with most files, a file that rests on nothing being depth 0). An import outside `New` is counted nowhere.
+The report prints: steps, the number of steps of each kind, the top ids, the widest step, the depth, the uses in all, the links drawn (uses inside a group), the uses not drawn (across groups), the links in the transitive reduction, the
+ids that were cut, and one line per group (files, use edges, reduction edges, files with at least one drawn link, files with none, the longest path of
+`rests_on`, and the depth row with most files, a file that rests on nothing being depth 0). A reference outside `New` is counted nowhere.
 Exit: 0 built; 1 refused, `OUT_DIR` not written (a `SKEL-*` or `GRAPH-*` code, a strings file `build_site.py` refuses, or `OUT-NOT-EMPTY` when `OUT_DIR` already holds files); 2 usage error or an input that cannot be read; 4 is not used by a normal run.
-`python3 tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings site/strings.json --out OUT_DIR`
+`python3 tools/build_grh_skeleton.py --grh DIR --pin COMMIT --strings site/strings.json --out OUT_DIR --ilean-dir DIR`
 
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
 file compiled before the start module (INSIDE, with one shortest import path) or not (OUTSIDE)? Give at

@@ -2121,7 +2121,23 @@ def _graph_order_errors(rows, symbols, orders):
 GRAPH_LAYOUTS = ("column",)   # the only value of index.json `sibling_layout`; the key is absent when no layout is asked for
 
 
-def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None):
+def _graph_link_errors(link_info, links):
+    """[(GRAPH-LINK, "<from> <to>", reason)] for `link_info` ({(from, to): {weight, in_reduction}}) against the set of drawn links `links` ((from, to) pairs): every drawn link has an
+    entry, every entry is a drawn link, and an entry has exactly the keys weight (an integer, not a bool) and in_reduction (a boolean)."""
+    out = [("GRAPH-LINK", f"{f} {t}", "has no entry in link_info") for f, t in sorted(links) if (f, t) not in link_info]
+    for (f, t), v in sorted(link_info.items()):
+        if (f, t) not in links:
+            out.append(("GRAPH-LINK", f"{f} {t}", "is not a link"))
+        elif not isinstance(v, dict) or set(v) != {"weight", "in_reduction"}:
+            out.append(("GRAPH-LINK", f"{f} {t}", "must have exactly the keys weight and in_reduction"))
+        elif not isinstance(v["weight"], int) or isinstance(v["weight"], bool):
+            out.append(("GRAPH-LINK", f"{f} {t}", "has a weight that is not an integer"))
+        elif not isinstance(v["in_reduction"], bool):
+            out.append(("GRAPH-LINK", f"{f} {t}", "has an in_reduction that is not a boolean"))
+    return out
+
+
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
     hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
@@ -2214,6 +2230,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             else:
                 color[node] = 2
                 stack.pop()
+    if link_info is not None and not errors:
+        errors += _graph_link_errors(link_info, {(c["id"], q) for step in ["root"] + [r["id"] for r in rows] for c in kids.get(step, []) for q in c["premises"] if by[q]["parent"] == step})
     if errors:
         return errors, {}
     path = {}
@@ -2232,7 +2250,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
         return d
 
     def links(step):   # the premises of the children of `step` that name another child of it: `from` rests on `to`
-        return [{"from": c["id"], "from_path": list(path[c["id"]]), "to": p, "to_path": list(path[p])}
+        return [dict({"from": c["id"], "from_path": list(path[c["id"]]), "to": p, "to_path": list(path[p])},
+                     **({"in_reduction": link_info[(c["id"], p)]["in_reduction"], "weight": link_info[(c["id"], p)]["weight"]} if link_info is not None else {}))
                 for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
     objs = {"graph/index.json": {
         "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
@@ -13684,6 +13703,37 @@ def _selftest_cases():
         brace = dict(base, note_label="From {source}")
         return _eq((_strings_problems(ok), _strings_problems(bad), _strings_problems(brace)),
                    ([], [("STRINGS-KEY", "note_source", "has an unknown placeholder {bogus}")], [("STRINGS-KEY", "note_label", "has an unknown placeholder {source}")]))
+    @case("GRK1", "`_graph_files(link_info=)`: with None (the default) every link has the four keys from, from_path, to, to_path and the bytes equal an explicit link_info=None; "
+                  "with {(from, to): {weight, in_reduction}} every link of a step file (and of index.json) gains exactly those two keys, so the link key set is from, from_path, "
+                  "in_reduction, to, to_path, weight, and nothing else changes (the premises, the paths, the other files)")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1, premises=[]), gr_row("c", "a", 2, premises=["b"])]
+        base = _graph_files(rows, "c0", _strings())[1]
+        none = _graph_files(rows, "c0", _strings(), link_info=None)[1]
+        info = {("c", "b"): {"weight": 7, "in_reduction": False}}
+        errs, objs = _graph_files(rows, "c0", _strings(), link_info=info)
+        link = objs["graph/step/a.json"]["rests_on"][0]
+        stripped = {k: dict(v, rests_on=[{x: y for x, y in l.items() if x not in ("weight", "in_reduction")} for l in v["rests_on"]]) if "rests_on" in v and "card" in v else v
+                    for k, v in objs.items()}
+        return _eq((sorted(base["graph/step/a.json"]["rests_on"][0]), _graph_bytes(base) == _graph_bytes(none), errs, sorted(link), link["weight"], link["in_reduction"], stripped == base,
+                    objs["graph/index.json"]["rests_on"], objs["graph/step/b.json"]["rests_on"]),
+                   (["from", "from_path", "to", "to_path"], True, [], ["from", "from_path", "in_reduction", "to", "to_path", "weight"], 7, False, True, [], []))
+
+    @case("GRK2", "GRAPH-LINK <from> <to> <reason>: with link_info given, a drawn link with no entry, an entry for a pair that is not a link, an entry whose keys are not exactly "
+                  "weight and in_reduction, a weight that is not an integer (a bool is not one) and an in_reduction that is not a boolean are refused and nothing is returned")
+    def _():
+        rows = [gr_row("a"), gr_row("b", "a", 1), gr_row("c", "a", 2, premises=["b"])]
+        ok = {"weight": 1, "in_reduction": True}
+
+        def bad(info):
+            e, o = _graph_files(rows, "c0", _strings(), link_info=info)
+            return [tuple(x) for x in e], o
+        return _eq((bad({}), bad({("c", "b"): ok, ("b", "c"): ok}), bad({("c", "b"): {"weight": 1}}), bad({("c", "b"): dict(ok, extra=1)}), bad({("c", "b"): {"weight": True, "in_reduction": True}}),
+                    bad({("c", "b"): {"weight": "1", "in_reduction": True}}), bad({("c", "b"): {"weight": 1, "in_reduction": 1}}), bad({("c", "b"): "x"})),
+                   (([("GRAPH-LINK", "c b", "has no entry in link_info")], {}), ([("GRAPH-LINK", "b c", "is not a link")], {}),
+                    ([("GRAPH-LINK", "c b", "must have exactly the keys weight and in_reduction")], {}), ([("GRAPH-LINK", "c b", "must have exactly the keys weight and in_reduction")], {}),
+                    ([("GRAPH-LINK", "c b", "has a weight that is not an integer")], {}), ([("GRAPH-LINK", "c b", "has a weight that is not an integer")], {}),
+                    ([("GRAPH-LINK", "c b", "has an in_reduction that is not a boolean")], {}), ([("GRAPH-LINK", "c b", "must have exactly the keys weight and in_reduction")], {})))
 
     return cases
 
