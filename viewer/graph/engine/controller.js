@@ -159,12 +159,14 @@ export function createController(rawOptions, view) {
     if (!(v.w > 0 && v.h > 0 && n.w > 0 && n.h > 0)) return;
     setCam(frame(v, n.x, n.y, n.w, n.h, kmax, open ? Z.framePadOpen : Z.framePadClosed, Z.min));
   }
-  function fit() {
+  /* kmin is the floor of the fit: zoom.min for the handle's fit() (the whole drawing), zoom.fitMin for the start fit. */
+  function fitAt(kmin) {
     if (destroyed || !(root.w > 0 && root.h > 0)) return;
     const v = vp();
     if (!(v.w > 0 && v.h > 0)) return;
-    setCam(frame(v, 0, 0, root.w, root.h, o.zoom.fitMax, o.zoom.fitPad, o.zoom.min));
+    setCam(frame(v, 0, 0, root.w, root.h, o.zoom.fitMax, o.zoom.fitPad, kmin));
   }
+  const fit = () => fitAt(o.zoom.min);
 
   /* Zooming in on a node opens it; zooming out closes what has become too small to read. */
   function semantic(sx, sy, zoomIn) {
@@ -235,7 +237,7 @@ export function createController(rawOptions, view) {
     if (bad) { refuse(null, bad.reason, bad.detail); return false; }
     attach(root, o.roots);
     render();
-    if (o.fitOnStart) fit();
+    if (o.fitOnStart) fitAt(o.zoom.fitMin);
     return true;
   });
 
