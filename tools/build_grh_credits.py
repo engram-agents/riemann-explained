@@ -264,8 +264,8 @@ def selftest():
     def fixture(tmp, extra=None):
         files = {"LICENSE": "Apache License\n<script>alert(1)</script>\n", "grh/NOTICE": "NOTICE & </div> text\nSee ATTRIBUTION.md.\n",
                  "grh/ATTRIBUTION.md": "| a | b |\n|---|---|\n| `x` | <b>y</b> |\n",
-                 "grh/README.md": "# t\n\nR\n\nThe proof is X's, with Claude.\nThe Lean text was written by Claude (AI).\n\n\n\nThis project is a rewriting.\n",
-                 "README.md": "# r\n\n1\n2\n3\n4\n5\n\nThe proof is based on X's.\nThis repository is a shorter version, produced with my\ncolleagues, and Claude.\n"}
+                 "grh/README.md": "# t\n\nR\n\nFixture line five.\nFixture line six.\n\n\n\nFixture line ten.\n",
+                 "README.md": "# r\n\n1\n2\n3\n4\n5\n\nFixture line nine.\nFixture line ten.\nFixture line eleven.\n"}
         files.update(extra or {})
         for k, v in files.items():
             p = os.path.join(tmp, k)
@@ -302,8 +302,8 @@ def selftest():
             assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page and "<script" not in page, "repository bytes escaped"
             assert "NOTICE &amp; &lt;/div&gt; text" in page
             assert page.count('class="verbatim"') == 5, "LICENSE, NOTICE, ATTRIBUTION, two README blocks"
-            assert "The proof is X&#x27;s, with Claude.\nThe Lean text was written by Claude (AI).\nThis project is a rewriting." in page, "grh/README lines 5, 6, 10"
-            assert "The proof is based on X&#x27;s.\nThis repository is a shorter version, produced with my\ncolleagues, and Claude." in page, "README lines 9-11"
+            assert "Fixture line five.\nFixture line six.\nFixture line ten." in page, "grh/README lines 5, 6, 10"
+            assert "Fixture line nine.\nFixture line ten.\nFixture line eleven." in page, "README lines 9-11"
             assert f'href="https://github.com/{REPO}/tree/{PIN}"' in page and f'href="https://github.com/{REPO}/blob/{PIN}/grh/ATTRIBUTION.md"' in page
             assert 'href="../"' in page
             order = [page.index(f'<section class="{c}">') for c in ("who", "ours", "endorse", "licence", "notice", "attribution")]
@@ -334,7 +334,7 @@ def selftest():
         case("CR9 a source that is a symlink is refused", c9)
 
     with tempfile.TemporaryDirectory() as tmp:
-        blank = fixture(tmp, {"grh/README.md": "# t\n\nR\n\n\nThe Lean text was written by Claude (AI).\n\n\n\nThis project is a rewriting.\n"})
+        blank = fixture(tmp, {"grh/README.md": "# t\n\nR\n\n\nFixture line six.\n\n\n\nFixture line ten.\n"})
         case("CR16 a quoted line that is empty is refused", lambda: refused(
             lambda: build(tmp, PIN, base, words, sources=blank, head=lambda r: PIN), "CREDITS-QUOTE grh/README.md line 5 missing or empty"))
 
