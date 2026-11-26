@@ -1,0 +1,45 @@
+{
+ "card": {
+  "child_count": 2,
+  "child_kind": "group",
+  "id": "sk-part",
+  "kind": "part",
+  "path": [],
+  "proof": "none",
+  "state": "none",
+  "title": "Part sk-part"
+ },
+ "children": [
+  {
+   "child_count": 3,
+   "child_kind": "file",
+   "id": "sk-group-a",
+   "kind": "group",
+   "parent_rests_on": false,
+   "path": [
+    "sk-part"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Group sk-group-a"
+  },
+  {
+   "child_count": 2,
+   "child_kind": "file",
+   "id": "sk-group-b",
+   "kind": "group",
+   "parent_rests_on": true,
+   "path": [
+    "sk-part"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Group sk-group-b"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-part",
+ "path": [],
+ "rests_on": []
+}

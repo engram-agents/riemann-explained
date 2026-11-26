@@ -1,0 +1,51 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-4",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-b"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "File sk-file-4"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-4",
+ "index_rows": [
+  {
+   "source": "grh/INDEX.md",
+   "text": "The fourth file: the first lemma of the argument."
+  },
+  {
+   "source": "grh/INDEX.md",
+   "text": "The fourth file, again: a second sentence about it."
+  }
+ ],
+ "path": [
+  "sk-part",
+  "sk-group-b"
+ ],
+ "readings": [
+  {
+   "about": [
+    "Synthetic.Name.One",
+    "Synthetic.Name.Two"
+   ],
+   "by": "First Reader",
+   "date": "2026-11-20",
+   "id": "e-single",
+   "second_read_by": "Second Reader",
+   "text": "One short body.",
+   "title": "A single synthetic reading"
+  }
+ ],
+ "rests_on": [],
+ "spine_rows": [
+  "spine-theorem-b",
+  "spine-theorem-c"
+ ]
+}
