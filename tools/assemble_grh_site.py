@@ -789,7 +789,7 @@ MUTATION_EDITS = {
             '    manifest = (_dump(dict(json.loads(_manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)), release_id=None)) + "\\n").encode("utf-8")\n'),
     "M-f": ('names = sorted(os.listdir(path))', 'names = sorted(os.listdir(path), reverse=True)'),   # the step files are read in REVERSE name order
     "M-g": ('    elif os.path.isdir(out) and os.listdir(out):\n', '    elif False:\n'),
-    "M-h": ('"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)', '"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=())'),
+    "M-h": ('shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)', 'shell_keys=SHELL_KEYS, section_attrs=())'),   # (A24 builds `about` on its own line before this call, so the edit no longer includes the about text)
     "M-i": ('    shell_bytes = raws["shell"]\n', '    shell_bytes = _graph_src_shell if _graph_src_shell is not None else raws["shell"]\n'),
     "M-j": ('**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows)))}', '**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows) + 1))}'),
     "M-k": ('static_problems(page, "") + graph_element_problems(page) + head_meta_problems(page)', 'static_problems(page, "") + [] + head_meta_problems(page)'),
