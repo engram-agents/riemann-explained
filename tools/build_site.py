@@ -1838,16 +1838,16 @@ GRAPH_ASSET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")   # the path of an
 GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 
 
-def _graph_strings_keys():
-    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table and the run-time keys, on every build. A role
-    word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
-    return [v["words"] for table in GRAPH_SYMBOLS.values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
+def _graph_strings_keys(symbols=None):
+    """The exact set of keys of index.json `strings`: the `words` key of every row of the symbol table (`symbols`, default GRAPH_SYMBOLS) and the run-time keys,
+    on every build. A role word (GRAPH_ROLE_WORDS) is resolved into the card's `role` at build time and is never a key here: the page prints `role` from the card."""
+    return [v["words"] for table in (GRAPH_SYMBOLS if symbols is None else symbols).values() for v in table.values()] + list(GRAPH_RUNTIME_KEYS)
 
 
-def _graph_strings_errors(strings):
+def _graph_strings_errors(strings, symbols=None):
     """[(GRAPH-STRINGS, key, what)] for the `strings` object of index.json against the exact set of keys the page reads: the keys it lacks first, then the
     keys it has that the page does not read, each sorted."""
-    want = set(_graph_strings_keys())
+    want = set(_graph_strings_keys(symbols))
     return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
             + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want)])
 
@@ -2058,7 +2058,7 @@ def _graph_rows(m, strings):
     return _graph_line_errors(groups, strings["no_claim_label"]) + role_errors, rows
 
 
-def _graph_count_errors(objs):
+def _graph_count_errors(objs, symbols=None):
     """[(GRAPH-COUNT, where, what)] for the graph objects (relative name -> object): child_count is the number of children on every card and on every
     child entry (of that child's own file), `steps` is the number of step files, and every id in top and in any children has its step file."""
     out = []
@@ -2077,13 +2077,15 @@ def _graph_count_errors(objs):
     for i in dict.fromkeys(list(ix["top"]) + [c["id"] for k in sorted(files) for c in files[k]["children"]]):
         if i not in files:
             out.append(("GRAPH-COUNT", i, "is listed but has no step file"))
-    return out + _graph_strings_errors(ix["strings"])
+    return out + _graph_strings_errors(ix["strings"], symbols)
 
 
-def _graph_files(rows, commit, strings, assets=None):
+def _graph_files(rows, commit, strings, assets=None, symbols=None):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
-    top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
+    top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
+    hand one with more rows, whose `words` keys are then also keys of index.json `strings`). Nothing is returned with the errors. Each refusal is its own code: GRAPH-ID, GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE (these
     four stop the run, since what follows needs a tree), then GRAPH-FANOUT, GRAPH-SYMBOL and GRAPH-EDGE together, then GRAPH-COUNT."""
+    symbols = GRAPH_SYMBOLS if symbols is None else symbols
     errors = []
     seen = set()
     for r in rows:
@@ -2122,7 +2124,7 @@ def _graph_files(rows, commit, strings, assets=None):
         if n > GRAPH_MAX_CHILDREN:
             errors.append(("GRAPH-FANOUT", i, f"has {n} children (more than {GRAPH_MAX_CHILDREN})"))
     for r in rows:
-        for field, table in (("kind", GRAPH_SYMBOLS["kinds"]), ("state", GRAPH_SYMBOLS["states"]), ("proof", GRAPH_SYMBOLS["proofs"])):
+        for field, table in (("kind", symbols["kinds"]), ("state", symbols["states"]), ("proof", symbols["proofs"])):
             if r[field] not in table:
                 errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}" + (f" {graph_kind_words()}" if field == "kind" else "")))
     edges = {}   # sibling links, from -> [to]: the premises of a step that name a sibling
@@ -2174,16 +2176,16 @@ def _graph_files(rows, commit, strings, assets=None):
                 for c in kids.get(step, []) for p in dict.fromkeys(c["premises"]) if by[p]["parent"] == step]
     objs = {"graph/index.json": {
         "assets": dict(assets or {}), "commit": commit, "format": GRAPH_FORMAT, "max_children": GRAPH_MAX_CHILDREN, "rests_on": links("root"), "steps": len(rows),
-        "strings": {k: strings[k] for k in _graph_strings_keys() if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
+        "strings": {k: strings[k] for k in _graph_strings_keys(symbols) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: {"class": v["class"], "text": strings[v["words"]], "words": v["words"]} for k, v in table.items()}
-                         for name, table in GRAPH_SYMBOLS.items()},
-                        order={name: list(table) for name, table in GRAPH_SYMBOLS.items()}),
+                         for name, table in symbols.items()},
+                        order={name: list(table) for name, table in symbols.items()}),
         "top": [r["id"] for r in kids.get("root", [])]}}
     for r in rows:
         objs[f"graph/step/{r['id']}.json"] = {
             "card": closed(r), "children": [dict(closed(c), parent_rests_on=c["id"] in r["premises"]) for c in kids.get(r["id"], [])],
             "commit": commit, "format": GRAPH_FORMAT, "id": r["id"], "path": list(path[r["id"]]), "rests_on": links(r["id"])}
-    errors = _graph_count_errors(objs)
+    errors = _graph_count_errors(objs, symbols)
     return errors, ({} if errors else objs)
 
 

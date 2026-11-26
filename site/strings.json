@@ -139,6 +139,7 @@
  "symbol_kind_theorem": "Square corners: a result the Lean code proves",
  "symbol_kind_def": "Rounded corners, one line: a named object or statement",
  "symbol_kind_structure": "Rounded corners and an inner line: a bundle of named fields",
+ "symbol_kind_module": "A folder or file of the Lean code, shown as it is",
  "sheet_statement_read": "Statement read",
  "sheet_statement_census": "Statement counted, not read",
  "sheet_statement_not_read": "Statement not read yet",
