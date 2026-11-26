@@ -2,7 +2,8 @@
 """Cases of smoke_tree.py, the one-command acceptance test of a BUILT site tree. Each case builds a tree with assemble.assemble() into a
 temp dir (never anything else), runs the tool as a subprocess and reads its exit code and its lines.
 
-Run:  python3 viewer/graph/page/test/test_smoke_tree.py [--only TEXT]   (a Python with playwright)
+Run:  python3 viewer/graph/page/test/test_smoke_tree.py [--only TEXT] [--no-browser]   (a Python with playwright; --no-browser runs only the
+      cases that need none, so any Python 3 runs them: the containment cases must pass on every Python the team uses)
 
 Contract under test (the spec's S1..S5 and the amendments A1..A3):
   exit 0 only if every check passed; 1 if any FAILED; 2 if the folder is neither tree shape. Lines are
@@ -127,6 +128,16 @@ def t4_symlink_out_of_tree(tmp):
     got, outs = sweep(out, ["/graph/page/app.js"])
     assert got[("GET", "/graph/page/app.js")][0] == 403 and got[("HEAD", "/graph/page/app.js")][0] == 403 and outs, (got, outs)
     no_leak(got, ["/graph/page/app.js"])
+
+
+def t4c_symlink_out_of_tree_end_to_end(tmp):
+    """T4's tree through the whole tool (a browser run): FAIL containment, exit 1."""
+    out = build(tmp)
+    outside = os.path.join(tmp, "outside-app.js")
+    shutil.copyfile(os.path.join(out, "graph", "page", "app.js"), outside)
+    p = os.path.join(out, "graph", "page", "app.js")
+    os.remove(p)
+    os.symlink(outside, p)
     code, o = run_tool(out, "--no-note")
     assert code == 1, (code, o)
     assert lines(o, "FAIL", "containment"), o
@@ -253,12 +264,12 @@ def t11_empty_heading_fails(tmp):
 
 
 def t12_skips_named_in_last_line(tmp):
-    """P2: a SKIP is named in the verdict line; a tree with no notes and no scale floor skips both."""
+    """P2: a SKIP is named in the verdict line; a tree with no notes, no scale floor and no credits/ skips all three."""
     out = build(tmp, fix="skeleton")
     code, o = run_tool(out)
     assert code == 0, (code, o)
     assert lines(o, "SKIP", "note") and lines(o, "SKIP", "scale-floor"), o
-    assert last(o) == "SMOKE PASS (2 skipped: note, scale-floor)", o
+    assert last(o) == "SMOKE PASS (3 skipped: credits, note, scale-floor)", o        # the skeleton tree has no credits/ either
 
 
 def t12b_verdict_line_unit(tmp):
@@ -305,7 +316,7 @@ def t14_partial_run_says_so(tmp):
     out = build(tmp)
     code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
     assert code == 0, (code, o)
-    assert last(o) == "SMOKE PASS (partial: 1280x900 only; 1 skipped: note)", o
+    assert last(o) == "SMOKE PASS (partial: 1280x900 only; 2 skipped: credits, note)", o
 
 
 def t15_head_is_contained_like_get(tmp):
@@ -478,6 +489,11 @@ def t17_root_index_linked_out(tmp):
     swept, outs = sweep(site, ["/"])                                          # D2: `/%2f`, `/%2F`, `/..%2f`, `//` ... all stay refused
     assert swept[("GET", "/")][0] == 403 and outs, (swept, outs)
     no_leak(swept, ["/"])
+
+
+def t17c_root_index_linked_out_end_to_end(tmp):
+    """T17's flat tree through the whole tool (a browser run): exit 1 naming containment."""
+    os.makedirs(os.path.join(tmp, "elsewhere"), exist_ok=True)
     flat = flatten(build(tmp, name="flat"))
     real = os.path.join(flat, "index.html")
     shutil.copyfile(real, os.path.join(tmp, "elsewhere", "copy.html"))
@@ -513,6 +529,16 @@ def t19_end_to_end_graph_index_linked_out(tmp):
     swept, outs = sweep(out, ["/graph/", "/graph", "/graph/index.html"])      # D2: the page's own entry URL in every spelling
     assert swept[("GET", "/graph/")][0] == 403 and swept[("GET", "/graph/index.html")][0] == 403 and outs, (swept, outs)
     no_leak(swept, ["/graph/", "/graph", "/graph/index.html"])
+
+
+def t19c_end_to_end_graph_index_linked_out_tool(tmp):
+    """T19's tree through the whole tool (a browser run): exit 1 naming containment, never SMOKE PASS."""
+    out = build(tmp)
+    real = os.path.join(out, "graph", "index.html")
+    outside = os.path.join(tmp, "outside-index.html")
+    shutil.copyfile(real, outside)
+    os.remove(real)
+    os.symlink(outside, real)
     code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
     assert code == 1, (code, o)
     assert lines(o, "FAIL", "containment"), o
@@ -567,12 +593,13 @@ def t23_state_reset_per_run(tmp):
     S.OUTSIDE.append("/left-over")
     S.FAILED[0] = 3
     S.SKIPPED.append("note")
+    S.OPENED.add("a1")
     d = os.path.join(tmp, "neither")
     os.makedirs(d)
     with contextlib.redirect_stdout(io.StringIO()):
         code = S.main(["smoke_tree.py", d])
     assert code == 2, code
-    assert S.OUTSIDE == [] and S.FAILED == [0] and S.SKIPPED == [], (S.OUTSIDE, S.FAILED, S.SKIPPED)
+    assert S.OUTSIDE == [] and S.FAILED == [0] and S.SKIPPED == [] and S.OPENED == set(), (S.OUTSIDE, S.FAILED, S.SKIPPED, S.OPENED)
     assert not hasattr(S, "LINES"), "the dead LINES list is gone"
 
 
@@ -604,6 +631,10 @@ def t25_ordinary_tree_served(tmp):
         assert status == 200, (m, p, got)
     assert got[("GET", "/")][1] == b"ROOT" and got[("GET", "/d/")][1] == b"SUB" and got[("GET", "/back.txt")][1] == b"A", got
     assert outside == [], outside
+
+
+def t25c_ordinary_tree_through_the_tool(tmp):
+    """T25's ordinary tree through the whole tool (a browser run)."""
     code, o = run_tool(build(tmp, name="whole"), "--no-note", "--only-viewport", "1280x900")      # the tool's end to end on an ordinary tree: T1 covers both viewports
     assert code == 0 and lines(o, "PASS", "containment"), (code, o)
 
@@ -662,6 +693,245 @@ def t27_encoded_slash_spellings_never_reach_the_stdlib(tmp):
     assert calls == [], ("a request was handed to the stdlib's send_head", calls)
 
 
+
+def translate_like(kind):
+    """A translate_path with the stdlib's body and one choice of trailing slash: `raw` = the check on the raw text (3.12 and 3.9, measured), `decoded` =
+    after the unquote (3.14, measured), `never`, `always`. The tool must give one answer under every one of them: the slash is its own call."""
+    import posixpath
+
+    def tp(self, path):
+        path = path.split("?", 1)[0].split("#", 1)[0]
+        raw_slash = path.rstrip().endswith("/")
+        path = urllib.parse.unquote(path, errors="surrogatepass")
+        slash = {"raw": raw_slash, "decoded": path.endswith("/"), "never": False, "always": True}[kind]
+        path = posixpath.normpath(path)
+        out = self.directory
+        for word in filter(None, path.split("/")):
+            if os.path.dirname(word) or word in (os.curdir, os.pardir):
+                continue
+            out = os.path.join(out, word)
+        return out + "/" if slash else out
+    return tp
+
+
+def t28_slash_is_the_tools_call_whatever_translate_path_does(tmp):
+    """V1: the tool decodes the request path once and decides slash-or-not from that text, so the answer to `/d%2f` is the same under every
+    translate_path trailing-slash rule the stdlib has had (raw text: 3.12; decoded text: 3.14; and the two extremes)."""
+    import http.server
+    out = os.path.join(tmp, "out")
+    os.makedirs(out)
+    open(os.path.join(out, "secret.txt"), "w").write("SECRET")
+    site = os.path.join(tmp, "site")
+    for d in ("okd", "ok", "d1", "bare"):
+        os.makedirs(os.path.join(site, d))
+    open(os.path.join(site, "okd", "index.html"), "w").write("OKD")
+    open(os.path.join(site, "ok", "a.txt"), "w").write("A")
+    open(os.path.join(site, "bare", "entry-name-xyz.txt"), "w").write("E")
+    os.symlink(os.path.join(out, "secret.txt"), os.path.join(site, "d1", "index.html"))
+    orig = http.server.SimpleHTTPRequestHandler.translate_path
+    paths = ["/okd/", "/okd%2f", "/okd%2F", "/okd", "/ok/a.txt", "/ok/a.txt%2f", "/ok/a.txt/", "/d1%2f", "/d1/", "/d1", "/bare%2f", "/bare/", "/bare", "/okd%252f"]
+    try:
+        for kind in ("raw", "decoded", "never", "always"):
+            http.server.SimpleHTTPRequestHandler.translate_path = translate_like(kind)
+            got, outs = fetch(site, [(m, p) for m in ("GET", "HEAD") for p in paths])
+            for m in ("GET", "HEAD"):
+                for p in ("/okd/", "/okd%2f", "/okd%2F", "/ok/a.txt"):
+                    assert got[(m, p)][0] == 200, (kind, m, p, got[(m, p)])
+                for p in ("/okd", "/d1", "/bare"):
+                    assert got[(m, p)][0] == 301, (kind, m, p, got[(m, p)])
+                for p in ("/ok/a.txt%2f", "/ok/a.txt/", "/okd%252f"):
+                    assert got[(m, p)][0] == 404, (kind, m, p, got[(m, p)])
+                for p in ("/d1%2f", "/d1/", "/bare%2f", "/bare/"):
+                    assert got[(m, p)][0] == 403, (kind, m, p, got[(m, p)])
+                    assert b"SECRET" not in got[(m, p)][1] and b"entry-name-xyz" not in got[(m, p)][1], (kind, m, p, got[(m, p)])
+            assert got[("GET", "/okd%2f")] == got[("GET", "/okd/")] == (200, b"OKD"), (kind, got[("GET", "/okd%2f")])
+            assert "/d1%2f" in outs and "/d1/" in outs, (kind, outs)
+    finally:
+        http.server.SimpleHTTPRequestHandler.translate_path = orig
+
+
+def t29_runner_no_browser_mode(tmp):
+    """V2: the runner has a mode that runs only the cases needing no browser, and says how many it left out; every case it leaves out is a real case."""
+    import contextlib, io
+    def ok(t): pass
+    def br(t): raise AssertionError("a browser case ran in --no-browser mode")
+    NEEDS_BROWSER.add(br)
+    try:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            results = run_cases([("A ok", ok), ("B browser", br)], None, no_browser=True)
+    finally:
+        NEEDS_BROWSER.discard(br)
+    text = buf.getvalue()
+    assert [r[1] for r in results] == ["pass"], results
+    assert "PASS A ok" in text and "B browser" not in text.split("\n\n")[0], text
+    assert "1 case needing a browser not run (--no-browser)" in text, text
+    assert NEEDS_BROWSER <= {fn for _, fn in CASES}, "every browser-marked case is a case"
+    assert len(NEEDS_BROWSER) < len(CASES), "some cases need no browser"
+    p = subprocess.run([sys.executable, os.path.join(HERE, "test_smoke_tree.py"), "--no-browser", "--only", "T16"], capture_output=True, text=True, timeout=120)
+    assert p.returncode == 0 and "PASS T16" in p.stdout and "1 cases, 1 passed" in p.stdout, (p.returncode, p.stdout, p.stderr)
+
+
+def t30_tool_imports_and_refuses_cleanly_without_playwright(tmp):
+    """V2: with no playwright importable the module still imports (the containment cases need its server), and a run that needs the browser
+    ends in a FAIL line and SMOKE FAIL, exit 1, naming the missing package; it never ends in a traceback or a PASS."""
+    out = build(tmp)
+    code = ("import sys; sys.modules['playwright'] = None; sys.path.insert(0, %r); import smoke_tree as S; "
+            "assert callable(S.serve); sys.exit(S.main(['smoke_tree.py', %r, '--no-note']))" % (HERE, out))
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
+    o = p.stdout + p.stderr
+    assert p.returncode == 1, (p.returncode, o)
+    assert [l for l in lines(o, "FAIL") if "exception RuntimeError" in l and "playwright" in l], o
+    assert last(o) == "SMOKE FAIL (1 failed)", o
+    assert "Traceback" not in o and "SMOKE PASS" not in o, o
+
+
+def t31_csp_header_says_what_it_is(tmp):
+    """V3a: the csp-header line says it is the harness sending the suite's policy; the module says where real CSP coverage is and when it holds."""
+    import contextlib, io, smoke_tree as S
+    S.reset_state()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        S.csp_header_check("1280x900", S.T.CSP)
+        S.csp_header_check("390x844", None)
+    o = buf.getvalue()
+    good, bad = lines(o, "PASS", "csp-header"), lines(o, "FAIL", "csp-header")
+    assert len(good) == 1 and "the harness sends the suite's policy" in good[0] and "default-src 'none'" in good[0], o
+    assert len(bad) == 1 and "390x844" in bad[0], o
+    assert S.FAILED == [1], S.FAILED
+    S.reset_state()
+    doc = " ".join(S.__doc__.split())
+    assert "real CSP coverage is the console and securitypolicyviolation checks" in doc, doc
+    assert "valid only while T.CSP equals the deployed policy" in doc, doc
+
+
+def t32_opened_line_unit(tmp):
+    """V3b: the line says how many distinct steps were opened of how many the index has; the count follows its arguments."""
+    import smoke_tree as S
+    assert S.opened_line({"a1", "b2", "c3"}, 353) == "opened 3 of 353 steps", S.opened_line({"a1", "b2", "c3"}, 353)
+    assert S.opened_line({"a1", "b2"}, 23) == "opened 2 of 23 steps"
+    assert S.opened_line(set(), 23) == "opened 0 of 23 steps"
+    assert S.opened_line({"a1"}, None) == "opened 1 of ? steps"
+
+
+def opened_numbers(o, tree):
+    m = re.search(r"opened (\d+) of (\d+) steps", o)
+    assert m, o
+    ids = {l.split()[1]: l.split()[2] for l in lines(o, "ID")}
+    passed = {ids[l.split()[2][5:]] for l in lines(o, "PASS") if l.split()[2].startswith("open-")}
+    total = json.load(open(os.path.join(tree, "graph", "index.json")))["steps"]
+    return int(m.group(1)), int(m.group(2)), len(passed), total
+
+
+def t33_opened_count_end_to_end(tmp):
+    """V3b: on the real fixture the run prints 'opened 3 of <the index's steps> steps'; with the group's step file gone it prints the number that really
+    opened (the open-* PASS lines say which), not a fixed 3."""
+    out = build(tmp)
+    code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
+    n, m, want_n, want_m = opened_numbers(o, out)
+    assert code == 0 and (n, m) == (3, want_m) and want_n == 3, (n, m, want_n, want_m, o)
+    out2 = build(tmp, name="gone")
+    os.remove(os.path.join(out2, "graph", "step", "a1.json"))
+    code, o = run_tool(out2, "--no-note", "--only-viewport", "1280x900")
+    n, m, want_n, want_m = opened_numbers(o, out2)
+    assert code == 1 and n == want_n and n < 3 and m == want_m, (n, m, want_n, want_m, o)
+
+
+class _Browser:
+    def close(self): pass
+
+
+class _Chromium:
+    def launch(self, *a, **k): return _Browser()
+
+
+class _PW:
+    chromium = _Chromium()
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+def t34_exception_in_a_viewport_is_a_fail_line_and_a_verdict(tmp):
+    """V3d: an exception inside run_viewport prints `FAIL <viewport> exception <type>: <first line of the message, escaped>` for each viewport,
+    the run still ends on `SMOKE FAIL (<n> failed)`, and main returns 1."""
+    import contextlib, io, smoke_tree as S
+    site = build(tmp)
+    def boom(browser, vp, *a, **k):
+        raise ValueError("bad\x1b[31m thing\nsecond line SECONDLINE")
+    saved = (S.sync_playwright, S.run_viewport)
+    S.sync_playwright, S.run_viewport = (lambda: _PW()), boom
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            code = S.main(["smoke_tree.py", site, "--no-note"])
+    finally:
+        S.sync_playwright, S.run_viewport = saved
+        S.reset_state()
+    o = buf.getvalue()
+    assert code == 1, (code, o)
+    for vp in ("390x844", "1280x900"):
+        assert "FAIL %s exception ValueError: bad\\x1b[31m thing" % vp in o.splitlines(), (vp, o)
+    assert "SECONDLINE" not in o, o
+    assert last(o) == "SMOKE FAIL (2 failed)", o
+    assert "SMOKE PASS" not in o, o
+
+
+CREDITS_OK = ('<!doctype html><html><head><meta charset="utf-8"><title>Credits</title></head><body><h1>Credits</h1>'
+              '<p><a href="%s">The map</a></p></body></html>')
+
+
+def with_credits(site, body):
+    os.makedirs(os.path.join(site, "credits"), exist_ok=True)
+    open(os.path.join(site, "credits", "index.html"), "w", encoding="utf-8").write(body)
+    return site
+
+
+def t35_credits_page_answers_and_links_back_to_the_map(tmp):
+    """V3c: a tree with credits/index.html: the page answers 200 at 1280x900 with a clean console, and its own link to the map resolves to the map's
+    index and loads, on the flat shape (`../`) and the graph/ shape (`../graph/`), whichever viewport was asked for."""
+    flat = with_credits(flatten(build(tmp, name="flat")), CREDITS_OK % "../")
+    code, o = run_tool(flat, "--no-note", "--only-viewport", "1280x900")
+    assert code == 0 and [l for l in lines(o, "PASS", "credits") if "1280x900" in l], (code, o)
+    assert last(o) == "SMOKE PASS (partial: 1280x900 only; 1 skipped: note)", o
+    g = with_credits(build(tmp, name="graph"), CREDITS_OK % "../graph/")
+    code, o = run_tool(g, "--no-note", "--only-viewport", "390x844")
+    assert code == 0 and [l for l in lines(o, "PASS", "credits") if "1280x900" in l], (code, o)       # the credits page is visited at 1280x900 whichever viewport was asked for
+
+
+def t35b_credits_link_that_does_not_reach_the_map_fails(tmp):
+    """V3c: a credits page whose links do not lead to the map's index is a FAIL credits (exit 1), also on the graph/ shape, where `../` is the folder
+    above the map and not the map."""
+    flat = with_credits(flatten(build(tmp, name="flat")), CREDITS_OK % "../nowhere/")
+    code, o = run_tool(flat, "--no-note", "--only-viewport", "1280x900")
+    assert code == 1 and [l for l in lines(o, "FAIL", "credits") if "link" in l], (code, o)
+    assert not lines(o, "PASS", "credits"), o
+    g = with_credits(build(tmp, name="graph"), CREDITS_OK % "../")
+    code, o = run_tool(g, "--no-note", "--only-viewport", "1280x900")
+    assert code == 1 and lines(o, "FAIL", "credits"), (code, o)
+
+
+def t35c_credits_console_error_fails(tmp):
+    """V3c: a console error on the credits page is a FAIL credits."""
+    flat = with_credits(flatten(build(tmp, name="flat")), CREDITS_OK.replace("</body>", '<script src="n.js"></script></body>') % "../")
+    open(os.path.join(flat, "credits", "n.js"), "w").write("console.error('credits noise');\n")
+    code, o = run_tool(flat, "--no-note", "--only-viewport", "1280x900")
+    assert code == 1 and [l for l in lines(o, "FAIL", "credits") if "credits noise" in l], (code, o)
+
+
+def t36_credits_absent_is_a_named_skip_or_a_required_fail(tmp):
+    """V3c: no credits/ in the tree: SKIP credits (no credits/ in tree), named in the verdict; --require-credits makes it a FAIL; with credits/ the flag passes."""
+    flat = flatten(build(tmp, name="flat"))
+    code, o = run_tool(flat, "--no-note", "--only-viewport", "1280x900")
+    assert code == 0 and [l for l in lines(o, "SKIP", "credits") if "credits (no credits/ in tree)" in l], (code, o)
+    assert last(o) == "SMOKE PASS (partial: 1280x900 only; 2 skipped: credits, note)", o
+    code, o = run_tool(flat, "--no-note", "--only-viewport", "1280x900", "--require-credits")
+    assert code == 1 and [l for l in lines(o, "FAIL", "credits") if "--require-credits" in l], (code, o)
+    assert not lines(o, "SKIP", "credits"), o
+    with_credits(flat, CREDITS_OK % "../")
+    code, o = run_tool(flat, "--no-note", "--only-viewport", "1280x900", "--require-credits")
+    assert code == 0 and lines(o, "PASS", "credits"), (code, o)
+
+
 CASES = [
     ("T1 the real fixture (--no-note): exit 0, SMOKE PASS, three ids, the checks named", t1_real_fixture),
     ("T1b the flat shape (A1): TREE flat, exit 0", t1b_flat_shape),
@@ -698,14 +968,44 @@ CASES = [
     ("T25 C2e: an ordinary tree is served whole and passes", t25_ordinary_tree_served),
     ("T26 C1: a directory with no index is never listed", t26_no_directory_listing),
     ("T27 D1/D3: an encoded-slash directory request is decided from the decoded path: no outside byte, no listing, no stdlib hand-off", t27_encoded_slash_spellings_never_reach_the_stdlib),
+    ("T4c the symlinked page file through the whole tool: FAIL containment", t4c_symlink_out_of_tree_end_to_end),
+    ("T17c the root index linked outside through the whole tool (flat): exit 1", t17c_root_index_linked_out_end_to_end),
+    ("T19c graph/index.html linked outside through the whole tool: exit 1", t19c_end_to_end_graph_index_linked_out_tool),
+    ("T25c an ordinary tree through the whole tool passes", t25c_ordinary_tree_through_the_tool),
+    ("T28 V1: the slash is the tool's call under every translate_path trailing-slash rule", t28_slash_is_the_tools_call_whatever_translate_path_does),
+    ("T29 V2: the runner's --no-browser mode runs the cases that need none", t29_runner_no_browser_mode),
+    ("T30 V2: no playwright: the module imports, a browser run ends in FAIL and SMOKE FAIL", t30_tool_imports_and_refuses_cleanly_without_playwright),
+    ("T31 V3a: csp-header says what it is; the module says where real CSP coverage is", t31_csp_header_says_what_it_is),
+    ("T32 V3b: the opened line follows its arguments", t32_opened_line_unit),
+    ("T33 V3b: the opened count is what really opened, of the index's steps", t33_opened_count_end_to_end),
+    ("T34 V3d: an exception in a viewport is a FAIL line and a SMOKE FAIL verdict", t34_exception_in_a_viewport_is_a_fail_line_and_a_verdict),
+    ("T35 V3c: credits/ answers and links back to the map", t35_credits_page_answers_and_links_back_to_the_map),
+    ("T35b V3c: a credits link that does not reach the map fails", t35b_credits_link_that_does_not_reach_the_map_fails),
+    ("T35c V3c: a console error on the credits page fails", t35c_credits_console_error_fails),
+    ("T36 V3c: no credits/ is a named skip, a fail with --require-credits", t36_credits_absent_is_a_named_skip_or_a_required_fail),
 ]
 
+# The cases that start a browser (the tool's whole run, or the page suite's). The rest speak plain HTTP to the tool's server or call its functions,
+# and pass on a Python with no playwright: `test_smoke_tree.py --no-browser`.
+NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_step, t4c_symlink_out_of_tree_end_to_end, t5_note_fixture_or_skip,
+                 t5b_no_notes_in_data_is_a_skip, t5c_missing_note_section_fails, t6_console_error_alone_fails_s2, t7_second_fixture_different_ids,
+                 t8_csp_header_is_checked, t9_scale_floor, t9b_base_refuses_unknown_index_key, t10_only_viewport, t11_empty_heading_fails,
+                 t12_skips_named_in_last_line, t13_require_note, t13b_require_floor, t14_partial_run_says_so, t17c_root_index_linked_out_end_to_end,
+                 t19c_end_to_end_graph_index_linked_out_tool, t25c_ordinary_tree_through_the_tool, t33_opened_count_end_to_end,
+                 t35_credits_page_answers_and_links_back_to_the_map, t35b_credits_link_that_does_not_reach_the_map_fails, t35c_credits_console_error_fails,
+                 t36_credits_absent_is_a_named_skip_or_a_required_fail}
 
-def run_cases(cases, only):
-    """Run each case in a fresh temp dir. Returns [(name, "pass"|"skip"|"fail")]; prints one line per case and the summary line."""
+
+def run_cases(cases, only, no_browser=False):
+    """Run each case in a fresh temp dir. Returns [(name, "pass"|"skip"|"fail")]; prints one line per case and the summary line.
+    no_browser leaves out the cases in NEEDS_BROWSER and says how many it left out."""
     results = []
+    left_out = 0
     for name, fn in cases:
         if only and only not in name:
+            continue
+        if no_browser and fn in NEEDS_BROWSER:
+            left_out += 1
             continue
         tmp = tempfile.mkdtemp(prefix="smoke-test-")
         try:
@@ -722,12 +1022,14 @@ def run_cases(cases, only):
             shutil.rmtree(tmp, ignore_errors=True)
     n = lambda k: len([r for r in results if r[1] == k])
     print("\n%d cases, %d passed, %d skipped, %d failed" % (len(results), n("pass"), n("skip"), n("fail")))
+    if left_out:
+        print("%d case%s needing a browser not run (--no-browser)" % (left_out, "" if left_out == 1 else "s"))
     return results
 
 
 def main():
     only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
-    results = run_cases(CASES, only)
+    results = run_cases(CASES, only, no_browser="--no-browser" in sys.argv)
     return 1 if [r for r in results if r[1] == "fail"] else 0
 
 
