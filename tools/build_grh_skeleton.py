@@ -956,6 +956,46 @@ def _selftest_cases():
                     [], [{"group": "lean-s--grp", "files": 3, "linked": 3, "unlinked": 0, "longest": 2, "widest_depth": 0, "widest_count": 1},
                          {"group": "lean-s--other", "files": 1, "linked": 0, "unlinked": 1, "longest": 0, "widest_depth": 0, "widest_count": 1}]))
 
+    @case("SK3b", "a link inside a group is never reduced by a path that leaves the group: a imports b (same group), a imports x and x imports b (x in another group): "
+                  "a still rests on b (drawn 1, not drawn 2)")
+    def _():
+        body = "### S part\n\n**Grp**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n\n**Other**\n\n- `New/S/X` (1): x\n"
+        srcs = {"New/S/A": _lean(imports=["New.S.B", "New.S.X"]), "New/S/B": _lean(), "New/S/X": _lean(imports=["New.S.B"])}
+        with _tmp() as d:
+            errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
+        return _eq((errs, [(r["id"], r["premises"]) for r in rows if r["parent"] == "lean-s--grp"], rep["drawn"], rep["not_drawn"]),
+                   ([], [("lean-s-a", ["lean-s-b"]), ("lean-s-b", [])], 1, 2))
+
+    @case("SK19", "titles are the CONTENTS text with no bound: a file title of 98 characters, a group title and a section heading of 60 are kept whole (no refusal, no cut)")
+    def _():
+        ft = "w" * 49 + " " + "z" * 48
+        gt = "g" * 30 + " " + "h" * 29
+        st = "s" * 30 + " " + "t" * 29
+        body = f"### {st}\n\n**{gt}**\n\n- `New/S/A` (1): {ft}\n"
+        with _tmp() as d:
+            errs, files, rows, rep = build(_tree(d, body, {"New/S/A": _lean()}), PIN, _strings())
+        return _eq((errs, [len(r["title"]) for r in rows], [r["title"] for r in rows] == [st, gt, ft]), ([], [60, 60, 98], True))
+
+    @case("SK20", "determinism of the sidecar: a file that imports six files has its uses listed in sorted order under both hash seeds (graph/uses.json is byte-identical "
+                  "and its list is the sorted literal)")
+    def _():
+        names = "ABCDEF"
+        body = "### S part\n\n**Grp**\n\n" + "".join(f"- `New/S/{n}` (1): {n}\n" for n in names) + "\n**Hub**\n\n- `New/S/Hub` (1): hub\n"
+        srcs = {f"New/S/{n}": _lean() for n in names}
+        srcs["New/S/Hub"] = _lean(imports=[f"New.S.{n}" for n in "FCEBDA"])
+        with _tmp() as d:
+            g = _tree(d, body, srcs)
+            sp = _strings_file(d)
+            ol = _outline_file(d)
+            got = []
+            for seed in ("0", "1", "2"):
+                out = os.path.join(d, "out" + seed)
+                r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, sp, ol), env=dict(os.environ, PYTHONHASHSEED=seed),
+                                   capture_output=True, text=True)
+                got.append((r.returncode, _tree_files(out)["graph/uses.json"]))
+        u = json.loads(got[0][1].decode("utf-8"))["uses"]["lean-s-hub"]
+        return _eq(([g[0] for g in got], got[0][1] == got[1][1] == got[2][1], u), ([0, 0, 0], True, [f"lean-s-{n}" for n in "abcdef"]))
+
     @case("SK13", "the real source (give `--selftest --grh DIR`; otherwise SKIPPED): 352 steps all module with state and proof none, top of 9 in CONTENTS order, widest 23, "
                   "depth 3, 298 links drawn and 226 imports not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
                   "lean-reduction are the first 3 file lines of that group in CONTENTS, the live outline's ids are disjoint from the build's")
