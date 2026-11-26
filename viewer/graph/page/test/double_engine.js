@@ -10,6 +10,7 @@ export function createGraph(container, options) {
   const doc = container.ownerDocument;
   const SZ = Object.assign({ nodeW: 300, nodeH: 190 }, options.sizes || {});    // the engine's own defaults, overridden as the page asks
   const log = (container.__log = []);
+  container.__options = options;      // the arguments createGraph received, for the cases that pin what the page passes (layout, zoom, the links of a node)
   const stage = doc.createElement("div");
   stage.className = "ge-stage dbl-stage";
   stage.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;padding:8px;align-content:flex-start;position:absolute;inset:0;overflow:auto";
@@ -119,3 +120,5 @@ export function createGraph(container, options) {
 export const DEFAULTS = Object.freeze({});
 export const EVENTS = Object.freeze(Object.keys({ tap: 1, open: 1, close: 1, visible: 1, loading: 1, error: 1, refused: 1 }));
 export const VERSION = "double";
+// The real engine's checkOptions (INTERFACE.md) is the one rule for the options; the double draws boxes and checks none, so its answer is the options as given.
+export const checkOptions = (options) => options;

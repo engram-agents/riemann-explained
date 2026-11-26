@@ -382,8 +382,9 @@ test("P2/A2/F2 skeleton: the strings set is EXACTLY the fixed list, the words of
   const need = requiredStrings(v.symbols);
   assert.equal(need.length, 27);
   assert.deepEqual([...need].sort(), [...FIXED_STRINGS, ...rows, ...cards, ...counts].sort());
-  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note"]);
-  assert.deepEqual(Object.keys(idx.strings).sort(), [...need, "key_kinds_note"].sort());
+  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note", "key_scope_text"]);
+  /* the edge basis (PR 98 round 2): key_lines_heading and the strings key edge_basis.words (key_lines_text) are read because edge_basis is present */
+  assert.deepEqual(Object.keys(idx.strings).sort(), [...need, "key_kinds_note", "key_scope_text", "key_lines_heading", "key_lines_text"].sort());
   const extra = clone(idx);
   extra.strings.bonus = "x";
   assert.throws(() => validateIndex(extra), (e) => e instanceof DataError && e.code === "extra-string");
@@ -436,7 +437,8 @@ test("F3 key_kinds_note is an OPTIONAL strings key: accepted present, accepted a
 
 test("F3 the skeleton fixture carries none of the old placeholder words", () => {
   const text = readFileSync(path.join(FIX, "skeleton", "index.json"), "utf8");
-  for (const old of ["folder", "Colour and shape: what Lean declares", "a top-level folder of the repository", "a folder inside a part", "one Lean file"])
+  /* the bare word "folder" is no longer on the list: the Lean map's own key_scope_text says "the folder New" and "the folder Lib" (PR 98 round 2) */
+  for (const old of ["Colour and shape: what Lean declares", "a top-level folder of the repository", "a folder inside a part", "one Lean file"])
     assert.ok(!text.includes(old), old);
   const idx = skIndex();
   assert.equal(idx.strings.key_kinds_heading, "What a box is");
@@ -590,7 +592,7 @@ test("P2 skeleton: loads end to end (index, roots, children, the sibling link, t
   assert.deepEqual(groups.map((g) => g.data.kind), ["group", "group"]);
   const files = await d.loadChildren("sk-group-a");
   assert.equal(files.length, 3);
-  assert.equal(files.reduce((n, k) => n + k.links.length, 0), 1);
+  assert.equal(files.reduce((n, k) => n + k.links.length, 0), 2, "three links in the file, the one with in_reduction false is not drawn (data v3)");
   const more = await d.loadChildren("sk-group-b");
   assert.equal(more.reduce((n, k) => n + k.links.length, 0), 0);
   assert.equal(more[1].data.title.length, 98);

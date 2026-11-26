@@ -7,6 +7,7 @@ import { normalizeOptions, DEFAULTS } from "./options.js";
 import { EVENTS } from "./emitter.js";
 
 export { DEFAULTS, EVENTS };
+export { normalizeOptions as checkOptions };
 export const VERSION = "0.1.0";
 
 export function createGraph(container, options) {

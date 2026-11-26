@@ -54,7 +54,13 @@ const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]
 export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label",
   "link_refused", "parts_failed_notice", "key_kinds_heading", "key_states_heading"]);
 /* Strings keys the page reads when the builder supplies them and ignores otherwise (the live map has none): allowed in `strings`, never required. */
-export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note"]);
+export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text"]);
+/* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
+   `edge_basis.words` names. They are neither fixed nor optional: validateIndex adds them to the required set when edge_basis is there, and
+   without it they are not read, so their presence is an extra-string (the page reads exactly what it draws). */
+export const EDGE_BASIS_HEADING = "key_lines_heading";
+/* The one basis value this page knows for an index's links: the names written in the source, from the compiled index. */
+export const EDGE_BASIS = "names-written-in-source-from-compiled-index";
 
 /* An optional strings key that is present but empty is refused under its own code (a required key that is absent or empty is
    "missing-string"). The rule is keyed to the set it is handed, never to a name. */
@@ -120,19 +126,62 @@ function orderOf(list, names, where, mayBeEmpty) {
   return list.slice();
 }
 
+/* A short, bounded rendering of a refused value for a DataError's reason (never reaches the page: no string from an exception does). */
+const shown = (v) => { let t; try { t = JSON.stringify(v); } catch (e) { t = undefined; } return t === undefined ? String(typeof v) : t.slice(0, 60); };
+
+/* `edge_basis` (data contract section 25): exactly {basis, words}. `basis` is the one value this page knows; `words` is the name of a key
+   PRESENT in `strings` (the key prints strings[words], and the page never names that key itself). Any other shape is bad-edge-basis. */
+function edgeBasisOf(v, strings) {
+  if (!isObj(v) || Object.keys(v).length !== 2 || !has(v, "basis") || !has(v, "words"))
+    throw new DataError("bad-edge-basis", "index edge_basis is not exactly {basis, words}");
+  if (v.basis !== EDGE_BASIS) throw new DataError("bad-edge-basis", "index edge_basis basis is not the one this page knows: " + shown(v.basis));
+  if (!isStr(v.words) || v.words === "" || !has(strings, v.words))
+    throw new DataError("bad-edge-basis", "index edge_basis words is not the name of a key in strings: " + shown(v.words));
+  return { basis: v.basis, words: v.words };
+}
+
+/* The page's check of the options it is about to hand createGraph (data contract section 24: the floor's bound is the PAGE's check, made by the
+   ENGINE's rule). `check` is the engine's own `checkOptions` (pure; the options normalized, or a TypeError), `floor` is index.openScaleFloor
+   (undefined on the live map). Throws what `check` throws, except in one case: `floor` is given, `check` refuses the options, and `check`
+   accepts the very same options WITHOUT zoom.frameMin; the floor is then the cause, and it is a DataError bad-scale-floor naming the value.
+   No engine message is read. Anything else (the floor is fine, or another option is bad too) is the engine's own TypeError, as before. */
+export function checkedOptions(check, options, floor) {
+  try {
+    return check(options);
+  } catch (e) {
+    if (floor === undefined) throw e;
+    const { frameMin, ...zoom } = options.zoom || {};
+    try { check({ ...options, zoom }); } catch (other) { throw e; }
+    throw new DataError("bad-scale-floor", "index open_scale_floor is outside the range the engine accepts for an opened node's framing: " + shown(floor));
+  }
+}
+
+/* A link may carry `weight` (a positive integer, the distinct names used) and `in_reduction` (a boolean, the link is in the transitive
+   reduction of its set): BOTH or NEITHER (data contract section 20). The live map's links have neither.
+   ERROR ORDER, pinned for a link with two faults: the key set is checked first, so an unknown key beside a bad flag is `extra-key`; only a
+   link whose keys are all known reaches the flag checks, where one flag without the other, or a weight that is not a positive integer,
+   is `bad-link-flags`. */
 function linkOf(l, expectPathFrom, expectPathTo, where) {
-  exactKeys(l, ["from", "to", "from_path", "to_path"], [], where);
+  exactKeys(l, ["from", "to", "from_path", "to_path"], ["weight", "in_reduction"], where);
+  const flagged = has(l, "weight") || has(l, "in_reduction");
+  if (flagged) {
+    if (!(has(l, "weight") && has(l, "in_reduction"))) throw new DataError("bad-link-flags", where + " has one of weight and in_reduction without the other");
+    if (!isInt(l.weight) || l.weight < 1) throw new DataError("bad-link-flags", where + " has a weight that is not a positive integer");
+    if (typeof l.in_reduction !== "boolean") throw new DataError("bad-link-flags", where + " has an in_reduction that is not a boolean");
+  }
   idOf(l.from, where + ".from");
   idOf(l.to, where + ".to");
   const fp = idList(l.from_path, where + ".from_path");
   const tp = idList(l.to_path, where + ".to_path");
   if (!sameList(fp, expectPathFrom) || !sameList(tp, expectPathTo)) throw new DataError("bad-link", where + " has a path that is not its siblings' path");
   if (l.from === l.to) throw new DataError("bad-link", where + " rests on itself");
-  return { from: l.from, to: l.to, from_path: fp, to_path: tp };
+  const out = { from: l.from, to: l.to, from_path: fp, to_path: tp };
+  if (flagged) { out.weight = l.weight; out.in_reduction = l.in_reduction; }
+  return out;
 }
 
 export function validateIndex(raw) {
-  exactKeys(raw, ["format", "commit", "max_children", "top", "rests_on", "steps", "symbols", "assets", "strings"], [], "index");
+  exactKeys(raw, ["format", "commit", "max_children", "top", "rests_on", "steps", "symbols", "assets", "strings"], ["sibling_layout", "open_scale_floor", "edge_basis"], "index");
   if (raw.format !== 1) throw new DataError("bad-format", "index format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "index commit is not a non-empty string");
   if (!isInt(raw.max_children) || raw.max_children < 1) throw new DataError("bad-type", "index max_children is not a positive integer");
@@ -158,15 +207,59 @@ export function validateIndex(raw) {
     if (!has(raw.strings, k)) throw new DataError("missing-card-words", "index strings lacks the card word " + k);
   for (const k of Object.values(symbols.countWords).flatMap((c) => [c.one, c.many]))
     if (!has(raw.strings, k)) throw new DataError("missing-count-words", "index strings lacks the count word " + k);
+  /* The set the strings check uses depends on edge_basis: present, the key's line heading and the key edge_basis.words names are read too
+     (required, an empty one is empty-string); absent, neither is read, so key_lines_heading and key_lines_text are extra-string like any other. */
+  const edgeBasis = has(raw, "edge_basis") ? edgeBasisOf(raw.edge_basis, raw.strings) : null;
+  const edgeStrings = edgeBasis ? [EDGE_BASIS_HEADING, edgeBasis.words] : [];
   const need = requiredStrings(symbols);
   for (const k of need) {
     if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("missing-string", "index strings lacks the runtime key " + k);
   }
+  for (const k of edgeStrings) {
+    if (!has(raw.strings, k)) throw new DataError("missing-string", "index strings lacks the edge basis key " + k);
+    if (raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty edge basis key " + k);
+  }
   refuseEmptyOptional(raw.strings, OPTIONAL_STRINGS);
   for (const k of Object.keys(raw.strings)) {
-    if (!need.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
+    if (!need.includes(k) && !edgeStrings.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   }
-  return { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
+  const out = { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
+  if (edgeBasis) out.edgeBasis = edgeBasis;
+  /* The two optional per-map keys (data contract sections 15 and 24), each absent on the live map and then absent from the record too.
+     `sibling_layout`: the only value is "column". `open_scale_floor`: a finite number above 0 here; its range (zoom.min up to the open-framing
+     cap) is the ENGINE's rule, asked of the engine itself at start by checkedOptions below, never copied into the page. */
+  if (has(raw, "sibling_layout")) {
+    if (raw.sibling_layout !== "column") throw new DataError("bad-layout", "index sibling_layout is not column: " + shown(raw.sibling_layout));
+    out.siblingLayout = raw.sibling_layout;
+  }
+  if (has(raw, "open_scale_floor")) {
+    const f = raw.open_scale_floor;
+    if (typeof f !== "number" || !Number.isFinite(f) || f <= 0) throw new DataError("bad-scale-floor", "index open_scale_floor is not a finite number above 0: " + shown(f));
+    out.openScaleFloor = f;
+  }
+  return out;
+}
+
+/* The file-step rows (data contract section 22), validated and carried, not drawn by this page. */
+const INDEX_ROWS_SOURCE = "grh/INDEX.md";
+const INDEX_ROW_MAX = 4000;
+const SPINE_ID = /^spine-[a-z0-9-]+$/;
+function indexRowsOf(v) {
+  if (!Array.isArray(v) || v.length === 0) throw new DataError("bad-index-rows", "step index_rows is not a non-empty list");
+  return v.map((r) => {
+    if (!isObj(r) || Object.keys(r).length !== 2 || !has(r, "source") || !has(r, "text"))
+      throw new DataError("bad-index-rows", "step index_rows holds a row that is not exactly {source, text}");
+    if (r.source !== INDEX_ROWS_SOURCE) throw new DataError("bad-index-rows", "step index_rows holds a row whose source is not " + INDEX_ROWS_SOURCE);
+    if (!isStr(r.text) || r.text === "" || r.text.length > INDEX_ROW_MAX)
+      throw new DataError("bad-index-rows", "step index_rows holds a row whose text is not a non-empty string of at most " + INDEX_ROW_MAX + " characters");
+    return { source: r.source, text: r.text };
+  });
+}
+function spineRowsOf(v) {
+  if (!Array.isArray(v) || v.length === 0) throw new DataError("bad-spine-rows", "step spine_rows is not a non-empty list");
+  for (const x of v) if (!isStr(x) || !SPINE_ID.test(x)) throw new DataError("bad-spine-rows", "step spine_rows holds a value that is not a spine id");
+  if (new Set(v).size !== v.length) throw new DataError("bad-spine-rows", "step spine_rows repeats an id");
+  return v.slice();
 }
 
 function closedOf(c, ctx, isChild, where) {
@@ -192,7 +285,7 @@ function closedOf(c, ctx, isChild, where) {
 }
 
 export function validateStep(raw, ctx) {
-  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], [], "step");
+  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["index_rows", "spine_rows"], "step");
   if (raw.format !== 1) throw new DataError("bad-format", "step format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "step commit is not a non-empty string");
   if (raw.commit !== ctx.commit) throw new DataError("commit-mismatch", "step commit differs from the index's");
@@ -222,7 +315,12 @@ export function validateStep(raw, ctx) {
     if (!seen.has(k.from) || !seen.has(k.to)) throw new DataError("bad-link", "step.rests_on names an id that is not a child of this step");
     return k;
   });
-  return { id: raw.id, path, card, children, rests_on: rests };
+  /* `rests_on` keeps every link as the data gives it (a link flagged in_reduction false included); only the set handed to the engine
+     (linksFrom in createData) drops in_reduction false. */
+  const out = { id: raw.id, path, card, children, rests_on: rests };
+  if (has(raw, "index_rows")) out.index_rows = indexRowsOf(raw.index_rows);
+  if (has(raw, "spine_rows")) out.spine_rows = spineRowsOf(raw.spine_rows);
+  return out;
 }
 
 /* THE FAILURE SPLIT. A failed load is one of two classes. TRANSPORT (the fetch rejected, or the answer had a non-2xx status) is
@@ -285,8 +383,11 @@ export function createData(fetchLike) {
     return v;
   }
 
+  /* A link flagged in_reduction false is a use the reduction already implies by a longer chain: it is not handed to the engine as a premise link
+     (Kepler's ruling). True, and a link with no flags (the live map), are handed over as before. */
+  const drawnLinks = (rests) => rests.filter((l) => l.in_reduction !== false);   // the ONE rule for which links reach the engine
   function linksFrom(rests, from) {
-    return rests.filter((l) => l.from === from).map((l) => ({ to: l.to, toPath: l.to_path.concat(l.to) }));
+    return drawnLinks(rests).filter((l) => l.from === from).map((l) => ({ to: l.to, toPath: l.to_path.concat(l.to) }));
   }
 
   async function loadRoots() {

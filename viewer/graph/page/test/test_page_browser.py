@@ -819,7 +819,7 @@ def c_first_view_mutant(b):
     small viewports (the engine zooms out to fit, scale below 1), and stays green at 390 x 844, where the fit is above 1 anyway. The
     same build is red whichever way the size is measured (camera scale or the rendered ratio), so the case discriminates either way."""
     def no_fitmin(text):
-        old = "      zoom: { fitMin: 1 },"
+        old = "      zoom: { fitMin: 1,"      # the whole line goes (it also carries the optional frameMin merge, which this mutant has no use for)
         assert old in text, "fitMin line not found"
         i = text.index(old)
         j = text.index("\n", i)
@@ -954,17 +954,253 @@ def c_skeleton_map(b, S0, engine):
         heads = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content h2')].map(e => e.textContent)")
         rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
         sw = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li .swatch')].map(e => e.className)")
-        assert heads == ["What a box is"], heads
+        assert heads == ["What a box is", "What a line is"], heads          # PR 98 round 2: the edge basis adds the key's last section
         assert rows == ["Part of the argument", "Group of files", "Lean file"], rows
         assert sw == ["swatch k-part", "swatch k-group", "swatch k-file"], sw
-        # F3: the optional note is ONE plain line directly under the kind rows
-        note = pg.ev("""(() => { const c = document.querySelector('#graph-sheet-body .key-content'), p = [...c.querySelectorAll('p')];
+        # F3: the optional note is ONE plain line directly under the kind rows (the key now also holds the scope paragraph and the line paragraph)
+        note = pg.ev("""(() => { const c = document.querySelector('#graph-sheet-body .key-content'), p = [...c.querySelectorAll('p.key-note')];
           return { n: p.length, text: p[0] && p[0].textContent, prev: p[0] && p[0].previousElementSibling.tagName, items: c.querySelectorAll('li').length }; })()""")
         assert note == {"n": 1, "text": "Parts and groups follow the repository's own contents list (CONTENTS.md).", "prev": "UL", "items": 3}, note
         pg.csp_clean()
         pg.close()
     finally:
         S.stop()
+
+
+KEY_CHILDREN_JS = """(() => { const c = document.querySelector('#graph-sheet-body .key-content');
+  return { kids: [...c.children].map(e => ({ tag: e.tagName, cls: e.className, text: e.textContent, nodes: [...e.childNodes].map(n => n.nodeType) })),
+           bad: document.querySelectorAll('#graph-sheet-body img, #graph-sheet-body [onerror], #graph-sheet-body code').length,
+           scripts: document.querySelectorAll('script').length }; })()"""
+
+# The live map's key, as the base page (before the edge basis and key_scope_text) drew it, captured from a run on that head: both engines.
+LIVE_KEY_HTML = ('<div class="key-content"><h2>Colour and shape: what Lean declares</h2><ul><li><span class="swatch k-theorem"></span><span>Theorem: a result the Lean code proves</span></li>'
+                 '<li><span class="swatch k-def"></span><span>Definition: a named object or statement</span></li><li><span class="swatch k-structure"></span><span>Structure: a bundle of named fields</span></li></ul>'
+                 '<h2>Frame: what we have read</h2><ul><li><span class="swatch k-theorem s-read"></span><span>Statement read</span></li>'
+                 '<li><span class="swatch k-theorem s-census"></span><span>Statement counted by a program</span></li>'
+                 '<li><span class="swatch k-theorem s-none"></span><span>Statement not read</span></li></ul></div>')
+
+
+def key_of(b, engine, fix, edit=None):
+    """Opens the Key sheet on a fixture (optionally edited) and returns the key's children, as {tag, cls, text, nodes} rows."""
+    root = tempfile.mkdtemp(prefix="pg-key98-")
+    assemble.assemble(root, engine, fix=fix, index_edit=edit)
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        got = pg.ev(KEY_CHILDREN_JS)
+        html = pg.ev("document.querySelector('#graph-sheet-body .key-content').outerHTML")
+        pg.csp_clean()
+        pg.close()
+        return got, html
+    finally:
+        S.stop()
+
+
+def skeleton_words():
+    return json.load(open(os.path.join(assemble.HERE, "fixtures", "skeleton", "index.json"), encoding="utf-8"))["strings"]
+
+
+def c_key_edge_basis(b, S0, engine):
+    """E3, K1 on the skeleton: the key's FIRST child is the scope paragraph (class key-scope, one text node, backticks kept as characters), and
+    AFTER everything it shows today comes an h2 with key_lines_heading and one p with the strings key edge_basis.words names, one text node each."""
+    w = skeleton_words()
+    got, _ = key_of(b, engine, "skeleton")
+    kids = got["kids"]
+    assert [k["tag"] for k in kids] == ["P", "H2", "UL", "P", "H2", "P"], [k["tag"] for k in kids]
+    assert kids[0]["cls"] == "key-scope" and kids[0]["text"] == w["key_scope_text"] and kids[0]["nodes"] == [3], kids[0]
+    assert "`src/Statements.lean`" in kids[0]["text"], "the backticks stay characters"
+    assert kids[3]["cls"] == "key-note", kids[3]
+    assert kids[4]["text"] == w["key_lines_heading"] == "What a line is" and kids[4]["nodes"] == [3], kids[4]
+    assert kids[5]["text"] == w["key_lines_text"] and kids[5]["nodes"] == [3], kids[5]
+    assert got["bad"] == 0, "no code element, image or handler in the key"
+    # the page prints strings[words], never a key it names itself: words names ANOTHER key here, and key_lines_text is gone
+    def other(i):
+        i["strings"]["test_words"] = "The words of a test key"
+        del i["strings"]["key_lines_text"]
+        i["edge_basis"]["words"] = "test_words"
+    got2, _ = key_of(b, engine, "skeleton", other)
+    assert got2["kids"][-1]["tag"] == "P" and got2["kids"][-1]["text"] == "The words of a test key", got2["kids"][-1]
+
+
+def c_key_edge_basis_after_states(b, S0, engine):
+    """The line section comes AFTER the states section: a map with a non-empty symbols.order.states AND edge_basis (+ key_scope_text, key_kinds_note)
+    has the key's children, in order, scope p, kinds h2, kinds ul, kinds note p, states h2, states ul, lines h2, lines p."""
+    w = skeleton_words()
+    def edit(i):
+        i["symbols"]["order"]["states"] = ["read", "census", "none"]
+    got, _ = key_of(b, engine, "skeleton", edit)
+    kids = got["kids"]
+    assert [k["tag"] for k in kids] == ["P", "H2", "UL", "P", "H2", "UL", "H2", "P"], [k["tag"] for k in kids]
+    assert kids[0]["cls"] == "key-scope" and kids[3]["cls"] == "key-note", [k["cls"] for k in kids]
+    assert kids[4]["text"] == w["key_states_heading"], kids[4]
+    assert kids[6]["text"] == w["key_lines_heading"] and kids[7]["text"] == w["key_lines_text"], (kids[6], kids[7])
+
+
+def c_key_absent_keys(b, S0, engine):
+    """No edge_basis, no key_scope_text, no key_lines_*: nothing is drawn for them (the key is the kinds section and the optional note only)."""
+    def edit(i):
+        del i["edge_basis"]
+        for k in ("key_scope_text", "key_lines_heading", "key_lines_text"):
+            del i["strings"][k]
+    got, _ = key_of(b, engine, "skeleton", edit)
+    assert [k["tag"] for k in got["kids"]] == ["H2", "UL", "P"], got["kids"]
+    assert [k["cls"] for k in got["kids"]] == ["", "", "key-note"], got["kids"]
+    # key_scope_text alone (no edge_basis): the scope paragraph only, first
+    def scope_only(i):
+        del i["edge_basis"]
+        del i["strings"]["key_lines_heading"]
+        del i["strings"]["key_lines_text"]
+    got2, _ = key_of(b, engine, "skeleton", scope_only)
+    assert [k["tag"] for k in got2["kids"]] == ["P", "H2", "UL", "P"] and got2["kids"][0]["cls"] == "key-scope", got2["kids"]
+
+
+def c_key_live_unchanged(b, S0, engine):
+    """The live map carries none of the new keys: its key's DOM is byte-identical to the base head's (the literal above)."""
+    _got, html = key_of(b, engine, None)
+    assert html == LIVE_KEY_HTML, html
+
+
+def c_key_hostile(b, S0, engine):
+    """key_scope_text and the words value hold markup: both are text in the key, never elements."""
+    payload = "<img src=x onerror=1>"
+    def edit(i):
+        i["strings"]["key_scope_text"] = payload
+        i["strings"]["key_lines_text"] = payload
+    got, _ = key_of(b, engine, "skeleton", edit)
+    kids = got["kids"]
+    assert kids[0]["text"] == payload and kids[0]["nodes"] == [3], kids[0]
+    assert kids[-1]["text"] == payload and kids[-1]["nodes"] == [3], kids[-1]
+    assert got["bad"] == 0 and got["scripts"] == 1, got
+
+
+def options_seen(pg):
+    """What the page handed to createGraph (the double keeps it on the container): its key list, and the two groups the v3 keys reach."""
+    return pg.ev("""(() => { const o = document.getElementById('graph').__options;
+      return { keys: Object.keys(o).sort(), zoom: o.zoom, layout: 'layout' in o ? o.layout : null, maxChildren: o.maxChildren, sizes: o.sizes }; })()""")
+
+
+def c_v3_options_live(b, S0, engine):
+    """D1/D2: the live map has no v3 key, so the options createGraph gets are those of main: no `layout` key, no `frameMin`, the zoom group
+    is exactly {fitMin: 1}, and the other options are the same keys."""
+    if engine != "double":
+        return                       # the real engine does not keep its arguments; the double is the seam that records them
+    pg = Pg(b, S0.base + "graph/index.html", 1280, 900).settled()
+    o = options_seen(pg)
+    assert o["keys"] == ["loadChildren", "maxChildren", "renderFace", "roots", "sizes", "zoom"], o["keys"]
+    assert o["layout"] is None, o["layout"]
+    assert o["zoom"] == {"fitMin": 1}, o["zoom"]
+    assert o["maxChildren"] == 40, o["maxChildren"]
+    pg.csp_clean()
+    pg.close()
+
+
+def c_v3_options_skeleton(b, S0, engine):
+    """D1/D2/D3 on the skeleton (data v3): createGraph gets layout {siblings: column} and zoom {fitMin: 1, frameMin: 1} (the page's own
+    fitMin kept, frameMin merged in); the links the engine is handed for sk-group-a are the two in the reduction, not the shortcut."""
+    if engine != "double":
+        return
+    root = tempfile.mkdtemp(prefix="pg-v3-")
+    assemble.assemble(root, engine, fix="skeleton")
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        o = options_seen(pg)
+        assert o["keys"] == ["layout", "loadChildren", "maxChildren", "renderFace", "roots", "sizes", "zoom"], o["keys"]
+        assert o["layout"] == {"siblings": "column"}, o["layout"]
+        assert o["zoom"] == {"fitMin": 1, "frameMin": 1}, o["zoom"]
+        links = pg.ev("document.getElementById('graph').__options.loadChildren('sk-group-a').then(ks => ks.map(k => [k.id, k.links.map(l => l.to)]))")
+        assert links == [["sk-file-1", ["sk-file-2"]], ["sk-file-2", ["sk-file-3"]], ["sk-file-3", []]], links
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_v3_refusals(b, S0, engine):
+    """D1/D2: a bad sibling_layout is a refusal (the fallback) on either engine; and (real engine only) open_scale_floor 2, above the
+    engine's open-framing cap, makes createGraph throw a TypeError, which the page's one setup catch turns into the same fallback as its other
+    start failures (the cases 'fallback on a 404 step file' and 'K2 ... unclassified' end the same way); a floor of 1 is a control that opens the map."""
+    def run(edit, want_map):
+        root = tempfile.mkdtemp(prefix="pg-v3r-")
+        assemble.assemble(root, engine, fix="skeleton", index_edit=edit)
+        S = Served(root)
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900)
+            if want_map:
+                pg.settled()
+                assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.querySelector('[data-node=\"sk-part\"]') !== null")
+            else:
+                pg.wait("!document.getElementById('graph-layer')", 6000)
+                assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards")
+                assert pg.ev("document.querySelectorAll('#graph-cards article').length") == 10
+            pg.close()
+        finally:
+            S.stop()
+    run(lambda i: i.__setitem__("sibling_layout", "rows"), False)
+    run(lambda i: i.__setitem__("open_scale_floor", 0), False)
+    run(lambda i: i.__setitem__("open_scale_floor", 1), True)
+    if engine == "real":
+        run(lambda i: i.__setitem__("open_scale_floor", 2), False)
+
+
+START_CALL = "start(document, { createGraph, fetch: (address) => fetch(address) });"
+
+
+def expose_failure(src):
+    """Test-only: the page keeps the reason of a failed start in the object start() returns, and nothing reads it; hang it on <html> so a case can."""
+    assert START_CALL in src, "the page's last line is not the one this case rewrites"
+    return src.replace(START_CALL, START_CALL[:-1] + ".then((f) => { if (f.reason !== null) document.documentElement.setAttribute('data-failure', f.reason); });")
+
+
+def spoil_card_height(src):
+    """Test-only: make another option bad (the card height), so the engine refuses for a reason that is not the floor."""
+    assert "nodeH: 140, gapY: 56" in src, "CARD_SIZES edit did not match"
+    return src.replace("nodeH: 140, gapY: 56", "nodeH: -1, gapY: 56")
+
+
+def floor_run(b, engine, floor, spoil=False):
+    """Boot the skeleton with an open_scale_floor of `floor`; returns the failure reason the page recorded ('' when it booted)."""
+    root = tempfile.mkdtemp(prefix="pg-v3f-")
+    mut = (lambda src: spoil_card_height(expose_failure(src))) if spoil else expose_failure
+    assemble.assemble(root, engine, fix="skeleton", index_edit=lambda i: i.__setitem__("open_scale_floor", floor), mutate={os.path.join("page", "app.js"): mut})
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900)
+        pg.wait("document.documentElement.hasAttribute('data-failure') || document.querySelector('[data-node=\"sk-part\"]') !== null", 6000)
+        if pg.ev("document.documentElement.hasAttribute('data-failure')"):
+            reason = pg.ev("document.documentElement.getAttribute('data-failure')")
+            assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards")
+        else:
+            reason = ""
+        pg.close()
+        return reason
+    finally:
+        S.stop()
+
+
+def c_v3_floor_named(b, S0, engine):
+    """98 round 4 (real engine only; the double does not check options): an open_scale_floor below zoom.min (0.01, 0.05) or above the open-framing cap
+    (1.3, 2) is the fallback with the reason `bad-scale-floor` recorded, the page's own refusal made by the engine's own rule (checkOptions); never the
+    engine's TypeError text. A floor of 1 is the control and boots."""
+    if engine != "real":
+        return
+    for f in (0.01, 0.05, 1.3, 2):
+        r = floor_run(b, engine, f)
+        assert r.startswith("bad-scale-floor: ") and str(f) in r, (f, r)
+        assert "graph options" not in r, r
+    assert floor_run(b, engine, 1) == ""
+
+
+def c_v3_floor_valid_other_bad(b, S0, engine):
+    """98 round 4 (real engine only): a VALID floor (1) beside another bad option (the card height, made -1 by a test-only edit of app.js) is a plain
+    start failure with the engine's own text, never bad-scale-floor: the floor is blamed only when taking it away makes the engine accept."""
+    if engine != "real":
+        return
+    r = floor_run(b, engine, 1, spoil=True)
+    assert r != "" and not r.startswith("bad-scale-floor"), r
+    assert "sizes.nodeH" in r, r
 
 
 def c_backtick_title(b, S0, engine):
@@ -1848,6 +2084,16 @@ def main():
                 run("module: P4 the live map's key rows are unchanged", c_key_real_rows, eng)
                 run("module: F1/F2/F4 controls on the live map: ring gap, the parts foot, the breadcrumb with the open card", c_live_controls, eng)
                 run("module: P1/P5/P7 the skeleton map (face classes, the card word as the one sheet line, the key has three kind rows and no states section)", c_skeleton_map, eng)
+                run("98: the key's first child is the scope paragraph and its last section is the edge basis's line paragraph (text nodes; the page prints strings[words])", c_key_edge_basis, eng)
+                run("98: with a states section too, the line section comes after it (P, H2, UL, P, H2, UL, H2, P)", c_key_edge_basis_after_states, eng)
+                run("98: without edge_basis and key_scope_text nothing is drawn for them", c_key_absent_keys, eng)
+                run("98: the live map's key DOM is byte-identical to the base head's", c_key_live_unchanged, eng)
+                run("98: hostile key_scope_text and words value are text in the key", c_key_hostile, eng)
+                run("v3: the live map passes createGraph no layout and no frameMin (zoom is {fitMin: 1}); main's options", c_v3_options_live, eng)
+                run("v3: the skeleton passes layout column and zoom {fitMin: 1, frameMin: 1}; the engine gets the reduction's links only", c_v3_options_skeleton, eng)
+                run("v3: a bad sibling_layout or open_scale_floor is the fallback; a floor above the engine's cap throws a TypeError at start and is the fallback too", c_v3_refusals, eng)
+                run("98 r4: a floor below zoom.min or above the open cap is the fallback with bad-scale-floor recorded (the engine's rule, named); a floor of 1 boots", c_v3_floor_named, eng)
+                run("98 r4: a valid floor beside another bad option is the engine's plain start failure, not bad-scale-floor", c_v3_floor_valid_other_bad, eng)
                 run("module: A6 a backtick span in a title is a code element on the face (inside the clamp) and in the breadcrumb, no backtick shown", c_backtick_title, eng)
                 run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
                 run("module: P6/F1 part, group and file told by bar position over s-none and s-census; swatches match; the selection ring gap is 3 px", c_look_override, eng)

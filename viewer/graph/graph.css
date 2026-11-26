@@ -131,6 +131,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .key-content h2 { font-family: var(--sans); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 8px 0 6px; }
 .key-content ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .key-content .key-note { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.key-content .key-scope, .key-content .key-lines { margin: 6px 0 0; font-size: 14px; }
 .key-content li { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 14px; }
 .swatch { --kc: var(--muted); justify-self: center; width: 24px; height: 16px; border: 2px solid var(--kc); background: var(--card); }
 .swatch.k-theorem { --kc: var(--theorem); }
