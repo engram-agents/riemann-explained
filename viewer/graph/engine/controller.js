@@ -157,7 +157,7 @@ export function createController(rawOptions, view) {
     const kmax = open ? Math.min(Z.frameMaxOpen, S.frameOpenShare * S.openPx / o.sizes.nodeW) : Math.min(Z.frameMaxClosed, S.frameClosedShare * S.openPx / o.sizes.nodeW);
     const v = vp();
     if (!(v.w > 0 && v.h > 0 && n.w > 0 && n.h > 0)) return;
-    setCam(frame(v, n.x, n.y, n.w, n.h, kmax, open ? Z.framePadOpen : Z.framePadClosed, Z.min));
+    setCam(frame(v, n.x, n.y, n.w, n.h, kmax, open ? Z.framePadOpen : Z.framePadClosed, open ? Z.frameMin : Z.min));
   }
   /* kmin is the floor of the fit: zoom.min for the handle's fit() (the whole drawing), zoom.fitMin for the start fit. */
   function fitAt(kmin) {
