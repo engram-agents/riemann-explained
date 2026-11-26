@@ -566,6 +566,13 @@ ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 19 pairs, pinned by GP7; wi
 The COPY SET is the scanner's own JS extensions (gjc.JS_EXT, read at the call: .js and .mjs) plus the one literal GRAPH_CSS_EXT (.css: the scanner has no constant for stylesheets), compared as
 written; a file outside test/ whose lower-cased extension is in gjc.JS_EXT, gjc.SHIP_IMPORT_EXT or is .css but is not in the copy set (X.JS, A.Mjs, X.CSS) is `GRAPH-ASSET <path> not-an-asset-extension`,
 never copied and never dropped without a word (GA23). The shell is read ONCE (in _graph_assets): the bytes the gate scans are the bytes the page is assembled from (GA24).
+G2c THE MAP PAGE'S ROWS, THE LIST LINKS, THE ROBOTS META AND THE LIST PAGE'S LINK BACK (cases GM1 to GM10). `_page_parts(m, s, facts, dirty, map_rows=False)`: with `map_rows` six sections of a card are
+each wrapped in a closed `<details class="map-row map-row-<kind>"><summary>label</summary>section</details>` (conditions = ul.conditions, uses = div.premises, sketch = each div.sketch, literature =
+div.recognition, notes = ul.notes, react = ul.reactions; the label is the strings key map_row_<kind>, `{n}` the item count in map_row_conditions and map_row_notes only), the section's markup inside unchanged;
+the list page passes no flag and is unchanged. The build renders the cards once more with the flag, after the formula log is closed, for the graph page; the About comes from parts[0][0] (no fallback).
+The strings rule R3 lets map_row_sketch hold `of the proof` (OF_THE_PROOF_OK) and refuses it in every other value. The shell's head must hold the viewport and robots metas (the list page's tags) in the
+head, none outside it: `GRAPH-PAGE head has no robots noindex meta`, `head has no viewport meta`, `robots meta is outside the head`. The list page's header ends with `<p class="map-link">` (list_map_link,
+href `../`), put in by _assemble_page and in no part of _page_parts, so the graph page's About does not hold it. The two list links of the real shell are `list/`.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
