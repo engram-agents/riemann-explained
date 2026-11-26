@@ -420,7 +420,7 @@ from the one, and the bounded, non-following reader `_read_in` from the other.
 - **Nothing is written on a refusal.** Every check runs first; `OUT_DIR` must be absent or empty (`ASM-OUT`); the tree is written into a temporary sibling and renamed into place, so a
   failure leaves `OUT_DIR` as it was. Two runs give byte-identical trees.
 Exit: 0 built; 1 refused (one `ASM-<CODE> <what> <reason>` line per refusal of the first stage that fails); 2 usage. `python3 tools/assemble_grh_site.py --selftest [--only ID,ID]` runs the
-cases (about 5 minutes: thirteen of them run the other cases against a deliberately wrong copy of the tool and compare the red cases both ways). It never executes anything it reads.
+cases (about 8 minutes: thirteen of them run the other cases against a deliberately wrong copy of the tool and compare the red cases both ways). It never executes anything it reads. The tool holds all step files in memory at once (at most 2000 files of at most 1 MiB each).
 `python3 tools/assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR`
 
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
