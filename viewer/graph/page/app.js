@@ -131,6 +131,27 @@ export async function start(doc, deps) {
        continuation is the same navigation and is not refused by it. */
     let nav = 0;
     const current = (t) => !dead && t === nav;
+    /* THE ENGINE'S EVENTS ARE A CHANNEL TOO. The engine says `error` / `refused` BEFORE the promise a route awaits settles (and `invalid-path` inside
+       the call itself), so by the time the route's own post-await check could run, the handler has already spoken. So a route's engine call is
+       recorded here, with the route's ticket and the node ids the call works on, for exactly as long as the call is pending; the handlers ask
+       `supersededCall(node)`: an event is the effect of a superseded route when at least one pending route call covers its node (a null node, as in
+       `path-not-found`, is covered by any) and none of those calls belongs to the current ticket. An event with no route call pending, which is a
+       gesture the reader made on the map, is not covered: it is shown exactly as before. This is the ticket again, not a second sequence. */
+    const engineCalls = new Set();
+    async function viaRoute(t, ids, call) {
+      const rec = { t, ids: new Set(ids) };
+      engineCalls.add(rec);
+      try { return await call(); } finally { engineCalls.delete(rec); }
+    }
+    function supersededCall(node) {
+      let covered = false;
+      for (const rec of engineCalls) {
+        if (node && !rec.ids.has(node.id)) continue;
+        if (current(rec.t)) return false;
+        covered = true;
+      }
+      return covered;
+    }
     /* The maths-face view of a note (formulas in the maths face, the line, the button) is on only when the data carries ALL FOUR of its words; the page
        draws exactly those words. With any one missing it is null and the note renders as it always did. */
     const typesetWords = TYPESET_STRINGS.every((k) => typeof strings[k] === "string" && strings[k] !== "")
@@ -189,7 +210,8 @@ export async function start(doc, deps) {
         const step = await data.loadStep(id);
         if (!current(t)) return false;
         if (!sheet.close()) return false;
-        await handle.reveal(step.path.concat(id));
+        const path = step.path.concat(id);
+        await viaRoute(t, path, () => handle.reveal(path));
         if (!current(t)) return false;
         return openCard(t, id);        // the same ticket: one navigation, not a second one
       } catch (e) {
@@ -210,9 +232,10 @@ export async function start(doc, deps) {
       try {
         if (!current(t) || !sheet.close()) return;
         const m = data.meta(id);
-        if (m && await handle.open(id)) {
+        const path = m ? m.path.concat(id) : [];
+        if (m && await viaRoute(t, path, () => handle.open(id))) {
           if (!current(t)) return;
-          await handle.reveal(m.path.concat(id));
+          await viaRoute(t, path, () => handle.reveal(path));
         }
       } catch (e) {
         if (!current(t)) return;
@@ -260,11 +283,13 @@ export async function start(doc, deps) {
     offs.push(handle.on("error", guard((node, reason) => {
       const code = node ? loadFailures.get(node.id) : undefined;
       if (node) loadFailures.delete(node.id);
+      if (supersededCall(node)) return;       // the effect of a route the reader has moved on from: no notice, no fallback
       if (reason === "path-not-found") say(strings.link_refused);
       else if (reason === "load-failed" && isTransportCode(code)) say(strings.parts_failed_notice);    // the node stays closed; the reader taps again
       else fallback("engine error " + reason);
     })));
     offs.push(handle.on("refused", guard((node, reason) => {
+      if (supersededCall(node)) return;
       if (reason === "invalid-path") say(strings.link_refused); else fallback("engine refused " + reason);
     })));
 
