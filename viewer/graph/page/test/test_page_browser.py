@@ -571,6 +571,12 @@ def nav_page(b, S, prep=True):
     return pg
 
 
+def carry_notes(index):
+    """index_edit: the two words that make a map one that carries notes (the live fixture has neither; none of its steps carries a note)."""
+    index["strings"]["note_label"] = "Note label (synthetic)"
+    index["strings"]["note_source"] = "Note source {source} {commit} (synthetic)"
+
+
 def nav_clear():
     Handler.delay = {}
     Handler.status = {}
@@ -763,7 +769,7 @@ def hold_kids_root(engine):
                 "    if (h) { await h.p; if (h.fail) throw new DataError(\"http-500\", \"held, then failed\"); }\n")
         return text.replace(old, old + hold)
     root = tempfile.mkdtemp(prefix="pg-b4-")
-    assemble.assemble(root, engine, mutate={os.path.join("page", "data.js"): mut})
+    assemble.assemble(root, engine, mutate={os.path.join("page", "data.js"): mut}, index_edit=carry_notes)
     return Served(root)
 
 
@@ -890,7 +896,7 @@ def c_nav_b7(b, S0, engine):
     """B7 control: the READER opens a node's parts on the map (a pinch on the real engine), the load is slow and then fails, with no route awaiting it:
     the parts notice is shown exactly as before."""
     root = tempfile.mkdtemp(prefix="pg-b7-")
-    assemble.assemble(root, engine)
+    assemble.assemble(root, engine, index_edit=carry_notes)
     S = Served(root)
     gate = threading.Event()
     try:
@@ -1003,6 +1009,99 @@ def c_failed_load_keeps_card(b, S):
     wait_sheet(pg, False)
     pg.csp_clean()
     pg.close()
+
+
+# ------------------------------------------- a map that carries no notes opens a card exactly as main does (PR 97 round 6)
+# A map "carries notes" iff its index strings hold BOTH note_label and note_source. On any other map (the live one) a tap or an address opens
+# the sheet at once from the markup, with no step load in its path: no fetch result can delay it or prevent it.
+
+def c_live_open_fetch_fails(b, S, engine):
+    """C1: on the live map a tap on a card whose step fetch FAILS (500) still opens the sheet, and no notice shows."""
+    try:
+        pg = nav_page(b, S)                                    # a1 is open; a2 and a3 are on the map with their step files not fetched
+        Handler.status["/graph/step/a2.json"] = 500
+        tap(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 3000)
+        pg.page.wait_for_timeout(500)
+        assert shown_id(pg) == "a2" and sheet_open(pg), "the sheet opens although a2's step file answers 500"
+        assert notice_text(pg) is None, "no notice on the live map: %r" % notice_text(pg)
+        assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "no fallback"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        nav_clear()
+
+
+def c_live_open_fetch_held(b, S, engine):
+    """C2: on the live map a tap on a card whose step fetch never settles (held) has the sheet open BEFORE it settles."""
+    gate = threading.Event()
+    try:
+        pg = nav_page(b, S)
+        gate, path = hold_step("a2")
+        tap(pg, "a2")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a2'", 3000)
+        assert sheet_open(pg) and shown_id(pg) == "a2", "the sheet is open while a2's step file is still held"
+        gate.set()
+        pg.page.wait_for_timeout(500)
+        assert shown_id(pg) == "a2" and notice_text(pg) is None
+        pg.csp_clean()
+        pg.close()
+    finally:
+        gate.set()
+        nav_clear()
+
+
+def c_live_sheets_match_main(b, S, engine):
+    """C3: the sheet of each of the 23 live cards (opened by its address) and of the three top cards opened by a TAP (26 snapshots), the
+    crumbs, the tools, the body, the class and the notice, are byte-equal to what main's page drew. fixtures/live-sheets-main.json holds only the
+    SHA-256 of each snapshot (canonical JSON), generated from origin/main's page code on the same fixture, so no text is copied into the tests."""
+    import hashlib
+    with open(os.path.join(HERE, "fixtures", "live-sheets-main.json"), encoding="utf-8") as f:
+        want = json.load(f)
+    assert sorted(want) == sorted(ALL_IDS) and len(want) == 23, "the golden covers the 23 live cards"
+    snap_js = """(() => { const s = document.getElementById('graph-sheet');
+      return { hidden: s.hidden, cls: s.className, crumbs: document.getElementById('graph-crumbs').innerHTML,
+               tools: document.getElementById('graph-sheet-tools').innerHTML, body: document.getElementById('graph-sheet-body').innerHTML,
+               notice: document.getElementById('graph-notice').hidden }; })()"""
+    digest = lambda v: hashlib.sha256(json.dumps(v, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    n = 0
+    for card in ALL_IDS:
+        pg = Pg(b, S.base + "graph/index.html#" + card, 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        assert digest(pg.ev(snap_js)) == want[card], "by address: " + card
+        n += 1
+        pg.close()
+    for card in ("goal-chain", "inputs", "bounds"):
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        tap(pg, card)
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        assert digest(pg.ev(snap_js)) == want[card], "by tap: " + card
+        n += 1
+        pg.close()
+    assert n == 26
+
+
+def c_note_one_key_opens_at_once(b, S0, engine):
+    """A map holding only ONE of note_label and note_source does not carry notes: a tap opens the sheet at once, with its step fetch held."""
+    for drop in ("note_source", "note_label"):
+        S = _notes_site(engine, index_edit=lambda i, d=drop: i["strings"].pop(d))
+        gate = threading.Event()
+        try:
+            pg = Pg(b, S.base + "graph/index.html#sk-file-3", 1280, 900).settled()      # a card without a note: no refusal for the missing key
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
+            gate, path = hold_step("sk-file-2")
+            tap(pg, "sk-file-2")
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-2'", 3000)
+            assert sheet_open(pg) and notice_text(pg) is None, drop
+            assert pg.ev("document.getElementById('graph-fallback').hidden"), drop
+            gate.set()
+            pg.page.wait_for_timeout(300)
+            assert shown_id(pg) == "sk-file-2" and pg.ev("document.getElementById('graph-fallback').hidden"), drop
+            pg.close()
+        finally:
+            gate.set()
+            nav_clear()
+            S.stop()
 
 
 # ---------------------------------------------------------------- face text sizes and one fixed closed size (A1, R1')
@@ -2846,10 +2945,15 @@ def main():
             root = tempfile.mkdtemp(prefix="pg-" + eng + "-")
             assemble.assemble(root, eng)
             S = Served(root)
+            # The navigation-ticket cases hold a card's STEP FETCH, so they need a map whose open waits for one: a map that carries notes. The live
+            # fixture with the two note words added is that map (no step carries a note; the live map itself opens at once, round 6).
+            rootn = tempfile.mkdtemp(prefix="pg-nav-" + eng + "-")
+            assemble.assemble(rootn, eng, index_edit=carry_notes)
+            SN = Served(rootn)
             try:
                 def run(name, fn, *a):
                     if only is None or only in name:
-                        case(eng + ": " + name, fn, br, S, *a)
+                        case(eng + ": " + name, fn, br, SN if name.startswith("nav ") else S, *a)
                 run("first frame at 1024", c_first_frame, False)
                 run("first frame at 390", c_first_frame, True)
                 run("role-less step: no role element, title-only crumb; role shown when present", c_role_less)
@@ -2936,12 +3040,17 @@ def main():
                 run("nav B6b control: the same failing open-parts with nothing after it: the parts notice appears, as before", c_nav_b5b_b6b, eng, False)
                 run("nav B7 control: the reader's own open of a node's parts that fails to load (slow, 500) is still the parts notice", c_nav_b7, eng)
                 run("nav C1: a superseded open-parts is pending on one node, the reader's own open of an unrelated node fails to load: its parts notice appears; the superseded load's failure later says nothing", c_nav_c1, eng)
+                run("round 6 C1: on the live map a tap whose step fetch FAILS (500) opens the sheet, no notice", c_live_open_fetch_fails, eng)
+                run("round 6 C2: on the live map a tap whose step fetch never settles (held) has the sheet open before it settles", c_live_open_fetch_held, eng)
+                run("round 6 C3: the 26 live sheet snapshots (23 by address, 3 by tap) equal what main's page drew", c_live_sheets_match_main, eng)
+                run("round 6: a map with only ONE of note_label and note_source carries no notes: a tap opens at once, its step fetch held", c_note_one_key_opens_at_once, eng)
                 if eng == "real":
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
                     run("REAL: pinch semantic-opens a step and loads its step file; no sheet", c_real_pinch)
             finally:
                 S.stop()
+                SN.stop()
         if only is None or "open-parts" in only:
             case("open-parts: a rejecting open() is a fallback, not an unhandled rejection", c_open_parts_rejects, br)
         if only is None or "hostile" in only or "mutant" in only:
