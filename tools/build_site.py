@@ -1867,12 +1867,16 @@ def _graph_strings_keys(symbols=None):
 
 def _graph_strings_errors(strings, symbols=None):
     """[(GRAPH-STRINGS, key, what)] for the `strings` object of index.json against the exact set of keys the page reads: the keys it lacks first, then the
-    keys it has that the page does not read, each sorted, then the half of the note-word pair: note_label and note_source come together (the page refuses a half pair at
+    keys it has that the page does not read, each sorted, then the value of every key the page reads (required or optional) that is present: a value that is not a
+    string is `is not a string`, an empty string `is empty` (one line per key, sorted; a whitespace-only value is accepted, as the page tests `=== ""` and never trims),
+    then the half of the note-word pair: note_label and note_source come together (the page refuses a half pair at
     index load, so a map that builds is a map that runs), and the one that is absent while the other is present is named. The notes rule (neither word beside notes)
     needs the notes and lives in _graph_files."""
     want = set(_graph_strings_keys(symbols))
     return ([("GRAPH-STRINGS", k, "missing") for k in sorted(want - set(strings))]
             + [("GRAPH-STRINGS", k, "is not a key the page reads") for k in sorted(set(strings) - want - set(GRAPH_OPTIONAL_KEYS))]
+            + [("GRAPH-STRINGS", k, "is not a string" if not isinstance(strings[k], str) else "is empty")
+               for k in sorted((want | set(GRAPH_OPTIONAL_KEYS)) & set(strings)) if not isinstance(strings[k], str) or strings[k] == ""]
             + [("GRAPH-STRINGS", gone, f"missing: {have} is present and the two words come together")
                for have, gone in (("note_label", "note_source"), ("note_source", "note_label")) if have in strings and gone not in strings])
 
@@ -14011,8 +14015,8 @@ def _selftest_cases():
                     acc(both, notes)[0], {k: acc(both, notes)[1][k] for k in both}, acc(both, None)[0], {k: acc(both, None)[1][k] for k in both}, acc(both, {})[0],
                     acc({}, None)[0], acc({}, {})[0], "note_label" in acc({}, None)[1] or "note_source" in acc({}, None)[1],
                     _graph_strings_errors(dict(req, **L)), _graph_strings_errors(dict(req, **S)), _graph_strings_errors(dict(req, **both)), _graph_strings_errors(req),
-                    _graph_strings_errors(dict(req, note_label="L", bogus="x")), _graph_strings_errors(dict(req, note_label="")),
-                    _graph_strings_errors(dict(req, note_label="", note_source="")),
+                    _graph_strings_errors(dict(req, note_label="L", bogus="x")), _graph_strings_errors(dict(req, note_label=" ")),
+                    _graph_strings_errors(dict(req, note_label=" ", note_source=" ")),
                     [x for x in _graph_files(rows, "c0", dict(_strings(), **L), notes=notes)[0] if x[0] == "GRAPH-NOTE"]),
                    ((miss_s, True), (miss_s, True), (miss_s, True), (miss_l, True), (miss_l, True), (miss_l, True), (need, True),
                     ([], False), ([], False),
@@ -14074,7 +14078,7 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", first_req, "missing")] + emp("note_label") + [("GRAPH-STRINGS", "note_source", "missing: note_label is present and the two words come together")],
                     emp("parts_n"), isn("parts_n"), isn("parts_n"), [], isn("parts_n"), isn("note_label") + emp("parts_n"),
                     [("GRAPH-STRINGS", "parts_n", "missing")],
-                    emp("note_label_typeset") + isn("key_lines_text"),
+                    isn("key_lines_text") + emp("note_label_typeset"),
                     ([], False), ([], False), ([], False),
                     (need, True), (need, True), (emp("note_label"), True),
                     (isn("note_source"), True), []))
