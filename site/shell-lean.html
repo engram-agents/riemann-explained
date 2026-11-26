@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{S:title}}</title>
+<link rel="stylesheet" href="engine/engine.css">
+<link rel="stylesheet" href="graph.css">
+</head>
+<body>
+<header class="intro">
+<h1>{{S:title}}</h1>
+<p class="sentence">{{S:sentence}}</p>
+<p class="front-line">{{S:front_scope_line}}</p>
+<p class="links"><button type="button" id="graph-about-open" class="linkbtn">{{S:about_link}}</button><span class="hint">{{S:tap_hint}}</span></p>
+</header>
+<div id="graph-layer" hidden>
+<nav class="toolbar">
+<span class="seg"><span class="seg-here">{{S:map}}</span></span>
+<button type="button" id="graph-show-all" class="tool">{{S:show_all}}</button>
+<button type="button" id="graph-key" class="tool">{{S:key}}</button>
+</nav>
+<div id="graph" class="stage"></div>
+<aside id="graph-sheet" class="graph-sheet" role="dialog" hidden>
+<div class="sheet-bar"><div id="graph-crumbs" class="crumb-slot"></div><button type="button" id="graph-sheet-close" class="tool">{{S:close}}</button><div id="graph-sheet-tools" class="sheet-tools"></div></div>
+<div id="graph-sheet-body" class="graph-sheet-body"></div>
+</aside>
+</div>
+<div id="graph-fallback" class="fallback">
+<p>{{S:fallback_sentence}}</p>
+<p><a href="credits/">{{S:fallback_link}}</a></p>
+</div>
+<p id="graph-notice" class="notice" role="status" hidden></p>
+<div id="graph-cards" class="cards">
+{{CARDS}}
+</div>
+<script type="module" src="page/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+ "title": "A map of the Lean files of the Riemann Hypothesis proof",
+ "sentence": "How the Lean files of the readable edition in lsernau/grh-lean, at version 72fead10, are built on one another. Made by AI agents, not by the people who made the proof.",
+ "about_link": "About this map",
+ "tap_hint": "Tap a box to open it.",
+ "map": "Map",
+ "show_all": "Show all",
+ "key": "Key",
+ "close": "Close",
+ "fallback_sentence": "The map appears here once it has loaded. If it does not load, the About text below and the licence and credits page can still be read.",
+ "fallback_link": "Licence and credits",
+ "front_scope_line": "Shows the 306 Lean files of the argument. Not on it: the final theorems in Mathlib's terms, library files, Mathlib.",
+ "about_text": "This map is ours, not the repository's. A program built it from the Lean files of the readable edition (the folder grh) of the repository lsernau/grh-lean, at version 72fead10, and from the repository's own contents list. The titles of parts, groups and files, and each file's opening note, are the repository's words. The map was made by AI agents; no mathematician has checked this map.",
+ "root_only_note_single": "The map shows how the files build on one another. It says nothing about whether the proof is correct."
+}
