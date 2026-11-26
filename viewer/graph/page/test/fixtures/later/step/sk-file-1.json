@@ -1,0 +1,31 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-1",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Synthetic one"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-1",
+ "note": {
+  "later_blocks": 1,
+  "source": "src/Synthetic/One.lean",
+  "text": "# Synthetic one\n\nA first paragraph with a formula `a + b = c` and a name `Synthetic.one`.\n\n* an item holding `x`\n* a second item\n"
+ },
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "rests_on": [],
+ "spine_rows": [
+  "spine-theorem-a"
+ ]
+}

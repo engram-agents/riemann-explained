@@ -14,6 +14,7 @@
      note-typeset-line, note-toggle   only when the page says the maths face is on (info.note.typeset): the line under the source line (told only of
                         the maths-type view) and the button that swaps the rendering for the exact text and back (aria-pressed true = exact text);
                         note-exact on the body while the exact text is shown. A card shown again always starts on the rendering.
+     note-more          only when the note says it has later blocks (info.note.moreParts): our one line directly after the note body, in both views
 
    CLOSING: every way the sheet closes goes through close(), the ONE close function. It first dispatches a cancelable
    `sheetclose` event on the thing shown; if a listener cancels it, the sheet stays open and nothing moves. A
@@ -139,6 +140,9 @@ export function createSheet(parts, strings, hooks, signal) {
         kids.push(line, toggle);
       }
       kids.push(noteBody);
+      /* The later-blocks line: ours, one line directly after the note body in both views (the toggle swaps only the body's content, never this). */
+      const more = n.moreParts && n.moreParts.length ? el("p", { class: "note-more" }, n.moreParts) : null;
+      if (more) kids.push(more);
       rec.noteEls = kids;
       const first = article.firstChild;
       let tail = rec.status || (claim && claim.parentNode ? claim : null);

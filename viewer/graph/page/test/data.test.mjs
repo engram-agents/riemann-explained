@@ -382,7 +382,7 @@ test("P2/A2/F2 skeleton: the strings set is EXACTLY the fixed list, the words of
   const need = requiredStrings(v.symbols);
   assert.equal(need.length, 27);
   assert.deepEqual([...need].sort(), [...FIXED_STRINGS, ...rows, ...cards, ...counts].sort());
-  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note", "key_scope_text", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button"]);
+  assert.deepEqual(OPTIONAL_STRINGS, ["key_kinds_note", "key_scope_text", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "note_more_one", "note_more_many"]);
   /* the edge basis (PR 98 round 2): key_lines_heading and the strings key edge_basis.words (key_lines_text) are read because edge_basis is present */
   assert.deepEqual(Object.keys(idx.strings).sort(), [...need, "key_kinds_note", "key_scope_text", "key_lines_heading", "key_lines_text"].sort());
   const extra = clone(idx);
@@ -781,8 +781,8 @@ test("N13 strings: the live map's strings (neither note key) validate exactly as
   const v = noteCtx();
   assert.equal(v.strings.note_label, "From the repository, unchanged");
   assert.equal(v.strings.note_source, "Source file: {source} \u00b7 version {commit} of lsernau/grh-lean");
-  assert.deepEqual([...OPTIONAL_STRINGS].sort(), ["key_kinds_note", "key_scope_text", "note_exact_button", "note_label", "note_label_typeset", "note_render_button", "note_source", "note_typeset_line"],
-    "one definition: the page's optional keys are exactly these (key_kinds_note, key_scope_text, the two note keys, the four maths-face keys)");
+  assert.deepEqual([...OPTIONAL_STRINGS].sort(), ["key_kinds_note", "key_scope_text", "note_exact_button", "note_label", "note_label_typeset", "note_more_many", "note_more_one", "note_render_button", "note_source", "note_typeset_line"],
+    "one definition: the page's optional keys are exactly these (key_kinds_note, key_scope_text, the two note keys, the four maths-face keys, the two later-blocks keys)");
 });
 
 test("N13 strings: the note keys are optional as a pair (one alone is H1); an empty one is refused; any OTHER extra key is still refused", () => {

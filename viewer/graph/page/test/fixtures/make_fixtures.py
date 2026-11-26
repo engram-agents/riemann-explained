@@ -16,6 +16,9 @@ note-spans-classes.json   Sol's span classes (6,459 distinct real spans, cls3's 
 skeleton/    the map of a Lean repository's parts, groups and files (data v3: sibling_layout, open_scale_floor, link flags on one group, index_rows and spine_rows on two files): kinds part, group, file, each a table row with `words` (the key's label)
              and `card_words` (the sheet's one line), the group and file rows with `count_words` (the foot's one/many); state "none", proof "none", no role on every step; symbols.order lists only
              the rows that occur (kinds [part, group, file], states [], proofs []) while the tables keep every row.
+later/       a SYNTHETIC map (no text from the proof repository): the skeleton, synthetic notes on four file steps, the maths-face strings in synthetic words,
+             and the two optional strings of the later-blocks line (note_more_one, note_more_many). `later_blocks` is 1 on sk-file-1 (the one form), 2 on
+             sk-file-2 (the many form), 0 on sk-file-3 (nothing drawn); sk-file-4 carries a note with no `later_blocks` key. sk-file-1 holds a formula span.
 
 Test-only. Never shipped (lives under test/).
 """
@@ -270,6 +273,10 @@ TYPESET_STRINGS = {
     "note_exact_button": "Show the exact text",
     "note_render_button": "Show the note with formulas set in maths type",
 }
+LATER_STRINGS = {
+    "note_more_one": "We count {n} more repository note in this file. This map does not show it.",
+    "note_more_many": "We count {n} more repository notes in this file. This map does not show them.",
+}
 # two formula-class spans whose characters would be markup if they ever reached an HTML parser (tokens of one letter only: class formula)
 HOSTILE_FORMULAS = "\n\n`<b>x</b>` and `a<i>b` and `x&y`\n"
 
@@ -330,6 +337,31 @@ def notes_build(typeset=False):
     steps["sk-file-2"]["note"] = {"text": HOSTILE_NOTE + HOSTILE_FORMULAS, "source": "grh/src/New/Hostile.lean"}
     steps["sk-file-3"]["note"] = {"text": check_inputs(), "source": LC_NOTE_SOURCE, "review": {"state": "converter"}}
     steps["sk-file-3"]["card"]["title"] = LC_NOTE_TITLE
+    return index, steps, kids, title
+
+
+LATER_TITLES = {"sk-file-1": "Synthetic one", "sk-file-2": "Synthetic two", "sk-file-3": "Synthetic three", "sk-file-4": "Synthetic four",
+                "sk-file-5": "Synthetic five, with a title long enough to wrap on a narrow screen when it is drawn in a card", "sk-group-b": "Synthetic group B"}
+LATER_WORDS = dict(TYPESET_STRINGS, note_label="A synthetic opening note, unchanged", note_label_typeset="A synthetic opening note",
+                   note_source="Opening note of {source} \u00b7 version {commit} of a synthetic repository")
+
+
+def later_build():
+    """The SYNTHETIC later-blocks map (fixtures/later): (index, steps, kids, title). Nothing here comes from the proof repository: the notes, titles,
+    source paths and strings are written in this function."""
+    index, steps, kids, title = build_skeleton(LATER_TITLES)
+    index = copy.deepcopy(index)
+    index["strings"].update(LATER_WORDS)
+    index["strings"].update(LATER_STRINGS)
+    index["strings"]["key_kinds_note"] = "Parts and groups follow a synthetic contents list."
+    index["strings"]["key_scope_text"] = "A synthetic scope paragraph: the map holds a few synthetic files."
+    for st in steps.values():     # the skeleton's index rows quote the proof repository (and the page pins their source to one real file name): the synthetic map has none
+        st.pop("index_rows", None)
+    steps["sk-file-1"]["note"] = {"text": "# Synthetic one\n\nA first paragraph with a formula `a + b = c` and a name `Synthetic.one`.\n\n* an item holding `x`\n* a second item\n",
+                                  "source": "src/Synthetic/One.lean", "later_blocks": 1}
+    steps["sk-file-2"]["note"] = {"text": "# Synthetic two\n\nA second note with a span `f(x) = 2` in it.\n", "source": "src/Synthetic/Two.lean", "later_blocks": 2}
+    steps["sk-file-3"]["note"] = {"text": "# Synthetic three\n\nA third note, and a formula `y = z`.\n", "source": "src/Synthetic/Three.lean", "later_blocks": 0}
+    steps["sk-file-4"]["note"] = {"text": "# Synthetic four\n\nA note with no later_blocks key.\n", "source": "src/Synthetic/Four.lean"}
     return index, steps, kids, title
 
 
@@ -468,7 +500,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 def main():
     check_inputs()
-    for sub in ("real", "refusals", "skeleton", "notes", "typeset"):
+    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "later"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -500,6 +532,14 @@ def main():
     tparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, tkids, ttitle) for t in tindex["top"]] + ["</ul>"]
     open(os.path.join(HERE, "typeset", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + tparts) + "\n")
+
+    lindex, lsteps, lkids, ltitle = later_build()
+    write_json(os.path.join(HERE, "later", "index.json"), lindex)
+    for i, st in lsteps.items():
+        write_json(os.path.join(HERE, "later", "step", i + ".json"), st)
+    lparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, lkids, ltitle) for t in lindex["top"]] + ["</ul>"]
+    open(os.path.join(HERE, "later", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of a synthetic repository.</p>", "</section>"] + lparts) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)
 
