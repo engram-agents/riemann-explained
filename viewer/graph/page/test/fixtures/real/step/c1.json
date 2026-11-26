@@ -1,0 +1,22 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "c1",
+  "kind": "theorem",
+  "path": [
+   "bounds"
+  ],
+  "proof": "read",
+  "role": "Theorem",
+  "state": "census",
+  "title": "Title of step c1"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "c1",
+ "path": [
+  "bounds"
+ ],
+ "rests_on": []
+}

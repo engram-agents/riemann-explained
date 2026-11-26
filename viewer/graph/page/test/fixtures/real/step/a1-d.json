@@ -1,0 +1,24 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "a1-d",
+  "kind": "theorem",
+  "path": [
+   "goal-chain",
+   "a1"
+  ],
+  "proof": "not_read",
+  "role": "Theorem",
+  "state": "read",
+  "title": "Title of step a1-d"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "a1-d",
+ "path": [
+  "goal-chain",
+  "a1"
+ ],
+ "rests_on": []
+}

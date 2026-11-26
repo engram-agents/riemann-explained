@@ -1,0 +1,128 @@
+/* The Graph page's look. From the prototype's CSS, minus the remote fonts and the minimap, plus the sheet, the toolbar,
+   the key and the claim clamp. System font stacks only; no remote asset. The engine's own structure and state rules are
+   in engine/engine.css (the shell links it just before this file); this file styles the page and the faces the page
+   supplies, and may style the engine's ge-* hooks but never repeats an engine rule. */
+
+:root {
+  --bg: #eef0f5; --dot: #d3d8e3; --card: #ffffff; --card-unread: #f6f7fa; --well: #e3e7f0;
+  --fg: #141a26; --muted: #5b6475; --rule: #c6ccd9; --strip: #f1f3f8;
+  --theorem: #2c44ad; --defn: #96640a; --struct: #86307a;
+  --serif: Georgia, "Times New Roman", serif;
+  --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1117; --dot: #232a38; --card: #1a1f2b; --card-unread: #151923; --well: #121722;
+    --fg: #e7eaf1; --muted: #9aa3b6; --rule: #343c4d; --strip: #202636;
+    --theorem: #9aabff; --defn: #e3b558; --struct: #e495d6; color-scheme: dark;
+  }
+}
+
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--serif); font-size: 16px; line-height: 1.45;
+  min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden; }
+button { font: inherit; color: inherit; }
+a { color: var(--theorem); text-underline-offset: 0.15em; }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+/* ---- the block above the graph: title, one sentence, the link line (at most 200 px at 390 wide) ---- */
+.intro { padding: 6px 14px 0; background: var(--card); border-bottom: 1px solid var(--rule); }
+.intro h1 { font-size: 20px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.intro .sentence { margin: 0; font-size: 16px; line-height: 1.4; }
+.intro .links { margin: 0; display: flex; align-items: center; gap: 0; font-family: var(--sans); font-size: 14px; }
+.linkbtn { border: 0; background: none; padding: 0 2px; min-height: 44px; color: var(--theorem); text-decoration: underline; cursor: pointer; font-family: var(--sans); }
+.hint::before { content: "\00b7"; margin: 0 8px; }
+
+/* ---- the toolbar: Map | List, Show all, Key; every target at least 44 x 44 ---- */
+.toolbar { display: flex; align-items: stretch; gap: 8px; padding: 6px 14px; background: var(--card); border-bottom: 1px solid var(--rule); font-family: var(--sans); }
+.seg { display: inline-flex; border: 1px solid var(--rule); }
+.seg-here, .seg-link { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 14px; font-size: 14px; }
+.seg-here { background: var(--fg); color: var(--bg); font-weight: 600; }
+.seg-link { text-decoration: none; }
+.tool { min-width: 44px; min-height: 44px; padding: 0 14px; border: 1px solid var(--rule); background: var(--bg); font-family: var(--sans); font-size: 14px; cursor: pointer; }
+
+/* ---- the layer and the stage ----
+   While the graph is showing, the page is exactly one viewport tall, so the stage has a DEFINITE size (the engine's
+   root fills its container by percentage). If setup fails the layer is removed and this rule stops applying: the
+   page is then the ordinary scrolling list. With scripts off the layer stays hidden and the rule never applies. */
+body:has(#graph-layer:not([hidden])) { height: 100vh; height: 100dvh; overflow: hidden; }
+/* The fallback sentence and the cards stay in the document (the script hides them after the first frame) but, while the
+   graph shows, they sit below the viewport, out of flow, so they cannot squeeze the stage before the engine fits into it. */
+body:has(#graph-layer:not([hidden])) :is(#graph-fallback, #graph-cards) { position: absolute; top: 100%; left: 0; right: 0; }
+body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; left: 0; right: 0; z-index: 30; }
+#graph-layer { position: relative; flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; }
+.stage { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; touch-action: none;
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px); background-size: 22px 22px; }
+.fallback { padding: 10px 14px; font-family: var(--sans); font-size: 15px; background: var(--strip); border-bottom: 1px solid var(--rule); }
+.fallback p { margin: 4px 0; }
+.notice { margin: 0; padding: 10px 14px; font-family: var(--sans); font-size: 15px; background: var(--strip); border-bottom: 2px solid var(--fg); }
+.cards { padding: 0 14px 40px; }
+
+/* ---- a closed card: role word, at most three lines of title, the foot ---- */
+.ge-face { height: 100%; }
+.face { --kc: var(--muted); height: 100%; display: flex; flex-direction: column; gap: 4px; padding: 9px 11px; overflow: hidden;
+  background: var(--card); border: 2px solid var(--kc); cursor: pointer; }
+.face.k-theorem { --kc: var(--theorem); }
+.face.k-def { --kc: var(--defn); border-radius: 18px; }
+.face.k-structure { --kc: var(--struct); border-radius: 18px; box-shadow: inset 0 0 0 3px var(--card), inset 0 0 0 4.5px var(--kc); }
+.face.s-census { border-style: dotted; border-width: 3px; }
+.face.s-none { border-style: dashed; background: var(--card-unread); }
+.face-role { font-family: var(--sans); font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kc); white-space: nowrap; }
+.face-title { font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
+.face-foot { margin-top: auto; font-family: var(--sans); font-size: 14px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 3px; }
+
+/* ---- the sheet: a bottom sheet under 768 px (up to 85% of the height, the graph visible above), a side panel from 768 ---- */
+.graph-sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 85vh; max-height: 85dvh; z-index: 20; display: flex; flex-direction: column;
+  background: var(--card); border-top: 2px solid var(--fg); font-size: 15px; }
+/* the comment script adds this class while its editor is open; the sheet then takes the full height and no bar covers Post */
+.graph-sheet.comments-editing { max-height: none; top: 0; }
+/* the bar holds the breadcrumb, Close and the card's tools (Open its parts, Show the whole claim); the first thing below it
+   is the card itself, so the reader meets the claim before any button */
+.sheet-bar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 4px 8px; padding: 6px 14px 0; font-family: var(--sans); }
+.crumb-slot { min-width: 0; flex: 1 1 14rem; }
+#graph-sheet-close { order: 2; }
+.sheet-tools { order: 3; display: flex; flex-wrap: wrap; gap: 8px; }
+.sheet-tools:empty { display: none; }
+.sheet-tool { min-height: 44px; padding: 0 14px; border: 1px solid var(--rule); background: var(--bg); font-family: var(--sans); font-size: 14px; cursor: pointer; }
+.graph-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 14px 24px; overscroll-behavior: contain; }
+.crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; font-family: var(--sans); font-size: 13px; color: var(--muted); }
+.crumbs li + li::before { content: "\203a"; margin-right: 4px; }
+.crumb { min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--theorem); text-decoration: underline; cursor: pointer; font: inherit; }
+.crumb-here { color: var(--fg); display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
+.crumb-role { margin-right: 6px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+.sheet-status { margin: 4px 0 10px; font-family: var(--sans); font-size: 14px; font-weight: 500; }
+.graph-sheet-body .claim { font-size: 18px; line-height: 1.4; margin: 0 0 6px; }
+.graph-sheet-body.claim-clamped .claim { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 10; line-clamp: 10; overflow: hidden; }
+/* The sheet shows the page's own one status line, so the list page's lines inside the moved card are hidden HERE ONLY (the fallback
+   page and a page with scripts off keep all of them): the statement line and the roots-only line always; the proof line unless
+   the card has no proof (the page sets sheet-proof-none from the card's data), where it says why. */
+.graph-sheet .graph-sheet-body p.status.statement, .graph-sheet .graph-sheet-body p.roots-only, .graph-sheet .graph-sheet-body p.status.proof { display: none; }
+.graph-sheet.sheet-proof-none .graph-sheet-body p.status.proof { display: block; }
+/* a card's nested parts stay on the List page; on the map they are separate cards */
+.graph-sheet-body details.children { display: none; }
+.graph-sheet-body summary, .graph-sheet-body details.rc-section > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-family: var(--sans); }
+.graph-sheet-body .premises, .graph-sheet-body .roots-only { font-size: 14px; }
+.graph-sheet-body dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; font-size: 13px; }
+.graph-sheet-body dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+@media (min-width: 768px) {
+  .graph-sheet { left: auto; top: 0; width: 26rem; max-width: 50vw; max-height: none; border-top: 0; border-left: 2px solid var(--fg); }
+  /* a notice shown while a card is open (a failed link leaves the card open) must not cover the panel's Close button */
+  body:has(#graph-sheet:not([hidden])) #graph-notice { right: min(26rem, 50vw); }
+}
+
+/* ---- the key: rows generated from the closed lists ---- */
+.key-content h2 { font-family: var(--sans); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 8px 0 6px; }
+.key-content ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.key-content li { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 14px; }
+.swatch { --kc: var(--muted); justify-self: center; width: 24px; height: 16px; border: 2px solid var(--kc); background: var(--card); }
+.swatch.k-theorem { --kc: var(--theorem); }
+.swatch.k-def { --kc: var(--defn); border-radius: 6px; }
+.swatch.k-structure { --kc: var(--struct); border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--card), inset 0 0 0 2.5px var(--kc); }
+.swatch.s-census { border-style: dotted; }
+.swatch.s-none { border-style: dashed; background: var(--card-unread); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

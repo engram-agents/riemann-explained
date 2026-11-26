@@ -1,0 +1,103 @@
+{
+ "assets": {},
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "max_children": 40,
+ "rests_on": [],
+ "steps": 7,
+ "strings": {
+  "claim_less": "Show less",
+  "claim_more": "Show the whole claim",
+  "close_parts": "Close its parts",
+  "crumb_label": "Where this step sits",
+  "key_kind_def": "Definition: a named object or statement",
+  "key_kind_structure": "Structure: a bundle of named fields",
+  "key_kind_theorem": "Theorem: a result the Lean code proves",
+  "key_kinds_heading": "Colour and shape: what Lean declares",
+  "key_states_heading": "Frame: what we have read",
+  "link_refused": "That address does not name a step on this map.",
+  "open_parts": "Open its parts",
+  "part_one": "1 part",
+  "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+  "parts_n": "{n} parts",
+  "sheet_proof_none": "No proof to read",
+  "sheet_proof_not_read": "Proof: not read yet.",
+  "sheet_proof_read": "Proof read",
+  "sheet_statement_census": "Statement counted by a program",
+  "sheet_statement_not_read": "Statement not read",
+  "sheet_statement_read": "Statement read"
+ },
+ "symbols": {
+  "kinds": {
+   "def": {
+    "class": "builder-def",
+    "text": "Definition: a named object or statement",
+    "words": "key_kind_def"
+   },
+   "structure": {
+    "class": "builder-structure",
+    "text": "Structure: a bundle of named fields",
+    "words": "key_kind_structure"
+   },
+   "theorem": {
+    "class": "builder-theorem",
+    "text": "Theorem: a result the Lean code proves",
+    "words": "key_kind_theorem"
+   }
+  },
+  "order": {
+   "kinds": [
+    "theorem",
+    "def",
+    "structure"
+   ],
+   "proofs": [
+    "read",
+    "not_read",
+    "none"
+   ],
+   "states": [
+    "read",
+    "census",
+    "none"
+   ]
+  },
+  "proofs": {
+   "none": {
+    "class": "builder-none",
+    "text": "No proof to read",
+    "words": "sheet_proof_none"
+   },
+   "not_read": {
+    "class": "builder-not_read",
+    "text": "Proof: not read yet.",
+    "words": "sheet_proof_not_read"
+   },
+   "read": {
+    "class": "builder-read",
+    "text": "Proof read",
+    "words": "sheet_proof_read"
+   }
+  },
+  "states": {
+   "census": {
+    "class": "builder-census",
+    "text": "Statement counted by a program",
+    "words": "sheet_statement_census"
+   },
+   "none": {
+    "class": "builder-none",
+    "text": "Statement not read",
+    "words": "sheet_statement_not_read"
+   },
+   "read": {
+    "class": "builder-read",
+    "text": "Statement read",
+    "words": "sheet_statement_read"
+   }
+  }
+ },
+ "top": [
+  "goal-chain"
+ ]
+}

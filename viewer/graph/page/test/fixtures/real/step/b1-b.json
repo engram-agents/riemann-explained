@@ -1,0 +1,24 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "b1-b",
+  "kind": "structure",
+  "path": [
+   "inputs",
+   "b1"
+  ],
+  "proof": "none",
+  "role": "Structure",
+  "state": "census",
+  "title": "Title of step b1-b"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "b1-b",
+ "path": [
+  "inputs",
+  "b1"
+ ],
+ "rests_on": []
+}

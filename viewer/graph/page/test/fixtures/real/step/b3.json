@@ -1,0 +1,22 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "b3",
+  "kind": "theorem",
+  "path": [
+   "inputs"
+  ],
+  "proof": "not_read",
+  "role": "Theorem",
+  "state": "read",
+  "title": "Title of step b3"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "b3",
+ "path": [
+  "inputs"
+ ],
+ "rests_on": []
+}
