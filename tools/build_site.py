@@ -546,6 +546,8 @@ written the assembled tree (assets, and shell.html under its own name) goes thro
 <the scanner's REFUSED line>`, one per line. This file keeps no list of forbidden tokens (GA6 counts them). index.json `strings` is exactly the nine `words` keys and the
 GRAPH_RUNTIME_KEYS (parts_n holds {n} as written), checked as an exact set (`GRAPH-STRINGS <key> missing | is not a key the page reads`). A `GRAPH-COUNT` also names an asset whose file or
 sha256 is not the one listed. `role_named_statement` is never in `strings` (20 keys on every build; the role word is resolved into the card). GRAPH_SHORT_MAX is nm.SHORT_MAX. GR5 and GR21 read tools/fixtures/outline_faces.json, not the live outline (GA18).
+Also refused: a .js or .css under a folder the scanner skips (skipped-dir) or that is not a regular file (not-regular); the gate runs the scanner's quiet self-test first and
+requires its count of files checked to be the files given it (GA19 to GA22); a --graph-src that is not a folder is exit 2.
 
 G2b THE GRAPH PAGE DOCUMENT (cases GP1 to GP11). With a shell.html in the graph source folder the build writes `graph/index.html`: the shell with its tokens replaced, in the manifest like every
 output (no shell.html, no page; the shell itself is neither copied nor an asset). `{{S:key}}`, in element content only, becomes the HTML-escaped strings value of one of the eleven GRAPH_SHELL_KEYS (title,
@@ -1840,8 +1842,9 @@ def _graph_assets(src):
     """(errors, {path under graph/: bytes}, the bytes of shell.html or None) for the source directory `src`: every .js and .css file whose path has no `test`
     directory segment is an asset (sorted by path, the bytes as they are); shell.html at the root of `src` is read apart, it is not an asset (the page
     assembly of a later slice uses it, and the sink gate reads it). A directory that is absent holds nothing. Refused, each (GRAPH-ASSET, path, reason): a
-    symlink anywhere (file or directory, test/ included: `symlink`), a path that does not match GRAPH_ASSET_NAME or holds `..` (`name`), an .html file other
-    than shell.html at the root and outside test/ (`html`), a file of more than GRAPH_ASSET_MAX bytes (`size`) or that is not UTF-8 (`encoding`). Errors are
+    symlink anywhere (file or directory, test/ included: `symlink`), a path that does not match GRAPH_ASSET_NAME or holds `..` (`name`), a path with a folder
+    the scanner skips without a word (its SKIP_DIRS but `test`: `skipped-dir`), a .js or .css (or the root shell.html) that is not a regular file (`not-regular`),
+    an .html file other than shell.html at the root and outside test/ (`html`), a file of more than GRAPH_ASSET_MAX bytes (`size`) or that is not UTF-8 (`encoding`). Errors are
     listed in path order; a file with one refusal is not read for another."""
     errors, assets, shell = [], {}, None
     if not os.path.isdir(src):
@@ -1863,13 +1866,19 @@ def _graph_assets(src):
             elif "test" in rel.split("/")[:-1]:
                 continue
             elif n.lower().endswith(".html"):
-                if rel == "shell.html":
+                if rel != "shell.html":
+                    errors.append(("GRAPH-ASSET", rel, "html"))
+                elif not os.path.isfile(full):   # a FIFO or a device is never opened: opening one can block for ever
+                    errors.append(("GRAPH-ASSET", rel, "not-regular"))
+                else:
                     with open(full, "rb") as f:
                         shell = f.read()
-                else:
-                    errors.append(("GRAPH-ASSET", rel, "html"))
             elif not n.endswith((".js", ".css")):
                 continue
+            elif set(rel.split("/")[:-1]) & (set(gjc.SKIP_DIRS) - {"test"}):   # the scanner prunes these folders without a word, so a file in one would ship unread
+                errors.append(("GRAPH-ASSET", rel, "skipped-dir"))
+            elif not os.path.isfile(full):
+                errors.append(("GRAPH-ASSET", rel, "not-regular"))
             elif ".." in rel or not GRAPH_ASSET_NAME.fullmatch(rel):
                 errors.append(("GRAPH-ASSET", rel, "name"))
             elif os.path.getsize(full) > GRAPH_ASSET_MAX:
@@ -1891,17 +1900,26 @@ def _graph_sink_errors(assets, shell, scanner=None):
     forbidden sinks, this file keeps none) run over the assembled tree: the assets, and shell.html under its own name when there is one, written into a
     temporary directory laid out as OUT_DIR/graph (removed afterwards). Nothing is called when there are no assets (the scanner answers 1 for a tree with
     nothing in it, which is not a refusal here). Any answer but 0 refuses: one error per REFUSED line, and when the scanner refused without one (it checked
-    nothing, or printed nothing) one error with the last line it printed. `scanner` is for the cases (a stand-in with a `run(dir, out)`); the build passes none."""
+    nothing, or printed nothing) one error with the last line it printed. Before the run the scanner's own quiet self-test must pass (`GRAPH-SINK graph scanner
+    self-test failed` otherwise, and the run is not made); after a run that answers 0 the number of files it says it checked must be the number it was given
+    (the assets plus shell.html): a scanner that skips a file passes a tree it did not read, so a different count is `GRAPH-SINK graph scanner checked N files
+    but M were assets` (M is the number of files in the tree, shell.html included). `scanner` is for the cases (a stand-in with `selftest_quiet()` and
+    `run(dir, out)`); the build passes none."""
     if not assets:
         return []
     scanner = gjc if scanner is None else scanner
+    if scanner.selftest_quiet() != 0:
+        return [("GRAPH-SINK", "graph", "scanner self-test failed")]
+    given = len(assets) + (0 if shell is None else 1)
     with tempfile.TemporaryDirectory() as tmp:
         g = os.path.join(tmp, "graph")
         _write_files(g, dict(assets, **({} if shell is None else {"shell.html": shell})))
         out = io.StringIO()
         rc = scanner.run(g, out)
     if rc == 0:
-        return []
+        said = re.search(r"^(\d+) files checked", out.getvalue(), re.M)
+        n = int(said.group(1)) if said else 0
+        return [] if n == given else [("GRAPH-SINK", "graph", f"scanner checked {n} files but {given} were assets")]
     lines = out.getvalue().splitlines()
     refused = [ln for ln in lines if ln.startswith("REFUSED ")]
     return [("GRAPH-SINK", "graph", ln) for ln in (refused or [next((ln for ln in reversed(lines) if ln.strip()), "the scanner exited non-zero and printed nothing")])]
@@ -3493,6 +3511,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         raise _Unreadable(f"SRC_ROOT is not a directory: {source_check}")
     if os.path.exists(out) and not os.path.isdir(out):
         raise _Unreadable(f"OUT_DIR is not a directory: {out}")
+    if graph_src is not None and not os.path.isdir(graph_src):   # a folder the caller NAMED must be there; the default one may be absent
+        raise _Unreadable(f"--graph-src is not a directory: {graph_src}")
     sj = _read_json(strings, "strings file")
     if os.path.isdir(out) and os.listdir(out) and not force:
         return _refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files; a fresh build would mix two builds; "
@@ -3634,7 +3654,9 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
     for ln in count_lines:
         print(ln)
     print(f"titles: {sum(1 for _g_, has in census if has)} of {len(census)} cards that need one")
-    print(f"graph assets: {len(a_files)} files, {sum(len(v) for v in a_files.values())} bytes" if a_files else GRAPH_NO_ASSETS_LINE)
+    src_used = GRAPH_SRC if graph_src is None else graph_src
+    print(f"graph assets: {len(a_files)} files, {sum(len(v) for v in a_files.values())} bytes" if a_files
+          else (GRAPH_NO_ASSETS_LINE if not os.path.isdir(src_used) else f"graph assets: none (no .js or .css file under {src_used})"))
     for ln in formula_listing(flog):   # a formula outside the subset stays as written, an unpaired dollar sign stays literal: listed, never refused
         print(ln)
     for ln in candidate_lines(cands) + code_lines(spans):   # S2, S3: what the surface still holds that looks like a formula, and its code spans: listed
@@ -12134,17 +12156,19 @@ def _selftest_cases():
     def ga_graph(b):
         return sorted(k for k in b.files if k.startswith("graph/") and not k.startswith("graph/step/"))
 
-    @case("GA1", "G2a A1: a source directory that is absent, or that holds no .js or .css outside test/ (only an .md and a test file, and no shell.html), gives NO assets: "
-                 "index.json `assets` is {}, the build is the one of today (every file byte-equal to a build with the pinned default), exit 0, and the run "
-                 "prints the one line `graph assets: none (no viewer/graph directory)` once; the constant GRAPH_SRC is <repo root>/viewer/graph, the parent "
-                 "of the tools folder")
+    @case("GA1", "G2a A1: the DEFAULT folder absent gives NO assets: index.json `assets` is {}, the build is the one of today (every file byte-equal to a build with the "
+                 "pinned default), exit 0, and the run prints the one line `graph assets: none (no viewer/graph directory)` once; an existing folder that holds no .js or .css "
+                 "outside test/ (only an .md and a test file; G2b: no shell.html, a shell with no assets would be a page) gives the same build and a DIFFERENT line, `graph assets: none (no .js or .css file under <dir>)`, "
+                 "never the first; the constant GRAPH_SRC is <repo root>/viewer/graph, the parent of the tools folder")
     def _():
         with tempfile.TemporaryDirectory() as d:
             docs = ga_src(d, {"engine/INTERFACE.md": "# i\n", "engine/test/x.js": "x\n"})
-            runs = [_build(graph_src=os.path.join(d, "absent")), _build(graph_src=docs), _build()]
-        return _eq(([(r.rc, r.js("graph/index.json")["assets"], r.out.splitlines().count(GA_LINE_NONE), r.files == _base().files) for r in runs],
+            runs = [_build(), _build(graph_src=docs)]
+            line = "graph assets: none (no .js or .css file under " + docs + ")"
+            counts = [(r.out.splitlines().count(GA_LINE_NONE), r.out.splitlines().count(line)) for r in runs]
+        return _eq(([(r.rc, r.js("graph/index.json")["assets"], r.files == _base().files) for r in runs], counts,
                     os.path.relpath(_GRAPH_SRC_AT_START, os.path.dirname(_HERE)), ga_graph(runs[0])),
-                   ([(0, {}, 1, True)] * 3, os.path.join("viewer", "graph"), ["graph/index.json"]))
+                   ([(0, {}, True)] * 2, [(1, 0), (0, 1)], os.path.join("viewer", "graph"), ["graph/index.json"]))
 
     @case("GA2", "G2a A2: a source directory with engine/index.js, page/app.js, graph.css, engine/INTERFACE.md, engine/test/x.js (holding a sink token: not read) and "
                  "shell.html: the assets are exactly the three .js/.css files outside test/, sorted, keyed by the path under graph/ (no `graph/` prefix), each "
@@ -12211,10 +12235,15 @@ def _selftest_cases():
     class GaScanner:
         """A stand-in for the page code's scanner, to show the builder obeys the scanner it calls (it has no list of its own): it records the tree it is
         given and answers with the exit code and the text it was built with."""
-        def __init__(self, rc, text=""):
-            self.rc, self.text, self.tree, self.d = rc, text, None, None
+        def __init__(self, rc, text="", selftest=0):
+            self.rc, self.text, self.tree, self.d, self.selftest, self.calls = rc, text, None, None, selftest, []
+
+        def selftest_quiet(self):
+            self.calls.append("selftest")
+            return self.selftest
 
         def run(self, d, out):
+            self.calls.append("run")
             self.d = d
             self.tree = sorted(os.path.relpath(os.path.join(b, n), d).replace(os.sep, "/") for b, _ds, ns in os.walk(d) for n in ns)
             out.write(self.text)
@@ -12228,8 +12257,10 @@ def _selftest_cases():
     def _():
         a = {"engine/index.js": b"el.innerHTML = 1;\n", "page/app.js": b"ok\n"}
         clean = {"engine/index.js": b"ok\n"}
-        refusing, passing, nothing, silent, rec = (GaScanner(1, "REFUSED zz.js:9 x\n1 files checked, 1 refused, 0 skipped as test files\n"), GaScanner(0),
-                                                 GaScanner(1, "CHECKED NOTHING: no file under d (0 skipped as test files)\n"), GaScanner(1), GaScanner(0))
+        refusing, passing, nothing, silent, rec = (GaScanner(1, "REFUSED zz.js:9 x\n1 files checked, 1 refused, 0 skipped as test files\n"),
+                                                 GaScanner(0, "2 files checked, 0 refused, 0 skipped as test files\n"),
+                                                 GaScanner(1, "CHECKED NOTHING: no file under d (0 skipped as test files)\n"), GaScanner(1),
+                                                 GaScanner(0, "3 files checked, 0 refused, 0 skipped as test files\n"))
         r1 = _graph_sink_errors(clean, None, scanner=refusing)
         r2 = _graph_sink_errors(a, None, scanner=passing)
         r3 = _graph_sink_errors(clean, None, scanner=nothing)
@@ -12797,6 +12828,103 @@ def _selftest_cases():
         done = lambda t: t.replace("{{S:title}}", "T &lt;1&gt;").replace("{{S:key}}", "K &amp; 2").replace("{{S:close}}", "C").replace("{{S:map}}", "M")
         return _eq((rc, lines, page.startswith(done(pre)), page.endswith(done(post)), "<h1>R&amp;D T &lt;1&gt; &copy; K &amp; 2 &#65;</h1>\n<p><span>x</span>C\nM</p>" in page),
                    (0, [], True, True, True))
+
+    @case("GA19", "G2a the gate and the copy rule agree on the scanner's skipped folders: a .js or .css under a `__pycache__` folder (any depth) is refused, "
+                  "`GRAPH-ASSET <path> skipped-dir`, by the folder names the scanner itself prunes (its SKIP_DIRS, minus `test`, which is skipped without refusal), "
+                  "and still so with the name rule loosened to any path; and a structural assert in the gate: a scanner that reports fewer files checked than the "
+                  "tree holds (assets plus shell.html) is `GRAPH-SINK scanner checked N files but M were assets`, one that prints no count the same, a right count passes")
+    def _():
+        def refuse(files):
+            with tempfile.TemporaryDirectory() as d:
+                e, a, _s = _graph_assets(ga_src(d, files))
+            return e, sorted(a)
+        base = {"engine/index.js": "x\n"}
+        loose = re.compile(r".+")
+        with _patched("GRAPH_ASSET_NAME", loose):
+            deep_loose = refuse(dict(base, **{"engine/__pycache__/x.js": "y\n"}))
+            root_loose = refuse(dict(base, **{"__pycache__/x.js": "y\n"}))
+        two = {"engine/index.js": b"ok\n", "page/app.js": b"ok\n"}
+        skip_one = GaScanner(0, "1 files checked, 0 refused, 0 skipped as test files\n")
+        none_printed = GaScanner(0, "")
+        right = GaScanner(0, "3 files checked, 0 refused, 0 skipped as test files\n")
+        with_shell = GaScanner(0, "2 files checked, 0 refused, 0 skipped as test files\n")
+        over = GaScanner(0, "3 files checked, 0 refused, 0 skipped as test files\n")
+        extra = {"engine/index.js": "x\n", "engine/node_modules/y.js": "y\n"}
+        gjc.SKIP_DIRS.add("node_modules")   # the scanner's own table is the one the builder reads: a folder added to it there is refused here
+        try:
+            from_table = refuse(extra)
+        finally:
+            gjc.SKIP_DIRS.discard("node_modules")
+        return _eq((refuse(dict(base, **{"engine/__pycache__/x.js": "y\n"})), refuse(dict(base, **{"__pycache__/x.js": "y\n"})),
+                    refuse(dict(base, **{"engine/__pycache__/x.pyc": "y\n"})), refuse(dict(base, **{"engine/test/x.js": "y\n"})), deep_loose, root_loose,
+                    _graph_sink_errors(two, None, scanner=skip_one), _graph_sink_errors(two, b"<p>s</p>\n", scanner=with_shell),
+                    _graph_sink_errors(two, None, scanner=none_printed), _graph_sink_errors(two, b"<p>s</p>\n", scanner=right), sorted(gjc.SKIP_DIRS),
+                    _graph_sink_errors(two, None, scanner=over), from_table, refuse(extra)),
+                   (([("GRAPH-ASSET", "engine/__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
+                    ([("GRAPH-ASSET", "__pycache__/x.js", "skipped-dir")], ["engine/index.js"]), ([], ["engine/index.js"]), ([], ["engine/index.js"]),
+                    ([("GRAPH-ASSET", "engine/__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
+                    ([("GRAPH-ASSET", "__pycache__/x.js", "skipped-dir")], ["engine/index.js"]),
+                    [("GRAPH-SINK", "graph", "scanner checked 1 files but 2 were assets")],
+                    [("GRAPH-SINK", "graph", "scanner checked 2 files but 3 were assets")],
+                    [("GRAPH-SINK", "graph", "scanner checked 0 files but 2 were assets")], [], ["__pycache__", "test"],
+                    [("GRAPH-SINK", "graph", "scanner checked 3 files but 2 were assets")],
+                    ([("GRAPH-ASSET", "engine/node_modules/y.js", "skipped-dir")], ["engine/index.js"]), ([], ["engine/index.js", "engine/node_modules/y.js"])))
+
+    @case("GA20", "G2a an EXPLICIT --graph-src that is not a directory (absent, or a file) is exit 2, a message on stderr naming it, nothing on stdout and OUT_DIR not "
+                  "written, through a build and through main(); the default folder being absent is not an error (GA1)")
+    def _():
+        with tempfile.TemporaryDirectory() as d:
+            absent = os.path.join(d, "absent")
+            afile = os.path.join(d, "afile")
+            _put(afile, "x")
+            runs = [_build(graph_src=absent), _build(graph_src=afile)]
+            p = _plant(os.path.join(d, "m"))
+            o, e = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(o), contextlib.redirect_stderr(e):
+                rc = main(["build_site.py", p["notes"], p["outline"], p["decls"], p["strings"], p["out"], "--graph-src", absent], check=lambda: 0)
+            made = os.path.exists(p["out"])
+        return _eq(([(r.rc, r.out, r.existed, r.err.strip() == "build_site: --graph-src is not a directory: " + w) for r, w in zip(runs, (absent, afile))],
+                    rc, o.getvalue(), e.getvalue().strip() == "build_site: --graph-src is not a directory: " + absent, made),
+                   ([(2, "", False, True)] * 2, 2, "", True, False))
+
+    @case("GA21", "G2a a non-regular file named *.js or *.css (a FIFO) is refused, `GRAPH-ASSET <path> not-regular`, and so is a FIFO named shell.html at the root, "
+                  "without ever being opened (opening one with no writer blocks): the function runs in a child interpreter with a 10-second guard, so a failing "
+                  "implementation fails the case and does not hang the suite; a FIFO with another name (x.md) or under test/ is ignored")
+    def _():
+        if not hasattr(os, "mkfifo"):
+            raise _SkipCase("no mkfifo here")
+        code = ("import importlib.util, json, sys\n"
+                "s = importlib.util.spec_from_file_location('bs', sys.argv[1]); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)\n"
+                "e, a, sh = m._graph_assets(sys.argv[2])\n"
+                "print(json.dumps([e, sorted(a), sh is None]))\n")
+
+        def go(fifos):
+            with tempfile.TemporaryDirectory() as d:
+                src = ga_src(d, {"engine/index.js": "x\n"})
+                for name in fifos:
+                    os.makedirs(os.path.dirname(os.path.join(src, *name.split("/"))), exist_ok=True)
+                    os.mkfifo(os.path.join(src, *name.split("/")))
+                try:
+                    r = subprocess.run([sys.executable, "-c", code, os.path.abspath(__file__), src], capture_output=True, text=True, timeout=10)
+                except subprocess.TimeoutExpired:
+                    return "hung"
+                return json.loads(r.stdout) if r.returncode == 0 else r.stderr[-200:]
+        return _eq((go(["engine/p.js"]), go(["graph.css"]), go(["shell.html"]), go(["engine/p.md", "engine/test/q.js"])),
+                   ([[["GRAPH-ASSET", "engine/p.js", "not-regular"]], ["engine/index.js"], True],
+                    [[["GRAPH-ASSET", "graph.css", "not-regular"]], ["engine/index.js"], True],
+                    [[["GRAPH-ASSET", "shell.html", "not-regular"]], ["engine/index.js"], True],
+                    [[], ["engine/index.js"], True]))
+
+    @case("GA22", "G2a the gate runs the scanner's own quiet self-test BEFORE its run: a scanner whose self-test fails refuses the build, `GRAPH-SINK graph scanner "
+                  "self-test failed`, and its run is never called; one whose self-test passes goes on to run (self-test first, run second); the real scanner's "
+                  "entry is selftest_quiet and returns 0")
+    def _():
+        two = {"engine/index.js": b"ok\n"}
+        failing = GaScanner(0, "1 files checked, 0 refused, 0 skipped as test files\n", selftest=1)
+        passing = GaScanner(0, "1 files checked, 0 refused, 0 skipped as test files\n")
+        return _eq((_graph_sink_errors(two, None, scanner=failing), failing.calls, _graph_sink_errors(two, None, scanner=passing), passing.calls,
+                    gjc.selftest_quiet()),
+                   ([("GRAPH-SINK", "graph", "scanner self-test failed")], ["selftest"], [], ["selftest", "run"], 0))
 
     # G1: the older cases below plant data the graph cannot hold, to test something else: a premise on a step that is neither a sibling nor the step's own
     # child (the premises line, PL*, PRM*), or a root kind outside the symbol table (the proof facts, PRK*, NONE1, F41b, F49*). The graph refuses both (GRAPH-EDGE,
