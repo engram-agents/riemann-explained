@@ -800,6 +800,8 @@ MUTATIONS = {
                    "allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
     "M-t": ("A27", "loosen the repository constant of the credits page's outbound-link check to `https://github.com/` (the repository is no longer the one `lsernau/grh-lean`): the allowed set is no longer the "
                    "one repository's, so A27 is red; no other case builds a page with an outbound link, so every other A-case stays green", ("A27",)),
+    "M-v": ("A27", "drop the dot-segment check of the credits page's outbound-link check (A27b: a tail with a `.` or `..` segment is accepted again; the other tail checks stay): a link such as "
+                   "`.../tree/<PIN>/../x` is then allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
 }
 
 
@@ -829,8 +831,9 @@ MUTATION_EDITS = {
             '    manifest = _manifest_bytes({k: v for k, v in files.items() if k != "credits/index.html"}, {"notes": pin}, {"steps": len(steps)}, None, None)\n'),
     "M-q": ('_ref_problems(cpage, names, CREDITS_DIR, CREDITS_REL, link_pin=pin)', '_ref_problems(cpage, names, "", CREDITS_REL, link_pin=pin)'),   # (A27 added the keyword; the same wrong implementation)
     "M-r": ('static_problems(cpage, "") + element_problems(cpage) + head_meta_problems(cpage)', 'static_problems(cpage, "") + [] + head_meta_problems(cpage)'),
-    "M-s": ('return commit == pin and (sep == "/" or kind == "tree/")', 'return bool(_PIN.fullmatch(commit)) and (sep == "/" or kind == "tree/")'),
+    "M-s": ('if not (commit == pin and (sep == "/" or kind == "tree/")):', 'if not (bool(_PIN.fullmatch(commit)) and (sep == "/" or kind == "tree/")):'),   # (A27b moved the `return` of this test into an `if`; the same wrong implementation)
     "M-t": ('CREDITS_REPO = "https://github.com/lsernau/grh-lean/"', 'CREDITS_REPO = "https://github.com/"'),
+    "M-v": ('return not any(g in (".", "..") for g in segs) and "" not in segs[:-1]', 'return "" not in segs[:-1]'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
 
