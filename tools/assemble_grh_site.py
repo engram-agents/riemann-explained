@@ -2171,6 +2171,18 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                               ("object data", f'<object data="{url}"></object>'), ("video poster", f'<video poster="{url}"></video>'), ("img srcset", f'<img srcset="{url} 1x">'),
                               ("link href", f'<link rel="x" href="{url}">'), ("p href", f'<p href="{url}">x</p>')):
                 note("in-process refused: " + what, _eq(refs("<p>" + tag + "</p>"), want))
+            # A27b: the tail of an allowed link cannot climb out of the pinned repository (in-process through the same call)
+            for what, ref in (("tail: dot-dot", repo + "tree/" + PIN + "/.."), ("tail: dot-dot then a name", repo + "tree/" + PIN + "/../x"),
+                              ("tail: blob climbing out", repo + "blob/" + PIN + "/a/../../../other/x"), ("tail: dot segment", repo + "tree/" + PIN + "/./x"),
+                              ("tail: encoded dots", repo + "tree/" + PIN + "/%2e%2e/x"), ("tail: encoded dots, upper case", repo + "tree/" + PIN + "/%2E%2E/x"),
+                              ("tail: encoded slash", repo + "tree/" + PIN + "/a%2fb"), ("tail: encoded backslash", repo + "tree/" + PIN + "/a%5cb"),
+                              ("tail: backslash dots", repo + "tree/" + PIN + "/..\\..\\x"), ("tail: empty segment", repo + "tree/" + PIN + "//x"),
+                              ("tail: dot-dot then a query", repo + "tree/" + PIN + "/..?q=1"), ("tail: dot-dot then a fragment", repo + "tree/" + PIN + "/..#f")):
+                note("in-process refused: " + what, _eq(refs(f'<p><a href="{ref}">x</a></p>'), [f"ASM-PAGE credits/index.html: {ref} absolute"]))
+            for what, ref in (("blob file", repo + "blob/" + PIN + "/grh/ATTRIBUTION.md"), ("blob file and a fragment", repo + "blob/" + PIN + "/grh/ATTRIBUTION.md#L10"),
+                              ("tree path and a query", repo + "tree/" + PIN + "/grh?x=1"), ("the exact tree URL", repo + "tree/" + PIN),
+                              ("dots inside a segment", repo + "blob/" + PIN + "/a.b/c..d/e")):
+                note("in-process allowed: " + what, _eq(refs(f'<p><a href="{ref}">x</a></p>'), []))
         return (not fails, "; ".join(fails))
 
     for mid in MUTATIONS:
