@@ -314,7 +314,9 @@ def main(argv):
 # ==== self-test ====
 # Everything above this marker is the tool; everything below is the self-test. Case A16 reads the text above the marker (and only that) for anything that could execute what the tool reads.
 import ast
+import contextlib
 import hashlib
+import io
 import inspect
 import json
 import shutil
@@ -566,7 +568,7 @@ def _limit_writes(n):
 
 # ---------------------------------------------------------------- the mutation controls: exact specifications, for phase 2 to turn into live checks
 
-CLAUSES = tuple(f"A{i}" for i in range(1, 19))
+CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A19", "A19-call")   # A7b is four cases, one per check the builder's `_run` applies; A19 is two
 MUTATIONS = {
     "M-a": ("A3", "in the pin stage, skip the comparison of `commit` with --pin for every step/<id>.json (index.json, spine.json and uses.json are still compared)", ("A3",)),
     "M-b": ("A1", "in the data stage, read a step/<id>.json that is a symlink as if it were a regular file (follow it; no `symlink` refusal for it). Every other symlink refusal "
@@ -580,6 +582,10 @@ MUTATIONS = {
     "M-h": ("A7", "call `_graph_page` with `section_attrs=()` so the section carries no `data-page-feedback`", ("A7", "A8")),
     "M-i": ("A5", "take the shell bytes from the third return value of `_graph_assets(graph_src)` when it is not None (and from --shell only when it is None)", ("A5",)),
     "M-j": ("A18", "fill the readings front line with the list's length plus one (`str(len(rows) + 1)` instead of `str(len(rows))`): the written line is then not `template.replace(\"{n}\", str(len(list)))`", ("A18",)),
+    "M-k": ("A7b-element", "skip `graph_element_problems` on the assembled page (the call is dropped from the checks of `_stage_page`; static, head and surface checks stay): the element call-site case "
+                           "A7b-element is red, A7b-static, A7b-head and A7b-surface and every other A-case stay green", ("A7b-element",)),
+    "M-l": ("A19", "skip the static check of the data files (no call of `_graph_static_problems` over the JSON files about to be written): both A19 cases are red (the refusal of a token in "
+                   "index, spine, uses and a step file, and the call-site case), every other A-case stays green", ("A19", "A19-call")),
 }
 
 
@@ -610,8 +616,10 @@ def _mutation_case(mid):
     primary, change, red = MUTATIONS[mid]
     green = tuple(c for c in CLAUSES if c not in red)
     bad = [c for c in red if c not in CLAUSES]
-    if bad or primary not in red or not red or set(red) | set(green) != set(CLAUSES) or set(MUTATION_EDITS) != set(MUTATIONS):
+    if bad or primary not in red or not red or set(red) | set(green) != set(CLAUSES) or set(MUTATION_EDITS) - set(MUTATIONS):
         return False, f"the specification of {mid} is malformed: {bad}"
+    if mid not in MUTATION_EDITS:   # a specification written before its live check (the cases come first)
+        raise _SkipCase(f"not yet a live check. WRONG IMPLEMENTATION: {change}. MUST GO RED (and only these): {', '.join(red)}. MUST STAY GREEN: {', '.join(green)}")
     old, new = MUTATION_EDITS[mid]
     with open(TOOL, encoding="utf-8") as f:
         src = f.read()
@@ -1224,6 +1232,211 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                 if not ok:
                     return ok, f"the readings_* page keys, strings file holds {sorted(in_strings)}: " + why
         return True, ""
+
+    # ---- phase 3: A7b (the four checks are CALLED), A11b (no absolute refs), A19 (the static check over the data files). IN-PROCESS: the tool is loaded as a module under a private name, the
+    # names it binds at import (`graph_element_problems`, ...) are replaced on THAT module for the length of one `run(opts)` call and restored after.
+    tool_mod = []
+
+    def tool_module():
+        if not tool_mod:
+            key = "_asm_under_test"
+            spec = importlib.util.spec_from_file_location(key, TOOL)
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[key] = mod
+            keep, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+            try:
+                spec.loader.exec_module(mod)
+            finally:
+                sys.dont_write_bytecode = keep
+            tool_mod.append(mod)
+        return tool_mod[0]
+
+    def inproc(w, patch, flag=False):
+        """(exit code, stdout lines) of `run(opts)` called in this process with the module-level names in `patch` replaced by stand-ins (and CODE_ON_SURFACE_REFUSES forced to `flag`), all restored."""
+        m = tool_module()
+        absent = [k for k in patch if not hasattr(m, k)]
+        if absent:
+            raise _Absent("behaviour absent: the tool binds no name " + ", ".join(absent))
+        opts = m._parse(_argv(w))
+        saved, flag_was, buf = {k: getattr(m, k) for k in patch}, m.bs.CODE_ON_SURFACE_REFUSES, io.StringIO()
+        try:
+            for k, v in patch.items():
+                setattr(m, k, v)
+            m.bs.CODE_ON_SURFACE_REFUSES = flag
+            with contextlib.redirect_stdout(buf):
+                rc = m.run(opts)
+        finally:
+            for k, v in saved.items():
+                setattr(m, k, v)
+            m.bs.CODE_ON_SURFACE_REFUSES = flag_was
+        return rc, buf.getvalue().splitlines()
+
+    def a7b_refuses(fname, stand_in, want, flag=False):
+        """(a) a stand-in returning one problem: `run` returns 1, prints one ASM-PAGE line carrying it, writes nothing (no OUT_DIR, no sibling folder)."""
+        _need_pr_c()
+        with _tmp() as d:
+            w = _world(d)
+            before = sorted(os.listdir(d))
+            rc, lines = inproc(w, {fname: stand_in}, flag)
+            return _eq((rc, len(lines), bool(lines) and lines[0].startswith("ASM-PAGE ") and want in lines[0], os.path.exists(w["out"]), sorted(os.listdir(d))), (1, 1, True, False, before))
+
+    def a7b_records(fname, flag=False):
+        """(b) a recording stand-in (the real function inside) is handed, once, the page that is written: the FULL page, not the shell."""
+        with _tmp() as d:
+            w = _world(d)
+            m, seen = tool_module(), []
+            real = getattr(m, fname)
+
+            def rec(*a, **k):
+                seen.append(a[0])
+                return real(*a, **k)
+            rc, lines = inproc(w, {fname: rec}, flag)
+            if rc != 0:
+                return False, f"{fname} recording run: exit {rc}, lines {lines!r}"
+            page = open(os.path.join(w["out"], "index.html"), encoding="utf-8").read()
+            return _eq((seen == [page], '<section id="graph-about"' in page, ABOUT_TEXT in page, page == SHELL), (True, True, True, False))   # the attribute itself is A7's and A8's business
+
+    @case("A7b-element", "A7b, the element check is CALLED (in-process call-site case): a stand-in `graph_element_problems` that returns one problem makes `run` return 1 with one `ASM-PAGE` line "
+                         "carrying it and nothing written (no OUT_DIR, no sibling folder); a recording stand-in is handed the FULL assembled page that is written, never the shell")
+    def _():
+        ok, why = a7b_refuses("graph_element_problems", lambda page: ["ZZ-ELEMENT"], "ZZ-ELEMENT")
+        return (ok, "a stand-in that returns one problem: " + why) if not ok else a7b_records("graph_element_problems")
+
+    @case("A7b-static", "A7b, the static check is CALLED on the page: a stand-in `static_problems` that returns one problem makes `run` return 1 with one `ASM-PAGE` line carrying it, nothing written; a "
+                        "recording stand-in is handed the FULL assembled page that is written, never the shell")
+    def _():
+        ok, why = a7b_refuses("static_problems", lambda page, js: ["ZZ-STATIC"], "ZZ-STATIC")
+        return (ok, "a stand-in that returns one problem: " + why) if not ok else a7b_records("static_problems")
+
+    @case("A7b-head", "A7b, the head check is CALLED: a stand-in `head_meta_problems` that returns one problem makes `run` return 1 with one `ASM-PAGE` line carrying it, nothing written; a recording "
+                      "stand-in is handed the FULL assembled page that is written, never the shell")
+    def _():
+        ok, why = a7b_refuses("head_meta_problems", lambda page: ["ZZ-HEAD"], "ZZ-HEAD")
+        return (ok, "a stand-in that returns one problem: " + why) if not ok else a7b_records("head_meta_problems")
+
+    @case("A7b-surface", "A7b, the code-on-surface path is CALLED (`surface_scan` then `code_spans`, CODE_ON_SURFACE_REFUSES forced True and restored): a stand-in `code_spans` that returns one span makes "
+                         "`run` return 1 with one `ASM-PAGE CODE-ON-SURFACE` line carrying it, nothing written; a recording `surface_scan` is handed the FULL assembled page that is written, and "
+                         "the recording `code_spans` is handed what `surface_scan` returned for it")
+    def _():
+        ok, why = a7b_refuses("code_spans", lambda codes: [("zz-card", "ZZ-CODE", 2)], "CODE-ON-SURFACE index.html:zz-card ZZ-CODE x2", flag=True)
+        if not ok:
+            return ok, "a stand-in that returns one span: " + why
+        ok, why = a7b_records("surface_scan", flag=True)
+        if not ok:
+            return ok, why
+        with _tmp() as d:
+            w = _world(d)
+            m, spans = tool_module(), []
+            real_scan, real_spans = m.surface_scan, m.code_spans
+
+            def rec_spans(codes):
+                spans.append(codes)
+                return real_spans(codes)
+            rc, lines = inproc(w, {"code_spans": rec_spans}, flag=True)
+            if rc != 0:
+                return False, f"recording run with the flag True: exit {rc}, lines {lines!r}"
+            page = open(os.path.join(w["out"], "index.html"), encoding="utf-8").read()
+            return _eq(spans == [real_scan(page)[1]], True)
+
+    @case("A11b", "no absolute refs: in the written index.html every `href`, `src` and `action` is an in-page #fragment, an http(s):// link, or a RELATIVE path (no leading `/`, no `//`, no other "
+                  "scheme, no `..` segment) that exists as a file of the tree; and a shell with an absolute script src makes the builder's page function refuse, which arrives as `ASM-PAGE` with "
+                  "nothing written (the property is the builder's; this case shows the tool does not bypass it)")
+    def _():
+        _need_pr_c()
+
+        class R(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.refs = []
+
+            def handle_starttag(self, tag, attrs):
+                self.refs += [(tag, k, v) for k, v in attrs if k in ("href", "src", "action")]
+        with _tmp() as d:
+            w = _world(d, big=True)
+            tree = _ok_run(w)[0]
+            p = R()
+            p.feed(tree["index.html"].decode("utf-8"))
+            bad = []
+            for tag, k, v in p.refs:
+                if v.startswith("#") or re.match(r"https?://", v, re.I):
+                    continue
+                path = re.split(r"[?#]", v, maxsplit=1)[0]
+                if not v or v.startswith("/") or re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", v) or ".." in path.split("/") or path not in tree:
+                    bad.append((tag, k, v))
+            ok, why = _eq((bad, ("link", "href", "graph.css") in p.refs, ("script", "src", "page/app.js") in p.refs), ([], True, True))
+            if not ok:
+                return ok, "the refs of the written page: " + why
+        with _tmp() as d:
+            shell = SHELL.replace('src="page/app.js"', 'src="/page/app.js"')
+            w = _world(d, shell=shell)
+            errs, _p = _graph_page(shell.encode("utf-8"), set(w["assets"]), _asm_strings(), "<p>" + bs._e(ABOUT_TEXT) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
+            want = ["ASM-PAGE " + " ".join(e[1:]) for e in errs]
+            if not want:
+                raise _FixtureError("the builder accepts a shell with an absolute script src")
+            return _refused(w, _argv(w), want, "an absolute script src: the builder's own refusal, as ASM-PAGE")
+
+    def with_token(raw):
+        """The same JSON file with one more key whose text the static check refuses (the token is the builder's own: `fetch(`, from its `_API` table), in the builder's serialisation."""
+        obj = json.loads(raw.decode("utf-8"))
+        obj["zz_note"] = "call fetch(x) here"
+        return _graph_bytes({"x": obj})["x"]
+
+    @case("A19", "the static check over the DATA files: a token the static check refuses (the builder's own `fetch(`), placed in index.json, spine.json, uses.json and a step file in turn, is refused "
+                 "`ASM-STATIC <token> found in graph/<file>` (the builder's own words, keyed as the builder keys them) naming its file, exit 1, nothing written; every file's problems are reported "
+                 "together; this stage comes after the pin stage and BEFORE the assets stage (a token and an asset fault together: only the token is reported); the clean world still builds")
+    def _():
+        _need_pr_c()
+        problem = static_problems("", '"call fetch(x) here"')
+        if problem != ["fetch("]:
+            raise _FixtureError(f"the static check's refusal of the planted text is {problem!r}, not ['fetch(']")
+        with _tmp() as d:
+            w = _world(d)
+            step = _step_names(w["files"])[0]
+            four = ("index.json", "spine.json", "uses.json", step)
+            for rel in four:   # one file in turn
+                _write_tree(w["data"], {rel: with_token(w["files"][rel])})
+                good, why = _refused(w, _argv(w), [f"ASM-STATIC fetch( found in graph/{rel}"], f"the token in {rel} alone")
+                if not good:
+                    return good, why
+                _write_tree(w["data"], {rel: w["files"][rel]})
+            for rel in four:   # all four together: every file's problems reported; and an asset fault, which this stage hides
+                _write_tree(w["data"], {rel: with_token(w["files"][rel])})
+            os.symlink(os.path.join(w["gsrc"], "graph.css"), os.path.join(w["gsrc"], "engine", "link.js"))
+            if not _graph_assets(w["gsrc"])[0]:
+                raise _FixtureError("the planted asset fault is not a fault")
+            good, why = _refused(w, _argv(w), [f"ASM-STATIC fetch( found in graph/{rel}" for rel in four], "the token in all four files, and an asset fault that the static stage hides")
+            if not good:
+                return good, why
+        with _tmp() as d:   # the clean world still builds
+            w = _world(d, big=True)
+            return (True, "") if _ok_run(w)[0] else (False, "a clean world did not build")
+
+    @case("A19-call", "the static check over the data files is CALLED (in-process call-site case): a stand-in `_graph_static_problems` that returns one problem makes `run` return 1 with exactly "
+                      "`ASM-STATIC <token> <where>` of that problem and nothing written; a recording stand-in is handed, once, exactly the JSON files that are written (index.json WITH its assets, "
+                      "spine.json, uses.json, every step file), keyed `graph/<name>` -> bytes")
+    def _():
+        _need_pr_c()
+        with _tmp() as d:
+            w = _world(d)
+            before = sorted(os.listdir(d))
+            rc, lines = inproc(w, {"_graph_static_problems": lambda files: [("PAGE-STATIC", "ZZ-TOKEN", "found in graph/zz")]})
+            ok, why = _eq((rc, lines, os.path.exists(w["out"]), sorted(os.listdir(d))), (1, ["ASM-STATIC ZZ-TOKEN found in graph/zz"], False, before))
+            if not ok:
+                return ok, "a stand-in that returns one problem: " + why
+        with _tmp() as d:
+            w = _world(d, big=True)
+            m, seen = tool_module(), []
+            real = m._graph_static_problems
+
+            def rec(files):
+                seen.append(dict(files))
+                return real(files)
+            rc, lines = inproc(w, {"_graph_static_problems": rec})
+            if rc != 0:
+                return False, f"recording run: exit {rc}, lines {lines!r}"
+            tree = _read_tree(w["out"])[0]
+            want = {"graph/" + rel: data for rel, data in tree.items() if rel.endswith(".json") and rel != "manifest.json"}
+            return _eq((seen == [want], len(want), b'"assets"' in want["graph/index.json"]), (True, 3 + len(_step_names(w["files"])), True))
 
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(
