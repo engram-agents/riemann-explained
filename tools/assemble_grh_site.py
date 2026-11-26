@@ -1258,7 +1258,7 @@ def _selftest_cases():
     @case("A16", "never executes anything it reads: no import, eval, subprocess or shell on DATA, strings, shell or assets. STATIC: the text of the tool above the self-test marker passes an "
                  "ALLOWLIST scan (imports exactly importlib.util, json, os, re, sys and `from html.parser import HTMLParser`, unaliased; no use of eval, exec, compile, __import__, getattr, "
                  "setattr, delattr, vars, globals or locals; no attribute that runs a program; no attribute of os or os.path beyond the ones the tool uses; importlib and `exec_module` only inside `_load`), and "
-                 "the scan has its own positive controls (small sources, each of which it must FLAG: a scan that flags nothing fails here) and negative controls (five it must pass). "
+                 "the scan has its own positive controls (small sources, each of which it must FLAG: a scan that flags nothing fails here) and negative controls (the sources it must pass). "
                  "DYNAMIC: lures (code that would create a file) in the strings values, the shell and a step file of a world with a VALID pin create no file, the run reaches the page stage "
                  "and builds, and its tree differs from the same world without lures only where the lures are text")
     def _():
