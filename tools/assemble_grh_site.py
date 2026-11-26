@@ -611,6 +611,8 @@ MUTATION_EDITS = {
     "M-h": ('"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)', '"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=())'),
     "M-i": ('    shell_bytes = raws["shell"]\n', '    shell_bytes = _graph_src_shell if _graph_src_shell is not None else raws["shell"]\n'),
     "M-j": ('**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows)))}', '**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows) + 1))}'),
+    "M-k": ('static_problems(page, "") + graph_element_problems(page) + head_meta_problems(page)', 'static_problems(page, "") + [] + head_meta_problems(page)'),
+    "M-l": ('    lines = ["ASM-STATIC " + " ".join(e[1:]) for e in _graph_static_problems(json_files)]', '    lines = []'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
 
