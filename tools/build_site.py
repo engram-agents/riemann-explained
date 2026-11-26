@@ -547,6 +547,21 @@ written the assembled tree (assets, and shell.html under its own name) goes thro
 GRAPH_RUNTIME_KEYS (parts_n holds {n} as written), checked as an exact set (`GRAPH-STRINGS <key> missing | is not a key the page reads`). A `GRAPH-COUNT` also names an asset whose file or
 sha256 is not the one listed. `role_named_statement` is never in `strings` (20 keys on every build; the role word is resolved into the card). GRAPH_SHORT_MAX is nm.SHORT_MAX. GR5 and GR21 read tools/fixtures/outline_faces.json, not the live outline (GA18).
 
+G2b THE GRAPH PAGE DOCUMENT (cases GP1 to GP10). With a shell.html in the graph source folder the build writes `graph/index.html`: the shell with its tokens replaced, in the manifest like every
+output (no shell.html, no page; the shell itself is neither copied nor an asset). `{{S:key}}`, in element content only, becomes the HTML-escaped strings value of one of the eleven GRAPH_SHELL_KEYS (title,
+sentence, about_link, tap_hint, map, list, show_all, key, close, fallback_sentence, fallback_link: keys of site/strings.json and of TEXT_KEYS, not of index.json `strings`); the wording file's link line is
+about_link and tap_hint, and the separator between them is the shell's own CSS. The one `{{CARDS}}`, in the content of a div, main, section or body, becomes the CARDS MARKUP: `<section id="graph-about">`
+holding the list page's header without its h1 (first screen, edition note, facts, mapped line, the notes about the whole) and then the list page's root_only_note_single sentence in ONE `p.roots-only`, the
+section's last child; then the list page's main (the h2 and the chain, every card byte for byte, no comment markup). The list page and the graph page are made from ONE rendering: `_page_parts` returns the
+header's inner html and the main's inner html, `_assemble_page` puts the list page together from them and `_render_page(..., parts_out)` hands them on, so index.html is byte-equal to before (ED4, UD12, GP2).
+Refused, `GRAPH-PAGE <reason>`, exit 1, nothing written (`_graph_page`): no doctype, no charset meta; {{CARDS}} 0 or 2 or more times, or not element content; an unknown {{S:key}} (a key of the strings file
+that is not a shell key is unknown too); a token in an attribute or inside a script or style; a `{{` left, in the shell or brought by a value; a script that is not type="module" with a relative `src` that is a
+key of `assets`, or that has text; a link that is not rel="stylesheet" with a relative `href` that is a key of `assets`; an on* attribute, a style attribute, an inline style element; an <a> whose address is
+not a relative path or a #fragment (absolute, protocol-relative, root-relative, `javascript:`, `data:`, in any letter case and with the characters a browser drops); any element or attribute outside
+ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA (nine entries, 19 pairs, pinned by GP7; with it 44 elements and 74 pairs: `element_problems(page, allowed)` takes the table, `graph_element_problems` passes
+`_graph_allowed()`, the list page keeps ALLOWED_ELEMENTS alone). The built page passes the static check, the element check with that list and, when CODE_ON_SURFACE_REFUSES is True, the code count
+(`CODE-ON-SURFACE graph/index.html:<card> ...`); the leak check reads it as any output file. The self-test cases that give the build a source folder use a valid shell (GA_SHELL).
+
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
 no attribute, no script). It follows from the scroll-shadow technique: two `scroll` shadows are fixed to the box's edges and two `local` covers move
