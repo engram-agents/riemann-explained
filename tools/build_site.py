@@ -12012,23 +12012,73 @@ def _selftest_cases():
                    ([], [("GRAPH-FANOUT", "p", "has 41 children (more than 40)")], [],
                     (0, 40, 40), (1, False, ["BUILD-ERROR GRAPH-FANOUT g2 has 41 children (more than 40)"])))
 
-    @case("GR8", "G1 S5: GRAPH-ID (an id that is not `^[a-z0-9][a-z0-9-]*$`: an upper-case letter, a dot, a leading dash, an empty id, the word `root`), "
+    @case("GR8", "G1 S5: GRAPH-ID (an id that is not `^[a-z0-9]+(-[a-z0-9]+)*$`: an upper-case letter, a dot, a leading dash, an empty id, the word `root`), "
                  "GRAPH-DUP (the same id twice), GRAPH-PARENT (a parent that is no step), GRAPH-CYCLE (every id on a cycle of parents, a self parent "
                  "too): each names the id; GRAPH-ID also through a build of the fixture with a group `Up`, exit 1, nothing written")
     def _():
         o = _outline()
         o["groups"].append(_g("Up", 2, "g2", 1, [FOO]))
         b = _build(outline=o)
-        idm = "is not a step id (lower-case letters, digits and `-`, not starting with `-`)"
+        idm = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        rootm = "is the id of the root, which is not a step"
         return _eq((gr_codes([gr_row("Up")]), gr_codes([gr_row("a.b")]), gr_codes([gr_row("-a")]), gr_codes([gr_row("")]), gr_codes([gr_row("root")]),
                     gr_codes([gr_row("a0-b9")]), gr_codes([gr_row("a"), gr_row("a", order=2)]), gr_codes([gr_row("a"), gr_row("b", "zz")]),
                     gr_codes([gr_row("a", "b"), gr_row("b", "a"), gr_row("c", "a")]), gr_codes([gr_row("x", "x")]),
                     (b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")])),
                    ([("GRAPH-ID", "Up", idm)], [("GRAPH-ID", "a.b", idm)], [("GRAPH-ID", "-a", idm)], [("GRAPH-ID", "", idm)],
-                    [("GRAPH-ID", "root", idm)], [], [("GRAPH-DUP", "a", "is the id of more than one group")],
+                    [("GRAPH-ID", "root", rootm)], [], [("GRAPH-DUP", "a", "is the id of more than one step")],
                     [("GRAPH-PARENT", "b", "has parent zz, which is not a step")],
                     [("GRAPH-CYCLE", "a", "is on a cycle of parents"), ("GRAPH-CYCLE", "b", "is on a cycle of parents")],
                     [("GRAPH-CYCLE", "x", "is on a cycle of parents")], (1, False, ["BUILD-ERROR GRAPH-ID Up " + idm])))
+
+    @case("GRID1", "the id rule of the page and the comment service, in `_graph_files`: EVERY step id, in a part row, a group row and a file row alike, must fullmatch "
+                   "`[a-z0-9]+(-[a-z0-9]+)*` and be at most 64 characters; each fault is `GRAPH-ID <id> is not a step id (the page and the comment service accept "
+                   "^[a-z0-9]+(-[a-z0-9]+)*$)`: `a--b`, `a-`, `-a`, `-`, `a_b`, `A`, the empty id, `_page` (no exemption), `lean-`, `a.b`, `a b`, a final newline; `root` is "
+                   "refused with its own text; 64 characters are accepted and 65 are `GRAPH-ID <id> is 65 characters (at most 64)`; one refusal per id (a bad shape is not also "
+                   "named for its length); a good id in the same rows adds nothing")
+    def _():
+        shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        bad = ["a--b", "a-", "-a", "-", "a_b", "A", "", "_page", "lean-", "a.b", "a b", "a\n", "a--" + "b" * 70]
+
+        def part(i):
+            return [gr_row(i)]
+
+        def group(i):
+            return [gr_row("p"), gr_row(i, "p")]
+
+        def file(i):
+            return [gr_row("p"), gr_row("g", "p"), gr_row(i, "g")]
+        got = {i: [gr_codes(f(i)) for f in (part, group, file)] for i in bad}
+        want = {i: [[("GRAPH-ID", i, shape)]] * 3 for i in bad}
+        ok = [[gr_codes(f(i)) for f in (part, group, file)] for i in ("a", "9", "a-b-c", "a0-b9", "lean-x-y", "x" * 64)]
+        long = [[gr_codes(f("x" * 65)) for f in (part, group, file)], [gr_codes(f("y" * 200)) for f in (part,)]]
+        return _eq((got == want, ok, long, [gr_codes(f("root")) for f in (part,)], [gr_codes([gr_row("p"), gr_row("a--b", "p"), gr_row("c--d", "p")])]),
+                   (True, [[[]] * 3] * 6, [[[("GRAPH-ID", "x" * 65, "is 65 characters (at most 64)")]] * 3, [[("GRAPH-ID", "y" * 200, "is 200 characters (at most 64)")]]],
+                    [[("GRAPH-ID", "root", "is the id of the root, which is not a step")]],
+                    [[("GRAPH-ID", "a--b", shape), ("GRAPH-ID", "c--d", shape)]]))
+
+    @case("GRID2", "two steps with one id are `GRAPH-DUP <id> is the id of more than one step` whatever the two are (two parts, a group and a file of one part: `lean-x-y` as "
+                   "both, two files); each id once per extra row; no file is returned")
+    def _():
+        dup = "is the id of more than one step"
+        both = gr_codes([gr_row("lean-x"), gr_row("lean-x-y", "lean-x"), gr_row("lean-x-y", "lean-x-y")])
+        parts = gr_codes([gr_row("a"), gr_row("a", order=2)])
+        files = gr_codes([gr_row("p"), gr_row("f", "p"), gr_row("f", "p", order=2), gr_row("f", "p", order=3)])
+        return _eq((both, parts, files, _graph_files([gr_row("a"), gr_row("a", order=2)], "c0", _strings())[1]),
+                   ([("GRAPH-DUP", "lean-x-y", dup)], [("GRAPH-DUP", "a", dup)], [("GRAPH-DUP", "f", dup), ("GRAPH-DUP", "f", dup)], {}))
+
+    @case("GRID3", "the id rule through a build of the live inputs (not only the function): a group `a--b`, a group of 65 characters and a group `_page` are refused "
+                   "`BUILD-ERROR GRAPH-ID <id> ...` with exit 1 and nothing written; a group of 64 characters builds")
+    def _():
+        shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        res = []
+        for i in ("a--b", "x" * 65, "_page", "x" * 64):
+            o = _outline()
+            o["groups"].append(_g(i, 2, "g2", 1, [FOO]))
+            b = _build(outline=o)
+            res.append((b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")]))
+        return _eq(res, [(1, False, ["BUILD-ERROR GRAPH-ID a--b " + shape]), (1, False, ["BUILD-ERROR GRAPH-ID " + "x" * 65 + " is 65 characters (at most 64)"]),
+                         (1, False, ["BUILD-ERROR GRAPH-ID _page " + shape]), (0, True, [])])
 
     @case("GR9", "G1 S2, F38 c (G1b S3, S6): a kind, a state or a proof with no row in the table refuses, `GRAPH-SYMBOL <step id> kind|state|proof <value>` "
                  "(a kind `none` too: there is no such row); a kind outside the table says what is allowed, ` (allowed: theorem, lemma, def, structure)`, and "
