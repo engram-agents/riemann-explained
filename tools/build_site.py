@@ -13069,11 +13069,12 @@ def _selftest_cases():
                     element_problems(page("<nav></nav>")), graph_element_problems(page("<nav></nav>")),
                     [graph_element_problems(page(f"<{e}></{e}>")) for e in elems],
                     [graph_element_problems(page(f'<{t} {k}="x"></{t}>')) for t, k in attrs], graph_element_problems(shell_like), graph_element_problems(with_link),
-                    planted, graph_element_problems(page('<section data-page-feedback="x" id="y"></section>')), element_problems(page('<section data-page-feedback="x"></section>'))),
+                    planted, graph_element_problems(page('<section data-page-feedback="x" id="y"></section>')), element_problems(page('<section data-page-feedback="x"></section>')),
+                    graph_element_problems(page('<section data-page-feedback="off" id="y"></section>'))),
                    (extra, 9, 20, 40, 55, 44, 75, ["element nav"], [], [[f"element {e}"] for e in elems],
                     [[f"attribute {k} on {t}"] for t, k in attrs], [], [],
-                    [(1, False, ["element canvas is not allowed in the shell"]), (1, False, ["attribute data-x on h1 is not allowed in the shell"])], [],
-                    ["attribute data-page-feedback on section"]))
+                    [(1, False, ["element canvas is not allowed in the shell"]), (1, False, ["attribute data-x on h1 is not allowed in the shell"])],
+                    ["attribute data-page-feedback on section has a value the page does not read"], ["attribute data-page-feedback on section"], []))
 
     @case("GP8", "G2b the checks of the built page are run on graph/index.html as on the list page: a strings value of the shell that holds a request API (`fetch(`) is "
                  "`PAGE-STATIC fetch( found in graph/index.html`; a graph page that holds an element and an address outside the checks (planted through the assembly's seam) is "
@@ -13272,6 +13273,29 @@ def _selftest_cases():
         sha = lambda t: hashlib.sha256(t.encode("utf-8")).hexdigest()
         return _eq((sha(plain), sha(off), off == plain.replace('<section id="graph-about">', '<section id="graph-about" data-page-feedback="off">')),
                    ("eb6a82b551e03ffa1bda95451f373f3bb9b0dccbbca24f6e08c4987c423f7007", "db6fa37459b98dc6e82c8ca8d182cc660abe7cd670efdea2770edf960969e896", True))
+
+    @case("GH8", "the hooks: the value rule is ALSO in the element check, from the same map (GRAPH_PAGE_ATTR_VALUES): `element_problems(page, allowed, values)` takes a {(element, name): values} map "
+                 "(default none: the shared checker is generic, and with no map `<section data-page-feedback=\"x\">` has no finding when `allowed` permits the name, and with the list page's "
+                 "table it is still `attribute data-page-feedback on section`), a value outside it is `attribute <name> on <element> has a value the page does not read`, a custom map is read "
+                 "(not only the page's own); graph_element_problems passes GRAPH_PAGE_ATTR_VALUES, so a section with data-page-feedback `x`, empty, `OFF`, `off ` or no value, or with a second "
+                 "copy of the attribute that is not `off`, is a finding and `off` is none, and the same attribute on another element is still `attribute ... on div`; a hand-authored shell "
+                 "holding `<section data-page-feedback=\"x\">` is refused inside _graph_page, `GRAPH-PAGE section attribute data-page-feedback has a value the page does not read`, one "
+                 "holding `off` is accepted")
+    def _():
+        pg = lambda inner: '<!doctype html>\n<html lang="en"><body>' + inner + "</body></html>"
+        sec = lambda attrs: graph_element_problems(pg(f"<section {attrs}></section>"))
+        finding = ["attribute data-page-feedback on section has a value the page does not read"]
+        hostile = ['data-page-feedback="x"', 'data-page-feedback=""', 'data-page-feedback="OFF"', 'data-page-feedback="off "', "data-page-feedback", 'data-page-feedback="off" data-page-feedback="x"']
+        custom = {("p", "id"): ("a",)}
+        shell_with = lambda v: gp_swap(("<div id=\"graph-cards\">", f'<section data-page-feedback="{v}"></section>\n<div id="graph-cards">'))
+        return _eq(([sec(a) for a in hostile], sec('data-page-feedback="off"'), sec('class="x"'), graph_element_problems(pg('<div data-page-feedback="off"></div>')),
+                    element_problems(pg('<section data-page-feedback="x"></section>'), _graph_allowed()),
+                    element_problems(pg('<section data-page-feedback="x"></section>')),
+                    [element_problems(pg(f'<p id="{v}"></p>'), _graph_allowed(), custom) for v in ("a", "b")],
+                    gh_page(shell_with("x")), gh_page(shell_with("off"))[0]),
+                   ([finding] * 6, [], [], ["attribute data-page-feedback on div"], [], ["attribute data-page-feedback on section"],
+                    [[], ["attribute id on p has a value the page does not read"]],
+                    ([("GRAPH-PAGE", "section attribute data-page-feedback", "has a value the page does not read")], None), []))
 
     # ---- G2c: the map page's closed rows, the list links, the robots meta of the shell, the list page's link back to the map, and the pins left out of the first
     # round of the graph page cases. Every expectation is a literal. The notes below give the fixture its sections: conditions (three, one of them with a literal
