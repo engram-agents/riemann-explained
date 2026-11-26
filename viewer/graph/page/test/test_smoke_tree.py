@@ -2,12 +2,12 @@
 """Cases of smoke_tree.py, the one-command acceptance test of a BUILT site tree. Each case builds a tree with assemble.assemble() into a
 temp dir (never anything else), runs the tool as a subprocess and reads its exit code and its lines.
 
-Run:  ~/.engram/venv/bin/python3 viewer/graph/page/test/test_smoke_tree.py [--only TEXT]
+Run:  python3 viewer/graph/page/test/test_smoke_tree.py [--only TEXT]   (a Python with playwright)
 
 Contract under test (the spec's S1..S5 and the amendments A1..A3):
   exit 0 only if every check passed; 1 if any FAILED; 2 if the folder is neither tree shape. Lines are
   `PASS|FAIL|SKIP <viewport> <check> <detail>`, `TREE flat|graph/`, three `ID <what> <id> (<rule>)` lines, and a last line
-  `SMOKE PASS` or `SMOKE FAIL (<n> failed)`.
+  `SMOKE PASS` (naming any skip and a partial run) or `SMOKE FAIL (<n> failed)`.
 Never shipped (lives under test/).
 """
 import glob, json, os, re, shutil, subprocess, sys, tempfile
@@ -17,7 +17,10 @@ sys.path.insert(0, HERE)
 import assemble  # noqa: E402
 
 TOOL = os.path.join(HERE, "smoke_tree.py")
-RESULTS = []
+
+
+class Skip(Exception):
+    """Raised by a case that could not run on this base: the runner reports it as SKIP and counts it apart, never as a pass."""
 
 
 def run_tool(site, *args):
@@ -70,14 +73,14 @@ def t1_real_fixture(tmp):
     out = build(tmp)
     code, o = run_tool(out, "--no-note")
     assert code == 0, (code, o)
-    assert last(o) == "SMOKE PASS", o
+    assert last(o).startswith("SMOKE PASS"), o
     assert len(lines(o, "ID")) == 3, o
     assert "TREE graph/" in o, o
     for chk in ("boot", "console", "requests", "csp-header", "open-part", "open-group", "open-file"):
         assert lines(o, "PASS", chk), (chk, o)
     assert lines(o, "PASS", "boot")[0].split()[1] in ("390x844", "1280x900"), o
     assert {l.split()[1] for l in lines(o, "PASS", "boot")} == {"390x844", "1280x900"}, o
-    assert lines(o, "SKIP", "scale-floor") and "scale-floor (not in data)" in o, o      # A3 without the key is a SKIP
+    assert lines(o, "SKIP", "scale-floor") and "scale-floor (the index has no open_scale_floor)" in o, o      # A3 without the key is a SKIP
     assert not lines(o, "PASS", "scale-floor"), o
 
 
@@ -85,7 +88,7 @@ def t1b_flat_shape(tmp):
     out = flatten(build(tmp))
     assert os.path.isfile(os.path.join(out, "index.html")) and not os.path.isdir(os.path.join(out, "graph"))
     code, o = run_tool(out, "--no-note")
-    assert code == 0 and last(o) == "SMOKE PASS" and "TREE flat" in o, (code, o)
+    assert code == 0 and last(o).startswith("SMOKE PASS") and "TREE flat" in o, (code, o)
 
 
 def t1c_neither_shape(tmp):
@@ -142,8 +145,7 @@ def t4b_symlink_read_by_tool(tmp):
 def t5_note_fixture_or_skip(tmp):
     have = [f for f in glob.glob(os.path.join(HERE, "fixtures", "*", "step", "*.json")) if '"note"' in open(f, encoding="utf-8").read()]
     if not have:
-        print("   T5 SKIP: no committed fixture on this base carries a note (PR 97 adds them); the tool must not depend on it")
-        return
+        raise Skip("no committed fixture on this base carries a note (PR 97 adds them); the positive note PASS is not exercised")
     names = sorted({f.split(os.sep)[-3] for f in have})
     out = build(tmp, fix=names[0])
     code, o = run_tool(out)
@@ -154,7 +156,7 @@ def t5b_no_notes_in_data_is_a_skip(tmp):
     out = build(tmp, fix="skeleton")
     code, o = run_tool(out)
     assert code == 0, (code, o)
-    assert "SKIP note (no file step carries note)" in o or [l for l in lines(o, "SKIP", "note") if "no file step carries note" in l], o
+    assert [l for l in lines(o, "SKIP", "note") if "no file step carries a note" in l], o
     assert not lines(o, "PASS", "note"), o
 
 
@@ -183,7 +185,7 @@ def t7_second_fixture_different_ids(tmp):
     """K2's case: ids come from the data. The skeleton has a part, a group and a file that the real fixture has not."""
     out = build(tmp, fix="skeleton")
     code, o = run_tool(out, "--no-note")
-    assert code == 0 and last(o) == "SMOKE PASS", (code, o)
+    assert code == 0 and last(o).startswith("SMOKE PASS"), (code, o)
     ids = {l.split()[1]: l.split()[2] for l in lines(o, "ID")}
     assert ids["part"] == "sk-part" and ids["group"] == "sk-group-a" and ids["file"] == "sk-file-1", ids
     real = build(tmp, name="real")
@@ -192,7 +194,7 @@ def t7_second_fixture_different_ids(tmp):
 
 
 def t8_csp_header_is_checked(tmp):
-    """K3's case: the tool's server sends the suite's Content-Security-Policy and says so; a server without it fails the check."""
+    """K3's case: the tool's server sends the suite's Content-Security-Policy and says so. Pins that the header is sent and reported."""
     out = build(tmp)
     code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
     assert lines(o, "PASS", "csp-header"), o
@@ -227,6 +229,123 @@ def t10_only_viewport(tmp):
     assert lines(o, "PASS", "boot"), o
 
 
+def t11_empty_heading_fails(tmp):
+    """P1: a card title that is empty after plain() (a single backtick) must FAIL the heading check, not pass as '' == ''."""
+    def blank(x):        # every place the page can take the part's and the group's title from: card, children list, path
+        if isinstance(x, dict):
+            return {k: blank(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [blank(v) for v in x]
+        return "`" if x in ("Title of step goal-chain", "Title of step a1") else x
+    def step_edit(steps):
+        for i in list(steps):
+            steps[i] = blank(steps[i])
+    out = build(tmp, step_edit=step_edit)
+    code, o = run_tool(out, "--no-note")
+    assert code == 1, (code, o)
+    assert [l for l in lines(o, "FAIL", "open-part") if "empty" in l], o
+    assert [l for l in lines(o, "FAIL", "open-group") if "empty" in l], o
+    assert not [l for l in lines(o, "PASS", "open-part") + lines(o, "PASS", "open-group")], o
+    assert lines(o, "PASS", "open-file"), o        # the file's title was left alone: the failure is the empty headings alone
+
+
+def t12_skips_named_in_last_line(tmp):
+    """P2: a SKIP is named in the verdict line; a tree with no notes and no scale floor skips both."""
+    out = build(tmp, fix="skeleton")
+    code, o = run_tool(out)
+    assert code == 0, (code, o)
+    assert lines(o, "SKIP", "note") and lines(o, "SKIP", "scale-floor"), o
+    assert last(o) == "SMOKE PASS (2 skipped: note, scale-floor)", o
+
+
+def t12b_verdict_line_unit(tmp):
+    """P2 + P3 on the verdict function: plain only when nothing was skipped and the run was whole; both notes combine."""
+    import smoke_tree as S
+    assert S.verdict(0, [], None) == "SMOKE PASS"
+    assert S.verdict(0, ["note"], None) == "SMOKE PASS (1 skipped: note)"
+    assert S.verdict(0, ["note", "scale-floor"], None) == "SMOKE PASS (2 skipped: note, scale-floor)"
+    assert S.verdict(0, [], "390x844") == "SMOKE PASS (partial: 390x844 only)"
+    assert S.verdict(0, ["note"], "1280x900") == "SMOKE PASS (partial: 1280x900 only; 1 skipped: note)"
+    assert S.verdict(2, ["note"], "390x844") == "SMOKE FAIL (2 failed)"
+
+
+def t13_require_note(tmp):
+    """P2: --require-note turns the note SKIP into a FAIL that says why; without it the same tree skips and exits 0."""
+    out = build(tmp, fix="skeleton")
+    code, o = run_tool(out)
+    assert code == 0 and lines(o, "SKIP", "note"), (code, o)
+    code, o = run_tool(out, "--require-note")
+    assert code == 1, (code, o)
+    assert [l for l in lines(o, "FAIL", "note") if "no file step carries a note" in l], o
+    assert not lines(o, "SKIP", "note"), o
+    assert re.fullmatch(r"SMOKE FAIL \(\d+ failed\)", last(o)), o
+    code, o = run_tool(out, "--require-note", "--no-note")        # asking for the check and for it to be skipped is a usage error
+    assert code == 2, (code, o)
+
+
+def t13b_require_floor(tmp):
+    """P2: --require-floor turns the scale-floor SKIP into a FAIL that says why; a tree that has the key still passes with it."""
+    out = build(tmp, fix="skeleton")
+    code, o = run_tool(out, "--no-note")
+    assert code == 0 and lines(o, "SKIP", "scale-floor"), (code, o)
+    code, o = run_tool(out, "--no-note", "--require-floor")
+    assert code == 1, (code, o)
+    assert [l for l in lines(o, "FAIL", "scale-floor") if "no open_scale_floor" in l], o
+    assert not lines(o, "SKIP", "scale-floor"), o
+    ok = build(tmp, name="floor-low", index_edit=lambda i: i.update({"open_scale_floor": 0.01}), mutate={"page/data.js": ACCEPT_FLOOR})
+    code, o = run_tool(ok, "--no-note", "--require-floor")
+    assert code == 0 and [l for l in lines(o, "PASS", "scale-floor") if "390x844" in l], (code, o)
+
+
+def t14_partial_run_says_so(tmp):
+    """P3: --only-viewport ends in a line that says the run was partial (the floor is phone-only, so only the note skips here)."""
+    out = build(tmp)
+    code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
+    assert code == 0, (code, o)
+    assert last(o) == "SMOKE PASS (partial: 1280x900 only; 1 skipped: note)", o
+
+
+def t15_head_is_contained_like_get(tmp):
+    """P4: the server's guard covers HEAD as it covers GET: a symlink pointing outside answers 403 to both; a file inside answers 200 to both."""
+    import http.client, smoke_tree as S
+    out = build(tmp)
+    outside = os.path.join(tmp, "outside-app.js")
+    shutil.copyfile(os.path.join(out, "graph", "page", "app.js"), outside)
+    p = os.path.join(out, "graph", "page", "app.js")
+    os.remove(p)
+    os.symlink(outside, p)
+    srv, base = S.serve(out)
+    try:
+        port = srv.server_address[1]
+        got = {}
+        for method, path in (("GET", "/graph/page/app.js"), ("HEAD", "/graph/page/app.js"), ("GET", "/graph/index.json"), ("HEAD", "/graph/index.json")):
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            c.request(method, path)
+            got[(method, path)] = c.getresponse().status
+            c.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert got[("GET", "/graph/page/app.js")] == 403, got
+    assert got[("HEAD", "/graph/page/app.js")] == 403, got
+    assert got[("GET", "/graph/index.json")] == 200 and got[("HEAD", "/graph/index.json")] == 200, got
+
+
+def t16_runner_counts_skips_apart(tmp):
+    """P5: the case runner reports a skipping case as SKIP and counts it apart from the passes."""
+    import contextlib, io
+    def ok(t): pass
+    def sk(t): raise Skip("no fixture")
+    def bad(t): assert False, "boom"
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        results = run_cases([("A ok", ok), ("B skips", sk), ("C fails", bad)], None)
+    text = buf.getvalue()
+    assert [r[1] for r in results] == ["pass", "skip", "fail"], results
+    assert "SKIP B skips" in text and "PASS B skips" not in text, text
+    assert "3 cases, 1 passed, 1 skipped, 1 failed" in text, text
+
+
 CASES = [
     ("T1 the real fixture (--no-note): exit 0, SMOKE PASS, three ids, the checks named", t1_real_fixture),
     ("T1b the flat shape (A1): TREE flat, exit 0", t1b_flat_shape),
@@ -244,27 +363,45 @@ CASES = [
     ("T9 A3: the scale floor is read at 390x844 only; a low floor passes and an impossible one fails", t9_scale_floor),
     ("T9b the base refuses an unknown index key at boot and the tool fails it", t9b_base_refuses_unknown_index_key),
     ("T10 --only-viewport runs one viewport", t10_only_viewport),
+    ("T11 P1: an empty card title fails the heading check", t11_empty_heading_fails),
+    ("T12 P2: the verdict line names every skip", t12_skips_named_in_last_line),
+    ("T12b P2/P3: the verdict function: plain only with no skip and a whole run", t12b_verdict_line_unit),
+    ("T13 P2: --require-note turns the note skip into a fail", t13_require_note),
+    ("T13b P2: --require-floor turns the scale-floor skip into a fail", t13b_require_floor),
+    ("T14 P3: a one-viewport run says it was partial", t14_partial_run_says_so),
+    ("T15 P4: HEAD is refused outside the folder as GET is", t15_head_is_contained_like_get),
+    ("T16 P5: the case runner counts a skip apart from a pass", t16_runner_counts_skips_apart),
 ]
 
 
-def main():
-    only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
-    for name, fn in CASES:
+def run_cases(cases, only):
+    """Run each case in a fresh temp dir. Returns [(name, "pass"|"skip"|"fail")]; prints one line per case and the summary line."""
+    results = []
+    for name, fn in cases:
         if only and only not in name:
             continue
         tmp = tempfile.mkdtemp(prefix="smoke-test-")
         try:
             fn(tmp)
-            RESULTS.append((name, True))
+            results.append((name, "pass"))
             print("PASS " + name)
+        except Skip as e:
+            results.append((name, "skip"))
+            print("SKIP " + name + ": " + str(e))
         except Exception as e:  # noqa: BLE001
-            RESULTS.append((name, False))
+            results.append((name, "fail"))
             print("FAIL " + name + ": " + repr(e)[:900])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-    bad = [r for r in RESULTS if not r[1]]
-    print("\n%d cases, %d passed, %d failed" % (len(RESULTS), len(RESULTS) - len(bad), len(bad)))
-    return 1 if bad else 0
+    n = lambda k: len([r for r in results if r[1] == k])
+    print("\n%d cases, %d passed, %d skipped, %d failed" % (len(results), n("pass"), n("skip"), n("fail")))
+    return results
+
+
+def main():
+    only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
+    results = run_cases(CASES, only)
+    return 1 if [r for r in results if r[1] == "fail"] else 0
 
 
 if __name__ == "__main__":
