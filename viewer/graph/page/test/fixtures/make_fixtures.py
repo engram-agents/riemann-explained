@@ -10,7 +10,7 @@ notes/       the skeleton map plus the two optional strings `note_label` and `no
              /-! and -/ verbatim) under a card title equal to the note's own first heading; sk-file-2 carries a hostile note. sk-file-3 has none.
 typeset/     the notes map plus the four optional strings of the maths-face step (note_label_typeset, note_typeset_line, note_exact_button,
              note_render_button; note_label and note_source carry the final words): sk-file-1 the OneSidedBound note, sk-file-2 the hostile note
-             with two formula-class hostile spans, sk-file-3 the REAL LineCoordinates note carrying `review` {"state": "converter"}.
+             with three formula-class hostile spans and the synthetic script spans (MATHS_SCRIPTS: three set, two refused), sk-file-3 the REAL LineCoordinates note carrying `review` {"state": "converter"}.
 note-spans-classes.json   Sol's span classes (6,459 distinct real spans, cls3's class and one_letter), a committed input copied BYTE FOR BYTE
              by `--import-host` and checked here against its pinned sha256; note-linecoordinates.txt and note-onesidedbound.txt likewise.
 skeleton/    the map of a Lean repository's parts, groups and files (data v3: sibling_layout, open_scale_floor, link flags on one group, index_rows and spine_rows on two files): kinds part, group, file, each a table row with `words` (the key's label)
@@ -272,6 +272,9 @@ TYPESET_STRINGS = {
 }
 # two formula-class spans whose characters would be markup if they ever reached an HTML parser (tokens of one letter only: class formula)
 HOSTILE_FORMULAS = "\n\n`<b>x</b>` and `a<i>b` and `x&y`\n"
+# synthetic formula-class spans with scripts (sk-file-2, typeset map only): the first three are set (sup, sub and sup, a group with a sub),
+# the last two are refused and stay code as typed. No real note text.
+MATHS_SCRIPTS = "\nA power `y ^ 12`, a pair `P_\u03b4^N`, a group `x^{a_i}`, and two refused: `x^-1` and `a ^ b ^ c`.\n"
 
 
 def note_of_file(path):
@@ -327,7 +330,7 @@ def notes_build(typeset=False):
         return index, steps, kids, title
     index["strings"].update(TYPESET_STRINGS)
     steps["sk-file-1"]["note"] = {"text": real, "source": REAL_NOTE_SOURCE}
-    steps["sk-file-2"]["note"] = {"text": HOSTILE_NOTE + HOSTILE_FORMULAS, "source": "grh/src/New/Hostile.lean"}
+    steps["sk-file-2"]["note"] = {"text": HOSTILE_NOTE + HOSTILE_FORMULAS + MATHS_SCRIPTS, "source": "grh/src/New/Hostile.lean"}
     steps["sk-file-3"]["note"] = {"text": check_inputs(), "source": LC_NOTE_SOURCE, "review": {"state": "converter"}}
     steps["sk-file-3"]["card"]["title"] = LC_NOTE_TITLE
     return index, steps, kids, title

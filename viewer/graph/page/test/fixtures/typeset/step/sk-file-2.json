@@ -17,7 +17,7 @@
  "id": "sk-file-2",
  "note": {
   "source": "grh/src/New/Hostile.lean",
-  "text": "# <script>alert(1)</script>\n\n<img src=x onerror=1> &amp;lt; javascript:alert(1) [x](javascript:y) <b>bold</b>\n\n* <script>alert(2)</script>\n* `<img src=x onerror=2>`\n\n3. javascript:void(0)\n4. [y](javascript:z)\n\n    <iframe src=javascript:alert(3)></iframe>\n\n| <b>h</b> | `<i>` |\n|---|---|\n| <u> | &lt; |\n\n\n`<b>x</b>` and `a<i>b` and `x&y`\n"
+  "text": "# <script>alert(1)</script>\n\n<img src=x onerror=1> &amp;lt; javascript:alert(1) [x](javascript:y) <b>bold</b>\n\n* <script>alert(2)</script>\n* `<img src=x onerror=2>`\n\n3. javascript:void(0)\n4. [y](javascript:z)\n\n    <iframe src=javascript:alert(3)></iframe>\n\n| <b>h</b> | `<i>` |\n|---|---|\n| <u> | &lt; |\n\n\n`<b>x</b>` and `a<i>b` and `x&y`\n\nA power `y ^ 12`, a pair `P_δ^N`, a group `x^{a_i}`, and two refused: `x^-1` and `a ^ b ^ c`.\n"
  },
  "path": [
   "sk-part",
