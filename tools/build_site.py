@@ -12926,6 +12926,76 @@ def _selftest_cases():
                     gjc.selftest_quiet()),
                    ([("GRAPH-SINK", "graph", "scanner self-test failed")], ["selftest"], [], ["selftest", "run"], 0))
 
+    @case("GA23", "G2a/G2b the builder ships exactly what the scanner reads (contract section 12): the copy set is the scanner's own JS extensions (gjc.JS_EXT, read at the "
+                  "call: .js and .mjs today) and the one literal .css, compared as written; a file outside test/ whose LOWER-CASED extension is in gjc.JS_EXT, gjc.SHIP_IMPORT_EXT "
+                  "or is .css but whose extension as written is not in the copy set is `GRAPH-ASSET <path> not-an-asset-extension`, never copied and never silently dropped: "
+                  "X.JS, A.Mjs, a nested engine/deep/B.JS and X.CSS are each refused; a lower-case .mjs is IN the copy set (copied, hashed, scanned); an .md and a .json are still "
+                  "ignored, a file under test/ is not looked at (engine/test/Y.JS); X.HTML is still `html`; the tables are read at the call (a scanner table with a new "
+                  "extension refuses that extension, one without .mjs in JS_EXT and SHIP_IMPORT_EXT drops it); through a build the refusal is exit 1 with nothing written, "
+                  "and the .mjs is a file of graph/ and an entry of `assets`")
+    def _():
+        def go(files):
+            with tempfile.TemporaryDirectory() as d:
+                e, a, _s = _graph_assets(ga_src(d, files))
+            return e, sorted(a)
+        base = {"engine/index.js": "x\n"}
+        ok = ["engine/index.js"]
+        bad = lambda path: ([("GRAPH-ASSET", path, "not-an-asset-extension")], ok)
+        old = gjc.JS_EXT, gjc.SHIP_IMPORT_EXT
+        try:
+            gjc.JS_EXT, gjc.SHIP_IMPORT_EXT = (".js",), (".js", ".html")
+            narrowed = go(dict(base, **{"engine/m.mjs": "y\n", "engine/Z.JS": "y\n"}))
+            gjc.JS_EXT, gjc.SHIP_IMPORT_EXT = old[0], old[1] + (".xyz",)
+            widened = go(dict(base, **{"engine/a.XYZ": "y\n", "engine/b.xyz": "y\n"}))
+        finally:
+            gjc.JS_EXT, gjc.SHIP_IMPORT_EXT = old
+        with tempfile.TemporaryDirectory() as d:
+            refused = _build(graph_src=ga_src(d, dict(GA_FILES, **{"X.JS": "y\n"})))
+        with tempfile.TemporaryDirectory() as d:
+            copied = _build(graph_src=ga_src(d, dict(GA_FILES, **{"engine/m.mjs": "y\n"})))
+        return _eq((go(dict(base, **{"X.JS": "y\n"})), go(dict(base, **{"A.Mjs": "y\n"})), go(dict(base, **{"engine/deep/B.JS": "y\n"})), go(dict(base, **{"X.CSS": "y\n"})),
+                    go(dict(base, **{"m.mjs": "y\n"})), go(dict(base, **{"a.md": "y\n", "b.json": "y\n", "c.txt": "y\n"})), go(dict(base, **{"engine/test/Y.JS": "y\n"})),
+                    go(dict(base, **{"X.HTML": "<p>\n"})), narrowed, widened,
+                    [ln for ln in refused.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")], refused.rc, refused.existed,
+                    copied.rc, "engine/m.mjs" in copied.js("graph/index.json")["assets"], copied.files.get("graph/engine/m.mjs")),
+                   (bad("X.JS"), bad("A.Mjs"), bad("engine/deep/B.JS"), bad("X.CSS"), ([], ["engine/index.js", "m.mjs"]), ([], ok), ([], ok),
+                    ([("GRAPH-ASSET", "X.HTML", "html")], ok),
+                    ([("GRAPH-ASSET", "engine/Z.JS", "not-an-asset-extension")], ok), ([("GRAPH-ASSET", "engine/a.XYZ", "not-an-asset-extension")], ok),
+                    ["BUILD-ERROR GRAPH-ASSET X.JS not-an-asset-extension"], 1, False, 0, True, b"y\n"))
+
+    @case("GA24", "G2b contract section 12: the shell is read ONCE. The bytes the sink gate scanned are the bytes graph/index.html is assembled from: with a stand-in for open() "
+                  "that answers a second open of shell.html with other bytes (a shell with no {{CARDS}}), the build still makes its page from the first bytes (exit 0, the "
+                  "page is the first shell's), shell.html is opened exactly once, and the stand-in scanner was given the first bytes too")
+    def _():
+        import builtins
+        with tempfile.TemporaryDirectory() as d:
+            src = ga_src(d)
+            first, second = GA_SHELL.encode("utf-8"), b"<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"></head><body>SECOND</body></html>\n"
+            opened, seen, real_open = [], [], builtins.open
+
+            class Spy(GaScanner):
+                SKIP_DIRS, JS_EXT, SHIP_IMPORT_EXT = gjc.SKIP_DIRS, gjc.JS_EXT, gjc.SHIP_IMPORT_EXT   # the builder reads the scanner's tables through the same name
+
+                def run(self, dd, out):
+                    with real_open(os.path.join(dd, "shell.html"), "rb") as f:
+                        seen.append(f.read())
+                    return super().run(dd, out)
+
+            def fake(file, *a, **k):
+                if os.path.abspath(str(file)) == os.path.join(os.path.abspath(src), "shell.html"):
+                    opened.append(1)
+                    return io.BytesIO(first if len(opened) == 1 else second)
+                return real_open(file, *a, **k)
+            with _patched("gjc", Spy(0, "4 files checked, 0 refused, 0 skipped as test files\n")):
+                builtins.open = fake
+                try:
+                    b = _build(graph_src=src)
+                finally:
+                    builtins.open = real_open
+        page = b.text("graph/index.html") if b.rc == 0 else ""
+        return _eq((b.rc, len(opened), seen == [first], "SECOND" in page, "<title>Reading the Riemann Hypothesis proof</title>" in page),
+                   (0, 1, True, False, True))
+
     # G1: the older cases below plant data the graph cannot hold, to test something else: a premise on a step that is neither a sibling nor the step's own
     # child (the premises line, PL*, PRM*), or a root kind outside the symbol table (the proof facts, PRK*, NONE1, F41b, F49*). The graph refuses both (GRAPH-EDGE,
     # GRAPH-SYMBOL: GR9, GR10), so these cases run with the graph step switched off and keep every literal they had; GR* are the graph's own cases.
