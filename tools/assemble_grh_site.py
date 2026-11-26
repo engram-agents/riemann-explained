@@ -4,22 +4,22 @@
 usage: assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR]
        assemble_grh_site.py --selftest [--only ID,ID]
 
-PHASE 1 (this file as committed first): the command line, the constants, a STUB `run` and the self-test CASES, written BEFORE the behaviour (contract-first tests). `run` raises
-NotImplementedError("phase 2") for a well-formed command line and does nothing else, so every case that reaches the behaviour is RED because the behaviour is absent. Phase 2 writes
-`run` against the cases; the nine mutation controls (M-a .. M-i) are written down as exact specifications and are SKIPPED until phase 2 turns each into a live check.
+PHASE 2 (this file now): the cases were written BEFORE the behaviour (contract-first tests: phase 1 wrote A1 to A17, phase 2 began with A18 and M-j, red); `run` is the behaviour. The ten
+mutation controls (M-a .. M-j) are live checks: each applies one wrong change to a temporary copy of tools/ and runs the A-cases on the copy in a subprocess; the set of red cases must be
+exactly the set the control specifies.
 
 The tool will write, from the data of `build_grh_skeleton.py` (index.json, spine.json, uses.json, step/<id>.json; DATA holds nothing else), the graph assets of `build_site._graph_assets`,
 and a page made by `build_site._graph_page`, the tree below, FLAT (the page loads its data and scripts relative to its own address):
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
-build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. The contract is /Users/leishi/luria-desk/assembler-contract-DRAFT.md, clauses A1 to A17
-(one self-test case each) and the controls M-a to M-i.
+build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. The contract is /Users/leishi/luria-desk/assembler-contract-DRAFT.md, clauses A1 to A18
+(one self-test case each) and the controls M-a to M-j.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
 builder's own words.
 
-THE THREE DEPENDENCIES ON PR C (a separate change to build_site.py by another agent; NOT in this base, and this file does not implement or stub them):
+THE THREE DEPENDENCIES ON PR C (a separate change to build_site.py by another agent, in this base as PR 100; this file does not implement or stub them):
   (a) `_graph_page(shell, assets, strings, about, cards, shell_keys=GRAPH_SHELL_KEYS, section_attrs=())`: `section_attrs` is a tuple of (name, value) pairs written on the
       `<section id="graph-about">`, escaped, in order; a name the allow-list does not permit is a named refusal, never a silent drop; live output byte-identical;
   (b) `data-page-feedback` allowed on `section` in the graph page's element table (`graph_element_problems`);
@@ -583,13 +583,61 @@ MUTATIONS = {
 }
 
 
+# The wrong implementation of each control as ONE textual change: (the exact text in the tool above the self-test marker, which must occur once; its replacement). Applied to a TEMPORARY COPY of
+# the tools/ folder, never to the committed file.
+MUTATION_EDITS = {
+    "M-a": ('        if found != pin:\n', '        if found != pin and not rel.startswith("step/"):\n'),
+    "M-b": ('        raw = _read_in(root, path, limit)\n',
+            '        raw = open(path, "rb").read(limit + 1) if name.startswith("step/") and os.path.islink(path) else _read_in(root, path, limit)\n'),
+    "M-c": ('    index_bytes = _graph_bytes({"x": index})["x"]\n',
+            '    index_bytes = (json.dumps({**{k: v for k, v in index.items() if k != "assets"}, "assets": index["assets"]}, indent=1, ensure_ascii=False) + "\\n").encode("utf-8")\n'),
+    "M-d": ('    manifest = _manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)\n',
+            '    manifest = _manifest_bytes({k: v for k, v in files.items() if k != "index.html"}, {"notes": pin}, {"steps": len(steps)}, None, None)\n'),
+    "M-e": ('    manifest = _manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)\n',
+            '    manifest = (_dump(dict(json.loads(_manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)), release_id=None)) + "\\n").encode("utf-8")\n'),
+    "M-f": ('names = sorted(os.listdir(path))', 'names = sorted(os.listdir(path), key=lambda x: os.lstat(os.path.join(path, x)).st_mtime)'),
+    "M-g": ('    elif os.path.isdir(out) and os.listdir(out):\n', '    elif False:\n'),
+    "M-h": ('"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)', '"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=())'),
+    "M-i": ('    shell_bytes = raws["shell"]\n', '    shell_bytes = _graph_src_shell if _graph_src_shell is not None else raws["shell"]\n'),
+    "M-j": ('**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows)))}', '**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows) + 1))}'),
+}
+MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
+
+
 def _mutation_case(mid):
+    """The live check of one control: the self-test's A-cases (not the M-cases: no recursion) run in a SUBPROCESS on a mutated COPY of the tools/ folder; the set of red cases must be exactly
+    the set the control specifies (the new case red AND every other A-case green). Prints the observed red set; a mutation that reddens something extra, or nothing, fails."""
     primary, change, red = MUTATIONS[mid]
     green = tuple(c for c in CLAUSES if c not in red)
     bad = [c for c in red if c not in CLAUSES]
-    if bad or primary not in red or not red or set(red) | set(green) != set(CLAUSES):
+    if bad or primary not in red or not red or set(red) | set(green) != set(CLAUSES) or set(MUTATION_EDITS) != set(MUTATIONS):
         return False, f"the specification of {mid} is malformed: {bad}"
-    raise _SkipCase(f"phase 2 turns this into a live check. WRONG IMPLEMENTATION: {change}. MUST GO RED (and only these): {', '.join(red)}. MUST STAY GREEN: {', '.join(green)}")
+    old, new = MUTATION_EDITS[mid]
+    with open(TOOL, encoding="utf-8") as f:
+        src = f.read()
+    marker = "\n# ==== self-test" + " ====\n"
+    if src.count(marker) != 1:
+        raise _FixtureError("the self-test marker must appear once in the tool")
+    head, tail = src[:src.index(marker)], src[src.index(marker):]
+    if head.count(old) != 1:
+        raise _FixtureError(f"the text mutated by {mid} occurs {head.count(old)} times in the tool, not once")
+    with _tmp() as d:
+        copy = os.path.join(d, "repo", "tools")   # the fixtures read the repository's own site/strings.json beside tools/, so the copy keeps that layout
+        shutil.copytree(_HERE, copy, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        shutil.copytree(os.path.join(os.path.dirname(_HERE), "site"), os.path.join(d, "repo", "site"))
+        with open(os.path.join(copy, os.path.basename(TOOL)), "w", encoding="utf-8") as f:
+            f.write(head.replace(old, new) + tail)
+        try:
+            r = subprocess.run([sys.executable, "-I", os.path.join(copy, os.path.basename(TOOL)), "--selftest", "--only", ",".join(CLAUSES)], capture_output=True, text=True,
+                               timeout=MUTATION_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            return False, f"{mid}: the self-test of the mutated copy did not finish in {MUTATION_TIMEOUT} s"
+    seen = {m.group(1): m.group(2) for m in re.finditer(r"^CASE (\S+) (PASS|FAIL|SKIP)", r.stdout, re.M)}
+    if sorted(seen) != sorted(CLAUSES):
+        return False, f"{mid}: the mutated copy reported {sorted(seen)}, not every A-case; stderr {r.stderr[-300:]!r}"
+    observed = sorted((c for c in CLAUSES if seen[c] != "PASS"), key=CLAUSES.index)
+    print(f"  {mid} ({change[:70]}...): red set observed {observed}, specified {list(red)}")
+    return _eq(observed, sorted(red, key=CLAUSES.index))
 
 
 # ---------------------------------------------------------------- the cases
@@ -1125,6 +1173,9 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
         def carried(tree):
             return {k: v for k, v in json.loads(tree["index.json"]).items() if k != "assets"}
 
+        def norm(page):   # the section attribute is A7's and A8's business (M-h removes it): this case is about the front line, so it compares pages without it
+            return page.replace(' data-page-feedback="off"', "")
+
         for n in (0, 1, 10, 100):   # the written line is the template with {n} the list's length, escaped, whatever the words
             with _tmp() as d:
                 rows = [{"id": f"r{i}", "title": f"Note {i}"} for i in range(n)]
@@ -1132,8 +1183,8 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                 tree = _ok_run(w)[0]
                 page = tree["index.html"].decode("utf-8")
                 line = template.replace("{n}", str(len(rows)))
-                ok, why = _eq((page, bs._e(line) in page, line in page, f"<b>{n}</b>" in page, carried(tree)),
-                              (_expected_page(w, SHELL_READINGS, _asm_strings(**{READINGS_FRONT_KEY: line})), True, False, False, {k: v for k, v in idx.items() if k != "assets"}))
+                ok, why = _eq((norm(page), bs._e(line) in page, line in page, f"<b>{n}</b>" in page, carried(tree)),
+                              (norm(_expected_page(w, SHELL_READINGS, _asm_strings(**{READINGS_FRONT_KEY: line}))), True, False, False, {k: v for k, v in idx.items() if k != "assets"}))
                 if not ok:
                     return ok, f"a list of {n} rows: " + why
         for what, over in (("no value", None), ("no {n}", "Our reading notes. The key lists them."), ("two {n}", "{n} notes and {n} more"), ("an empty value", "")):   # the template refusals
@@ -1158,7 +1209,7 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             with _tmp() as d:   # a shell WITHOUT the token: neither the template nor the list is needed, and a bad one is not looked at
                 w, idx = make(d, rows, shell=SHELL, strings=strings)
                 tree = _ok_run(w)[0]
-                ok, why = _eq((tree["index.html"].decode("utf-8"), carried(tree)), (_expected_page(w, SHELL, strings), {k: v for k, v in idx.items() if k != "assets"}))
+                ok, why = _eq((norm(tree["index.html"].decode("utf-8")), carried(tree)), (norm(_expected_page(w, SHELL, strings)), {k: v for k, v in idx.items() if k != "assets"}))
                 if not ok:
                     return ok, f"a shell without the token, list {rows!r}: " + why
         odd = {"readings_heading": "{n} {n}", "readings_about": "<b>{n}</b>", "readings_byline": 7}
@@ -1168,14 +1219,14 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                 w, idx = make(d, [{"id": "r"}] * 3, strings=strings, index_over=lambda ix: {"strings": dict(ix["strings"], **odd)})
                 tree = _ok_run(w)[0]
                 line = template.replace("{n}", "3")
-                ok, why = _eq((tree["index.html"].decode("utf-8"), carried(tree)),
-                              (_expected_page(w, SHELL_READINGS, _asm_strings(**{READINGS_FRONT_KEY: line, **in_strings})), {k: v for k, v in idx.items() if k != "assets"}))
+                ok, why = _eq((norm(tree["index.html"].decode("utf-8")), carried(tree)),
+                              (norm(_expected_page(w, SHELL_READINGS, _asm_strings(**{READINGS_FRONT_KEY: line, **in_strings}))), {k: v for k, v in idx.items() if k != "assets"}))
                 if not ok:
                     return ok, f"the readings_* page keys, strings file holds {sorted(in_strings)}: " + why
         return True, ""
 
     for mid in MUTATIONS:
-        case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (SKIPPED until phase 2)")(
+        case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(
             (lambda m: lambda: _mutation_case(m))(mid))
     return cases
 
