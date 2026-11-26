@@ -13504,24 +13504,29 @@ def _selftest_cases():
         return run_
     cases[:] = [(cid, desc, without_graph(fn) if cid in no_graph_cases else fn) for cid, desc, fn in cases]
 
-    @case("GRS1", "a caller may hand _graph_files its own symbol table (`symbols=`, default the table of GRAPH_SYMBOLS): a table with one more kind row, module (class "
-                  "kind-module, words symbol_kind_module), accepts a step of kind module, lists the row last in symbols.order.kinds and in symbols.kinds with its words "
-                  "resolved, and makes index.json `strings` 21 keys (the 20 and symbol_kind_module); without the argument kind module is still GRAPH-SYMBOL and `strings` "
-                  "is still the 20 keys; passing GRAPH_SYMBOLS itself writes the same bytes as passing nothing")
+    @case("GRS1", "a caller may hand _graph_files its own symbol table (`symbols=`, default the table of GRAPH_SYMBOLS): a table whose kinds are only part, group and file "
+                  "(classes kind-part|kind-group|kind-file, words symbol_kind_part|group|file) accepts steps of those kinds, writes the three rows in symbols.kinds with their "
+                  "words resolved and the order lists in the table's key order, and makes index.json `strings` the 20 keys of THAT table (the theorem, def and structure "
+                  "words are not in it); without the argument kind part is still GRAPH-SYMBOL and `strings` is still the 20 keys of the live table; passing GRAPH_SYMBOLS "
+                  "itself writes the same bytes as passing nothing")
     def _():
-        extra = dict(GRAPH_SYMBOLS, kinds=dict(GRAPH_SYMBOLS["kinds"], module={"class": "kind-module", "words": "symbol_kind_module"}))
-        st = dict(_strings(), symbol_kind_module="Module words")
-        rows = [gr_row("a", kind="module"), gr_row("b", "a", 1)]
-        errs, objs = _graph_files(rows, "c0", st, symbols=extra)
+        rows3 = {"part": {"class": "kind-part", "words": "symbol_kind_part"}, "group": {"class": "kind-group", "words": "symbol_kind_group"},
+                 "file": {"class": "kind-file", "words": "symbol_kind_file"}}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="Part words", symbol_kind_group="Group words", symbol_kind_file="File words")
+        rows = [gr_row("a", kind="part", state="none", proof="none"), gr_row("b", "a", 1, kind="group", state="none", proof="none"),
+                gr_row("c", "b", 1, kind="file", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
         d_errs, d_objs = _graph_files(rows, "c0", st)
         plain = [gr_row("a"), gr_row("b", "a", 1)]
         same = _graph_bytes(_graph_files(plain, "c0", st)[1]) == _graph_bytes(_graph_files(plain, "c0", st, symbols=GRAPH_SYMBOLS)[1])
         ix = objs["graph/index.json"]
         base_ix = _graph_files(plain, "c0", st)[1]["graph/index.json"]
-        return _eq((errs, ix["symbols"]["order"]["kinds"], ix["symbols"]["kinds"]["module"], len(ix["strings"]), "symbol_kind_module" in ix["strings"],
-                    objs["graph/step/a.json"]["card"]["kind"], [(c, w) for c, w, _ in d_errs], d_objs, len(base_ix["strings"]), base_ix["symbols"]["order"]["kinds"], same),
-                   ([], ["theorem", "def", "structure", "module"], {"class": "kind-module", "text": "Module words", "words": "symbol_kind_module"}, 21, True,
-                    "module", [("GRAPH-SYMBOL", "a")], {}, 20, ["theorem", "def", "structure"], True))
+        return _eq((errs, ix["symbols"]["order"]["kinds"], ix["symbols"]["kinds"]["file"], sorted(ix["symbols"]["kinds"]), len(ix["strings"]),
+                    "symbol_kind_file" in ix["strings"], "symbol_kind_theorem" in ix["strings"], objs["graph/step/c.json"]["card"]["kind"], [(c, w) for c, w, _ in d_errs],
+                    d_objs, len(base_ix["strings"]), base_ix["symbols"]["order"]["kinds"], same),
+                   ([], ["part", "group", "file"], {"class": "kind-file", "text": "File words", "words": "symbol_kind_file"}, ["file", "group", "part"], 20, True, False, "file",
+                    [("GRAPH-SYMBOL", "a"), ("GRAPH-SYMBOL", "b"), ("GRAPH-SYMBOL", "c")], {}, 20, ["theorem", "def", "structure"], True))
 
     @case("GRO1", "`_graph_files(orders=)`: the default is the full permutation of each table (a call with no argument and a call with those lists give the same bytes, and "
                   "symbols.order.kinds|states|proofs are the whole tables, as today); a caller's lists are written exactly as given into symbols.order while the tables "
@@ -13538,18 +13543,18 @@ def _selftest_cases():
                    (True, full, [], mod, ["census", "none", "read"], ["def", "structure", "theorem"]))
 
     @case("GRO2", "GRAPH-ORDER <kind|state|proof> <value>: a row that occurs on a card and is missing from its order list is refused; a `state` or `proof` occurs only on a "
-                  "card whose kind is not `module` (a module card hides the status), so the same state on a module card is accepted with states []; a kind occurs "
-                  "whenever a card has it")
+                  "card whose kind is not one of the skeleton kinds part, group, file (those cards draw no status), so the same state on a file card is accepted with "
+                  "states []; a kind occurs whenever a card has it")
     def _():
-        extra = dict(GRAPH_SYMBOLS, kinds=dict(GRAPH_SYMBOLS["kinds"], module={"class": "kind-module", "words": "symbol_kind_module"}))
-        st = dict(_strings(), symbol_kind_module="Module words")
-        mod = {"kinds": ["theorem", "module"], "states": [], "proofs": []}
+        extra = dict(GRAPH_SYMBOLS, kinds=dict(GRAPH_SYMBOLS["kinds"], file={"class": "kind-file", "words": "symbol_kind_file"}))
+        st = dict(_strings(), symbol_kind_file="File words")
+        mod = {"kinds": ["theorem", "file"], "states": [], "proofs": []}
         thm = [gr_row("a", state="read", proof="read")]
-        on_module = [gr_row("a", kind="module", state="read", proof="read")]
+        on_file = [gr_row("a", kind="file", state="read", proof="read")]
         no_kind = {"kinds": ["def"], "states": [], "proofs": []}
         two = [gr_row("a", state="read"), gr_row("b", "a", 1, state="read", proof="none")]
         return _eq(([tuple(e) for e in _graph_files(thm, "c0", st, symbols=extra, orders=mod)[0]],
-                    _graph_files(on_module, "c0", st, symbols=extra, orders=mod)[0],
+                    _graph_files(on_file, "c0", st, symbols=extra, orders=mod)[0],
                     [tuple(e) for e in _graph_files(thm, "c0", st, symbols=extra, orders=no_kind)[0]],
                     [tuple(e) for e in _graph_files(two, "c0", st, symbols=extra, orders=dict(mod, states=["read"]))[0]]),
                    ([("GRAPH-ORDER", "state", "read"), ("GRAPH-ORDER", "proof", "read")], [],

@@ -435,8 +435,11 @@ def _eq(actual, expected):
 PIN = "0123456789abcdef0123456789abcdef01234567"
 HEAD = "# Contents\n\nIntro.\n\n## New\n\n"   # the body of a fixture CONTENTS starts on line 7
 TAIL = "\n## Lib\n\n- `Lib/Other/File` (1): Not read\n"
-MODULE_ROW = {"class": "kind-module", "words": "symbol_kind_module"}
-ORDERS = {"kinds": ["module"], "states": [], "proofs": []}
+KIND_ROWS = {"part": {"class": "kind-part", "words": "symbol_kind_part"}, "group": {"class": "kind-group", "words": "symbol_kind_group"},
+             "file": {"class": "kind-file", "words": "symbol_kind_file"}}
+ORDERS = {"kinds": ["part", "group", "file"], "states": [], "proofs": []}
+OVERLAY_WORDS = {"key_kinds_heading": "What a box is", "symbol_kind_part": "Part of the argument", "symbol_kind_group": "Group of files",
+                 "symbol_kind_file": "Lean file"}
 
 
 def _lean(decl="theorem t : True := trivial", note="", imports=()):
@@ -458,11 +461,11 @@ def _tree(root, body, srcs):
 
 
 def _strings(extra=True):
-    """The strings file of this checkout; with `extra` (the default) its symbol_kind_module is the fixture word `Module words`."""
+    """The strings file of this checkout; with `extra` (the default) the overlay words of this map are in it, as the literals of OVERLAY_WORDS."""
     with open(os.path.join(_HERE, os.pardir, "site", "strings.json"), encoding="utf-8") as f:
         s = json.load(f)
     if extra:
-        s["symbol_kind_module"] = "Module words"
+        s.update(OVERLAY_WORDS)
     return s
 
 
@@ -489,8 +492,8 @@ def _outline_file(d, ids=(), name="outline.json"):
     return p
 
 
-def _args(g, out, strings_path, outline, pin=PIN):
-    return ["--grh", g, "--pin", pin, "--strings", strings_path, "--out", out, "--outline", outline]
+def _args(g, out, strings_path, outline, pin=PIN, overlay=None):
+    return ["--grh", g, "--pin", pin, "--strings", strings_path, "--out", out, "--outline", outline] + (["--strings-overlay", overlay] if overlay else [])
 
 
 def _strings_file(d, s=None, name="strings.json"):
@@ -567,7 +570,6 @@ CHAIN_BODY = """### T part
 """
 CHAIN_SRCS = {"New/T/A": _lean(imports=["New.T.B", "New.T.C", "New.T.D"]), "New/T/B": _lean(imports=["New.T.C"]), "New/T/C": _lean(imports=["New.T.D"]),
               "New/T/D": _lean()}
-ALL_MODULE = ("module", "none", "none")
 
 
 def _selftest_cases():
@@ -580,7 +582,7 @@ def _selftest_cases():
         return deco
 
     @case("SK1", "a fixture of 2 sections, 3 groups, 6 files: ids (`lean-` then the kebab case of the folder and file names, `<section>--<slug>` for a group), parents, "
-                 "orders, titles with the backticks removed, premises (in-group imports only), kind `module`, state none and proof none for EVERY step; `top` in file "
+                 "orders, titles with the backticks removed, premises (in-group imports only), kinds part, group and file, state none and proof none for EVERY step; `top` in file "
                  "order, `steps` is the number of step files (graph/uses.json is not a step), every file passes the static check, `assets` is {}")
     def _():
         with _tmp() as d:
@@ -589,17 +591,17 @@ def _selftest_cases():
             ix = _j(files, "graph/index.json")
             steps = sorted(k for k in files if k.startswith("graph/step/"))
             ok, why = _eq((errs, _rowtuples(rows)), ([], [
-                ("lean-alpha", "root", 0, [], "module", "Alpha part"),
-                ("lean-alpha--first-group", "lean-alpha", 0, [], "module", "First group"),
-                ("lean-alpha-one", "lean-alpha--first-group", 0, [], "module", "The one file"),
-                ("lean-alpha-two-parts", "lean-alpha--first-group", 1, ["lean-alpha-one"], "module", "Second file"),
-                ("lean-alpha--second-group", "lean-alpha", 1, [], "module", "Second group"),
-                ("lean-alpha-three", "lean-alpha--second-group", 0, [], "module", "Third file"),
-                ("lean-beta", "root", 1, [], "module", "Beta part"),
-                ("lean-beta--third-group", "lean-beta", 0, [], "module", "Third group"),
-                ("lean-beta-four", "lean-beta--third-group", 0, [], "module", "Fourth"),
-                ("lean-beta-sub-five", "lean-beta--third-group", 1, ["lean-beta-four"], "module", "Fifth"),
-                ("lean-beta-six", "lean-beta--third-group", 2, [], "module", "Sixth")]))
+                ("lean-alpha", "root", 0, [], "part", "Alpha part"),
+                ("lean-alpha--first-group", "lean-alpha", 0, [], "group", "First group"),
+                ("lean-alpha-one", "lean-alpha--first-group", 0, [], "file", "The one file"),
+                ("lean-alpha-two-parts", "lean-alpha--first-group", 1, ["lean-alpha-one"], "file", "Second file"),
+                ("lean-alpha--second-group", "lean-alpha", 1, [], "group", "Second group"),
+                ("lean-alpha-three", "lean-alpha--second-group", 0, [], "file", "Third file"),
+                ("lean-beta", "root", 1, [], "part", "Beta part"),
+                ("lean-beta--third-group", "lean-beta", 0, [], "group", "Third group"),
+                ("lean-beta-four", "lean-beta--third-group", 0, [], "file", "Fourth"),
+                ("lean-beta-sub-five", "lean-beta--third-group", 1, ["lean-beta-four"], "file", "Fifth"),
+                ("lean-beta-six", "lean-beta--third-group", 2, [], "file", "Sixth")]))
             if not ok:
                 return ok, why
             beta5 = _j(files, "graph/step/lean-beta-sub-five.json")
@@ -607,13 +609,15 @@ def _selftest_cases():
                         beta5["path"], beta5["card"]["kind"], beta5["card"]["proof"], beta5["card"]["state"], bs._graph_static_problems(files),
                         sorted(files) == ["graph/index.json"] + steps + ["graph/uses.json"],
                         [c["id"] for c in _j(files, "graph/step/lean-alpha.json")["children"]]),
-                       ([ALL_MODULE] * 11, ["lean-alpha", "lean-beta"], 11, 11, {},
+                       ([("part", "none", "none"), ("group", "none", "none"), ("file", "none", "none"), ("file", "none", "none"), ("group", "none", "none"),
+                         ("file", "none", "none"), ("part", "none", "none"), ("group", "none", "none"), ("file", "none", "none"), ("file", "none", "none"),
+                         ("file", "none", "none")], ["lean-alpha", "lean-beta"], 11, 11, {},
                         ["id", "kind", "order", "parent", "premises", "proof", "state", "title"],
-                        ["lean-beta", "lean-beta--third-group"], "module", "none", "none", [], True,
+                        ["lean-beta", "lean-beta--third-group"], "file", "none", "none", [], True,
                         ["lean-alpha--first-group", "lean-alpha--second-group"]))
 
-    @case("SK2", "a section of one file with no folder (`New/Main`) is a TOP step that is that file: id `lean-main`, a leaf in `top`, no section or group above it; a "
-                 "section whose files have no group line gets one anonymous group whose id is `<section>--` and whose title is empty")
+    @case("SK2", "a section of one file with no folder (`New/Main`) is the CHILD of a part made from the heading (id `lean-the-last-file`), with no group between; "
+                 "a section whose files have no group line gets one anonymous group whose id is `<section>--` and whose title is empty; the kinds are part, group, file")
     def _():
         body = """### Alpha part
 
@@ -634,14 +638,16 @@ def _selftest_cases():
             g = _tree(d, body, srcs)
             errs, files, rows, rep = build(g, PIN, _strings())
             main_step = _j(files, "graph/step/lean-main.json")
+            last = _j(files, "graph/step/lean-the-last-file.json")
             return _eq((errs, _rowtuples(rows), _j(files, "graph/index.json")["top"], main_step["path"], main_step["children"], main_step["card"]["child_count"],
-                        sorted(k for k in files if "last" in k or "no-groups" in k)),
-                       ([], [("lean-alpha", "root", 0, [], "module", "Alpha part"), ("lean-alpha--g", "lean-alpha", 0, [], "module", "G"),
-                             ("lean-alpha-one", "lean-alpha--g", 0, [], "module", "One"),
-                             ("lean-anon", "root", 1, [], "module", "No groups here"), ("lean-anon--", "lean-anon", 0, [], "module", ""),
-                             ("lean-anon-solo", "lean-anon--", 0, [], "module", "Solo"),
-                             ("lean-main", "root", 2, [], "module", "From here to there")],
-                        ["lean-alpha", "lean-anon", "lean-main"], [], [], 0, []))
+                        [c["id"] for c in last["children"]], last["card"]["kind"], main_step["card"]["kind"], sorted(k for k in files if "no-groups" in k)),
+                       ([], [("lean-alpha", "root", 0, [], "part", "Alpha part"), ("lean-alpha--g", "lean-alpha", 0, [], "group", "G"),
+                             ("lean-alpha-one", "lean-alpha--g", 0, [], "file", "One"),
+                             ("lean-anon", "root", 1, [], "part", "No groups here"), ("lean-anon--", "lean-anon", 0, [], "group", ""),
+                             ("lean-anon-solo", "lean-anon--", 0, [], "file", "Solo"),
+                             ("lean-the-last-file", "root", 2, [], "part", "The last file"),
+                             ("lean-main", "lean-the-last-file", 0, [], "file", "From here to there")],
+                        ["lean-alpha", "lean-anon", "lean-the-last-file"], ["lean-the-last-file"], [], 0, ["lean-main"], "part", "file", []))
 
     @case("SK3", "premises: a imports b, b imports c, a imports c inside one group: the group's rests_on has a->b and b->c only (a->c is reduced away); an import of a "
                  "file of another group and an import outside New draw no edge; counts are literals (drawn 2, not drawn 3, self-imports 1; an import outside New "
@@ -674,21 +680,25 @@ def _selftest_cases():
         return _eq((errs, files, sorted({c for c, _, _ in e3}), bool(e3), f3),
                    ([("GRAPH-EDGE", "lean-s-b lean-s-a", "cycle in rests_on")], {}, ["GRAPH-EDGE"], True, {}))
 
-    @case("SK5", "kind: EVERY step is `module` whatever the file holds (a theorem, a def, a structure, a note naming a ghost, an empty file): no declaration is read, "
-                 "so no file is refused for having none; state and proof are `none` on every step; the symbol table of this tool has the row kinds.module, its order lists are exactly kinds [module], states [] and proofs [], and index.json `strings` "
-                 "holds 21 keys; site/strings.json holds symbol_kind_module with its placeholder wording")
+    @case("SK5", "kinds are read off CONTENTS: `part` for each `###` heading, `group` for each bold line (an anonymous group too), `file` for each file line; the table of "
+                 "this tool has exactly the rows part, group, file (classes kind-part|kind-group|kind-file, words symbol_kind_part|group|file) and the three rows of the "
+                 "states and of the proofs; order lists kinds [part, group, file], states [], proofs []; state and proof are `none` on every card; index.json `strings` is "
+                 "20 keys with the overlay words and has no symbol_kind_module; index.json has sibling_layout column; site/strings.json has no symbol_kind_module")
     def _():
-        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n- `New/S/C` (1): c\n- `New/S/D` (1): d\n- `New/S/E` (1): e\n"
-        srcs = {"New/S/A": _lean("theorem x : True := trivial", note="The `x` one"), "New/S/B": _lean("def y : Nat := 1"),
-                "New/S/C": _lean("structure Z where\n  x : Nat", note="The `ghost` one"), "New/S/D": "", "New/S/E": "-- nothing here\n"}
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n\n### T part\n\n- `New/T/C` (1): c\n"
+        srcs = {"New/S/A": _lean("theorem x : True := trivial"), "New/S/B": "", "New/T/C": "-- nothing here\n"}
         with _tmp() as d:
             errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
             ix = _j(files, "graph/index.json")
-        return _eq((errs, sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), len(rows), ix["symbols"]["order"], ix["symbols"]["kinds"]["module"],
-                    len(ix["strings"]), ix["strings"]["symbol_kind_module"], _strings(extra=False)["symbol_kind_module"], ix["sibling_layout"]),
-                   ([], [ALL_MODULE], 7, ORDERS,
-                    {"class": "kind-module", "text": "Module words", "words": "symbol_kind_module"}, 21, "Module words",
-                    "A folder or file of the Lean code, shown as it is", "column"))
+        return _eq((errs, [r["kind"] for r in rows], rep["kinds"], sorted({(r["state"], r["proof"]) for r in rows}), ix["symbols"]["order"],
+                    {k: v for k, v in ix["symbols"]["kinds"].items()}, sorted(ix["symbols"]["states"]), sorted(ix["symbols"]["proofs"]), len(ix["strings"]),
+                    ix["strings"]["key_kinds_heading"], "symbol_kind_module" in ix["strings"], ix["sibling_layout"], "symbol_kind_module" in _strings(extra=False),
+                    sorted({c["state"] for k, v in files.items() if k.startswith("graph/step/") for c in [json.loads(v.decode("utf-8"))["card"]]})),
+                   ([], ["part", "group", "file", "file", "part", "group", "file"], {"part": 2, "group": 2, "file": 3}, [("none", "none")], ORDERS,
+                    {"part": {"class": "kind-part", "text": "Part of the argument", "words": "symbol_kind_part"},
+                     "group": {"class": "kind-group", "text": "Group of files", "words": "symbol_kind_group"},
+                     "file": {"class": "kind-file", "text": "Lean file", "words": "symbol_kind_file"}},
+                    ["census", "none", "read"], ["none", "not_read", "read"], 20, "What a box is", False, "column", False, ["none"]))
 
     @case("SK6", "uses sidecar: graph/uses.json is {commit: the pin, format: 1, uses: {file id: [ids of every New file it imports, in any group, sorted, no self]}} "
                  "with an entry for every FILE step and none for a section or a group; an import outside New is not in it; it is not in index.json `steps`")
@@ -828,26 +838,26 @@ def _selftest_cases():
             del s3["parts_n"]
             errs3 = build(g, PIN, s3)[0]
             s4 = _strings()
-            del s4["symbol_kind_module"]
+            del s4["symbol_kind_file"]
             errs4 = build(g, PIN, s4)[0]
             absent = [os.path.exists(os.path.join(d, n)) for n in ("o2", "o3", "o4", "o5", "o6", "o7")]
         return _eq((rc0[0], rc0[1].splitlines()[:1] != [], called, listing, rc_full, held, nopin[0], nopin[1], nopin[2] != "", dup, unk, emptypin, nofolder, notjson,
                     nokey[0], nokey[1].splitlines(), built_nokey, errs3, errs4, absent),
                    (0, True, [], ["graph"], 1, ["keep.txt"], 2, "", True, 2, 2, 2, 2, 2,
                     1, ["STRINGS-KEY sheet_proof_read missing"], False, [("GRAPH-STRINGS", "parts_n", "missing")],
-                    [("GRAPH-STRINGS", "symbol_kind_module", "missing")], [False] * 6))
+                    [("GRAPH-STRINGS", "symbol_kind_file", "missing")], [False] * 6))
 
     @case("SK12", "the written graph/index.json and every step file equal what build_site's _graph_files and _graph_bytes return for the rows (literal rows and a literal "
-                  "table with the module row here): the tool adds no key and drops none, `assets` is {}, and graph/uses.json is the one more file")
+                  "table of the three kinds here): the tool adds no key and drops none, `assets` is {}, and graph/uses.json is the one more file")
     def _():
         body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"
         srcs = {"New/S/A": _lean("def a : Nat := 1"), "New/S/B": _lean("theorem b : True := trivial", imports=["New.S.A"])}
 
-        def row(i, parent, order, premises, title):
-            return {"id": i, "parent": parent, "order": order, "premises": premises, "kind": "module", "state": "none", "proof": "none", "title": title}
-        rows = [row("lean-s", "root", 0, [], "S part"), row("lean-s--g", "lean-s", 0, [], "G"),
-                row("lean-s-a", "lean-s--g", 0, [], "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "b")]
-        table = dict(bs.GRAPH_SYMBOLS, kinds=dict(bs.GRAPH_SYMBOLS["kinds"], module=MODULE_ROW))
+        def row(i, parent, order, premises, kind, title):
+            return {"id": i, "parent": parent, "order": order, "premises": premises, "kind": kind, "state": "none", "proof": "none", "title": title}
+        rows = [row("lean-s", "root", 0, [], "part", "S part"), row("lean-s--g", "lean-s", 0, [], "group", "G"),
+                row("lean-s-a", "lean-s--g", 0, [], "file", "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "file", "b")]
+        table = dict(bs.GRAPH_SYMBOLS, kinds=KIND_ROWS)
         want_errs, want_objs = bs._graph_files(rows, PIN, _strings(), symbols=table, orders=ORDERS, layout="column")
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
@@ -996,7 +1006,40 @@ def _selftest_cases():
         u = json.loads(got[0][1].decode("utf-8"))["uses"]["lean-s-hub"]
         return _eq(([g[0] for g in got], got[0][1] == got[1][1] == got[2][1], u), ([0, 0, 0], True, [f"lean-s-{n}" for n in "abcdef"]))
 
-    @case("SK13", "the real source (give `--selftest --grh DIR`; otherwise SKIPPED): 352 steps all module with state and proof none, top of 9 in CONTENTS order, widest 23, "
+    @case("SK21", "the strings overlay (`--strings-overlay FILE`): its keys replace or add to the strings file for this map only; with the overlay giving the three kind "
+                  "words and a new heading the index holds exactly the 20 keys with those words (an extra overlay key is not in it); the strings file is not edited; an "
+                  "overlay without one kind word is refused GRAPH-STRINGS (exit 1); a file that is not there, not JSON or not an object is exit 2; the overlay file of this "
+                  "checkout (site/strings-lean.json) holds exactly the four placeholder words")
+    def _():
+        body = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n"
+        full = {"key_kinds_heading": "Replaced heading", "symbol_kind_part": "P words", "symbol_kind_group": "G words", "symbol_kind_file": "F words", "extra_key": "x"}
+        with _tmp() as d:
+            g = _tree(d, body, {"New/S/A": _lean()})
+            sp = _strings_file(d, _strings(extra=False))
+            before = open(sp, "rb").read()
+            ol = _outline_file(d)
+
+            def overlay(obj, name):
+                path = os.path.join(d, name)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(obj if isinstance(obj, str) else json.dumps(obj))
+                return path
+            ok = _cli(_args(g, os.path.join(d, "o1"), sp, ol, overlay=overlay(full, "ov1.json")))
+            ix = _j(_tree_files(os.path.join(d, "o1")), "graph/index.json")
+            part = {k: v for k, v in full.items() if k != "symbol_kind_group"}
+            short = _cli(_args(g, os.path.join(d, "o2"), sp, ol, overlay=overlay(part, "ov2.json")))
+            gone = _cli(_args(g, os.path.join(d, "o3"), sp, ol, overlay=os.path.join(d, "nothing.json")))[0]
+            bad = _cli(_args(g, os.path.join(d, "o4"), sp, ol, overlay=overlay("{x", "ov4.json")))[0]
+            arr = _cli(_args(g, os.path.join(d, "o5"), sp, ol, overlay=overlay("[1]", "ov5.json")))[0]
+            unchanged = open(sp, "rb").read() == before
+            absent = [os.path.exists(os.path.join(d, n)) for n in ("o2", "o3", "o4", "o5")]
+        with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
+            repo_overlay = json.load(f)
+        return _eq((ok[0], len(ix["strings"]), ix["strings"]["key_kinds_heading"], ix["symbols"]["kinds"]["file"]["text"], "extra_key" in ix["strings"], unchanged,
+                    short[0], short[1].splitlines(), gone, bad, arr, absent, repo_overlay),
+                   (0, 20, "Replaced heading", "F words", False, True, 1, ["GRAPH-STRINGS symbol_kind_group missing"], 2, 2, 2, [False] * 4, OVERLAY_WORDS))
+
+    @case("SK13", "the real source (give `--selftest --grh DIR`; otherwise SKIPPED): 353 steps (parts 9, groups 38, files 306) with state and proof none, the three cut ids literally, top of 9 in CONTENTS order, widest 23, "
                   "depth 3, 298 links drawn and 226 imports not drawn, every id at most 64 characters with exactly 3 cut, the first 3 children of the first group of "
                   "lean-reduction are the first 3 file lines of that group in CONTENTS, the live outline's ids are disjoint from the build's")
     def _():
@@ -1005,6 +1048,7 @@ def _selftest_cases():
         with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
             live = [g["id"] for g in json.load(f)["groups"]]
         errs, files, rows, rep = build(_GRH_FOR_SK13, "72fead102f663d5c7a407964a13dc0cf9d977207", _strings(), live_ids=live)
+        cut_ids = sorted(final for _, final in rep["cut"])
         with open(os.path.join(_GRH_FOR_SK13, "CONTENTS.md"), encoding="utf-8") as f:
             lines = f.read().split("\n")
         i = lines.index("## New")
@@ -1014,11 +1058,13 @@ def _selftest_cases():
         kids = _j(files, f"graph/step/{gid}.json")["children"][:3]
         order = _j(files, "graph/index.json")["symbols"]["order"]
         stems = sum(1 for k, v in files.items() if k.startswith("graph/step/") for c in json.loads(v.decode("utf-8"))["children"] if c["parent_rests_on"])
-        return _eq((errs, order, _j(files, "graph/index.json")["sibling_layout"], stems, len(live), rep["steps"], sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
-                    rep["not_drawn"], max(len(r["id"]) for r in rows), len(rep["cut"]), [c["title"] for c in kids] == first3, len(first3), len(files)),
-                   ([], ORDERS, "column", 0, 23, 352, [ALL_MODULE],
+        return _eq((errs, order, _j(files, "graph/index.json")["sibling_layout"], stems, len(live), rep["steps"], rep["kinds"], sorted({(r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
+                    rep["not_drawn"], max(len(r["id"]) for r in rows), len(rep["cut"]), cut_ids, [c["title"] for c in kids] == first3, len(first3), len(files)),
+                   ([], ORDERS, "column", 0, 23, 353, {"part": 9, "group": 38, "file": 306}, [("none", "none")],
                     ["lean-reduction", "lean-derivatives", "lean-upper-bound", "lean-spanning", "lean-determinant", "lean-one-lift", "lean-congruences", "lean-appendix",
-                     "lean-main"], 23, 3, 298, 226, 64, 3, True, 3, 354))
+                     "lean-the-last-file"], 23, 3, 298, 226, 64, 3,
+                    ["lean-congruences--lifting-crystalline-extension-classes-i-07869b", "lean-congruences-galois-representations-rows-and-columns-7a36a5",
+                     "lean-one-lift--hecke-l-values-as-squared-norms-and-their-25fb42"], True, 3, 355))
 
     return cases
 
