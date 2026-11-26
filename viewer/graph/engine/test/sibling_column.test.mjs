@@ -430,3 +430,16 @@ test("O3 through the controller: 'column' lays out the level data with the stems
   assert.deepEqual(await run1({ siblings: "rows" }), { first: [10, 1052, 2036, 4, 3], all: [23, 2824, 3472, 7, 6] });
   assert.deepEqual(await run1({ siblings: "column" }), { first: [10, 1052, 2036, 4, 3], all: [23, 1620, 4270, 7, 6] });
 });
+
+test("O2 through the controller: with no layout option an edgeless and a mixed set sit where the frozen fd42c540 layout puts them", async () => {
+  const t = tiny([{ id: "par", kids: ["a", "b", "c", "d"] }, { id: "a" }, { id: "b", premises: ["a"] }, { id: "c" }, { id: "d", stem: true }]);
+  const view = recordingView();
+  const ctl = createController({ roots: t.roots, loadChildren: t.loader, maxHeld: 20, fitOnStart: false }, view);
+  await ctl.ready; await ctl.open("par");
+  const f = frozen([["a"], ["b", ["a"]], ["c"], ["d", [], 0, true]]);
+  assert.deepEqual(["a", "b", "c", "d"].map((id) => [ctl.node(id).rx, ctl.node(id).ry, ctl.node(id).layer]), f.children.map((k) => [k.rx, k.ry, k.layer]));
+  const e = tiny([{ id: "par", kids: ["x", "y", "z"] }, { id: "x" }, { id: "y" }, { id: "z" }]);
+  const c2 = createController({ roots: e.roots, loadChildren: e.loader, maxHeld: 20, fitOnStart: false }, recordingView());
+  await c2.ready; await c2.open("par");
+  assert.deepEqual(["x", "y", "z"].map((id) => [c2.node(id).rx, c2.node(id).ry]), [[0, 0], [W0 + S.gapX, 0], [2 * (W0 + S.gapX), 0]], "one row, as before");
+});
