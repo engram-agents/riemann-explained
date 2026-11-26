@@ -3407,7 +3407,7 @@ def _selftest_cases():
     @case("GID2", "a collision is GRAPH-DUP naming the id, whatever the two steps are, and nothing is written: a group titled `Group` and an anonymous group of a second section "
                   "of the same folder (`lean-t-group`, and the two parts `lean-t`); a group titled `Group` and a file `New/S/Group` of one section; a group whose title slugs to "
                   "nothing and a file `Group`; two groups of one section whose titles are all non-ASCII (`\u03b8`, `\u03a9`) both get the slug `group`; each build is run as the command line in "
-                  "a CHILD with a timeout, so that a walk over the parents that does not end (the group and the file are one step that is its own parent) is ONE failure of this case, "
+                  "a CHILD with a timeout (30 s where the memory cap works, 10 s elsewhere) and, on Linux, a memory cap, so that a walk over the parents that does not end (the group and the file are one step that is its own parent) is ONE failure of this case, "
                   "named `HANG` or with the child's own error, and never a hang of the self-test")
     def _():
         two = "### A part\n\n- `New/T/X` (1): x\n\n### B part\n\n**Group**\n\n- `New/T/Y` (1): y\n"
@@ -3415,17 +3415,14 @@ def _selftest_cases():
         empty = "### S part\n\n**???**\n\n- `New/S/A` (1): a\n- `New/S/Group` (1): g\n"
         greek = "### S part\n\n**\u03b8**\n\n- `New/S/A` (1): a\n\n**\u03a9**\n\n- `New/S/B` (1): b\n"
 
-        def limit():   # the child may not use more than 2 GB: a walk that grows a list ends in MemoryError, a loop that does not grow ends by the timeout
-            import resource
-            resource.setrlimit(resource.RLIMIT_AS, (2 * 1024 ** 3, 2 * 1024 ** 3))
         out = []
         for body, paths in ((two, ("New/T/X", "New/T/Y")), (gf, ("New/S/A", "New/S/Group")), (empty, ("New/S/A", "New/S/Group")), (greek, ("New/S/A", "New/S/B"))):
             with _tmp() as d:
                 g = _tree(d, body, {p: _lean() for p in paths})
                 o = os.path.join(d, "out")
                 try:
-                    r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, o, _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=30,
-                                       preexec_fn=limit)
+                    r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, o, _strings_file(d), _outline_file(d)), capture_output=True, text=True, timeout=_child_timeout(),
+                                       preexec_fn=_cap_child_memory)
                     out.append((r.returncode, r.stdout.splitlines(), os.path.exists(o), "Traceback" in r.stderr))
                 except subprocess.TimeoutExpired:
                     out.append("HANG")
@@ -3514,6 +3511,48 @@ def _selftest_cases():
         return _eq((errs, ids, ids == want, len(set(ids)), [len(i) for i in ids], len({i[:57] for i in ids}), all(ID_SHAPE.fullmatch(i) for i in ids), ids[1] != wrong,
                     [r["parent"] for r in rows]),
                    ([], want, True, 3, [64, 64, 64], 1, True, True, ["root", want[0], want[1]]))
+
+    @case("GID6", "the setup of the child of GID2 never fails the case: `_cap_child_memory(platform)` sets RLIMIT_AS to 2 GiB only where the platform starts with `linux`; a setrlimit that "
+                  "raises ValueError (macOS: the current limit exceeds the maximum) or OSError is swallowed (no exception, the answer is False); on `darwin` setrlimit is not called at all; "
+                  "the timeout of such a child is 30 s where the cap is set and 10 s elsewhere (an unbounded walk that grows a list is then ended by the timeout, not by memory)")
+    def _():
+        import resource
+        real = resource.setrlimit
+        calls = []
+
+        def boom(exc):
+            def f(*a):
+                calls.append(a)
+                raise exc("current limit exceeds maximum limit")
+            return f
+        res = {}
+        try:
+            for name, fake, plat in (("value", boom(ValueError), "linux"), ("os", boom(OSError), "linux"), ("darwin", boom(ValueError), "darwin")):
+                del calls[:]
+                resource.setrlimit = fake
+                try:
+                    res[name] = (_cap_child_memory(plat), len(calls), None)
+                except Exception as e:
+                    res[name] = ("RAISED", len(calls), type(e).__name__)
+        finally:
+            resource.setrlimit = real
+        return _eq((res, _child_timeout("linux"), _child_timeout("darwin"), _child_timeout("linux2")),
+                   ({"value": (False, 1, None), "os": (False, 1, None), "darwin": (False, 0, None)}, 30, 10, 30))
+
+    @case("GID7", "on Linux the cap is really set: `_cap_child_memory()` calls resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB)) once and answers True (a row that only runs on Linux, "
+                  "SKIPPED elsewhere: the cap is not applied on other platforms, GID6 shows that)")
+    def _():
+        if not sys.platform.startswith("linux"):
+            raise _SkipCase("SKIPPED: the memory cap of the child is Linux only")
+        import resource
+        real = resource.setrlimit
+        calls = []
+        resource.setrlimit = lambda *a: calls.append(a)
+        try:
+            got = _cap_child_memory()
+        finally:
+            resource.setrlimit = real
+        return _eq((got, calls), (True, [(resource.RLIMIT_AS, (2 * 1024 ** 3, 2 * 1024 ** 3))]))
 
     @case("RB1", "structure of the tool above the self-test section (read with `ast` from this file's own text, everything before the self-test header): exactly ONE call of `os.open` and it is in `_read_bounded` "
                  "(no allow-list of other sites), no call of the builtin `open` (the tool's own writes go through build_site's `_publish`, which is another module; the writes of this file's fixtures are "
