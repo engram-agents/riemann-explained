@@ -10,7 +10,7 @@ Contract under test (the spec's S1..S5 and the amendments A1..A3):
   `SMOKE PASS` (naming any skip and a partial run) or `SMOKE FAIL (<n> failed)`.
 Never shipped (lives under test/).
 """
-import glob, json, os, re, shutil, subprocess, sys, tempfile
+import contextlib, glob, json, os, re, shutil, subprocess, sys, tempfile, urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -124,6 +124,9 @@ def t4_symlink_out_of_tree(tmp):
     p = os.path.join(out, "graph", "page", "app.js")
     os.remove(p)
     os.symlink(outside, p)
+    got, outs = sweep(out, ["/graph/page/app.js"])
+    assert got[("GET", "/graph/page/app.js")][0] == 403 and got[("HEAD", "/graph/page/app.js")][0] == 403 and outs, (got, outs)
+    no_leak(got, ["/graph/page/app.js"])
     code, o = run_tool(out, "--no-note")
     assert code == 1, (code, o)
     assert lines(o, "FAIL", "containment"), o
@@ -329,6 +332,10 @@ def t15_head_is_contained_like_get(tmp):
     assert got[("GET", "/graph/page/app.js")] == 403, got
     assert got[("HEAD", "/graph/page/app.js")] == 403, got
     assert got[("GET", "/graph/index.json")] == 200 and got[("HEAD", "/graph/index.json")] == 200, got
+    swept, outs = sweep(out, ["/graph/page/app.js", "/graph/index.json"])        # D2: every spelling of both, GET and HEAD
+    assert swept[("GET", "/graph/index.json")][0] == 200 and swept[("HEAD", "/graph/index.json")][0] == 200 and swept[("GET", "/graph/page/app.js")][0] == 403, swept
+    no_leak(swept, ["/graph/page/app.js"])
+    assert outs, outs
 
 
 def t16_runner_counts_skips_apart(tmp):
@@ -369,6 +376,88 @@ def fetch(site, reqs):
     return got, list(S.OUTSIDE)
 
 
+REFUSED = (301, 403, 404)      # what a request that must not reach a byte outside the folder may answer
+LEAK_MARKERS = (b"SECRET", b"OUTINDEX", b"OUTHTM", b"Directory listing", b"secret.txt", b"x.htm", b"entry-name-xyz")
+
+
+def canon(spelling):
+    """The path the server decodes a spelling to (translate_path's view: decoded once, `.` and `..` and empty parts dropped, a trailing slash kept)."""
+    u = urllib.parse.unquote(spelling.split("?")[0])
+    n = "/" + "/".join(x for x in u.split("/") if x not in ("", ".", ".."))
+    return n + "/" if u.rstrip().endswith("/") and not n.endswith("/") else n
+
+
+def spellings(path):
+    """D2: the equivalent request spellings of one path, ONE list that every containment case runs: the literal form; `%2f` and `%2F` for each
+    `/` (singly, and all together) and appended as a trailing slash; `.`, `%2e`, `..` and `%2e%2e` in front; a doubled `//`; and the
+    double-encoded `%252f`, which the server's single decode reads as the characters `%2f` inside a name, so it names no directory."""
+    idx = [i for i, ch in enumerate(path) if ch == "/" and i > 0]
+    out = [path]
+    for enc in ("%2f", "%2F"):
+        out += [path[:i] + enc + path[i + 1:] for i in idx]
+        if len(idx) > 1:
+            out.append(path[0] + path[1:].replace("/", enc))
+        out.append(path + enc)
+    for dots in ("..", "%2e%2e", ".", "%2e"):
+        out += ["/" + dots + path, "/" + dots + "%2f" + path[1:]]
+    out.append(path.replace("/", "//"))
+    out += [path[:i] + "%252f" + path[i + 1:] for i in idx]
+    if len(idx) > 1:
+        out.append(path[0] + path[1:].replace("/", "%252f"))
+    out.append(path + "%252f")
+    return list(dict.fromkeys(out))
+
+
+def sweep(site, paths):
+    """Every spelling of every path, GET and HEAD, plus the path each decodes to. A spelling must be answered exactly as that decoded path is
+    (status and body); a double-encoded one names no real entry, so it is a 404. Returns (answers, OUTSIDE as it ended)."""
+    reqs = []
+    for p in paths:
+        for s in spellings(p):
+            for m in ("GET", "HEAD"):
+                reqs.append((m, s))
+                if "%25" not in s:
+                    reqs.append((m, canon(s)))
+    got, outside = fetch(site, list(dict.fromkeys(reqs)))
+    for p in paths:
+        for s in spellings(p):
+            for m in ("GET", "HEAD"):
+                if "%25" in s:
+                    assert got[(m, s)][0] in (403, 404), ("a double-encoded slash is a literal name, not a slash: a refusal, never a 200", m, s, got[(m, s)])
+                else:
+                    assert got[(m, s)] == got[(m, canon(s))], ("a spelling is answered unlike the path the server decodes it to", m, s, canon(s), got[(m, s)], got[(m, canon(s))])
+    return got, outside
+
+
+def no_leak(got, paths):
+    """No spelling of these paths is ever answered 200, and none carries an outside byte or a directory listing, in GET or HEAD."""
+    for p in paths:
+        for s in spellings(p):
+            for m in ("GET", "HEAD"):
+                for key in ((m, s),) + (((m, canon(s)),) if "%25" not in s else ()):
+                    status, body = got[key]
+                    assert status in REFUSED, ("an answer that is not a refusal", key, got[key])
+                    assert not [x for x in LEAK_MARKERS if x in body], ("an outside byte or a listing", key, got[key])
+
+
+@contextlib.contextmanager
+def no_delegation():
+    """D1: while open, the stdlib's own send_head answers 500 and is recorded, so a request the tool hands to it is seen (the list it yields)."""
+    import http.server
+    calls = []
+    orig = http.server.SimpleHTTPRequestHandler.send_head
+
+    def trap(self):
+        calls.append(self.path)
+        self.send_error(500, "handed to the stdlib's send_head")
+        return None
+    http.server.SimpleHTTPRequestHandler.send_head = trap
+    try:
+        yield calls
+    finally:
+        http.server.SimpleHTTPRequestHandler.send_head = orig
+
+
 def secret_outside(tmp):
     d = os.path.join(tmp, "elsewhere")
     os.makedirs(d, exist_ok=True)
@@ -386,6 +475,9 @@ def t17_root_index_linked_out(tmp):
     assert got[("GET", "/")][0] == 403 and got[("HEAD", "/")][0] == 403, got
     assert b"SECRET" not in got[("GET", "/")][1], got
     assert outside, outside
+    swept, outs = sweep(site, ["/"])                                          # D2: `/%2f`, `/%2F`, `/..%2f`, `//` ... all stay refused
+    assert swept[("GET", "/")][0] == 403 and outs, (swept, outs)
+    no_leak(swept, ["/"])
     flat = flatten(build(tmp, name="flat"))
     real = os.path.join(flat, "index.html")
     shutil.copyfile(real, os.path.join(tmp, "elsewhere", "copy.html"))
@@ -405,6 +497,9 @@ def t18_subdir_index_linked_out(tmp):
     for k, (status, body) in got.items():
         assert status == 403 and b"SECRET" not in body, (k, got)
     assert outside, outside
+    swept, outs = sweep(site, ["/d/", "/d", "/d/index.html"])                 # D2
+    assert swept[("GET", "/d/")][0] == 403 and swept[("GET", "/d")][0] == 301 and swept[("GET", "/d/index.html")][0] == 403 and outs, (swept, outs)
+    no_leak(swept, ["/d/", "/d", "/d/index.html"])
 
 
 def t19_end_to_end_graph_index_linked_out(tmp):
@@ -415,6 +510,9 @@ def t19_end_to_end_graph_index_linked_out(tmp):
     shutil.copyfile(real, outside)
     os.remove(real)
     os.symlink(outside, real)
+    swept, outs = sweep(out, ["/graph/", "/graph", "/graph/index.html"])      # D2: the page's own entry URL in every spelling
+    assert swept[("GET", "/graph/")][0] == 403 and swept[("GET", "/graph/index.html")][0] == 403 and outs, (swept, outs)
+    no_leak(swept, ["/graph/", "/graph", "/graph/index.html"])
     code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
     assert code == 1, (code, o)
     assert lines(o, "FAIL", "containment"), o
@@ -435,6 +533,9 @@ def t20_prefix_boundary(tmp):
     assert got[("GET", "/x.txt")][0] == 403 and got[("HEAD", "/x.txt")][0] == 403, got
     assert got[("GET", "/ok.txt")] == (200, b"INSIDE") and got[("HEAD", "/ok.txt")][0] == 200, got
     assert outside, outside
+    swept, outs = sweep(site, ["/x.txt", "/ok.txt"])                          # D2
+    assert swept[("GET", "/x.txt")][0] == 403 and swept[("GET", "/ok.txt")] == (200, b"INSIDE") and outs, (swept, outs)
+    no_leak(swept, ["/x.txt"])
 
 
 def t21_require_floor_needs_phone_viewport(tmp):
@@ -516,6 +617,49 @@ def t26_no_directory_listing(tmp):
     for k, (status, body) in got.items():
         assert status in (301, 403, 404) and b"entry-name-xyz" not in body, (k, got)
     assert got[("GET", "/bare/")][0] in (403, 404) and got[("HEAD", "/bare/")][0] in (403, 404), got
+    swept, _ = sweep(site, ["/bare/", "/bare"])                               # D2: a directory is never listed in any spelling
+    assert swept[("GET", "/bare/")][0] == 403 and swept[("GET", "/bare")][0] == 301, swept
+    no_leak(swept, ["/bare/", "/bare"])
+
+
+def t27_encoded_slash_spellings_never_reach_the_stdlib(tmp):
+    """D1/D3 (round 3's blocker): a directory asked for with an ENCODED slash (`/d1%2f`) is decided from the decoded path the server opens, so
+    an index linked out is a 403 recorded as containment, a directory linked out or a root with no index is never listed, a double-encoded
+    slash is a literal name, and no request is ever handed to the stdlib's send_head."""
+    out = os.path.join(tmp, "out")
+    os.makedirs(os.path.join(out, "dir"))
+    open(os.path.join(out, "secret.txt"), "w").write("SECRET")
+    open(os.path.join(out, "x.htm"), "w").write("OUTHTM")
+    open(os.path.join(out, "dir", "index.html"), "w").write("OUTINDEX")
+    site = os.path.join(tmp, "site")
+    for d in ("d1", "d2", "d4", "ok", "okd"):
+        os.makedirs(os.path.join(site, d))
+    os.symlink(os.path.join(out, "secret.txt"), os.path.join(site, "d1", "index.html"))       # an index linked out
+    os.symlink(os.path.join(out, "dir"), os.path.join(site, "d2", "sub"))                     # a directory linked out, with an index in it
+    os.symlink(os.path.join(out, "x.htm"), os.path.join(site, "d4", "index.htm"))             # the .htm index linked out
+    os.symlink(out, os.path.join(site, "outdir"))                                             # a directory linked out, with no index
+    open(os.path.join(site, "ok", "a.txt"), "w").write("A")
+    open(os.path.join(site, "okd", "index.html"), "w").write("OKD")                           # an ordinary directory with its index
+    open(os.path.join(site, "p%2fq.txt"), "w").write("INSIDE")                                # a file whose NAME holds the characters %2f
+    leaks = ["/d1%2f", "/d1%2F", "/d1/%2f", "/d2/sub%2f", "/d4%2f"]
+    lists = ["/outdir%2f", "/%2f"]
+    with no_delegation() as calls:
+        got, outs = fetch(site, [(m, p) for m in ("GET", "HEAD") for p in leaks + lists])
+        for m in ("GET", "HEAD"):
+            for p in leaks:
+                assert got[(m, p)][0] == 403 and b"SECRET" not in got[(m, p)][1] and b"OUTHTM" not in got[(m, p)][1] and b"OUTINDEX" not in got[(m, p)][1], (m, p, got[(m, p)])
+            for p in lists:
+                assert got[(m, p)][0] == 403 and b"Directory listing" not in got[(m, p)][1] and b"secret.txt" not in got[(m, p)][1], (m, p, got[(m, p)])
+        assert [p for p in leaks if p not in outs] == [], ("each refused request is recorded as containment", outs)
+        leak_bases = ["/d1/", "/d1", "/d2/sub/", "/d2/sub", "/d4/", "/d4", "/outdir/", "/outdir", "/", "/ok/", "/ok"]
+        swept, _ = sweep(site, leak_bases)
+        no_leak(swept, leak_bases)
+        good, _ = sweep(site, ["/okd/", "/okd", "/ok/a.txt"])
+        assert good[("GET", "/okd/")] == (200, b"OKD") and good[("GET", "/okd%2f")] == (200, b"OKD") and good[("GET", "/ok/a.txt")] == (200, b"A"), good
+        name, _ = fetch(site, [(m, p) for m in ("GET", "HEAD") for p in ("/p%252fq.txt", "/p%2fq.txt")])
+        assert name[("GET", "/p%252fq.txt")] == (200, b"INSIDE") and name[("HEAD", "/p%252fq.txt")][0] == 200, name
+        assert name[("GET", "/p%2fq.txt")][0] == 404 and name[("HEAD", "/p%2fq.txt")][0] == 404, name
+    assert calls == [], ("a request was handed to the stdlib's send_head", calls)
 
 
 CASES = [
@@ -553,6 +697,7 @@ CASES = [
     ("T24 C5: a NUL in the request path answers 400 with no traceback", t24_nul_in_path_is_400),
     ("T25 C2e: an ordinary tree is served whole and passes", t25_ordinary_tree_served),
     ("T26 C1: a directory with no index is never listed", t26_no_directory_listing),
+    ("T27 D1/D3: an encoded-slash directory request is decided from the decoded path: no outside byte, no listing, no stdlib hand-off", t27_encoded_slash_spellings_never_reach_the_stdlib),
 ]
 
 
