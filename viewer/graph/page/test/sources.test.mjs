@@ -171,6 +171,35 @@ test("B1 scan control: a planted listener without the signal, and a planted subs
   assert.equal(subscriptionsNotKept("offs.push(handle.on(\"tap\", fn));").length, 0);
 });
 
+
+/* The failure event (graphview.js FAILURE_EVENT) is OUTPUT only: nothing in the page listens to it, so it can never become a control path, and the page never
+   reads what dispatchEvent returns (a listener could cancel an event that is not cancelable; the page must not depend on either). */
+function listensToFailureEvent(src) {
+  return /addEventListener\(\s*(["'`])graphpage-failure\1/.test(src) || /addEventListener\(\s*FAILURE_EVENT\b/.test(src);
+}
+function readsDispatchResult(src) {
+  /* a dispatchEvent whose call stands as a statement: on its own line, the receiver (`doc`) is the first thing; anything before it (a `=`, `(`, `!`, `return`) reads the result */
+  return callsOf(src, ".dispatchEvent").filter((c) => src.slice(src.lastIndexOf("\n", c.at - 1) + 1, c.at).replace(/[\w$.]+$/, "").trim() !== "").map((c) => c.text.slice(0, 40));
+}
+
+test("E1: no page code listens to the failure event, and dispatchEvent's result is never read", () => {
+  for (const f of pageFiles) {
+    const src = read(f);
+    assert.equal(listensToFailureEvent(src), false, rel(f) + " listens to the failure event");
+    assert.deepEqual(readsDispatchResult(src), [], rel(f) + " reads the result of dispatchEvent");
+  }
+});
+
+test("E1 scan control: a planted listener for the event, and a planted read of dispatchEvent's result, are found", () => {
+  assert.equal(listensToFailureEvent('doc.addEventListener("graphpage-failure", f, { signal });'), true);
+  assert.equal(listensToFailureEvent("doc.addEventListener(FAILURE_EVENT, f, { signal });"), true);
+  assert.equal(listensToFailureEvent('doc.addEventListener("click", f, { signal });'), false);
+  assert.equal(readsDispatchResult("const ok = doc.dispatchEvent(e);").length, 1);
+  assert.equal(readsDispatchResult("if (!doc.dispatchEvent(e)) go();").length, 1);
+  assert.equal(readsDispatchResult("return doc.dispatchEvent(e);").length, 1);
+  assert.equal(readsDispatchResult("try {\n      doc.dispatchEvent(e);\n    } catch (x) {}").length, 0);
+});
+
 /* S4: the sheet's content moves in one place (adopt, only after close()) and ends in one place (release, only from
    close() and dispose()); the page ends it only through sheet.close() or, at the fallback, sheet.dispose(). */
 function closeRouteViolations(name, src) {

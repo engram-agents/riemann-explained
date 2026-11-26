@@ -3036,7 +3036,8 @@ def c_made_deep_link(b, S0, engine, w, h, mobile):
 
 
 # ---- the Graph view (graphview.js): the switch, the lazy read of spine.json, the spine drawn by a second engine, the failure event ----
-GV_INIT = "window.__gp = []; document.addEventListener('graphpage-failure', function (e) { window.__gp.push(e.detail); });"
+GV_INIT = ("window.__gp = []; window.__gpmeta = []; document.addEventListener('graphpage-failure', function (e) { window.__gp.push(e.detail); "
+           "window.__gpmeta.push({ cancelable: e.cancelable, composed: e.composed, bubbles: e.bubbles, type: e.type, isTrusted: e.isTrusted }); });")
 GV_PATH = "/graph/spine.json"
 
 
@@ -3385,6 +3386,9 @@ def c_gv_refusals(b, S0, engine):
             assert len(st["events"]) == 1 and sorted(st["events"][0]) == ["code", "stage"] and st["events"][0]["stage"] == "graph", (name, st["events"])
             assert st["events"][0]["code"] == code and st["events"][0]["code"] in CODES, (name, st["events"])
             assert "SECRET-DATA-VALUE" not in json.dumps(st["events"]), name
+            assert all(isinstance(e["code"], str) and 0 < len(e["code"]) <= 32 for e in st["events"]), (name, st["events"])      # a string of the fixed set, bounded
+            # Zephyr's conditions on the event itself: not cancelable, not composed, named for this page only
+            assert pg.ev("window.__gpmeta") == [{"cancelable": False, "composed": False, "bubbles": False, "type": "graphpage-failure", "isTrusted": False}], name
             assert pg.ev("document.getElementById('graph-fallback').hidden") is True, name      # Cards still standing: no fallback of the whole page
             # the cause goes away: the next press draws the view, clears the notice and tells the clearing once
             gv_clean()
@@ -3448,6 +3452,23 @@ def c_gv_engine_refused(b, S0, engine):
         S.stop(); gv_clean()
 
 
+def c_gv_unknown_file(b, S0, engine):
+    """GV14: a spine box whose file is no step the page can load: the tap shows the page's refused-link notice, opens no panel, and leaves the Graph view as it is."""
+    S, pg = gv(b, engine, spine_edit=lambda sp: sp["nodes"][0].__setitem__("file", "no-such-step"))
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        tap(pg, "spine-made-a")
+        pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+        st = gv_state(pg)
+        assert st["noticeText"] == "That address does not name a step on this map." and st["spine"] is True and st["cards"] is False and st["nodes"] == 4, st
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .spine-panel').length") == 0 and not sheet_open(pg)
+        assert st["events"] == [], st["events"]      # a bad box is not a failure of the view: no event
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
 GV_CASES = [
     ("GV1: the live map has no switch, no Graph stage, no spine request and no event", c_gv_live_silent),
     ("GV2: with both view words the switch is two buttons (Cards pressed), the stage hidden and empty, spine.json not requested", c_gv_switch_present),
@@ -3457,6 +3478,7 @@ GV_CASES = [
     ("GV8/GV9/GV10: seven ways the spine fails each leave Cards standing, one notice, one event with a fixed-set code only, and a retry draws it and tells the clearing once", c_gv_refusals),
     ("GV11: a press of Graph superseded by a press of Cards changes nothing when the spine arrives late", c_gv_ticket),
     ("GV12: one view word without the other is refused at start", c_gv_one_view_word),
+    ("GV14: a box whose file is no loadable step shows the refused-link notice and no panel, and leaves the Graph view as it is", c_gv_unknown_file),
     ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
 ]
 
