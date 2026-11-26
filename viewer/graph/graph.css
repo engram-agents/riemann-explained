@@ -70,6 +70,11 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .face.k-structure { --kc: var(--struct); border-radius: 18px; box-shadow: inset 0 0 0 3px var(--card), inset 0 0 0 4.5px var(--kc); }
 .face.s-census { border-style: dotted; border-width: 3px; }
 .face.s-none { border-style: dashed; background: var(--card-unread); }
+/* The MODULE look wins over the state frame. A module asserts nothing, and `.face.s-none` means "statement not read yet", so a module card must
+   not show it. The override names the s-* classes in its own selector, so it out-ranks `.face.s-none` / `.face.s-census` whatever the source
+   order, and resets the frame to the solid default. LOOK PENDING (Ariadne): the module's own colour and shape; this is a neutral placeholder. */
+.face.k-module { --kc: var(--muted); }
+.face.k-module, .face.k-module.s-none, .face.k-module.s-census { border-style: solid; border-width: 2px; background: var(--card); border-radius: 0; box-shadow: none; }
 .face-role { font-family: var(--sans); font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kc); white-space: nowrap; }
 .face-title { font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 .face-foot { margin-top: auto; font-family: var(--sans); font-size: 14px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 3px; }
@@ -122,6 +127,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .swatch.k-theorem { --kc: var(--theorem); }
 .swatch.k-def { --kc: var(--defn); border-radius: 6px; }
 .swatch.k-structure { --kc: var(--struct); border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--card), inset 0 0 0 2.5px var(--kc); }
+.swatch.k-module { --kc: var(--muted); border-radius: 0; }   /* LOOK PENDING (Ariadne) */
 .swatch.s-census { border-style: dotted; }
 .swatch.s-none { border-style: dashed; background: var(--card-unread); }
 

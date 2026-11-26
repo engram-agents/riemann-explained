@@ -290,7 +290,7 @@ test("SECTION 8 symbols: the exact shape is accepted, with order, words by table
   assert.deepEqual(v.symbols.words.proofs, { read: "sheet_proof_read", not_read: "sheet_proof_not_read", none: "sheet_proof_none" });
   assert.deepEqual(v.symbols.words.states, { read: "sheet_statement_read", census: "sheet_statement_census", none: "sheet_statement_not_read" });
   assert.deepEqual(Object.keys(PROOF_CLASS), ["read", "not_read", "none"]);
-  assert.deepEqual(Object.keys(KIND_CLASS), ["theorem", "def", "structure"]);
+  assert.deepEqual(Object.keys(KIND_CLASS), ["theorem", "def", "structure", "module"]);
   assert.deepEqual(Object.keys(STATE_CLASS), ["read", "census", "none"]);
 });
 
@@ -403,7 +403,7 @@ test("P4 the live map: the full orders, the same 20 strings, nothing moved", () 
   const idx = realIndex();
   const v = validateIndex(idx);
   assert.deepEqual(v.symbols.order, { kinds: ["theorem", "def", "structure"], proofs: ["read", "not_read", "none"], states: ["read", "census", "none"] });
-  assert.deepEqual(v.symbols.names, v.symbols.order, "on the live map the table names and the order are the same lists");
+  for (const t of ["kinds", "proofs", "states"]) assert.deepEqual([...v.symbols.names[t]].sort(), [...v.symbols.order[t]].sort(), "on the live map the order lists every table name (" + t + ")");
   assert.deepEqual([...requiredStrings(v.symbols)].sort(), Object.keys(idx.strings).sort());
   assert.equal(requiredStrings(v.symbols).length, 20);
 });

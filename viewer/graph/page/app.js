@@ -38,16 +38,16 @@ function hashId(doc) {
   try { return decodeURIComponent(h.slice(1)); } catch (e) { return ""; }
 }
 
-/* The key: one row per kind, then per state, in symbols.order order, each with its label strings[row.words]. (Proofs have no
-   section in the key: a proof shows only in the sheet's status line.) */
+/* The key: one row per kind, then per state, as the builder's symbols.order lists them (the rows that occur on this map), each
+   with its label strings[row.words]. A states section whose order is empty is absent whole, heading included: the builder says
+   what the key shows. (Proofs have no section in the key: a proof shows only in the sheet's status line.) */
 function buildKey(index) {
   const s = index.strings, w = index.symbols.words;
-  const kindRows = index.symbols.kinds.map((k) => el("li", {}, [el("span", { class: "swatch " + KIND_CLASS[k] }), el("span", {}, [s[w.kinds[k]]])]));
-  const stateRows = index.symbols.states.map((st) => el("li", {}, [el("span", { class: "swatch k-theorem " + STATE_CLASS[st] }), el("span", {}, [s[w.states[st]]])]));
-  return el("div", { class: "key-content" }, [
-    el("h2", {}, [s.key_kinds_heading]), el("ul", {}, kindRows),
-    el("h2", {}, [s.key_states_heading]), el("ul", {}, stateRows),
-  ]);
+  const kindRows = index.symbols.order.kinds.map((k) => el("li", {}, [el("span", { class: "swatch " + KIND_CLASS[k] }), el("span", {}, [s[w.kinds[k]]])]));
+  const stateRows = index.symbols.order.states.map((st) => el("li", {}, [el("span", { class: "swatch k-theorem " + STATE_CLASS[st] }), el("span", {}, [s[w.states[st]]])]));
+  const parts = [el("h2", {}, [s.key_kinds_heading]), el("ul", {}, kindRows)];
+  if (stateRows.length > 0) parts.push(el("h2", {}, [s.key_states_heading]), el("ul", {}, stateRows));
+  return el("div", { class: "key-content" }, parts);
 }
 
 export async function start(doc, deps) {
@@ -118,7 +118,8 @@ export async function start(doc, deps) {
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
       if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
       const w = index.symbols.words;
-      const status = [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
+      /* A module asserts nothing, so its sheet has no status line (ruled): null, and the card's own content is first under the title. */
+      const status = m.kind === "module" ? null : [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
       const ok = sheet.showCard(art, {
         id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
         crumbs: anc.concat(m).map((x) => ({ id: x.id, title: x.title, role: x.role })),

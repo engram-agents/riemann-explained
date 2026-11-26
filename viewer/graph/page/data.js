@@ -6,7 +6,7 @@ import { isId, stepPath } from "./dom.js";
 /* The enumerated class tables (R3): a kind, state or proof reaches a class name only through these. One that the
    contract's `symbols` lists but that is not here is a refusal, never a blank. The `class` the builder writes in a
    symbols row is checked as a string and IGNORED. */
-export const KIND_CLASS = Object.freeze({ theorem: "k-theorem", def: "k-def", structure: "k-structure" });
+export const KIND_CLASS = Object.freeze({ theorem: "k-theorem", def: "k-def", structure: "k-structure", module: "k-module" });
 export const STATE_CLASS = Object.freeze({ read: "s-read", census: "s-census", none: "s-none" });
 export const PROOF_CLASS = Object.freeze({ read: "p-read", not_read: "p-not-read", none: "p-none" });
 /* The class the SHEET takes from the shown card's `proof` (never from any text): only `none` has one, because a card with no proof
@@ -48,25 +48,29 @@ function idList(v, where) {
 }
 const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-/* The runtime words the page reads from index.json `strings`: the fixed list, plus the `words` key of every symbols row
-   (the legend and the sheet's status line read the same name per symbol). `strings` must be EXACTLY this set. */
+/* The runtime words the page reads from index.json `strings`: the fixed list, plus the `words` key of every symbols TABLE row,
+   whether or not the order lists it (the legend and the sheet's status line read the same name per symbol). `strings` must be
+   EXACTLY this set. */
 export const FIXED_STRINGS = Object.freeze(["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label",
   "link_refused", "parts_failed_notice", "key_kinds_heading", "key_states_heading"]);
 const TABLES = Object.freeze([["kinds", KIND_CLASS, "unknown-kind"], ["proofs", PROOF_CLASS, "unknown-proof"], ["states", STATE_CLASS, "unknown-state"]]);
 
 export function requiredStrings(symbols) {
   const out = FIXED_STRINGS.slice();
-  for (const [t] of TABLES) for (const name of symbols[t]) out.push(symbols.words[t][name]);
+  for (const [t] of TABLES) for (const name of symbols.names[t]) out.push(symbols.words[t][name]);
   return out;
 }
 
 /* symbols = {order: {kinds, proofs, states}, kinds|proofs|states: {name: {class, text, words}}}: exact key sets. A name the
-   page has no table entry for is a refusal; `order` lists are permutations of the names; `class` and `text` are strings and
-   otherwise ignored; `words` is a string (that it is a key of `strings` is checked with the strings). */
+   page has no table entry for is a refusal. The result keeps TWO things apart, one meaning each: `names[t]` is the TABLE's names
+   (what a card's kind, state and proof are checked against, and whose `words` are all required) and `order[t]` is the builder's
+   key list (what the key draws, in that order). An `order` list is a subset of the table's names with no duplicates; the builder
+   lists exactly the rows that occur on the map, so states and proofs may be empty and kinds may not. `class` and `text` are
+   strings and otherwise ignored; `words` is a string (that it is a key of `strings` is checked with the strings). */
 function symbolsOf(v) {
   exactKeys(v, ["order", "kinds", "proofs", "states"], [], "symbols");
   exactKeys(v.order, ["kinds", "proofs", "states"], [], "symbols.order");
-  const out = { words: {} };
+  const out = { words: {}, names: {}, order: {} };
   for (const [t, table, code] of TABLES) {
     const rows = v[t];
     if (!isObj(rows) || Object.keys(rows).length === 0) throw new DataError("bad-type", "symbols." + t + " is not a non-empty object");
@@ -79,13 +83,16 @@ function symbolsOf(v) {
         throw new DataError("bad-type", "symbols." + t + " row has a class, text or words that is not a string");
       out.words[t][n] = rows[n].words;
     }
-    out[t] = orderOf(v.order[t], names, "symbols.order." + t);
+    out.names[t] = names;
+    out.order[t] = orderOf(v.order[t], names, "symbols.order." + t, t !== "kinds");
   }
   return out;
 }
-function orderOf(list, names, where) {
-  if (!Array.isArray(list) || list.length !== names.length || !list.every((x) => names.includes(x)) || new Set(list).size !== list.length)
-    throw new DataError("bad-order", where + " is not a permutation of the table's names");
+function orderOf(list, names, where, mayBeEmpty) {
+  if (!Array.isArray(list)) throw new DataError("bad-order", where + " is not a list");
+  if (!list.every((x) => typeof x === "string" && names.includes(x))) throw new DataError("bad-order", where + " names a row the table does not have");
+  if (new Set(list).size !== list.length) throw new DataError("bad-order", where + " repeats a name");
+  if (list.length === 0 && !mayBeEmpty) throw new DataError("bad-order", where + " is empty");
   return list.slice();
 }
 
@@ -137,9 +144,9 @@ function closedOf(c, ctx, isChild, where) {
   exactKeys(c, ["id", "title", "kind", "state", "proof", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role"], where);
   idOf(c.id, where + ".id");
   if (!isStr(c.title) || c.title === "") throw new DataError("bad-title", where + " has no title");
-  if (!isStr(c.kind) || !ctx.symbols.kinds.includes(c.kind)) throw new DataError("unknown-kind", where + " has a kind that symbols does not list");
-  if (!isStr(c.state) || !ctx.symbols.states.includes(c.state)) throw new DataError("unknown-state", where + " has a state that symbols does not list");
-  if (!isStr(c.proof) || !ctx.symbols.proofs.includes(c.proof)) throw new DataError("unknown-proof", where + " has a proof that symbols does not list");
+  if (!isStr(c.kind) || !ctx.symbols.names.kinds.includes(c.kind)) throw new DataError("unknown-kind", where + " has a kind that symbols does not list");
+  if (!isStr(c.state) || !ctx.symbols.names.states.includes(c.state)) throw new DataError("unknown-state", where + " has a state that symbols does not list");
+  if (!isStr(c.proof) || !ctx.symbols.names.proofs.includes(c.proof)) throw new DataError("unknown-proof", where + " has a proof that symbols does not list");
   if (!isInt(c.child_count) || c.child_count < 0) throw new DataError("bad-count", where + " child_count is not a count");
   const path = idList(c.path, where + ".path");
   if (has(c, "role") && (!isStr(c.role) || c.role === "")) throw new DataError("bad-role", where + " role is not a non-empty string");

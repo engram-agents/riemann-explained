@@ -93,9 +93,13 @@ export function createSheet(parts, strings, hooks, signal) {
     clear(crumbs);
     crumbs.appendChild(crumbList(info.crumbs));
     const claim = article.querySelector(".claim");
-    rec.status = el("p", { class: "sheet-status" }, [info.status]);
-    if (claim && claim.parentNode) claim.parentNode.insertBefore(rec.status, claim.nextSibling);
-    else article.insertBefore(rec.status, article.firstChild);
+    /* The status line is built only for a non-empty status: a card that asserts nothing (a module) passes null and gets no element,
+       so the release step finds rec.status null and the card's own content is the first thing under the title. */
+    if (typeof info.status === "string" && info.status !== "") {
+      rec.status = el("p", { class: "sheet-status" }, [info.status]);
+      if (claim && claim.parentNode) claim.parentNode.insertBefore(rec.status, claim.nextSibling);
+      else article.insertBefore(rec.status, article.firstChild);
+    }
     clear(tools);
     if (info.canParts) {
       const b = el("button", { type: "button", class: "sheet-tool" }, [info.partsOpen ? strings.close_parts : strings.open_parts]);
