@@ -182,6 +182,16 @@ test("templateParts fills {source} and {commit} as TEXT: the template is split, 
   assert.deepEqual(NOTE.templateParts("{n} {nothing} {commit}", { source: "s", commit: "$&" }), ["{n} {nothing} ", "$&"]);
 });
 
+test("templateParts fills exactly the placeholders named by the keys of the values it is given, each as a TEXT part; any other placeholder stays literal text", () => {
+  // the pin: {n} given, {source} not: {source} stays literal (the part is part of the surrounding text, never filled or dropped)
+  assert.deepEqual(NOTE.templateParts("{n} and {source}", { n: "3" }), ["3", " and {source}"]);
+  assert.deepEqual(NOTE.templateParts("We count {n} more notes in {source}.", { n: "12" }), ["We count ", "12", " more notes in {source}."]);
+  assert.deepEqual(NOTE.templateParts("{n}{n} {word}", { n: "<b>x</b>" }), ["<b>x</b>", "<b>x</b>", " {word}"]);
+  assert.deepEqual(NOTE.templateParts("no placeholder <b>", { n: "1" }), ["no placeholder <b>"]);
+  // a key with a regex-special character is matched as itself, not as a pattern
+  assert.deepEqual(NOTE.templateParts("a {x.y} b {xzy}", { "x.y": "1" }), ["a ", "1", " b {xzy}"]);
+});
+
 test("note.js is small, pure and imports only dom.js: no document, window, fetch, timers, randomness, innerHTML-style sinks or raw element creation", () => {
   const src = readFileSync(path.join(HERE, "..", "note.js"), "utf8");
   const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/[^\n]*/g, "$1");
