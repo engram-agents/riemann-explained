@@ -11,6 +11,9 @@ notes/       the skeleton map plus the two optional strings `note_label` and `no
 typeset/     the notes map plus the four optional strings of the maths-face step (note_label_typeset, note_typeset_line, note_exact_button,
              note_render_button; note_label and note_source carry the final words): sk-file-1 the OneSidedBound note, sk-file-2 the hostile note
              with two formula-class hostile spans, sk-file-3 the REAL LineCoordinates note carrying `review` {"state": "converter"}.
+readings/    our reading notes (data contract section 28): the skeleton map with SYNTHETIC repository notes and SYNTHETIC reading notes (no text of the proof
+             repository, none of the real reading notes): sk-file-1 carries a repository note and three long readings, sk-file-2 one hostile reading,
+             sk-file-4 one reading and no repository note; sk-file-3 has neither. Index `readings` and the four readings strings are present.
 note-spans-classes.json   Sol's span classes (6,459 distinct real spans, cls3's class and one_letter), a committed input copied BYTE FOR BYTE
              by `--import-host` and checked here against its pinned sha256; note-linecoordinates.txt and note-onesidedbound.txt likewise.
 skeleton/    the map of a Lean repository's parts, groups and files (data v3: sibling_layout, open_scale_floor, link flags on one group, index_rows and spine_rows on two files): kinds part, group, file, each a table row with `words` (the key's label)
@@ -333,6 +336,60 @@ def notes_build(typeset=False):
     return index, steps, kids, title
 
 
+READINGS_STRINGS = {
+    "note_label": "From the repository, unchanged",
+    "note_source": "Source file: {source} \u00b7 version {commit}",
+    "readings_heading": "Notes by our readers",
+    "readings_about": "These notes were written by us. They are not the repository's words.",
+    "readings_byline": "Read by {by}, checked by {second_read_by}, on {date}.",
+    "key_readings_heading": "Our reading notes",
+}
+HOSTILE_READING = "<img src=x onerror=1>"
+
+
+def _filler(tag, n):
+    """n paragraphs of plain synthetic words, so a reading is taller than a phone's sheet."""
+    return "\n\n".join("Paragraph %d of the %s reading: a plain sentence that only adds height to the sheet, and says nothing about any proof." % (k, tag)
+                        for k in range(1, n + 1))
+
+
+def _reading(rid, title, text, by="First Reader", second="Second Reader", date="2026-11-20", about=None):
+    r = {"id": rid, "title": title, "text": text, "by": by, "second_read_by": second, "date": date}
+    if about is not None:
+        r["about"] = about
+    return r
+
+
+def readings_build():
+    """The skeleton map with notes and readings, all synthetic: (index, steps, kids, title). Readings are in plain string order of id on a step and
+    in the index (the data contract's rule); every index row has its reading on its step and the reverse."""
+    index, steps, kids, title = build_skeleton({})
+    index = copy.deepcopy(index)
+    index["strings"].pop("key_scope_text")        # that sentence quotes the proof repository's own words: not copied into a new fixture
+    index["strings"].update(READINGS_STRINGS)
+    steps["sk-file-1"]["note"] = {"text": "A synthetic repository note.\n\nIts second paragraph.", "source": "synthetic/FileOne.lean"}
+    per_step = {
+        "sk-file-1": [
+            _reading("a-first", "First synthetic reading", "A formula `x` and a name `foo_bar` in the first body.\n\n" + _filler("first", 24)),
+            _reading("b-second", "Second synthetic reading", "A formula `y` and a name `baz_qux` in the second body.\n\n" + _filler("second", 24)),
+            _reading("c-third", "Third synthetic reading", "The third body.\n\n" + _filler("third", 24), by="Third Reader", second="Fourth Reader", date="2026-11-21"),
+        ],
+        "sk-file-2": [
+            _reading("d-hostile", HOSTILE_READING, HOSTILE_READING + " &amp; <script>alert(1)</script> [x](javascript:y)\n\n* <b>bold</b>\n",
+                     by=HOSTILE_READING, second="Second Reader"),
+        ],
+        "sk-file-4": [
+            _reading("e-single", "A single synthetic reading", "One short body.", about=["Synthetic.Name.One", "Synthetic.Name.Two"]),
+        ],
+    }
+    rows = []
+    for sid, rs in per_step.items():
+        steps[sid]["readings"] = rs
+        rows += [{"id": r["id"], "title": r["title"], "step": sid} for r in rs]
+    index["readings"] = sorted(rows, key=lambda r: r["id"])
+    return index, steps, kids, title
+
+
 def skeleton_article(i, kids, title):
     e = html.escape
     out = ['<article class="card" id="%s">' % i,
@@ -468,7 +525,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 def main():
     check_inputs()
-    for sub in ("real", "refusals", "skeleton", "notes", "typeset"):
+    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "readings"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -500,6 +557,14 @@ def main():
     tparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, tkids, ttitle) for t in tindex["top"]] + ["</ul>"]
     open(os.path.join(HERE, "typeset", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + tparts) + "\n")
+
+    rindex, rsteps, rkids, rtitle = readings_build()
+    write_json(os.path.join(HERE, "readings", "index.json"), rindex)
+    for i, st in rsteps.items():
+        write_json(os.path.join(HERE, "readings", "step", i + ".json"), st)
+    rparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, rkids, rtitle) for t in rindex["top"]] + ["</ul>"]
+    open(os.path.join(HERE, "readings", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of a synthetic repository.</p>", "</section>"] + rparts) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)
 

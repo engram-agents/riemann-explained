@@ -1,0 +1,62 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-1",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "File sk-file-1"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-1",
+ "index_rows": [
+  {
+   "source": "grh/INDEX.md",
+   "text": "The first file: the definitions the later files rest on."
+  }
+ ],
+ "note": {
+  "source": "synthetic/FileOne.lean",
+  "text": "A synthetic repository note.\n\nIts second paragraph."
+ },
+ "path": [
+  "sk-part",
+  "sk-group-a"
+ ],
+ "readings": [
+  {
+   "by": "First Reader",
+   "date": "2026-11-20",
+   "id": "a-first",
+   "second_read_by": "Second Reader",
+   "text": "A formula `x` and a name `foo_bar` in the first body.\n\nParagraph 1 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 2 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 3 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 4 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 5 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 6 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 7 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 8 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 9 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 10 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 11 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 12 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 13 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 14 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 15 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 16 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 17 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 18 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 19 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 20 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 21 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 22 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 23 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 24 of the first reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.",
+   "title": "First synthetic reading"
+  },
+  {
+   "by": "First Reader",
+   "date": "2026-11-20",
+   "id": "b-second",
+   "second_read_by": "Second Reader",
+   "text": "A formula `y` and a name `baz_qux` in the second body.\n\nParagraph 1 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 2 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 3 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 4 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 5 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 6 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 7 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 8 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 9 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 10 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 11 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 12 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 13 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 14 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 15 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 16 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 17 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 18 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 19 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 20 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 21 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 22 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 23 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 24 of the second reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.",
+   "title": "Second synthetic reading"
+  },
+  {
+   "by": "Third Reader",
+   "date": "2026-11-21",
+   "id": "c-third",
+   "second_read_by": "Fourth Reader",
+   "text": "The third body.\n\nParagraph 1 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 2 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 3 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 4 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 5 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 6 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 7 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 8 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 9 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 10 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 11 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 12 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 13 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 14 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 15 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 16 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 17 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 18 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 19 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 20 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 21 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 22 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 23 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.\n\nParagraph 24 of the third reading: a plain sentence that only adds height to the sheet, and says nothing about any proof.",
+   "title": "Third synthetic reading"
+  }
+ ],
+ "rests_on": [],
+ "spine_rows": [
+  "spine-theorem-a"
+ ]
+}

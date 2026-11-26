@@ -2939,6 +2939,337 @@ def c_typeset_review(b, S0, engine):
     assert got[0] == got[1], "a review field changed what is drawn"
 
 
+# ---------------------------------------------------------------- our reading notes on a file's sheet, and the key's list (fixtures/readings, all synthetic)
+
+READINGS_TYPESET = {"note_label_typeset": "Typeset label (synthetic)", "note_typeset_line": "Typeset line (synthetic)",
+                    "note_exact_button": "Exact button (synthetic)", "note_render_button": "Render button (synthetic)"}
+READINGS_TAGS = ["DIV", "SPAN", "BUTTON", "NAV", "OL", "UL", "LI", "P", "H2", "CODE", "H3", "H4", "H5", "PRE", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD"]  # dom.js TAGS
+
+
+def _readings_site(engine, **edits):
+    root = tempfile.mkdtemp(prefix="pg-readings-")
+    assemble.assemble(root, engine, fix="readings", **edits)
+    return Served(root)
+
+
+def _readings_index():
+    with open(os.path.join(HERE, "fixtures", "readings", "index.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _readings_open(pg, card):
+    at_hash(pg, card)
+    pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+    pg.wait("document.querySelector('#graph-sheet-body article .readings')", 6000)
+
+
+READINGS_JS = """(() => { const a = document.querySelector('#graph-sheet-body article'), r = a.querySelector('.readings'); if (!r) return null;
+  return { kids: [...a.children].map(e => e.tagName + '.' + e.className),
+    own: [...r.children].map(e => e.tagName + (e.getAttribute('data-id') ? '[' + e.getAttribute('data-id') + ']' : '')),
+    h4: r.children[0].textContent, about: r.children[1].textContent,
+    items: [...r.querySelectorAll('[data-id]')].map(e => ({ id: e.getAttribute('data-id'), kids: [...e.children].map(c => c.tagName),
+                                                             title: e.children[0].textContent, by: e.children[e.children.length - 1].textContent })),
+    frame: r.querySelectorAll('.note-label, .note-source, .note-body, .note-typeset-line, .note-toggle, button, a, details').length,
+    labels: a.querySelectorAll('.note-label').length }; })()"""
+
+
+def c_readings_r3(b, S0, engine):
+    """R3: below the repository's note (or where it would be) one section: an h4, a p, then per reading in list order an element carrying
+    data-id: its title (h5), its body, one p with the byline. NO repository frame on ours. A step with no readings has no section, and
+    closing puts the markup back."""
+    ix = _readings_index()["strings"]
+    S = _readings_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        before = pg.ev("document.getElementById('graph-cards').outerHTML")
+        _readings_open(pg, "sk-file-1")
+        r = pg.ev(READINGS_JS)
+        assert r["kids"] == ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "DIV.note-body", "DIV.readings", "P.note"], r["kids"]
+        assert r["own"] == ["H4", "P", "DIV[a-first]", "DIV[b-second]", "DIV[c-third]"], r["own"]
+        assert r["h4"] == ix["readings_heading"] and r["about"] == ix["readings_about"], (r["h4"], r["about"])
+        assert [i["id"] for i in r["items"]] == ["a-first", "b-second", "c-third"]
+        assert [i["title"] for i in r["items"]] == ["First synthetic reading", "Second synthetic reading", "Third synthetic reading"], r["items"]
+        assert all(i["kids"] == ["H5", "DIV", "P"] for i in r["items"]), r["items"]
+        assert r["items"][0]["by"] == "Read by First Reader, checked by Second Reader, on 2026-11-20.", r["items"][0]["by"]
+        assert r["items"][2]["by"] == "Read by Third Reader, checked by Fourth Reader, on 2026-11-21.", r["items"][2]["by"]
+        assert r["frame"] == 0, "no repository frame (label, source, typeset line, button, link, details) inside ours"
+        assert r["labels"] == 1, "the repository's own label is the only one in the sheet"
+        # a step with readings and no repository note: the section is where the note would be
+        _readings_open(pg, "sk-file-4")
+        r4 = pg.ev(READINGS_JS)
+        assert r4["kids"] == ["H3.claim", "P.sheet-status", "DIV.readings", "P.note"], r4["kids"]
+        assert r4["own"] == ["H4", "P", "DIV[e-single]"] and r4["frame"] == 0 and r4["labels"] == 0, r4
+        assert r4["items"][0]["by"] == "Read by First Reader, checked by Second Reader, on 2026-11-20."
+        # a step with none: no section
+        at_hash(pg, "sk-file-3")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
+        assert pg.ev("document.querySelectorAll('.readings').length") == 0
+        assert pg.ev(NOTE_KIDS_JS) == ["H3.claim", "P.sheet-status", "P.note"]
+        # closing puts the markup back
+        _readings_open(pg, "sk-file-1")
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.readings').length") == 0
+        after = pg.ev("document.getElementById('graph-cards').outerHTML")
+        assert after.replace(' open=""', "") == before.replace(' open=""', ""), "closing must put the markup back"
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_readings_r4(b, S0, engine):
+    """R4: the maths face is on in our readings exactly when all four typeset words are present (the rule the repository note uses): a map with
+    the four sets formulas in span.m; a map with none, or with any three of the four, renders them as code. Ours has no toggle and no line."""
+    probe = """(() => { const e = document.querySelector('#graph-sheet-body .readings [data-id="a-first"]'), body = e.querySelector('.reading-body');
+      return { m: body.querySelectorAll('span.m').length, code: body.querySelectorAll('code').length,
+               inReadings: document.querySelectorAll('.readings button, .readings .note-toggle, .readings .note-typeset-line').length,
+               toggles: document.querySelectorAll('#graph-sheet-body .note-toggle').length }; })()"""
+
+    def probe_with(drop):
+        def edit(i):
+            i["strings"].update({k: v for k, v in READINGS_TYPESET.items() if k != drop})
+        S = _readings_site(engine, index_edit=edit)
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+            _readings_open(pg, "sk-file-1")
+            got = pg.ev(probe)
+            pg.csp_clean()
+            pg.close()
+            return got
+        finally:
+            S.stop()
+    on = probe_with(None)
+    assert on["m"] >= 1 and on["code"] == 1 and on["inReadings"] == 0 and on["toggles"] == 1, on      # `x` is set, `foo_bar` stays a name
+    for k in READINGS_TYPESET:
+        off = probe_with(k)
+        assert off["m"] == 0 and off["code"] == 2 and off["inReadings"] == 0 and off["toggles"] == 0, (k, off)
+    S = _readings_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _readings_open(pg, "sk-file-1")
+        none = pg.ev(probe)
+        assert none["m"] == 0 and none["code"] == 2 and none["inReadings"] == 0 and none["toggles"] == 0, none
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_readings_r5(b, S0, engine):
+    """R5 hostile: a title, a body and a `by` holding '<img src=x onerror=1>' render as text: nothing outside dom.js's tag table, no attribute but
+    class, data-id and start, no stray element, no handler, no dialog, no CSP violation. The key lists the hostile title as text too."""
+    hostile = "<img src=x onerror=1>"
+    S = _readings_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _readings_open(pg, "sk-file-2")
+        got = pg.ev("""(() => { const r = document.querySelector('#graph-sheet-body .readings'), all = [...r.querySelectorAll('*')], sheet = document.getElementById('graph-sheet-body');
+          const e = r.querySelector('[data-id="d-hostile"]');
+          return { tags: [...new Set(all.map(x => x.tagName))].sort(), attrs: [...new Set(all.flatMap(x => [...x.attributes].map(a => a.name)))].sort(),
+                   title: e.querySelector('h5').textContent, body: e.querySelector('.reading-body').textContent, by: e.querySelector('.reading-by').textContent,
+                   stray: sheet.querySelectorAll('img, script, a, iframe, b, u, i, em, strong, style, svg').length,
+                   handlers: [...sheet.querySelectorAll('*')].filter(x => [...x.attributes].some(a => /^on/i.test(a.name))).length }; })()""")
+        assert all(t in READINGS_TAGS for t in got["tags"]), got["tags"]
+        assert all(a in ("class", "data-id", "start") for a in got["attrs"]), got["attrs"]
+        assert got["title"] == hostile, got["title"]
+        assert hostile in got["body"] and "<script>alert(1)</script>" in got["body"] and "[x](javascript:y)" in got["body"] and "<b>bold</b>" in got["body"], got["body"]
+        assert got["by"] == "Read by %s, checked by Second Reader, on 2026-11-20." % hostile, got["by"]
+        assert got["stray"] == 0 and got["handlers"] == 0, got
+        pg.csp_clean()
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        keyt = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li button')].map(x => x.textContent)")
+        assert hostile in keyt, keyt
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .key-content img, #graph-sheet-body .key-content a').length") == 0
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+KEY_READINGS_JS = """(() => { const c = document.querySelector('#graph-sheet-body .key-content'), k = [...c.children], n = k.length;
+  return { tail: k.slice(-4).map(e => e.tagName), heading: k[n - 2].textContent,
+           items: [...k[n - 1].children].map(li => ({ tag: li.tagName, kids: [...li.children].map(x => x.tagName), type: li.children[0] && li.children[0].getAttribute('type'), text: li.textContent })),
+           anchors: c.querySelectorAll('a').length, all: [...c.querySelectorAll('button')].length }; })()"""
+READING_TOP_JS = """(() => { const b = document.getElementById('graph-sheet-body'), e = b.querySelector('.readings [data-id=%s]');
+  return e ? { off: e.getBoundingClientRect().top - b.getBoundingClientRect().top, st: b.scrollTop, max: b.scrollHeight - b.clientHeight } : null; })()"""
+
+
+def _key_button(pg, n):
+    pg.ev("document.querySelectorAll('#graph-sheet-body .key-content li button')[%d].click()" % n)
+
+
+def c_readings_r6(b, S0, engine):
+    """R6: the key lists the readings' titles in index order, each a button (no link), after the lines section; a tap opens the step's sheet with
+    the reading's element at the sheet body's top within 4 px, at 390 x 844 and at 1280 x 900."""
+    idx = _readings_index()
+    ix = idx["strings"]
+    S = _readings_site(engine)
+    try:
+        for w, h in ((390, 844), (1280, 900)):
+            pg = Pg(b, S.base + "graph/index.html", w, h).settled()
+            pg.page.click("#graph-key")
+            wait_sheet(pg, True)
+            k = pg.ev(KEY_READINGS_JS)
+            assert k["tail"] == ["H2", "P", "H2", "UL"], k["tail"]
+            assert k["heading"] == ix["key_readings_heading"], k["heading"]
+            assert [i["text"] for i in k["items"]] == [r["title"] for r in idx["readings"]], k["items"]
+            assert all(i["tag"] == "LI" and i["kids"] == ["BUTTON"] and i["type"] == "button" for i in k["items"]), k["items"]
+            assert k["anchors"] == 0 and k["all"] == 5, k
+            # the second reading of a step with three: its element ends up at the body's top
+            _key_button(pg, 1)
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-1'", 6000)
+            pg.wait("document.querySelector('#graph-sheet-body .readings [data-id=b-second]')", 6000)
+            pg.wait("(() => { const b = document.getElementById('graph-sheet-body'), e = b.querySelector('.readings [data-id=b-second]');"
+                    " return Math.abs(e.getBoundingClientRect().top - b.getBoundingClientRect().top) <= 4; })()", 4000)
+            pg.page.wait_for_timeout(300)
+            t = pg.ev(READING_TOP_JS % "b-second")
+            assert abs(t["off"]) <= 4 and t["st"] > 100 and t["max"] > 0, (w, h, t)
+            # the third, from the key again: the key panel is replaced by the step's sheet, then the scroll
+            pg.page.click("#graph-sheet-close")      # what a reader does: close the sheet with its own control, then tap Key (a covered Key button would be a UX defect: STOP)
+            wait_sheet(pg, False)
+            pg.page.click("#graph-key")
+            wait_sheet(pg, True)
+            assert pg.ev("!!document.querySelector('#graph-sheet-body .key-content')")
+            _key_button(pg, 2)
+            pg.wait("document.querySelector('#graph-sheet-body .readings [data-id=c-third]')", 6000)
+            pg.wait("(() => { const b = document.getElementById('graph-sheet-body'), e = b.querySelector('.readings [data-id=c-third]');"
+                    " const m = b.scrollHeight - b.clientHeight; return Math.abs(e.getBoundingClientRect().top - b.getBoundingClientRect().top) <= 4 || b.scrollTop >= m - 1; })()", 4000)
+            pg.page.wait_for_timeout(300)
+            t3 = pg.ev(READING_TOP_JS % "c-third")
+            assert abs(t3["off"]) <= 4 or t3["st"] >= t3["max"] - 1, (w, h, t3)     # the last one is as high as the scroll allows
+            # a reading on another step: that step's sheet opens with its element in it
+            pg.page.click("#graph-sheet-close")
+            wait_sheet(pg, False)
+            pg.page.click("#graph-key")
+            wait_sheet(pg, True)
+            _key_button(pg, 4)
+            pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-4'", 6000)
+            pg.wait("document.querySelector('#graph-sheet-body .readings [data-id=e-single]')", 6000)
+            assert shown_id(pg) == "sk-file-4"
+            pg.csp_clean()
+            pg.close()
+    finally:
+        S.stop()
+
+
+def c_readings_r7(b, S0, engine):
+    """R7 (the ticket): a key tap whose step file is slow, superseded by Escape or by another navigation, does nothing when the file arrives: no
+    sheet, no scroll, no notice, no fallback."""
+    S = _readings_site(engine)
+    gate = threading.Event()
+    try:
+        for how in ("escape", "navigation"):
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+            pg.page.click("#graph-key")
+            wait_sheet(pg, True)
+            gate, path = hold_step("sk-file-1")
+            _key_button(pg, 1)
+            held_arrived(pg, path)
+            if how == "escape":
+                pg.page.keyboard.press("Escape")
+                wait_sheet(pg, False)
+            else:
+                at_hash(pg, "sk-file-4")
+                pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-4'", 6000)
+            gate.set()
+            pg.page.wait_for_timeout(700)
+            if how == "escape":
+                assert not sheet_open(pg) and shown_id(pg) is None, "the key tap came back after Escape and opened the sheet"
+            else:
+                assert shown_id(pg) == "sk-file-4" and sheet_open(pg), "the superseded key tap replaced the later navigation: " + str(shown_id(pg))
+                assert pg.ev("document.querySelectorAll('.readings [data-id=b-second]').length") == 0
+                assert pg.ev("document.getElementById('graph-sheet-body').scrollTop") == 0
+            assert notice_text(pg) is None, notice_text(pg)
+            assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.getElementById('graph-fallback').hidden"), "no fallback"
+            pg.csp_clean()
+            pg.close()
+            nav_clear()
+    finally:
+        gate.set()
+        nav_clear()
+        S.stop()
+
+
+def c_readings_r8(b, S, engine):
+    """R8: the live map has no readings section on any sheet and its key is the base head's, byte for byte; a map that carries notes but no
+    readings is the same."""
+    for card in ("goal-chain", "a1-a-1-x"):
+        pg = Pg(b, S.base + "graph/index.html#" + card, 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === %s" % json.dumps(card), 6000)
+        assert pg.ev("document.querySelectorAll('.readings').length") == 0, card
+        pg.csp_clean()
+        pg.close()
+    _got, html = key_of(b, engine, None)
+    assert html == LIVE_KEY_HTML, html
+    root = tempfile.mkdtemp(prefix="pg-readings-live-")
+    assemble.assemble(root, engine, index_edit=carry_notes)
+    SN = Served(root)
+    try:
+        pg = Pg(b, SN.base + "graph/index.html#a1", 1280, 900).settled()
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'a1'", 6000)
+        assert pg.ev("document.querySelectorAll('.readings').length") == 0
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        assert pg.ev("document.querySelector('#graph-sheet-body .key-content').outerHTML") == LIVE_KEY_HTML
+        pg.close()
+    finally:
+        SN.stop()
+
+
+def c_readings_r9(b, S0, engine):
+    """R9: a reading's element is found by `.readings [data-id="<id>"]` (the attribute dom.js's allow-list has; no data-reading anywhere), and no
+    element in the section carries an attribute outside that allow-list: class, data-id, role, tabindex, hidden, aria-*, type (on a button), start (on an ol)."""
+    S = _readings_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _readings_open(pg, "sk-file-1")
+        got = pg.ev("""(() => { const r = document.querySelector('#graph-sheet-body .readings'), all = [r, ...r.querySelectorAll('*')];
+          return { found: ['a-first', 'b-second', 'c-third'].map(i => { const e = document.querySelector('#graph-sheet-body .readings [data-id="' + i + '"]'); return e ? e.querySelector('h5').textContent : null; }),
+                   count: r.querySelectorAll('[data-id]').length, old: document.querySelectorAll('[data-reading]').length,
+                   bad: all.flatMap(e => [...e.attributes].map(a => e.tagName + ':' + a.name)).filter(n => !/^[A-Z0-9]+:(class|data-id|role|tabindex|hidden|aria-[a-z]+)$/.test(n)
+                          && !/^BUTTON:type$/.test(n) && !/^OL:start$/.test(n)) }; })()""")
+        assert got["found"] == ["First synthetic reading", "Second synthetic reading", "Third synthetic reading"], got
+        assert got["count"] == 3 and got["old"] == 0, got
+        assert got["bad"] == [], got["bad"]
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_readings_r10(b, S0, engine):
+    """R10 (a map with readings and NO note words): the step is still loaded, so the sheet draws the readings section; it draws no repository-note
+    frame (no label, no source line, no note body among the article's own children); a step without readings has none."""
+    def no_note_words(i):
+        i["strings"].pop("note_label")
+        i["strings"].pop("note_source")
+
+    def no_notes(steps):
+        for st in steps.values():
+            st.pop("note", None)
+    S = _readings_site(engine, index_edit=no_note_words, step_edit=no_notes)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _readings_open(pg, "sk-file-1")
+        r = pg.ev(READINGS_JS)
+        assert r["kids"] == ["H3.claim", "P.sheet-status", "DIV.readings", "P.note"], r["kids"]
+        assert r["own"] == ["H4", "P", "DIV[a-first]", "DIV[b-second]", "DIV[c-third]"], r["own"]
+        _readings_open(pg, "sk-file-4")
+        assert pg.ev(READINGS_JS)["own"] == ["H4", "P", "DIV[e-single]"]
+        at_hash(pg, "sk-file-3")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-3'", 6000)
+        assert pg.ev("document.querySelectorAll('.readings').length") == 0
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
 def c_mutant(b):
     """R7 MUTANT: a copy of dom.js whose text path uses innerHTML. The hostile cells must go red."""
     def mut(text):
@@ -3031,6 +3362,14 @@ def main():
                 run("note: T4 formula spans that would be markup are span.m text, no element comes of them", c_typeset_hostile, eng)
                 run("note: T5 a map lacking any one of the four maths-face strings renders the note exactly as round 1", c_typeset_gate, eng)
                 run("note: L2 a review {state: converter} changes nothing drawn", c_typeset_review, eng)
+                run("readings R3: below the repository's note: an h4, a p, then per reading a data-id element (h5, body, byline); no repository frame; none on a step without", c_readings_r3, eng)
+                run("readings R4: the maths face on our readings exactly when all four typeset words are present", c_readings_r4, eng)
+                run("readings R5: a hostile title, body and by are text; nothing outside dom.js's allow-list", c_readings_r5, eng)
+                run("readings R6: the key lists the titles in index order as buttons; a tap opens the step's sheet with the reading at the body's top (390 and 1280)", c_readings_r6, eng)
+                run("readings R7: a key tap superseded by Escape or another navigation does nothing", c_readings_r7, eng)
+                run("readings R8: the live map has no readings section and its key is unchanged", c_readings_r8, eng)
+                run("readings R9: a reading's element is found by .readings [data-id]; no attribute in the section outside dom.js's allow-list", c_readings_r9, eng)
+                run("readings R10: readings with no note words: the step is loaded, the section is drawn, no repository-note frame", c_readings_r10, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)
                 run("R3a cue predicate: a clean gap and a head square alone are not a cue; a card or a stroke crossing the edge is", lambda b, S, *a: c_cue_predicate_control())
                 for vw, vh in VIEWPORTS:

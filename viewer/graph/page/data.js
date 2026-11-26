@@ -66,6 +66,19 @@ export const EDGE_BASIS_HEADING = "key_lines_heading";
 /* The one basis value this page knows for an index's links: the names written in the source, from the compiled index. */
 export const EDGE_BASIS = "names-written-in-source-from-compiled-index";
 
+/* OUR READING NOTES (data contract sections 28 and 28b). The strings the page reads ONLY because the index carries `readings`: like the edge-basis
+   pair, they are required with it (absent: missing-string, "": empty-string) and without it they are not read, so a present one is an extra-string.
+   `readings_front` is a key of the shell, never of index strings: it is not read here, so it is an extra-string wherever it appears. The byline's
+   placeholders are EXACTLY the field names below (the page fills them from the reading's own fields), and the builder's own rules for a note's
+   fields (docs/tools.md "Readings, the checks") are enforced identically here, so a map that builds is a map that runs. */
+export const READING_STRINGS = Object.freeze(["readings_heading", "readings_about", "readings_byline", "key_readings_heading"]);
+export const READING_BYLINE_FIELDS = Object.freeze(["by", "second_read_by", "date"]);
+const READING_ID = /^[a-z0-9-]{1,64}$/;
+const READING_TITLE_MAX = 200;
+const READING_TEXT_MAX_BYTES = 20000;
+const READING_NAME_MAX = 100;
+const READING_ABOUT_MAX = 200;
+
 /* An optional strings key that is present but empty is refused under its own code (a required key that is absent or empty is
    "missing-string"). The rule is keyed to the set it is handed, never to a name. */
 export function refuseEmptyOptional(strings, optional) {
@@ -184,8 +197,53 @@ function linkOf(l, expectPathFrom, expectPathTo, where) {
   return out;
 }
 
+const charCount = (v) => [...v].length;   // characters, not UTF-16 units: the builder counts Python characters
+const badReadings = (why) => new DataError("bad-readings", why);
+function readingIdOf(v, where) {
+  /* The builder's rule is [a-z0-9-]{1,64}; the id is also the element's `data-id`, which dom.js takes only as a step-id-shaped value (it starts with a-z or 0-9),
+     so an id that starts with a hyphen is refused here, by name, and never reaches the sheet as a thrown error. */
+  if (!isStr(v) || !READING_ID.test(v) || !isId(v)) throw badReadings(where + " has an id that is not 1 to 64 of a-z, 0-9 and hyphen, starting with a-z or 0-9: " + shown(v));
+  return v;
+}
+function readingTitleOf(v, where) {
+  if (!isStr(v) || v === "") throw badReadings(where + " has a title that is not a non-empty string");
+  if (v.includes("`")) throw badReadings(where + " has a title with a backtick");
+  if (charCount(v) > READING_TITLE_MAX) throw badReadings(where + " has a title of more than " + READING_TITLE_MAX + " characters");
+  return v;
+}
+function realDate(v) {
+  const m = isStr(v) ? /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(v) : null;
+  if (!m) return false;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (y < 1 || mo < 1 || mo > 12 || d < 1) return false;
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  return d <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+}
+/* The index's `readings`: a non-empty list of exactly {id, title, step}, in plain string order of id (so the ids are unique), each `step` a step id that is
+   not a part. (The index lists only the top steps, so a group is told from a file when its own step loads: validateStep.) */
+function readingRowsOf(v, top) {
+  if (!Array.isArray(v) || v.length === 0) throw badReadings("index readings is not a non-empty list");
+  const rows = v.map((r, i) => {
+    const where = "index readings " + i;
+    if (!isObj(r) || Object.keys(r).length !== 3 || !has(r, "id") || !has(r, "title") || !has(r, "step")) throw badReadings(where + " is not exactly {id, title, step}");
+    readingIdOf(r.id, where);
+    readingTitleOf(r.title, where);
+    if (!isId(r.step)) throw badReadings(where + " has a step that is not a step id: " + shown(r.step));
+    if (top.includes(r.step)) throw badReadings(where + " names " + r.step + ", a part, not a file");
+    return { id: r.id, title: r.title, step: r.step };
+  });
+  for (let i = 1; i < rows.length; i++) if (!(rows[i - 1].id < rows[i].id)) throw badReadings("index readings are not in plain string order of id, without a repeat, at " + rows[i].id);
+  return rows;
+}
+/* The byline's placeholders are exactly {by}, {second_read_by}, {date}: every {...} in it is one of those and each of the three occurs. */
+function bylineOf(v) {
+  const found = new Set([...v.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1]));
+  if (found.size !== READING_BYLINE_FIELDS.length || !READING_BYLINE_FIELDS.every((f) => found.has(f)))
+    throw new DataError("bad-readings-strings", "index strings readings_byline does not hold exactly the placeholders {by}, {second_read_by} and {date}");
+}
+
 export function validateIndex(raw) {
-  exactKeys(raw, ["format", "commit", "max_children", "top", "rests_on", "steps", "symbols", "assets", "strings"], ["sibling_layout", "open_scale_floor", "edge_basis"], "index");
+  exactKeys(raw, ["format", "commit", "max_children", "top", "rests_on", "steps", "symbols", "assets", "strings"], ["sibling_layout", "open_scale_floor", "edge_basis", "readings"], "index");
   if (raw.format !== 1) throw new DataError("bad-format", "index format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "index commit is not a non-empty string");
   if (!isInt(raw.max_children) || raw.max_children < 1) throw new DataError("bad-type", "index max_children is not a positive integer");
@@ -215,6 +273,9 @@ export function validateIndex(raw) {
      (required, an empty one is empty-string); absent, neither is read, so key_lines_heading and key_lines_text are extra-string like any other. */
   const edgeBasis = has(raw, "edge_basis") ? edgeBasisOf(raw.edge_basis, raw.strings) : null;
   const edgeStrings = edgeBasis ? [EDGE_BASIS_HEADING, edgeBasis.words] : [];
+  /* `readings` (optional; absent on the live map): checked before the strings it makes required. */
+  const readingRows = has(raw, "readings") ? readingRowsOf(raw.readings, top) : null;
+  const readingStrings = readingRows ? READING_STRINGS : [];
   const need = requiredStrings(symbols);
   for (const k of need) {
     if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("missing-string", "index strings lacks the runtime key " + k);
@@ -223,15 +284,21 @@ export function validateIndex(raw) {
     if (!has(raw.strings, k)) throw new DataError("missing-string", "index strings lacks the edge basis key " + k);
     if (raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty edge basis key " + k);
   }
+  for (const k of readingStrings) {
+    if (!has(raw.strings, k)) throw new DataError("missing-string", "index strings lacks the readings key " + k);
+    if (raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty readings key " + k);
+  }
+  if (readingRows) bylineOf(raw.strings.readings_byline);
   refuseEmptyOptional(raw.strings, OPTIONAL_STRINGS);
   /* The page treats a map as carrying notes only when strings hold BOTH note words; one alone would open note-carrying cards silently without their note. */
   if (has(raw.strings, "note_label") !== has(raw.strings, "note_source"))
     throw new DataError("bad-note-strings", "index strings holds only one of note_label and note_source: both or neither");
   for (const k of Object.keys(raw.strings)) {
-    if (!need.includes(k) && !edgeStrings.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
+    if (!need.includes(k) && !edgeStrings.includes(k) && !readingStrings.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   }
   const out = { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
   if (edgeBasis) out.edgeBasis = edgeBasis;
+  if (readingRows) out.readings = readingRows;
   /* The two optional per-map keys (data contract sections 15 and 24), each absent on the live map and then absent from the record too.
      `sibling_layout`: the only value is "column". `open_scale_floor`: a finite number above 0 here; its range (zoom.min up to the open-framing
      cap) is the ENGINE's rule, asked of the engine itself at start by checkedOptions below, never copied into the page. */
@@ -312,8 +379,48 @@ function noteOf(v, ctx, stepId) {
   return out;
 }
 
+/* A file step's `readings` (D3): a non-empty list, in plain string order of id, of objects with exactly {id, title, text, by, second_read_by, date} and an
+   optional `about`. */
+const READING_KEYS = ["id", "title", "text", "by", "second_read_by", "date"];
+function readingsOf(v, stepId) {
+  if (!Array.isArray(v) || v.length === 0) throw badReadings("step " + stepId + " readings is not a non-empty list");
+  const list = v.map((r, i) => {
+    const where = "step " + stepId + " readings " + i;
+    if (!isObj(r) || !READING_KEYS.every((k) => has(r, k)) || Object.keys(r).some((k) => !READING_KEYS.includes(k) && k !== "about"))
+      throw badReadings(where + " is not exactly {id, title, text, by, second_read_by, date} with at most an about");
+    readingIdOf(r.id, where);
+    readingTitleOf(r.title, where);
+    if (!isStr(r.text) || r.text === "") throw badReadings(where + " has a text that is not a non-empty string");
+    if (new TextEncoder().encode(r.text).length > READING_TEXT_MAX_BYTES) throw badReadings(where + " has a text of more than " + READING_TEXT_MAX_BYTES + " bytes");
+    for (const k of ["by", "second_read_by"]) {
+      if (!isStr(r[k]) || r[k] === "") throw badReadings(where + " has a " + k + " that is not a non-empty string");
+      if (charCount(r[k]) > READING_NAME_MAX) throw badReadings(where + " has a " + k + " of more than " + READING_NAME_MAX + " characters");
+    }
+    if (r.by === r.second_read_by) throw badReadings(where + " has by and second_read_by the same");
+    if (!realDate(r.date)) throw badReadings(where + " has a date that is not a real YYYY-MM-DD: " + shown(r.date));
+    const out = { id: r.id, title: r.title, text: r.text, by: r.by, second_read_by: r.second_read_by, date: r.date };
+    if (has(r, "about")) {
+      if (!Array.isArray(r.about) || r.about.length === 0 || !r.about.every((a) => isStr(a) && a !== "" && charCount(a) <= READING_ABOUT_MAX))
+        throw badReadings(where + " has an about that is not a non-empty list of non-empty strings of at most " + READING_ABOUT_MAX + " characters");
+      out.about = r.about.slice();
+    }
+    return out;
+  });
+  for (let i = 1; i < list.length; i++) if (!(list[i - 1].id < list[i].id)) throw badReadings("step " + stepId + " readings are not in plain string order of id, without a repeat, at " + list[i].id);
+  return list;
+}
+/* D4, CONSISTENCY at step load: every reading on the step has a row in the index list with the same id, the same title and `step` equal to this step's id;
+   a step carrying readings while the index has none is refused. */
+function checkReadingRows(list, stepId, rows) {
+  for (const r of list) {
+    const row = rows ? rows.find((x) => x.id === r.id) : undefined;
+    if (!row || row.title !== r.title || row.step !== stepId)
+      throw new DataError("readings-mismatch", "step " + stepId + " reading " + r.id + " has no matching row (id, title and this step) in the index readings");
+  }
+}
+
 export function validateStep(raw, ctx) {
-  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows"], "step");
+  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows", "readings"], "step");
   if (raw.format !== 1) throw new DataError("bad-format", "step format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "step commit is not a non-empty string");
   if (raw.commit !== ctx.commit) throw new DataError("commit-mismatch", "step commit differs from the index's");
@@ -349,6 +456,16 @@ export function validateStep(raw, ctx) {
   if (has(raw, "index_rows")) out.index_rows = indexRowsOf(raw.index_rows);
   if (has(raw, "spine_rows")) out.spine_rows = spineRowsOf(raw.spine_rows);
   if (has(raw, "note")) out.note = { ...noteOf(raw.note, ctx, raw.id), commit: raw.commit };
+  /* Our reading notes. Only a file step carries them, and an index row names a file step: a part or a group that carries `readings`, or that an index
+     row names, is bad-readings (D3 first, then D4's consistency). The page decides nothing by a kind NAME (sources.test A1), so a file is told by what
+     every file of the map is and no part or group is: it has no children. */
+  if (has(raw, "readings")) {
+    if (children.length !== 0) throw badReadings("step " + raw.id + " has children (it is a part or a group, not a file) and carries readings");
+    out.readings = readingsOf(raw.readings, raw.id);
+    checkReadingRows(out.readings, raw.id, ctx.readings);
+  } else if (children.length !== 0 && ctx.readings && ctx.readings.some((r) => r.step === raw.id)) {
+    throw badReadings("index readings names " + raw.id + ", which has children (it is a part or a group, not a file)");
+  }
   return out;
 }
 
