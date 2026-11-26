@@ -2,7 +2,7 @@
    text nodes; a tag or attribute outside the tables below THROWS. Nothing here parses markup. */
 
 /* The tag table. No svg, path or g: links are the engine's div strokes. */
-export const TAGS = Object.freeze(["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2"]);
+export const TAGS = Object.freeze(["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code"]);
 
 /* Attributes allowed on every tag, and the one extra a button may carry. aria-* is matched by pattern below. */
 const COMMON = new Set(["class", "data-id", "role", "tabindex", "hidden"]);
@@ -66,3 +66,31 @@ export const el = makeEl(null);
 
 /* A text node, for the places that need one without an element around it. */
 export function text(s) { return globalThis.document.createTextNode(String(s)); }
+
+/* A step title is the repository's line exactly, backticks included; the page typesets each code span and shows no backtick
+   character for it. ONE helper, used by every place the page draws a step title (the face, the breadcrumbs).
+   THE DEFINITION OF A SPAN is the builder's: this regex MIRRORS tools/notes_meta.py `_BACKTICK_SPAN`, applied with re.sub semantics
+   (left to right, non-overlapping): a backtick with no backtick directly before it, one or more characters that are no backtick and no
+   CR or LF, a backtick with no backtick directly after it. So an empty pair, doubled backticks and an unpaired backtick are NOT spans
+   and stay as written. It is a JS RegExp with the same lookbehind and lookahead (not a hand scan); the agreement test checks it
+   against that regex's own segments (fixtures/backtick-titles.json). If the builder's definition changes, this line changes with it. */
+const BACKTICK_SPAN = /(?<!`)`([^`\r\n]+)`(?!`)/g;
+
+/* title -> [{kind: "text" | "code", text}], no empty text segment. */
+export function titleSegments(title) {
+  const s = String(title), out = [];
+  let pos = 0;
+  for (const m of s.matchAll(BACKTICK_SPAN)) {
+    if (m.index > pos) out.push({ kind: "text", text: s.slice(pos, m.index) });
+    out.push({ kind: "code", text: m[1] });
+    pos = m.index + m[0].length;
+  }
+  if (pos < s.length) out.push({ kind: "text", text: s.slice(pos) });
+  return out;
+}
+
+/* title -> the children for el(): a plain string for text, el("code") for a span. Never markup: the code element holds its characters
+   as one text node, so '<b>' or '&' inside a span stays text, and an asterisk or underscore stays literal. */
+export function titleChildren(title, elFn = el) {
+  return titleSegments(title).map((seg) => (seg.kind === "code" ? elFn("code", {}, [seg.text]) : seg.text));
+}

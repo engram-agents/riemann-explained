@@ -87,7 +87,7 @@ test("the module source has no sink and no URL literal", () => {
 
 /* ---- A6: a step title's backtick spans are typeset as code, by ONE helper. The definition of a span is the builder's
    (tools/notes_meta.py _BACKTICK_SPAN); backtick-titles.json holds the edge strings with the segments that regex itself finds. ---- */
-const flat = (n) => (n.nodeType === 3 ? n.textContent : n.children.map(flat).join(""));
+const flat = (n) => (typeof n === "string" ? n : n.nodeType === 3 ? n.textContent : n.children.map(flat).join(""));   // a string child becomes one text node under el()
 const render = (title) => { const doc = makeFakeDoc(); const kids = dom.titleChildren(title, dom.makeEl(doc)); return { doc, kids }; };
 const BT = JSON.parse(readFileSync(new URL("./fixtures/backtick-titles.json", import.meta.url), "utf8"));
 
@@ -100,16 +100,16 @@ test("A6 agreement: titleSegments equals the segments the builder's own regex fi
 test("A6 T1: 'a `x` b' -> text 'a ', code 'x', text ' b'; no backtick shown", () => {
   const { kids } = render("a `x` b");
   assert.equal(kids.length, 3);
-  assert.equal(kids[0].textContent, "a ");
+  assert.equal(kids[0], "a ");
   assert.equal(kids[1].tagName, "CODE");
   assert.equal(flat(kids[1]), "x");
-  assert.equal(kids[2].textContent, " b");
+  assert.equal(kids[2], " b");
   assert.ok(!kids.map(flat).join("").includes("`"));
 });
 
 test("A6 T2: the real title -> a code element with the text 'P* s P' (the asterisk stays literal)", () => {
   const { kids } = render("The second moments of the operators `P* s P`, and good forms");
-  const code = kids.filter((k) => k.nodeType === 1);
+  const code = kids.filter((k) => typeof k !== "string");
   assert.equal(code.length, 1);
   assert.equal(flat(code[0]), "P* s P");
   assert.equal(kids.map(flat).join(""), "The second moments of the operators P* s P, and good forms");

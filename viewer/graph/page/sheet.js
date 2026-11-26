@@ -14,7 +14,7 @@
    CLOSING: every way the sheet closes goes through close(), the ONE close function. It first dispatches a cancelable
    `sheetclose` event on the thing shown; if a listener cancels it, the sheet stays open and nothing moves. A
    bubbling `sheetcloserequest` from inside the sheet runs the same close(). */
-import { el } from "./dom.js";
+import { el, titleChildren } from "./dom.js";
 
 export function createSheet(parts, strings, hooks, signal) {
   const { root, crumbs, tools, body, closeButton } = parts;
@@ -78,7 +78,7 @@ export function createSheet(parts, strings, hooks, signal) {
       const last = i === list.length - 1;
       const kids = [];
       if (typeof c.role === "string" && c.role !== "") kids.push(el("span", { class: "crumb-role" }, [c.role]));
-      kids.push(c.title);
+      kids.push(...titleChildren(c.title));
       return el("li", {}, [last ? el("span", { class: "crumb-here" }, kids) : el("button", { type: "button", class: "crumb", "data-id": c.id }, kids)]);
     });
     return el("nav", { "aria-label": strings.crumb_label, class: "crumbs" }, [el("ol", {}, items)]);

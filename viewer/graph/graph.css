@@ -81,6 +81,8 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .face.k-file, .face.k-file.s-none, .face.k-file.s-census { border-style: solid; border-width: 1px 1px 1px 4px; background: var(--card); border-radius: 0; box-shadow: none; }
 .face-role { font-family: var(--sans); font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kc); white-space: nowrap; }
 .face-title { font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
+/* a code span in a title keeps the title's size (the browser's own monospace default is smaller, under the 15 px floor) */
+.face-title code, .crumb code, .crumb-here code { font-family: var(--mono); font-size: 1em; }
 .face-foot { margin-top: auto; font-family: var(--sans); font-size: 14px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 3px; }
 
 /* ---- the sheet: a bottom sheet under 768 px (up to 85% of the height, the graph visible above), a side panel from 768 ---- */
