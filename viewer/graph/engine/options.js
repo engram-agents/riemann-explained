@@ -18,6 +18,7 @@ export const DEFAULTS = deepFreeze({
     min: 0.06, max: 3,
     fitMax: 1.1, fitPad: 20,       // fit(): the largest scale, and the margin
     fitMin: null,                  // the START fit never goes below this; null = zoom.min (fit() and the reader's zoom are not bound by it)
+    frameMin: null,                // framing an OPENED node never goes below this scale; null = zoom.min (closed framing, fit() and the reader's zoom are not bound by it)
     frameMaxOpen: 1.25, frameMaxClosed: 1.15, framePadOpen: 24, framePadClosed: 60,   // reveal / semantic-open framing
   },
   semantic: {
@@ -50,6 +51,22 @@ function resolveFitMin(z) {
   if (!(Number.isFinite(f) && f > 0 && f >= z.min && f <= z.fitMax)) fail("zoom.fitMin must be a number > 0 with zoom.min <= zoom.fitMin <= zoom.fitMax");
 }
 
+/* The open-framing cap: the largest scale framing an OPENED node may use. The one definition; the controller calls it too.
+   Inputs: zoom.max, zoom.frameMaxOpen, semantic.frameOpenShare, semantic.openPx and sizes.nodeW (the last three keep a closed child below openPx). */
+export function openFrameCap(o) {
+  return Math.min(o.zoom.max, o.zoom.frameMaxOpen, o.semantic.frameOpenShare * o.semantic.openPx / o.sizes.nodeW);
+}
+
+/* The whole zoom.frameMin rule, same shape as fitMin: null or undefined means "not given" and resolves to zoom.min,
+   not range-checked; a value given must be a finite number with zoom.min <= frameMin <= the open-framing cap (a floor above
+   the cap would win the camera clamp silently). */
+function resolveFrameMin(o) {
+  const z = o.zoom, f = z.frameMin;
+  if (f === null || f === undefined) { z.frameMin = z.min; return; }
+  if (!Number.isFinite(f) || f < z.min) fail("zoom.frameMin must be a number with zoom.min <= zoom.frameMin");
+  if (f > openFrameCap(o)) fail("zoom.frameMin must not exceed the open-framing cap, min(zoom.max, zoom.frameMaxOpen, semantic.frameOpenShare * semantic.openPx / sizes.nodeW) = " + openFrameCap(o));
+}
+
 export function normalizeOptions(raw) {
   if (raw === undefined || raw === null) raw = {};
   if (typeof raw !== "object" || Array.isArray(raw)) fail("options must be an object");
@@ -61,7 +78,7 @@ export function normalizeOptions(raw) {
       if (r === null || typeof r !== "object" || Array.isArray(r)) fail(k + " must be an object");
       for (const sub of Object.keys(r)) if (!Object.hasOwn(DEFAULTS[k], sub)) fail("unknown option " + k + "." + sub);
       o[k] = { ...DEFAULTS[k], ...r };
-      for (const [sub, v] of Object.entries(o[k])) if (k !== "layout" && !(k === "zoom" && sub === "fitMin")) num(k, sub, v, 0);
+      for (const [sub, v] of Object.entries(o[k])) if (k !== "layout" && !(k === "zoom" && (sub === "fitMin" || sub === "frameMin"))) num(k, sub, v, 0);
     } else o[k] = raw[k] === undefined ? DEFAULTS[k] : raw[k];
   }
   if (!Array.isArray(o.roots)) fail("roots must be an array");
@@ -78,5 +95,6 @@ export function normalizeOptions(raw) {
   if (o.layout.siblings === undefined) o.layout.siblings = DEFAULTS.layout.siblings;
   if (!SIBLINGS.includes(o.layout.siblings)) fail('layout.siblings must be "rows" or "column"');
   if (!(o.semantic.closePx > 0 && o.semantic.openPx > o.semantic.closePx)) fail("semantic.openPx must be above semantic.closePx (the gap is what stops flicker)");
+  resolveFrameMin(o);   // after every check on the inputs openFrameCap reads (zoom.max above, semantic here), so a bad input is blamed, not frameMin
   return o;
 }

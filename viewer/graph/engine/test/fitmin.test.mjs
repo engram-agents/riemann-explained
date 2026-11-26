@@ -116,8 +116,8 @@ test("CLASS: the documented defaults can be passed back (the whole DEFAULTS, and
   const o = normalizeOptions({ ...DEFAULTS, roots: [] });
   for (const k of Object.keys(DEFAULTS)) {
     if (k === "loadChildren") continue;                     // null by default, a function once normalised
-    const want = k === "zoom" ? { ...DEFAULTS.zoom, fitMin: DEFAULTS.zoom.min } : DEFAULTS[k];
-    assert.deepEqual(o[k], want, "resolved " + k + " equals its default (fitMin resolves to zoom.min)");
+    const want = k === "zoom" ? { ...DEFAULTS.zoom, fitMin: DEFAULTS.zoom.min, frameMin: DEFAULTS.zoom.min } : DEFAULTS[k];
+    assert.deepEqual(o[k], want, "resolved " + k + " equals its default (fitMin and frameMin resolve to zoom.min)");
   }
   const groups = Object.keys(DEFAULTS).filter((k) => DEFAULTS[k] && typeof DEFAULTS[k] === "object" && !Array.isArray(DEFAULTS[k]));
   assert.ok(groups.includes("zoom") && groups.includes("sizes"), "the generated list has the known groups: " + groups);
