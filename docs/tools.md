@@ -412,7 +412,7 @@ from the one, and the bounded, non-following reader `_read_in` from the other.
 - **The page** is `_graph_page` over the shell with `cards` empty, the About block `<p>` + the escaped strings key `about_text`, and `data-page-feedback="off"` on `<section id="graph-about">`
   (the page has no card articles and no page-level comment thread). The shell may hold the `{{S:front_scope_line}}` and `{{S:readings_front}}` tokens besides the builder's own; the
   strings value of `readings_front` is a template with one `{n}`, filled with the length of the `readings` list of `index.json` (`ASM-READINGS`). The assembled page then passes the builder's
-  element, static, head and code-on-surface checks (`ASM-PAGE`), and every JSON file about to be written passes the static check as `build_site.py` runs it (`ASM-STATIC`).
+  element, static, head and code-on-surface checks (`ASM-PAGE`), and every ref of the written page resolves inside the tree: an absolute, `..` or missing ref is `ASM-PAGE <ref> absolute|escapes|missing`. Every JSON file about to be written passes the static check as `build_site.py` runs it (`ASM-STATIC`).
 - **Data is carried, not changed.** `spine.json`, `uses.json`, every step file and every asset are written exactly as read; `index.json` is the builder's index with ONLY `assets` replaced by
   the sha256 of each asset, written by the builder's own serialiser.
 - **`manifest.json`** is `{"commits": {"notes": PIN}, "counts": {"steps": N}, "files": {path: sha256}}`: the sha256 of every other written file, `index.html` included. There is no release id
@@ -420,7 +420,7 @@ from the one, and the bounded, non-following reader `_read_in` from the other.
 - **Nothing is written on a refusal.** Every check runs first; `OUT_DIR` must be absent or empty (`ASM-OUT`); the tree is written into a temporary sibling and renamed into place, so a
   failure leaves `OUT_DIR` as it was. Two runs give byte-identical trees.
 Exit: 0 built; 1 refused (one `ASM-<CODE> <what> <reason>` line per refusal of the first stage that fails); 2 usage. `python3 tools/assemble_grh_site.py --selftest [--only ID,ID]` runs the
-cases (about 5 minutes: ten of them run the other cases against a deliberately wrong copy of the tool and compare the red cases both ways). It never executes anything it reads.
+cases (about 5 minutes: thirteen of them run the other cases against a deliberately wrong copy of the tool and compare the red cases both ways). It never executes anything it reads.
 `python3 tools/assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR`
 
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
