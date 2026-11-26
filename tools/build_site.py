@@ -13561,6 +13561,27 @@ def _selftest_cases():
                     [("GRAPH-ORDER", "kinds", "is not in the key order of its table")], [("GRAPH-ORDER", "kinds", "lists zeta, which is not a row of its table")],
                     [("GRAPH-ORDER", "states", "is not in the key order of its table")], [("GRAPH-ORDER", "proofs", "lists read twice")], []))
 
+    @case("GRL1", "`_graph_files(layout=)`: by default index.json has no `sibling_layout` key and the bytes equal those of an explicit layout=None; layout=\"column\" adds exactly "
+                  "the key `sibling_layout: column` to index.json (keys stay sorted in the bytes) and changes nothing else, the step files included")
+    def _():
+        plain = [gr_row("a"), gr_row("b", "a", 1)]
+        base = _graph_files(plain, "c0", _strings())[1]
+        none = _graph_files(plain, "c0", _strings(), layout=None)[1]
+        col = _graph_files(plain, "c0", _strings(), layout="column")
+        text = _graph_bytes(col[1])["graph/index.json"].decode("utf-8")
+        want = dict(base["graph/index.json"], sibling_layout="column")
+        return _eq(("sibling_layout" in base["graph/index.json"], _graph_bytes(base) == _graph_bytes(none), col[0], col[1]["graph/index.json"] == want,
+                    {k: v for k, v in col[1].items() if k != "graph/index.json"} == {k: v for k, v in base.items() if k != "graph/index.json"},
+                    text.index('"sibling_layout": "column"') > text.index('"rests_on"') and text.index('"sibling_layout": "column"') < text.index('"steps"')),
+                   (False, True, [], True, True, True))
+
+    @case("GRL2", "any other layout is refused `GRAPH-LAYOUT <value>` and nothing is returned: \"rows\", \"\", 5, True and \"Column\"")
+    def _():
+        plain = [gr_row("a")]
+        got = [_graph_files(plain, "c0", _strings(), layout=v) for v in ("rows", "", 5, True, "Column")]
+        return _eq(([[tuple(e) for e in g[0]] for g in got], [g[1] for g in got]),
+                   ([[("GRAPH-LAYOUT", v, "only column is allowed")] for v in ("rows", "", "5", "True", "Column")], [{}] * 5))
+
     return cases
 
 

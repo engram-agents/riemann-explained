@@ -685,10 +685,10 @@ def _selftest_cases():
             errs, files, rows, rep = build(_tree(d, body, srcs), PIN, _strings())
             ix = _j(files, "graph/index.json")
         return _eq((errs, sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), len(rows), ix["symbols"]["order"], ix["symbols"]["kinds"]["module"],
-                    len(ix["strings"]), ix["strings"]["symbol_kind_module"], _strings(extra=False)["symbol_kind_module"]),
+                    len(ix["strings"]), ix["strings"]["symbol_kind_module"], _strings(extra=False)["symbol_kind_module"], ix["sibling_layout"]),
                    ([], [ALL_MODULE], 7, ORDERS,
                     {"class": "kind-module", "text": "Module words", "words": "symbol_kind_module"}, 21, "Module words",
-                    "A folder or file of the Lean code, shown as it is"))
+                    "A folder or file of the Lean code, shown as it is", "column"))
 
     @case("SK6", "uses sidecar: graph/uses.json is {commit: the pin, format: 1, uses: {file id: [ids of every New file it imports, in any group, sorted, no self]}} "
                  "with an entry for every FILE step and none for a section or a group; an import outside New is not in it; it is not in index.json `steps`")
@@ -848,7 +848,7 @@ def _selftest_cases():
         rows = [row("lean-s", "root", 0, [], "S part"), row("lean-s--g", "lean-s", 0, [], "G"),
                 row("lean-s-a", "lean-s--g", 0, [], "a"), row("lean-s-b", "lean-s--g", 1, ["lean-s-a"], "b")]
         table = dict(bs.GRAPH_SYMBOLS, kinds=dict(bs.GRAPH_SYMBOLS["kinds"], module=MODULE_ROW))
-        want_errs, want_objs = bs._graph_files(rows, PIN, _strings(), symbols=table, orders=ORDERS)
+        want_errs, want_objs = bs._graph_files(rows, PIN, _strings(), symbols=table, orders=ORDERS, layout="column")
         want = bs._graph_bytes(want_objs)
         with _tmp() as d:
             g = _tree(d, body, srcs)
@@ -1013,9 +1013,10 @@ def _selftest_cases():
         gid = next(r["id"] for r in rows if r["parent"] == "lean-reduction")
         kids = _j(files, f"graph/step/{gid}.json")["children"][:3]
         order = _j(files, "graph/index.json")["symbols"]["order"]
-        return _eq((errs, order, len(live), rep["steps"], sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
+        stems = sum(1 for k, v in files.items() if k.startswith("graph/step/") for c in json.loads(v.decode("utf-8"))["children"] if c["parent_rests_on"])
+        return _eq((errs, order, _j(files, "graph/index.json")["sibling_layout"], stems, len(live), rep["steps"], sorted({(r["kind"], r["state"], r["proof"]) for r in rows}), rep["top"], rep["widest"], rep["depth"], rep["drawn"],
                     rep["not_drawn"], max(len(r["id"]) for r in rows), len(rep["cut"]), [c["title"] for c in kids] == first3, len(first3), len(files)),
-                   ([], ORDERS, 23, 352, [ALL_MODULE],
+                   ([], ORDERS, "column", 0, 23, 352, [ALL_MODULE],
                     ["lean-reduction", "lean-derivatives", "lean-upper-bound", "lean-spanning", "lean-determinant", "lean-one-lift", "lean-congruences", "lean-appendix",
                      "lean-main"], 23, 3, 298, 226, 64, 3, True, 3, 354))
 
