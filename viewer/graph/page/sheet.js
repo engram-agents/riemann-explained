@@ -68,7 +68,7 @@ export function createSheet(parts, strings, hooks, signal) {
 
   function adopt(node, moveHome) {
     const rec = { node, home: null, details: [], status: null };
-    if (moveHome) {
+    if (moveHome && node.parentNode) {   // a card the page made has no home in the page: on close it leaves (release removes a parentless card)
       rec.home = doc.createComment("");
       node.parentNode.insertBefore(rec.home, node);
     }
