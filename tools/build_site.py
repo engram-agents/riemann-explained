@@ -571,8 +571,8 @@ each wrapped in a closed `<details class="map-row map-row-<kind>"><summary>label
 div.recognition, notes = ul.notes, react = ul.reactions; the label is the strings key map_row_<kind>, `{n}` the item count in map_row_conditions and map_row_notes only), the section's markup inside unchanged;
 the list page passes no flag and is unchanged. The build renders the cards once more with the flag, after the formula log is closed, for the graph page; the About comes from parts[0][0] (no fallback).
 The strings rule R3 lets map_row_sketch hold `of the proof` (OF_THE_PROOF_OK) and refuses it in every other value. The shell's head must hold the viewport and robots metas (the list page's tags) in the
-head, none outside it: `GRAPH-PAGE head has no robots noindex meta`, `head has no viewport meta`, `robots meta is outside the head`. The list page's header ends with `<p class="map-link">` (list_map_link,
-href `../`), put in by _assemble_page and in no part of _page_parts, so the graph page's About does not hold it. The two list links of the real shell are `list/`.
+head, none outside it: `GRAPH-PAGE head has no robots noindex meta`, `head has no viewport meta`, `robots meta is outside the head`. The list page has `<p class="map-link">` (list_map_link, href `../`) as an element of its own between its header and its main, put in by
+_assemble_page and in no part of _page_parts, so no markup of the graph page can hold it. The two list links of the real shell are `list/`.
 
 F51 A CUE THAT A FORMULA CONTINUES (cases PW1 F51TEXT F51COL F51DIG F51BROWSER). A formula wider than its box scrolls inside it, and a phone draws no scrollbar
 until touched, so the `math` rule of the page CSS also paints a soft shadow on the cut side only, gone at the end of the scroll: CSS only (no element,
@@ -2303,6 +2303,54 @@ class _ShellScan(html.parser.HTMLParser):
             self.text.append((start, start + len(data), cur))
 
 
+def _assembled_script_problems(text, assets):
+    """[(GRAPH-PAGE, `assembled page:`, reason)] for the scripts and links of the WHOLE assembled graph page, the shell's own and the cards markup's: a script must be
+    type="module", have a relative src that is an asset and have no text; a link must be rel="stylesheet" with a relative href that is an asset. The cards are the list
+    page's markup, which has neither; this holds the assembled text to the shell's rule whatever a stand-in or a later change puts into the cards."""
+    out, rec = [], []
+
+    def add(reason):
+        if ("GRAPH-PAGE", "assembled page:", reason) not in out:
+            out.append(("GRAPH-PAGE", "assembled page:", reason))
+
+    def address(kind, key, v):
+        if not isinstance(v, str) or not v:
+            add(f"{kind} has no {key}")
+        elif not _graph_relative(v):
+            add(f"{kind} {key} {v} is not a relative address")
+        elif v not in assets:
+            add(f"{kind} {key} {v} is not an asset")
+
+    class P(html.parser.HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            d = {}
+            for k, v in attrs:
+                d.setdefault(k, v)
+            if tag == "script":
+                if d.get("type") != "module":
+                    add('script is not type="module"')
+                address("script", "src", d.get("src"))
+                rec.append([])
+            elif tag == "link":
+                if (d.get("rel") or "").lower() != "stylesheet":
+                    add('link is not rel="stylesheet"')
+                address("link", "href", d.get("href"))
+
+        def handle_data(self, data):
+            if rec:
+                rec[-1].append(data)
+
+        def handle_endtag(self, tag):
+            if tag == "script" and rec:
+                if "".join(rec.pop()).strip():
+                    add("script has text content (no inline script)")
+
+    parser = P(convert_charrefs=False)
+    parser.feed(text)
+    parser.close()
+    return out
+
+
 def _graph_page(shell, assets, strings, about, cards):
     """(errors, the page text or None) for the graph page. `shell` is the bytes of viewer/graph/shell.html, `assets` the names of the copied files, `strings` the strings
     file, `about` and `cards` the header's inner html and the main's inner html of the list page (_page_parts). The page is the shell with each `{{S:key}}` of
@@ -2312,7 +2360,10 @@ def _graph_page(shell, assets, strings, about, cards):
     (GRAPH-PAGE, what, reason), none of the page written): no doctype or no charset meta; a {{CARDS}} count other than 1 or one that is not element content; an unknown
     {{S:key}}; a token in an attribute or inside a script or style; any `{{` left, in the shell or brought by a value; a script that is not type="module" with a relative
     src that is an asset, or has text; a stylesheet link that is not rel="stylesheet" with a relative href that is an asset; an on* attribute or a style attribute (an attribute outside the allow-list is refused too); an
-    <a> that is not a relative path or #fragment; an inline <style>; any element or attribute outside ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA."""
+    <a> that is not a relative path or #fragment; an inline <style>; any element or attribute of the SHELL outside ALLOWED_ELEMENTS and GRAPH_PAGE_EXTRA; a head of the shell
+    without the viewport or robots meta, or with either outside the head (G2c). On the ASSEMBLED page (the shell with the cards in it) this function refuses a script or a link
+    that is not what the shell may hold (`GRAPH-PAGE assembled page: ...`, G2c); the element allow-list, the static check, the head rule and the code-on-surface count over the
+    assembled page run in `_run` (graph_element_problems, static_problems, head_meta_problems, surface_scan), not here."""
     try:
         raw = shell.decode("utf-8")
     except UnicodeDecodeError:
@@ -2369,7 +2420,9 @@ def _graph_page(shell, assets, strings, about, cards):
     if text.count(_GRAPH_SENTINEL) != 1:
         return [("GRAPH-PAGE", "shell.html", "holds U+FDD0, which the assembly keeps for the cards")], None
     markup = ('<section id="graph-about">\n' + about + f'\n<p class="roots-only">{_e(strings["root_only_note_single"])}</p>\n</section>\n' + cards)
-    return [], text.replace(_GRAPH_SENTINEL, markup)
+    page = text.replace(_GRAPH_SENTINEL, markup)
+    problems = _assembled_script_problems(page, set(assets))   # G2c: the scripts and links of the assembled page, the cards' included, by the shell's rule
+    return (problems, None) if problems else ([], page)
 
 
 # ---- the page
@@ -3332,12 +3385,12 @@ def _page_parts(m, s, facts, dirty, map_rows=False):
 
 
 def _assemble_page(s, header, main):
-    """The list page from the two parts of _page_parts: the head, the h1 and the header's inner html, then (G2c) the link back to the map as the header's last line,
-    which is in no part of _page_parts (so the graph page's About section has none), then the main."""
+    """The list page from the two parts of _page_parts: the head, the h1 and the header's inner html, then (G2c) the link back to the map as an element of its own between the
+    header and the main, which is in no part of _page_parts (so no markup of the graph page can hold it), then the main."""
     out = ["<!DOCTYPE html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', META_VIEWPORT, META_ROBOTS,
            f"<title>{_e(s['page_title'])}</title>",
-           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>", header,
-           f'<p class="map-link"><a href="../">{_e(s["list_map_link"])}</a></p>', "</header>", "<main>", main,
+           "<style>", CSS, "</style>", "</head>", "<body>", "<header>", f"<h1>{_e(s['page_title'])}</h1>", header, "</header>",
+           f'<p class="map-link"><a href="../">{_e(s["list_map_link"])}</a></p>', "<main>", main,
            "</main>", "</body>", "</html>"]
     return "\n".join(out) + "\n"
 
@@ -3678,6 +3731,8 @@ def _run(notes_dir, outline, decls, strings, out, source_check, archive_sha, not
         errors += [("PAGE-STATIC", pb, "found in graph/index.html") for pb in graph_element_problems(gpage)]
     for pb in head_meta_problems(page):
         errors.append(("HEAD-META", pb, "in index.html"))
+    if gpage is not None:   # G2c: the same head rule on the assembled map page (the shell was checked on its own in _graph_page)
+        errors += [("HEAD-META", pb, "in graph/index.html") for pb in head_meta_problems(gpage)]
     for pb in link_problems(page):
         errors.append(("PAGE-LINK", pb, "does not resolve on the page"))
     for pb in number_problems(page, number_pool([level0, level1] + list(groups.values())), json.dumps(sj, ensure_ascii=False)):
@@ -3952,7 +4007,7 @@ GRAPH_SHELL_STRINGS = {"title": "Reading the Riemann Hypothesis proof",
                        "close": "Close", "fallback_sentence": "The steps are listed below until the map has loaded, or if it cannot load.",
                        "fallback_link": "Open the full list page"}
 # G2c: the words of the map page's closed rows and of the list page's link back to the map. The same literals are in site/strings.json; `{n}` is the builder's to fill in
-# (the number of items of the list). list_map_link is a placeholder wording, pending the wording seat's own.
+# (the number of items of the list). list_map_link is the wording seat's final value.
 G2C_STRINGS = {"map_row_conditions": "Conditions ({n})", "map_row_uses": "What it uses", "map_row_sketch": "Sketch of the proof",
                "map_row_literature": "In the literature", "map_row_notes": "Our notes ({n})", "map_row_react": "React", "list_map_link": "Open the map"}
 F49_NAMED_LINE = "There is no proof to read: this step is not a theorem, and it does not claim that the statement is true."
@@ -5125,7 +5180,7 @@ def _selftest_cases():
         page = _dom(b.page)
         top = [a.text() for a in page.find("header")[0].find("a")]
         return _eq(("00" in listed, top, c.rc, c_listed, c.js("level0.json")["header_notes"][0]["note"]),
-                   (False, ["Whole one", "Open the map"], 0, ["01", "02"], "00"))
+                   (False, ["Whole one"], 0, ["01", "02"], "00"))
 
     @case("B5a", "every JSON file (and the payload of data.js) carries commits {notes, release, tools}: `unknown`, the outline's "
                  "release id and the tools id given")
@@ -6712,7 +6767,7 @@ def _selftest_cases():
                     show_links(_direct(g1, "ul", "corrections")[0]), "`" in b.page, "Note <code>x &lt; y</code> two</a>" in b.page,
                     l0["header_notes"][0]["list_title"], [n["list_title"] for n in l0["steps"][0]["notes"]],
                     "Note `x \\u003c y` two" in b.text("data.js")),
-                   (0, [("Whole one", ["one"]), ("Open the map", [])], [("Note one", ["one"]), ("Note x < y two", ["x < y"])], [("Note one", ["one"])],
+                   (0, [("Whole one", ["one"])], [("Note one", ["one"]), ("Note x < y two", ["x < y"])], [("Note one", ["one"])],
                     False, True, "Whole `one`", ["Note `one`", "Note `x < y` two"], True))
 
     @case("TITLE2", "in a title doubled backticks, an unpaired backtick and an empty pair stay literal text, with no <code> (the level-0 `Whole "
@@ -6722,7 +6777,7 @@ def _selftest_cases():
         g1 = _card(b, "g1")
         return _eq((b.rc, show_links(_dom(b.page).find("header")[0]), show_links(_direct(g1, "ul", "notes")[0]),
                     ">Whole ``one``</a>" in b.page, ">Note `one</a>" in b.page),
-                   (0, [("Whole ``one``", []), ("Open the map", [])], [("Note `one", []), ("Note ok two", ["ok"])], True, True))
+                   (0, [("Whole ``one``", [])], [("Note `one", []), ("Note ok two", ["ok"])], True, True))
 
     @case("SPAN1", "the source check compares what a reader sees: a claim that is a release line inside single backticks is refused "
                    "(SOURCE-LEAK naming data.js, level0.json and level1.json: the text of the JSON with the backticks of the span removed; "
