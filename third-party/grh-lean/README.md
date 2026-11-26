@@ -13,19 +13,24 @@ licence asks whoever passes its text on to pass these on too:
 | `NOTICE` | `grh/NOTICE` | `addbc1704aa68328c99cae493118f6f18d8f3b83af8facdb9f150dce81e1a65c` |
 | `ATTRIBUTION.md` | `grh/ATTRIBUTION.md`, the list the notice points to | `b282f31534ec2ca1c500b4a87ba50282e442c49298e5fec97e444348d3f58d13` |
 
-## Which of our files copy from it
+## Where our files copy from it
 
-All of them are test data or expected values in tests.
+Only in tests, in two places:
 
-- `viewer/graph/page/test/fixtures/backtick-real-titles.json`: titles of parts, groups and files, from the repository's contents list.
-- `viewer/graph/page/test/fixtures/note-linecoordinates.txt` and `note-onesidedbound.txt`: text from the opening notes of two files.
-- `viewer/graph/page/test/fixtures/note-spans-classes.json`: the code spans of the files' opening notes, each once.
-- `tools/build_grh_skeleton.py`: one sentence of `grh/README.md`, as an expected value in a test.
+- **`viewer/graph/page/test/`**: the page's test programs, the fixture generator (`fixtures/make_fixtures.py`) and the fixtures
+  it writes. Between them they hold titles of parts, groups and files from the repository's contents list; one sentence of
+  `grh/README.md`; the opening notes of two files (`src/New/Reduction/OneSidedBound.lean` and
+  `src/New/OneLift/ComparisonOperator/LineCoordinates.lean`); and the code spans of the files' opening notes, each once
+  (`fixtures/note-spans-classes.json`). A fixture is often written in several copies, so one piece of text can sit in many files.
+- **The self-tests inside `tools/build_site.py` and `tools/build_grh_skeleton.py`**: the same sentence of `grh/README.md`, as an
+  expected value.
+
+Nothing under `docs/`, `outline/` or `site/` is copied from that repository.
 
 What we changed: we selected. Each of these files holds pieces cut out of the repository's text and stored in a format of ours
 for a test. Every copied character is the repository's; the selection, the file format and anything around the copied text are ours.
 
-A change that adds text copied from that repository adds its file to this list in the same change.
+A change that copies text from that repository into any other place names that place here in the same change.
 
 ## What is not copied here
 

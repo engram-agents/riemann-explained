@@ -68,10 +68,13 @@ Corrections are the most useful thing you can send. Open an issue that names the
 
 Two licences, by kind of file.
 
-- **Text.** The text of this repository is released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the full terms are in [LICENSE](LICENSE). That is the notes under `docs/`, the outline, the words of the pages under `site/`, and this page.
-- **Code.** The programs under `tools/` and `viewer/`, with their tests, are released under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0); the full terms are in [LICENSE-CODE](LICENSE-CODE).
+- **Code.** The programs of this repository are released under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0); the full terms are in [LICENSE-CODE](LICENSE-CODE). The programs are the files under `tools/` and `viewer/` that are run or loaded: Python, JavaScript, style sheets and page shells, the test programs among them.
+- **Text.** Everything else that we wrote is released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the full terms are in [LICENSE](LICENSE). That is the notes and other pages under `docs/`, the outline, the words of the pages under `site/`, this page and the other pages at the top of the repository, and test data made of our own words wherever it sits.
 
-Neither licence covers what is not ours. Short quotations from the Lean release remain the author's. A few test files copy text from the readable edition of the proof, which has its own licence; [third-party/grh-lean](third-party/grh-lean/README.md) lists them and carries that repository's licence and notices.
+Neither licence covers what is not ours:
+
+- Short quotations from the Lean release remain the author's, as said above.
+- The folder [third-party/grh-lean](third-party/grh-lean/README.md) holds the licence and notices of [lsernau/grh-lean](https://github.com/lsernau/grh-lean), a separate repository that carries a shorter rewriting of the proof under the Apache License 2.0. It is not the release this repository's notes are about, and what is said above about that release stands. Some of our tests copy text from it; the folder's page says where, and that text keeps that repository's licence.
 
 *Correction, 2026-11-22: four words in this page referred to the author with a gendered pronoun. The only place we have read one is the Lean community's joint statement; the notes now use "the author" throughout. Nothing else changed.*
 
