@@ -200,7 +200,11 @@ export async function start(doc, deps) {
     const loadFailures = new Map();
     handle = deps.createGraph(q["graph"], {
       roots, maxChildren: index.maxChildren, sizes: { ...CARD_SIZES },
-      zoom: { fitMin: 1 },      // the first view never zooms below scale 1 (text at its size); 'Show all' (handle.fit()) still shows all
+      // the first view never zooms below scale 1 (text at its size); 'Show all' (handle.fit()) still shows all. A map's open_scale_floor
+      // (data v3; absent on the live map, and then there is no frameMin key) is merged in as the floor of an opened node's framing.
+      zoom: { fitMin: 1, ...(index.openScaleFloor !== undefined ? { frameMin: index.openScaleFloor } : {}) },
+      // the map's sibling_layout (data v3; absent on the live map, and then there is no `layout` key at all): "column"
+      ...(index.siblingLayout !== undefined ? { layout: { siblings: index.siblingLayout } } : {}),
       loadChildren: (id) => data.loadChildren(id).catch((e) => { loadFailures.set(id, e instanceof DataError ? e.code : null); throw e; }),
       renderFace: makeRenderFace(strings, index.symbols.countWords),
     });

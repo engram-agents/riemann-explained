@@ -65,11 +65,41 @@
     "sk-part",
     "sk-group-a"
    ],
+   "in_reduction": true,
    "to": "sk-file-2",
    "to_path": [
     "sk-part",
     "sk-group-a"
-   ]
+   ],
+   "weight": 3
+  },
+  {
+   "from": "sk-file-2",
+   "from_path": [
+    "sk-part",
+    "sk-group-a"
+   ],
+   "in_reduction": true,
+   "to": "sk-file-3",
+   "to_path": [
+    "sk-part",
+    "sk-group-a"
+   ],
+   "weight": 1
+  },
+  {
+   "from": "sk-file-1",
+   "from_path": [
+    "sk-part",
+    "sk-group-a"
+   ],
+   "in_reduction": false,
+   "to": "sk-file-3",
+   "to_path": [
+    "sk-part",
+    "sk-group-a"
+   ],
+   "weight": 2
   }
  ]
 }

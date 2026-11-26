@@ -819,7 +819,7 @@ def c_first_view_mutant(b):
     small viewports (the engine zooms out to fit, scale below 1), and stays green at 390 x 844, where the fit is above 1 anyway. The
     same build is red whichever way the size is measured (camera scale or the rendered ratio), so the case discriminates either way."""
     def no_fitmin(text):
-        old = "      zoom: { fitMin: 1 },"
+        old = "      zoom: { fitMin: 1,"      # the whole line goes (it also carries the optional frameMin merge, which this mutant has no use for)
         assert old in text, "fitMin line not found"
         i = text.index(old)
         j = text.index("\n", i)
@@ -965,6 +965,76 @@ def c_skeleton_map(b, S0, engine):
         pg.close()
     finally:
         S.stop()
+
+
+def options_seen(pg):
+    """What the page handed to createGraph (the double keeps it on the container): its key list, and the two groups the v3 keys reach."""
+    return pg.ev("""(() => { const o = document.getElementById('graph').__options;
+      return { keys: Object.keys(o).sort(), zoom: o.zoom, layout: 'layout' in o ? o.layout : null, maxChildren: o.maxChildren, sizes: o.sizes }; })()""")
+
+
+def c_v3_options_live(b, S0, engine):
+    """D1/D2: the live map has no v3 key, so the options createGraph gets are those of main: no `layout` key, no `frameMin`, the zoom group
+    is exactly {fitMin: 1}, and the other options are the same keys."""
+    if engine != "double":
+        return                       # the real engine does not keep its arguments; the double is the seam that records them
+    pg = Pg(b, S0.base + "graph/index.html", 1280, 900).settled()
+    o = options_seen(pg)
+    assert o["keys"] == ["loadChildren", "maxChildren", "renderFace", "roots", "sizes", "zoom"], o["keys"]
+    assert o["layout"] is None, o["layout"]
+    assert o["zoom"] == {"fitMin": 1}, o["zoom"]
+    assert o["maxChildren"] == 40, o["maxChildren"]
+    pg.csp_clean()
+    pg.close()
+
+
+def c_v3_options_skeleton(b, S0, engine):
+    """D1/D2/D3 on the skeleton (data v3): createGraph gets layout {siblings: column} and zoom {fitMin: 1, frameMin: 1} (the page's own
+    fitMin kept, frameMin merged in); the links the engine is handed for sk-group-a are the two in the reduction, not the shortcut."""
+    if engine != "double":
+        return
+    root = tempfile.mkdtemp(prefix="pg-v3-")
+    assemble.assemble(root, engine, fix="skeleton")
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        o = options_seen(pg)
+        assert o["keys"] == ["layout", "loadChildren", "maxChildren", "renderFace", "roots", "sizes", "zoom"], o["keys"]
+        assert o["layout"] == {"siblings": "column"}, o["layout"]
+        assert o["zoom"] == {"fitMin": 1, "frameMin": 1}, o["zoom"]
+        links = pg.ev("document.getElementById('graph').__options.loadChildren('sk-group-a').then(ks => ks.map(k => [k.id, k.links.map(l => l.to)]))")
+        assert links == [["sk-file-1", ["sk-file-2"]], ["sk-file-2", ["sk-file-3"]], ["sk-file-3", []]], links
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_v3_refusals(b, S0, engine):
+    """D1/D2: a bad sibling_layout is a refusal (the fallback) on either engine; and (real engine only) open_scale_floor 2, above the
+    engine's open-framing cap, makes createGraph throw a TypeError, which the page's one setup catch turns into the same fallback as its other
+    start failures (the cases 'fallback on a 404 step file' and 'K2 ... unclassified' end the same way); a floor of 1 is a control that opens the map."""
+    def run(edit, want_map):
+        root = tempfile.mkdtemp(prefix="pg-v3r-")
+        assemble.assemble(root, engine, fix="skeleton", index_edit=edit)
+        S = Served(root)
+        try:
+            pg = Pg(b, S.base + "graph/index.html", 1280, 900)
+            if want_map:
+                pg.settled()
+                assert pg.ev("!!document.getElementById('graph-layer')") and pg.ev("document.querySelector('[data-node=\"sk-part\"]') !== null")
+            else:
+                pg.wait("!document.getElementById('graph-layer')", 6000)
+                assert pg.page.is_visible("#graph-fallback") and pg.page.is_visible("#graph-cards")
+                assert pg.ev("document.querySelectorAll('#graph-cards article').length") == 10
+            pg.close()
+        finally:
+            S.stop()
+    run(lambda i: i.__setitem__("sibling_layout", "rows"), False)
+    run(lambda i: i.__setitem__("open_scale_floor", 0), False)
+    run(lambda i: i.__setitem__("open_scale_floor", 1), True)
+    if engine == "real":
+        run(lambda i: i.__setitem__("open_scale_floor", 2), False)
 
 
 def c_backtick_title(b, S0, engine):
@@ -1848,6 +1918,9 @@ def main():
                 run("module: P4 the live map's key rows are unchanged", c_key_real_rows, eng)
                 run("module: F1/F2/F4 controls on the live map: ring gap, the parts foot, the breadcrumb with the open card", c_live_controls, eng)
                 run("module: P1/P5/P7 the skeleton map (face classes, the card word as the one sheet line, the key has three kind rows and no states section)", c_skeleton_map, eng)
+                run("v3: the live map passes createGraph no layout and no frameMin (zoom is {fitMin: 1}); main's options", c_v3_options_live, eng)
+                run("v3: the skeleton passes layout column and zoom {fitMin: 1, frameMin: 1}; the engine gets the reduction's links only", c_v3_options_skeleton, eng)
+                run("v3: a bad sibling_layout or open_scale_floor is the fallback; a floor above the engine's cap throws a TypeError at start and is the fallback too", c_v3_refusals, eng)
                 run("module: A6 a backtick span in a title is a code element on the face (inside the clamp) and in the breadcrumb, no backtick shown", c_backtick_title, eng)
                 run("module: P7 the sheet builds .sheet-status only for a non-empty status", c_sheet_status_level, eng)
                 run("module: P6/F1 part, group and file told by bar position over s-none and s-census; swatches match; the selection ring gap is 3 px", c_look_override, eng)

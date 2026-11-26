@@ -590,7 +590,7 @@ test("P2 skeleton: loads end to end (index, roots, children, the sibling link, t
   assert.deepEqual(groups.map((g) => g.data.kind), ["group", "group"]);
   const files = await d.loadChildren("sk-group-a");
   assert.equal(files.length, 3);
-  assert.equal(files.reduce((n, k) => n + k.links.length, 0), 1);
+  assert.equal(files.reduce((n, k) => n + k.links.length, 0), 2, "three links in the file, the one with in_reduction false is not drawn (data v3)");
   const more = await d.loadChildren("sk-group-b");
   assert.equal(more.reduce((n, k) => n + k.links.length, 0), 0);
   assert.equal(more[1].data.title.length, 98);

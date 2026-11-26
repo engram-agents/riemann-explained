@@ -3,7 +3,9 @@
  "commit": "0123456789abcdef0123456789abcdef01234567",
  "format": 1,
  "max_children": 40,
+ "open_scale_floor": 1,
  "rests_on": [],
+ "sibling_layout": "column",
  "steps": 10,
  "strings": {
   "card_kind_file": "File",

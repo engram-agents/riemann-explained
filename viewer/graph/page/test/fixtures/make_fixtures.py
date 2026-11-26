@@ -5,7 +5,7 @@ real/        a small build shaped like the contract's section 6 measurement: 23 
              2 top-level rests_on, 5 step-file rests_on, 7 parent_rests_on true. Plus the card markup (nested like the
              list page: a child's article sits inside its parent's details.children) and the shell's word table.
 refusals/    one tiny build per refusal.
-skeleton/    the map of a Lean repository's parts, groups and files: kinds part, group, file, each a table row with `words` (the key's label)
+skeleton/    the map of a Lean repository's parts, groups and files (data v3: sibling_layout, open_scale_floor, link flags on one group, index_rows and spine_rows on two files): kinds part, group, file, each a table row with `words` (the key's label)
              and `card_words` (the sheet's one line), the group and file rows with `count_words` (the foot's one/many); state "none", proof "none", no role on every step; symbols.order lists only
              the rows that occur (kinds [part, group, file], states [], proofs []) while the tables keep every row.
 
@@ -92,7 +92,15 @@ SK_TREE = [("sk-part", None, False, "part"),
            ("sk-part-2", None, False, "part"), ("sk-file-6", "sk-part-2", False, "file")]
 REAL_SPAN_TITLE = "The second moments of the operators `P* s P`, and good forms"
 SK_TITLES = {"sk-file-5": LONG_TITLE, "sk-file-4": REAL_SPAN_TITLE, "sk-group-b": "Files under `Formalism/Basic`"}
-SK_LINKS = [("sk-group-a", "sk-file-1", "sk-file-2")]
+# (parent, from, to, weight, in_reduction). Data v3 (contract section 20): the links of a step file carry `weight` and `in_reduction`.
+# sk-group-a: 1 -> 2 and 2 -> 3 are in the reduction, 1 -> 3 is not (it is the shortcut), so the page draws two of the three.
+SK_LINKS = [("sk-group-a", "sk-file-1", "sk-file-2", 3, True), ("sk-group-a", "sk-file-2", "sk-file-3", 1, True),
+            ("sk-group-a", "sk-file-1", "sk-file-3", 2, False)]
+# Data v3 file-step rows (section 22): `index_rows` [{source, text}] and `spine_rows` [spine ids], on two file steps. Not drawn by the page layer.
+SK_INDEX_ROWS = {"sk-file-1": [{"source": "grh/INDEX.md", "text": "The first file: the definitions the later files rest on."}],
+                 "sk-file-4": [{"source": "grh/INDEX.md", "text": "The fourth file: the first lemma of the argument."},
+                               {"source": "grh/INDEX.md", "text": "The fourth file, again: a second sentence about it."}]}
+SK_SPINE_ROWS = {"sk-file-1": ["spine-theorem-a"], "sk-file-4": ["spine-theorem-b", "spine-theorem-c"]}
 
 # id -> (parent id or None, parent_rests_on)
 TREE = [
@@ -194,11 +202,17 @@ def build_skeleton():
         ch = []
         for c in kids[i]:
             d = card(c); d["parent_rests_on"] = pro[c]; ch.append(d)
-        rests = [{"from": f, "to": t, "from_path": ancestors(i) + [i], "to_path": ancestors(i) + [i]} for (p, f, t) in SK_LINKS if p == i]
+        rests = [{"from": f, "to": t, "from_path": ancestors(i) + [i], "to_path": ancestors(i) + [i], "weight": w, "in_reduction": red}
+                 for (p, f, t, w, red) in SK_LINKS if p == i]
         steps[i] = {"format": 1, "commit": COMMIT, "id": i, "path": ancestors(i), "card": card(i), "children": ch, "rests_on": rests}
+        if i in SK_INDEX_ROWS:
+            steps[i]["index_rows"] = SK_INDEX_ROWS[i]
+        if i in SK_SPINE_ROWS:
+            steps[i]["spine_rows"] = SK_SPINE_ROWS[i]
     top = [i for i in ids if parent[i] is None]
     index = {"format": 1, "commit": COMMIT, "max_children": 40, "top": top, "rests_on": [], "steps": len(ids),
-             "symbols": SYMBOLS_SKELETON, "assets": {}, "strings": SKELETON_STRINGS}
+             "symbols": SYMBOLS_SKELETON, "assets": {}, "strings": SKELETON_STRINGS,
+             "sibling_layout": "column", "open_scale_floor": 1}      # data v3 (sections 15 and 24): both optional, both absent on the live map
     return index, steps, kids, title
 
 

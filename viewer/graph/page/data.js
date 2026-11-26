@@ -120,19 +120,32 @@ function orderOf(list, names, where, mayBeEmpty) {
   return list.slice();
 }
 
+/* A short, bounded rendering of a refused value for a DataError's reason (never reaches the page: no string from an exception does). */
+const shown = (v) => { let t; try { t = JSON.stringify(v); } catch (e) { t = undefined; } return t === undefined ? String(typeof v) : t.slice(0, 60); };
+
+/* A link may carry `weight` (a positive integer, the distinct names used) and `in_reduction` (a boolean, the link is in the transitive
+   reduction of its set): BOTH or NEITHER (data contract section 20). The live map's links have neither. */
 function linkOf(l, expectPathFrom, expectPathTo, where) {
-  exactKeys(l, ["from", "to", "from_path", "to_path"], [], where);
+  exactKeys(l, ["from", "to", "from_path", "to_path"], ["weight", "in_reduction"], where);
+  const flagged = has(l, "weight") || has(l, "in_reduction");
+  if (flagged) {
+    if (!(has(l, "weight") && has(l, "in_reduction"))) throw new DataError("bad-link-flags", where + " has one of weight and in_reduction without the other");
+    if (!isInt(l.weight) || l.weight < 1) throw new DataError("bad-link-flags", where + " has a weight that is not a positive integer");
+    if (typeof l.in_reduction !== "boolean") throw new DataError("bad-link-flags", where + " has an in_reduction that is not a boolean");
+  }
   idOf(l.from, where + ".from");
   idOf(l.to, where + ".to");
   const fp = idList(l.from_path, where + ".from_path");
   const tp = idList(l.to_path, where + ".to_path");
   if (!sameList(fp, expectPathFrom) || !sameList(tp, expectPathTo)) throw new DataError("bad-link", where + " has a path that is not its siblings' path");
   if (l.from === l.to) throw new DataError("bad-link", where + " rests on itself");
-  return { from: l.from, to: l.to, from_path: fp, to_path: tp };
+  const out = { from: l.from, to: l.to, from_path: fp, to_path: tp };
+  if (flagged) { out.weight = l.weight; out.in_reduction = l.in_reduction; }
+  return out;
 }
 
 export function validateIndex(raw) {
-  exactKeys(raw, ["format", "commit", "max_children", "top", "rests_on", "steps", "symbols", "assets", "strings"], [], "index");
+  exactKeys(raw, ["format", "commit", "max_children", "top", "rests_on", "steps", "symbols", "assets", "strings"], ["sibling_layout", "open_scale_floor"], "index");
   if (raw.format !== 1) throw new DataError("bad-format", "index format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "index commit is not a non-empty string");
   if (!isInt(raw.max_children) || raw.max_children < 1) throw new DataError("bad-type", "index max_children is not a positive integer");
@@ -166,7 +179,41 @@ export function validateIndex(raw) {
   for (const k of Object.keys(raw.strings)) {
     if (!need.includes(k) && !OPTIONAL_STRINGS.includes(k)) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   }
-  return { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
+  const out = { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
+  /* The two optional per-map keys (data contract sections 15 and 24), each absent on the live map and then absent from the record too.
+     `sibling_layout`: the only value is "column". `open_scale_floor`: a finite number above 0 (the engine checks its upper bound). */
+  if (has(raw, "sibling_layout")) {
+    if (raw.sibling_layout !== "column") throw new DataError("bad-layout", "index sibling_layout is not column: " + shown(raw.sibling_layout));
+    out.siblingLayout = raw.sibling_layout;
+  }
+  if (has(raw, "open_scale_floor")) {
+    const f = raw.open_scale_floor;
+    if (typeof f !== "number" || !Number.isFinite(f) || f <= 0) throw new DataError("bad-scale-floor", "index open_scale_floor is not a finite number above 0: " + shown(f));
+    out.openScaleFloor = f;
+  }
+  return out;
+}
+
+/* The file-step rows (data contract section 22), validated and carried, not drawn by this page. */
+const INDEX_ROWS_SOURCE = "grh/INDEX.md";
+const INDEX_ROW_MAX = 4000;
+const SPINE_ID = /^spine-[a-z0-9-]+$/;
+function indexRowsOf(v) {
+  if (!Array.isArray(v) || v.length === 0) throw new DataError("bad-index-rows", "step index_rows is not a non-empty list");
+  return v.map((r) => {
+    if (!isObj(r) || Object.keys(r).length !== 2 || !has(r, "source") || !has(r, "text"))
+      throw new DataError("bad-index-rows", "step index_rows holds a row that is not exactly {source, text}");
+    if (r.source !== INDEX_ROWS_SOURCE) throw new DataError("bad-index-rows", "step index_rows holds a row whose source is not " + INDEX_ROWS_SOURCE);
+    if (!isStr(r.text) || r.text === "" || r.text.length > INDEX_ROW_MAX)
+      throw new DataError("bad-index-rows", "step index_rows holds a row whose text is not a non-empty string of at most " + INDEX_ROW_MAX + " characters");
+    return { source: r.source, text: r.text };
+  });
+}
+function spineRowsOf(v) {
+  if (!Array.isArray(v) || v.length === 0) throw new DataError("bad-spine-rows", "step spine_rows is not a non-empty list");
+  for (const x of v) if (!isStr(x) || !SPINE_ID.test(x)) throw new DataError("bad-spine-rows", "step spine_rows holds a value that is not a spine id");
+  if (new Set(v).size !== v.length) throw new DataError("bad-spine-rows", "step spine_rows repeats an id");
+  return v.slice();
 }
 
 function closedOf(c, ctx, isChild, where) {
@@ -192,7 +239,7 @@ function closedOf(c, ctx, isChild, where) {
 }
 
 export function validateStep(raw, ctx) {
-  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], [], "step");
+  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["index_rows", "spine_rows"], "step");
   if (raw.format !== 1) throw new DataError("bad-format", "step format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "step commit is not a non-empty string");
   if (raw.commit !== ctx.commit) throw new DataError("commit-mismatch", "step commit differs from the index's");
@@ -222,7 +269,10 @@ export function validateStep(raw, ctx) {
     if (!seen.has(k.from) || !seen.has(k.to)) throw new DataError("bad-link", "step.rests_on names an id that is not a child of this step");
     return k;
   });
-  return { id: raw.id, path, card, children, rests_on: rests };
+  const out = { id: raw.id, path, card, children, rests_on: rests };
+  if (has(raw, "index_rows")) out.index_rows = indexRowsOf(raw.index_rows);
+  if (has(raw, "spine_rows")) out.spine_rows = spineRowsOf(raw.spine_rows);
+  return out;
 }
 
 /* THE FAILURE SPLIT. A failed load is one of two classes. TRANSPORT (the fetch rejected, or the answer had a non-2xx status) is
@@ -285,8 +335,10 @@ export function createData(fetchLike) {
     return v;
   }
 
+  /* A link flagged in_reduction false is a use the reduction already implies by a longer chain: it is not handed to the engine as a premise link
+     (Kepler's ruling). True, and a link with no flags (the live map), are handed over as before. */
   function linksFrom(rests, from) {
-    return rests.filter((l) => l.from === from).map((l) => ({ to: l.to, toPath: l.to_path.concat(l.to) }));
+    return rests.filter((l) => l.from === from && l.in_reduction !== false).map((l) => ({ to: l.to, toPath: l.to_path.concat(l.to) }));
   }
 
   async function loadRoots() {
