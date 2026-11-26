@@ -178,10 +178,15 @@ export function renderNote(text, el, typeset = false) {
   return frag;
 }
 
-/* The sheet's source line: the template split on {source} and {commit}, each replaced by its value AS TEXT (never put into a markup string).
-   Returns the children for el(): plain strings. */
+/* A line of words with placeholders: the template split on the placeholders named by the KEYS of `values` (each written {key} in the template), each
+   replaced by its value AS TEXT (never put into a markup string). A placeholder whose name is not a key of `values` stays as literal text.
+   Returns the children for el(): plain strings. The sheet's source line is templateParts(template, {source, commit}); the later-blocks line, {n}. */
 export function templateParts(template, values) {
-  return String(template).split(/(\{source\}|\{commit\})/)
-    .map((p) => (p === "{source}" ? values.source : p === "{commit}" ? values.commit : p))
+  const keys = Object.keys(values);
+  if (keys.length === 0) return [String(template)].filter((p) => p !== "");
+  const named = keys.map((k) => "\\{" + k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\}");
+  const own = (p) => p.length > 2 && p.charAt(0) === "{" && p.charAt(p.length - 1) === "}" && Object.prototype.hasOwnProperty.call(values, p.slice(1, -1));
+  return String(template).split(new RegExp("(" + named.join("|") + ")"))
+    .map((p) => (own(p) ? values[p.slice(1, -1)] : p))
     .filter((p) => p !== "");
 }

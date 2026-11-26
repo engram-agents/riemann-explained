@@ -14,6 +14,10 @@
      note-typeset-line, note-toggle   only when the page says the maths face is on (info.note.typeset): the line under the source line (told only of
                         the maths-type view) and the button that swaps the rendering for the exact text and back (aria-pressed true = exact text);
                         note-exact on the body while the exact text is shown. A card shown again always starts on the rendering.
+     readings, reading, reading-body, reading-by   our reading notes, only when the card's step carries some (info.readings): one div.readings below the
+                        repository's note (or where it would be), holding an h4, a p, then per reading a div.reading carrying data-id (the reading's id, checked
+                        by data.js; dom.js's own attribute) with an h5, a div.reading-body (rendered by note.js, the maths face on exactly as for the repository's note) and a p.reading-by.
+                        NONE of the repository's frame: no label, no source line, no typeset line, no button, no review state.
 
    CLOSING: every way the sheet closes goes through close(), the ONE close function. It first dispatches a cancelable
    `sheetclose` event on the thing shown; if a listener cancels it, the sheet stays open and nothing moves. A
@@ -146,6 +150,15 @@ export function createSheet(parts, strings, hooks, signal) {
         if (tail) { tail.parentNode.insertBefore(k, tail.nextSibling); tail = k; } else article.insertBefore(k, first);
       }
     }
+    /* Our reading notes: one section directly after the repository's note (after the status line, or the claim, when there is none). */
+    if (info.readings) {
+      const section = buildReadings(info.readings);
+      const noteEls = rec.noteEls || [];
+      const tail = (noteEls.length > 0 ? noteEls[noteEls.length - 1] : null) || rec.status || (claim && claim.parentNode ? claim : null);
+      if (tail && tail.parentNode) tail.parentNode.insertBefore(section, tail.nextSibling);
+      else article.insertBefore(section, article.firstChild);
+      rec.noteEls = noteEls.concat([section]);
+    }
     clear(tools);
     if (info.canParts) {
       const b = el("button", { type: "button", class: "sheet-tool" }, [info.partsOpen ? strings.close_parts : strings.open_parts]);
@@ -157,6 +170,33 @@ export function createSheet(parts, strings, hooks, signal) {
     clamp(claim);
     body.scrollTop = 0;
     return true;
+  }
+
+  /* The readings section. Everything from data goes in as text (el's children) or through note.js's renderer; the reading's id is the element's `data-id`,
+     set by el() like every attribute (dom.js checks its shape). */
+  function buildReadings(r) {
+    const section = el("div", { class: "readings" }, [el("h4", {}, [r.heading]), el("p", {}, [r.about])]);
+    for (const item of r.items) {
+      const box = el("div", { class: "reading", "data-id": item.id }, [el("h5", {}, [item.title])]);
+      const text = el("div", { class: "reading-body" }, []);
+      text.appendChild(renderNote(item.text, el, r.typeset));
+      box.appendChild(text);
+      box.appendChild(el("p", { class: "reading-by" }, item.byline));
+      section.appendChild(box);
+    }
+    return section;
+  }
+
+  /* Scrolls the sheet body so that the reading's element (`.readings [data-id=id]`, found by comparing, never by a selector built from data) is at its
+     top, as far as the scroll allows. False when no such element is in the sheet. */
+  function scrollToReading(id) {
+    if (!cur) return false;
+    for (const e of body.querySelectorAll(".readings [data-id]")) {
+      if (e.getAttribute("data-id") !== id) continue;
+      body.scrollTop += e.getBoundingClientRect().top - body.getBoundingClientRect().top;
+      return true;
+    }
+    return false;
   }
 
   function showPanel(node, homeIt) {
@@ -204,7 +244,7 @@ export function createSheet(parts, strings, hooks, signal) {
   }, { signal });
 
   return {
-    close, dispose, showCard, showPanel, setPartsOpen,
+    close, dispose, showCard, showPanel, setPartsOpen, scrollToReading,
     isOpen: () => cur !== null,
     shown: () => (cur ? cur.node : null),
   };

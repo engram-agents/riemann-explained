@@ -44,8 +44,10 @@ function hashId(doc) {
    what the key shows. (Proofs have no section in the key: a proof shows only in the sheet's status line.) Two optional additions, each absent
    on the live map: `key_scope_text` is the key's FIRST child (one paragraph), and when the index carries `edge_basis` the key ends with a
    section after everything else: an h2 with `key_lines_heading` and one paragraph holding strings[edge_basis.words]. The page prints the
-   key `words` names and never names that key itself. Every one of them is a single text node, backticks and all. */
-function buildKey(index) {
+   key `words` names and never names that key itself. Every one of them is a single text node, backticks and all. When the index carries `readings` the key
+   gains one more section after all of those: an h2 with `key_readings_heading` and a list of the readings' titles in index order, each a button (never a
+   link) whose tap is `openReading(row)`, a route of the page. */
+function buildKey(index, openReading, signal) {
   const s = index.strings, w = index.symbols.words;
   const kindRows = index.symbols.order.kinds.map((k) => el("li", {}, [el("span", { class: "swatch " + KIND_CLASS[k] }), el("span", {}, [s[w.kinds[k]]])]));
   const stateRows = index.symbols.order.states.map((st) => el("li", {}, [el("span", { class: "swatch k-theorem " + STATE_CLASS[st] }), el("span", {}, [s[w.states[st]]])]));
@@ -55,6 +57,14 @@ function buildKey(index) {
   if (typeof s.key_kinds_note === "string") parts.push(el("p", { class: "key-note" }, [s.key_kinds_note]));   // optional: one plain line under the kind rows
   if (stateRows.length > 0) parts.push(el("h2", {}, [s.key_states_heading]), el("ul", {}, stateRows));
   if (index.edgeBasis) parts.push(el("h2", {}, [s[EDGE_BASIS_HEADING]]), el("p", { class: "key-lines" }, [s[index.edgeBasis.words]]));
+  if (index.readings) {
+    const rows = index.readings.map((row) => {
+      const b = el("button", { type: "button", class: "key-reading" }, [row.title]);
+      b.addEventListener("click", () => openReading(row), { signal });
+      return el("li", {}, [b]);
+    });
+    parts.push(el("h2", {}, [s.key_readings_heading]), el("ul", { class: "key-readings" }, rows));
+  }
   return el("div", { class: "key-content" }, parts);
 }
 
@@ -101,7 +111,7 @@ export async function start(doc, deps) {
     const articles = new Map();
     cardsEl.querySelectorAll("article[id]").forEach((a) => { if (isId(a.id) && !articles.has(a.id)) articles.set(a.id, a); });
     const aboutEl = q["graph-about"];
-    const keyEl = buildKey(index);
+    const keyEl = buildKey(index, (row) => routes["key-reading"](row.step, row.id), signal);
 
     const openIds = new Set();
     const routes = {};
@@ -163,6 +173,10 @@ export async function start(doc, deps) {
       : null;
     const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
     const carriesNotes = hasOwn(strings, "note_label") && hasOwn(strings, "note_source");
+    /* A step's file is loaded before its sheet opens when the sheet has something to draw from it: the repository's note (carriesNotes) or our reading notes
+       (the index has `readings`). The live map has neither, so its sheet opens at once, from the markup, as it always did. The note FRAME is still drawn
+       only for carriesNotes: a step on a map with readings and no note words draws its readings and no note. */
+    const loadsSteps = carriesNotes || index.readings !== undefined;
     /* The sheet's one open. `step` is the loaded step on a map that carries notes; on one that does not it is undefined and no `note` key is passed. */
     function showOpenCard(id, art, m, anc, step) {
       const w = index.symbols.words;
@@ -174,6 +188,9 @@ export async function start(doc, deps) {
       const ok = sheet.showCard(art, {
         id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
         currentListed: cardWord === undefined,
+        ...(step === undefined || !step.readings ? {} : {
+          readings: { heading: strings.readings_heading, about: strings.readings_about, typeset: typesetWords !== null,
+            items: step.readings.map((r) => ({ id: r.id, title: r.title, text: r.text, byline: templateParts(strings.readings_byline, { by: r.by, second_read_by: r.second_read_by, date: r.date }) })) } }),
         ...(step === undefined ? {} : {
           note: step.note ? { label: strings.note_label, text: step.note.text, typeset: typesetWords,
             sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null }),
@@ -188,7 +205,7 @@ export async function start(doc, deps) {
       const art = articles.get(id), m = data.meta(id);
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
       if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
-      if (!carriesNotes) return showOpenCard(id, art, m, anc, undefined);
+      if (!loadsSteps) return showOpenCard(id, art, m, anc, undefined);
       return openCardWithNote(t, id, art, m, anc);
     }
     async function openCardWithNote(t, id, art, m, anc) {
@@ -242,6 +259,12 @@ export async function start(doc, deps) {
     routes["escape"] = () => sheet.close();
     routes["open-card"] = (t, id) => openCard(t, id);
     routes["deep-link"] = go;
+    /* A tap on a title in the key: go to the reading's step like a deep link (the same ticket, taken by the wrapper below), then, once that step's sheet is open
+       and only if no later navigation has superseded this one, scroll the sheet body so that the reading's element is at its top. */
+    routes["key-reading"] = async (t, stepId, readingId) => {
+      const opened = await go(t, stepId);
+      if (opened && current(t)) sheet.scrollToReading(readingId);
+    };
     routes["toolbar-show-all"] = () => { if (sheet.close()) handle.fit(); };
     routes["toolbar-key"] = () => { if (sheet.shown() === keyEl) sheet.close(); else sheet.showPanel(keyEl, false); };
     routes["toolbar-about"] = () => { if (sheet.shown() === aboutEl) sheet.close(); else sheet.showPanel(aboutEl, true); };
