@@ -22,6 +22,7 @@ Exit codes: 0 written, 1 refused (one `CREDITS-<CODE> <what>` line per refusal, 
 """
 import argparse
 import hashlib
+import html.parser
 import importlib.util
 import json
 import os
@@ -69,6 +70,7 @@ CREDITS_KEYS = ("credits_title", "credits_back", "credits_h_licence", "credits_h
                 "credits_pin_before", "credits_pin_link", "credits_pin_after", "credits_h_endorse", "credits_endorse", "credits_files_note")
 MIN_PYTHON = (3, 12)   # the version the page checks were run under (Linux and macOS); 3.9 refuses the page falsely (Luria 38895)
 LIMIT = 1 << 20
+# The one string of the page not passed through build_site._e: a module constant, never input. Keep it a constant.
 CSS = ("body{font-family:system-ui,sans-serif;line-height:1.5;margin:0 auto;max-width:44rem;padding:1rem}"
        "div.verbatim{font-family:ui-monospace,monospace;font-size:.85rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid;padding-left:.75rem}"
        "p.from{margin-bottom:.25rem}")
@@ -93,7 +95,7 @@ def read_sources(repo, sources=SOURCES):
         try:
             data = sk._read_in(repo, os.path.join(repo, name), LIMIT)
         except Exception as e:   # SourceError: missing, symlink, outside, not-a-regular-file, too-large, unreadable
-            bad.append(f"CREDITS-SOURCE {name} {getattr(e, 'args', ['?'])[0]}")
+            bad.append(f"CREDITS-SOURCE {name} {e.args[0] if e.args else type(e).__name__}")
             continue
         got = hashlib.sha256(data).hexdigest()
         if got != want:
@@ -179,8 +181,26 @@ def render(texts, q, w, pin=PIN, repo=REPO):
     return "\n".join(parts)
 
 
+class _Hrefs(html.parser.HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.found = []
+
+    def handle_starttag(self, tag, attrs):
+        self.found += [v for k, v in attrs if k in ("href", "src", "action", "formaction", "xlink:href")]
+
+
+def href_problems(page, repo=REPO, pin=PIN):
+    """Every link target of the page must be `../` or https://github.com/<repo>/(blob|tree)/<pin>... : the page checks of build_site do not judge a
+    URL's scheme (Zephyr's read of PR 108: a citation-classed javascript: href passes all four), so this one does, on the page as parsed."""
+    p = _Hrefs()
+    p.feed(page)
+    ok = lambda v: v == "../" or v.startswith(f"https://github.com/{repo}/blob/{pin}/") or v == f"https://github.com/{repo}/tree/{pin}"
+    return [f"CREDITS-PAGE href {v!r} is not ../ or the repository at the pin" for v in p.found if not (isinstance(v, str) and ok(v))]
+
+
 def page_problems(page):
-    return ([f"CREDITS-PAGE static {p}" for p in bs.static_problems(page, "")] + [f"CREDITS-PAGE element {p}" for p in bs.element_problems(page)]
+    return href_problems(page) + ([f"CREDITS-PAGE static {p}" for p in bs.static_problems(page, "")] + [f"CREDITS-PAGE element {p}" for p in bs.element_problems(page)]
             + [f"CREDITS-PAGE head {p}" for p in bs.head_meta_problems(page)] + [f"CREDITS-PAGE link {p}" for p in bs.link_problems(page)])
 
 
@@ -356,6 +376,14 @@ def selftest():
         assert page_problems(page) == [] and any("static href=http" in p for p in page_problems(bad)), "an external link without class citation is caught"
         assert any("element script" in p for p in page_problems(page.replace("</main>", "<script></script></main>"))), "a script is caught"
     case("CR11 controls: the page checks catch an unclassed external link and a script", c11)
+
+    def c17():
+        page = render({"LICENSE": "L", "grh/NOTICE": "N", "grh/ATTRIBUTION.md": "A", "grh/README.md": "", "README.md": ""}, [("f", ["q"])], words)
+        assert href_problems(page) == [], href_problems(page)
+        for bad in ('javascript:alert(1)', 'https://example.org/x', 'https://github.com/lsernau/grh-lean/tree/main', '/x'):
+            mut = page.replace('href="../"', f'class="citation" href="{bad}"', 1)
+            assert any("CREDITS-PAGE href" in x for x in page_problems(mut)), f"{bad} not caught"
+    case("CR17 every link target is ../ or the repository at the pin: a citation-classed javascript:, another site, another ref and a root path are refused", c17)
 
     print(f"selftest: {n - len(fails)} of {n} passed")
     return 4 if fails else 0
