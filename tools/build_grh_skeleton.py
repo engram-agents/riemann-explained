@@ -3332,7 +3332,7 @@ MTH_SRCS = {"New/P/A": _stm_src("/-- **Alpha result.** One. -/\ntheorem alpha : 
             "New/P/B": _stm_src("theorem bdef : True := trivial\n\nlemma ne_of_lt : True := trivial\n"), "New/P/C": RDC_SRCS["New/P/C"], "New/Q/D": RDC_SRCS["New/Q/D"]}   # the fixture of RDC (two parts, three groups, four files) with more statements in A (three kinds) and B
 MTH_ILEANS = {"New/P/A": _stm_ilean("New/P/A", ("alpha", "beta", "primeRemainder", "countError")), "New/P/B": _stm_ilean("New/P/B", ("bdef", "ne_of_lt")),
               "New/P/C": RDC_ILEANS["New/P/C"], "New/Q/D": RDC_ILEANS["New/Q/D"],
-              "Lib/Other/Names": _stm_ilean("Lib/Other/Names", ("Nat.le", "Nat.mul", "Nat.sum", "Nat.Prime", "Nat.succ", "Foo.fullName", "Foo.integral_primeRemainder", "Foo.my_name", "Foo.R_q"))}   # declarations outside the three files: the compiled index knows them all
+              "Lib/Other/Names": _stm_ilean("Lib/Other/Names", ("Nat.le", "Nat.mul", "Nat.sum", "Nat.Prime", "Nat.succ", "Foo.fullName", "Foo.integral_primeRemainder", "Foo.my_name", "Foo.R_q", "Foo.CMType", "Foo.BPlus", "Foo.épsilonBound", "Foo.g₃_eq", "Foo.smul_natCast'", "Foo.primeBound"))}   # declarations outside the three files: the compiled index knows them all
 MTH_IDS = {"alpha": "lean-p-a-alpha", "beta": "lean-p-a-beta", "primeRemainder": "lean-p-a-primeremainder", "countError": "lean-p-a-counterror", "bdef": "lean-p-b-bdef", "ne_of_lt": "lean-p-b-ne-of-lt",
            "cdef": "lean-p-c-cdef", "ddef": "lean-q-d-ddef"}
 MTH_NUMBERS = {"alpha": "1.1", "beta": "1.2", "primeRemainder": "1.3", "countError": "1.4", "bdef": "2.1", "ne_of_lt": "2.2", "cdef": "1.1", "ddef": "1.1"}   # file place in its group . place among the statements of the file, one counter for every kind
@@ -8228,13 +8228,13 @@ def _selftest_cases():
 
     # ---- the names (A3)
 
-    @case("MTH-NAMES-CHARS", "a name is not empty, has no leading or trailing space, no control character, no backtick and no underscore: each `SKEL-MATHS-NAMES <statement> chars` (the neighbour `Alpha result` and a name with an inner space, a digit, a "
+    @case("MTH-NAMES-CHARS", "a name is not empty, has no leading or trailing space, no control character, no backtick and no underscore, and nothing that is not printable (`str.isprintable`: a no-break space, a zero-width mark and a lone surrogate are `chars` here): each `SKEL-MATHS-NAMES <statement> chars` (the neighbour `Alpha result` and a name with an inner space, a digit, a "
                              "hyphen and a Greek letter pass)")
     def _():
         run = lambda name: _mth_why(_mth_run(names=[_mth_n("alpha", name)])[0])
         L = ["SKEL-MATHS-NAMES alpha chars"]
-        return _eq({n: run(n) for n in ("Alpha result", "The weights λ(n) of 2-step", "", " Alpha", "Alpha ", "Al\x07pha", "Al\tpha", "Al`pha", "Al_pha")},
-                   {"Alpha result": None, "The weights λ(n) of 2-step": None, "": L, " Alpha": L, "Alpha ": L, "Al\x07pha": L, "Al\tpha": L, "Al`pha": L, "Al_pha": L})
+        return _eq({n: run(n) for n in ("Alpha result", "The weights λ(n) of 2-step", "", " Alpha", "Alpha ", "Al\x07pha", "Al\tpha", "Al`pha", "Al_pha", "Al\u00a0pha", "Al\u200bpha", "Al\ud800pha")},
+                   {"Alpha result": None, "The weights λ(n) of 2-step": None, "": L, " Alpha": L, "Alpha ": L, "Al\x07pha": L, "Al\tpha": L, "Al`pha": L, "Al_pha": L, "Al\u00a0pha": L, "Al\u200bpha": L, "Al\ud800pha": L})
 
     @case("MTH-NAMES-LENGTH", "a name has at most 60 CODE POINTS (not UTF-16 units, not bytes): 60 letters pass and 61 are `length`; 60 characters outside the BMP (120 UTF-16 units) pass and 61 are `length`")
     def _():
@@ -8287,11 +8287,11 @@ def _selftest_cases():
 
     # ---- the statements (A4) and the visible-text checks they share with the notation
 
-    @case("MTH-STM-SHAPE", "a statement text is not empty, has no newline and at most 600 characters: `SKEL-MATHS-STATEMENTS <statement> shape` for the empty text, `a\\nb` and 601 characters; 600 pass; code spans are allowed")
+    @case("MTH-STM-SHAPE", "a statement text is not empty, has no newline and at most 600 characters: `SKEL-MATHS-STATEMENTS <statement> shape` for the empty text, `a\\nb` (which is also `chars`, a newline being a control character) and 601 characters; 600 pass; code spans are allowed")
     def _():
         run = lambda text: _mth_why(_mth_run(statements=[_mth_s("alpha", text)])[0])
         L = ["SKEL-MATHS-STATEMENTS alpha shape"]
-        return _eq((run("x" * 600), run("x" * 601), run(""), run("a\nb"), run("`n ≤ x` and `1/2`"), run("é" * 600)), (None, L, L, L, None, None))
+        return _eq((run("x" * 600), run("x" * 601), run(""), run("a\nb"), run("`n ≤ x` and `1/2`"), run("é" * 600)), (None, L, L, L + ["SKEL-MATHS-STATEMENTS alpha chars"], None, None))
 
     @case("MTH-STM-P", "a statement text holds no declaration name the index knows (P, underscore ALLOWED): `primeRemainder`, `Foo.fullName`, `fullName` and `integral_primeRemainder` are `P <token>` (in code spans too); `my_name` and `R_q` pass here "
                        "(underscore is notation), and so do `le`, `succ`, `Prime` and a plain sentence")
@@ -8311,6 +8311,36 @@ def _selftest_cases():
                    {"see Foo.lean here": L("lean-file"), "the lean file": None, "see lines 3-4": L("line-number"), "see line 12": L("line-number"), "see LINE 7": L("line-number"), "the line of it": None,
                     "outline 3": None, "a line.": None, "a [[x]] b": L("link"), "a [x] b": None})
 
+    # ---- the CHARACTERS rule (contract A4 and A5, round 2): a control character or a lone surrogate in a statement's text or a notation row's text or symbol is `chars`, never a traceback
+
+    @case("MTH-STM-CHARS", "a statement's `text` with a control character (category Cc: BEL, tab, NUL, and a newline, which is also `shape`) or a lone surrogate (not encodable as UTF-8) is `SKEL-MATHS-STATEMENTS <statement> chars`, never an uncaught exception; "
+                           "a no-break space, a zero-width space and a bidi override stay ALLOWED in a statement's text (names refuse them: MTH-NAMES-CHARS)")
+    def _():
+        run = lambda text: _mth_why(_mth_run(statements=[_mth_s("alpha", text)])[0])
+        C = ["SKEL-MATHS-STATEMENTS alpha chars"]
+        return _eq({t: run(t) for t in ("a\x07b", "a\tb", "a\x00b", "a\ud800b", "a\nb", "a\u00a0b", "a\u200bb", "a\u202eb", "`x \u2264 y`")},
+                   {"a\x07b": C, "a\tb": C, "a\x00b": C, "a\ud800b": C, "a\nb": ["SKEL-MATHS-STATEMENTS alpha shape"] + C, "a\u00a0b": None, "a\u200bb": None, "a\u202eb": None, "`x \u2264 y`": None})
+
+    @case("MTH-NOT-CHARS", "the same CHARACTERS rule on a notation row's `text` and on its `symbol`: a control character or a lone surrogate is `SKEL-MATHS-NOTATION <file> <symbol> chars` (the symbol is printed as JSON text when it is not printable), one line when both fields hold one; "
+                           "a no-break space, a zero-width space and a bidi override stay allowed in both")
+    def _():
+        run = lambda **kw: _mth_why(_mth_run(notation=[dict(_mth_t("lean-p-a"), **kw)])[0])
+        L = lambda who: ["SKEL-MATHS-NOTATION lean-p-a %s chars" % who]
+        return _eq({"text-bel": run(text="a\x07b"), "text-tab": run(text="a\tb"), "text-surrogate": run(text="a\ud800b"), "symbol-bel": run(symbol="x\x07"), "symbol-surrogate": run(symbol="x\ud800"),
+                    "both": run(symbol="x\x07", text="a\x07b"), "text-nbsp": run(text="a\u00a0b"), "text-zwsp": run(text="a\u200bb"), "text-bidi": run(text="a\u202eb"), "symbol-nbsp": run(symbol="x\u00a0"), "symbol-zwsp": run(symbol="x\u200b")},
+                   {"text-bel": L("x"), "text-tab": L("x"), "text-surrogate": L("x"), "symbol-bel": L(json.dumps("x\x07")), "symbol-surrogate": L(json.dumps("x\ud800")), "both": L(json.dumps("x\x07")),
+                    "text-nbsp": None, "text-zwsp": None, "text-bidi": None, "symbol-nbsp": None, "symbol-zwsp": None})
+
+    @case("MTH-CHARS-CLI", "through the command line a lone surrogate (JSON `\"\\ud800\"`) in a statement's text, a notation row's text and symbol and a name is refused with its named lines (exit 1, OUT_DIR not written, no traceback): the build used to end in "
+                           "UnicodeEncodeError on the statements text; the neighbour with a no-break space builds")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            bad = _mth_cli(d, g, names={"rows": [_mth_n("alpha", "Al\ud800pha")]}, statements={"rows": [_mth_s("alpha", "a\ud800b")]}, notation={"rows": [_mth_t("lean-p-a", "x\ud800", "a\ud800b")]}, out="o-bad")
+            ok = _mth_cli(d, g, names={"rows": []}, statements={"rows": [_mth_s("alpha", "a\u00a0b")]}, notation={"rows": [_mth_t("lean-p-a", "x", "a\u00a0b")]}, out="o-ok")
+        return _eq((bad[0], [x for x in bad[1] if x.startswith("SKEL-")], bad[2].count("Traceback"), bad[3], ok[0], ok[3]),
+                   (1, ["SKEL-MATHS-NAMES alpha chars", "SKEL-MATHS-STATEMENTS alpha chars", "SKEL-MATHS-NOTATION lean-p-a %s chars" % json.dumps("x\ud800")], 0, False, 0, True))
+
     # ---- the notation (A5)
 
     @case("MTH-NOT-FILE", "a notation row's `file` is one of `--statements-for`: `SKEL-MATHS-NOTATION <file> <symbol> file` for a file that is not (a file of the fixture left out of the list, an id that is no step); the same file listed passes")
@@ -8326,8 +8356,8 @@ def _selftest_cases():
         S = ["SKEL-MATHS-NOTATION lean-p-a x shape"]
         return _eq({"ok": run(), "empty-lean": run(lean=[]), "known": run(lean=["alpha", "Nat.le"]), "empty-symbol": run(symbol=""), "newline-symbol": run(symbol="a\nb"), "empty-text": run(text=""), "newline-text": run(text="a\nb"),
                     "lean-string": run(lean="alpha"), "lean-int": run(lean=[1]), "lean-null": run(lean=None), "unknown": run(lean=["alpha", "nope.x", "also.no"])},
-                   {"ok": None, "empty-lean": None, "known": None, "empty-symbol": ['SKEL-MATHS-NOTATION lean-p-a "" shape'], "newline-symbol": ['SKEL-MATHS-NOTATION lean-p-a "a\\nb" shape'], "empty-text": S,
-                    "newline-text": S, "lean-string": S, "lean-int": S, "lean-null": S,
+                   {"ok": None, "empty-lean": None, "known": None, "empty-symbol": ['SKEL-MATHS-NOTATION lean-p-a "" shape'], "newline-symbol": ['SKEL-MATHS-NOTATION lean-p-a "a\\nb" shape', 'SKEL-MATHS-NOTATION lean-p-a "a\\nb" chars'], "empty-text": S,
+                    "newline-text": S + ["SKEL-MATHS-NOTATION lean-p-a x chars"], "lean-string": S, "lean-int": S, "lean-null": S,
                     "unknown": ["SKEL-MATHS-NOTATION lean-p-a x lean nope.x", "SKEL-MATHS-NOTATION lean-p-a x lean also.no"]})
 
     @case("MTH-NOT-VISIBLE", "the visible-text check of A4 runs on a notation row's `text` AND on its `symbol` (underscore allowed): `P <token>`, `lean-file`, `line-number`, `link` each refuse (`SKEL-MATHS-NOTATION <file> <symbol> <why>`); `R_q` as a symbol and "
@@ -8345,18 +8375,20 @@ def _selftest_cases():
     # ---- predicate P (contract section P): one function, one set of names built once from the whole compiled index
 
     @case("MTH-P", "predicate P over the statements table (underscore allowed) and the names table (underscore NOT allowed): flagged are a token equal to a known FULL name (`Foo.fullName`, `Nat.le`, `primeRemainder`, a name of a statement of the build) and "
-                   "a known SHORT name of 4 or more characters that has an underscore (names only), a dot, or a lower-case letter directly followed by an upper-case one (`fullName`, `integral_primeRemainder` in both tables, `my_name` in names only); "
-                   "NOT flagged: `le`, `sum`, `mul`, `succ`, `Prime` (plain short names), and `R_q`")
+                   "a known SHORT name of 4 or more characters that has an underscore (names only), a dot, or an inner capital, ANY upper-case letter after the first character (`fullName`, `CMType`, `BPlus`, `integral_primeRemainder` in both tables, `my_name` in names only); tokens are runs of Unicode word characters, dots and apostrophes "
+                   "(`épsilonBound`, `Foo.g₃_eq`), looked up as written and, with a final apostrophe, also without it (`smul_natCast'`, `'primeBound'`); NOT flagged: `le`, `sum`, `mul`, `succ`, `Prime` (plain short names), and `R_q`")
     def _():
-        toks = ("Foo.fullName", "Nat.le", "primeRemainder", "fullName", "integral_primeRemainder", "my_name", "R_q", "le", "sum", "mul", "succ", "Prime")
+        toks = ("Foo.fullName", "Nat.le", "primeRemainder", "fullName", "integral_primeRemainder", "my_name", "R_q", "le", "sum", "mul", "succ", "Prime", "CMType", "BPlus", "épsilonBound", "Foo.g₃_eq", "g₃_eq", "smul_natCast'", "'primeBound'", "Foo.smul_natCast'.")
         pick = lambda errs: [l.split(" P ", 1)[1] for l in _mth_lines(errs) if " P " in l]
         stm = {t: pick(_mth_run(statements=[_mth_s("alpha", "`%s` holds" % t)])[0]) for t in toks}
         nam = {t: pick(_mth_run(names=[_mth_n("alpha", "A %s" % t)])[0]) for t in toks}
         return _eq((stm, nam),
                    ({"Foo.fullName": ["Foo.fullName"], "Nat.le": ["Nat.le"], "primeRemainder": ["primeRemainder"], "fullName": ["fullName"], "integral_primeRemainder": ["integral_primeRemainder"], "my_name": [], "R_q": [],
-                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": []},
+                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": [], "CMType": ["CMType"], "BPlus": ["BPlus"], "épsilonBound": ["épsilonBound"], "Foo.g₃_eq": ["Foo.g₃_eq"], "g₃_eq": [],
+                     "smul_natCast'": ["smul_natCast'"], "'primeBound'": ["primeBound"], "Foo.smul_natCast'.": ["Foo.smul_natCast'"]},
                     {"Foo.fullName": ["Foo.fullName"], "Nat.le": ["Nat.le"], "primeRemainder": ["primeRemainder"], "fullName": ["fullName"], "integral_primeRemainder": ["integral_primeRemainder"], "my_name": ["my_name"], "R_q": [],
-                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": []}))
+                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": [], "CMType": ["CMType"], "BPlus": ["BPlus"], "épsilonBound": ["épsilonBound"], "Foo.g₃_eq": ["Foo.g₃_eq"], "g₃_eq": ["g₃_eq"],
+                     "smul_natCast'": ["smul_natCast'"], "'primeBound'": ["primeBound"], "Foo.smul_natCast'.": ["Foo.smul_natCast'"]}))
 
     # ---- what is written (B1 to B3): the number, the title, `math`, `human`, `notation`
 
@@ -8467,22 +8499,24 @@ def _selftest_cases():
 
     # ---- the real source with Ariadne's draft tables (read only where they are readable; never copied into the repository)
 
-    MTH_REAL_DIR = "/home/agents-shared/ariadne/rh-viewer/sample-data-d1"
+    MTH_REAL_DIR = os.environ.get("MTH_SAMPLE_DIR")   # the folder of the draft tables (names.json, statements.json, notation.json); unset: MTH-REAL is skipped
 
-    @case("MTH-REAL", "the real source and the draft tables (give `--selftest --grh DIR --ilean-dir DIR`; the tables are read from " + MTH_REAL_DIR + ", otherwise SKIPPED with the reason): the build through the command line refuses nothing and "
+    @case("MTH-REAL", "the real source and the draft tables (give `--selftest --grh DIR --ilean-dir DIR`; the folder of the three draft tables is the environment variable MTH_SAMPLE_DIR, otherwise SKIPPED with the reason): the build through the command line refuses nothing and "
                       "prints `maths names: 37 rows, 37 used, 0 not in this build` (and the statements 37/37/0, the notation 18/18/0); the numbers read off the BUILT tree (the group step's `children`, then each file step's) are 1.1 to 1.24 for "
                       "`lean-reduction-zeros-prime-error` (file 1), 2.1 for `-criterion` and 3.1 to 3.12 for `-prime-number-theorem`, equal to the numbers on every card and entry; every statement has `number` and a title that holds no backtick; "
                       "every notation row is on its own file step in the table's order; the step ids and the file set equal a build without the options, which holds no `number`, `math`, `human` or `notation`")
     def _():
         if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
             raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        if not MTH_REAL_DIR:
+            raise _SkipCase("SKIPPED: MTH_SAMPLE_DIR is not set (the folder of the draft names.json, statements.json and notation.json)")
         tables = {}
         try:
             for t in ("names", "statements", "notation"):
                 with open(os.path.join(MTH_REAL_DIR, t + ".json"), encoding="utf-8") as fh:
                     tables[t] = json.load(fh)
         except (OSError, ValueError):
-            raise _SkipCase("SKIPPED: %s is not readable here" % MTH_REAL_DIR)
+            raise _SkipCase("SKIPPED: MTH_SAMPLE_DIR is not readable here")
         real_pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
         ids = ["lean-reduction-zeros-criterion", "lean-reduction-zeros-prime-error", "lean-reduction-zeros-prime-number-theorem"]
         group = "lean-reduction-from-a-one-sided-bound-to-the-zeros"
