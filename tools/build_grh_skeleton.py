@@ -2116,7 +2116,8 @@ STM_WORDS = {"open_statements": "Open its statements", "close_statements": "Clos
              "key_statements_heading": "Statements",
              "key_statements_text": "As a sample, only the three files of the group \"From a one-sided bound to the zeros\" open to the statements Lean checks one by one. Each box is one named statement or definition, in the file's order; its note is the repository's own, where it has one. A line joins two statements of the same file: the upper one uses the lower one. Proofs are not opened.",
              "decl_prompt_button": "Copy a prompt for your own AI assistant", "decl_prompt_copied": "Copied. Paste it into your AI assistant.",
-             "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant."}   # Ariadne's strings v2, written once more here as literals
+             "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant.",
+             "decl_heading_label": "In the file's section:"}   # Ariadne's strings v2.1 (24 keys), written once more here as literals; the page PR ships them as site/strings-lean-statements.json
 STM_URL = "https://engram-agents.org/review/files/"
 STM_TITLE = "A map of the Lean files of the Riemann Hypothesis proof"   # the demo value of --statement-page-title: the map's own title
 STM_KIND_TEXT = {"theorem": "Theorem", "lemma": "Lemma", "def": "Definition", "abbrev": "Abbreviation", "structure": "Structure", "class": "Class", "inductive": "Inductive type", "instance": "Instance"}
@@ -2160,14 +2161,23 @@ def _stm_one(srcs, ileans, field=None, ids=("lean-s-a",), **kw):
     return errs if errs else {n: (o if field is None else o.get(field)) for n, o in _stm_names(files).items()}
 
 
-def _stm_cli(d, g, extra, graph_words=STM_WORDS, out="out"):
-    """(exit code, stdout lines, stderr, whether OUT_DIR exists) of the command line for the fixture folder `g`, with the statement words in a Graph overlay."""
-    sp, ol = _strings_file(d), _outline_file(d)
-    gp = os.path.join(d, "graph-words.json")
-    with open(gp, "w", encoding="utf-8") as f:
-        json.dump(graph_words, f)
+def _stm_cli(d, g, extra, words=STM_WORDS, out="out", strings_extra=None, graph_words=None):
+    """(exit code, stdout lines, stderr, whether OUT_DIR exists) of the command line for the fixture folder `g`; the statement words (`words`, None for none) are the file given to
+    `--strings-overlay-statements` (`statement-words.json`), passed when `extra` names --statements-for; `strings_extra` adds keys to the strings file, `graph_words` is a Graph overlay."""
+    sp, ol = _strings_file(d, dict(_strings(), **strings_extra) if strings_extra else None), _outline_file(d)
+    more = []
+    if words is not None and "--statements-for" in extra:
+        wp = os.path.join(d, "statement-words.json")
+        with open(wp, "w", encoding="utf-8") as f:
+            json.dump(words, f)
+        more = ["--strings-overlay-statements", wp]
+    gp = None
+    if graph_words is not None:
+        gp = os.path.join(d, "graph-words.json")
+        with open(gp, "w", encoding="utf-8") as f:
+            json.dump(graph_words, f)
     o = os.path.join(d, out)
-    rc, so, se = _cli(_args(g, o, sp, ol, graph=gp) + extra)
+    rc, so, se = _cli(_args(g, o, sp, ol, graph=gp) + more + extra)
     return rc, so.splitlines(), se, os.path.exists(o)
 
 
@@ -5587,8 +5597,8 @@ def _selftest_cases():
             out["url-only"] = _stm_cli(d, g, ["--statement-page-url", STM_URL], out="o4")
             out["title-alone"] = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--statement-page-title", STM_TITLE], out="o5")
             sp, ol = _strings_file(d), _outline_file(d)
-            gp = os.path.join(d, "graph-words.json")
-            rc, so, se = _cli(_args(g, os.path.join(d, "o6"), sp, ol, pin="c0", graph=gp) + ["--statements-for", "lean-s-a"])
+            gp = os.path.join(d, "statement-words.json")
+            rc, so, se = _cli(_args(g, os.path.join(d, "o6"), sp, ol, pin="c0") + ["--strings-overlay-statements", gp, "--statements-for", "lean-s-a"])
             out["pin"] = (rc, so.splitlines(), se, os.path.exists(os.path.join(d, "o6")))
         pick = lambda k: (out[k][0], out[k][1][:1], out[k][3])
         return _eq({k: pick(k) for k in out},
@@ -5730,7 +5740,7 @@ def _selftest_cases():
         return _eq(out, {"part": refused("S part"), "group": refused("G"), "file": refused("A"), "statement": refused("one"), "backticked": refused("`one`"), "contents": refused("Intro."), "padded": refused(" G "),
                          "demo": (0, ["steps: 3"], True)})
 
-    @case("STM-STRINGS", "the statement words are optional strings keys of the page (GRAPH_OPTIONAL_KEYS, 23 keys, each with its placeholder `{n}` where it has one: count_statement_one, count_statement_many, "
+    @case("STM-STRINGS", "the statement words are optional strings keys of the page (GRAPH_OPTIONAL_KEYS, 24 keys, each with its placeholder `{n}` where it has one: count_statement_one, count_statement_many, "
                          "decl_uses_here, decl_uses_elsewhere), the prompt templates are NOT keys of index.json `strings` and a map with statements that lacks a word its rows name (a `decl_kind_<k>` "
                          "of an occurring kind, `open_statements`, `count_statement_one`) is refused GRAPH-STRINGS <key> missing")
     def _():
@@ -5742,8 +5752,56 @@ def _selftest_cases():
             s = dict(_strings(), **{k: v for k, v in STM_WORDS.items() if k != drop})
             out[label] = _stm_one({"New/S/A": _stm_src("lemma l : True := trivial\n")}, {"New/S/A": _stm_ilean("New/S/A", ["l"])}, strings=s)
         return _eq((len(keys), in_opt == keys, ph, out),
-                   (23, True, {"count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_show_lean": None},
+                   (24, True, {"count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_show_lean": None},
                     {k: [("GRAPH-STRINGS", w, "missing")] for k, w in (("kind", "decl_kind_lemma"), ("open", "open_statements"), ("count", "count_statement_one"), ("close", "close_statements"))}))
+
+    @case("STM-WORD-KEYS", "the statement words are EXACTLY 24 keys (STATEMENT_WORD_KEYS: open_statements, close_statements, count_statement_one, count_statement_many, the eight decl_kind_<k>, decl_show_lean, "
+                           "decl_hide_lean, decl_lean_note, decl_uses_here, decl_uses_elsewhere, decl_no_note, key_statements_heading, key_statements_text, decl_prompt_button, decl_prompt_copied, "
+                           "decl_prompt_note and decl_heading_label), the keys of the test copy of the words, every one an optional key of the page (GRAPH_OPTIONAL_KEYS), and the two prompt templates are "
+                           "in neither: they are constants of the builder")
+    def _():
+        keys = set(STATEMENT_WORD_KEYS)
+        return _eq((len(STATEMENT_WORD_KEYS), len(keys), keys == set(STM_WORDS), keys <= set(bs.GRAPH_OPTIONAL_KEYS), "decl_heading_label" in keys,
+                    [k for k in ("decl_prompt_template", "decl_prompt_template_noaddr") if k in keys or k in bs.GRAPH_OPTIONAL_KEYS]),
+                   (24, 24, True, True, True, []))
+
+    @case("STM-WORDS-OPTION", "`--strings-overlay-statements FILE` (the words of the statement level, read by the machinery of the other overlay files): REQUIRED with --statements-for (missing: "
+                              "`SKEL-STATEMENT-WORDS strings-overlay-statements is required with --statements-for`) and REFUSED without it (`... needs --statements-for`, the file is NEVER read: a path that "
+                              "does not exist gives that line and exit 1, not a read error); its keys are EXACTLY the 24: a missing key is `SKEL-STATEMENT-WORDS <key> missing` (all, sorted; an empty "
+                              "object lists all 24), a page key that is not a statement word is `SKEL-STATEMENT-WORDS <key> is not a statement word`, a key that is no key of the page is the "
+                              "overlays' `SKEL-OVERLAY-KEY <file> <key> is not a key the page reads`, a key that is also in the strings file or in the Graph overlay is `SKEL-OVERLAY-CLASH <key>`, a file "
+                              "that is not JSON is exit 2; every refusal writes nothing; a good file builds and its 24 words are in index.json `strings`, the templates are not")
+    def _():
+        out = {}
+        with _tmp() as d:
+            g = _tree(d, _flat(["A"]), {"New/S/A": _stm_src("theorem one : True := trivial\n")}, ileans={"New/S/A": _stm_ilean("New/S/A", ["one"])})
+            base = ["--statements-for", "lean-s-a"]
+            ok = _stm_cli(d, g, base, out="o-ok")
+            ix = json.loads(_tree_files(os.path.join(d, "o-ok"))["graph/index.json"].decode("utf-8"))
+            out["ok"] = (ok[0], ok[3], sorted(k for k in ix["strings"] if k in STM_WORDS) == sorted(STM_WORDS), len(STM_WORDS), [k for k in ix["strings"] if "template" in k])
+            out["required"] = _stm_cli(d, g, base, words=None, out="o-req")
+            sp, ol = _strings_file(d), _outline_file(d)
+            r = _cli(_args(g, os.path.join(d, "o-no"), sp, ol) + ["--strings-overlay-statements", os.path.join(d, "no-such-file.json")])
+            out["unread"] = (r[0], r[1].splitlines(), os.path.exists(os.path.join(d, "o-no")))
+            out["missing"] = _stm_cli(d, g, base, words={k: v for k, v in STM_WORDS.items() if k not in ("decl_kind_def", "open_statements")}, out="o-mis")
+            out["empty"] = _stm_cli(d, g, base, words={}, out="o-emp")
+            out["extra-page-key"] = _stm_cli(d, g, base, words=dict(STM_WORDS, view_cards="Cards"), out="o-ext")
+            out["bogus"] = _stm_cli(d, g, base, words=dict(STM_WORDS, bogus="x"), out="o-bog")
+            out["clash-strings"] = _stm_cli(d, g, base, strings_extra={"decl_show_lean": "x"}, out="o-cl1")
+            out["clash-graph"] = _stm_cli(d, g, base, graph_words={"decl_show_lean": "y"}, out="o-cl2")
+            bad = os.path.join(d, "bad.json")
+            with open(bad, "w", encoding="utf-8") as f:
+                f.write("{not json")
+            r = _cli(_args(g, os.path.join(d, "o-bad"), sp, ol) + ["--statements-for", "lean-s-a", "--strings-overlay-statements", bad])
+            out["not-json"] = (r[0], os.path.exists(os.path.join(d, "o-bad")))
+        pick = lambda k: (out[k][0], out[k][1], out[k][3])
+        w = lambda k, what: f"SKEL-STATEMENT-WORDS {k} {what}"
+        return _eq((out["ok"], pick("required"), out["unread"], pick("missing"), pick("empty"), pick("extra-page-key"), pick("bogus"), pick("clash-strings"), pick("clash-graph"), out["not-json"]),
+                   ((0, True, True, 24, []), (1, [w("strings-overlay-statements", "is required with --statements-for")], False),
+                    (1, [w("strings-overlay-statements", "needs --statements-for")], False), (1, [w("decl_kind_def", "missing"), w("open_statements", "missing")], False),
+                    (1, [w(k, "missing") for k in sorted(STM_WORDS)], False), (1, [w("view_cards", "is not a statement word")], False),
+                    (1, ["SKEL-OVERLAY-KEY statement-words.json bogus is not a key the page reads"], False), (1, ["SKEL-OVERLAY-CLASH decl_show_lean"], False),
+                    (1, ["SKEL-OVERLAY-CLASH decl_show_lean"], False), (2, False)))
 
     @case("STM-REAL", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED), the three files `lean-reduction-zeros-criterion`, `-prime-error` and "
                       "`-prime-number-theorem` named: 356 files without the option and 393 with it (356 + 37), the files that differ are index.json, the three file steps and their group; "
@@ -5772,10 +5830,20 @@ def _selftest_cases():
         crit = "New.LFunction_ne_zero_of_primeRemainder_le"
         pn = _stm_names(f2)[crit]["prompt"]
         ix0 = json.loads(f0["graph/index.json"].decode("utf-8"))
-        return _eq((len(f0), len(f1), len(f2), differ, counts, len(st), sum(1 for o in st.values() if "note" in o), len(head), len(set(head.values())), head_files, shape,
+        with _tmp() as d:   # the same build through the command line: the 24 words written into a temp folder and passed with --strings-overlay-statements
+            wp, out = os.path.join(d, "strings-lean-statements.json"), os.path.join(d, "out")
+            with open(wp, "w", encoding="utf-8") as f:
+                json.dump(STM_WORDS, f)
+            rc, so, se = _cli(["--grh", _GRH_FOR_SK13, "--pin", real_pin, "--strings", os.path.join(_HERE, os.pardir, "site", "strings.json"), "--out", out, "--ilean-dir", _ILEAN_FOR_SK13,
+                               "--strings-overlay-statements", wp, "--statements-for", ",".join(ids), "--statement-page-url", STM_URL, "--statement-page-title", STM_TITLE])
+            cli_files = _tree_files(out) if rc == 0 else {}
+        cli_ix = json.loads(cli_files["graph/index.json"].decode("utf-8")) if cli_files else {"strings": {}}
+        via_cli = (rc, len(cli_files), sorted(k for k in cli_ix["strings"] if k in STM_WORDS) == sorted(STM_WORDS), [k for k in cli_ix["strings"] if "template" in k],
+                   {k: json.loads(v.decode("utf-8"))["prompt"] for k, v in cli_files.items() if k.startswith("graph/step/") and "prompt" in v.decode("utf-8")} == {"graph/step/%s.json" % o["id"]: o["prompt"] for o in st.values()})
+        return _eq((via_cli, len(f0), len(f1), len(f2), differ, counts, len(st), sum(1 for o in st.values() if "note" in o), len(head), len(set(head.values())), head_files, shape,
                     st[crit]["prompt"] == STM_EXPECT_REAL_ADDR, pn == STM_EXPECT_REAL_NOADDR, ["open_words" in r for r in ix0["symbols"]["kinds"].values()],
                     [c for c in f1 if c.startswith("graph/step/") and c.endswith(".json") and not json.loads(f1[c].decode("utf-8")).get("id")]),
-                   (356, 393, 393, ["graph/index.json", "graph/step/lean-reduction-from-a-one-sided-bound-to-the-zeros.json"] + [f"graph/step/{i}.json" for i in ids], dict(zip(ids, [(1, 1, 0), (24, 24, 0), (12, 12, 0)])),
+                   ((0, 393, True, [], True), 356, 393, 393, ["graph/index.json", "graph/step/lean-reduction-from-a-one-sided-bound-to-the-zeros.json"] + [f"graph/step/{i}.json" for i in ids], dict(zip(ids, [(1, 1, 0), (24, 24, 0), (12, 12, 0)])),
                     37, 34, 24, 3, ["src/New/Reduction/Zeros/PrimeError.lean"], True, True, True, [False, False, False], []))
 
     return cases
