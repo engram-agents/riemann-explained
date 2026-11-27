@@ -5433,22 +5433,25 @@ def _selftest_cases():
     @case("STM-LINES", "the file step's `rests_on` is the TRANSITIVE REDUCTION of the uses among its statements, in the existing link shape (from, from_path, to, to_path, in_reduction true, weight 1): "
                        "a diamond keeps its four sides and drops the diagonal, a chain with a shortcut drops the shortcut, a shortcut over three steps is dropped too (a reduction that drops only shortcuts over one step is wrong), a file whose statements use nothing has none; `uses_here` stays unreduced")
     def _():
-        d_src = "".join(f"theorem d{i} : True := trivial\n\n" for i in (1, 2, 3, 4, 5))
-        d_use = [("d2", "New.S.D", "d1", 1, 1), ("d3", "New.S.D", "d1", 2, 1), ("d4", "New.S.D", "d2", 3, 1), ("d4", "New.S.D", "d3", 4, 1), ("d4", "New.S.D", "d1", 5, 1),
-                 ("d5", "New.S.D", "d4", 6, 1), ("d5", "New.S.D", "d1", 7, 1)]   # d5 -> d1 is a shortcut over THREE steps (d4, d2, d1)
+        d_src = "".join(f"theorem d{i} : True := trivial\n\n" for i in (1, 2, 3, 4))
+        d_use = [("d2", "New.S.D", "d1", 1, 1), ("d3", "New.S.D", "d1", 2, 1), ("d4", "New.S.D", "d2", 3, 1), ("d4", "New.S.D", "d3", 4, 1), ("d4", "New.S.D", "d1", 5, 1)]
         n_src = "theorem n1 : True := trivial\n\ntheorem n2 : True := trivial\n"
+        c_src = "".join(f"theorem c{i} : True := trivial\n\n" for i in (1, 2, 3, 4))
+        c_use = [("c2", "New.S.C", "c1", 1, 1), ("c3", "New.S.C", "c2", 2, 1), ("c4", "New.S.C", "c3", 3, 1), ("c4", "New.S.C", "c1", 4, 1)]   # c4 -> c1 is a shortcut over THREE steps
         with _tmp() as d:
-            g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": STM_A, "New/S/B": STM_B, "New/S/D": _stm_src(d_src), "New/S/N": _stm_src(n_src)},
-                                                      {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN, "New/S/D": _stm_ilean("New/S/D", ["d1", "d2", "d3", "d4", "d5"], d_use),
-                                                       "New/S/N": _stm_ilean("New/S/N", ["n1", "n2"])}, statements_for=["lean-s-a", "lean-s-d", "lean-s-n"])
+            g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": STM_A, "New/S/B": STM_B, "New/S/D": _stm_src(d_src), "New/S/N": _stm_src(n_src), "New/S/C": _stm_src(c_src)},
+                                                      {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN, "New/S/D": _stm_ilean("New/S/D", ["d1", "d2", "d3", "d4"], d_use),
+                                                       "New/S/N": _stm_ilean("New/S/N", ["n1", "n2"]), "New/S/C": _stm_ilean("New/S/C", ["c1", "c2", "c3", "c4"], c_use)},
+                                                     statements_for=["lean-s-a", "lean-s-d", "lean-s-n", "lean-s-c"])
         links = lambda i: [(l["from"], l["to"], l["in_reduction"], l["weight"]) for l in json.loads(files[f"graph/step/{i}.json"].decode("utf-8"))["rests_on"]]
         fa = json.loads(files["graph/step/lean-s-d.json"].decode("utf-8"))
         st = _stm_names(files)
-        return _eq((errs, links("lean-s-d"), links("lean-s-a"), links("lean-s-n"), st["d4"]["uses_here"], [l["from_path"] for l in fa["rests_on"]][:1], [r["premises"] for r in rows if r["parent"] == "lean-s-d"]),
-                   ([], [("lean-s-d-d2", "lean-s-d-d1", True, 1), ("lean-s-d-d3", "lean-s-d-d1", True, 1), ("lean-s-d-d4", "lean-s-d-d2", True, 1), ("lean-s-d-d4", "lean-s-d-d3", True, 1), ("lean-s-d-d5", "lean-s-d-d4", True, 1)],
+        return _eq((errs, links("lean-s-d"), links("lean-s-a"), links("lean-s-n"), links("lean-s-c"), st["d4"]["uses_here"], [l["from_path"] for l in fa["rests_on"]][:1], [r["premises"] for r in rows if r["parent"] == "lean-s-d"]),
+                   ([], [("lean-s-d-d2", "lean-s-d-d1", True, 1), ("lean-s-d-d3", "lean-s-d-d1", True, 1), ("lean-s-d-d4", "lean-s-d-d2", True, 1), ("lean-s-d-d4", "lean-s-d-d3", True, 1)],
                     [("lean-s-a-two", "lean-s-a-one", True, 1), ("lean-s-a-three", "lean-s-a-two", True, 1)], [],
+                    [("lean-s-c-c2", "lean-s-c-c1", True, 1), ("lean-s-c-c3", "lean-s-c-c2", True, 1), ("lean-s-c-c4", "lean-s-c-c3", True, 1)],
                     ["lean-s-d-d1", "lean-s-d-d2", "lean-s-d-d3"], [["lean-s", "lean-s-g", "lean-s-d"]],
-                    [[], ["lean-s-d-d1"], ["lean-s-d-d1"], ["lean-s-d-d2", "lean-s-d-d3"], ["lean-s-d-d4"]]))
+                    [[], ["lean-s-d-d1"], ["lean-s-d-d1"], ["lean-s-d-d2", "lean-s-d-d3"]]))
 
     @case("STM-KIND-ROWS", "the symbols table has one row per statement kind that OCCURS, named by the keyword, with class, text (the English word of the strings), words and card_words `decl_kind_<k>` "
                            "and the same count_words on every statement row; the rows come after file in table order, `symbols.order.kinds` lists the same rows, `open_words` is on part, group and file "
