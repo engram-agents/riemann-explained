@@ -2169,7 +2169,9 @@ STM_WORDS = {"open_statements": "Open its statements", "close_statements": "Clos
              "decl_prompt_button": "Copy a prompt for your own AI assistant", "decl_prompt_copied": "Copied. Paste it into your AI assistant.",
              "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant.",
              "decl_heading_label": "In the file's section:",
-             "decl_reading_none": "No AI agent's reading of this statement yet. You can ask your own AI assistant for one:"}   # Ariadne's strings v2.1 (25 keys), written once more here as literals; the page PR ships them as site/strings-lean-statements.json
+             "decl_reading_none": "No AI agent's reading of this statement yet. You can ask your own AI assistant for one:",
+             "decl_uses_library_one": "It also uses 1 name from Lean's libraries (Mathlib or Lean itself), not listed here.",
+             "decl_uses_library_many": "It also uses {n} names from Lean's libraries (Mathlib or Lean itself), not listed here."}   # Ariadne's strings v2.1 (27 keys), written once more here as literals; the page PR ships them as site/strings-lean-statements.json
 STM_URL = "https://engram-agents.org/review/files/"
 STM_TITLE = "A map of the Lean files of the Riemann Hypothesis proof"   # the demo value of --statement-page-title: the map's own title
 STM_KIND_TEXT = {"theorem": "Theorem", "lemma": "Lemma", "def": "Definition", "abbrev": "Abbreviation", "structure": "Structure", "class": "Class", "inductive": "Inductive type", "instance": "Instance"}
@@ -5897,37 +5899,38 @@ def _selftest_cases():
         return _eq(out, {"part": refused("S part"), "group": refused("G"), "file": refused("A"), "statement": refused("one"), "backticked": refused("`one`"), "contents": refused("Intro."), "padded": refused(" G "),
                          "demo": (0, ["steps: 3"], True)})
 
-    @case("STM-STRINGS", "the statement words are optional strings keys of the page (GRAPH_OPTIONAL_KEYS, 25 keys, each with its placeholder `{n}` where it has one: count_statement_one, count_statement_many, "
+    @case("STM-STRINGS", "the statement words are optional strings keys of the page (GRAPH_OPTIONAL_KEYS, 27 keys, each with its placeholder `{n}` where it has one: count_statement_one, count_statement_many, "
                          "decl_uses_here, decl_uses_elsewhere), the prompt templates are NOT keys of index.json `strings` and a map with statements that lacks a word its rows name (a `decl_kind_<k>` "
                          "of an occurring kind, `open_statements`, `count_statement_one`) is refused GRAPH-STRINGS <key> missing")
     def _():
         keys = sorted(STM_WORDS)
         in_opt = [k for k in keys if k in bs.GRAPH_OPTIONAL_KEYS]
-        ph = {k: bs.PLACEHOLDERS.get(k) for k in ("count_statement_one", "count_statement_many", "decl_uses_here", "decl_uses_elsewhere", "decl_show_lean")}
+        ph = {k: bs.PLACEHOLDERS.get(k) for k in ("count_statement_one", "count_statement_many", "decl_uses_here", "decl_uses_elsewhere", "decl_show_lean", "decl_uses_library_one", "decl_uses_library_many")}
         out = {}
         for label, drop in (("kind", "decl_kind_lemma"), ("open", "open_statements"), ("count", "count_statement_one"), ("close", "close_statements")):
             s = dict(_strings(), **{k: v for k, v in STM_WORDS.items() if k != drop})
             out[label] = _stm_one({"New/S/A": _stm_src("lemma l : True := trivial\n")}, {"New/S/A": _stm_ilean("New/S/A", ["l"])}, strings=s)
         return _eq((len(keys), in_opt == keys, ph, out),
-                   (25, True, {"count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_show_lean": None},
+                   (27, True, {"count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_show_lean": None,
+                               "decl_uses_library_one": None, "decl_uses_library_many": {"n"}},
                     {k: [("GRAPH-STRINGS", w, "missing")] for k, w in (("kind", "decl_kind_lemma"), ("open", "open_statements"), ("count", "count_statement_one"), ("close", "close_statements"))}))
 
-    @case("STM-WORD-KEYS", "the statement words are EXACTLY 25 keys (STATEMENT_WORD_KEYS: open_statements, close_statements, count_statement_one, count_statement_many, the eight decl_kind_<k>, decl_show_lean, "
+    @case("STM-WORD-KEYS", "the statement words are EXACTLY 27 keys (STATEMENT_WORD_KEYS: open_statements, close_statements, count_statement_one, count_statement_many, the eight decl_kind_<k>, decl_show_lean, "
                            "decl_hide_lean, decl_lean_note, decl_uses_here, decl_uses_elsewhere, decl_no_note, key_statements_heading, key_statements_text, decl_prompt_button, decl_prompt_copied, "
-                           "decl_prompt_note, decl_heading_label and decl_reading_none), the keys of the test copy of the words, every one an optional key of the page (GRAPH_OPTIONAL_KEYS), and the two prompt templates are "
+                           "decl_prompt_note, decl_heading_label, decl_reading_none, decl_uses_library_one and decl_uses_library_many), the keys of the test copy of the words, every one an optional key of the page (GRAPH_OPTIONAL_KEYS), and the two prompt templates are "
                            "in neither: they are constants of the builder")
     def _():
         keys = set(STATEMENT_WORD_KEYS)
         return _eq((len(STATEMENT_WORD_KEYS), len(keys), keys == set(STM_WORDS), keys <= set(bs.GRAPH_OPTIONAL_KEYS), "decl_heading_label" in keys and "decl_reading_none" in keys,
                     [k for k in ("decl_prompt_template", "decl_prompt_template_noaddr") if k in keys or k in bs.GRAPH_OPTIONAL_KEYS]),
-                   (25, 25, True, True, True, []))
+                   (27, 27, True, True, True, []))
 
     @case("STM-WORDS-OPTION", "`--strings-overlay-statements FILE` (the words of the statement level, read by the machinery of the other overlay files): REQUIRED with --statements-for (missing: "
                               "`SKEL-STATEMENT-WORDS strings-overlay-statements is required with --statements-for`) and REFUSED without it (`... needs --statements-for`, the file is NEVER read: a path that "
-                              "does not exist gives that line and exit 1, not a read error); its keys are EXACTLY the 25: a missing key is `SKEL-STATEMENT-WORDS <key> missing` (all, sorted; an empty "
-                              "object lists all 25), a page key that is not a statement word is `SKEL-STATEMENT-WORDS <key> is not a statement word`, a key that is no key of the page is the "
+                              "does not exist gives that line and exit 1, not a read error); its keys are EXACTLY the 27: a missing key is `SKEL-STATEMENT-WORDS <key> missing` (all, sorted; an empty "
+                              "object lists all 27; an overlay of the 25 words before decl_uses_library_one and _many is refused by those two names; `{n}` in the one form is an unknown placeholder), a page key that is not a statement word is `SKEL-STATEMENT-WORDS <key> is not a statement word`, a key that is no key of the page is the "
                               "overlays' `SKEL-OVERLAY-KEY <file> <key> is not a key the page reads`, a key that is also in the strings file or in the Graph overlay is `SKEL-OVERLAY-CLASH <key>`, a file "
-                              "that is not JSON is exit 2; every refusal writes nothing; a good file builds and its 25 words are in index.json `strings`, the templates are not")
+                              "that is not JSON is exit 2; every refusal writes nothing; a good file builds and its 27 words are in index.json `strings`, the templates are not")
     def _():
         out = {}
         with _tmp() as d:
@@ -5942,6 +5945,8 @@ def _selftest_cases():
             out["unread"] = (r[0], r[1].splitlines(), os.path.exists(os.path.join(d, "o-no")))
             out["missing"] = _stm_cli(d, g, base, words={k: v for k, v in STM_WORDS.items() if k not in ("decl_kind_def", "open_statements")}, out="o-mis")
             out["empty"] = _stm_cli(d, g, base, words={}, out="o-emp")
+            out["old25"] = _stm_cli(d, g, base, words={k: v for k, v in STM_WORDS.items() if k not in ("decl_uses_library_one", "decl_uses_library_many")}, out="o-o25")
+            out["n-in-one"] = _stm_cli(d, g, base, words=dict(STM_WORDS, decl_uses_library_one="It also uses {n} name."), out="o-nin")
             out["extra-page-key"] = _stm_cli(d, g, base, words=dict(STM_WORDS, view_cards="Cards"), out="o-ext")
             out["bogus"] = _stm_cli(d, g, base, words=dict(STM_WORDS, bogus="x"), out="o-bog")
             out["clash-strings"] = _stm_cli(d, g, base, strings_extra={"decl_show_lean": "x"}, out="o-cl1")
@@ -5953,10 +5958,12 @@ def _selftest_cases():
             out["not-json"] = (r[0], os.path.exists(os.path.join(d, "o-bad")))
         pick = lambda k: (out[k][0], out[k][1], out[k][3])
         w = lambda k, what: f"SKEL-STATEMENT-WORDS {k} {what}"
-        return _eq((out["ok"], pick("required"), out["unread"], pick("missing"), pick("empty"), pick("extra-page-key"), pick("bogus"), pick("clash-strings"), pick("clash-graph"), out["not-json"]),
-                   ((0, True, True, 25, []), (1, [w("strings-overlay-statements", "is required with --statements-for")], False),
+        return _eq((out["ok"], pick("required"), out["unread"], pick("missing"), pick("empty"), pick("old25"), pick("n-in-one"), pick("extra-page-key"), pick("bogus"), pick("clash-strings"), pick("clash-graph"), out["not-json"]),
+                   ((0, True, True, 27, []), (1, [w("strings-overlay-statements", "is required with --statements-for")], False),
                     (1, [w("strings-overlay-statements", "needs --statements-for")], False), (1, [w("decl_kind_def", "missing"), w("open_statements", "missing")], False),
-                    (1, [w(k, "missing") for k in sorted(STM_WORDS)], False), (1, [w("view_cards", "is not a statement word")], False),
+                    (1, [w(k, "missing") for k in sorted(STM_WORDS)], False),
+                    (1, [w("decl_uses_library_many", "missing"), w("decl_uses_library_one", "missing")], False),
+                    (1, ["STRINGS-KEY decl_uses_library_one has an unknown placeholder {n}"], False), (1, [w("view_cards", "is not a statement word")], False),
                     (1, ["SKEL-OVERLAY-KEY statement-words.json bogus is not a key the page reads"], False), (1, ["SKEL-OVERLAY-CLASH decl_show_lean"], False),
                     (1, ["SKEL-OVERLAY-CLASH decl_show_lean"], False), (2, False)))
 
