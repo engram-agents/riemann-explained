@@ -3963,6 +3963,33 @@ def c_gv_back_mutants(b, S0, engine):
         raise AssertionError("MUTANT SURVIVED: " + name)
 
 
+def c_gv_stalled_spine(b, S0, engine):
+    """GV19: a server that accepts the request for spine.json and never answers: the press of Graph ends, after the fixed time, as the ordinary refusal (here shortened to
+    0.8 s in the served copy; the real constant, 20 s, is pinned by a node case): Cards stays, the stage hidden and empty, the one notice, one event with the code fetch-failed,
+    no console error; when the server answers a later press draws the spine and tells the clearing once."""
+    short = {"page/graphview.js": lambda t: t.replace("SIDECAR_TIMEOUT_MS = 20000", "SIDECAR_TIMEOUT_MS = 800")}
+    root = tempfile.mkdtemp(prefix="pg-gv-")
+    assemble.assemble(root, engine, fix="graphview", mutate=short)
+    Handler.seen.clear()
+    S = Served(root)
+    gate = threading.Event()
+    Handler.delay[GV_PATH] = gate
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844, init=GV_INIT).settled()
+        gv_press(pg, "graph")
+        pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+        st = gv_state(pg)
+        assert st["noticeText"] == "The graph could not be opened; tap Graph to try again." and st["cards"] is True and st["spine"] is False and st["nodes"] == 0, st
+        assert st["events"] == [{"stage": "graph", "code": "fetch-failed"}] and st["pressed"] == ["cards:true", "graph:false"], st
+        gate.set(); Handler.delay.pop(GV_PATH, None)
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        assert gv_state(pg)["events"] == [{"stage": "graph", "code": "fetch-failed"}, {"stage": "graph", "code": None}]
+        pg.csp_clean(); pg.close()
+    finally:
+        gate.set(); S.stop(); gv_clean()
+
+
 def c_gv_showall_and_address(b, S0, engine):
     """GV15: in the Graph view 'Show all' frames the spine (its boxes stay) and an address (#id) shows that card in CARDS: the view switches back first, the card's sheet opens."""
     S, pg = gv(b, engine)
@@ -4042,6 +4069,7 @@ GV_CASES = [
     ("GV18: on a tree with an empty card block, 'Show its file in Cards' opens the file's made card in Cards", c_gv_show_file_made_card),
     ("GV20: after 'Show its file in Cards' one control goes back to the graph with that box selected and framed; none after a tap in Cards", c_gv_back_to_graph),
     ("GV21: three mutants of the way back (graph not shown, a control that does nothing, another box selected) each turn GV20 red", c_gv_back_mutants),
+    ("GV19: a spine.json request that never answers ends, after the fixed time, as the ordinary refusal (fetch-failed), and a later press draws the spine", c_gv_stalled_spine),
     ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
 ]
 
