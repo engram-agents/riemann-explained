@@ -1089,9 +1089,10 @@ def c_live_sheets_match_main(b, S, engine):
         want = json.load(f)
     assert sorted(want) == sorted(ALL_IDS) and len(want) == 23, "the golden covers the 23 live cards"
     snap_js = """(() => { const s = document.getElementById('graph-sheet');
-      return { hidden: s.hidden, cls: s.className, crumbs: document.getElementById('graph-crumbs').innerHTML,
-               tools: document.getElementById('graph-sheet-tools').innerHTML, body: document.getElementById('graph-sheet-body').innerHTML,
-               notice: document.getElementById('graph-notice').hidden }; })()"""
+      return { hidden: s.hidden, cls: s.className.split(' sheet-settling').join(''), crumbs: document.getElementById('graph-crumbs').innerHTML,
+               tools: document.getElementById('graph-sheet-tools').innerHTML.split(' sheet-tool-main').join(''),
+               body: document.getElementById('graph-sheet-body').innerHTML,
+               notice: document.getElementById('graph-notice').hidden }; })()"""    # R1: the one class the parts button gained (case R1 holds it) and the sheet's 400 ms opening class are taken out, so every other byte is still main's
     digest = lambda v: hashlib.sha256(json.dumps(v, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     n = 0
     for card in ALL_IDS:
@@ -3066,6 +3067,109 @@ def c_made_deep_link(b, S0, engine, w, h, mobile):
         S.stop()
 
 
+def c_r1_parts_button_first(b, S0, engine):
+    """R1 (Lei, 11-26): 'Open its parts' was in a lower narrow bar, hard to notice. On a card that has parts the button is the sheet's FIRST row: full width of the sheet, at least 48 px
+    tall, filled (not the page's background), above the breadcrumb and Close; at phone and desktop sizes. A card without parts has no such row."""
+    for w, h in ((390, 844), (1280, 900)):
+        S = fold_served(engine, True, None, False, "skeleton")
+        try:
+            pg = Pg(b, S.base + "graph/index.html#sk-part", w, h, mobile=(w < 700)).settled()
+            pg.wait("document.getElementById('graph-sheet').hidden === false && document.querySelector('#graph-sheet .sheet-tool-main')", 8000)
+            got = pg.ev("""(() => { const r = (e) => e.getBoundingClientRect(), sh = r(document.getElementById('graph-sheet')), m = document.querySelector('#graph-sheet .sheet-tool-main'),
+              mr = r(m), cs = getComputedStyle(m), page = getComputedStyle(document.body);
+              const others = [...document.querySelectorAll('#graph-sheet button')].filter((x) => x !== m).map((x) => r(x).top);
+              return { h: mr.height, share: mr.width / sh.width, filled: cs.backgroundColor !== page.backgroundColor, firstTop: mr.top, others: Math.min(...others), text: m.textContent }; })()""")
+            assert got["h"] >= 48 and got["share"] >= 0.85 and got["filled"] and got["firstTop"] < got["others"], (w, h, got)
+            pg.page.click("#graph-sheet .sheet-tool-main")
+            pg.wait("document.getElementById('graph-sheet').hidden === true", 8000)      # the button opens the parts and hands the map back
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+
+
+def c_r4_buttons_look_like_buttons(b, S0, engine):
+    """R4 (Lei, 11-26): 'reserve links for real jumping around points'. A control that acts in place is a <button> and DRAWN as one: 'About this map' and the fold bar's button have a border
+    and no underline, at phone and desktop sizes; and every <a> of the page is a real jump (an address that is no '#', no javascript:), here the list page."""
+    for w, h in ((390, 500), (1280, 900)):
+        S = fold_served(engine, True, None, False, "skeleton")
+        try:
+            pg = Pg(b, S.base + "graph/index.html", w, h, mobile=(w < 700)).settled()
+            got = pg.ev("""(() => { const out = {}; for (const id of ['graph-about-open', 'graph-intro-show']) { const e = document.getElementById(id); if (!e || e.offsetParent === null) continue;
+              const c = getComputedStyle(e); out[id] = { tag: e.tagName, border: parseFloat(c.borderTopWidth), underline: c.textDecorationLine }; } return out; })()""")
+            assert got, got
+            for k, v in got.items():
+                assert v["tag"] == "BUTTON" and v["border"] >= 1 and v["underline"] == "none", (w, h, k, v)
+            links = pg.ev("[...document.querySelectorAll('a')].map((a) => a.getAttribute('href'))")
+            assert all(isinstance(x, str) and x != "" and not x.startswith("#") and not x.lower().startswith("javascript") for x in links), links
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+
+
+def c_r1_r4_mutants(b, S0, engine):
+    """R1/R4 mutants: the parts button without its main class (R1), the link buttons drawn underlined again (R4): each turns its case red."""
+    orig = fold_served
+    for name, mut, fn in (("no main class", {"page/sheet.js": lambda t: t.replace("sheet-tool sheet-tool-main", "sheet-tool")}, c_r1_parts_button_first),
+                          ("underlined again", {"graph.css": lambda t: t.replace("/* R4 BEGIN", "/* R4 BEGIN").replace("text-decoration: none; /* R4 */", "text-decoration: underline;")}, c_r4_buttons_look_like_buttons)):
+        def served(engine_, bar=True, mutate=None, live=False, fix=None, _m=mut):
+            return orig(engine_, bar, _m, live, fix)
+        globals()["fold_served"] = served
+        try:
+            try:
+                fn(b, S0, engine)
+            except AssertionError:
+                continue
+            raise AssertionError("MUTANT SURVIVED: " + name)
+        finally:
+            globals()["fold_served"] = orig
+
+
+def c_r5_opening_guard(b, S0, engine):
+    """R5 (found by FD9 once R1 made the sheet's main button 48 px and full width): a TAP on a box opens the sheet at the release, and the click that ends the tap used to land on the
+    button now under the finger, so one tap opened a card and pressed 'Open its parts' (the sheet shut at once). The sheet takes no pointer for 400 ms after it opens (class sheet-settling),
+    so the box tapped here, the one at the lower edge of a 390 x 844 phone, stays open after the guard has ended."""
+    S, pg = fold_open(b, engine, 390, 844, fix="graphview")
+    try:
+        n = [x for x in pg.ev(FOLD_TAP_JS) if x["id"] == "sk-part-2"][0]
+        fold_tap(pg, n["x"], n["y"])
+        pg.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+        pg.page.wait_for_timeout(800)
+        assert pg.ev("document.getElementById('graph-sheet').hidden") is False, "the sheet shut again: the click that ended the tap pressed its button"
+        assert pg.ev("document.getElementById('graph-sheet').classList.contains('sheet-settling')") is False, "the guard did not end"
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop()
+
+
+def c_r5_mutants(b, S0, engine):
+    """R5 mutants (the real engine only: the double sends no click after a tap): the guard's CSS rule gone, the guard never put on: each turns R5 red."""
+    if engine != "real":
+        return
+    orig = fold_served
+    for name, mut in (("no CSS rule", {"graph.css": lambda t: t.replace(".graph-sheet.sheet-settling { pointer-events: none; }", "")}),
+                      ("never put on", {"page/sheet.js": lambda t: t.replace('root.classList.add("sheet-settling");', "")})):
+        def served(engine_, bar=True, mutate=None, live=False, fix=None, _m=mut):
+            return orig(engine_, bar, _m, live, fix)
+        globals()["fold_served"] = served
+        try:
+            try:
+                c_r5_opening_guard(b, S0, engine)
+            except AssertionError:
+                continue
+            raise AssertionError("MUTANT SURVIVED: " + name)
+        finally:
+            globals()["fold_served"] = orig
+
+
+R14_CASES = [
+    ("R1: 'Open its parts' is the sheet's first row, full width, filled, at least 48 px", c_r1_parts_button_first),
+    ("R4: in-place controls are buttons drawn as buttons; every link is a real jump", c_r4_buttons_look_like_buttons),
+    ("R1/R4 mutants: no main class, underlined again: each turns its case red", c_r1_r4_mutants),
+    ("R5: a tap that opens the sheet is not a press on its button (the sheet takes no pointer for 400 ms)", c_r5_opening_guard),
+    ("R5 mutants: no CSS rule, never put on: each turns R5 red", c_r5_mutants),
+]
+
+
 # ---- the header fold (viewfold.js, graph.css FOLD block): the Lean map's header is compact on a phone and folds into one bar when the reader works in the graph ----
 # Lei's phone requirement (Kepler 39323). The shell carries the marker: an element #graph-intro-bar after the header (the live map's shell has none, so nothing here applies to it).
 FOLD_TITLE = "A map of the made-up files of a proof that is not real"
@@ -3917,6 +4021,52 @@ def c_gv_show_file_made_card(b, S0, engine):
         S.stop(); gv_clean()
 
 
+def c_gv_back_to_graph(b, S0, engine, mutate=None):
+    """GV20: Lei's request: after 'Show its file in Cards' the card's sheet has ONE control, '< Back to the graph'; a tap closes the sheet and shows the Graph view again with THAT
+    box selected and framed inside the stage. A card opened by a tap in Cards has no such control, and the control goes when another card is shown."""
+    root = tempfile.mkdtemp(prefix="pg-gv-")
+    assemble.assemble(root, engine, fix="graphview", mutate=mutate)
+    Handler.seen.clear()
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844, init=GV_INIT).settled()
+        tap(pg, "sk-part")
+        pg.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+        assert pg.ev("document.querySelectorAll('#graph-sheet .spine-back').length") == 0, "a card opened by a tap in Cards has the control"
+        pg.page.click("#graph-sheet-close"); pg.page.wait_for_timeout(100)
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        tap(pg, "spine-made-b")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        pg.page.click("#graph-sheet-body .spine-show-file")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-2'", 8000)
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet .spine-back')].map((x) => x.textContent)") == ["\u2039 Back to the graph"]
+        pg.page.click("#graph-sheet .spine-back")
+        pg.wait("document.getElementById('graph-sheet').hidden === true && !document.querySelector('.graph-spine').hidden", 8000)
+        pg.page.wait_for_timeout(600)
+        got = pg.ev("""(() => { const s = document.querySelector('.graph-spine').getBoundingClientRect(), n = document.querySelector('.graph-spine .ge-node[data-node="spine-made-b"]');
+          const q = n.getBoundingClientRect(); return { sel: n.classList.contains('ge-selected'), others: document.querySelectorAll('.graph-spine .ge-node.ge-selected').length,
+            inside: q.left >= s.left - 1 && q.right <= s.right + 1 && q.top >= s.top - 1 && q.bottom <= s.bottom + 1, cards: document.getElementById('graph').hidden }; })()""")
+        assert got == {"sel": True, "others": 1, "inside": True, "cards": True}, got
+        st = gv_state(pg)
+        assert st["spine"] is True and st["cards"] is False and st["pressed"] == ["cards:false", "graph:true"] and st["events"] == [], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_back_mutants(b, S0, engine):
+    """GV21: three mutants of the way back: the Graph view not shown again, the control that does nothing, and the view's hide choosing another box as the selected one: each turns GV20 red."""
+    for name, mut in (("graph not shown", {"page/app.js": lambda t: t.replace("if (!(await view.show(t))) return false;", "")}),
+                      ("control does nothing", {"page/app.js": lambda t: t.replace('back.addEventListener("click", () => routes["back-to-graph"](boxId), { signal });', "")}),
+                      ("another box selected", {"page/graphview.js": lambda t: t.replace("  function hide() {\n    view = \"cards\";", "  function hide() {\n    if (handle) handle.select(\"spine-made-a\");\n    view = \"cards\";")})):
+        try:
+            c_gv_back_to_graph(b, S0, engine, mutate=mut)
+        except AssertionError:
+            continue
+        raise AssertionError("MUTANT SURVIVED: " + name)
+
+
 def c_gv_stalled_spine(b, S0, engine):
     """GV19: a server that accepts the request for spine.json and never answers: the press of Graph ends, after the fixed time, as the ordinary refusal (here shortened to
     0.8 s in the served copy; the real constant, 20 s, is pinned by a node case): Cards stays, the stage hidden and empty, the one notice, one event with the code fetch-failed,
@@ -3944,6 +4094,47 @@ def c_gv_stalled_spine(b, S0, engine):
         gate.set(); S.stop(); gv_clean()
 
 
+def c_gv_notice_clear_of_controls(b, S0, engine, mutate=None):
+    """N1 (Borges, 11-27): after a refusal the notice must not cover a control: at 390 x 844 and 360 x 640 the point at the centre of the Graph button, the Cards button, Show all and Key
+    is that control itself (not the notice), a press on Graph then tries again and, the server answering this time, draws the spine; and a tap on the notice puts it away."""
+    for w, h in ((390, 844), (360, 640)):
+        root = tempfile.mkdtemp(prefix="pg-gv-")
+        assemble.assemble(root, engine, fix="graphview", mutate=mutate, shell_edit=lambda t: fold_shell(t, True))      # the Lean map's header: the toolbar sits under it
+        Handler.seen.clear()
+        S = Served(root)
+        Handler.status[GV_PATH] = 404
+        try:
+            pg = Pg(b, S.base + "graph/index.html", w, h, init=GV_INIT, mobile=True).settled()
+            gv_press(pg, "graph")
+            pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+            got = pg.ev("""(() => { const out = {}; for (const [k, q] of [['graph', 'button.view-btn[data-id="graph"]'], ['cards', 'button.view-btn[data-id="cards"]'],
+              ['showall', '#graph-show-all'], ['key', '#graph-key']]) { const e = document.querySelector(q), r = e.getBoundingClientRect();
+              const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); out[k] = t === e || e.contains(t); } return out; })()""")
+            assert all(got.values()), (w, h, got)
+            pg.ev("document.getElementById('graph-notice').click()")
+            assert pg.ev("document.getElementById('graph-notice').hidden") is True, "a tap on the notice does not put it away"
+            gv_press(pg, "graph")
+            pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+            Handler.status.pop(GV_PATH, None)
+            gv_press(pg, "graph")
+            pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+            assert pg.ev("document.getElementById('graph-notice').hidden") is True
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+
+
+def c_gv_notice_mutants(b, S0, engine):
+    """N1 mutants: the notice put back at the top edge; the dismiss listener removed: each turns N1 red."""
+    for name, mut in (("notice at the top again", {"graph.css": lambda t: t.replace("position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;", "position: fixed; top: 0; left: 0; right: 0; z-index: 30;")}),
+                      ("no dismiss listener", {"page/app.js": lambda t: t.replace('notice.addEventListener("click", () => hush(), { signal });', "")})):
+        try:
+            c_gv_notice_clear_of_controls(b, S0, engine, mutate=mut)
+        except AssertionError:
+            continue
+        raise AssertionError("MUTANT SURVIVED: " + name)
+
+
 def c_gv_showall_and_address(b, S0, engine):
     """GV15: in the Graph view 'Show all' frames the spine (its boxes stay) and an address (#id) shows that card in CARDS: the view switches back first, the card's sheet opens."""
     S, pg = gv(b, engine)
@@ -3968,7 +4159,7 @@ def c_gv_view_routes_close(b, S0, engine):
     box, pressing 'Show its file' and pressing Graph each leave the panel and the view exactly as they were. The route names are the module's own VIEW_ROUTES."""
     S, pg = gv(b, engine)
     try:
-        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["spine-open", "spine-show-file", "view-cards", "view-graph"]
+        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["back-to-graph", "spine-open", "spine-show-file", "view-cards", "view-graph"]
         gv_press(pg, "graph")
         pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
         tap(pg, "spine-made-a")
@@ -4021,7 +4212,11 @@ GV_CASES = [
     ("GV16: the Graph view's routes honour a cancelled sheetclose: Cards, another box, 'Show its file' and Graph change nothing", c_gv_view_routes_close),
     ("GV17: a box tapped while its file loads, then another box: the first one's late answer changes nothing", c_gv_stale_spine_open),
     ("GV18: on a tree with an empty card block, 'Show its file in Cards' opens the file's made card in Cards", c_gv_show_file_made_card),
+    ("GV20: after 'Show its file in Cards' one control goes back to the graph with that box selected and framed; none after a tap in Cards", c_gv_back_to_graph),
+    ("GV21: three mutants of the way back (graph not shown, a control that does nothing, another box selected) each turn GV20 red", c_gv_back_mutants),
     ("GV19: a spine.json request that never answers ends, after the fixed time, as the ordinary refusal (fetch-failed), and a later press draws the spine", c_gv_stalled_spine),
+    ("N1: after a refusal the notice covers no control of the toolbar at 390 x 844 and 360 x 640, a tap on it puts it away, Graph tries again", c_gv_notice_clear_of_controls),
+    ("N1 mutants: the notice at the top again, no dismiss listener: each turns N1 red", c_gv_notice_mutants),
     ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
 ]
 
@@ -4158,6 +4353,8 @@ def main():
                 run(GV_CASES[0][0], GV_CASES[0][1], eng)
                 for fname, ffn in FOLD_CASES:
                     run(fname, ffn, eng)
+                for rname, rfn in R14_CASES:
+                    run(rname, rfn, eng)
                 if eng == "real":
                     for gname, gfn in GV_CASES[1:]:
                         run(gname, gfn, eng)

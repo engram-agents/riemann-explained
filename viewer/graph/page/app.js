@@ -24,7 +24,7 @@ export const CLOSE_ROUTES = Object.freeze([
 ]);
 /* The routes of the Graph view (graphview.js); they exist on every map but do something only on one that carries the view. Each begins with the sheet's close
    function like the routes above, so the same cancelling-listener case drives them on a map that has the view. */
-export const VIEW_ROUTES = Object.freeze(["view-graph", "view-cards", "spine-open", "spine-show-file"]);
+export const VIEW_ROUTES = Object.freeze(["view-graph", "view-cards", "spine-open", "spine-show-file", "back-to-graph"]);
 
 /* ONE fixed closed size, chosen by measuring in the browser (the browser case "one fixed closed size"): a 50-character title of
    the widest glyphs takes three lines at 15 px in the engine's default 300 px width, and with the role word and the foot at
@@ -136,6 +136,7 @@ export async function start(doc, deps) {
     const notice = q["graph-notice"];
     function say(text) { if (dead) return; notice.replaceChildren(doc.createTextNode(text)); notice.hidden = false; }
     function hush() { notice.hidden = true; }
+    notice.addEventListener("click", () => hush(), { signal });      // N1: a tap on the notice puts it away
 
     /* A MAP CARRIES NOTES iff its index strings hold BOTH note_label and note_source (data the page has at start; the live map has neither).
        On a map that carries notes, the step's own file is loaded (it is cached when the card's parents or a deep link already loaded it) BEFORE
@@ -302,7 +303,7 @@ export async function start(doc, deps) {
         const step = await data.loadStep(node.file);
         if (!current(t)) return false;
         if (!sheet.close()) return false;
-        const panel = buildSpinePanel(strings, node, titleChildren(step.card.title), (file) => routes["spine-show-file"](file), signal);
+        const panel = buildSpinePanel(strings, node, titleChildren(step.card.title), (file) => routes["spine-show-file"](file, id), signal);
         if (!sheet.showPanel(panel, false)) return false;
         hush();
         view.select(id);
@@ -314,18 +315,32 @@ export async function start(doc, deps) {
     };
     /* 'Show its file': switch to Cards and open that file's sheet there. The file's step is loaded first, so an id that is no step the page can load is the
        refused-link notice and leaves the Graph view as it is; then the one navigation continues into go with the same ticket. */
-    routes["spine-show-file"] = async (t, id) => {
+    routes["spine-show-file"] = async (t, id, boxId) => {
       if (!view || !current(t)) return false;
       try {
         await data.loadStep(id);
         if (!current(t)) return false;
         if (!sheet.close()) return false;
         view.hide();
-        return await go(t, id);
+        const shown = await go(t, id);
+        /* Lei's request (11-26): a card opened from a box has one control to go back to that box (a card opened by a tap in Cards has none; the strip is cleared when another card shows). */
+        if (shown && current(t) && boxId !== undefined && typeof strings.spine_back_to_graph === "string") {
+          const back = el("button", { type: "button", class: "sheet-tool spine-back" }, [strings.spine_back_to_graph]);
+          back.addEventListener("click", () => routes["back-to-graph"](boxId), { signal });
+          sheet.appendTool(back);
+        }
+        return shown;
       } catch (e) {
         if (!current(t)) return false;
         return failed(e);
       }
+    };
+    /* The way back from a card to the box it was opened from: the Graph view shown again. The box the reader tapped is still the selected one (the selection is kept while the
+       view is hidden) and showing the view frames the whole graph, so the box is in view (case GV20 pins both). */
+    routes["back-to-graph"] = async (t, boxId) => {
+      if (!view || !current(t) || !sheet.close()) return false;
+      if (!(await view.show(t))) return false;
+      return true;
     };
     /* The one place a route takes its ticket: every entry above is wrapped here, so a route added later cannot forget it. */
     for (const name of Object.keys(routes)) {

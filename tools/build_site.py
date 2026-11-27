@@ -672,7 +672,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_uses_library_many": {"n"}, "decl_note_source": {"source", "commit"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -1857,7 +1857,11 @@ GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 # the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
 GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text",
                        "spine_lines_text", "key_scope_text",
-                       "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice")   # the Graph view's words (G1)
+                       "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice", "spine_back_to_graph",   # the Graph view's words (G1; the last is the way back from a card, optional on a map)
+                       "open_statements", "close_statements", "count_statement_one", "count_statement_many",   # the statement level of a Lean map (contract section 31): the words only a map with statements carries
+                       "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
+                       "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
+                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source")
 
 
 def _graph_strings_keys(symbols=None):
@@ -1866,6 +1870,8 @@ def _graph_strings_keys(symbols=None):
     rows = [v for table in (GRAPH_SYMBOLS if symbols is None else symbols).values() for v in table.values()]
     return ([v["words"] for v in rows] + [v["card_words"] for v in rows if "card_words" in v]
             + [k for v in rows if "count_words" in v and isinstance(v["count_words"], dict) for k in (v["count_words"].get("many"), v["count_words"].get("one")) if isinstance(k, str)]
+            + [k for v in rows if "open_words" in v and isinstance(v["open_words"], dict) for k in (v["open_words"].get("open"), v["open_words"].get("close")) if isinstance(k, str)]
+            + [k for v in rows if "child_count_words" in v and isinstance(v["child_count_words"], dict) for k in (v["child_count_words"].get("many"), v["child_count_words"].get("one")) if isinstance(k, str)]
             + list(GRAPH_RUNTIME_KEYS))
 
 
@@ -2139,10 +2145,10 @@ def _graph_count_errors(objs, symbols=None):
 GRAPH_STATUS_HIDDEN = ("part", "group", "file")   # a card of one of these (skeleton) kinds draws no state frame and no status line, so its state and proof do not occur on the map
 
 
-def _graph_order_errors(rows, symbols, orders):
+def _graph_order_errors(rows, symbols, orders, status_hidden=GRAPH_STATUS_HIDDEN):
     """[(GRAPH-ORDER, where, what)] for the order lists `orders` ({kinds, states, proofs}: lists of names of the tables of `symbols`). A list must hold no name twice,
     only names of its table, in the table's own key order, and kinds may not be empty; when the lists are in that shape, every kind of a card, and every state and proof
-    of a card whose kind is not in GRAPH_STATUS_HIDDEN, must be in its list (the key must never be silent about something drawn): `GRAPH-ORDER <kind|state|proof> <value>`."""
+    of a card whose kind is not in `status_hidden` (default GRAPH_STATUS_HIDDEN), must be in its list (the key must never be silent about something drawn): `GRAPH-ORDER <kind|state|proof> <value>`."""
     out = []
     for name in ("kinds", "states", "proofs"):
         lst, table = list(orders[name]), list(symbols[name])
@@ -2160,7 +2166,7 @@ def _graph_order_errors(rows, symbols, orders):
     seen = set()
     for r in rows:
         for field, name in (("kind", "kinds"), ("state", "states"), ("proof", "proofs")):
-            if field != "kind" and r["kind"] in GRAPH_STATUS_HIDDEN:
+            if field != "kind" and r["kind"] in status_hidden:
                 continue
             if r[field] in symbols[name] and r[field] not in orders[name] and (field, r[field]) not in seen:
                 seen.add((field, r[field]))
@@ -2242,7 +2248,8 @@ def _graph_extra_errors(step_extra, index_extra, by, notes, layout):
     return out
 
 
-def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None, child_kinds=False, step_extra=None, index_extra=None):
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None, child_kinds=False, step_extra=None, index_extra=None,
+                 status_hidden=GRAPH_STATUS_HIDDEN, child_kind_off=()):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
     hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
@@ -2269,6 +2276,16 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             elif "count_words" in v and not (isinstance(v["count_words"], dict) and set(v["count_words"]) == {"many", "one"}
                                              and all(isinstance(x, str) for x in v["count_words"].values())):
                 errors.append(("GRAPH-STRINGS", f"{name}.{k}.count_words", "must be an object with exactly the keys many and one, both strings"))
+            if "child_count_words" in v and name != "kinds":   # `child_count_words` ({many, one}: two keys of `strings`) is for a kinds row only: the count words of the children of a card of this kind when they do not share one kind
+                errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has child_count_words (only a kinds row may)"))
+            elif "child_count_words" in v and not (isinstance(v["child_count_words"], dict) and set(v["child_count_words"]) == {"many", "one"}
+                                                   and all(isinstance(x, str) for x in v["child_count_words"].values())):
+                errors.append(("GRAPH-STRINGS", f"{name}.{k}.child_count_words", "must be an object with exactly the keys many and one, both strings"))
+            if "open_words" in v and name != "kinds":   # `open_words` ({open, close}: two keys of `strings`) is for a kinds row only: the words of its open and close control
+                errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has open_words (only a kinds row may)"))
+            elif "open_words" in v and not (isinstance(v["open_words"], dict) and set(v["open_words"]) == {"open", "close"}
+                                            and all(isinstance(x, str) for x in v["open_words"].values())):
+                errors.append(("GRAPH-STRINGS", f"{name}.{k}.open_words", "must be an object with exactly the keys open and close, both strings"))
     if errors:
         return errors, {}
     seen, refused = set(), set()
@@ -2331,7 +2348,7 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             if r[field] not in table:
                 errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}" + (f" {graph_kind_words()}" if field == "kind" else "")))
     if not errors:   # an order list is judged against cards whose symbols are all in the tables
-        errors += _graph_order_errors(rows, symbols, orders)
+        errors += _graph_order_errors(rows, symbols, orders, status_hidden)
     edges = {}   # sibling links, from -> [to]: the premises of a step that name a sibling
     for r in rows:
         for p in dict.fromkeys(r["premises"]):
@@ -2374,7 +2391,7 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     def closed(r):
         d = {"child_count": len(kids.get(r["id"], [])), "id": r["id"], "kind": r["kind"], "path": list(path[r["id"]]), "proof": r["proof"],
              "state": r["state"], "title": r["title"]}
-        if child_kinds and kids.get(r["id"]) and len({c["kind"] for c in kids[r["id"]]}) == 1:   # optional: the kind all the children share
+        if child_kinds and r["id"] not in child_kind_off and kids.get(r["id"]) and len({c["kind"] for c in kids[r["id"]]}) == 1:   # optional: the kind all the children share (not on a card named in `child_kind_off`)
             d["child_kind"] = kids[r["id"]][0]["kind"]
         if r.get("role"):   # optional: absent, never null and never empty
             d["role"] = r["role"]
@@ -2389,7 +2406,9 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
         "strings": {k: strings[k] for k in _graph_strings_keys(symbols) + list(GRAPH_OPTIONAL_KEYS) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: dict({"class": v["class"], "text": strings[v["words"]], "words": v["words"]},
                                         **({"card_words": v["card_words"]} if "card_words" in v else {}),
-                                        **({"count_words": {"many": v["count_words"]["many"], "one": v["count_words"]["one"]}} if "count_words" in v else {})) for k, v in table.items()}
+                                        **({"count_words": {"many": v["count_words"]["many"], "one": v["count_words"]["one"]}} if "count_words" in v else {}),
+                                        **({"open_words": {"open": v["open_words"]["open"], "close": v["open_words"]["close"]}} if "open_words" in v else {}),
+                                        **({"child_count_words": {"many": v["child_count_words"]["many"], "one": v["child_count_words"]["one"]}} if "child_count_words" in v else {})) for k, v in table.items()}
                          for name, table in symbols.items()},
                         order={name: list(orders[name]) for name in symbols}),
         "top": [r["id"] for r in kids.get("root", [])]}}
@@ -5319,6 +5338,61 @@ def _selftest_cases():
             rc = selftest(only=["X2a", "NOPE"])
         ran = [ln.split(" ")[1] for ln in ok_out.getvalue().splitlines() if ln.startswith("CASE ")]
         return _eq((ran, rc, "NOPE" in bad_err.getvalue(), bad_out.getvalue()), (["X2a", "B7d"], 2, True, ""))
+
+    @case("TMP1", "the tool leaves nothing in its temporary folder: three child processes of this very file, each with its OWN fresh TMPDIR (a folder made here, "
+                  "named `rh-tmp1-...`), are run in parallel under a timeout: `--selftest --only <every case id but TMP1>` (so a leak from ANY case shows), a normal "
+                  "CLI build of a planted tree (the self-test it runs first as its gate included) and a CLI call refused after the gate (SRC_ROOT that is not a folder); "
+                  "each TMPDIR must be empty afterwards (the leftover names are listed, at most 20). A child whose TMPDIR starts `rh-tmp1-` runs no TMP1 itself: that is "
+                  "the recursion guard, and it cannot be left out without leaving out the fresh TMPDIR the case is about")
+    def _():
+        if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):   # the guard: this run is the child of a TMP1
+            return True, "nested: not run again"
+        me = os.path.abspath(__file__)
+        all_but = ",".join(c[0] for c in cases if c[0] != "TMP1")
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            five = [p["notes"], p["outline"], p["decls"], p["strings"], p["out"]]
+            refused_args = [os.path.join(d, "no-such-folder"), p["outline"], p["decls"], p["strings"], os.path.join(d, "out-refused")]
+            runs = {"selftest": ["--selftest", "--only", all_but], "build": five, "refused": refused_args}
+            procs = {}
+            for name, argv in runs.items():
+                t = tempfile.mkdtemp(prefix="rh-tmp1-")
+                procs[name] = (t, subprocess.Popen([sys.executable, "-I", me] + argv, env=dict(os.environ, TMPDIR=t, RH_TMP1_NESTED="1"),
+                                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+            got, bad = {}, []
+            try:
+                for name, (t, pr) in procs.items():
+                    try:
+                        so, se = pr.communicate(timeout=600)
+                    except subprocess.TimeoutExpired:
+                        pr.kill()
+                        pr.communicate()
+                        bad.append(f"{name}: timed out")
+                        continue
+                    left = sorted(os.listdir(t))
+                    got[name] = pr.returncode
+                    if left:
+                        bad.append(f"{name}: {len(left)} left in its TMPDIR: " + ", ".join(left[:20]))
+            finally:
+                for t, pr in procs.values():
+                    if pr.poll() is None:
+                        pr.kill()
+                        pr.communicate()
+                    shutil.rmtree(t, ignore_errors=True)
+            want = {"selftest": 0, "build": 0, "refused": 2}
+            if got != want and not bad:
+                bad.append(f"exit codes {got}, wanted {want}")
+        return (not bad), "; ".join(bad)
+
+    @case("TMP2", "the self-test as the GATE of a normal build (`selftest_quiet`) skips TMP1 (its three child runs would double the time of every real build, and the leak it checks is already "
+                  "closed at its source); the self-test run directly (`selftest`) runs it: with stand-in cases [TMP1 (fails), X (passes)], the gate returns 0 and runs only X, the direct run returns 4")
+    def _():
+        ran = []
+        stand_in = lambda: [("TMP1", "t", lambda: (ran.append("TMP1") or False, "ran")), ("X", "x", lambda: (ran.append("X") or True, ""))]
+        with _patched("_selftest_cases", stand_in):
+            gate = selftest_quiet()
+            direct = selftest(verbose=False)
+        return _eq((gate, direct, ran), (0, 4, ["X", "TMP1", "X"]))
 
     # ---- data
     @case("L0", "level0.json: the level-1 steps g1 g3 g2 in `order` (the outline lists g3 first, and `order` is not the id order), each with its "
@@ -14090,7 +14164,10 @@ def _selftest_cases():
                     _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
                     _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", note_source="S", bogus="x"))),
                    (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
-                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"),
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice", "spine_back_to_graph",
+                    "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
+                    "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
+                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source"),
                     20, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
@@ -14407,6 +14484,89 @@ def _selftest_cases():
         return _eq((res(dict(base, key_scope_text=T)), res(dict(base, note_label=T.replace("{readme_quote}", quote))), res(dict(base, key_scope_text=old)), sorted(OF_THE_PROOF_OK)),
                    ([], [], [("STRINGS-FORBIDDEN", "key_scope_text")], ["map_row_sketch"]))
 
+    @case("GROW1", "a kinds row of a caller's table may carry `open_words` {close, open} (two keys of `strings`): the row in symbols.kinds then has the key open_words with exactly those two keys, "
+                   "index.json `strings` holds them, an open key that `strings` lacks is `GRAPH-STRINGS <key> missing`, open_words that is not exactly {close, open} of strings is refused "
+                   "`GRAPH-STRINGS kinds.<row>.open_words must be an object with exactly the keys open and close, both strings`, and so is one on a states or proofs row (`GRAPH-SYMBOL`); a row "
+                   "without it is written without the key (the live table has none)")
+    def _():
+        ow = {"open": "open_parts", "close": "close_parts"}
+        rows3 = {"part": {"class": "kind-part", "words": "symbol_kind_part", "open_words": ow}, "group": {"class": "kind-group", "words": "symbol_kind_group"},
+                 "file": {"class": "kind-file", "words": "symbol_kind_file", "open_words": {"open": "open_statements", "close": "close_statements"}}}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_group="G", symbol_kind_file="F", open_statements="Open its statements", close_statements="Close its statements")
+        rows = [gr_row("a", kind="part", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
+        ix = objs["graph/index.json"]
+        dangling = {k: v for k, v in st.items() if k != "close_statements"}
+        bad = lambda row: [tuple(e) for e in _graph_files(rows, "c0", st, symbols=dict(own, kinds=dict(rows3, group=dict(rows3["group"], open_words=row))))[0]]
+        on_state = dict(own, states=dict(own["states"], read=dict(own["states"]["read"], open_words=ow)))
+        live = _graph_files([gr_row("a")], "c0", _strings())[1]["graph/index.json"]
+        want = "must be an object with exactly the keys open and close, both strings"
+        return _eq((errs, ix["symbols"]["kinds"]["part"]["open_words"], ix["symbols"]["kinds"]["file"]["open_words"], "open_words" in ix["symbols"]["kinds"]["group"],
+                    ix["strings"]["open_statements"], [tuple(e) for e in _graph_files(rows, "c0", dangling, symbols=own)[0]],
+                    bad({"open": "open_parts"}), bad(dict(ow, extra="x")), bad({"open": "open_parts", "close": 5}),
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=on_state)[0]], any("open_words" in v for v in live["symbols"]["kinds"].values())),
+                   ([], ow, {"open": "open_statements", "close": "close_statements"}, False, "Open its statements", [("GRAPH-STRINGS", "close_statements", "missing")],
+                    [("GRAPH-STRINGS", "kinds.group.open_words", want)], [("GRAPH-STRINGS", "kinds.group.open_words", want)], [("GRAPH-STRINGS", "kinds.group.open_words", want)],
+                    [("GRAPH-SYMBOL", "states.read", "has open_words (only a kinds row may)")], False))
+
+    @case("GRCC1", "a kinds row of a caller's table may carry `child_count_words` {many, one} (two keys of `strings`; the count words of the children of a card of that kind): the row in symbols.kinds then has "
+                   "the key with exactly those two keys, index.json `strings` holds them, a key that `strings` lacks is `GRAPH-STRINGS <key> missing`, one that is not exactly {many, one} of strings is "
+                   "refused `GRAPH-STRINGS kinds.<row>.child_count_words must be an object with exactly the keys many and one, both strings`, one on a states or proofs row is `GRAPH-SYMBOL`; a row without "
+                   "it is written without the key")
+    def _():
+        cw = {"many": "count_item_many", "one": "count_item_one"}
+        rows3 = {"part": {"class": "kind-part", "words": "symbol_kind_part"}, "group": {"class": "kind-group", "words": "symbol_kind_group", "child_count_words": cw}}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_group="G", count_item_many="{n} items", count_item_one="{n} item")
+        rows = [gr_row("a", kind="part", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
+        ix = objs["graph/index.json"]
+        dangling = {k: v for k, v in st.items() if k != "count_item_one"}
+        bad = lambda row: [tuple(e) for e in _graph_files(rows, "c0", st, symbols=dict(own, kinds=dict(rows3, group=dict(rows3["group"], child_count_words=row))))[0]]
+        on_state = dict(own, states=dict(own["states"], read=dict(own["states"]["read"], child_count_words=cw)))
+        want = "must be an object with exactly the keys many and one, both strings"
+        return _eq((errs, ix["symbols"]["kinds"]["group"]["child_count_words"], "child_count_words" in ix["symbols"]["kinds"]["part"], ix["strings"]["count_item_many"],
+                    [tuple(e) for e in _graph_files(rows, "c0", dangling, symbols=own)[0]], bad({"many": "count_item_many"}), bad(dict(cw, extra="x")), bad({"many": "count_item_many", "one": 5}),
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=on_state)[0]]),
+                   ([], cw, False, "{n} items", [("GRAPH-STRINGS", "count_item_one", "missing")], [("GRAPH-STRINGS", "kinds.group.child_count_words", want)],
+                    [("GRAPH-STRINGS", "kinds.group.child_count_words", want)], [("GRAPH-STRINGS", "kinds.group.child_count_words", want)],
+                    [("GRAPH-SYMBOL", "states.read", "has child_count_words (only a kinds row may)")]))
+
+    @case("GRCK3", "`_graph_files(child_kind_off=)`: the ids of cards that get NO `child_kind` although their children share one kind (a card in its own step file and as a closed child entry of its parent's): "
+                   "with the argument the named card has none, in both places, and every other card is as without it; the default (nothing named) writes the bytes of an explicit empty argument")
+    def _():
+        rows3 = {k: {"class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in ("part", "group", "file")}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_group="G", symbol_kind_file="F")
+
+        def r(i, parent, order, kind):
+            return gr_row(i, parent, order, kind=kind, state="none", proof="none")
+        rows = [r("a", "root", 0, "part"), r("b", "a", 0, "group"), r("d", "b", 0, "file"), r("e", "b", 1, "file")]
+        plain = _graph_files(rows, "c0", st, symbols=own, child_kinds=True)[1]
+        empty = _graph_files(rows, "c0", st, symbols=own, child_kinds=True, child_kind_off=())[1]
+        off = _graph_files(rows, "c0", st, symbols=own, child_kinds=True, child_kind_off=("b",))[1]
+        ck = lambda objs: ({i: objs[f"graph/step/{i}.json"]["card"].get("child_kind") for i in "abde"}, [c.get("child_kind") for c in objs["graph/step/a.json"]["children"]])
+        return _eq((_graph_bytes(plain) == _graph_bytes(empty), ck(plain), ck(off)),
+                   (True, ({"a": "group", "b": "file", "d": None, "e": None}, ["file"]), ({"a": "group", "b": None, "d": None, "e": None}, [None])))
+
+    @case("GRSH1", "`_graph_files(status_hidden=)`: the kinds whose cards draw no state and no proof, default GRAPH_STATUS_HIDDEN (part, group, file; the bytes with the argument equal to the default "
+                   "are the bytes without it): a step of a kind outside it whose state is `none` while the order list `states` is empty is `GRAPH-ORDER state none`; the same step builds when "
+                   "its kind is named in `status_hidden`, and a kind that is not named is still judged")
+    def _():
+        rows3 = {k: {"class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in ("part", "item")}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_item="I")
+        orders = {"kinds": ["part", "item"], "states": [], "proofs": []}
+        rows = [gr_row("a", kind="part", state="none", proof="none"), gr_row("b", "a", 0, kind="item", state="none", proof="none")]
+        plain = _graph_files(rows, "c0", st, symbols=own, orders=orders)
+        same = _graph_files(rows, "c0", st, symbols=own, orders=orders, status_hidden=GRAPH_STATUS_HIDDEN)
+        hidden = _graph_files(rows, "c0", st, symbols=own, orders=orders, status_hidden=GRAPH_STATUS_HIDDEN + ("item",))
+        other = _graph_files(rows, "c0", st, symbols=own, orders=orders, status_hidden=GRAPH_STATUS_HIDDEN + ("zeta",))
+        BOTH = [("GRAPH-ORDER", "state", "none"), ("GRAPH-ORDER", "proof", "none")]
+        return _eq(([tuple(e) for e in plain[0]], [tuple(e) for e in same[0]], hidden[0], sorted(hidden[1]) == ["graph/index.json", "graph/step/a.json", "graph/step/b.json"], [tuple(e) for e in other[0]]),
+                   (BOTH, BOTH, [], True, BOTH))
+
     @case("GRCK1", "`_graph_files(child_kinds=)`: off by default (the bytes equal an explicit child_kinds=False and no card has `child_kind`); on, every card (the step file's card and the "
                    "closed child entry) with children that all share one kind has `child_kind` = that kind, and it is omitted when the children differ and when there are none; the "
                    "card in a step's own file and the child entry in its parent's file agree")
@@ -14538,7 +14698,10 @@ def _selftest_cases():
                     [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H"), edge_basis=eb),
                     _graph_strings_errors(dict(req, bogus="x"))),
                    (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
-                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"), [], eb, 23,
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice", "spine_back_to_graph",
+                    "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
+                    "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
+                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source"), [], eb, 23,
                     ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_heading", "missing"), ("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
     @case("GRG1", "the Graph view's words (G1): view_cards, view_graph, graph_nodes_text, spine_content_label, spine_lives_in, spine_show_file and graph_failed_notice are on "
@@ -14548,7 +14711,7 @@ def _selftest_cases():
     def _():
         rows = [gr_row("a")]
         words = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "Boxes.", "spine_content_label": "Label", "spine_lives_in": "Lives in: {title}",
-                 "spine_show_file": "Show", "graph_failed_notice": "Failed.", "spine_lines_text": "Lines."}
+                 "spine_show_file": "Show", "graph_failed_notice": "Failed.", "spine_back_to_graph": "Back", "spine_lines_text": "Lines."}
         ok = _graph_files(rows, "c0", dict(_strings(), **words))
         ix = ok[1]["graph/index.json"]["strings"]
         base = _strings()
@@ -14565,8 +14728,8 @@ class _SkipCase(Exception):
     """Raised by a case that cannot set up its plant on this system; the case is reported SKIP."""
 
 
-def selftest(verbose=True, only=None):
-    """A case returns (True|False, detail). `only` is a list of case ids: exactly those cases run (an unknown id returns 2)."""
+def selftest(verbose=True, only=None, skip=()):
+    """A case returns (True|False, detail). `only` is a list of case ids: exactly those cases run (an unknown id returns 2). `skip`: ids of cases left out (the gate leaves out TMP1)."""
     ok, skipped = True, 0
     cases = _selftest_cases()
     if only is not None:
@@ -14576,6 +14739,7 @@ def selftest(verbose=True, only=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
+    cases = [c for c in cases if c[0] not in skip]
     global _CODE_FLAG_AT_START, _GRAPH_SRC_AT_START, _SELFTEST_RUNNING
     was_running = _SELFTEST_RUNNING
     if not _SELFTEST_RUNNING:   # a case that calls selftest() (SEL1) must not overwrite the value read by the outermost run
@@ -14609,8 +14773,9 @@ def selftest(verbose=True, only=None):
 
 
 def selftest_quiet():
+    """The self-test as the gate of a normal build: TMP1 (three child runs, about 20 s) is left out; `--selftest` runs it."""
     with contextlib.redirect_stdout(io.StringIO()):
-        return selftest(verbose=False)
+        return selftest(verbose=False, skip=("TMP1",))
 
 
 _VALUE_OPTIONS = {"--source-check": "source_check", "--release-archive-sha": "archive_sha", "--notes-commit": "notes_commit",

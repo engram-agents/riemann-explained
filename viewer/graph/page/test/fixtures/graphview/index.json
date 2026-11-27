@@ -42,6 +42,7 @@
   "sheet_statement_census": "Statement counted by a program",
   "sheet_statement_not_read": "Statement not read",
   "sheet_statement_read": "Statement read",
+  "spine_back_to_graph": "‹ Back to the graph",
   "spine_content_label": "In the repository's words",
   "spine_lines_text": "A line means the upper result rests on the lower one. Made-up words of the fixture.",
   "spine_lives_in": "Lives in: {title}",
