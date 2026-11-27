@@ -5348,7 +5348,7 @@ def _selftest_cases():
                    ([], 0, [], ["graph/step/lean-s-b.json"], [("lean-s-a", 3), ("lean-s-b", 0)], [("lean-s-a", "lean-s-b")]))
 
     @case("STM-CUT", "the cut of `statement.text` is at the first `:=` at bracket depth 0 outside strings, comments and character literals: a named argument `(x := 3)`, a string `\":=\"` (also with an "
-                     "escaped quote), a block comment and a line comment holding `:=`, a character literal `'\"'`, an identifier with a prime before a string, a continuation line that starts with an absolute value `|x| ≤ y` (not an arm of a pattern match) do NOT cut; the text starts at the modifiers "
+                     "escaped quote), a block comment and a line comment holding `:=`, a character literal `'\"'`, a `:=` inside `{}`, `[]` and angle brackets that no parenthesis surrounds, an identifier with a prime before a string, a continuation line that starts with an absolute value `|x| ≤ y` (not an arm of a pattern match) do NOT cut; the text starts at the modifiers "
                      "and attributes as written (on the keyword line and on the line above) and never at the doc-string; trailing whitespace (spaces and tabs) is trimmed; `:=by` with no space cuts")
     def _():
         body = ("theorem c1 (h : (x := 3) = 3) : True := trivial\n\n"
@@ -5364,14 +5364,15 @@ def _selftest_cases():
                 "theorem c12 : ('\"' : Char) = '\"' := rfl\n\n"
                 "theorem c13 (h' : True) : \"x\" = \"x\" := rfl\n\n"
                 "theorem c14 (h : [1, 2] = ⟨1, 2⟩ ∧ {x | x := 1} = {}) : True := trivial\n\n"
-                "theorem c15 (hx : 0 ≤ x) :\n    |x| ≤ y := by\n  trivial\n")
-        names = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10", "c12", "c13", "c14", "c15"]
+                "theorem c15 (hx : 0 ≤ x) :\n    |x| ≤ y := by\n  trivial\n\n"
+                "theorem c16 : f {a := 1} [b := 2] ⟨c := 3⟩ = 0 := rfl\n")
+        names = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10", "c12", "c13", "c14", "c15", "c16"]
         got = _stm_one({"New/S/A": _stm_src(body)}, {"New/S/A": _stm_ilean("New/S/A", names)}, "statement")
         want = {"c1": "theorem c1 (h : (x := 3) = 3) : True", "c2": "theorem c2 : \"a := b\" = \"a := b\"", "c3": "theorem c3 : \"q\\\" := z\" = \"\"",
                 "c4": "theorem c4 : True /- x := y -/", "c5": "theorem c5 : True -- := no", "c6": "@[simp] private theorem c6 : True", "c7": "@[simp, norm_cast]\nprotected lemma c7 : True",
                 "c8": "@[simp] theorem c8 : True", "c9": "theorem c9 : True", "c10": "theorem c10 : True", "c12": "theorem c12 : ('\"' : Char) = '\"'",
                 "c13": "theorem c13 (h' : True) : \"x\" = \"x\"", "c14": "theorem c14 (h : [1, 2] = ⟨1, 2⟩ ∧ {x | x := 1} = {}) : True",
-                "c15": "theorem c15 (hx : 0 ≤ x) :\n    |x| ≤ y"}
+                "c15": "theorem c15 (hx : 0 ≤ x) :\n    |x| ≤ y", "c16": "theorem c16 : f {a := 1} [b := 2] ⟨c := 3⟩ = 0"}
         if isinstance(got, list):
             return False, got
         return _eq({n: o["text"] for n, o in got.items()}, want)
@@ -5430,23 +5431,24 @@ def _selftest_cases():
                    (([], []), (["lean-s-a-one"], [{"name": "bdef", "step": "lean-s-b"}, {"name": "bar"}]), (["lean-s-a-one", "lean-s-a-two"], [])))
 
     @case("STM-LINES", "the file step's `rests_on` is the TRANSITIVE REDUCTION of the uses among its statements, in the existing link shape (from, from_path, to, to_path, in_reduction true, weight 1): "
-                       "a diamond keeps its four sides and drops the diagonal, a chain with a shortcut drops the shortcut, a file whose statements use nothing has none; `uses_here` stays unreduced")
+                       "a diamond keeps its four sides and drops the diagonal, a chain with a shortcut drops the shortcut, a shortcut over three steps is dropped too (a reduction that drops only shortcuts over one step is wrong), a file whose statements use nothing has none; `uses_here` stays unreduced")
     def _():
-        d_src = "".join(f"theorem d{i} : True := trivial\n\n" for i in (1, 2, 3, 4))
-        d_use = [("d2", "New.S.D", "d1", 1, 1), ("d3", "New.S.D", "d1", 2, 1), ("d4", "New.S.D", "d2", 3, 1), ("d4", "New.S.D", "d3", 4, 1), ("d4", "New.S.D", "d1", 5, 1)]
+        d_src = "".join(f"theorem d{i} : True := trivial\n\n" for i in (1, 2, 3, 4, 5))
+        d_use = [("d2", "New.S.D", "d1", 1, 1), ("d3", "New.S.D", "d1", 2, 1), ("d4", "New.S.D", "d2", 3, 1), ("d4", "New.S.D", "d3", 4, 1), ("d4", "New.S.D", "d1", 5, 1),
+                 ("d5", "New.S.D", "d4", 6, 1), ("d5", "New.S.D", "d1", 7, 1)]   # d5 -> d1 is a shortcut over THREE steps (d4, d2, d1)
         n_src = "theorem n1 : True := trivial\n\ntheorem n2 : True := trivial\n"
         with _tmp() as d:
             g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": STM_A, "New/S/B": STM_B, "New/S/D": _stm_src(d_src), "New/S/N": _stm_src(n_src)},
-                                                      {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN, "New/S/D": _stm_ilean("New/S/D", ["d1", "d2", "d3", "d4"], d_use),
+                                                      {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN, "New/S/D": _stm_ilean("New/S/D", ["d1", "d2", "d3", "d4", "d5"], d_use),
                                                        "New/S/N": _stm_ilean("New/S/N", ["n1", "n2"])}, statements_for=["lean-s-a", "lean-s-d", "lean-s-n"])
         links = lambda i: [(l["from"], l["to"], l["in_reduction"], l["weight"]) for l in json.loads(files[f"graph/step/{i}.json"].decode("utf-8"))["rests_on"]]
         fa = json.loads(files["graph/step/lean-s-d.json"].decode("utf-8"))
         st = _stm_names(files)
         return _eq((errs, links("lean-s-d"), links("lean-s-a"), links("lean-s-n"), st["d4"]["uses_here"], [l["from_path"] for l in fa["rests_on"]][:1], [r["premises"] for r in rows if r["parent"] == "lean-s-d"]),
-                   ([], [("lean-s-d-d2", "lean-s-d-d1", True, 1), ("lean-s-d-d3", "lean-s-d-d1", True, 1), ("lean-s-d-d4", "lean-s-d-d2", True, 1), ("lean-s-d-d4", "lean-s-d-d3", True, 1)],
+                   ([], [("lean-s-d-d2", "lean-s-d-d1", True, 1), ("lean-s-d-d3", "lean-s-d-d1", True, 1), ("lean-s-d-d4", "lean-s-d-d2", True, 1), ("lean-s-d-d4", "lean-s-d-d3", True, 1), ("lean-s-d-d5", "lean-s-d-d4", True, 1)],
                     [("lean-s-a-two", "lean-s-a-one", True, 1), ("lean-s-a-three", "lean-s-a-two", True, 1)], [],
                     ["lean-s-d-d1", "lean-s-d-d2", "lean-s-d-d3"], [["lean-s", "lean-s-g", "lean-s-d"]],
-                    [[], ["lean-s-d-d1"], ["lean-s-d-d1"], ["lean-s-d-d2", "lean-s-d-d3"]]))
+                    [[], ["lean-s-d-d1"], ["lean-s-d-d1"], ["lean-s-d-d2", "lean-s-d-d3"], ["lean-s-d-d4"]]))
 
     @case("STM-KIND-ROWS", "the symbols table has one row per statement kind that OCCURS, named by the keyword, with class, text (the English word of the strings), words and card_words `decl_kind_<k>` "
                            "and the same count_words on every statement row; the rows come after file in table order, `symbols.order.kinds` lists the same rows, `open_words` is on part, group and file "
@@ -5512,7 +5514,7 @@ def _selftest_cases():
                     "id": (1, ["SKEL-STATEMENT-ID _"], False), "index": (1, ["SKEL-STATEMENT-INDEX lost"], False)})
 
     @case("STM-ID", "the step id of a statement is `<file step id>-<slug of the full name>` under the one-hyphen id rule: an id longer than 64 characters is cut to 57, a trailing hyphen removed, then `-` "
-                    "and 6 hex digits of the sha256 of the whole id (and is listed in the report's cut ids); a name in a namespace is slugged with its namespace; two names that slug alike "
+                    "and 6 hex digits of the sha256 of the whole id (and is listed in the report's cut ids); a name in a namespace is slugged with its namespace and its card title is the SHORT name (`Ns.s` is `s`); two names that slug alike "
                     "(`a_b` and `a.b`) are refused GRAPH-DUP by name and nothing is built")
     def _():
         long_name = "this_is_a_really_long_declaration_name_for_the_id_rule_ok"
@@ -5522,8 +5524,11 @@ def _selftest_cases():
         with _tmp() as d:
             g, (e1, f1, r1, p1) = _stm_build(d, {"New/S/L": src}, {"New/S/L": _stm_ilean("New/S/L", [long_name, "Ns.s"])}, statements_for=["lean-s-l"])
         dup = _stm_one({"New/S/M": _stm_src("theorem a_b : True := trivial\n\ntheorem a.b : True := trivial\n")}, {"New/S/M": _stm_ilean("New/S/M", ["a_b", "a.b"])}, ids=("lean-s-m",))
-        return _eq((len(full) > 64, e1, [r["id"] for r in r1 if r["parent"] == "lean-s-l"], len(want_id), [(x, y) for x, y in p1["cut"] if x == full], dup),
-                   (True, [], [want_id, "lean-s-l-ns-s"], 64, [(full, want_id)], [("GRAPH-DUP", "lean-s-m-a-b", "is the id of more than one step")]))
+        names = _stm_names(f1)
+        return _eq((len(full) > 64, e1, [r["id"] for r in r1 if r["parent"] == "lean-s-l"], len(want_id), [(x, y) for x, y in p1["cut"] if x == full], dup,
+                    [(n, o["card"]["title"]) for n, o in sorted(names.items())]),
+                   (True, [], [want_id, "lean-s-l-ns-s"], 64, [(full, want_id)], [("GRAPH-DUP", "lean-s-m-a-b", "is the id of more than one step")],
+                    [("Ns.s", "s"), (long_name, long_name)]))
 
     @case("STM-COUNT", "NOTHING DROPPED SILENTLY: per named file the builder reports `statements <file id>: <found> declarations, <written> written, <reported> reported` with found = written + reported, "
                        "and a nameless `instance` and an `example` (also with an attribute) are `reported` by kind and line, never absent: a fixture with 2 named declarations, 1 nameless instance and "
