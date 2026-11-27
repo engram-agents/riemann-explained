@@ -2233,9 +2233,11 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             good, why = _refused(w, _argv(w), ["ASM-STRINGS title empty"], "title is the empty string")
             if not good:
                 return good, why
-        with _tmp() as d:   # (c) two bad keys and a bad about_text: all the lines, the about_text line first, then the keys in the order of the tokens in the shell (not the strings file's order)
+        with _tmp() as d:   # (c) two bad keys and a bad about_text: all the lines, the about_text line first, then the keys in the order of the tokens in the shell (not the strings file's order, which here puts close first)
             w = _world(d)
-            put_strings(w, close=["x"], title="", **{ABOUT_KEY: 7})
+            rest = _asm_strings()
+            rest.pop("close"), rest.pop("title")
+            _put(w["strings"], json.dumps({"close": ["x"], **rest, "title": "", ABOUT_KEY: 7}))   # the file puts close first and title last; the shell holds title before close
             rc, lines, err = _cli(_argv(w))
             ok, why = _eq((rc, lines, "Traceback" in err, os.path.exists(w["out"])),
                           (1, [f"ASM-STRINGS {ABOUT_KEY} not-a-string", "ASM-STRINGS title empty", "ASM-STRINGS close not-a-string"], False, False))
@@ -2248,6 +2250,13 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             ok, why = _eq(_no_feedback(tree["index.html"].decode("utf-8")), _no_feedback(_expected_page(w, SHELL, _asm_strings(sentence="  padded & <b>x</b>  "))))   # the section attribute is A7's and A8's (M-h)
             if not ok:
                 return ok, "a bad value under a key the shell does not hold: " + why
+        with _tmp() as d:   # (d2) a whitespace-only title is a non-empty str: it builds
+            w = _world(d)
+            put_strings(w, title="   ")
+            tree = _ok_run(w)[0]
+            ok, why = _eq(_no_feedback(tree["index.html"].decode("utf-8")), _no_feedback(_expected_page(w, SHELL, _asm_strings(title="   "))))
+            if not ok:
+                return ok, "a whitespace-only title: " + why
         with _tmp() as d:   # (e) a clean world builds the same tree as before: the page is the builder's, the files are the closed set
             w = _world(d, scope=True)
             tree, empty = _ok_run(w)
