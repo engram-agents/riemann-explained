@@ -9,6 +9,7 @@
      graph-sheet-body   the body container; its SINGLE child is the moved root (a card's root: its <article>, or the div.card
                         the page made; the About block's root, or the generated key); `sheetclose` is dispatched on that root,
                         `sheetcloserequest` from anywhere in it runs close()
+     sheet-settling     on the sheet for 400 ms after it opens (graph.css: it takes no pointer, so the click that ends the opening tap lands on the map)
      claim-clamped      on the sheet body while the claim is clamped to 10 lines (graph.css)
      sheet-status, sheet-tool, crumbs, crumb, crumb-here, crumb-role   chrome this module creates
      note-label, note-source, note-body   the repository's note, only when the card has one (info.note), directly after the status line (and after info.lead)
@@ -36,6 +37,13 @@ export function createSheet(parts, strings, hooks, signal) {
   const doc = root.ownerDocument;
   const win = doc.defaultView;
   let cur = null;   // { node, home, details: [{d, open}], status, noteEls, id (a card), parts, partsOpen }
+  let settle = null;   // the timer of the opening guard (see adopt)
+  const SETTLE_MS = 400;
+
+  function unsettle() {
+    if (settle !== null) { win.clearTimeout(settle); settle = null; }
+    root.classList.remove("sheet-settling");
+  }
 
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
@@ -60,6 +68,7 @@ export function createSheet(parts, strings, hooks, signal) {
     clear(tools);
     body.classList.remove("claim-clamped");
     if (rec.sheetClass) root.classList.remove(rec.sheetClass);
+    unsettle();
     root.hidden = true;
     cur = null;
   }
@@ -89,6 +98,12 @@ export function createSheet(parts, strings, hooks, signal) {
     node.querySelectorAll("details").forEach((d) => { rec.details.push({ d, open: d.open }); d.open = false; });
     body.appendChild(node);
     root.hidden = false;
+    /* THE OPENING GUARD. A tap on a box opens the sheet at the finger's release, and the click that follows the release is aimed at whatever is then under
+       the finger: the sheet, with a button (the card's main one is 48 px and the width of the sheet) right there, so one tap opened a card and pressed its
+       button. For a short moment the sheet takes no pointer (CSS), so that click falls through to the map, which ignores it. */
+    unsettle();
+    root.classList.add("sheet-settling");
+    settle = win.setTimeout(unsettle, SETTLE_MS);
     cur = rec;
     return rec;
   }
@@ -169,7 +184,7 @@ export function createSheet(parts, strings, hooks, signal) {
     clear(tools);
     if (info.canParts) {
       const w = info.partsWords || { open: strings.open_parts, close: strings.close_parts };   // a kind row's open_words (app.js), else the live words
-      const b = el("button", { type: "button", class: "sheet-tool" }, [info.partsOpen ? w.close : w.open]);
+      const b = el("button", { type: "button", class: "sheet-tool sheet-tool-main" }, [info.partsOpen ? w.close : w.open]);
       rec.partsOpen = !!info.partsOpen;
       rec.partsWords = w;
       b.addEventListener("click", () => (rec.partsOpen ? hooks.closeParts(info.id) : hooks.openParts(info.id)), { signal });

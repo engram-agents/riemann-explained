@@ -81,7 +81,9 @@ body:has(#graph-layer:not([hidden])) { height: 100vh; height: 100dvh; overflow: 
 /* The fallback sentence and the cards stay in the document (the script hides them after the first frame) but, while the
    graph shows, they sit below the viewport, out of flow, so they cannot squeeze the stage before the engine fits into it. */
 body:has(#graph-layer:not([hidden])) :is(#graph-fallback, #graph-cards) { position: absolute; top: 100%; left: 0; right: 0; }
-body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; left: 0; right: 0; z-index: 30; }
+body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; border-bottom: 0; border-top: 2px solid var(--fg); cursor: pointer; }
+/* N1 (Borges, 11-27): the notice used to sit at the TOP edge, over the header and the toolbar, so on a phone, after a refusal, 'tap Graph to try again' could not be followed by a
+   tap on Graph: the notice was on top of it. At the bottom edge it covers no control of the toolbar; a tap on it puts it away (app.js). */
 #graph-layer { position: relative; flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; }
 .stage { position: relative; flex: 1 1 0; min-height: 0; overflow: hidden; touch-action: none;
   background-image: radial-gradient(var(--dot) 1px, transparent 1.2px); background-size: 22px 22px; }
@@ -232,3 +234,15 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .swatch.s-none { border-style: dashed; background: var(--card-unread); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* R1 BEGIN (Lei, 11-26): the card's main button ('Open its parts', later 'Open its statements') is the sheet's FIRST row, the width of the sheet, filled, 48 px: it was in a
+   lower narrow bar and hard to notice. The row goes above the breadcrumb and Close by `order` (the DOM order is unchanged). */
+.sheet-tools { order: -1; flex: 1 0 100%; }
+.sheet-tool-main { flex: 1 1 100%; min-height: 48px; background: var(--fg); color: var(--bg); border-color: var(--fg); font-size: 15px; font-weight: 600; }
+/* the opening guard (sheet.js): the click that ends the tap which opened the sheet must not press a button of the sheet */
+.graph-sheet.sheet-settling { pointer-events: none; }
+/* R1 END */
+
+/* R4 BEGIN (Lei, 11-26): 'reserve links for real jumping around points'. The controls that act in place are buttons and are DRAWN as buttons: a border, no underline. */
+.linkbtn { border: 1px solid var(--rule); background: var(--bg); color: var(--fg); text-decoration: none; /* R4 */ padding: 0 12px; }
+/* R4 END */
