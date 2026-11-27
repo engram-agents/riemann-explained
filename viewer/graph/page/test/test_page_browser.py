@@ -2774,7 +2774,7 @@ def c_note_live_unchanged(b, S, engine):
 TYPESET_NEW = ("note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button")
 LABEL_TYPESET = "The file's opening note, from the repository"
 LABEL_EXACT = "The file's opening note, from the repository, unchanged"
-LINE_WORDS = "Formulas set in maths type by us; every symbol is the repository's."
+LINE_WORDS = "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written."
 BUTTON_EXACT = "Show the exact text"
 BUTTON_RENDER = "Show the note with formulas set in maths type"
 TYPESET_KIDS = ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "P.note-typeset-line", "BUTTON.note-toggle", "DIV.note-body", "P.note"]
@@ -2820,7 +2820,7 @@ def c_typeset_sheet(b, S0, engine):
         assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent") == \
             "Opening note of grh/src/New/OneLift/ComparisonOperator/LineCoordinates.lean · version 01234567 of lsernau/grh-lean"
         body = pg.ev(NOTE_BODY_JS)
-        assert body["tags"] == ["CODE", "H3", "H4", "LI", "P", "SPAN", "UL"], body["tags"]
+        assert body["tags"] == ["CODE", "H3", "H4", "LI", "P", "SPAN", "SUP", "UL"], body["tags"]
         assert body["attrs"] == ["H3:class", "H4:class", "SPAN:class"], body["attrs"]
         assert body["stray"] == 0 and body["handlers"] == 0, body
         assert st["maths"] >= 10, st["maths"]
@@ -2879,7 +2879,7 @@ def c_typeset_hostile(b, S0, engine):
         _open_note(pg, "sk-file-2")
         body = pg.ev(NOTE_BODY_JS)
         assert body["stray"] == 0 and body["handlers"] == 0, body
-        assert body["tags"] == ["CODE", "H3", "LI", "OL", "P", "PRE", "SPAN", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"], body["tags"]
+        assert body["tags"] == ["CODE", "H3", "LI", "OL", "P", "PRE", "SPAN", "SUB", "SUP", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"], body["tags"]
         assert body["attrs"] == ["H3:class", "OL:start", "SPAN:class"], body["attrs"]
         spans = pg.ev("[...document.querySelectorAll('#graph-sheet-body .note-body span.m')].map(e => [e.className, e.childNodes.length, e.textContent])")
         assert ["m", 1, "<b>x</b>"] in spans and ["m", 1, "a<i>b"] in spans and ["m", 1, "x&y"] in spans, spans
@@ -2887,6 +2887,37 @@ def c_typeset_hostile(b, S0, engine):
         pg.page.click("#graph-sheet-body .note-toggle")
         ex = pg.ev(TYPESET_STATE_JS)
         assert ex["kids"] == ["PRE"] and ex["text"] == _fixture_note("sk-file-2"), ex["kids"]
+        pg.csp_clean()
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_typeset_scripts(b, S0, engine):
+    """The maths face sets scripts: on the synthetic note of sk-file-2 a set span (`y ^ 12`, `P_d^N`, `x^{a_i}` written with a Greek a) holds a <sup> or <sub> and no
+    `.m` text holds ^ or _; a refused span (`x^-1`, `a ^ b ^ c`) is <code> with its characters as typed; sup and sub carry no attribute; the exact
+    view is byte-equal to the note."""
+    S = _typeset_site(engine)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1280, 900).settled()
+        _open_note(pg, "sk-file-2")
+        got = pg.ev("""(() => { const b = document.querySelector('#graph-sheet-body .note-body');
+          const ms = [...b.querySelectorAll('span.m')];
+          const scr = [...b.querySelectorAll('sup, sub')];
+          return { mathsText: ms.map(e => e.textContent), badMaths: ms.filter(e => /[\\^_]/.test(e.textContent)).length,
+                   sets: ms.filter(e => e.querySelector('sup, sub')).map(e => [e.textContent, e.innerHTML]),
+                   attrs: scr.flatMap(e => [...e.attributes].map(a => e.tagName + ':' + a.name)),
+                   codes: [...b.querySelectorAll('code')].map(e => e.textContent), supInCode: b.querySelectorAll('code sup, code sub').length }; })()""")
+        assert got["badMaths"] == 0, got["mathsText"]
+        assert ["y12", "y<sup>12</sup>"] in got["sets"], got["sets"]
+        assert ["PδN", "P<sub>δ</sub><sup>N</sup>"] in got["sets"], got["sets"]
+        assert ["xαi", "x<sup>α<sub>i</sub></sup>"] in got["sets"], got["sets"]
+        assert got["attrs"] == [] and got["supInCode"] == 0, got
+        assert "x^-1" in got["codes"] and "a ^ b ^ c" in got["codes"], got["codes"]
+        assert not any(("x^-1" in t or "a ^ b ^ c" in t) for t in got["mathsText"]), got["mathsText"]
+        pg.page.click("#graph-sheet-body .note-toggle")
+        ex = pg.ev(TYPESET_STATE_JS)
+        assert ex["kids"] == ["PRE"] and ex["text"] == _fixture_note("sk-file-2") and "y ^ 12" in ex["text"], ex["kids"]
         pg.csp_clean()
         pg.close()
     finally:
@@ -4071,6 +4102,7 @@ def main():
                 run("note: a sheet that throws after the step loaded is the fallback, with no unhandled rejection", c_note_open_throws, eng)
                 run("note: L1/T4/T6 with the four maths-face strings: label, source, line, button, note in order; formulas in the maths face; the button toggles to the exact text and back; Escape closes", c_typeset_sheet, eng)
                 run("note: T4 formula spans that would be markup are span.m text, no element comes of them", c_typeset_hostile, eng)
+                run("note: the maths face sets scripts (sup, sub; no ^ or _ in a .m span; a refused span is code as typed; the exact view is byte-equal)", c_typeset_scripts, eng)
                 run("note: T5 a map lacking any one of the four maths-face strings renders the note exactly as round 1", c_typeset_gate, eng)
                 run("note: L2 a review {state: converter} changes nothing drawn", c_typeset_review, eng)
                 run("K3: at 375 x 667 after Show all, the sheet's claim and bar are at reading size, not scaled with the map", c_sheet_text_unscaled, eng)

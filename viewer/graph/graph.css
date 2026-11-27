@@ -32,6 +32,7 @@ a { color: var(--theorem); text-underline-offset: 0.15em; }
 .intro { padding: 6px 14px 0; background: var(--card); border-bottom: 1px solid var(--rule); }
 .intro h1 { font-size: 20px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
 .intro .sentence { margin: 0; font-size: 16px; line-height: 1.4; }
+.intro .front-line { margin: 2px 0 0; font-family: var(--sans); font-size: 14px; line-height: 1.35; color: var(--muted); }   /* the Lean map's front lines (site/shell-lean.html): a line of its own each, the smaller muted style (strings v2) */
 .intro .links { margin: 0; display: flex; align-items: center; gap: 0; font-family: var(--sans); font-size: 14px; }
 .linkbtn { border: 0; background: none; padding: 0 2px; min-height: 44px; color: var(--theorem); text-decoration: underline; cursor: pointer; font-family: var(--sans); }
 .hint::before { content: "\00b7"; margin: 0 8px; }
@@ -170,6 +171,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
    (font-style: italic). */
 .note-body .m { font-family: var(--serif); font-style: normal; font-size: 1em; background: none; border: 0; padding: 0; }
 .note-body .m1 { font-style: normal; }
+.note-body .m sup, .note-body .m sub { line-height: 0; }
 /* The exact text (the button's other view): the same pre, wrapped so it needs no sideways scrolling on a phone. */
 .note-body.note-exact pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .graph-sheet-body .note-typeset-line { margin: 0 0 6px; font-family: var(--sans); font-size: 13px; color: var(--muted); }

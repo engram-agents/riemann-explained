@@ -17,8 +17,10 @@
                are characters), no escapes, no links, no entities.
 
    THE MATHS FACE (renderNote's third argument, off by default): a backtick span that is ONE LETTER, or FORMULA-ONLY by the classes below, is not
-   <code> but <span class="m"> (class "m m1" for one letter) whose only child is ONE text node holding the span's characters exactly. A name, a name
-   with arguments and a name inside a formula stay <code>; an unsure class is code. It changes appearance only: every character, in the same order.
+   <code> but <span class="m"> (class "m m1" for one letter) holding the span's characters in ONE text node. A name, a name with arguments and a
+   name inside a formula stay <code>; an unsure class is code. A formula span with ^ or _ is set with <sup> and <sub> when it parses under the
+   grammar of scriptParts below, and is <code>, as typed, when it does not. Apart from the script characters, the spaces round a ^ and the brackets
+   of a {...} or ^(...) operand, every character comes through, in the same order.
    The classes are a port of the measurement's cls3 (one definition, here); fixtures/note-spans-classes.json holds its answer for every real span. */
 import { titleChildren, titleSegments } from "./dom.js";
 
@@ -39,12 +41,160 @@ export function oneLetter(sp) { return [...sp].length === 1 && /^\p{L}$/u.test(s
 
 const mathsFace = (sp) => oneLetter(sp) || spanClass(sp) === "formula";
 
+/* ---- scripts. A formula span with ^ or _ is set with <sup> and <sub> when it parses under the grammar below, and is code, as typed, when it does
+   not: never half set. scriptParts(span) -> the parts (a string is text; {tag: "sup"|"sub", children: parts}) or null (refused).
+
+   G1  a script is ^ or _ with a BASE before it in the same group: for _ the character right before, for ^ the nearest non-space character before
+       (the spaces between are dropped); a base is a letter, a digit (also a subscript digit), a prime, a closing ) ] }, or a letter followed by
+       combining marks (the marks belong to the letter and the script is drawn after both). No base: refuse. A mark run that does not start at a
+       letter (the group's start, a digit, a bracket, a space) is no base.
+   G2  only the OPERAND to the right is parsed: (a) {...} directly after the script character (braces dropped); (b) (...) after ^, optionally after
+       spaces (parens dropped); (c) a WORD of letters, digits and primes (after ^ optional spaces, dropped; after _ none); (d) ONE of * × + - ∨ ∞ ⊥
+       directly after the script character, then the group's end, a space or a closing bracket.
+   G3  a group's content is parsed by the same grammar, at most two script levels deep.
+   G4  refuse on: an unmatched or crossing bracket in an operand group; an empty group; a second ^ (or second _) attached to the same run of scripts
+       (a ^ b ^ c); any script left over; an operand that is none of (a)-(d); a combining mark directly after an operand (it would attach to the
+       wrong glyph); a ^ whose base WORD follows another word, or a closing bracket, and a space (`g k ^ d` means (g k)^d in Lean, where an
+       application binds tighter than ^, and setting d over k alone would read g(k^d); look-alikes that read correctly cannot be told apart by
+       syntax, so the whole shape is code). The base word is the run of word characters and their marks that ends at the base; a base that carries
+       a subscript (`g k_1 ^ d`, `g k_{ij}^d`: a _ operand directly before the ^, on the same base) is that base's word, so the test is made on the
+       word before the _; a closing-bracket base, a ^ at a group's start and a ^ after an operator and a space are not covered. A combining mark
+       directly after the opening { or ( of an operand group is refused too (the same reason). One _ and one ^ on one base is allowed, in either order.
+       The exponent side too: a ^ with spaces before a WORD operand that is followed by spaces and a word or an opening bracket, or directly by a _, is refused
+       (`a ^ b c` is a^(b c); `a ^ b_c` has the one name b_c as its exponent). An unspaced ^, an operator, comma or closing bracket after it, or the end: not covered.
+   G5  spaces after an operand stay as typed.
+   Nothing but the script characters, the spaces round a ^, and the brackets of a {...} or ^(...) operand is ever dropped; every other character
+   comes through in its place. */
+const BASE_CHAR = /^[\p{L}\p{Nd}₀-₉′'’)\]}]$/u;
+const WORD_CHAR = /^[\p{L}\p{Nd}₀-₉′'’]$/u;
+const MARK = /^\p{M}$/u;
+const LETTER = /^\p{L}$/u;
+const SYMBOLS = new Set(["*", "×", "+", "-", "∨", "∞", "⊥"]);
+const OPENERS = new Map([["(", ")"], ["[", "]"], ["{", "}"]]);
+const CLOSERS = new Set([")", "]", "}"]);
+const MAX_SCRIPT_LEVELS = 2;
+
+/* G4, the exponent side: does the word at cs[j..end) end directly at a _, or at spaces and then a word or an opening bracket? By index, nothing copied. */
+function juxtaposed(cs, j, end) {
+  const at = (k) => (k < end ? cs[k] : "");
+  let k = j, m;
+  while (WORD_CHAR.test(at(k))) k++;
+  for (m = k; at(m) === " "; m++);
+  return k > j && (at(k) === "_" || (m > k && (WORD_CHAR.test(at(m)) || OPENERS.has(at(m)))));
+}
+
+/* The index of the bracket that closes the one opening at cs[i], looking only below `end`; -1 when it is unmatched or the brackets cross. */
+function closeAt(cs, i, end) {
+  const stack = [];
+  for (let k = i; k < end; k++) {
+    if (OPENERS.has(cs[k])) stack.push(OPENERS.get(cs[k]));
+    else if (CLOSERS.has(cs[k])) {
+      if (stack.pop() !== cs[k]) return -1;
+      if (stack.length === 0) return k;
+    }
+  }
+  return -1;
+}
+
+/* G1, the base of the script character c at cs[i] in the group cs[start..): the index of the base's LAST character (a letter's last mark), or -1. */
+function baseAt(cs, start, i, c) {
+  let p = i - 1;
+  if (c === "^") while (p >= start && cs[p] === " ") p--;
+  if (p < start) return -1;
+  if (BASE_CHAR.test(cs[p])) return p;
+  if (!MARK.test(cs[p])) return -1;
+  let q = p;
+  while (q >= start && MARK.test(cs[q])) q--;                                       // the mark run must start at a letter
+  return q >= start && LETTER.test(cs[q]) ? p : -1;
+}
+
+/* G4, the juxtaposed power: does the base word that ends at cs[last] follow another word, or a closing bracket, and a space? A closing-bracket base has no base word. */
+function followsWord(cs, start, last) {
+  const isWord = (ch) => WORD_CHAR.test(ch) || MARK.test(ch);
+  let s = last;
+  while (s >= start && isWord(cs[s])) s--;
+  if (s === last || s < start || cs[s] !== " ") return false;
+  while (s >= start && cs[s] === " ") s--;
+  return s >= start && (isWord(cs[s]) || CLOSERS.has(cs[s]));
+}
+
+/* G2, the operand of the script character c at cs[i], which starts at cs[j] (j is past the spaces after a ^): {children, next} or null.
+   G4: a combining mark directly after the operand refuses it. */
+function parseOperand(cs, i, j, end, c, level) {
+  if (j >= end) return null;
+  const done = (children, next) => (next < end && MARK.test(cs[next]) ? null : { children, next });
+  if ((cs[j] === "{" && j === i + 1) || (cs[j] === "(" && c === "^")) {          // (a) and (b): a group, its brackets dropped
+    const k = closeAt(cs, j, end);
+    if (k < 0 || k === j + 1) return null;
+    if (MARK.test(cs[j + 1])) return null;                                          // a mark right after the opening bracket would attach to the wrong glyph
+    const children = parseGroup(cs, j + 1, k, level + 1);
+    if (children === null || children.every((t) => typeof t === "string" && t.trim() === "")) return null;
+    return done(children, k + 1);
+  }
+  if (WORD_CHAR.test(cs[j])) {                                                       // (c): a word
+    let k = j;
+    while (k < end && WORD_CHAR.test(cs[k])) k++;
+    return done([cs.slice(j, k).join("")], k);
+  }
+  if (j === i + 1 && SYMBOLS.has(cs[j]) && (j + 1 >= end || cs[j + 1] === " " || CLOSERS.has(cs[j + 1]))) {   // (d): one symbol
+    return done([cs[j]], j + 1);
+  }
+  return null;
+}
+
+/* One group cs[start..end) -> parts, or null. `level` counts the script groups this one sits inside. */
+function parseGroup(cs, start, end, level) {
+  const out = [];
+  let buf = "", runEnd = -1, runStart = -1, run = new Set(), i = start;
+  while (i < end) {
+    const c = cs[i];
+    if (c !== "^" && c !== "_") { buf += c; i++; continue; }
+    if (level >= MAX_SCRIPT_LEVELS) return null;
+    const base = baseAt(cs, start, i, c);                               // G1: the base
+    if (base < 0) return null;
+    const attached = c === "_" ? i === runEnd : runEnd >= 0 && cs.slice(runEnd, i).every((t) => t === " ");   // G4: the same run of scripts
+    if (c === "^" && followsWord(cs, start, attached ? runStart - 1 : base)) return null;   // G4: a juxtaposed power; a subscripted base is the word before its _
+    let j = i + 1;                                                      // G2: the operand
+    if (c === "^") while (j < end && cs[j] === " ") j++;
+    if (c === "^" && j > i + 1 && juxtaposed(cs, j, end)) return null;   // G4: a juxtaposed exponent
+    const operand = parseOperand(cs, i, j, end, c, level);
+    if (operand === null) return null;
+    const { children, next } = operand;
+    if (attached) {
+      if (run.has(c)) return null;
+      run.add(c);
+    } else { run = new Set([c]); runStart = i; }
+    if (c === "^") buf = buf.replace(/ +$/, "");                        // the spaces directly before a set ^ are dropped
+    if (buf !== "") out.push(buf);
+    buf = "";
+    out.push({ tag: c === "^" ? "sup" : "sub", children });
+    runEnd = next;
+    i = next;
+  }
+  if (buf !== "") out.push(buf);
+  return out;
+}
+
+/* span text -> parts, or null when the grammar refuses it. A span with no script is its own text. */
+export function scriptParts(span) {
+  const cs = Array.from(String(span));
+  if (!cs.some((c) => c === "^" || c === "_")) return [String(span)];
+  return parseGroup(cs, 0, cs.length, 0);
+}
+const setChildren = (parts, el) => parts.map((p) => (typeof p === "string" ? p : el(p.tag, {}, setChildren(p.children, el))));
+
+/* One backtick span in the maths view: span.m (class "m m1" for one letter) when it is set, else code with its characters as typed. */
+function typesetSpan(sp, el) {
+  if (!mathsFace(sp)) return el("code", {}, [sp]);
+  if (oneLetter(sp)) return el("span", { class: "m m1" }, [sp]);
+  if (!/[\^_]/.test(sp)) return el("span", { class: "m" }, [sp]);
+  const parts = scriptParts(sp);
+  return parts === null ? el("code", {}, [sp]) : el("span", { class: "m" }, setChildren(parts, el));
+}
+
 /* The inline children with the maths face: a plain string for text, el("span") for a maths span, el("code") for the rest. */
 function typesetChildren(text, el) {
-  return titleSegments(text).map((seg) => {
-    if (seg.kind !== "code") return seg.text;
-    return mathsFace(seg.text) ? el("span", { class: oneLetter(seg.text) ? "m m1" : "m" }, [seg.text]) : el("code", {}, [seg.text]);
-  });
+  return titleSegments(text).map((seg) => (seg.kind !== "code" ? seg.text : typesetSpan(seg.text, el)));
 }
 
 /* The exact text: the note's text verbatim in ONE <pre> (one text node, every character, backticks included). */
