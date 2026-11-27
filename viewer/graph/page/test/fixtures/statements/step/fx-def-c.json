@@ -4,6 +4,7 @@
   "id": "fx-def-c",
   "kind": "def",
   "path": [
+   "fx-part",
    "fx-group",
    "fx-stmt-file"
   ],
@@ -21,6 +22,7 @@
   "text": "The definition `qux` of the file."
  },
  "path": [
+  "fx-part",
   "fx-group",
   "fx-stmt-file"
  ],
@@ -37,11 +39,12 @@
    "step": "fx-file-2"
   },
   {
-   "name": "Mathlib.Foo.bar"
+   "name": "New.Elsewhere.thing"
   }
  ],
  "uses_here": [
   "fx-lem-b"
  ],
+ "uses_library_count": 43,
  "variables": false
 }

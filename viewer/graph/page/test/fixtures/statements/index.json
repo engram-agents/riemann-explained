@@ -6,23 +6,31 @@
  "open_scale_floor": 1,
  "rests_on": [],
  "sibling_layout": "column",
- "steps": 6,
+ "steps": 7,
  "strings": {
   "card_kind_file": "File",
   "card_kind_group": "Group",
+  "card_kind_part": "Part",
   "claim_less": "Show less",
   "claim_more": "Show the whole claim",
   "close_parts": "Close its parts",
   "close_statements": "Close its statements",
   "count_file_many": "{n} files",
   "count_file_one": "{n} file",
+  "count_group_many": "{n} groups",
+  "count_group_one": "{n} group",
   "count_statement_many": "{n} statements",
   "count_statement_one": "{n} statement",
   "crumb_label": "Where this step sits",
   "decl_heading_label": "In the file's section:",
   "decl_hide_lean": "Hide the Lean statement",
+  "decl_kind_abbrev": "Abbreviation",
+  "decl_kind_class": "Class",
   "decl_kind_def": "Definition",
+  "decl_kind_inductive": "Inductive type",
+  "decl_kind_instance": "Instance",
   "decl_kind_lemma": "Lemma",
+  "decl_kind_structure": "Structure",
   "decl_kind_theorem": "Theorem",
   "decl_lean_note": "As written in the file, up to the start of its proof. The file's variable lines apply to it.",
   "decl_no_note": "No note in the repository.",
@@ -33,6 +41,8 @@
   "decl_show_lean": "Show the Lean statement",
   "decl_uses_elsewhere": "Uses from other files ({n})",
   "decl_uses_here": "Uses in this file ({n})",
+  "decl_uses_library_many": "It also uses {n} names from Lean's libraries (Mathlib or Lean itself), not listed here.",
+  "decl_uses_library_one": "It also uses 1 name from Lean's libraries (Mathlib or Lean itself), not listed here.",
   "key_kinds_heading": "Colour and shape: what Lean declares",
   "key_statements_heading": "Statements",
   "key_statements_text": "As a sample, only the three files of the group \"From a one-sided bound to the zeros\" open to the statements Lean checks one by one. Each box is one named statement or definition, in the file's order; its note is the repository's own, where it has one. A line joins two statements of the same file: the upper one uses the lower one. Proofs are not opened.",
@@ -60,6 +70,7 @@
   "symbol_kind_file": "Lean file",
   "symbol_kind_group": "Group of files",
   "symbol_kind_lemma": "Lemma",
+  "symbol_kind_part": "Part of the argument",
   "symbol_kind_theorem": "Theorem"
  },
  "symbols": {
@@ -91,6 +102,10 @@
    "group": {
     "card_words": "card_kind_group",
     "class": "builder-group",
+    "count_words": {
+     "many": "count_group_many",
+     "one": "count_group_one"
+    },
     "open_words": {
      "close": "close_parts",
      "open": "open_parts"
@@ -104,6 +119,16 @@
     "text": "Lemma",
     "words": "symbol_kind_lemma"
    },
+   "part": {
+    "card_words": "card_kind_part",
+    "class": "builder-part",
+    "open_words": {
+     "close": "close_parts",
+     "open": "open_parts"
+    },
+    "text": "Part of the argument",
+    "words": "symbol_kind_part"
+   },
    "theorem": {
     "card_words": "decl_kind_theorem",
     "class": "builder-theorem",
@@ -113,6 +138,7 @@
   },
   "order": {
    "kinds": [
+    "part",
     "group",
     "file",
     "theorem",
@@ -158,6 +184,6 @@
   }
  },
  "top": [
-  "fx-group"
+  "fx-part"
  ]
 }

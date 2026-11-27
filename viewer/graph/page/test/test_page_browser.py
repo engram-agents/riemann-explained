@@ -4071,6 +4071,10 @@ def c_stmt_path_down(b, S0, engine):
     file's button opens three boxes in source order whose faces show the code title; the file's face foot reads '3 statements'; reopened, it says 'Close its statements'."""
     S, pg = stmt_open(b, engine)
     try:
+        at_hash(pg, "fx-part")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Part Fx'", 6000)
+        assert pg.ev("document.querySelector('#graph-sheet-tools .sheet-tool').textContent") == "Open its parts"
+        assert pg.ev("document.querySelector('[data-node=\"fx-part\"] .face-foot').textContent") == "1 group"
         at_hash(pg, "fx-group")
         pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Group Fx'", 6000)
         assert pg.ev("document.querySelector('#graph-sheet-tools .sheet-tool').textContent") == "Open its parts"
@@ -4148,12 +4152,25 @@ def c_stmt_card_order(b, S0, engine):
         pg.page.click(btn)
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-note').offsetParent !== null")
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-note').textContent").startswith("As written in the file, up to the start of its proof.")
+        # a statement whose text BEGINS with a prefix line ('omit ... in'): one text node, newline included, shown verbatim
+        pre = stmt_step("fx-lem-b")["statement"]["text"]
+        assert pre.startswith("omit [NeZero q] in\nlemma baz")
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code code').childNodes.length") == 1
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code code').firstChild.nodeValue") == pre
+        assert pg.ev("getComputedStyle(document.querySelector('#graph-sheet-body .decl-lean-code')).whiteSpace") == "pre", "the newline is kept"
+        # the library line (fold 3): lem-b leaves 1 library name out, def-c 43, thm-a none
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-elsewhere').lastElementChild.className") == "decl-uses-library"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-library').textContent") == "It also uses 1 name from Lean's libraries (Mathlib or Lean itself), not listed here."
         # the hostile statement text is text
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code code').textContent") == stmt_step("fx-lem-b")["statement"]["text"]
         assert pg.ev("document.querySelectorAll('script').length") == 1 and pg.ev("document.querySelectorAll('#graph-sheet-body .decl-lean-code *').length") == 1
         # and a statement with a doc-string but no heading
         open_card_by_hash(pg, "fx-def-c", "Fx.qux")
         assert pg.ev(CARD_CHILDREN_JS)[2:4] == ["decl-name", "note-label"], "no heading block when the step has no heading"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-library').textContent") == "It also uses 43 names from Lean's libraries (Mathlib or Lean itself), not listed here."
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-elsewhere').lastElementChild.className") == "decl-uses-library", "under the list, inside the block"
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-uses-library').length") == 0, "a count of 0 draws nothing"
         # closing and reopening leaves nothing behind
         pg.page.click("#graph-sheet-close")
         wait_sheet(pg, False)
@@ -4232,7 +4249,7 @@ def c_stmt_links(b, S0, engine):
         links = pg.ev("[...document.querySelectorAll('#graph-sheet-body .decl-uses a')].map(a => [a.getAttribute('href'), a.textContent])")
         assert links == [["#fx-lem-b", "baz"], ["#fx-file-2", "New.Other.helper"]], links
         assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-uses-here a code').length") == 1, "the title's code span stays code"
-        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .decl-uses-elsewhere li')].map(l => l.querySelector('code').textContent + '|' + l.querySelectorAll('a').length)") == ["New.Other.helper|1", "Mathlib.Foo.bar|0"]
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .decl-uses-elsewhere li')].map(l => l.querySelector('code').textContent + '|' + l.querySelectorAll('a').length)") == ["New.Other.helper|1", "New.Elsewhere.thing|0"]
         assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .card *')].filter(e => getComputedStyle(e).textDecorationLine.includes('underline')).length") == 0, "nothing underlined"
         pg.page.click("#graph-sheet-body .decl-uses-here a")
         pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'baz'", 6000)
@@ -4240,6 +4257,7 @@ def c_stmt_links(b, S0, engine):
         assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-uses ul').length") == 0, "baz has empty lists: heading with 0, no list"
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-here .decl-uses-line').textContent") == "Uses in this file (0)"
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-elsewhere .decl-uses-line').textContent") == "Uses from other files (0)"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-library') !== null"), "and the 0 is not the whole story: one library name is left out"
         open_card_by_hash(pg, "fx-def-c", "Fx.qux")
         pg.page.click("#graph-sheet-body .decl-uses-elsewhere a")
         pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Lean file Fx.Other'", 6000)
@@ -4259,8 +4277,8 @@ def c_stmt_key(b, S0, engine):
         assert kids[-2] == "H2:Statements" and kids[-1].startswith("P:As a sample, only the three"), kids
         assert pg.ev("document.querySelector('#graph-sheet-body .key-content').lastElementChild.className") == "key-statements"
         rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
-        assert rows == ["Group of files", "Lean file", "Theorem", "Lemma", "Definition"], rows
-        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content .swatch')].map(e => e.className.split(' ')[1])") == ["k-group", "k-file", "k-theorem", "k-lemma", "k-def"]
+        assert rows == ["Part of the argument", "Group of files", "Lean file", "Theorem", "Lemma", "Definition"], rows
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content .swatch')].map(e => e.className.split(' ')[1])") == ["k-part", "k-group", "k-file", "k-theorem", "k-lemma", "k-def"]
         no_console_errors(pg)
     finally:
         pg.close()

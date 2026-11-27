@@ -4,6 +4,7 @@
   "id": "fx-lem-b",
   "kind": "lemma",
   "path": [
+   "fx-part",
    "fx-group",
    "fx-stmt-file"
   ],
@@ -17,6 +18,7 @@
  "id": "fx-lem-b",
  "name": "Fx.baz",
  "path": [
+  "fx-part",
   "fx-group",
   "fx-stmt-file"
  ],
@@ -25,9 +27,10 @@
  "source_path": "src/New/Fx/File.lean",
  "statement": {
   "keyword": "lemma",
-  "text": "lemma baz (n : ℕ) : n ≤ n + 1 := <script>alert(1)</script> {page_url}"
+  "text": "omit [NeZero q] in\nlemma baz (n : ℕ) : n ≤ n + 1 := <script>alert(1)</script> {page_url}"
  },
  "uses_elsewhere": [],
  "uses_here": [],
+ "uses_library_count": 1,
  "variables": true
 }

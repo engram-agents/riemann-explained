@@ -70,6 +70,13 @@ export const STATEMENT_STRINGS = Object.freeze(["decl_show_lean", "decl_hide_lea
 /* One OPTIONAL statement word, outside the all-or-none group: `decl_reading_none`, the line above the prompt button. Allowed only with the group on (else it is an
    extra-string like any key the page does not read); present, it is non-empty (`empty-string`). */
 export const READING_NONE = "decl_reading_none";
+/* The eight kind words of the statement level: with the group on the builder writes ALL of them into `strings` even when only some kinds occur on the map,
+   so each is a KNOWN optional string (non-empty when present, `empty-string`); a kind row that names one still makes it required, as for any `words`.
+   With the group off they are extra-strings like any other key the page does not read. */
+/* Two more OPTIONAL statement words, as a PAIR (both or neither): the line under the other-files list that says how many library names are left out of it. One without the
+   other is `bad-statement-strings`; with the group off they are extra-strings; present, each is non-empty. With both absent nothing is drawn. */
+export const USES_LIBRARY_STRINGS = Object.freeze(["decl_uses_library_one", "decl_uses_library_many"]);
+export const DECL_KIND_STRINGS = Object.freeze(["decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_instance", "decl_kind_class", "decl_kind_inductive"]);
 export const statementsOn = (strings) => STATEMENT_STRINGS.some((k) => has(strings, k));
 export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source", ...TYPESET_STRINGS]);
 /* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
@@ -263,7 +270,10 @@ export function validateIndex(raw) {
     if (raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty edge basis key " + k);
   }
   refuseEmptyOptional(raw.strings, OPTIONAL_STRINGS);
-  if (stmtOn) refuseEmptyOptional(raw.strings, [READING_NONE]);
+  if (stmtOn) {
+    refuseEmptyOptional(raw.strings, [READING_NONE, ...DECL_KIND_STRINGS, ...USES_LIBRARY_STRINGS]);
+    for (const k of USES_LIBRARY_STRINGS) if (!has(raw.strings, k) && USES_LIBRARY_STRINGS.some((o) => has(raw.strings, o))) throw new DataError("bad-statement-strings", "index strings holds only one of decl_uses_library_one and decl_uses_library_many, lacks " + k);
+  }
   /* The page treats a map as carrying notes only when strings hold BOTH note words; one alone would open note-carrying cards silently without their note. */
   if (has(raw.strings, "note_label") !== has(raw.strings, "note_source"))
     throw new DataError("bad-note-strings", "index strings holds only one of note_label and note_source: both or neither");
@@ -278,7 +288,7 @@ export function validateIndex(raw) {
       if (raw.strings[k] === "") throw new DataError(viewPair.includes(k) ? "bad-view-words" : "empty-string", "index strings holds an empty Graph view word " + k);
     }
   }
-  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k)) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE));
+  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k)) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE || DECL_KIND_STRINGS.includes(k) || USES_LIBRARY_STRINGS.includes(k)));
   const leftover = Object.keys(raw.strings).filter((k) => !known(k));
   if (viewOn && leftover.length === 0) throw new DataError("bad-view-words", "index strings carries no spine sentence key beside the Graph view words");
   for (const k of viewOn ? leftover.slice(1) : leftover) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
@@ -366,10 +376,10 @@ function noteOf(v, ctx, stepId) {
   return out;
 }
 
-/* THE STATEMENT STEP. A step may carry these seven keys ALL TOGETHER OR NONE (`bad-statement`, naming the step and the first missing key), and then `heading`
+/* THE STATEMENT STEP. A step may carry these eight keys (uses_library_count, an integer of 0 or more, is carried and never drawn) ALL TOGETHER OR NONE (`bad-statement`, naming the step and the first missing key), and then `heading`
    (a non-empty string of at most 4000 characters, only on a statement step). A step carrying any of them while the strings' statement group is off is
    `bad-statement-strings`. A statement step is a leaf (child_count 0, no children). Carried as step.decl. */
-const STMT_KEYS = ["name", "source_path", "statement", "variables", "uses_here", "uses_elsewhere", "prompt"];
+const STMT_KEYS = ["name", "source_path", "statement", "variables", "uses_here", "uses_elsewhere", "prompt", "uses_library_count"];
 const STMT_KEYWORDS = ["theorem", "lemma", "def", "abbrev", "structure", "class", "inductive", "instance"];
 const SOURCE_PATH = /^([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+\.lean$/;
 const NAME_MAX = 300;
@@ -392,9 +402,10 @@ function declOf(raw, ctx, id) {
       throw bad("has a uses_elsewhere item that is not {name} or {name, step}");
     return has(u, "step") ? { name: u.name, step: u.step } : { name: u.name };
   });
+  if (!isInt(raw.uses_library_count) || raw.uses_library_count < 0) throw bad("has a uses_library_count that is not an integer of 0 or more");
   if (!isStr(raw.prompt) || raw.prompt.length < 1 || raw.prompt.length > 20000) throw bad("has a prompt that is not a string of 1 to 20000 characters");
   if (has(raw, "heading") && (!isStr(raw.heading) || raw.heading === "" || raw.heading.length > 4000)) throw bad("has a heading that is not a non-empty string of at most 4000 characters");
-  const out = { name: raw.name, sourcePath: raw.source_path, keyword: st.keyword, text: st.text, variables: raw.variables, usesHere: raw.uses_here.slice(), usesElsewhere: elsewhere, prompt: raw.prompt };
+  const out = { name: raw.name, sourcePath: raw.source_path, keyword: st.keyword, text: st.text, variables: raw.variables, usesHere: raw.uses_here.slice(), usesElsewhere: elsewhere, usesLibraryCount: raw.uses_library_count, prompt: raw.prompt };
   if (has(raw, "heading")) out.heading = raw.heading;
   return out;
 }

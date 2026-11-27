@@ -202,6 +202,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .graph-sheet-body .decl-prompt-status:empty { display: none; }
 .decl-uses { margin: 12px 0 0; }
 .graph-sheet-body .decl-uses-line { margin: 0 0 4px; font-family: var(--sans); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.graph-sheet-body .decl-uses-library { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
 .decl-uses ul { list-style: none; margin: 0; padding: 0; }
 .decl-uses li { margin: 0; overflow-wrap: anywhere; font-size: 14px; }
 .decl-uses a { display: block; padding: 10px 0; text-decoration: none; color: var(--theorem); }

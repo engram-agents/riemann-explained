@@ -4,6 +4,7 @@
   "id": "fx-thm-a",
   "kind": "theorem",
   "path": [
+   "fx-part",
    "fx-group",
    "fx-stmt-file"
   ],
@@ -22,6 +23,7 @@
   "text": "The theorem `foo_bar`: for every `n` the bound holds.\n\nSecond paragraph of the repository's own comment."
  },
  "path": [
+  "fx-part",
   "fx-group",
   "fx-stmt-file"
  ],
@@ -34,5 +36,6 @@
  },
  "uses_elsewhere": [],
  "uses_here": [],
+ "uses_library_count": 0,
  "variables": false
 }

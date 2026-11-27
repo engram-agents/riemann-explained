@@ -68,6 +68,11 @@ export function buildStatement({ strings, decl, hasNote, titleOf, el, doc, signa
     })));
   }
 
+  /* Library names are left out of uses_elsewhere, so a "0" there can be false: ONE line under the list says how many were left out, only when the count is above 0 and the
+     optional pair of words is present (the one-word for a count of 1, else the many-word with {n} filled as text). */
+  if (decl.usesLibraryCount > 0 && typeof strings.decl_uses_library_one === "string" && typeof strings.decl_uses_library_many === "string")
+    usesElse.appendChild(el("p", { class: "decl-uses-library" }, [decl.usesLibraryCount === 1 ? strings.decl_uses_library_one : fill(strings.decl_uses_library_many, decl.usesLibraryCount)]));
+
   // 6. the prompt for the reader's own assistant: copy, or show it selected when the clipboard cannot
   const copyBtn = el("button", { type: "button", class: "sheet-tool" }, [strings.decl_prompt_button]);
   const status = el("p", { class: "decl-prompt-status", role: "status" }, []);

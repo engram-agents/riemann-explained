@@ -25,7 +25,14 @@ const refuses = (fn, code, mention) => assert.throws(fn, (e) => {
 });
 const GROUP = ["decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading",
   "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label"];
-const STMT = ["name", "source_path", "statement", "variables", "uses_here", "uses_elsewhere", "prompt"];
+const STMT = ["name", "source_path", "statement", "variables", "uses_here", "uses_elsewhere", "prompt", "uses_library_count"];
+const KIND_WORDS = ["decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_instance", "decl_kind_class", "decl_kind_inductive"];
+/* the group off: none of the group's keys, the label, the reading line, and the five kind words no row names */
+const groupOff = (i) => {
+  for (const k of [...GROUP, "decl_reading_none", "spine_content_label", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_instance", "decl_kind_class", "decl_kind_inductive", "decl_uses_library_one", "decl_uses_library_many"]) delete i.strings[k];
+  return i;
+};
+const SITE_WORDS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "site", "strings-lean-statements.json");
 
 /* ------------------------------------------------------------------------------------------------ A: the kinds table */
 test("A: lemma, abbrev, instance, class, inductive are in the kinds table with their classes; theorem, def, structure stay", () => {
@@ -38,8 +45,9 @@ test("the statement fixture index validates; the file row's open_words and child
   const v = validateIndex(idx());
   assert.deepEqual(v.symbols.openWords.file, { open: "open_statements", close: "close_statements" });
   assert.deepEqual(v.symbols.openWords.group, { open: "open_parts", close: "close_parts" });
+  assert.deepEqual(v.symbols.openWords.part, { open: "open_parts", close: "close_parts" });
   assert.deepEqual(v.symbols.childCountWords, { file: { one: "count_statement_one", many: "count_statement_many" } });
-  assert.deepEqual(Object.keys(v.symbols.openWords).sort(), ["file", "group"]);
+  assert.deepEqual(Object.keys(v.symbols.openWords).sort(), ["file", "group", "part"]);
   assert.equal(v.symbols.cardWords.lemma, "decl_kind_lemma");
   assert.deepEqual(v.symbols.countWords.theorem, undefined);
 });
@@ -98,17 +106,43 @@ test("D: the group partly present is bad-statement-strings naming the first miss
   refuses(() => validateIndex(i), "bad-statement-strings", "decl_show_lean");   // the first in the group's order
 });
 test("D: a map with none of the group's keys and no statement is the live shape (no refusal), and spine_content_label is then an extra-string", () => {
-  const i = idx();
-  for (const k of GROUP) delete i.strings[k];
-  delete i.strings.decl_reading_none;
+  const i = groupOff(idx());
   const withLabel = clone(i);
-  refuses(() => validateIndex(withLabel), "extra-string", "spine_content_label");
+  i.strings.spine_content_label = "In the repository's words";   // groupOff removed it; put it back for the extra-string assertion below
+  const withLabel2 = clone(i);
+  refuses(() => validateIndex(withLabel2), "extra-string", "spine_content_label");
+  assert.doesNotThrow(() => validateIndex(withLabel));
   delete i.strings.spine_content_label;
   assert.doesNotThrow(() => validateIndex(i));
 });
 test("D: with the group on, spine_content_label must be present, else missing-string", () => {
   const i = idx(); delete i.strings.spine_content_label;
   refuses(() => validateIndex(i), "missing-string", "spine_content_label");
+});
+
+/* FOLD 2 (b): all eight decl_kind_<k> words are known optional strings with the group on */
+test("fold 2 (b): with the group on, each of the eight decl_kind words is known whether or not a row names it; an empty one is empty-string; with the group off the unnamed ones are extra-string", () => {
+  const i = idx();
+  for (const k of KIND_WORDS) assert.ok(typeof i.strings[k] === "string" && i.strings[k] !== "", k);
+  assert.doesNotThrow(() => validateIndex(i));
+  for (const k of ["decl_kind_abbrev", "decl_kind_structure", "decl_kind_instance", "decl_kind_class", "decl_kind_inductive"]) {
+    const j = idx(); j.strings[k] = "";
+    refuses(() => validateIndex(j), "empty-string", k);
+    const g = groupOff(idx());
+    g.strings[k] = "Word";
+    refuses(() => validateIndex(g), "extra-string", k);
+  }
+});
+test("fold 2 (d): the REAL words file as the strings' statement words of an index whose kinds table has only part, group, file, theorem, lemma, def validates", () => {
+  const words = JSON.parse(readFileSync(SITE_WORDS, "utf8"));
+  assert.equal(Object.keys(words).length, 27);   // the 25 keys of Ariadne's section plus decl_uses_library_one and _many
+  const i = idx();
+  for (const k of Object.keys(words)) delete i.strings[k];
+  Object.assign(i.strings, words);
+  assert.deepEqual(Object.keys(i.symbols.kinds).sort(), ["def", "file", "group", "lemma", "part", "theorem"]);
+  const v = validateIndex(i);
+  assert.equal(v.strings.decl_kind_inductive, "Inductive type");
+  assert.equal(v.strings.decl_reading_none, words.decl_reading_none);
 });
 
 /* AMENDMENT 3: the optional decl_reading_none, outside the all-or-none group */
@@ -124,9 +158,8 @@ test("A3: decl_reading_none empty is empty-string", () => {
   refuses(() => validateIndex(i), "empty-string", "decl_reading_none");
 });
 test("A3: decl_reading_none with the group off is extra-string", () => {
-  const i = idx();
-  for (const k of GROUP) delete i.strings[k];
-  delete i.strings.spine_content_label;
+  const i = groupOff(idx());
+  i.strings.decl_reading_none = "A line";
   refuses(() => validateIndex(i), "extra-string", "decl_reading_none");
 });
 
@@ -137,12 +170,13 @@ test("C: a full valid statement step is accepted and carried as step.decl", () =
   const s = validateStep(stp("fx-thm-a"), ctx);
   assert.deepEqual(s.decl, {
     name: "Fx.foo_bar", sourcePath: "src/New/Fx/File.lean", keyword: "theorem", text: "theorem foo_bar (n : ℕ) : n ≤ n + 1", variables: false,
-    usesHere: [], usesElsewhere: [], prompt: stp("fx-thm-a").prompt, heading: stp("fx-thm-a").heading,
+    usesHere: [], usesElsewhere: [], usesLibraryCount: 0, prompt: stp("fx-thm-a").prompt, heading: stp("fx-thm-a").heading,
   });
   assert.ok(s.note && s.note.text.startsWith("The theorem"), "the note keeps its validation");
   const c = validateStep(stp("fx-def-c"), ctx);
   assert.deepEqual(c.decl.usesHere, ["fx-lem-b"]);
-  assert.deepEqual(c.decl.usesElsewhere, [{ name: "New.Other.helper", step: "fx-file-2" }, { name: "Mathlib.Foo.bar" }]);
+  assert.deepEqual(c.decl.usesElsewhere, [{ name: "New.Other.helper", step: "fx-file-2" }, { name: "New.Elsewhere.thing" }]);
+  assert.equal(c.decl.usesLibraryCount, 43);
   assert.ok(!("heading" in c.decl), "no heading key when the data has none");
   const l = validateStep(stp("fx-lem-b"), ctx);
   assert.equal(l.decl.variables, true);
@@ -150,7 +184,7 @@ test("C: a full valid statement step is accepted and carried as step.decl", () =
 });
 test("C: the file and group steps of the fixture validate and carry no decl", () => {
   const ctx = ctxOf();
-  for (const id of ["fx-group", "fx-stmt-file", "fx-file-2"]) assert.equal(validateStep(stp(id), ctx).decl, undefined, id);
+  for (const id of ["fx-part", "fx-group", "fx-stmt-file", "fx-file-2"]) assert.equal(validateStep(stp(id), ctx).decl, undefined, id);
 });
 
 const stmtRefusal = (edit, mention) => {
@@ -207,6 +241,15 @@ test("C: uses_elsewhere: not a list, an item that is not exactly {name} or {name
   const s = stp("fx-thm-a"); s.uses_elsewhere = [{ name: "x".repeat(300) }, { name: "a", step: "fx-file-2" }];
   assert.equal(validateStep(s, ctxOf()).decl.usesElsewhere.length, 2);
 });
+test("fold 2 (a): uses_library_count is always present on a statement step and is an integer of 0 or more: a bool, float, negative, string, null, list is bad-statement", () => {
+  for (const bad of [true, false, 1.5, -1, "3", null, [], {}, NaN]) stmtRefusal((s) => { s.uses_library_count = bad; }, "uses_library_count");
+  const s0 = stp("fx-thm-a"); delete s0.uses_library_count;
+  refuses(() => validateStep(s0, ctxOf()), "bad-statement", "uses_library_count");
+  const s1 = stp("fx-thm-a"); s1.uses_library_count = 343;
+  assert.equal(validateStep(s1, ctxOf()).decl.usesLibraryCount, 343);
+  const s2 = stp("fx-thm-a"); s2.uses_library_count = 0;
+  assert.equal(validateStep(s2, ctxOf()).decl.usesLibraryCount, 0);
+});
 test("C: prompt: empty, not a string, or over 20000 characters", () => {
   for (const bad of ["", 5, null, "x".repeat(20001)]) stmtRefusal((s) => { s.prompt = bad; });
   const s = stp("fx-thm-a"); s.prompt = "x".repeat(20000);
@@ -222,18 +265,14 @@ test("C: a heading on a step with no statement keys is bad-statement", () => {
   refuses(() => validateStep(s, ctxOf()), "bad-statement", "fx-stmt-file");
 });
 test("C: a statement step with children or a child_count above 0 is bad-statement", () => {
-  stmtRefusal((s) => { s.card.child_count = 1; s.children = [{ id: "fx-lem-b", title: "`baz`", kind: "lemma", state: "none", proof: "none", child_count: 0, path: ["fx-group", "fx-stmt-file", "fx-thm-a"], parent_rests_on: false }]; });
+  stmtRefusal((s) => { s.card.child_count = 1; s.children = [{ id: "fx-lem-b", title: "`baz`", kind: "lemma", state: "none", proof: "none", child_count: 0, path: ["fx-part", "fx-group", "fx-stmt-file", "fx-thm-a"], parent_rests_on: false }]; });
 });
 test("C: the note on a statement step keeps its own validation (a bad note is still bad-note)", () => {
   const s = stp("fx-thm-a"); s.note = { text: "", source: "x.lean" };
   refuses(() => validateStep(s, ctxOf()), "bad-note");
 });
 test("D: a step carrying statement keys while the group is off is bad-statement-strings (and not bad-statement)", () => {
-  const i = idx();
-  for (const k of GROUP) delete i.strings[k];
-  delete i.strings.spine_content_label;
-  delete i.strings.decl_reading_none;
-  const ctx = validateIndex(i);
+  const ctx = validateIndex(groupOff(idx()));
   refuses(() => validateStep(stp("fx-thm-a"), ctx), "bad-statement-strings", "fx-thm-a");
   const s = stp("fx-thm-a"); delete s.prompt;
   refuses(() => validateStep(s, ctx), "bad-statement-strings", "fx-thm-a");
@@ -330,8 +369,8 @@ const textOf = (n) => (n.nodeType === 3 ? n.textContent : (n.children || []).map
 const walk = (n, out = []) => { out.push(n); for (const c of n.children || []) walk(c, out); return out; };
 const cls = (n) => (n.attrs && n.attrs.class) || "";
 const decl = (extra = {}) => ({ name: "Fx.foo_bar", sourcePath: "src/New/Fx/File.lean", keyword: "theorem", text: "theorem foo_bar : True", variables: false,
-  usesHere: [], usesElsewhere: [], prompt: "P", ...extra });
-const STR = { ...Object.fromEntries(GROUP.map((k) => [k, "[" + k + "]"])), decl_reading_none: "[decl_reading_none]", spine_content_label: "[label]", decl_uses_here: "Uses here ({n})", decl_uses_elsewhere: "Uses elsewhere ({n})" };
+  usesHere: [], usesElsewhere: [], usesLibraryCount: 0, prompt: "P", ...extra });
+const STR = { ...Object.fromEntries(GROUP.map((k) => [k, "[" + k + "]"])), decl_reading_none: "[decl_reading_none]", decl_uses_library_one: "[one library name]", decl_uses_library_many: "[{n} library names]", spine_content_label: "[label]", decl_uses_here: "Uses here ({n})", decl_uses_elsewhere: "Uses elsewhere ({n})" };
 function build(over = {}) {
   const doc = richDoc();
   const el = makeEl(doc);
@@ -513,4 +552,44 @@ test("label: a statement card's doc-string label is spine_content_label in the m
   assert.deepEqual(docstringTypeset({ spine_content_label: "[label]" }, tw), { label: "[label]", line: "L", exactButton: "E", renderButton: "R" });
   assert.equal(docstringTypeset({ spine_content_label: "[label]" }, null), null);
   assert.equal(tw.label, "[note_label_typeset]", "the page's own words are not edited");
+});
+
+/* FOLD 3: the library line under the other-files list */
+test("fold 3: the library line: count 0 draws nothing, 1 the one-word, 5 the many-word with {n} filled as text; it sits inside the elsewhere block after the list; no line when the pair is absent", () => {
+  const lib = (b) => walk(b.out.tail[2]).filter((n) => cls(n) === "decl-uses-library");
+  const z = build({ decl: { usesLibraryCount: 0, usesElsewhere: [{ name: "A.b" }] } });
+  try { assert.equal(lib(z).length, 0, "count 0 draws nothing"); } finally { delete globalThis.document; }
+  const one = build({ decl: { usesLibraryCount: 1, usesElsewhere: [{ name: "A.b" }] } });
+  try {
+    assert.equal(lib(one).length, 1);
+    assert.equal(textOf(lib(one)[0]), "[one library name]");
+    assert.equal(lib(one)[0].tagName, "P");
+    const kids = one.out.tail[2].children;
+    assert.deepEqual(kids.map((k) => k.tagName), ["P", "UL", "P"], "the heading line, the list, then the library line");
+  } finally { delete globalThis.document; }
+  const five = build({ decl: { usesLibraryCount: 5 } });
+  try {
+    assert.equal(textOf(lib(five)[0]), "[5 library names]");
+    assert.deepEqual(five.out.tail[2].children.map((k) => k.tagName), ["P", "P"], "an empty list has no ul, and the library line still stands");
+    assert.equal(five.out.tail.length, 4);
+  } finally { delete globalThis.document; }
+  const saved = [STR.decl_uses_library_one, STR.decl_uses_library_many];
+  delete STR.decl_uses_library_one; delete STR.decl_uses_library_many;
+  try {
+    const none = build({ decl: { usesLibraryCount: 5 } });
+    assert.equal(lib(none).length, 0, "both words absent: nothing is drawn");
+  } finally { [STR.decl_uses_library_one, STR.decl_uses_library_many] = saved; delete globalThis.document; }
+});
+test("fold 3: decl_uses_library_one and _many are both-or-neither (bad-statement-strings), non-empty if present (empty-string), and extra-strings with the group off", () => {
+  for (const k of ["decl_uses_library_one", "decl_uses_library_many"]) {
+    const i = idx(); delete i.strings[k];
+    refuses(() => validateIndex(i), "bad-statement-strings", k);
+    const j = idx(); j.strings[k] = "";
+    refuses(() => validateIndex(j), "empty-string", k);
+    const g = groupOff(idx()); g.strings[k] = "A line";
+    refuses(() => validateIndex(g), "extra-string", k);
+  }
+  const both = idx(); delete both.strings.decl_uses_library_one; delete both.strings.decl_uses_library_many;
+  assert.doesNotThrow(() => validateIndex(both), "neither is fine");
+  assert.doesNotThrow(() => validateIndex(idx()));
 });

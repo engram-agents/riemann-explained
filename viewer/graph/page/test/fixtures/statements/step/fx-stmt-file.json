@@ -4,6 +4,7 @@
   "id": "fx-stmt-file",
   "kind": "file",
   "path": [
+   "fx-part",
    "fx-group"
   ],
   "proof": "none",
@@ -17,6 +18,7 @@
    "kind": "theorem",
    "parent_rests_on": false,
    "path": [
+    "fx-part",
     "fx-group",
     "fx-stmt-file"
    ],
@@ -30,6 +32,7 @@
    "kind": "lemma",
    "parent_rests_on": false,
    "path": [
+    "fx-part",
     "fx-group",
     "fx-stmt-file"
    ],
@@ -43,6 +46,7 @@
    "kind": "def",
    "parent_rests_on": false,
    "path": [
+    "fx-part",
     "fx-group",
     "fx-stmt-file"
    ],
@@ -55,18 +59,21 @@
  "format": 1,
  "id": "fx-stmt-file",
  "path": [
+  "fx-part",
   "fx-group"
  ],
  "rests_on": [
   {
    "from": "fx-thm-a",
    "from_path": [
+    "fx-part",
     "fx-group",
     "fx-stmt-file"
    ],
    "in_reduction": true,
    "to": "fx-lem-b",
    "to_path": [
+    "fx-part",
     "fx-group",
     "fx-stmt-file"
    ],
@@ -75,12 +82,14 @@
   {
    "from": "fx-lem-b",
    "from_path": [
+    "fx-part",
     "fx-group",
     "fx-stmt-file"
    ],
    "in_reduction": true,
    "to": "fx-def-c",
    "to_path": [
+    "fx-part",
     "fx-group",
     "fx-stmt-file"
    ],

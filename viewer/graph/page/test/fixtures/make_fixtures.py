@@ -478,7 +478,7 @@ FX_PROMPT = "You are helping me read one statement. <b>x</b> and {page_url} stay
 FX_HEADING = "### Section on the bounds\n\nThe lemmas of this section bound `f`."
 FX_DOC = "The theorem `foo_bar`: for every `n` the bound holds.\n\nSecond paragraph of the repository's own comment."
 FX_NOTE_SOURCE = "grh/src/New/Fx/File.lean"
-HOSTILE_STATEMENT = "lemma baz (n : \u2115) : n \u2264 n + 1 := <script>alert(1)</script> {page_url}"
+HOSTILE_STATEMENT = "omit [NeZero q] in\nlemma baz (n : \u2115) : n \u2264 n + 1 := <script>alert(1)</script> {page_url}"
 
 
 def statements_words():
@@ -487,28 +487,30 @@ def statements_words():
 
 
 def statements_build():
-    """(index, steps): the statement sample. fx-group (kind group) holds fx-stmt-file and fx-file-2 (kind file); fx-stmt-file holds three statements."""
+    """(index, steps): the statement sample in the shape of the builder's real output (data contract section 31, built state). fx-part (kind part) holds fx-group
+    (kind group), which holds fx-stmt-file and fx-file-2 (kind file); fx-stmt-file holds three statements (theorem, lemma, def) in source order. `strings` carries ALL 27
+    words of the statement level (the words file), though only theorem, lemma and def occur."""
     W = statements_words()
+    assert len(W) == 27, len(W)      # Ariadne's 25 words plus decl_uses_library_one and decl_uses_library_many
     fixed = ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused", "parts_failed_notice",
              "key_kinds_heading", "key_states_heading", "sheet_statement_read", "sheet_statement_census", "sheet_statement_not_read",
              "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none"]
     strings = {k: STRINGS[k] for k in fixed}
-    strings.update({"symbol_kind_group": "Group of files", "symbol_kind_file": "Lean file", "symbol_kind_theorem": "Theorem", "symbol_kind_lemma": "Lemma",
-                    "symbol_kind_def": "Definition", "card_kind_group": "Group", "card_kind_file": "File", "count_file_one": "{n} file", "count_file_many": "{n} files",
+    strings.update({"symbol_kind_part": "Part of the argument", "symbol_kind_group": "Group of files", "symbol_kind_file": "Lean file", "symbol_kind_theorem": "Theorem",
+                    "symbol_kind_lemma": "Lemma", "symbol_kind_def": "Definition", "card_kind_part": "Part", "card_kind_group": "Group", "card_kind_file": "File",
+                    "count_group_one": "{n} group", "count_group_many": "{n} groups", "count_file_one": "{n} file", "count_file_many": "{n} files",
                     "spine_content_label": "In the repository's words", "note_label": NOTE_LABEL, "note_source": NOTE_SOURCE})
     strings.update(TYPESET_STRINGS)
-    wanted = ["open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def",
-              "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading",
-              "key_statements_text", "decl_heading_label", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_reading_none"]
-    strings.update({k: W[k] for k in wanted})
-    rows = _rows([("group", "symbol_kind_group"), ("file", "symbol_kind_file"), ("theorem", "symbol_kind_theorem"), ("lemma", "symbol_kind_lemma"), ("def", "symbol_kind_def")],
-                 strings,
-                 {"group": "card_kind_group", "file": "card_kind_file", "theorem": "decl_kind_theorem", "lemma": "decl_kind_lemma", "def": "decl_kind_def"},
-                 {"file": {"one": "count_file_one", "many": "count_file_many"}})
-    rows["group"]["open_words"] = {"open": "open_parts", "close": "close_parts"}
+    strings.update(W)
+    rows = _rows([("part", "symbol_kind_part"), ("group", "symbol_kind_group"), ("file", "symbol_kind_file"), ("theorem", "symbol_kind_theorem"), ("lemma", "symbol_kind_lemma"),
+                  ("def", "symbol_kind_def")], strings,
+                 {"part": "card_kind_part", "group": "card_kind_group", "file": "card_kind_file", "theorem": "decl_kind_theorem", "lemma": "decl_kind_lemma", "def": "decl_kind_def"},
+                 {"group": {"one": "count_group_one", "many": "count_group_many"}, "file": {"one": "count_file_one", "many": "count_file_many"}})
+    for k in ("part", "group"):
+        rows[k]["open_words"] = {"open": "open_parts", "close": "close_parts"}
     rows["file"]["open_words"] = {"open": "open_statements", "close": "close_statements"}
     rows["file"]["child_count_words"] = {"one": "count_statement_one", "many": "count_statement_many"}
-    symbols = {"order": {"kinds": ["group", "file", "theorem", "lemma", "def"], "proofs": [], "states": []}, "kinds": rows,
+    symbols = {"order": {"kinds": ["part", "group", "file", "theorem", "lemma", "def"], "proofs": [], "states": []}, "kinds": rows,
                "proofs": SYMBOLS["proofs"], "states": SYMBOLS["states"]}
 
     def card(i, title, kind, path, n=0, child_kind=None):
@@ -520,30 +522,33 @@ def statements_build():
     def child(c, pro=False):
         d = dict(c); d["parent_rests_on"] = pro; return d
 
-    here = ["fx-group", "fx-stmt-file"]
-    g = card("fx-group", "Group `Fx`", "group", [], 2, "file")
-    f1 = card("fx-stmt-file", "Lean file `Fx.File`", "file", ["fx-group"], 3)
-    f2 = card("fx-file-2", "Lean file `Fx.Other`", "file", ["fx-group"])
+    here = ["fx-part", "fx-group", "fx-stmt-file"]
+    p0 = card("fx-part", "Part `Fx`", "part", [], 1, "group")
+    g = card("fx-group", "Group `Fx`", "group", ["fx-part"], 2, "file")
+    f1 = card("fx-stmt-file", "Lean file `Fx.File`", "file", ["fx-part", "fx-group"], 3)       # NO child_kind: its statements are of three kinds
+    f2 = card("fx-file-2", "Lean file `Fx.Other`", "file", ["fx-part", "fx-group"])
     t1 = card("fx-thm-a", "`foo_bar`", "theorem", here)
     t2 = card("fx-lem-b", "`baz`", "lemma", here)
     t3 = card("fx-def-c", "`Fx.qux`", "def", here)
     base = {"format": 1, "commit": COMMIT}
     link = lambda a, b: {"from": a, "to": b, "from_path": here, "to_path": here, "weight": 1, "in_reduction": True}
-    decl = lambda name, kw, text, var, uh, ue, heading=None: dict(
-        name=name, source_path="src/New/Fx/File.lean", statement={"keyword": kw, "text": text}, variables=var, uses_here=uh, uses_elsewhere=ue, prompt=FX_PROMPT, **({"heading": heading} if heading else {}))
+    decl = lambda name, kw, text, var, uh, ue, lib, heading=None: dict(
+        name=name, source_path="src/New/Fx/File.lean", statement={"keyword": kw, "text": text}, variables=var, uses_here=uh, uses_elsewhere=ue, uses_library_count=lib,
+        prompt=FX_PROMPT, **({"heading": heading} if heading else {}))
     steps = {
-        "fx-group": dict(base, id="fx-group", path=[], card=g, children=[child(f1), child(f2, True)], rests_on=[]),
-        "fx-stmt-file": dict(base, id="fx-stmt-file", path=["fx-group"], card=f1, children=[child(t1), child(t2), child(t3)],
+        "fx-part": dict(base, id="fx-part", path=[], card=p0, children=[child(g)], rests_on=[]),
+        "fx-group": dict(base, id="fx-group", path=["fx-part"], card=g, children=[child(f1), child(f2, True)], rests_on=[]),
+        "fx-stmt-file": dict(base, id="fx-stmt-file", path=["fx-part", "fx-group"], card=f1, children=[child(t1), child(t2), child(t3)],
                              rests_on=[link("fx-thm-a", "fx-lem-b"), link("fx-lem-b", "fx-def-c")]),
-        "fx-file-2": dict(base, id="fx-file-2", path=["fx-group"], card=f2, children=[], rests_on=[]),
+        "fx-file-2": dict(base, id="fx-file-2", path=["fx-part", "fx-group"], card=f2, children=[], rests_on=[]),
         "fx-thm-a": dict(base, id="fx-thm-a", path=here, card=t1, children=[], rests_on=[], note={"text": FX_DOC, "source": FX_NOTE_SOURCE},
-                         **decl("Fx.foo_bar", "theorem", "theorem foo_bar (n : \u2115) : n \u2264 n + 1", False, [], [], FX_HEADING)),
+                         **decl("Fx.foo_bar", "theorem", "theorem foo_bar (n : \u2115) : n \u2264 n + 1", False, [], [], 0, FX_HEADING)),
         "fx-lem-b": dict(base, id="fx-lem-b", path=here, card=t2, children=[], rests_on=[],
-                         **decl("Fx.baz", "lemma", HOSTILE_STATEMENT, True, [], [])),
+                         **decl("Fx.baz", "lemma", HOSTILE_STATEMENT, True, [], [], 1)),
         "fx-def-c": dict(base, id="fx-def-c", path=here, card=t3, children=[], rests_on=[], note={"text": "The definition `qux` of the file.", "source": FX_NOTE_SOURCE},
-                         **decl("Fx.qux", "def", "def qux (n : \u2115) : \u2115 := n", False, ["fx-lem-b"], [{"name": "New.Other.helper", "step": "fx-file-2"}, {"name": "Mathlib.Foo.bar"}])),
+                         **decl("Fx.qux", "def", "def qux (n : \u2115) : \u2115 := n", False, ["fx-lem-b"], [{"name": "New.Other.helper", "step": "fx-file-2"}, {"name": "New.Elsewhere.thing"}], 43)),
     }
-    index = {"format": 1, "commit": COMMIT, "max_children": 40, "top": ["fx-group"], "rests_on": [], "steps": len(steps),
+    index = {"format": 1, "commit": COMMIT, "max_children": 40, "top": ["fx-part"], "rests_on": [], "steps": len(steps),
              "symbols": symbols, "assets": {}, "strings": strings, "sibling_layout": "column", "open_scale_floor": 1}
     return index, steps
 
