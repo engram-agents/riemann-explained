@@ -146,6 +146,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
    (font-style: italic). */
 .note-body .m { font-family: var(--serif); font-style: normal; font-size: 1em; background: none; border: 0; padding: 0; }
 .note-body .m1 { font-style: normal; }
+.note-body .m sup, .note-body .m sub { line-height: 0; }
 /* The exact text (the button's other view): the same pre, wrapped so it needs no sideways scrolling on a phone. */
 .note-body.note-exact pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .graph-sheet-body .note-typeset-line { margin: 0 0 6px; font-family: var(--sans); font-size: 13px; color: var(--muted); }

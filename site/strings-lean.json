@@ -16,7 +16,7 @@
  "note_label_typeset": "The file's opening note, from the repository",
  "note_render_button": "Show in maths type",
  "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
- "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
+ "note_typeset_line": "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.",
  "symbol_kind_file": "Lean file",
  "symbol_kind_group": "Group of files",
  "symbol_kind_part": "Part of the argument"

@@ -3,7 +3,7 @@
 
 /* The tag table. No svg, path or g: links are the engine's div strokes. h3 h4 h5 pre table thead tbody tr th td are the ones the repository's
    note is built from (note.js); there is no other element table on the page, and no a, img, em or strong in it. */
-export const TAGS = Object.freeze(["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code", "h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"]);
+export const TAGS = Object.freeze(["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code", "h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td", "sup", "sub"]);
 
 /* Attributes allowed on every tag, and the one extra a button may carry and the one extra an ol may carry (`start`, checked below). aria-* is matched by pattern below. */
 const COMMON = new Set(["class", "data-id", "role", "tabindex", "hidden"]);

@@ -11,7 +11,7 @@ const HOSTILE = [
 ];
 
 test("el: tag table is exactly the R1 list", () => {
-  assert.deepEqual([...dom.TAGS].sort(), ["button", "code", "div", "h2", "h3", "h4", "h5", "li", "nav", "ol", "p", "pre", "span", "table", "tbody", "td", "th", "thead", "tr", "ul"]);
+  assert.deepEqual([...dom.TAGS].sort(), ["button", "code", "div", "h2", "h3", "h4", "h5", "li", "nav", "ol", "p", "pre", "span", "sub", "sup", "table", "tbody", "td", "th", "thead", "tr", "ul"]);
 });
 
 test("el: the note renderer's tags are in the one table and nothing near them is (no a, img, em, strong, h1, h6, tfoot, caption, col, br, hr)", () => {
@@ -19,6 +19,17 @@ test("el: the note renderer's tags are in the one table and nothing near them is
   for (const t of ["h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"]) assert.equal(el(t).tagName, t.toUpperCase(), t);
   for (const bad of ["a", "img", "em", "strong", "b", "i", "h1", "h6", "tfoot", "caption", "col", "colgroup", "br", "hr", "blockquote", "TABLE", "Pre"])
     assert.throws(() => el(bad), /tag/i, "tag " + bad);
+});
+
+test("el: sup and sub are allowed with NO attribute of their own: nothing beyond what every tag carries (class, data-id, role, tabindex, hidden, aria-*); start, type, href, style and handlers are refused", () => {
+  const el = dom.makeEl(makeFakeDoc());
+  for (const t of ["sup", "sub"]) {
+    assert.equal(el(t).tagName, t.toUpperCase());
+    assert.equal(el(t, {}, ["x", "1"]).children.length, 2);
+    for (const bad of ["start", "type", "href", "style", "onclick", "src", "title", "id"])
+      assert.throws(() => el(t, { [bad]: "1" }), /attribute/i, t + " " + bad);
+  }
+  assert.throws(() => el("SUP"), /tag/i);
 });
 
 test("el: `start` is allowed on <ol> ONLY, and only as a decimal integer string of 1 to 9 digits", () => {
