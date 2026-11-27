@@ -7329,7 +7329,7 @@ def _selftest_cases():
     @case("RDC-INVARIANTS", "Clio's four page checks hold over a whole built tree (a step with `reading` has its own count 1; a statement without one has none; a step with children has a count equal to the SUM of its child entries, "
                             "absent being 0; each child entry equals that child's own card), and the helper that asserts them finds each of the four (and a count of 0, false or 2.5) in a tree tampered with")
     def _():
-        f = _rdc_build(["alpha", "beta", "bdef", "ddef"])
+        f = _rdc_build(["alpha", "bdef", "ddef"])   # `beta` has none, beside `alpha` in the same file: a statement without a reading in a file that has one
 
         def tamper(step, fn):
             g = dict(f)
@@ -7339,7 +7339,7 @@ def _selftest_cases():
             return _rdc_invariants(g)
         drop = lambda o: o["card"].pop("reading_count", None)
         add = lambda o: o["card"].__setitem__("reading_count", 1)
-        bump = lambda o: o["card"].__setitem__("reading_count", 1)
+        bump = lambda o: o["card"].__setitem__("reading_count", 2)
         kid = lambda o: o["children"][0].pop("reading_count", None)
         zero = lambda o: o["card"].__setitem__("reading_count", 0)
         flo = lambda o: o["card"].__setitem__("reading_count", 2.5)
