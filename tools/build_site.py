@@ -14112,7 +14112,7 @@ def _selftest_cases():
                     "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice",
                     "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                     "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
-                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label"),
+                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none"),
                     20, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
@@ -14478,6 +14478,23 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", "kinds.group.child_count_words", want)], [("GRAPH-STRINGS", "kinds.group.child_count_words", want)],
                     [("GRAPH-SYMBOL", "states.read", "has child_count_words (only a kinds row may)")]))
 
+    @case("GRCK3", "`_graph_files(child_kind_off=)`: the ids of cards that get NO `child_kind` although their children share one kind (a card in its own step file and as a closed child entry of its parent's): "
+                   "with the argument the named card has none, in both places, and every other card is as without it; the default (nothing named) writes the bytes of an explicit empty argument")
+    def _():
+        rows3 = {k: {"class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in ("part", "group", "file")}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_group="G", symbol_kind_file="F")
+
+        def r(i, parent, order, kind):
+            return gr_row(i, parent, order, kind=kind, state="none", proof="none")
+        rows = [r("a", "root", 0, "part"), r("b", "a", 0, "group"), r("d", "b", 0, "file"), r("e", "b", 1, "file")]
+        plain = _graph_files(rows, "c0", st, symbols=own, child_kinds=True)[1]
+        empty = _graph_files(rows, "c0", st, symbols=own, child_kinds=True, child_kind_off=())[1]
+        off = _graph_files(rows, "c0", st, symbols=own, child_kinds=True, child_kind_off=("b",))[1]
+        ck = lambda objs: ({i: objs[f"graph/step/{i}.json"]["card"].get("child_kind") for i in "abde"}, [c.get("child_kind") for c in objs["graph/step/a.json"]["children"]])
+        return _eq((_graph_bytes(plain) == _graph_bytes(empty), ck(plain), ck(off)),
+                   (True, ({"a": "group", "b": "file", "d": None, "e": None}, ["file"]), ({"a": "group", "b": None, "d": None, "e": None}, [None])))
+
     @case("GRSH1", "`_graph_files(status_hidden=)`: the kinds whose cards draw no state and no proof, default GRAPH_STATUS_HIDDEN (part, group, file; the bytes with the argument equal to the default "
                    "are the bytes without it): a step of a kind outside it whose state is `none` while the order list `states` is empty is `GRAPH-ORDER state none`; the same step builds when "
                    "its kind is named in `status_hidden`, and a kind that is not named is still judged")
@@ -14629,7 +14646,7 @@ def _selftest_cases():
                     "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice",
                     "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                     "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
-                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label"), [], eb, 23,
+                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none"), [], eb, 23,
                     ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_heading", "missing"), ("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
     @case("GRG1", "the Graph view's words (G1): view_cards, view_graph, graph_nodes_text, spine_content_label, spine_lives_in, spine_show_file and graph_failed_notice are on "
