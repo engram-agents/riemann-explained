@@ -417,15 +417,15 @@ def selftest_quiet():
 
 def _leak_check():
     """`--selftest` must leave its temporary folder EMPTY (the self-test makes a folder per planted file; build_site.py runs this self-test once per
-    case that builds, so a folder left here was 8,910 folders in /tmp per run of build_site.py's own self-test). Two runs, each in a TMPDIR made here
+    case that builds, so a folder left here was 8,910 folders in /tmp per run of build_site.py's own self-test). Three runs, each in a TMPDIR made here
     (`rh-tmp1-...`): the self-test as a child process of this file, and, in this process, the self-test with the scanner made to raise (the failure path
-    must clean too). A run whose TMPDIR starts `rh-tmp1-` is itself the child of this check and does not run it again (the recursion guard). 0 clean, 4 a
+    must clean too), and the node tests of viewer/graph (skipped with no node). A run whose TMPDIR starts `rh-tmp1-` is itself the child of this check and does not run it again (the recursion guard). 0 clean, 4 a
     leftover (named, at most 20) or a child that did not finish."""
     import shutil, subprocess
     if os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-"):
         return 0
     bad = []
-    child, inproc = tempfile.mkdtemp(prefix="rh-tmp1-"), tempfile.mkdtemp(prefix="rh-tmp1-")
+    child, inproc, node_tmp = [tempfile.mkdtemp(prefix="rh-tmp1-") for _ in range(3)]
     try:
         try:
             r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=child),
@@ -451,9 +451,21 @@ def _leak_check():
         left = sorted(os.listdir(inproc))
         if left:
             bad.append("a failing self-test left %d in its TMPDIR: %s" % (len(left), ", ".join(left[:20])))
+        tests = []   # the node tests of viewer/graph run this file's normal mode (its self-test gate first) once per test of boundary.test.mjs: they must leave nothing too
+        for top, _dirs, names in os.walk(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "viewer", "graph")):
+            tests += [os.path.join(top, n) for n in names if n.endswith(".test.mjs")]
+        if tests and shutil.which("node"):
+            try:
+                subprocess.run(["node", "--test"] + sorted(tests), env=dict(os.environ, TMPDIR=node_tmp), capture_output=True, text=True, timeout=600)
+            except subprocess.TimeoutExpired:
+                bad.append("the node tests timed out")
+            left = sorted(os.listdir(node_tmp))
+            if left:
+                bad.append("the node tests of viewer/graph left %d in their TMPDIR: %s" % (len(left), ", ".join(left[:20])))
     finally:
         shutil.rmtree(child, ignore_errors=True)
         shutil.rmtree(inproc, ignore_errors=True)
+        shutil.rmtree(node_tmp, ignore_errors=True)
     for b in bad:
         print("TMPDIR " + b)
     return 4 if bad else 0
