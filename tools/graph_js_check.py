@@ -454,6 +454,8 @@ def _leak_check():
         tests = []   # the node tests of viewer/graph run this file's normal mode (its self-test gate first) once per test of boundary.test.mjs: they must leave nothing too
         for top, _dirs, names in os.walk(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "viewer", "graph")):
             tests += [os.path.join(top, n) for n in names if n.endswith(".test.mjs")]
+        if not (tests and shutil.which("node")):
+            print("TMPDIR skipped: the node leg did not run (no node on PATH, or no *.test.mjs under viewer/graph)")
         if tests and shutil.which("node"):
             try:
                 subprocess.run(["node", "--test"] + sorted(tests), env=dict(os.environ, TMPDIR=node_tmp), capture_output=True, text=True, timeout=600)

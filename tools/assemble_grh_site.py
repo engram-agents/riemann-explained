@@ -1747,7 +1747,10 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                 r = subprocess.run([sys.executable, "-I", TOOL, "--selftest", "--only", cid], env=dict(os.environ, TMPDIR=t),
                                    capture_output=True, text=True, timeout=900)
                 left = sorted(os.listdir(t))
-                return [f"{cid}: {len(left)} left in its TMPDIR: " + ", ".join(left[:20])] if left else []
+                out = [f"{cid}: {len(left)} left in its TMPDIR: " + ", ".join(left[:20])] if left else []
+                if r.returncode != 0:   # a child that died before it ran the case leaves nothing: that is not a pass
+                    out.append(f"{cid}: the child exited {r.returncode}")
+                return out
             except subprocess.TimeoutExpired:
                 return [f"{cid}: timed out"]
             finally:
