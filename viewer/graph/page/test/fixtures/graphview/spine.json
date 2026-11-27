@@ -1,0 +1,129 @@
+{
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "edge_basis": {
+  "basis": "reaches-through-any-chain-of-uses",
+  "words": "spine_lines_text"
+ },
+ "format": 1,
+ "links": [
+  {
+   "from": "spine-made-a",
+   "in_reduction": true,
+   "to": "spine-made-b"
+  },
+  {
+   "from": "spine-made-a",
+   "in_reduction": true,
+   "to": "spine-made-c"
+  },
+  {
+   "from": "spine-made-b",
+   "in_reduction": true,
+   "to": "spine-made-d"
+  },
+  {
+   "from": "spine-made-c",
+   "in_reduction": true,
+   "to": "spine-made-d"
+  },
+  {
+   "from": "spine-made-a",
+   "in_reduction": false,
+   "to": "spine-made-d"
+  }
+ ],
+ "nodes": [
+  {
+   "constants": [
+    "New.Made.a"
+   ],
+   "content": "Made-up sentence of box a.",
+   "counts": {
+    "mentions": 1,
+    "no_doc": 1,
+    "other_constants": 0
+   },
+   "file": "sk-file-1",
+   "id": "spine-made-a",
+   "mentions": [
+    {
+     "constant": "New.Made.other"
+    }
+   ],
+   "names": [
+    "Made.a"
+   ],
+   "source": "grh/INDEX.md",
+   "theorem": "`Made.a`"
+  },
+  {
+   "constants": [
+    "New.Made.b"
+   ],
+   "content": "Made-up sentence of box b.",
+   "counts": {
+    "mentions": 1,
+    "no_doc": 1,
+    "other_constants": 0
+   },
+   "file": "sk-file-2",
+   "id": "spine-made-b",
+   "mentions": [
+    {
+     "constant": "New.Made.other"
+    }
+   ],
+   "names": [
+    "Made.b"
+   ],
+   "source": "grh/INDEX.md",
+   "theorem": "`Made.b`"
+  },
+  {
+   "constants": [
+    "New.Made.c"
+   ],
+   "content": "Made-up sentence of box c.",
+   "counts": {
+    "mentions": 1,
+    "no_doc": 1,
+    "other_constants": 0
+   },
+   "file": "sk-file-3",
+   "id": "spine-made-c",
+   "mentions": [
+    {
+     "constant": "New.Made.other"
+    }
+   ],
+   "names": [
+    "Made.c"
+   ],
+   "source": "grh/INDEX.md",
+   "theorem": "`Made.c`"
+  },
+  {
+   "constants": [
+    "New.Made.d"
+   ],
+   "content": "Made-up sentence of box d.",
+   "counts": {
+    "mentions": 1,
+    "no_doc": 1,
+    "other_constants": 0
+   },
+   "file": "sk-file-4",
+   "id": "spine-made-d",
+   "mentions": [
+    {
+     "constant": "New.Made.other"
+    }
+   ],
+   "names": [
+    "Made.d"
+   ],
+   "source": "grh/INDEX.md",
+   "theorem": "`Made.d`"
+  }
+ ]
+}

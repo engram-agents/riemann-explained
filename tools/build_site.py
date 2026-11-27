@@ -41,7 +41,8 @@ CONTRACT (each line is a self-test case, written before the code; an expected va
   X4 A fresh run into a non-empty OUT_DIR says OUT-NOT-EMPTY and refuses (exit 1) unless --force; --force removes only
      what a build writes (the five files and the folder `group`), never another file. Cases OUT1 OUT2.
   X5 A group id that is not safe as a file name (letters, digits, `.`, `_`, `-`, not starting with `.`, at most 100
-     characters; no two ids that differ only in case) is GROUP-ID-UNSAFE. Cases ID1 ID2 W1.
+     characters; no two ids that differ only in case) is GROUP-ID-UNSAFE; a group id of 65 to 100 characters passes that
+     check and is then GRAPH-ID (the id rule of the graph data: at most 64). Cases ID1 ID2 W1.
   X6 A normal run first runs the self-test quietly and refuses with exit 4 if it fails; `--selftest` runs it (0 pass, 4
      fail); `--selftest --only ID,ID` runs exactly those cases and an unknown id exits 2. Cases EXIT4 SEL1.
   X7 The build is written into a temporary sibling directory of OUT_DIR and renamed into place at the end: a failure before
@@ -531,7 +532,7 @@ The `title` of a card is `_card_line(group, no_claim_label)`: the group's `short
 a step with no claim, else no line; the first sentence of a claim is not a fallback. `_graph_line_errors` checks the RESOLVED line of every step: no line (a claim and neither a
 short nor a title), more than 50 characters after the strip, a dollar sign, each `GRAPH-SHORT <id> <reason> (<n> characters)`; a short of a bad shape (not a string, empty, a
 line break, over 50) is `GRAPH-SHORT <id> <reason>`, once. The refusals, each its own code, each naming the id, exit 1, nothing written: GRAPH-ID (not
-`^[a-z0-9][a-z0-9-]*$`, or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted; the root's own children count too and the root is
+`^[a-z0-9]+(-[a-z0-9]+)*$` and at most 64 characters, the id rule of the page and the comment service; or `root`), GRAPH-DUP, GRAPH-PARENT, GRAPH-CYCLE, GRAPH-FANOUT (41 children; 40 are accepted; the root's own children count too and the root is
 named `root`), GRAPH-SYMBOL, GRAPH-EDGE (a premise on a step that is neither a sibling nor the step's own child, a premise on no step, or a cycle in rests_on), GRAPH-COUNT
 (`_graph_count_errors`: child_count against the children listed, steps against the files, every listed id has its file) and GRAPH-SHORT. The graph files are written like
 data.js (keys sorted, `<`, `>`, `&` as \\uXXXX), go through the leak check and the static check, and are in the manifest's `files` map. Not in G1: graph/index.html,
@@ -671,7 +672,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -1807,6 +1808,8 @@ GRAPH_FORMAT = 1
 GRAPH_MAX_CHILDREN = 40   # a step with more children is refused (GRAPH-FANOUT); the page reads the number from graph/index.json
 GRAPH_SHORT_MAX = nm.SHORT_MAX   # the longest `short` (author text) a group may carry, in characters: the checker's own constant, never a second literal
 GRAPH_ID = re.compile(r"[a-z0-9][a-z0-9-]*")   # a step id; narrower than SAFE_ID, so every graph id is also a file name of the build
+GRAPH_SHAPE = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")   # the id rule of the page and the comment service (their ^[a-z0-9]+(-[a-z0-9]+)*$), written out here: `_graph_files` refuses every step id that does not fullmatch it
+GRAPH_ID_MAX = 64   # the longest step id (the comment service's MAX_TARGET_LENGTH)
 # The strings key whose short word a closed card carries as its `role`, by root_role (contract section 10: a word of its own, not the list page's
 # sentence, which stays in the card markup). The key `role` is absent for a root_role with no row here and for a step with no root_role. The key is
 # resolved into the card at build time and is never in index.json `strings`. The word is at most GRAPH_ROLE_MAX characters with no line break (GRAPH-ROLE otherwise).
@@ -1853,7 +1856,8 @@ GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 # The page's OPTIONAL strings keys: words the page draws that a map may or may not carry. index.json `strings` is the required keys plus those of these that `strings` holds;
 # the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
 GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text",
-                       "spine_lines_text", "key_scope_text")
+                       "spine_lines_text", "key_scope_text",
+                       "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice")   # the Graph view's words (G1)
 
 
 def _graph_strings_keys(symbols=None):
@@ -2267,13 +2271,23 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
                 errors.append(("GRAPH-STRINGS", f"{name}.{k}.count_words", "must be an object with exactly the keys many and one, both strings"))
     if errors:
         return errors, {}
-    seen = set()
+    seen, refused = set(), set()
     for r in rows:
         i = r["id"]
-        if not (isinstance(i, str) and GRAPH_ID.fullmatch(i)) or i == "root":
-            errors.append(("GRAPH-ID", str(i), "is not a step id (lower-case letters, digits and `-`, not starting with `-`)"))
-        if i in seen:
-            errors.append(("GRAPH-DUP", str(i), "is the id of more than one group"))
+        if not (isinstance(i, str) and GRAPH_SHAPE.fullmatch(i)):   # one refusal per id: the shape first, the length only for an id of good shape
+            refusal = ("GRAPH-ID", str(i), "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)")
+        elif i == "root":
+            refusal = ("GRAPH-ID", i, "is the id of the root, which is not a step")
+        elif len(i) > GRAPH_ID_MAX:
+            refusal = ("GRAPH-ID", i, f"is {len(i)} characters (at most {GRAPH_ID_MAX})")
+        else:
+            refusal = None
+        if refusal is not None:   # an id refused for what it is, shared by two steps or more, is refused once, and is never also GRAPH-DUP
+            if str(i) not in refused:
+                errors.append(refusal)
+            refused.add(str(i))
+        elif i in seen:
+            errors.append(("GRAPH-DUP", str(i), "is the id of more than one step"))
         seen.add(i)
     if errors:
         return errors, {}
@@ -6001,15 +6015,16 @@ def _selftest_cases():
                                       ["Statement counted by a program, not read, recorded by Reader One on 2026-11-20."]),
                     [(True, False)], ("We have read this statement.", ["Statement read by Reader Two on 2026-11-23."])))
 
-    @case("W1", "a group id that is safe but longer than 100 characters is GROUP-ID-UNSAFE; 100 characters build")
+    @case("W1", "a group id that is safe but longer than 100 characters is GROUP-ID-UNSAFE; up to 100 characters pass that check, and then the id rule of the graph "
+                "(at most 64 characters, GRAPH-ID) applies: 64 characters build, 65 and 100 are `GRAPH-ID <id> is <n> characters (at most 64)`")
     def _():
         res = []
-        for n in (100, 101):
+        for n in (64, 65, 100, 101):
             o = _outline()
             o["groups"][1]["id"] = "a" * n   # g1a1x: no child, no premise, no note names it
             b = _build(outline=o)
-            res.append((b.rc, f"BUILD-ERROR GROUP-ID-UNSAFE {'a' * n} " in b.out, b.existed))
-        return _eq(res, [(0, False, True), (1, True, False)])
+            res.append((b.rc, f"BUILD-ERROR GROUP-ID-UNSAFE {'a' * n} " in b.out, f"BUILD-ERROR GRAPH-ID {'a' * n} is {n} characters (at most 64)" in b.out, b.existed))
+        return _eq(res, [(0, False, False, True), (1, False, True, False), (1, False, True, False), (1, True, False, False)])
 
     @case("W2", "a failure while writing (a full disk, injected) in a fresh run: exit 2, ONE line on stderr and no traceback, nothing "
                 "on stdout, OUT_DIR absent and no temporary directory left beside it")
@@ -12037,23 +12052,97 @@ def _selftest_cases():
                    ([], [("GRAPH-FANOUT", "p", "has 41 children (more than 40)")], [],
                     (0, 40, 40), (1, False, ["BUILD-ERROR GRAPH-FANOUT g2 has 41 children (more than 40)"])))
 
-    @case("GR8", "G1 S5: GRAPH-ID (an id that is not `^[a-z0-9][a-z0-9-]*$`: an upper-case letter, a dot, a leading dash, an empty id, the word `root`), "
+    @case("GR8", "G1 S5: GRAPH-ID (an id that is not `^[a-z0-9]+(-[a-z0-9]+)*$`: an upper-case letter, a dot, a leading dash, an empty id, the word `root`), "
                  "GRAPH-DUP (the same id twice), GRAPH-PARENT (a parent that is no step), GRAPH-CYCLE (every id on a cycle of parents, a self parent "
                  "too): each names the id; GRAPH-ID also through a build of the fixture with a group `Up`, exit 1, nothing written")
     def _():
         o = _outline()
         o["groups"].append(_g("Up", 2, "g2", 1, [FOO]))
         b = _build(outline=o)
-        idm = "is not a step id (lower-case letters, digits and `-`, not starting with `-`)"
+        idm = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        rootm = "is the id of the root, which is not a step"
         return _eq((gr_codes([gr_row("Up")]), gr_codes([gr_row("a.b")]), gr_codes([gr_row("-a")]), gr_codes([gr_row("")]), gr_codes([gr_row("root")]),
                     gr_codes([gr_row("a0-b9")]), gr_codes([gr_row("a"), gr_row("a", order=2)]), gr_codes([gr_row("a"), gr_row("b", "zz")]),
                     gr_codes([gr_row("a", "b"), gr_row("b", "a"), gr_row("c", "a")]), gr_codes([gr_row("x", "x")]),
                     (b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")])),
                    ([("GRAPH-ID", "Up", idm)], [("GRAPH-ID", "a.b", idm)], [("GRAPH-ID", "-a", idm)], [("GRAPH-ID", "", idm)],
-                    [("GRAPH-ID", "root", idm)], [], [("GRAPH-DUP", "a", "is the id of more than one group")],
+                    [("GRAPH-ID", "root", rootm)], [], [("GRAPH-DUP", "a", "is the id of more than one step")],
                     [("GRAPH-PARENT", "b", "has parent zz, which is not a step")],
                     [("GRAPH-CYCLE", "a", "is on a cycle of parents"), ("GRAPH-CYCLE", "b", "is on a cycle of parents")],
                     [("GRAPH-CYCLE", "x", "is on a cycle of parents")], (1, False, ["BUILD-ERROR GRAPH-ID Up " + idm])))
+
+    @case("GRID1", "the id rule of the page and the comment service, in `_graph_files`: EVERY step id, in a part row, a group row and a file row alike, must fullmatch "
+                   "`[a-z0-9]+(-[a-z0-9]+)*` and be at most 64 characters; each fault is `GRAPH-ID <id> is not a step id (the page and the comment service accept "
+                   "^[a-z0-9]+(-[a-z0-9]+)*$)`: `a--b`, `a-`, `-a`, `-`, `a_b`, `A`, the empty id, `_page` (no exemption), `lean-`, `a.b`, `a b`, a final newline; `root` is "
+                   "refused with its own text; a Unicode digit (U+0663), a full-width letter (U+FF41), `\u00e9`, a zero-width space, a NUL and a line break are not in a-z0-9 and are refused; "
+                   "64 characters are accepted and 65 are `GRAPH-ID <id> is 65 characters (at most 64)`; one refusal per id (a bad shape is not also "
+                   "named for its length); a good id in the same rows adds nothing")
+    def _():
+        shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        bad = ["a--b", "a-", "-a", "-", "a_b", "A", "", "_page", "lean-", "a.b", "a b", "a\n", "a--" + "b" * 70,
+               "\u0663", "a\u0663", "\uff41", "a\uff41b", "\u00e9", "caf\u00e9", "a\u200bb", "a\x00b", "a\x00", "a\n-b"]
+
+        def part(i):
+            return [gr_row(i)]
+
+        def group(i):
+            return [gr_row("p"), gr_row(i, "p")]
+
+        def file(i):
+            return [gr_row("p"), gr_row("g", "p"), gr_row(i, "g")]
+        got = {i: [gr_codes(f(i)) for f in (part, group, file)] for i in bad}
+        want = {i: [[("GRAPH-ID", i, shape)]] * 3 for i in bad}
+        ok = [[gr_codes(f(i)) for f in (part, group, file)] for i in ("a", "9", "a-b-c", "a0-b9", "lean-x-y", "x" * 64)]
+        long = [[gr_codes(f("x" * 65)) for f in (part, group, file)], [gr_codes(f("y" * 200)) for f in (part,)]]
+        return _eq((got == want, ok, long, [gr_codes(f("root")) for f in (part,)], [gr_codes([gr_row("p"), gr_row("a--b", "p"), gr_row("c--d", "p")])]),
+                   (True, [[[]] * 3] * 6, [[[("GRAPH-ID", "x" * 65, "is 65 characters (at most 64)")]] * 3, [[("GRAPH-ID", "y" * 200, "is 200 characters (at most 64)")]]],
+                    [[("GRAPH-ID", "root", "is the id of the root, which is not a step")]],
+                    [[("GRAPH-ID", "a--b", shape), ("GRAPH-ID", "c--d", shape)]]))
+
+    @case("GRID2", "two steps with one id are `GRAPH-DUP <id> is the id of more than one step` whatever the two are (two parts, a group and a file of one part: `lean-x-y` as "
+                   "both, two files); each id once per extra row; no file is returned. PINNED, the other behaviour: an id that is refused for its shape, its length or as `root` and is "
+                   "shared by two or more steps gets ONLY that one refusal, once (one refusal per id), never also GRAPH-DUP and never once per row")
+    def _():
+        dup = "is the id of more than one step"
+        both = gr_codes([gr_row("lean-x"), gr_row("lean-x-y", "lean-x"), gr_row("lean-x-y", "lean-x-y")])
+        parts = gr_codes([gr_row("a"), gr_row("a", order=2)])
+        files = gr_codes([gr_row("p"), gr_row("f", "p"), gr_row("f", "p", order=2), gr_row("f", "p", order=3)])
+        shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        bad2 = gr_codes([gr_row("a--b"), gr_row("a--b", order=2)])
+        bad3 = gr_codes([gr_row("p"), gr_row("a--b", "p"), gr_row("a--b", "p", order=2), gr_row("a--b", "p", order=3)])
+        root2 = gr_codes([gr_row("root"), gr_row("root", order=2)])
+        long2 = gr_codes([gr_row("x" * 65), gr_row("x" * 65, order=2)])
+        mixed = gr_codes([gr_row("a--b"), gr_row("a--b", order=2), gr_row("c"), gr_row("c", order=3)])
+        return _eq((both, parts, files, _graph_files([gr_row("a"), gr_row("a", order=2)], "c0", _strings())[1], bad2, bad3, root2, long2, mixed),
+                   ([("GRAPH-DUP", "lean-x-y", dup)], [("GRAPH-DUP", "a", dup)], [("GRAPH-DUP", "f", dup), ("GRAPH-DUP", "f", dup)], {},
+                    [("GRAPH-ID", "a--b", shape)], [("GRAPH-ID", "a--b", shape)], [("GRAPH-ID", "root", "is the id of the root, which is not a step")],
+                    [("GRAPH-ID", "x" * 65, "is 65 characters (at most 64)")], [("GRAPH-ID", "a--b", shape), ("GRAPH-DUP", "c", dup)]))
+
+    @case("GRID3", "the id rule through a build of the live inputs (not only the function): a group `a--b`, a group of 65 characters and a group `_page` are refused "
+                   "`BUILD-ERROR GRAPH-ID <id> ...` with exit 1 and nothing written; a group of 64 characters builds")
+    def _():
+        shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        res = []
+        for i in ("a--b", "x" * 65, "_page", "x" * 64):
+            o = _outline()
+            o["groups"].append(_g(i, 2, "g2", 1, [FOO]))
+            b = _build(outline=o)
+            res.append((b.rc, b.existed, [ln for ln in b.out.splitlines() if ln.startswith("BUILD-ERROR GRAPH")]))
+        return _eq(res, [(1, False, ["BUILD-ERROR GRAPH-ID a--b " + shape]), (1, False, ["BUILD-ERROR GRAPH-ID " + "x" * 65 + " is 65 characters (at most 64)"]),
+                         (1, False, ["BUILD-ERROR GRAPH-ID _page " + shape]), (0, True, [])])
+
+    @case("GRID4", "the id rule does not depend on where the row sits or on how the id begins: a bad id on a part that has a child, on a group that has a child, and on a "
+                   "leaf is refused once each (the children are good); an id that begins `lean-` is bound by 64 like every other: 64 characters are accepted and 65 are "
+                   "`GRAPH-ID <id> is 65 characters (at most 64)`")
+    def _():
+        shape = "is not a step id (the page and the comment service accept ^[a-z0-9]+(-[a-z0-9]+)*$)"
+        part_with_child = gr_codes([gr_row("a--b"), gr_row("c", "a--b")])
+        group_with_child = gr_codes([gr_row("p"), gr_row("a--b", "p"), gr_row("c", "a--b")])
+        both = gr_codes([gr_row("a--b"), gr_row("c", "a--b"), gr_row("d_e", "c")])
+        l64, l65 = "lean-" + "x" * 59, "lean-" + "x" * 60
+        return _eq((part_with_child, group_with_child, both, gr_codes([gr_row(l64)]), gr_codes([gr_row(l65)]), gr_codes([gr_row("p"), gr_row(l65, "p"), gr_row("q", l65)])),
+                   ([("GRAPH-ID", "a--b", shape)], [("GRAPH-ID", "a--b", shape)], [("GRAPH-ID", "a--b", shape), ("GRAPH-ID", "d_e", shape)], [],
+                    [("GRAPH-ID", l65, "is 65 characters (at most 64)")], [("GRAPH-ID", l65, "is 65 characters (at most 64)")]))
 
     @case("GR9", "G1 S2, F38 c (G1b S3, S6): a kind, a state or a proof with no row in the table refuses, `GRAPH-SYMBOL <step id> kind|state|proof <value>` "
                  "(a kind `none` too: there is no such row); a kind outside the table says what is allowed, ` (allowed: theorem, lemma, def, structure)`, and "
@@ -14000,7 +14089,8 @@ def _selftest_cases():
                     {k: full[k] for k in opt}, len(_graph_strings_keys()),
                     _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
                     _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", note_source="S", bogus="x"))),
-                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text"),
+                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"),
                     20, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
@@ -14447,8 +14537,26 @@ def _selftest_cases():
         return _eq((GRAPH_OPTIONAL_KEYS, [tuple(e) for e in ok[0]], ix["edge_basis"], len(ix["strings"]), sorted(k for k in ix["strings"] if k.startswith(("key_lines", "spine_lines"))),
                     [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H"), edge_basis=eb),
                     _graph_strings_errors(dict(req, bogus="x"))),
-                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text"), [], eb, 23,
+                   (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"), [], eb, 23,
                     ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_heading", "missing"), ("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
+
+    @case("GRG1", "the Graph view's words (G1): view_cards, view_graph, graph_nodes_text, spine_content_label, spine_lives_in, spine_show_file and graph_failed_notice are on "
+                  "GRAPH_OPTIONAL_KEYS, so a build whose strings hold them and the spine's sentence (spine_lines_text) carries all eight in index.json `strings`, each value verbatim; "
+                  "spine_lives_in holds exactly the placeholder {title} (an unknown one is refused naming the key and the token, `has an unknown placeholder {bogus}`); no other of "
+                  "the seven declares a placeholder; a build without them carries none of them (the page's Cards-only map)")
+    def _():
+        rows = [gr_row("a")]
+        words = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "Boxes.", "spine_content_label": "Label", "spine_lives_in": "Lives in: {title}",
+                 "spine_show_file": "Show", "graph_failed_notice": "Failed.", "spine_lines_text": "Lines."}
+        ok = _graph_files(rows, "c0", dict(_strings(), **words))
+        ix = ok[1]["graph/index.json"]["strings"]
+        base = _strings()
+        none = _graph_files(rows, "c0", base)[1]["graph/index.json"]["strings"]
+        return _eq(([tuple(e) for e in ok[0]], {k: ix[k] for k in words}, _strings_problems(dict(base, **words)),
+                    _strings_problems(dict(base, **dict(words, spine_lives_in="Lives in: {bogus}"))), _strings_problems(dict(base, **dict(words, view_cards="Cards {title}"))),
+                    sorted(k for k in words if k in none), all(k in GRAPH_OPTIONAL_KEYS for k in words)),
+                   ([], words, [], [("STRINGS-KEY", "spine_lives_in", "has an unknown placeholder {bogus}")], [("STRINGS-KEY", "view_cards", "has an unknown placeholder {title}")], [], True))
 
     return cases
 
