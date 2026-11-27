@@ -4,7 +4,25 @@
 usage: build_grh_try.py --strings site/strings.json --try-strings site/strings-lean-try.json --out FILE
        build_grh_try.py --selftest
 
-(RED STATE: the implementation is a stub; the self-test below states the contract.)
+The page is our words only: no repository text, no script, no external resource, no form, no outbound link, no third-party address. Its only addresses
+are `../` (the map) and `../#ID` (a step of the map). --strings is the map's own strings file: the tool reads nothing of it but build_site's shared word
+rules (the forbidden words, R3, the percent sign), which are judged on the merged file as the credits tool does.
+
+THE TRY-STRINGS FILE is a flat JSON object of EXACTLY the 28 keys of TRY_KEYS (Ariadne's what-to-try-design-v2), each a non-empty string: `try_title`,
+`try_intro`, `try_N_head`, `try_N_text`, `try_N_link` for N = 1 to 5, `try_ask_heading`, `try_ask_1` to `try_ask_4`, `try_tell_heading`, `try_tell_text`,
+`try_keep_heading`, `try_keep_1` to `try_keep_3`. Every value passes build_site._strings_problems (no placeholder is allowed) and is escaped with
+build_site._e.
+
+THE PAGE STRUCTURE is fixed here: title element and h1 (try_title); the intro paragraph; an ordered list of the five items, each a heading, a paragraph and a
+link whose words are try_N_link and whose address is TRY_TARGETS[N-1] (`../` for the empty entry, `../#ID` otherwise); a heading and the four questions; a
+heading and a paragraph (how to tell us); a heading and the three keep-in-mind lines. The tool checks the SHAPE of each ID ([a-z0-9]+(-[a-z0-9]+)*, at most 64
+characters); that the IDs exist as steps is the assembler's check.
+
+The page passes build_site's static_problems, element_problems (the document table), head_meta_problems and link_problems, and holds no http, mailto, url( or
+@import; every href is `../` or `../#ID` of TRY_TARGETS. A finding is a refusal.
+
+Exit codes: 0 written, 1 refused (one `TRY-<CODE> <what>` line per refusal, nothing written), 2 usage. --selftest: 0 all pass, 4 one fails.
+Same inputs, same bytes (LF, UTF-8, one final newline).
 """
 import argparse
 import contextlib
@@ -42,11 +60,22 @@ def _load(name):
 bs = _load("build_site")
 sk = _load("build_grh_skeleton")
 
-MIN_PYTHON = (3, 12)
+MIN_PYTHON = (3, 12)   # the version the page checks were run under, as the credits tool: an older html.parser reads the page differently
 LIMIT = 1 << 20
-TRY_KEYS = ()
-TRY_TARGETS = ()
-CSS = ""
+TRY_KEYS = (("try_title", "try_intro")
+            + tuple(f"try_{i}_{part}" for i in range(1, 6) for part in ("head", "text", "link"))
+            + ("try_ask_heading",) + tuple(f"try_ask_{i}" for i in range(1, 5))
+            + ("try_tell_heading", "try_tell_text", "try_keep_heading") + tuple(f"try_keep_{i}" for i in range(1, 4)))
+# The address of each item's link, in item order: "" is the map (`../`), an ID is that step of the map (`../#ID`). That each ID EXISTS is the assembler's check.
+TRY_TARGETS = ("", "lean-reduction-from-a-one-sided-bound-to-the-zeros", "lean-reduction-zeros-criterion-new-lfunction-ne-zero-of-p-301c28",
+               "lean-reduction-zeros-prime-number-theorem-new-eventually-999988", "lean-reduction-zeros-prime-error-new-integral-primeremainder")
+ID_SHAPE = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
+ID_MAX = 64
+# The one string of the page not passed through build_site._e: a module constant, never input. Keep it a constant.
+CSS = ("body{font-family:system-ui,sans-serif;line-height:1.5;margin:0 auto;max-width:44rem;padding:1rem}"
+       "main>ol{padding-left:1.25rem}main>ol>li{margin-bottom:1.5rem}p.go{margin-top:.25rem}")
+# Text the finished page must not hold anywhere (a case-insensitive substring check on the whole page, over and above build_site's checks).
+BARRED = ("http", "mailto", "url(", "@import")
 
 
 class Refused(Exception):
@@ -54,27 +83,98 @@ class Refused(Exception):
 
 
 def target_problems(targets):
-    raise NotImplementedError("target_problems")
+    """[`TRY-TARGETS ...`] for a table that is not five entries, each the empty string or an ID of ID_SHAPE of at most ID_MAX characters."""
+    if not isinstance(targets, (tuple, list)) or len(targets) != 5:
+        return ["TRY-TARGETS the table must hold five entries"]
+    return [f"TRY-TARGETS entry {i} is not empty and not an id of the shape [a-z0-9]+(-[a-z0-9]+)* of at most {ID_MAX} characters"
+            for i, t in enumerate(targets, 1) if not (isinstance(t, str) and (t == "" or (len(t) <= ID_MAX and ID_SHAPE.fullmatch(t))))]
 
 
 def check_strings(base, words):
-    raise NotImplementedError("check_strings")
+    """Our words: exactly TRY_KEYS, each a non-empty string, then build_site's strings rules on the merged file (findings on try keys kept)."""
+    if not isinstance(words, dict):
+        raise Refused(["TRY-LAYOUT (top level) not-an-object"])
+    bad = []
+    for k in TRY_KEYS:
+        if k not in words:
+            bad.append(f"TRY-LAYOUT {k} missing")
+        elif not isinstance(words[k], str):
+            bad.append(f"TRY-LAYOUT {k} not-a-string")
+        elif words[k] == "":
+            bad.append(f"TRY-LAYOUT {k} empty")
+    bad += [f"TRY-LAYOUT {k} unknown" for k in sorted(words) if k not in TRY_KEYS]
+    if bad:
+        raise Refused(bad)
+    bad = [f"TRY-STRINGS {path} {msg}" for _code, path, msg in bs._strings_problems(dict(base, **words)) if path in TRY_KEYS]
+    if bad:
+        raise Refused(bad)
 
 
 def render(words, targets=None):
-    raise NotImplementedError("render")
+    """The page, as a str. Every word of ours, and every address, goes through build_site._e; the CSS is the one constant not."""
+    e = bs._e
+    targets = TRY_TARGETS if targets is None else targets
+    w = words
+    items = "".join(
+        f'<li><h2>{e(w[f"try_{i}_head"])}</h2><p>{e(w[f"try_{i}_text"])}</p>'
+        f'<p class="go"><a href="{e("../#" + targets[i - 1] if targets[i - 1] else "../")}">{e(w[f"try_{i}_link"])}</a></p></li>'
+        for i in range(1, 6))
+    lst = lambda head, keys: f'<h2>{e(w[head])}</h2><ul>' + "".join(f"<li>{e(w[k])}</li>" for k in keys) + "</ul>"
+    parts = [
+        "<!doctype html>", '<html lang="en">', "<head>", '<meta charset="utf-8">', bs.META_VIEWPORT, bs.META_ROBOTS,
+        # style BEFORE title, as the credits page (html.parser reads title differently on an old Python; MIN_PYTHON refuses such a Python by name)
+        f"<style>{CSS}</style>", f"<title>{e(w['try_title'])}</title>", "</head>", "<body>",
+        f"<header><h1>{e(w['try_title'])}</h1></header>", "<main>",
+        f"<p>{e(w['try_intro'])}</p>",
+        f'<ol>{items}</ol>',
+        f'<section class="ask">{lst("try_ask_heading", [f"try_ask_{i}" for i in range(1, 5)])}</section>',
+        f'<section class="tell"><h2>{e(w["try_tell_heading"])}</h2><p>{e(w["try_tell_text"])}</p></section>',
+        f'<section class="keep">{lst("try_keep_heading", [f"try_keep_{i}" for i in range(1, 4)])}</section>',
+        "</main>", "</body>", "</html>", ""]
+    return "\n".join(parts)
+
+
+class _Hrefs(html.parser.HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.found = []
+
+    def handle_starttag(self, tag, attrs):
+        self.found += [v for k, v in attrs if k in ("href", "src", "action", "formaction", "xlink:href")]
 
 
 def href_problems(page, targets=None):
-    raise NotImplementedError("href_problems")
+    """Every address of the page, in any link or source attribute, must be exactly `../` or `../#ID` for an ID of the table: the document checks of build_site
+    do not judge where a link goes."""
+    targets = TRY_TARGETS if targets is None else targets
+    p = _Hrefs()
+    p.feed(page)
+    ok = {"../"} | {"../#" + t for t in targets if isinstance(t, str) and t}
+    return [f"TRY-PAGE href {v!r} is not ../ or ../#id of the page's targets" for v in p.found if not (isinstance(v, str) and v in ok)]
 
 
 def page_problems(page, targets=None):
-    raise NotImplementedError("page_problems")
+    low = page.lower()
+    return (href_problems(page, targets) + [f"TRY-PAGE text {s} found" for s in BARRED if s in low]
+            + [f"TRY-PAGE static {p}" for p in bs.static_problems(page, "")] + [f"TRY-PAGE element {p}" for p in bs.element_problems(page)]
+            + [f"TRY-PAGE head {p}" for p in bs.head_meta_problems(page)] + [f"TRY-PAGE link {p}" for p in bs.link_problems(page)])
 
 
 def build(base, words, targets=None, version=None):
-    raise NotImplementedError("build")
+    """The page for the map's strings `base` and our words `words`; Refused (a list of lines) on anything wrong. `targets` None is TRY_TARGETS as it stands."""
+    v = tuple((version or sys.version_info)[:2])
+    if v < MIN_PYTHON:
+        raise Refused([f"TRY-PYTHON {v[0]}.{v[1]} is older than {MIN_PYTHON[0]}.{MIN_PYTHON[1]}: its html.parser reads the page differently, so a page check would be false"])
+    targets = TRY_TARGETS if targets is None else targets
+    bad = target_problems(targets)
+    if bad:
+        raise Refused(bad)
+    check_strings(base, words)
+    page = render(words, targets)
+    bad = page_problems(page, targets)
+    if bad:
+        raise Refused(bad)
+    return page
 
 
 def _json(path):
@@ -82,10 +182,54 @@ def _json(path):
     return json.loads(data.decode("utf-8", "strict"))
 
 
+class _Once(argparse.Action):
+    """An option given twice is a usage error (argparse would silently keep the last)."""
+    def __call__(self, parser, namespace, values, option_string=None):
+        if getattr(namespace, self.dest, None) is not None:
+            parser.error(f"{option_string} given twice")
+        setattr(namespace, self.dest, values)
+
+
 def main(argv=None):
-    if "--selftest" in (sys.argv[1:] if argv is None else argv):
+    ap = argparse.ArgumentParser(add_help=True, allow_abbrev=False)
+    for opt in ("--strings", "--try-strings", "--out"):
+        ap.add_argument(opt, action=_Once)
+    ap.add_argument("--selftest", action="store_true")
+    a = ap.parse_args(argv)
+    if a.selftest:
         return selftest()
-    raise NotImplementedError("main")
+    if not all((a.strings, a.try_strings, a.out)):
+        ap.print_usage(sys.stderr)
+        return 2
+    if os.path.lexists(a.out):
+        print(f"TRY-OUT {a.out} exists")
+        return 1
+    read, bad = [], []
+    for path in (a.strings, a.try_strings):
+        try:
+            read.append(_json(path))
+        except UnicodeDecodeError:
+            bad.append(f"TRY-READ {path} not-utf-8")
+        except ValueError:
+            bad.append(f"TRY-READ {path} not-json")
+        except Exception as x:   # the bounded reader's refusals: missing, symlink, outside, not-a-regular-file, too-large, unreadable
+            bad.append(f"TRY-READ {path} {x.args[0] if x.args and isinstance(x.args[0], str) else type(x).__name__}")
+    if bad:
+        print("\n".join(bad))
+        return 1
+    try:
+        page = build(read[0], read[1])
+    except Refused as r:
+        print("\n".join(r.args[0]))
+        return 1
+    try:
+        with open(a.out, "x", encoding="utf-8", newline="\n") as f:   # "x": never over an existing file, even one that appeared since the check above
+            f.write(page)
+    except OSError as x:
+        print(f"TRY-OUT {a.out} {x.strerror or type(x).__name__}")
+        return 1
+    print(f"try page written: {a.out} ({len(page.encode())} bytes)")
+    return 0
 
 
 # ---- self-test
