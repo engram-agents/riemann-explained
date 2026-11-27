@@ -3225,6 +3225,7 @@ def c_fold_resize_to_desktop(b, S0, engine):
 def c_fold_mutants(b, S0, engine):
     """FD8: four mutants, each turns a case red: the fold on pointerdown removed (FD3), the bar's height raised to 120 px (FD2), the toolbar floated over the map while folded (FD2), the phone media query widened to 1400 px (FD5)."""
     muts = {
+        "a sheet does not fold": ({"page/viewfold.js": lambda x: x.replace('{ if (!sheet.hidden) fold(null); }', '{ }').replace("    if (!sheet.hidden) fold(null);\n  }\n", "  }\n")}, c_fold_sheet_folds),
         "no fold on a pan": ({"page/viewfold.js": lambda t: t.replace("> PAN_PX", "> 100000")}, c_fold_triggers),
         "fold on pointerdown": ({"page/viewfold.js": lambda t: t.replace("down = { x: e.clientX, y: e.clientY }; }", "down = { x: e.clientX, y: e.clientY }; fold(null); }")}, c_fold_tap_holds),
         "no refit after a press": ({"page/app.js": lambda t: t.replace('t.closest("#graph-show-all, .view-switch")', 't.closest("#nothing")')}, c_fold_after),
@@ -3384,6 +3385,36 @@ def c_fold_about_copies(b, S0, engine):
         S.stop()
 
 
+def c_fold_sheet_folds(b, S0, engine):
+    """FD12: at phone size whenever a sheet is open the header is folded: a page loaded with a direct link (#id of a step) opens its sheet with the header already
+    folded; a hash that opens a sheet later folds it; closing the sheet leaves it folded; on a desktop window nothing folds."""
+    for w, h in FOLD_PHONES:
+        S = fold_served(engine, True, None, False, "graphview")
+        try:
+            pg = Pg(b, S.base + "graph/index.html#sk-file-1", w, h, mobile=True).settled()
+            pg.wait("document.getElementById('graph-sheet').hidden === false", 6000); pg.page.wait_for_timeout(150)
+            assert fold_is_bar(pg), (w, h, "a direct link left the header open", pg.ev(FOLD_RECTS_JS)["intro"])
+            pg.page.click("#graph-sheet-close"); pg.page.wait_for_timeout(150)
+            assert fold_is_bar(pg), "closing the sheet reopened the header"
+            pg.close()
+            pg = Pg(b, S.base + "graph/index.html", w, h, mobile=True).settled()
+            assert not fold_is_bar(pg)
+            pg.ev("location.hash = '#sk-part'")
+            pg.wait("document.getElementById('graph-sheet').hidden === false", 6000); pg.page.wait_for_timeout(150)
+            assert fold_is_bar(pg), "a hash that opened a sheet left the header open"
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+    S = fold_served(engine, True, None, False, "graphview")
+    try:
+        pg = Pg(b, S.base + "graph/index.html#sk-file-1", 1280, 900).settled()
+        pg.wait("document.getElementById('graph-sheet').hidden === false", 6000); pg.page.wait_for_timeout(150)
+        assert not fold_is_bar(pg), "the header folded on a desktop window"
+        pg.close()
+    finally:
+        S.stop()
+
+
 FOLD_CASES = [
     ("FD1: on a phone the header starts compact: a quarter of the window at most, the sentence whole, no scope line", c_fold_start_compact),
     ("FD2: under 520 px of window height the page starts folded: a bar of 48 px at most, the toolbar in the flow under it, the map area 85 percent, no box under the toolbar", c_fold_short_window_starts_folded),
@@ -3395,7 +3426,8 @@ FOLD_CASES = [
     ("FD9: a tap on a box in the start state opens that same box, at both phone sizes", c_fold_tap_holds),
     ("FD10: after the fold the map uses the larger stage: a tap opens the right box, Show all and Graph frame everything inside it", c_fold_after),
     ("FD11: on a phone the About panel also holds the header's sentence and scope line, first; none on a desktop window or the live map", c_fold_about_copies),
-    ("FD8: five mutants of the fold each turn a case red", c_fold_mutants),
+    ("FD12: at phone size an open sheet folds the header: a direct link at load, a hash later; closing leaves it folded; desktop unchanged", c_fold_sheet_folds),
+    ("FD8: six mutants of the fold each turn a case red", c_fold_mutants),
 ]
 
 

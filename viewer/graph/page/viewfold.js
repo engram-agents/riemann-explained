@@ -50,6 +50,15 @@ export function createFold({ doc, layer, signal, afterFold }) {
   layer.addEventListener("pointerup", () => { down = null; }, { capture: true, signal });
   layer.addEventListener("pointercancel", () => { down = null; }, { capture: true, signal });
   layer.addEventListener("click", (e) => { const t = e.target; win.setTimeout(() => fold(t), 0); }, { capture: true, signal });
+  /* A SHEET OPEN FOLDS THE HEADER (Kepler 39429): a reader who arrives by a link to a step (the address carries #id on load, or the hash changes) has touched nothing in the
+     layer, yet is reading the note, not the introduction. So whenever the sheet is shown on a phone the header folds, and closing the sheet leaves it folded. */
+  const sheet = doc.getElementById("graph-sheet");
+  let watch = null;
+  if (sheet && win.MutationObserver) {
+    watch = new win.MutationObserver(() => { if (!sheet.hidden) fold(null); });
+    watch.observe(sheet, { attributes: true, attributeFilter: ["hidden"] });
+    if (!sheet.hidden) fold(null);
+  }
   phone.addEventListener("change", () => { if (!phone.matches) putBack(); }, { signal });
   /* THE ABOUT PANEL (contract (c): what the header does not show on a phone is also in About). On a phone the panel gets COPIES of the header's own sentence and
      scope line, put first and marked data-fold-copy; they are taken out again whenever the panel is opened on a window that is not a phone. The nodes are the shell's
@@ -66,5 +75,5 @@ export function createFold({ doc, layer, signal, afterFold }) {
     });
     for (const c of copies.reverse()) aboutEl.insertBefore(c, aboutEl.firstChild);
   }
-  return { dispose: putBack, folded: () => folded, syncAbout };
+  return { dispose: () => { if (watch) watch.disconnect(); putBack(); }, folded: () => folded, syncAbout };
 }
