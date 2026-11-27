@@ -14407,6 +14407,49 @@ def _selftest_cases():
         return _eq((res(dict(base, key_scope_text=T)), res(dict(base, note_label=T.replace("{readme_quote}", quote))), res(dict(base, key_scope_text=old)), sorted(OF_THE_PROOF_OK)),
                    ([], [], [("STRINGS-FORBIDDEN", "key_scope_text")], ["map_row_sketch"]))
 
+    @case("GROW1", "a kinds row of a caller's table may carry `open_words` {close, open} (two keys of `strings`): the row in symbols.kinds then has the key open_words with exactly those two keys, "
+                   "index.json `strings` holds them, an open key that `strings` lacks is `GRAPH-STRINGS <key> missing`, open_words that is not exactly {close, open} of strings is refused "
+                   "`GRAPH-STRINGS kinds.<row>.open_words must be an object with exactly the keys open and close, both strings`, and so is one on a states or proofs row (`GRAPH-SYMBOL`); a row "
+                   "without it is written without the key (the live table has none)")
+    def _():
+        ow = {"open": "open_parts", "close": "close_parts"}
+        rows3 = {"part": {"class": "kind-part", "words": "symbol_kind_part", "open_words": ow}, "group": {"class": "kind-group", "words": "symbol_kind_group"},
+                 "file": {"class": "kind-file", "words": "symbol_kind_file", "open_words": {"open": "open_statements", "close": "close_statements"}}}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_group="G", symbol_kind_file="F", open_statements="Open its statements", close_statements="Close its statements")
+        rows = [gr_row("a", kind="part", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
+        ix = objs["graph/index.json"]
+        dangling = {k: v for k, v in st.items() if k != "close_statements"}
+        bad = lambda row: [tuple(e) for e in _graph_files(rows, "c0", st, symbols=dict(own, kinds=dict(rows3, group=dict(rows3["group"], open_words=row))))[0]]
+        on_state = dict(own, states=dict(own["states"], read=dict(own["states"]["read"], open_words=ow)))
+        live = _graph_files([gr_row("a")], "c0", _strings())[1]["graph/index.json"]
+        want = "must be an object with exactly the keys open and close, both strings"
+        return _eq((errs, ix["symbols"]["kinds"]["part"]["open_words"], ix["symbols"]["kinds"]["file"]["open_words"], "open_words" in ix["symbols"]["kinds"]["group"],
+                    ix["strings"]["open_statements"], [tuple(e) for e in _graph_files(rows, "c0", dangling, symbols=own)[0]],
+                    bad({"open": "open_parts"}), bad(dict(ow, extra="x")), bad({"open": "open_parts", "close": 5}),
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=on_state)[0]], any("open_words" in v for v in live["symbols"]["kinds"].values())),
+                   ([], ow, {"open": "open_statements", "close": "close_statements"}, False, "Open its statements", [("GRAPH-STRINGS", "close_statements", "missing")],
+                    [("GRAPH-STRINGS", "kinds.group.open_words", want)], [("GRAPH-STRINGS", "kinds.group.open_words", want)], [("GRAPH-STRINGS", "kinds.group.open_words", want)],
+                    [("GRAPH-SYMBOL", "states.read", "has open_words (only a kinds row may)")], False))
+
+    @case("GRSH1", "`_graph_files(status_hidden=)`: the kinds whose cards draw no state and no proof, default GRAPH_STATUS_HIDDEN (part, group, file; the bytes with the argument equal to the default "
+                   "are the bytes without it): a step of a kind outside it whose state is `none` while the order list `states` is empty is `GRAPH-ORDER state none`; the same step builds when "
+                   "its kind is named in `status_hidden`, and a kind that is not named is still judged")
+    def _():
+        rows3 = {k: {"class": f"kind-{k}", "words": f"symbol_kind_{k}"} for k in ("part", "item")}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_item="I")
+        orders = {"kinds": ["part", "item"], "states": [], "proofs": []}
+        rows = [gr_row("a", kind="part", state="none", proof="none"), gr_row("b", "a", 0, kind="item", state="none", proof="none")]
+        plain = _graph_files(rows, "c0", st, symbols=own, orders=orders)
+        same = _graph_files(rows, "c0", st, symbols=own, orders=orders, status_hidden=GRAPH_STATUS_HIDDEN)
+        hidden = _graph_files(rows, "c0", st, symbols=own, orders=orders, status_hidden=GRAPH_STATUS_HIDDEN + ("item",))
+        other = _graph_files(rows, "c0", st, symbols=own, orders=orders, status_hidden=GRAPH_STATUS_HIDDEN + ("zeta",))
+        BOTH = [("GRAPH-ORDER", "state", "none"), ("GRAPH-ORDER", "proof", "none")]
+        return _eq(([tuple(e) for e in plain[0]], [tuple(e) for e in same[0]], hidden[0], sorted(hidden[1]) == ["graph/index.json", "graph/step/a.json", "graph/step/b.json"], [tuple(e) for e in other[0]]),
+                   (BOTH, BOTH, [], True, BOTH))
+
     @case("GRCK1", "`_graph_files(child_kinds=)`: off by default (the bytes equal an explicit child_kinds=False and no card has `child_kind`); on, every card (the step file's card and the "
                    "closed child entry) with children that all share one kind has `child_kind` = that kind, and it is omitted when the children differ and when there are none; the "
                    "card in a step's own file and the child entry in its parent's file agree")
