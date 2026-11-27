@@ -42,7 +42,9 @@ In Chromium, for each viewport (390x844 mobile with touch; 1280x900):
                 the page, never from a list of known covers. A box that cannot fit even at the engine's smallest zoom FAILs with its scale printed, never
                 SKIPs. The data's open_scale_floor is not read. A sheet with no parts button, or parts that do not open, is a FAIL.
                 The line: `PASS|FAIL <vp> framed <id> scale=<k> folded=<yes|no|n/a> box=<l,t,r,b> stage=<l,t,r,b> viewport=<w>x<h>`, a FAIL naming
-                its reasons first (`box outside stage by <side>=<px>`, `overlaid at <probe>: <tag>#<id>.<class>`, every failing probe).
+                its reasons first (`box outside stage by <side>=<px>`, `overlaid at <probe>: <tag>#<id>.<class>`, every failing probe). A console error, uncaught
+                exception or failed/>=400 request in the framed run's own page (the run at 360x640 has no other check to see it) is a FAIL too, with
+                `console: <first 200 chars>` / `requests: <first 200 chars>` among the reasons.
                 No part with parts to open in the tree: SKIP `framed (no part with parts to open)`, a FAIL with --require-framed (which is a usage error,
                 exit 2, with --only-viewport 1280x900: the framed check runs at phone sizes only). `--require-floor` is a usage error naming --require-framed.
 
@@ -484,7 +486,8 @@ def framed_reasons(m):
 def framed_check(browser, base, vp, part_id):
     """One phone size of the framed check: deep-link the part, press the open sheet's parts button, let the engine (and the header fold) settle, then
     measure the opened box against the map stage in one read."""
-    v = View(browser, base + "#" + part_id, vp, {"console": [], "requests": []})
+    shared = {"console": [], "requests": []}       # this View's own lists, read like run_viewport's: a page error after the parts press is not unseen at a size where no other check runs
+    v = View(browser, base + "#" + part_id, vp, shared)
     try:
         if not (v.wait(SETTLED, BOOT_TIMEOUT_MS) and v.ev(BOOTED)):
             out("FAIL", vp, "framed", "the map did not boot on %s, so the opened framing was not measured" % part_id)
@@ -515,6 +518,10 @@ def framed_check(browser, base, vp, part_id):
                 % (part_id, rect_text(b), rect_text(f)))
             return
         reasons = framed_reasons(m)
+        if shared["console"]:
+            reasons.append("console: " + "; ".join(shared["console"])[:200])
+        if shared["requests"]:
+            reasons.append("requests: " + "; ".join(shared["requests"])[:200])
         facts = "%s scale=%.3f folded=%s box=%s stage=%s viewport=%dx%d" % (part_id, k, folded, rect_text(b), rect_text(m["stage"]), m["vw"], m["vh"])
         if reasons:
             out("FAIL", vp, "framed", "; ".join(reasons) + " | " + facts)

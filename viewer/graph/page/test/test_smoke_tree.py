@@ -1178,6 +1178,66 @@ def t42h_only_viewport_phone_runs_framed_at_both_phone_sizes(tmp):
     assert code == 0 and not [l for l in o.splitlines() if " framed " in l], (code, o)
 
 
+# ---- fold 1 of R2: the button lookup is by class (a kind row's open_words relabels it), and the framed View is not blind ----
+# Two strings keys the real fixture already carries, whose values differ from open_parts / close_parts: the tree has no key to add (an extra string is refused).
+RELABEL_THEOREM = lambda index: index["symbols"]["kinds"]["theorem"].update({"open_words": {"open": "claim_more", "close": "claim_less"}})
+
+
+def drawn_parts_label(out, vp, part_id):
+    """What the page DRAWS on the picked part's parts button at `vp`: the sheet's own `button.sheet-tool-main` text, read in a browser of this process
+    (the tool's lines do not print it)."""
+    import smoke_tree as S
+    srv, host = S.serve(out)
+    try:
+        with S.sync_playwright() as p:
+            b = p.chromium.launch(executable_path=S.T.SHELL[0], args=S.LAUNCH_ARGS) if S.T.SHELL else p.chromium.launch(args=S.LAUNCH_ARGS)
+            v = S.View(b, host + "graph/#" + part_id, vp, {"console": [], "requests": []})
+            try:
+                assert v.wait(S.SETTLED, S.BOOT_TIMEOUT_MS) and v.wait("document.querySelector('#graph-sheet button.sheet-tool-main')", S.OPEN_TIMEOUT_MS), "no parts button drawn"
+                return v.ev("document.querySelector('#graph-sheet button.sheet-tool-main').textContent")
+            finally:
+                v.close()
+                b.close()
+    finally:
+        srv.shutdown()
+
+
+def t43_framed_finds_a_button_the_kind_row_relabelled(tmp):
+    """F1: the picked part's kind row carries open_words naming two other strings keys, so the page draws the parts button with THOSE words (read in a
+    browser here, so the fixture really relabels it) and not open_parts: the framed check still finds it, by its class, and PASSes at both phone sizes.
+    A check that finds the button by the text open_parts would FAIL `no parts button` here, and only here."""
+    out = build(tmp, index_edit=RELABEL_THEOREM)
+    part = real_top()[0]
+    idx = json.load(open(os.path.join(out, "graph", "index.json"), encoding="utf-8"))
+    assert idx["symbols"]["kinds"]["theorem"]["open_words"]["open"] == "claim_more" and idx["strings"]["claim_more"] != idx["strings"]["open_parts"], idx["strings"]
+    label = drawn_parts_label(out, "390x844", part)
+    assert label == idx["strings"]["claim_more"] and label != idx["strings"]["open_parts"], (label, idx["strings"]["open_parts"])
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 0, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("PASS %s framed %s scale=" % (vp, part)), (vp, o)
+    assert "no parts button" not in o, o
+
+
+# A COPY of the page whose parts button logs a console error when pressed: nothing else in the run presses it, so the error exists only in the framed run.
+ERROR_ON_PARTS_PRESS = sub_once('b.addEventListener("click", () => (rec.partsOpen ?', 'b.addEventListener("click", () => (console.error("smoke-after-parts-press"), rec.partsOpen ?')
+
+
+def t43b_framed_view_reports_its_own_console(tmp):
+    """F2: the framed check's View collects its console errors and failed requests like the viewport run's, so a page that errors only after the parts
+    button is pressed FAILs `framed` with a `console:` reason at each phone size, while the console check of the full-size run (which never presses the
+    button) stays PASS. The framed line still carries the measured facts."""
+    out = build(tmp, mutate={"page/sheet.js": ERROR_ON_PARTS_PRESS})
+    code, o = run_tool(out, "--no-note")
+    assert code == 1, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("FAIL %s framed " % vp) and "console: smoke-after-parts-press" in got[0], (vp, o)
+        assert " | %s scale=" % real_top()[0] in got[0] and "box outside stage" not in got[0], got[0]      # the facts are still on the line; the box itself was fine
+    assert {l.split()[1] for l in lines(o, "PASS", "console")} == {"390x844", "1280x900"}, o      # the error exists only in the framed run
+
+
 CASES = [
     ("T1 the real fixture (--no-note): exit 0, SMOKE PASS, three ids, the checks named", t1_real_fixture),
     ("T1b the flat shape (A1): TREE flat, exit 0", t1b_flat_shape),
@@ -1240,6 +1300,8 @@ CASES = [
     ("T42c (c): an overlay the rect math cannot see fails the probe and is named", t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe),
     ("T42f (f): no part to open is a SKIP, a FAIL when required", t42f_no_part_to_open_is_a_skip_or_a_required_fail),
     ("T42h (h): --only-viewport 390x844 runs framed at both phone sizes", t42h_only_viewport_phone_runs_framed_at_both_phone_sizes),
+    ("T43 F1: a button the kind row relabelled (open_words) is found by the framed check", t43_framed_finds_a_button_the_kind_row_relabelled),
+    ("T43b F2: a console error only after the parts press fails the framed line, with a console reason", t43b_framed_view_reports_its_own_console),
 ]
 
 # The cases that start a browser (the tool's whole run, or the page suite's). The rest speak plain HTTP to the tool's server or call its functions,
@@ -1255,7 +1317,8 @@ NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_st
                  t41_framed_check_names_a_missing_parts_button, t41b_framed_check_names_parts_that_did_not_open,
                  t41d_no_top_part_with_children_is_a_named_fail, t42_framed_passes_on_the_real_fixture_without_a_floor_key,
                  t42b_a_floor_the_engine_accepts_but_the_stage_cannot_hold_fails_framed_alone, t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe,
-                 t42h_only_viewport_phone_runs_framed_at_both_phone_sizes}
+                 t42h_only_viewport_phone_runs_framed_at_both_phone_sizes,
+                 t43_framed_finds_a_button_the_kind_row_relabelled, t43b_framed_view_reports_its_own_console}
 
 
 def run_cases(cases, only, no_browser=False):
