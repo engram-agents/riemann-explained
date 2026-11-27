@@ -3514,7 +3514,7 @@ def c_gv_view_routes_close(b, S0, engine):
     box, pressing 'Show its file' and pressing Graph each leave the panel and the view exactly as they were. The route names are the module's own VIEW_ROUTES."""
     S, pg = gv(b, engine)
     try:
-        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["spine-open", "spine-show-file", "view-cards", "view-graph"]
+        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["nb-more", "nb-move", "nb-spine", "spine-open", "spine-show-file", "view-cards", "view-graph"]
         gv_press(pg, "graph")
         pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
         tap(pg, "spine-made-a")
@@ -3569,6 +3569,261 @@ GV_CASES = [
     ("GV18: on a tree with an empty card block, 'Show its file in Cards' opens the file's made card in Cards", c_gv_show_file_made_card),
     ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
 ]
+
+
+# ---- the file neighbourhood (neighbourhood.js, graphview.js neighbourhood(), the routes nb-move, nb-more, nb-spine): the nbview fixture, made-up text ----
+NB_USES = "/graph/uses.json"
+NB_MUTATE = None      # set by the mutants case only: {relative path: function(text) -> text} applied to the served copy
+
+
+def nbp(b, engine, uses_edit=None, width=390, height=844, index_edit=None):
+    """The nbview fixture served (14 files, a four-box spine, uses.json, the nb_ words), the failure-event listener registered before the page loads."""
+    root = tempfile.mkdtemp(prefix="pg-nb-")
+    assemble.assemble(root, engine, fix="nbview", uses_edit=uses_edit, index_edit=index_edit, mutate=NB_MUTATE)
+    Handler.seen.clear()
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", width, height, init=GV_INIT).settled()
+    return S, pg
+
+
+def nb_requests(path):
+    return len([x for x in Handler.seen if x.split("?")[0] == path])
+
+
+def nb_open(pg, file_hash):
+    """Press Graph, then name a file by address: its neighbourhood."""
+    gv_press(pg, "graph")
+    pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+    pg.ev("location.hash = %s" % json.dumps("#" + file_hash))
+    pg.wait("document.querySelector('.nb-root .nb-centre') && document.querySelector('.nb-centre').getAttribute('data-id') === %s" % json.dumps(file_hash), 6000)
+
+
+NB_STATE_JS = """(() => { const q = (s) => [...document.querySelectorAll(s)];
+  const side = (c) => ({ heading: (document.querySelector(c + ' .nb-heading') || {}).textContent, rows: q(c + ' .nb-row:not(.nb-more)').map((r) => r.getAttribute('data-id')),
+                         more: (document.querySelector(c + ' .nb-more') || {}).textContent || null, empty: (document.querySelector(c + ' .nb-empty') || {}).textContent || null });
+  return { centre: (document.querySelector('.nb-centre') || {}).getAttribute ? document.querySelector('.nb-centre').getAttribute('data-id') : null, back: (document.querySelector('.nb-back') || {}).textContent,
+           above: side('.nb-above'), below: side('.nb-below'), hash: location.hash, hist: history.length, nbShown: !document.querySelector('.graph-nb').hidden,
+           spineShown: !document.querySelector('.graph-spine').hidden, cardsShown: !document.querySelector('#graph').hidden, events: window.__gp }; })()"""
+
+
+def c_nb_lazy_and_open(b, S0, engine):
+    """NB1: uses.json is NOT requested before a neighbourhood is asked for (not at start, not when Graph is pressed); a spine box's button 'Show its file in the graph' opens that
+    file's neighbourhood: the centre, 'Built on it (1)' above with its one file, the empty word below, the back line 'back to the main results', one history entry (the address),
+    uses.json requested once; a second neighbourhood does not request it again."""
+    S, pg = nbp(b, engine)
+    try:
+        assert nb_requests(NB_USES) == 0
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        assert nb_requests(NB_USES) == 0, "uses.json was requested by pressing Graph"
+        h0 = pg.ev("history.length")
+        tap(pg, "spine-made-b")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        assert pg.ev("document.querySelector('#graph-sheet-body .spine-show-file').textContent") == "Show its file in the graph"
+        pg.page.click("#graph-sheet-body .spine-show-file")
+        pg.wait("document.querySelector('.nb-root')", 6000)
+        st = pg.ev(NB_STATE_JS)
+        assert st["centre"] == "nb-f02" and st["hash"] == "#nb-f02" and st["hist"] == h0 + 1, st
+        assert st["back"] == "\u2039 Back to the main results", st["back"]
+        assert st["above"]["heading"] == "Built on it (1)" and st["above"]["rows"] == ["nb-f05"] and st["above"]["more"] is None, st["above"]
+        assert st["below"]["heading"] == "It uses (0)" and st["below"]["rows"] == [] and st["below"]["empty"] == "Uses no other file on this map.", st["below"]
+        assert st["nbShown"] and not st["spineShown"] and not st["cardsShown"] and st["events"] == [], st
+        assert nb_requests(NB_USES) == 1
+        pg.ev("location.hash = '#nb-f05'")
+        pg.wait("document.querySelector('.nb-centre').getAttribute('data-id') === 'nb-f05'", 6000)
+        assert nb_requests(NB_USES) == 1, "uses.json was read again"
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_nb_order_and_count(b, S0, engine):
+    """NB2: a file with six users and seven used files: the rows are heaviest by names first, ties by title (code-unit order, so the markup title '<img...' comes before 'File') then
+    id; the headings say the side's TOTAL; as many rows as the stage fits beside the centre (the page's own rule, written out here from the measured stage height), at least two, and
+    the last place is '+ n more' with n the rest. On this shell (no folded header) the stage at 390x844 is 592 px: two rows and the more row; at 390x1200 it is 948 px: the six users
+    all show with no more row, the used files show five and '+ 2 more'; the Lean shell folds its header and gets four rows at 844 (the fold cases)."""
+    order_above = ["nb-f09", "nb-f10", "nb-f11", "nb-f14", "nb-f12", "nb-f13"]
+    order_below = ["nb-f08", "nb-f01", "nb-f03", "nb-f02", "nb-f04", "nb-f06", "nb-f07"]
+
+    def shown(total, stage_h):
+        room = stage_h - 44 - 120 - 2 * 30 - 12
+        fit = max(2, int(room // 2 // 52))
+        return total if total <= fit else max(2, fit - 1)
+    for w, h, want_above, want_below in ((390, 844, 2, 2), (390, 1200, 6, 5)):
+        S, pg = nbp(b, engine, width=w, height=h)
+        try:
+            nb_open(pg, "nb-f05")
+            stage_h = pg.ev("document.querySelector('.graph-nb').clientHeight")
+            st = pg.ev(NB_STATE_JS)
+            assert st["above"]["heading"] == "Built on it (6)" and st["below"]["heading"] == "It uses (7)", st
+            assert shown(6, stage_h) == want_above and shown(7, stage_h) == want_below, (w, h, stage_h)
+            assert st["above"]["rows"] == order_above[:want_above] and st["below"]["rows"] == order_below[:want_below], (w, h, st["above"], st["below"])
+            assert st["above"]["more"] == (None if want_above == 6 else "+ %d more" % (6 - want_above)), (w, h, st["above"]["more"])
+            assert st["below"]["more"] == "+ %d more" % (7 - want_below), (w, h, st["below"]["more"])
+            names = pg.ev("[...document.querySelectorAll('.nb-above .nb-row:not(.nb-more) .nb-names')].map((n) => n.textContent)")
+            assert names[0] == "4 names" and names[1] == "2 names", names
+            assert pg.ev("[...document.querySelectorAll('.nb-row')].every((r) => r.getBoundingClientRect().height >= 44)"), "a row is under 44 px"
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+    S, pg = nbp(b, engine, width=390, height=500)      # a short window: at least two rows, whatever the stage
+    try:
+        nb_open(pg, "nb-f05")
+        st = pg.ev(NB_STATE_JS)
+        assert len(st["above"]["rows"]) == 2 and len(st["below"]["rows"]) == 2 and st["above"]["more"] == "+ 4 more" and st["below"]["more"] == "+ 5 more", st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_nb_history(b, S0, engine):
+    """NB3: three moves and three Backs. An address makes f05 the centre (back line: the main results); tapping a row makes f09 the centre (one history entry; the back line names
+    the file the reader came from) and again f01; the back line, a tap, is history.back(); the browser's Back does the same; after the third Back the main results show again."""
+    S, pg = nbp(b, engine)
+    try:
+        nb_open(pg, "nb-f05")
+        h0 = pg.ev("history.length")
+        pg.page.click('.nb-above .nb-row[data-id="nb-f09"]')
+        pg.wait("document.querySelector('.nb-centre').getAttribute('data-id') === 'nb-f09'", 6000)
+        st = pg.ev(NB_STATE_JS)
+        assert st["hash"] == "#nb-f09" and st["hist"] == h0 + 1 and st["back"] == "\u2039 Back to File nb-f05", st
+        pg.page.click('.nb-below .nb-row[data-id="nb-f01"]')
+        pg.wait("document.querySelector('.nb-centre').getAttribute('data-id') === 'nb-f01'", 6000)
+        st = pg.ev(NB_STATE_JS)
+        assert st["hash"] == "#nb-f01" and st["hist"] == h0 + 2 and st["back"] == "\u2039 Back to File nb-f09", st
+        pg.page.click(".nb-back")                 # the line is the browser's Back
+        pg.wait("document.querySelector('.nb-centre').getAttribute('data-id') === 'nb-f09'", 6000)
+        assert pg.ev(NB_STATE_JS)["hash"] == "#nb-f09"
+        pg.ev("history.back()")                   # the browser's own
+        pg.wait("document.querySelector('.nb-centre').getAttribute('data-id') === 'nb-f05'", 6000)
+        assert pg.ev(NB_STATE_JS)["back"] == "\u2039 Back to the main results"
+        pg.ev("history.back()")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4 && !document.querySelector('.graph-spine').hidden", 6000)
+        st = pg.ev(NB_STATE_JS)
+        assert not st["nbShown"] and st["spineShown"] and st["hash"] == "", st
+        assert nb_requests(NB_USES) == 1
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_nb_more_list(b, S0, engine):
+    """NB4: the '+ n more' row opens the WHOLE side as a list in the sheet, in the same order, with the side's heading; a tap on a row there makes that file the centre (the sheet
+    closes, one history entry); the list is made of the same rows."""
+    S, pg = nbp(b, engine)
+    try:
+        nb_open(pg, "nb-f05")
+        pg.page.click(".nb-above .nb-more")
+        pg.wait("document.querySelector('#graph-sheet-body .nb-full')", 6000)
+        got = pg.ev("""(() => ({ heading: document.querySelector('#graph-sheet-body .nb-heading').textContent,
+          rows: [...document.querySelectorAll('#graph-sheet-body .nb-row')].map((r) => r.getAttribute('data-id')) }))()""")
+        assert got["heading"] == "Built on it (6)" and got["rows"] == ["nb-f09", "nb-f10", "nb-f11", "nb-f14", "nb-f12", "nb-f13"], got
+        h0 = pg.ev("history.length")
+        pg.page.click('#graph-sheet-body .nb-row[data-id="nb-f13"]')
+        pg.wait("document.querySelector('.nb-centre').getAttribute('data-id') === 'nb-f13' && document.getElementById('graph-sheet').hidden", 6000)
+        assert pg.ev("history.length") == h0 + 1 and pg.ev("location.hash") == "#nb-f13"
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_nb_hostile_title(b, S0, engine):
+    """NB5: a title with markup stays text: in the full list of a side, in a row once its file is the centre's neighbour (nb-f14 uses nb-f05: its title is in f05's list), and in the
+    centre's face: no element from it, a backtick span is code."""
+    S, pg = nbp(b, engine)
+    try:
+        nb_open(pg, "nb-f05")
+        pg.page.click(".nb-above .nb-more"); pg.wait("document.querySelector('#graph-sheet-body .nb-full')", 6000)
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body img, #graph-sheet-body b, #graph-sheet-body i').length") == 0
+        t = pg.ev("document.querySelector('#graph-sheet-body .nb-row[data-id=\"nb-f14\"] .nb-title').textContent")
+        assert t == "<img src=x onerror=1> and <b>code</b> title", t
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .nb-row[data-id=\"nb-f14\"] .nb-title code').length") == 1
+        pg.page.click('#graph-sheet-body .nb-row[data-id="nb-f14"]')
+        pg.wait("document.querySelector('.nb-centre').getAttribute('data-id') === 'nb-f14'", 6000)
+        assert pg.ev("document.querySelectorAll('.nb-root img, .nb-root b, .nb-root i').length") == 0
+        assert pg.ev("document.querySelector('.nb-centre .face-title').textContent") == "<img src=x onerror=1> and <b>code</b> title"
+        assert pg.ev("document.querySelectorAll('.nb-centre .face-title code').length") == 1
+        row = pg.ev("document.querySelector('.nb-below .nb-row').getAttribute('data-id')")
+        assert row == "nb-f05", row
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_nb_refusal(b, S0, engine):
+    """NB6: a uses.json that is refused (used_by not the inverse of uses: one same_group flipped) fails the neighbourhood only: the notice, the event with the code
+    uses-inverse-mismatch, the spine still showing, the address not made an entry of the history by the page; a file's own address in Cards (no Graph view) is unaffected."""
+    def flip(u):
+        u["used_by"]["nb-f05"][0]["same_group"] = not u["used_by"]["nb-f05"][0]["same_group"]
+    S, pg = nbp(b, engine, uses_edit=flip)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        pg.ev("location.hash = '#nb-f05'")
+        pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+        st = pg.ev(NB_STATE_JS)
+        assert pg.ev("document.getElementById('graph-notice').textContent") == "The graph could not be opened; tap Graph to try again."
+        assert st["events"] == [{"stage": "graph", "code": "uses-inverse-mismatch"}] and st["spineShown"] and not st["nbShown"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_nb_addresses(b, S0, engine):
+    """NB7: in the Graph view an address of a step that is no file (a group) shows the main results (the Graph view stays, no card opens); an id that names no step is the refused-link
+    notice and nothing changes."""
+    S, pg = nbp(b, engine)
+    try:
+        nb_open(pg, "nb-f05")
+        pg.ev("location.hash = '#nb-g-a'")
+        pg.wait("!document.querySelector('.graph-spine').hidden", 6000)
+        st = pg.ev(NB_STATE_JS)
+        assert st["spineShown"] and not st["nbShown"] and not st["cardsShown"] and pg.ev("document.getElementById('graph-sheet').hidden"), st
+        pg.ev("location.hash = '#nb-nothing'")
+        pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+        assert pg.ev("document.getElementById('graph-notice').textContent") == "That address does not name a step on this map."
+        assert pg.ev(NB_STATE_JS)["spineShown"]
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_nb_mutants(b, S0, engine):
+    """NB8: six mutants of the neighbourhood, each turns a case red: rows ordered by title only (NB2), no history entry for a move (NB3), uses.json read when Graph is pressed (NB1),
+    the title put in as one plain string (NB5), every row shown with no '+ n more' (NB2), the back line not asking for the browser's Back (NB3)."""
+    global NB_MUTATE
+    muts = {
+        "order by title only": ({"page/neighbourhood.js": lambda t: t.replace("(b.names - a.names) || ", "")}, c_nb_order_and_count),
+        "no history entry": ({"page/app.js": lambda t: t.replace('doc.defaultView.history.pushState({ nbFrom: from }, "", "#" + id);', "")}, c_nb_history),
+        "uses.json at the press of Graph": ({"page/graphview.js": lambda t: t.replace("spine = validateSpine(raw, index);", "spine = validateSpine(raw, index); await loadUses();")}, c_nb_lazy_and_open),
+        "title as a plain string": ({"page/neighbourhood.js": lambda t: t.replace("titleChildren(info ? info.title : row.id)", "[info ? info.title : row.id]")}, c_nb_hostile_title),
+        "no more row": ({"page/neighbourhood.js": lambda t: t.replace("return total <= fit ? total : Math.max(MIN_ROWS, fit - 1);", "return total;")}, c_nb_order_and_count),
+        "back line does not go back": ({"page/app.js": lambda t: t.replace("onBack: () => doc.defaultView.history.back(),", "onBack: () => {},")}, c_nb_history),
+    }
+    for name, (mut, fn) in muts.items():
+        NB_MUTATE = mut
+        try:
+            try:
+                fn(b, S0, engine)
+            except AssertionError:
+                continue
+            raise AssertionError("MUTANT SURVIVED: " + name)
+        finally:
+            NB_MUTATE = None
+
+
+NB_CASES = [
+    ("NB1: uses.json is read lazily, once; a spine box's button opens the file's neighbourhood (one history entry)", c_nb_lazy_and_open),
+    ("NB2: rows heaviest by names first, ties by title then id; the totals in the headings; as many as fit, at least two, then '+ n more'", c_nb_order_and_count),
+    ("NB3: three moves and three Backs (the back line, the browser's Back); one history entry per move; the main results again at the end", c_nb_history),
+    ("NB4: '+ n more' opens the whole side in the sheet; a row there makes that file the centre", c_nb_more_list),
+    ("NB5: a title with markup stays text in the rows and the full list", c_nb_hostile_title),
+    ("NB6: a refused uses.json fails the neighbourhood only: notice, event with its code, the spine stays", c_nb_refusal),
+    ("NB7: an address of a group shows the main results; an unknown id is the refused-link notice", c_nb_addresses),
+    ("NB8: six mutants of the neighbourhood each turn a case red", c_nb_mutants),
+]
+
+
 
 
 def main():
@@ -3700,6 +3955,8 @@ def main():
                     run("made B5: a made card's sheet looks the same as a markup card's (claim, status and note placement)" + vw, c_made_looks_like_markup, eng, mw, mh, mm)
                     run("made B6: a page with an article shows it, byte for byte as today; a made card only for an id it has none for" + vw, c_made_markup_wins, eng, mw, mh, mm)
                 run(GV_CASES[0][0], GV_CASES[0][1], eng)
+                for nname, nfn in NB_CASES:
+                    run(nname, nfn, eng)
                 if eng == "real":
                     for gname, gfn in GV_CASES[1:]:
                         run(gname, gfn, eng)

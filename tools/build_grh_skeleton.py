@@ -1278,10 +1278,13 @@ LINES_WORDS = {"key_lines_heading": "What a line is",
                "key_lines_text": "A line joins two files of the same group: the upper file uses definitions or results from the lower one. Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. Lean also uses results it fills in on its own without naming them; those uses are not counted.",
                "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming "
                                    "them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real."}   # final
-# the Graph view's seven words (G1; the values of site/strings-lean-graph.json, written once more here so the tool's own tests do not read the file they check)
-GRAPH_VIEW_WORDS = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "Each box is one of the main results the repository names in its last step.",
-                    "spine_content_label": "In the repository's words", "spine_lives_in": "Lives in: {title}", "spine_show_file": "Show its file in Cards",
-                    "graph_failed_notice": "The graph could not be opened; tap Graph to try again."}
+# the Graph view's words (G1 and G2; the values of site/strings-lean-graph.json, written once more here so the tool's own tests do not read the file they check)
+GRAPH_VIEW_WORDS = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "At the top are the main results the repository names in its last step. Below them, each box is one Lean file.",
+                    "spine_content_label": "In the repository's words", "spine_lives_in": "Lives in: {title}", "spine_show_file": "Show its file in the graph",
+                    "graph_failed_notice": "The graph could not be opened; tap Graph to try again.",
+                    "nb_built_on": "Built on it ({n})", "nb_uses": "It uses ({n})", "nb_names_one": "1 name", "nb_names_many": "{n} names", "nb_more": "+ {n} more",
+                    "nb_back": "\u2039 Back to {title}", "nb_back_spine": "\u2039 Back to the main results", "nb_empty_uses": "Uses no other file on this map.",
+                    "nb_empty_built_on": "No file on this map uses it."}
 
 
 def _strings_file(d, s=None, name="strings.json"):
@@ -2892,7 +2895,7 @@ def _selftest_cases():
 
     @case("OVL1", "the overlay of this checkout holds the page's optional words with these values, each equal to the literal typed here (and to the constants of the cases): note_label, "
                   "note_label_typeset, note_source, note_typeset_line, note_exact_button, note_render_button (final), key_kinds_note (final), and the three lines words, "
-                  "which are FINAL too: no value starts with `[proposal]` or `[placeholder]`, and the word `edge` is in none of the page words (the data key edge_basis is not a page word); `{n}` appears only in the four count words; with the three old optional words `strings` is 30 keys, "
+                  "which are FINAL too: no value starts with `[proposal]` or `[placeholder]`, and the word `edge` is in none of the page words (the data key edge_basis is not a page word); `{n}` appears only in the four count words and the four neighbourhood words that count (nb_built_on, nb_uses, nb_names_many, nb_more); with the three old optional words `strings` is 30 keys, "
                   "with all seven new ones 37, with none of the optional 29 (the fixture's note pair)")
     def _():
         typed = {"note_label": "The file's opening note, from the repository, unchanged", "note_label_typeset": "The file's opening note, from the repository",
@@ -2915,11 +2918,11 @@ def _selftest_cases():
                     sorted(k for k, v in ov.items() if v.startswith(("[proposal]", "[placeholder]"))), sorted(k for k, v in ov.items() if re.search(r"\bedges?\b", v, re.I)),
                     sorted(k for k, v in ov.items() if "{n}" in v), counts),
                    (typed, True, [], [],
-                    ["count_file_many", "count_file_one", "count_group_many", "count_group_one", ], (29, 30, 37, 34)))
+                    ["count_file_many", "count_file_one", "count_group_many", "count_group_one", "nb_built_on", "nb_more", "nb_names_many", "nb_uses"], (29, 30, 37, 34)))
 
     GO_CARDS = dict(OVERLAY_WORDS, **COUNT_WORDS, **OPTIONAL_WORDS, **NOTE_WORDS, key_lines_heading=LINES_WORDS["key_lines_heading"], key_lines_text=LINES_WORDS["key_lines_text"])   # every word but the Graph one
     GO_GRAPH = {"spine_lines_text": LINES_WORDS["spine_lines_text"]}
-    GO_GRAPH_FILE = dict(GO_GRAPH, **GRAPH_VIEW_WORDS)    # what site/strings-lean-graph.json holds: the spine's sentence and the Graph view's seven words
+    GO_GRAPH_FILE = dict(GO_GRAPH, **GRAPH_VIEW_WORDS)    # what site/strings-lean-graph.json holds: the spine's sentence and the Graph view's and the neighbourhood's words
 
     def go_setup(d):
         g = _tree(d, "### S part\n\n**G**\n\n- `New/S/A` (1): a\n", {"New/S/A": _lean()})

@@ -38,7 +38,7 @@ def fill_shell(shell, cards, words):
     return out.replace("{{CARDS}}", cards)
 
 
-def assemble(out, engine="real", mutate=None, index_edit=None, step_edit=None, words_edit=None, cards_edit=None, shell_edit=None, fix=None, spine_edit=None):
+def assemble(out, engine="real", mutate=None, index_edit=None, step_edit=None, words_edit=None, cards_edit=None, shell_edit=None, fix=None, spine_edit=None, uses_edit=None):
     """fix: the fixture directory under fixtures/ (default "real"; "modules" is the Lean-repository map); the shell words are always real's.
     mutate: {relative path under graph/: function(text)->text}, applied to the copied files (used for mutants)."""
     g = os.path.join(out, "graph")
@@ -80,6 +80,13 @@ def assemble(out, engine="real", mutate=None, index_edit=None, step_edit=None, w
         if spine_edit:
             spine_edit(spine)
         json.dump(spine, open(os.path.join(g, "spine.json"), "w", encoding="utf-8"), sort_keys=True, indent=1, ensure_ascii=False)
+    # the file neighbourhood's uses.json (a fixture with one has it beside its index.json)
+    up = os.path.join(D, "uses.json")
+    if os.path.exists(up):
+        uses = json.load(open(up, encoding="utf-8"))
+        if uses_edit:
+            uses_edit(uses)
+        json.dump(uses, open(os.path.join(g, "uses.json"), "w", encoding="utf-8"), sort_keys=True, indent=1, ensure_ascii=False)
     # the page
     words = json.load(open(os.path.join(FIX, "shell-strings.json"), encoding="utf-8"))
     if words_edit:

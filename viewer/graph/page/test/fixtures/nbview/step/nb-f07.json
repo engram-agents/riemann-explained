@@ -1,0 +1,23 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "nb-f07",
+  "kind": "file",
+  "path": [
+   "nb-part",
+   "nb-g-a"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "File nb-f07"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "nb-f07",
+ "path": [
+  "nb-part",
+  "nb-g-a"
+ ],
+ "rests_on": []
+}

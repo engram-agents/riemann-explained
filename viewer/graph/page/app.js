@@ -15,6 +15,7 @@ import { makeRenderFace } from "./face.js";
 import { templateParts } from "./note.js";
 import { createSheet } from "./sheet.js";
 import { createGraphView, buildSpinePanel } from "./graphview.js";
+import { buildFullSide } from "./neighbourhood.js";
 
 /* Every way the sheet can close. Each one is a function in `routes` below that begins with the sheet's one close
    function; a case drives each of these with a cancelling listener installed. */
@@ -23,7 +24,7 @@ export const CLOSE_ROUTES = Object.freeze([
 ]);
 /* The routes of the Graph view (graphview.js); they exist on every map but do something only on one that carries the view. Each begins with the sheet's close
    function like the routes above, so the same cancelling-listener case drives them on a map that has the view. */
-export const VIEW_ROUTES = Object.freeze(["view-graph", "view-cards", "spine-open", "spine-show-file"]);
+export const VIEW_ROUTES = Object.freeze(["view-graph", "view-cards", "spine-open", "spine-show-file", "nb-move", "nb-more", "nb-spine"]);
 
 /* ONE fixed closed size, chosen by measuring in the browser (the browser case "one fixed closed size"): a 50-character title of
    the widest glyphs takes three lines at 15 px in the engine's default 300 px width, and with the role word and the foot at
@@ -115,6 +116,8 @@ export async function start(doc, deps) {
     const articles = new Map();
     cardsEl.querySelectorAll("article[id]").forEach((a) => { if (isId(a.id) && !articles.has(a.id)) articles.set(a.id, a); });
     const aboutEl = q["graph-about"];
+    /* The word a row of the neighbourhood prints for a kind: the card word of that kind (the sheet's one line for it), empty for a kind that has none. */
+    const kindWord = (kind) => { const key = index.symbols.cardWords[kind]; return key !== undefined && typeof strings[key] === "string" ? strings[key] : ""; };
     const keyEl = buildKey(index);
 
     const openIds = new Set();
@@ -239,6 +242,14 @@ export async function start(doc, deps) {
     async function go(t, id) {
       if (!current(t)) return false;
       if (!isId(id)) { say(strings.link_refused); return false; }
+      /* In the Graph view of a map that has the neighbourhood, an address names a place in the graph: a FILE opens its neighbourhood, any other step the main results
+         (the history entry is the address itself, which the reader or the browser's Back made). On a map without it an address is a card, shown in Cards, as below. */
+      if (view && view.nbEnabled() && view.view() === "graph") {
+        if (!sheet.close()) return false;
+        const st = doc.defaultView.history.state;
+        const r = await view.neighbourhood(t, id, st && typeof st.nbFrom === "string" ? st.nbFrom : null);
+        return r !== false;
+      }
       try {
         const step = await data.loadStep(id);
         if (!current(t)) return false;
@@ -314,6 +325,12 @@ export async function start(doc, deps) {
        refused-link notice and leaves the Graph view as it is; then the one navigation continues into go with the same ticket. */
     routes["spine-show-file"] = async (t, id) => {
       if (!view || !current(t)) return false;
+      if (view.nbEnabled()) {          // the button says 'Show its file in the graph': its neighbourhood, one history entry
+        if (!sheet.close()) return false;
+        const r = await view.neighbourhood(t, id, null);
+        if (r === true) doc.defaultView.history.pushState({ nbFrom: null }, "", "#" + id);
+        return r === true;
+      }
       try {
         await data.loadStep(id);
         if (!current(t)) return false;
@@ -324,6 +341,28 @@ export async function start(doc, deps) {
         if (!current(t)) return false;
         return failed(e);
       }
+    };
+    /* THE NEIGHBOURHOOD's routes. A row tapped: the file becomes the centre, drawn FIRST, and only then the one history entry (the address of the file, with where the
+       reader came from), so a refusal leaves the history as it was. 'Back' is the browser's own: the page asks for it, and the address that results routes through go. */
+    routes["nb-move"] = async (t, id) => {
+      if (!view || !current(t) || !sheet.close()) return false;
+      const from = view.nbId();
+      const r = await view.neighbourhood(t, id, from);
+      if (r !== true) return false;
+      doc.defaultView.history.pushState({ nbFrom: from }, "", "#" + id);
+      return true;
+    };
+    routes["nb-more"] = (t, side, id) => {
+      if (!view || !current(t)) return false;
+      const got = view.side(side, id);
+      if (!got || !sheet.close()) return false;
+      const panel = buildFullSide({ strings, titles: got.titles, kindWord, rows: got.rows, which: side, onMove: (to) => routes["nb-move"](to), signal });
+      return sheet.showPanel(panel, false);
+    };
+    routes["nb-spine"] = (t) => {
+      if (!view || !current(t) || !sheet.close()) return false;
+      view.showSpine();
+      return true;
     };
     /* The one place a route takes its ticket: every entry above is wrapped here, so a route added later cannot forget it. */
     for (const name of Object.keys(routes)) {
@@ -339,12 +378,17 @@ export async function start(doc, deps) {
     q["graph-key"].addEventListener("click", () => routes["toolbar-key"](), { signal });
     q["graph-about-open"].addEventListener("click", () => routes["toolbar-about"](), { signal });
     doc.addEventListener("keydown", (e) => { if (e.key === "Escape") routes["escape"](); }, { signal });
-    doc.defaultView.addEventListener("hashchange", () => { const id = hashId(doc); if (id !== null) routes["deep-link"](id); }, { signal });
+    doc.defaultView.addEventListener("hashchange", () => {
+      const id = hashId(doc);
+      if (id !== null) routes["deep-link"](id);
+      else if (view && view.nbActive()) routes["nb-spine"]();
+    }, { signal });
 
     layer.hidden = false;
     /* What the engine tells us about a failed load is a string; the class of the failure is decided here, from the exception itself:
        id -> the DataError code of the last failed load of that node's parts, or null for anything that was not a DataError. */
     const loadFailures = new Map();
+    const renderFace = makeRenderFace(strings, index.symbols.countWords);
     const options = {
       roots, maxChildren: index.maxChildren, sizes: { ...CARD_SIZES },
       // the first view never zooms below scale 1 (text at its size); 'Show all' (handle.fit()) still shows all. A map's open_scale_floor
@@ -353,7 +397,7 @@ export async function start(doc, deps) {
       // the map's sibling_layout (data v3; absent on the live map, and then there is no `layout` key at all): "column"
       ...(index.siblingLayout !== undefined ? { layout: { siblings: index.siblingLayout } } : {}),
       loadChildren: (id) => data.loadChildren(id).catch((e) => { loadFailures.set(id, e instanceof DataError ? e.code : null); throw e; }),
-      renderFace: makeRenderFace(strings, index.symbols.countWords),
+      renderFace,
     };
     /* The engine's own rule, asked BEFORE createGraph on the exact options it will get: a floor outside the engine's range is this page's
        bad-scale-floor (the fallback, through the setup catch), any other refusal is the engine's TypeError as before (data.js checkedOptions). */
@@ -391,6 +435,20 @@ export async function start(doc, deps) {
         doc, layer, cardsStage: q["graph"], strings, index, fetch: deps.fetch, createGraph: deps.createGraph, checkOptions, checkedOptions, say, hush, failure, current: (t) => current(t),
         onSwitch: (which) => routes[which === "graph" ? "view-graph" : "view-cards"](),
         onTap: (node) => { if (node) routes["spine-open"](node.id); else routes["tap-outside"](); },
+        nb: {
+          kindWord,
+          centreFace: async (id) => {
+            const path = view.pathOf(id);
+            const kids = await data.loadChildren(path[path.length - 1]);
+            const spec = kids.find((c) => c.id === id);
+            if (!spec) throw new DataError("bad-id", "the file is not a child of its group");
+            return renderFace(spec);
+          },
+          onMove: (to) => routes["nb-move"](to),
+          onMore: (side, id) => routes["nb-more"](side, id),
+          onCentre: (id) => routes["open-card"](id),
+          onBack: () => doc.defaultView.history.back(),
+        },
         signal,
       });
     }
