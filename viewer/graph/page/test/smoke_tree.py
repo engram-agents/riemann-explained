@@ -34,12 +34,13 @@ In Chromium, for each viewport (390x844 mobile with touch; 1280x900):
                 and cut to letters and digits (the renderer drops markdown markers: a leading '# ', backticks, list marks) (A2). An absent or empty .note-body is a FAIL; no file step carries a note, or --no-note, is a SKIP, never a pass
                 (and a FAIL with --require-note: the merge seat's run that must have the real check).
   framed        at 390x844 and at 360x640 (the two phone sizes; never at 1280x900; 360x640 runs this check alone): after the reader presses the open
-                sheet's parts button, the WHOLE opened box, title included, is inside the visible part of the map and nothing covers it. Read where
+                sheet's parts button, the WHOLE opened box, title included, is inside the visible part of the map and nothing outside the map covers it. Read where
                 the reader sees it: the part is deep-linked, the sheet's own parts button (`#graph-sheet button.sheet-tool-main`) is pressed, the
                 engine is let settle (and the header fold, when the shell has one), and then, in one read, the box (`.ge-node[data-node=<id>]`) must lie
                 inside the map STAGE (`#graph`, clipped to the window) within 1 px on every side, and document.elementFromPoint at the box's four corners
-                (2 px in) and at the centre of its face (`.ge-face`, the title) must each land inside `#graph`: what covers the box is found by asking
-                the page, never from a list of known covers. A box that cannot fit even at the engine's smallest zoom FAILs with its scale printed, never
+                (2 px in) and at the centre of its face (`.ge-face`, the title) must each land inside `#graph`: nothing OUTSIDE the map covers the box at
+                those five points. Elements of the map itself (link lines, other boxes) are not counted as covers, so a link line crossing a corner
+                does not fail good framing; the check looks at those five points only. A box that cannot fit even at the engine's smallest zoom FAILs with its scale printed, never
                 SKIPs. The data's open_scale_floor is not read. A sheet with no parts button, or parts that do not open, is a FAIL.
                 The line: `PASS|FAIL <vp> framed <id> scale=<k> folded=<yes|no|n/a> box=<l,t,r,b> stage=<l,t,r,b> viewport=<w>x<h>`, a FAIL naming
                 its reasons first (`box outside stage by <side>=<px>`, `overlaid at <probe>: <tag>#<id>.<class>`, every failing probe). A console error, uncaught
