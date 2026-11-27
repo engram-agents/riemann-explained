@@ -1,5 +1,6 @@
 /* The ORACLE for the maths face's superscripts and subscripts: every real formula-class span that holds a ^ or a _ (454 distinct, read from
-   fixtures/note-spans-scripts.json), against `scriptParts` of note.js. The expected structure of each span is written by an independent reference
+   fixtures/note-spans-scripts.json), against `scriptParts` of note.js. It reaches only the grammar rules that those 454 spans touch: a change to a rule none of them touches
+   stays green here and is covered by maths_scripts.test.mjs. SO6 pins a few synthetic shapes that the real spans do not have. The expected structure of each span is written by an independent reference
    (fixtures/make_scripts_oracle.py), a span the grammar refuses is expected as null (left as typed). Short fragments of the repository's notes only,
    each once; nothing is copied from the notes at length. */
 import test from "node:test";
@@ -32,8 +33,10 @@ test("SO1 the oracle covers exactly the formula-class spans with a script of the
   assert.equal(new Set(have).size, have.length, "a span is listed twice");
   assert.deepEqual([...want].sort(), [...have].sort());
   assert.equal(ORACLE.distinct, have.length);
+  assert.ok(have.every((s) => [...s].length <= 50), "the public-text rule: every fragment is at most 50 characters");
 });
 
+/* the counts are pinned on purpose: a regeneration that changes them is a decision, so the test is edited with it */
 test("SO2 the counts the oracle states are the counts of its rows: 454 distinct, 371 set, 83 left", () => {
   const set = ORACLE.spans.filter((r) => r.expected !== null).length;
   assert.deepEqual([ORACLE.distinct, ORACLE.set, ORACLE.left], [454, 371, 83]);
@@ -66,4 +69,16 @@ test("SO5 a set span keeps every character: the text of its structure, with the 
     const kept = [...text(r.expected)].filter((c) => c !== " " && c !== "(" && c !== ")").join("");
     assert.equal(kept, stripped, r.span);
   }
+});
+
+test("SO6 the synthetic pinned spans (shapes no real span has): the page agrees with the reference: a second script in one run, a combining mark after a group or symbol operand and a blank group are left as typed; one _ and one ^ on one base are set", () => {
+  assert.ok(ORACLE.pinned.length >= 12);
+  const bad = [];
+  for (const r of ORACLE.pinned) {
+    const got = canon(NOTE.scriptParts(r.span));
+    try { assert.deepEqual(got, r.expected); } catch { bad.push(`${JSON.stringify(r.span)}: page ${JSON.stringify(got)} reference ${JSON.stringify(r.expected)}`); }
+  }
+  assert.deepEqual(bad, []);
+  const left = ORACLE.pinned.filter((r) => r.expected === null).map((r) => r.span);
+  assert.equal(left.length, 8, "eight of the twelve are refused");
 });

@@ -5940,5 +5940,119 @@
     " = k + j(t + 1)"
    ]
   }
+ ],
+ "pinned": [
+  {
+   "span": "a^b^c",
+   "expected": null,
+   "reason": "second ^ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "a_b_c",
+   "expected": null,
+   "reason": "second _ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "1_'_'",
+   "expected": null,
+   "reason": "second _ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "x_₁_x",
+   "expected": null,
+   "reason": "second _ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "a^( )",
+   "expected": null,
+   "reason": "empty group"
+  },
+  {
+   "span": "a_{ }",
+   "expected": null,
+   "reason": "empty group"
+  },
+  {
+   "span": "a^{b}̄",
+   "expected": null,
+   "reason": "mark after the operand"
+  },
+  {
+   "span": "a_+̄",
+   "expected": null,
+   "reason": "operator operand not followed by end, space or closer"
+  },
+  {
+   "span": "a_b^c",
+   "expected": [
+    "a",
+    [
+     "sub",
+     [
+      "b"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "a^b_c",
+   "expected": [
+    "a",
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x_i^2",
+   "expected": [
+    "x",
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x^2_i",
+   "expected": [
+    "x",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ]
+   ]
+  }
  ]
 }

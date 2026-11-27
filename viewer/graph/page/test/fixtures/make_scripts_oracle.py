@@ -5,6 +5,9 @@ The population: every distinct code span of the opening notes of the 306 files u
 (`fixtures/note-spans-classes.json`, class "formula") and that holds a `^` or a `_`: 454 spans. For each, the expected structure written by
 the REFERENCE BELOW, an independent implementation of the grammar G1 to G5 of note.js (it was written from the grammar's text, not from note.js's
 code; the two agree on all 454, and the cases that disagreed while it was written were all faults of the reference, listed in the pull request).
+The reason of a left span is the reference's FIRST-firing rule: a span that two rules refuse names one of them, so a reason is a label of the reference, not a finding about the page. `pinned` holds SYNTHETIC spans for shapes that no real span has but the grammar speaks about (found by a differential fuzz of the reference against the page: a second script in one run with a one-character operand, a combining mark after a group or symbol operand, a blank group); they are made up, not from the notes.
+Unicode: the reference classifies characters with Python's `unicodedata`, the page with its engine's Unicode property escapes; a character assigned in a later Unicode version could make `--check` differ on another host (no current span is affected).
+
 An expected structure is a list of parts: a string, or ["sup" | "sub", [parts]]; a span the grammar refuses is `"expected": null` with the reason
 the reference gives (the first rule that refuses it): it stays code, as typed.
 
@@ -126,13 +129,13 @@ def parse(cs, depth, start=0, end=None):
             spaced = k > j
         else:
             k, spaced = j, False
-        operand, nxt = None, None
+        operand, nxt, op_lo = None, None, j
         if j < end and cs[j] == "{":
             m = match_close(cs, j)
             if m >= end:
                 raise Refuse("group crosses the end")
             inner = cs[j + 1:m]
-            if not inner:
+            if not "".join(inner).strip(" "):
                 raise Refuse("empty group")
             if is_mark(inner[0]):
                 raise Refuse("mark after the opening brace")
@@ -142,11 +145,11 @@ def parse(cs, depth, start=0, end=None):
             if m >= end:
                 raise Refuse("group crosses the end")
             inner = cs[k + 1:m]
-            if not inner:
+            if not "".join(inner).strip(" "):
                 raise Refuse("empty group")
             if is_mark(inner[0]):
                 raise Refuse("mark after the opening paren")
-            operand, nxt = parse(cs, depth + 1, k + 1, m), m + 1
+            operand, nxt, op_lo = parse(cs, depth + 1, k + 1, m), m + 1, k
         elif k < end and is_wordc(cs[k]):
             e = k
             while e < end and is_wordc(cs[e]):
@@ -160,7 +163,7 @@ def parse(cs, depth, start=0, end=None):
                     t += 1
                 if (t > e and t < end and (is_wordc(cs[t]) or cs[t] in "([{")) or (e < end and cs[e] == "_"):
                     raise Refuse("juxtaposed exponent")
-            operand, nxt = [cs[k:e] and "".join(cs[k:e])], e
+            operand, nxt, op_lo = [cs[k:e] and "".join(cs[k:e])], e, k
         elif j < end and cs[j] in OPS:
             e = j + 1
             if e < end and cs[e] not in " " and cs[e] not in CLOSERS:
@@ -168,6 +171,8 @@ def parse(cs, depth, start=0, end=None):
             operand, nxt = [cs[j]], e
         else:
             raise Refuse("no operand")
+        if nxt < end and is_mark(cs[nxt]):
+            raise Refuse("mark after the operand")
         # emit
         if c == "^":
             buf = buf.rstrip(" ")
@@ -178,7 +183,7 @@ def parse(cs, depth, start=0, end=None):
         if run is None:
             run = {"base": base_for_checks, "used": set(), "lo": 0, "hi": 0}
         run["used"].add(c)
-        run["lo"], run["hi"] = j + 1, nxt
+        run["lo"], run["hi"] = op_lo, nxt
         i = nxt
     if buf:
         out.append(buf)
@@ -215,6 +220,8 @@ def norm(parts):
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLASSES = os.path.join(HERE, "note-spans-classes.json")
 FIXTURE = os.path.join(HERE, "note-spans-scripts.json")
+PINNED = ["a^b^c", "a_b_c", "1_'_'", "x_₁_x", "a^( )", "a_{ }", "a^{b}\u0304", "a_+\u0304", "a_b^c", "a^b_c", "x_i^2", "x^2_i"]
+MAX_SPAN = 50   # the public-text rule: short fragments only (README, docstring)
 
 
 def build():
@@ -226,13 +233,21 @@ def build():
             spans[r["span"]] = spans.get(r["span"], 0) + r["count"]
     rows = []
     for span in sorted(spans):
+        assert len(span) <= MAX_SPAN, "a fragment longer than %d characters would be published: %r" % (MAX_SPAN, span)
         tree, reason = expected_with_reason(span)
         row = {"span": span, "count": spans[span], "expected": tree}
         if tree is None:
             row["reason"] = reason
         rows.append(row)
+    pinned = []
+    for span in PINNED:
+        tree, reason = expected_with_reason(span)
+        row = {"span": span, "expected": tree}
+        if tree is None:
+            row["reason"] = reason
+        pinned.append(row)
     return {"pin": fx["pin"], "source": fx["source"], "rule": "formula-class code spans with ^ or _; expected by the reference of make_scripts_oracle.py (grammar G1-G5 of viewer/graph/page/note.js)",
-            "distinct": len(rows), "set": sum(1 for r in rows if r["expected"] is not None), "left": sum(1 for r in rows if r["expected"] is None), "spans": rows}
+            "distinct": len(rows), "set": sum(1 for r in rows if r["expected"] is not None), "left": sum(1 for r in rows if r["expected"] is None), "spans": rows, "pinned": pinned}
 
 
 if __name__ == "__main__":
