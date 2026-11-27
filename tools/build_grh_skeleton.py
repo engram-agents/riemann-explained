@@ -7044,7 +7044,8 @@ def _selftest_cases():
                      "statements lean-s-b: 1 declarations, 1 written, 0 reported", "statements lean-s-b: 0 library names left out of uses_elsewhere"]))
 
     @case("RDG-STEP", "the written `reading` has exactly the four keys text, by, second_read_by and date (the file is written with sorted keys), the values as given; a statement with no reading has no `reading` key; the "
-                      "file step (its closed children) and every other step file are byte-identical to a build without the option, and so is alpha's step but for the one key")
+                      "file step (its closed children) and every other step file are byte-identical to a build without the option, and so is alpha's step but for the one key and its card's `reading_count` (the file, group and part "
+                      "steps above the two statements with a reading are the only others that differ: the count of the reading cue, section 33)")
     def _():
         text = "  Leading space kept.\n\nA **bold** mark.\n"
         with _tmp() as d:
@@ -7053,10 +7054,12 @@ def _selftest_cases():
             f0, f1 = _tree_files(os.path.join(d, "o0")), _tree_files(os.path.join(d, "o1"))
         a0, a1 = (json.loads(f["graph/step/lean-s-a-alpha.json"].decode("utf-8")) for f in (f0, f1))
         reading = a1.pop("reading", None)
+        a1["card"].pop("reading_count", None)
         differ = sorted(k for k in f0 if f0[k] != f1[k])
         return _eq((r0[0], r1[0], sorted(reading or {}), reading, a0 == a1, differ, [k for k in f1 if k.startswith("graph/step/") and b'"reading"' in f1[k]]),
                    (0, 0, ["by", "date", "second_read_by", "text"], {"text": text[:-1], "by": "B1", "second_read_by": "B2", "date": "2026-01-02"}, True,
-                    ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"], ["graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"]))
+                    ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json", "graph/step/lean-s-a.json", "graph/step/lean-s-g.json", "graph/step/lean-s.json"],
+                    ["graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"]))
 
     @case("RDG-WORDS", "the words are all-or-none with the statement words: with `--readings` the file of --strings-overlay-statements holds EXACTLY the 28 words, the 8 of the reading (`decl_reading_show`, "
                        "`decl_reading_hide`, `decl_reading_about`, `decl_reading_uses`, `decl_reading_target`, `decl_reading_argument`, `decl_reading_adds`, `readings_byline`) and the 4 cue words (`face_reading_cue`, `count_reading_one`, `count_reading_many`, `key_reading_cue_text`): the 28 alone are refused "
@@ -7352,8 +7355,8 @@ def _selftest_cases():
         entries = {c: v for i, (_n, ch) in cards.items() for c, v in ch.items() if c in {o["id"] for o in st.values()}}
         ix = _j(files, "graph/index.json")
         return _eq(([cards[i][0] for i in ids], cards[group][0], cards[part][0], [cards[i][0] for i in ix["top"] if i == part], part in ix["top"], [cards[i][0] for i in two], [entries[i] for i in two],
-                    len(others), [cards[i][0] for i in others if cards[i][0] is not None], [entries[i] for i in others if entries[i] is not None], cards[group][1], cards[part][1], _rdc_invariants(files)),
-                   ([1, None, 1], 2, 2, [2], True, [1, 1], [1, 1], 35, [], [], {ids[0]: 1, ids[1]: None, ids[2]: 1}, {group: 2}, []))
+                    len(others), [cards[i][0] for i in others if cards[i][0] is not None], [entries[i] for i in others if entries[i] is not None], cards[group][1], cards[part][1][group], sorted({v for k, v in cards[part][1].items() if k != group}, key=str), _rdc_invariants(files)),
+                   ([1, None, 1], 2, 2, [2], True, [1, 1], [1, 1], 35, [], [], {ids[0]: 1, ids[1]: None, ids[2]: 1}, 2, [None], []))
 
     @case("RDC-ABSENT", "without `--readings` no step file holds `reading_count` and the build is byte-identical to one with `readings=[]` (the key follows the readings that passed their checks, never the option); "
                         "with `--readings` and an EMPTY list through the command line no step file holds it either and the written strings hold the 28 words and 4 + 4 more (the 36 words of a 28-word build plus eight)")
