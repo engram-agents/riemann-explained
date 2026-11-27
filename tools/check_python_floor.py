@@ -24,7 +24,7 @@ CONTRACT (cases, prefix PYF-)
  PYF-FEATURE-STATIC  build_site.py carries a SECOND guard, right after the version guard: `import html.parser` and an `if not
             hasattr(html.parser.HTMLParser, "RCDATA_CONTENT_ELEMENTS")` that raises SystemExit with the line below; no other tool carries
             such an `if` (only the tool that needs the parser feature says so, so the claim stays exact).
- PYF-FEATURE  build_site.py and the tools that load it by path (build_grh_skeleton, build_grh_credits, assemble_grh_site,
+ PYF-FEATURE  build_site.py and the tools that load it by path (build_grh_skeleton, build_grh_credits, build_grh_try, assemble_grh_site,
             check_lean_shell, formula_oracle), run with the attribute deleted from html.parser.HTMLParser: exit status 1, stdout
             empty, stderr exactly ONE line, `build_site.py: needs an html.parser with RCDATA_CONTENT_ELEMENTS (CPython 3.12.13 or
             newer has it; 3.12.10 does not); this is X.Y.Z at <sys.executable>`, and nothing written. A loader stops with the
@@ -74,7 +74,7 @@ FEATURE_GUARD = (
 )
 FEATURE = {
     "holder": "build_site.py",
-    "tools": ["build_site.py", "build_grh_skeleton.py", "build_grh_credits.py", "assemble_grh_site.py", "check_lean_shell.py", "formula_oracle.py"],
+    "tools": ["build_site.py", "build_grh_skeleton.py", "build_grh_credits.py", "assemble_grh_site.py", "check_lean_shell.py", "formula_oracle.py", "build_grh_try.py"],
 }
 NO_ATTR = "import html.parser; del html.parser.HTMLParser.RCDATA_CONTENT_ELEMENTS; "
 OLD = (3, 9, 6, "final", 0)
