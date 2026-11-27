@@ -1861,7 +1861,7 @@ GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_labe
                        "open_statements", "close_statements", "count_statement_one", "count_statement_many",   # the statement level of a Lean map (contract section 31): the words only a map with statements carries
                        "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
                        "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
-                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label")
+                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none")
 
 
 def _graph_strings_keys(symbols=None):
@@ -2249,7 +2249,7 @@ def _graph_extra_errors(step_extra, index_extra, by, notes, layout):
 
 
 def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None, child_kinds=False, step_extra=None, index_extra=None,
-                 status_hidden=GRAPH_STATUS_HIDDEN):
+                 status_hidden=GRAPH_STATUS_HIDDEN, child_kind_off=()):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
     hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
@@ -2391,7 +2391,7 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
     def closed(r):
         d = {"child_count": len(kids.get(r["id"], [])), "id": r["id"], "kind": r["kind"], "path": list(path[r["id"]]), "proof": r["proof"],
              "state": r["state"], "title": r["title"]}
-        if child_kinds and kids.get(r["id"]) and len({c["kind"] for c in kids[r["id"]]}) == 1:   # optional: the kind all the children share
+        if child_kinds and r["id"] not in child_kind_off and kids.get(r["id"]) and len({c["kind"] for c in kids[r["id"]]}) == 1:   # optional: the kind all the children share (not on a card named in `child_kind_off`)
             d["child_kind"] = kids[r["id"]][0]["kind"]
         if r.get("role"):   # optional: absent, never null and never empty
             d["role"] = r["role"]
