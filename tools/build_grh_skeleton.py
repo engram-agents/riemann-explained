@@ -2183,7 +2183,7 @@ def _stm_ilean(path, decls=(), uses=()):
     refs = {}
     for enc, m, n, ln, col in uses:
         refs.setdefault(json.dumps({"c": {"m": m, "n": n}}, separators=(",", ":")), {"definition": None, "usages": []})["usages"].append([ln, col, ln, col + 1, enc])
-    return {"decls": {n: [3, 0, 3, 28, 3, 8, 3, 9] for n in decls}, "directImports": [], "module": path.replace("/", "."), "references": refs, "version": 5}
+    return {"decls": dict(decls) if isinstance(decls, dict) else {n: [3, 0, 3, 28, 3, 8, 3, 9] for n in decls}, "directImports": [], "module": path.replace("/", "."), "references": refs, "version": 5}
 
 
 def _stm_src(body, imports=()):
@@ -5503,8 +5503,8 @@ def _selftest_cases():
         return _eq(got, {"n1": {"review": rev, "source": src, "text": " first\n  /- inner -/ end\n"}, "n2": None, "n3": {"review": rev, "source": src, "text": " doc of n3 "}, "n4": None,
                          "n5": {"review": rev, "source": src, "text": " doc of n5 "}, "n6": None})
 
-    @case("STM-HEADING", "`heading` is the nearest `/-! ###` block above the declaration in the SAME file, the text between the `###` marker and the closing `-/` trimmed (a multi-line heading keeps its "
-                         "inner line break): a declaration before the first heading has none (the key is absent), a declaration under two headings has the later, a `/-! ##` block is not a heading, a "
+    @case("STM-HEADING", "`heading` is the nearest `/-! ###` block above the declaration in the SAME file, the text on the `/-! ###` LINE after the marker, up to the closing `-/` or the end of that line, trimmed (a multi-line "
+                         "block gives its first line only): a declaration before the first heading has none (the key is absent), a declaration under two headings has the later, a `/-! ##` block is not a heading, a "
                          "heading BELOW a declaration is not its heading, and a heading of ANOTHER file is not used")
     def _():
         body = ("theorem h_pre : True := trivial\n\n/-! ### H one -/\n\ntheorem h1 : True := trivial\n\ntheorem h2 : True := trivial\n\n"
@@ -5516,7 +5516,7 @@ def _selftest_cases():
                                                       statements_for=["lean-s-a", "lean-s-o"])
         st = _stm_names(files)
         return _eq((errs, {n: o.get("heading", "<absent>") for n, o in st.items()}),
-                   ([], {"h_pre": "<absent>", "h1": "H one", "h2": "H one", "h3": "H two\nextra line", "h4": "H two\nextra line", "g1": "<absent>"}))
+                   ([], {"h_pre": "<absent>", "h1": "H one", "h2": "H one", "h3": "H two", "h4": "H two", "g1": "<absent>"}))
 
     @case("STM-VARIABLES", "`variables` is true when a column-0 `variable` line precedes the declaration within a namespace or section that has not ended (including one opened before the "
                            "declaration's own), false after the `end` that closed it, and false when none; a `variable ... in` line counts for the NEXT declaration only; a `variable` in a "
@@ -5667,6 +5667,118 @@ def _selftest_cases():
                      "p7": "variable (f : Nat) in\n@[simp]\ntheorem p7 : True", "p8": "open Nat in\nset_option maxHeartbeats 1 in\ntheorem p8 : True", "p9": "theorem p9 : True"},
                     {"p1": True, "p2": False, "p3": True, "p4a": True, "p4b": False, "p6": True, "p7": True, "p8": False, "p9": False},
                     {"p1": " doc p1 ", "p6": " d ", "p2": None}))
+
+    @case("STM-NOCUT-LET-RAW", "R2: a `let` or a `have` (as a word) at bracket depth 0, or a raw string opener `r\"` / `r#\"`, BEFORE the cut `:=` makes the cut a guess: the statement is REFUSED "
+                              "`SKEL-STATEMENT-NOCUT <name>` (`theorem t : let x := 1; x = 1 := rfl` is not cut at `let x`); neighbours that build: a `let` inside parentheses, a name that holds `let` "
+                              "(`letter_x`, `outlet`), an identifier `r` that opens no raw string")
+    def _():
+        bad = _stm_one({"New/S/A": _stm_src("theorem t1 : let x := 1; x = 1 := rfl\n\ntheorem t2 : True ∧ have y := 1; y = 1 := rfl\n\ntheorem r1 : r#\"x\"# = \"x\" := rfl\n\n"
+                                           "theorem r2 : r\"x\" = \"x\" := rfl\n")}, {"New/S/A": _stm_ilean("New/S/A", ["t1", "t2", "r1", "r2"])})
+        good = _stm_one({"New/S/A": _stm_src("theorem n1 (h : (let x := 1; x = 1)) : True := trivial\n\ntheorem letter_x (outlet : Nat) : True := trivial\n\ntheorem n3 (r : Nat) : r = r := rfl\n")},
+                        {"New/S/A": _stm_ilean("New/S/A", ["n1", "letter_x", "n3"])}, "statement")
+        return _eq((bad, {n: o["text"] for n, o in good.items()} if isinstance(good, dict) else good),
+                   ([("SKEL-STATEMENT-NOCUT", n, "") for n in ("t1", "t2", "r1", "r2")],
+                    {"n1": "theorem n1 (h : (let x := 1; x = 1)) : True", "letter_x": "theorem letter_x (outlet : Nat) : True", "n3": "theorem n3 (r : Nat) : r = r"}))
+
+    @case("STM-NOCUT-EXTENT", "R3: the search for the cut stops at the end of the declaration's extent: an `inductive Foo : Type` with arms `| a | b` and NO `:=`, followed by `theorem t : True := trivial`, is "
+                             "`SKEL-STATEMENT-NOCUT Foo` (it must not borrow the `:=` of the next declaration); the theorem alone builds")
+    def _():
+        two = _stm_one({"New/S/A": _stm_src("inductive Foo : Type\n  | a\n  | b\n\ntheorem t : True := trivial\n")}, {"New/S/A": _stm_ilean("New/S/A", ["Foo", "t"])})
+        one = _stm_one({"New/S/A": _stm_src("theorem t : True := trivial\n")}, {"New/S/A": _stm_ilean("New/S/A", ["t"])}, "statement")
+        return _eq((two, one), ([("SKEL-STATEMENT-NOCUT", "Foo", "")], {"t": {"keyword": "theorem", "text": "theorem t : True"}}))
+
+    @case("STM-REFUSAL-ESCAPES", "R4: the Lean name of EVERY SKEL-STATEMENT-* refusal is printed escaped when it holds a character that is not printable (ESC, U+202E, a line break): JSON text for NOCUT, INDEX, KIND, "
+                                 "ID and an id of FILE; a name of printable characters is printed as it is (the other cases); through the command line the line holds no raw control or bidi character")
+    def _():
+        name = "a\x1bc\u202ed"
+        esc = json.dumps(name)
+        nocut = _stm_one({"New/S/A": _stm_src(f"def {name}\n  | 0 => 1\n")}, {"New/S/A": _stm_ilean("New/S/A", [name])})
+        index = _stm_one({"New/S/A": _stm_src(f"theorem {name} : True := trivial\n")}, {"New/S/A": _stm_ilean("New/S/A", ["other"])})
+        saved = dict(STATEMENT_KIND_WORDS)
+        try:
+            del STATEMENT_KIND_WORDS["instance"]
+            kind = _stm_one({"New/S/A": _stm_src(f"instance {name} : Inhabited Nat := \u27e80\u27e9\n")}, {"New/S/A": _stm_ilean("New/S/A", [name])})
+        finally:
+            STATEMENT_KIND_WORDS.clear()
+            STATEMENT_KIND_WORDS.update(saved)
+        fileid = _stm_one({"New/S/A": _stm_src("theorem t : True := trivial\n")}, {"New/S/A": _stm_ilean("New/S/A", ["t"])}, ids=("x\x1b[0m",))
+        with _tmp() as d:
+            g = _tree(d, _flat(["A"]), {"New/S/A": _stm_src(f"def {name}\n  | 0 => 1\n")}, ileans={"New/S/A": _stm_ilean("New/S/A", [name])})
+            r = _stm_cli(d, g, ["--statements-for", "lean-s-a"])
+        return _eq((nocut, index, kind, fileid, r[1], any(c in x for x in r[1] for c in ("\x1b", "\u202e"))),
+                   ([("SKEL-STATEMENT-NOCUT", esc, "")], [("SKEL-STATEMENT-INDEX", esc, "")], [("SKEL-STATEMENT-KIND", "instance " + esc, "")], [("SKEL-STATEMENT-FILE", json.dumps("x\x1b[0m"), "")],
+                    ["SKEL-STATEMENT-NOCUT " + esc], False))
+
+    @case("STM-PROMPT-LENGTH", "R5: the fields of the prompt that come from outside are capped: {full_name} at 200 characters, {page_title} at 200, {page_url} at 300; the cap itself is accepted and one more "
+                               "is refused `SKEL-STATEMENT-PROMPT <field> too long` (the value is not echoed); nothing is written")
+    def _():
+        out = {}
+        for n in (200, 201):
+            name = "a" * n
+            with _tmp() as d:
+                g = _tree(d, _flat(["A"]), {"New/S/A": _stm_src(f"theorem {name} : True := trivial\n")}, ileans={"New/S/A": _stm_ilean("New/S/A", [name])})
+                r = _stm_cli(d, g, ["--statements-for", "lean-s-a"])
+            out[("name", n)] = (r[0], r[1][:1] if r[0] else [], r[3])
+        for field, base, opts in (("title", "t" * 0, ("--statement-page-title", "--statement-page-url")), ("url", "https://x.org/", ("--statement-page-url", "--statement-page-title"))):
+            for n in (200 if field == "title" else 300, 201 if field == "title" else 301):
+                v = ("A" * n) if field == "title" else (base + "a" * (n - len(base)))
+                other = STM_URL if field == "title" else STM_TITLE
+                with _tmp() as d:
+                    g = _tree(d, _flat(["A"]), {"New/S/A": _stm_src("theorem one : True := trivial\n")}, ileans={"New/S/A": _stm_ilean("New/S/A", ["one"])})
+                    r = _stm_cli(d, g, ["--statements-for", "lean-s-a", opts[0], v, opts[1], other])
+                out[(field, n)] = (r[0], r[1][:1] if r[0] else [], r[3])
+        return _eq(out, {("name", 200): (0, [], True), ("name", 201): (1, ["SKEL-STATEMENT-PROMPT full_name too long"], False),
+                         ("title", 200): (0, [], True), ("title", 201): (1, ["SKEL-STATEMENT-PROMPT page_title too long"], False),
+                         ("url", 300): (0, [], True), ("url", 301): (1, ["SKEL-STATEMENT-PROMPT page_url too long"], False)})
+
+    @case("STM-PREFIX-WORD-BOUNDARY", "R6: a column-0 line that merely ENDS in the letters `in` (`open Lean.main`, `universe domain`) is no `... in` line: it is no prefix line of the declaration below, and a "
+                                      "`variable (b : Nat) domain` line (no `in`) is an ordinary variable line for everything below it; `variable (a : Nat) in` still is a prefix line")
+    def _():
+        body = ("open Lean.main\ntheorem q1 : True := trivial\n\nuniverse domain\ntheorem q2 : True := trivial\n\nvariable (a : Nat) in\ntheorem q3 : True := trivial\n\n"
+                "variable (b : Nat) domain\ntheorem q4 : True := trivial\n\ntheorem q5 : True := trivial\n")
+        names = ["q1", "q2", "q3", "q4", "q5"]
+        got = _stm_one({"New/S/A": _stm_src(body)}, {"New/S/A": _stm_ilean("New/S/A", names)})
+        if isinstance(got, list):
+            return False, got
+        return _eq(({n: got[n]["statement"]["text"] for n in names}, {n: got[n]["variables"] for n in names}),
+                   ({"q1": "theorem q1 : True", "q2": "theorem q2 : True", "q3": "variable (a : Nat) in\ntheorem q3 : True", "q4": "theorem q4 : True", "q5": "theorem q5 : True"},
+                    {"q1": False, "q2": False, "q3": True, "q4": True, "q5": True}))
+
+    @case("STM-NAMESPACE-DOTTED", "R6: `namespace A.B` opens as many scopes as `end A.B` closes: a `variable` of an OUTER scope stays applied after `end B.C`, a `variable` inside `namespace D.E` is gone after `end D.E`")
+    def _():
+        body = ("namespace A\nvariable (x : Nat)\nnamespace B.C\ntheorem in_bc : True := trivial\nend B.C\ntheorem after : True := trivial\nend A\n\n"
+                "namespace D.E\nvariable (y : Nat)\nend D.E\ntheorem later : True := trivial\n")
+        names = ["A.B.C.in_bc", "A.after", "later"]
+        got = _stm_one({"New/S/A": _stm_src(body)}, {"New/S/A": _stm_ilean("New/S/A", names)}, "variables")
+        return _eq(got, {"A.B.C.in_bc": True, "A.after": True, "later": False})
+
+    @case("STM-STRING-BLOCKS", "R6: a string literal that holds `/-! ###` or `/--` is not a heading and not a doc-string: the declaration below has no `heading` and no `note`")
+    def _():
+        body = ("def s1 : String := \"/-! ### Fake heading -/\"\ntheorem s2 : True := trivial\n\ndef s3 : String := \"/-- fake doc -/\"\ntheorem s4 : True := trivial\n")
+        got = _stm_one({"New/S/A": _stm_src(body)}, {"New/S/A": _stm_ilean("New/S/A", ["s1", "s2", "s3", "s4"])})
+        if isinstance(got, list):
+            return False, got
+        return _eq({n: ("heading" in o, "note" in o) for n, o in got.items()}, {"s1": (False, False), "s2": (False, False), "s3": (False, False), "s4": (False, False)})
+
+    @case("STM-REVERSE-COMPLETENESS", "R8: a declaration the compiled index lists for the module and the reader did not find is REPORTED, never silently absent (found = written + reported): an `axiom` (not in the "
+                                      "reader's keywords) and a `theorem` hidden by the reader's string gap (`\"/-! ...` opens a comment to the end of the file) are reported by kind, line and name; a name of the index that "
+                                      "is no top-level source declaration is not: one whose position holds a different name (an equation lemma `ax.eq_1` placed at its parent) and one whose position has no "
+                                      "declaration keyword before it; the printed line has the name escaped")
+    def _():
+        body = "axiom ax : True\n\ndef g1 : String := \"/-! open\"\ntheorem g2 : True := trivial\n"
+        src = _stm_src(body)
+        lines = src.split("\n")
+        at = lambda head, name: next((i, ln.index(name, len(head) - len(name))) for i, ln in enumerate(lines) if ln.startswith(head))
+        ent = lambda head, name: (lambda i, c: [i, 0, i, len(lines[i]), i, c, i, c + len(name)])(*at(head, name))
+        decls = {"ax": ent("axiom ax", "ax"), "g1": ent("def g1", "g1"), "g2": ent("theorem g2", "g2"), "ax.eq_1": ent("axiom ax", "ax"), "n": [2, 0, 2, 1, 2, 0, 2, 1]}
+        with _tmp() as d:
+            g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": src}, {"New/S/A": _stm_ilean("New/S/A", decls)}, statements_for=["lean-s-a"])
+        st = rep["statements"]["lean-s-a"]
+        printed = [x for x in report_lines(rep) if x.startswith("statements lean-s-a")]
+        la, lg = at("axiom ax", "ax")[0] + 1, at("theorem g2", "g2")[0] + 1
+        return _eq((errs, st["found"], st["written"], len(st["reported"]), st["found"] == st["written"] + len(st["reported"]), sorted(_stm_names(files)), printed),
+                   ([], 3, 1, 2, True, ["g1"], ["statements lean-s-a: 3 declarations, 1 written, 2 reported", "statements lean-s-a: 0 library names left out of uses_elsewhere",
+                                          f"statements lean-s-a reported axiom line {la} name ax", f"statements lean-s-a reported theorem line {lg} name g2"]))
 
     @case("STM-KIND-REFUSAL", "a keyword the reader yields for which the builder has no kind word is refused by name `SKEL-STATEMENT-KIND <keyword> <name>` and nothing is built, never a fallback word: "
                               "the word table is patched to lack `instance` for the case (no real source is edited); the other kinds of the same file do not hide it, and with the word back it builds")
@@ -5990,6 +6102,7 @@ def _selftest_cases():
         counts = {i: (p1["statements"][i]["found"], p1["statements"][i]["written"], len(p1["statements"][i]["reported"])) for i in ids}
         head = {n: o["heading"] for n, o in st.items() if "heading" in o}
         head_files = sorted({o["source_path"] for n, o in st.items() if n in head})
+        head_counts = {h: sum(1 for x in head.values() if x == h) for h in set(head.values())}
         shape = all(bs.GRAPH_SHAPE.fullmatch(o["id"]) and len(o["id"]) <= ID_MAX for o in st.values())
         crit = "New.LFunction_ne_zero_of_primeRemainder_le"
         pn = _stm_names(f2)[crit]["prompt"]
@@ -6012,11 +6125,12 @@ def _selftest_cases():
         kind_of = ([_j(f1, f"graph/step/{i}.json")["card"].get("child_kind") for i in ids],
                    [c.get("child_kind") for c in _j(f1, "graph/step/lean-reduction-from-a-one-sided-bound-to-the-zeros.json")["children"] if c["id"] in ids])
         by_file = {i: sum(o["uses_library_count"] for o in st.values() if o["path"][-1] == i) for i in ids}
-        return _eq((via_cli, kind_of, prefixed, library[0] == by_file, library[1] > 0, library[2], library[3], len(f0), len(f1), len(f2), differ, counts, len(st), sum(1 for o in st.values() if "note" in o), len(head), len(set(head.values())), head_files, shape,
+        return _eq((via_cli, kind_of, prefixed, library[0] == by_file, library[1] > 0, library[2], library[3], len(f0), len(f1), len(f2), differ, counts, len(st), sum(1 for o in st.values() if "note" in o), len(head), head_counts, head_files, shape,
                     st[crit]["prompt"] == STM_EXPECT_REAL_ADDR, pn == STM_EXPECT_REAL_NOADDR, ["open_words" in r for r in ix0["symbols"]["kinds"].values()],
                     [c for c in f1 if c.startswith("graph/step/") and c.endswith(".json") and not json.loads(f1[c].decode("utf-8")).get("id")]),
                    ((0, 393, True, [], True), ([None] * 3, [None] * 3), ["omit [NeZero q] in", "omit [NeZero q] in", "variable (d q) in", "variable {d q} in"], True, True, [], True, 356, 393, 393, ["graph/index.json", "graph/step/lean-reduction-from-a-one-sided-bound-to-the-zeros.json"] + [f"graph/step/{i}.json" for i in ids], dict(zip(ids, [(1, 1, 0), (24, 24, 0), (12, 12, 0)])),
-                    37, 34, 24, 3, ["src/New/Reduction/Zeros/PrimeError.lean"], True, True, True, [False, False, False], []))
+                    37, 34, 24, {"The weights, their partial sums and the error term": 17, "The Dirichlet series and the Laplace transform": 4, "The poles of the Laplace transform": 3},
+                    ["src/New/Reduction/Zeros/PrimeError.lean"], True, True, True, [False, False, False], []))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
