@@ -3716,6 +3716,16 @@ def _mth_cards(files):
     return out
 
 
+def _mth_report_lines(tables, built, ids):
+    """The three `maths <table>: ...` lines the build must print, derived from the parsed table files `tables` ({table: {"rows": [...]}}), the full names of the statements of the build `built` and the file ids `ids`: n = the rows, m = the rows of a statement of the build (notation: of a file of `ids`), k = n - m."""
+    out = []
+    for t in MATHS_TABLES:
+        rows = tables[t]["rows"]
+        used = sum(1 for r in rows if (r["file"] in ids if t == "notation" else r["statement"] in built))
+        out.append("maths %s: %d rows, %d used, %d not in this build" % (t, len(rows), used, len(rows) - used))
+    return out
+
+
 def _mth_cli(d, g, names=None, statements=None, notation=None, extra=(), ids=",".join(RDC_FILES), out="out"):
     """`_stm_cli` of the fixture folder `g` with --statements-for `ids` (none when `ids` is None) and one `--maths-*` option for each table given (a table is a Python object written as JSON, or bytes written as they are)."""
     more = []
@@ -3750,7 +3760,7 @@ def _mtr_at(line, width=9):
     return [line - 1, 0, line - 1, width, line - 1, 8, line - 1, width]
 
 
-MTR_LIB = _stm_ilean("Lib/Other/Srcs", {"Foo.one": _mtr_at(11), "Foo.dup": _mtr_at(21), "Bar.dup": _mtr_at(31), "Foo.integral_q": _mtr_at(41)})   # a library module of the repository's own (`src/Lib/...`): known to the index, no source file in the fixture
+MTR_LIB = _stm_ilean("Lib/Other/Srcs", {"Foo.one": _mtr_at(11), "Foo.dup": _mtr_at(21), "Bar.dup": _mtr_at(31), "Foo.integral_q": _mtr_at(41), "zed": _mtr_at(51), "Foo.zed": _mtr_at(61)})   # a library module of the repository's own (`src/Lib/...`): known to the index, no source file in the fixture
 MTR_ILEANS = dict(MTH_ILEANS, **{"New/P/A": _stm_ilean("New/P/A", _mtr_decls(MTR_A, ("alpha", "beta", "primeRemainder", "countError"))), "New/P/B": _stm_ilean("New/P/B", _mtr_decls(MTR_B, ("bdef", "ne_of_lt"))),
                                  "Lib/Other/Srcs": MTR_LIB})
 MTR_LN = {n: _rdg_ln(MTR_A, ("theorem " if n in ("alpha", "countError") else "lemma " if n == "beta" else "def ") + n) for n in ("alpha", "beta", "primeRemainder", "countError")}   # the 1-based line of each declaration of A
@@ -8990,7 +9000,7 @@ def _selftest_cases():
     MTH_REAL_DIR = os.environ.get("MTH_SAMPLE_DIR")   # the folder of the draft tables (names.json, statements.json, notation.json); unset: MTH-REAL is skipped
 
     @case("MTH-REAL", "the real source and the draft tables (give `--selftest --grh DIR --ilean-dir DIR`; the folder of the three draft tables is the environment variable MTH_SAMPLE_DIR, otherwise SKIPPED with the reason): the build through the command line refuses nothing and "
-                      "prints `maths names: 37 rows, 37 used, 0 not in this build` (and the statements 37/37/0, the notation 18/18/0); the numbers read off the BUILT tree (the group step's `children`, then each file step's) are 1.1 to 1.24 for "
+                      "prints, per table, the row count of the sample file itself, `<n> rows, <m> used, <k> not in this build` (derived from the JSON by `_mth_report_lines`, so a sample that grows does not fail it; the three files hold 37, 37 and 18 or more rows); the numbers read off the BUILT tree (the group step's `children`, then each file step's) are 1.1 to 1.24 for "
                       "`lean-reduction-zeros-prime-error` (file 1), 2.1 for `-criterion` and 3.1 to 3.12 for `-prime-number-theorem`, equal to the numbers on every card and entry; every statement has `number` and a title that holds no backtick; "
                       "every notation row is on its own file step in the table's order; the step ids and the file set equal a build without the options, which holds no `number`, `math`, `human` or `notation`")
     def _():
@@ -9042,8 +9052,24 @@ def _selftest_cases():
         return _eq((r1[2].strip(), maths_lines, files, {fid: len(v) for fid, v in per_file.items()}, per_file[ids[1]][0], per_file[ids[1]][-1], per_file[ids[0]], per_file[ids[2]][0], per_file[ids[2]][-1],
                     all(v[0] == v[1] == indep[i] for i, v in cards.items()), len(cards), [i for i, v in cards.items() if "`" in v[2] or "`" in v[3] or not v[2] or v[2] != v[3]], per_file == source_order, notation_ok,
                     sorted(f0) == sorted(f1), absent),
-                   ("", ["maths names: 37 rows, 37 used, 0 not in this build", "maths statements: 37 rows, 37 used, 0 not in this build", "maths notation: 18 rows, 18 used, 0 not in this build"],
+                   ("", _mth_report_lines(tables, {o["name"] for o in (_j(f1, k) for k in f1 if k.startswith("graph/step/")) if "name" in o}, ids),
                     [ids[1], ids[0], ids[2]], {ids[0]: 1, ids[1]: 24, ids[2]: 12}, "1.1", "1.24", ["2.1"], "3.1", "3.12", True, 37, [], True, True, True, []))
+
+    @case("MTH-REAL-DERIVE", "the derivation MTH-REAL uses for its expected `maths <table>` lines follows the files: for two fixture builds whose tables hold other numbers of rows (a row for a statement outside the build, a notation row in two files, an empty table) `_mth_report_lines` equals the lines the "
+                             "command line prints, so the real case does not depend on how many rows the live sample holds")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            out = []
+            for k, (n, s_, t) in enumerate((([_mth_n("alpha", "Alpha"), _mth_n("Nat.le", "Less")], [_mth_s("alpha"), _mth_s("beta"), _mth_s("bdef")], [_mth_t("lean-p-a"), _mth_t("lean-p-c", "y"), _mth_t("lean-p-a", "z")]),
+                                            ([], [_mth_s("alpha")], []))):
+                tables = _mth_tables(n, s_, t)
+                r = _mth_cli(d, g, names=tables["names"], statements=tables["statements"], notation=tables["notation"], out="o%d" % k)
+                files = _tree_files(os.path.join(d, "o%d" % k))
+                built = {json.loads(v.decode("utf-8"))["name"] for f, v in files.items() if f.startswith("graph/step/") and "name" in json.loads(v.decode("utf-8"))}
+                out.append((r[0], [x for x in r[1] if x.startswith("maths ")] == _mth_report_lines(tables, built, RDC_FILES), [x for x in r[1] if x.startswith("maths ")]))
+        return _eq(out, [(0, True, ["maths names: 2 rows, 1 used, 1 not in this build", "maths statements: 3 rows, 3 used, 0 not in this build", "maths notation: 3 rows, 3 used, 0 not in this build"]),
+                         (0, True, ["maths names: 0 rows, 0 used, 0 not in this build", "maths statements: 1 rows, 1 used, 0 not in this build", "maths notation: 0 rows, 0 used, 0 not in this build"])])
 
     # ---------------------------------------------------------------- the readings in the maths surface (MTR cases; contract section 34, C1 to C7 and B4): with `--readings` AND the three maths options
 
@@ -9146,7 +9172,7 @@ def _selftest_cases():
         return _eq(got + good, [(1, [mtr_src("shape")])] * len(bad) + [(0, [])])
 
     @case("MTR-LINE", "THE LINE CHECK of every `result` (C2): the path is `src/<Module path>.lean` and the module's compiled index must exist (`result <k> path`: no such module, a library path outside the repository, `..`, an empty segment, a file that is not `.lean`); the Lean name is a declaration "
-                      "of THAT module, in full or by its short name (`unknown`; `ambiguous` when two declarations of the module share the short name; the full name of one of them passes); the cited line is the index's NAME line plus 1 (`result <k> line <right line>`: a line one too high, "
+                      "of THAT module, in full or by its short name (`unknown`; `ambiguous` when two declarations of the module share the short name; the full name of one of them passes; a name that is the full name of one declaration AND the short name of another is the FULL one: `zed` is the root `zed`, never `Foo.zed`); the cited line is the index's NAME line plus 1 (`result <k> line <right line>`: a line one too high, "
                       "one too low and the line of the doc-string are refused and name the right one; the index's first number is the doc-string's line, so the check reads the fifth); k counts the `result` bullets; a result for the reading's OWN statement is allowed; "
                       "one result bullet that is refused does not hide the next one's refusal")
     def _():
@@ -9157,13 +9183,14 @@ def _selftest_cases():
                "ambiguous": run(res("dup", 21, MTR_PL)), "full-one": run(res("Foo.dup", 21, MTR_PL)), "full-two": run(res("Bar.dup", 31, MTR_PL)), "full-wrong": run(res("Foo.dup", 31, MTR_PL)),
                "missing": run(res("alpha", L, "src/New/P/Z.lean")), "library": run(res("alpha", L, ".lake/packages/mathlib/Mathlib/Order/Basic.lean")), "dotdot": run(res("alpha", L, "src/New/../P/A.lean")), "empty-segment": run(res("alpha", L, "src/New//P/A.lean")),
                "not-lean": run(res("alpha", L, "src/New/P/A.txt")), "no-src": run(res("alpha", L, "New/P/A.lean")),
-               "second": run(_mtr_own(), res("alpha", L, MTR_PB)), "both": run(res("alpha", L + 2), res("beta", MTR_LN["beta"] + 1, words="X"), res("nope", 1, words="Y"))}
+               "second": run(_mtr_own(), res("alpha", L, MTR_PB)), "full-and-short": run(res("zed", 51, MTR_PL)), "full-wins": run(res("zed", 61, MTR_PL)), "dotted": run(res("Foo.zed", 61, MTR_PL)), "both": run(res("alpha", L + 2), res("beta", MTR_LN["beta"] + 1, words="X"), res("nope", 1, words="Y"))}
         lb = MTR_LN["beta"]
         return _eq(got, {"right": (0, []), "plus": (1, [mtr_src("result 1 line %d" % L)]), "minus": (1, [mtr_src("result 1 line %d" % L)]), "doc": (1, [mtr_src("result 1 line %d" % L)]), "lib": (0, []), "lib-line": (1, [mtr_src("result 1 line 11")]),
                          "unknown": (1, [mtr_src("result 1 unknown")]), "unknown-full": (1, [mtr_src("result 1 unknown")]), "other-module": (1, [mtr_src("result 1 unknown")]), "short-elsewhere": (1, [mtr_src("result 1 unknown")]),
                          "ambiguous": (1, [mtr_src("result 1 ambiguous")]), "full-one": (0, []), "full-two": (0, []), "full-wrong": (1, [mtr_src("result 1 line 21")]),
                          "missing": (1, [mtr_src("result 1 path")]), "library": (1, [mtr_src("result 1 path")]), "dotdot": (1, [mtr_src("result 1 path")]), "empty-segment": (1, [mtr_src("result 1 path")]),
                          "not-lean": (1, [mtr_src("result 1 path")]), "no-src": (1, [mtr_src("result 1 path")]), "second": (1, [mtr_src("result 2 unknown")]),
+                         "full-and-short": (0, []), "full-wins": (1, [mtr_src("result 1 line 51")]), "dotted": (0, []),
                          "both": (1, [mtr_src("result 1 line %d" % L), mtr_src("result 2 line %d" % lb), mtr_src("result 3 unknown")])})
 
     @case("MTR-MISMATCH", "a result whose `words` equal the human name of a statement of the build (a names row) must name THAT statement: another declaration is `SKEL-MATHS-READING-SOURCES <statement> result <k> mismatch` (a short name that resolves to the right one passes, and then carries the statement's `step`); "
@@ -9226,19 +9253,20 @@ def _selftest_cases():
 
     @case("MTR-RESTS", "`rests_on` (C5) is DERIVED from the bullets (lines starting `- `) of the section of the uses heading of the written text and only them, in order: `- <head>: <gives>` split at the FIRST `: `; a head equal to the human name of a statement of the build gives "
                        "`{gives, name (the full Lean name), step, words}`, any other head `{gives, words}` (no name, no step); a prose line and a quotation paragraph in that section, and a bullet in another section, are ignored; a bullet with no `: ` is "
-                       "`SKEL-MATHS-READING-RESTS <statement> bullet` (an empty head or an empty rest too); no bullet gives an empty list")
+                       "`SKEL-MATHS-READING-RESTS <statement> bullet` (an empty head, an empty rest, and a head with white space before or after it too: it would silently stop being an on-map head); an INDENTED bullet is not a bullet and is ignored; no bullet gives an empty list")
     def _():
         QB = _mtr_quote("Beta one. Beta two.")
         uses = "- Beta lemma: gives the bound.\n- Standing assumptions: nothing odd: really.\nA prose line is ignored.\n- Bee def: gives the definition.\n\n" + QB
         src = [_mtr_res("Beta lemma", "beta", MTR_PA, MTR_LN["beta"]), _mtr_res("Bee def", "bdef", MTR_PB, MTR_LNB), "- Quotation 1: %s line %d" % (MTR_PA, MTR_DOC_BETA)]
         r = _mtr_one(_mtr_text(uses=uses, target="- Foo: ignored in this section.", sources=src)[0])
         none = _mtr_one(_mtr_text(uses="No bullet here.")[0])
-        bad = [_mtr_one(_mtr_text(uses=u)[0])[:2] for u in ("- no colon here", "- head:no space", "- : empty head", "- head: ", "- ok: fine\n- broken")]
-        return _eq((r[:2], r[2] and r[2]["rests_on"], none[2]["rests_on"], bad),
+        bad = [_mtr_one(_mtr_text(uses=u)[0])[:2] for u in ("- no colon here", "- head:no space", "- : empty head", "- head: ", "- ok: fine\n- broken", "- Standing assumptions : x", "-  Standing assumptions: x")]
+        indent = _mtr_one(_mtr_text(uses="  - Standing assumptions: x\n- Library facts: y")[0])
+        return _eq((r[:2], r[2] and r[2]["rests_on"], none[2]["rests_on"], bad, indent[:2], [x["words"] for x in indent[2]["rests_on"]]),
                    ((0, []), [{"gives": "gives the bound.", "name": "beta", "step": "lean-p-a-beta", "words": "Beta lemma"}, {"gives": "nothing odd: really.", "words": "Standing assumptions"},
-                              {"gives": "gives the definition.", "name": "bdef", "step": "lean-p-b-bdef", "words": "Bee def"}], [], [(1, [mtr_rests("bullet")])] * 5))
+                              {"gives": "gives the definition.", "name": "bdef", "step": "lean-p-b-bdef", "words": "Bee def"}], [], [(1, [mtr_rests("bullet")])] * 7, (0, []), ["Library facts"]))
 
-    @case("MTR-RESTS-NOSOURCE", "check (a) of C5: every statement human name that occurs in the visible text (case-sensitive, the whole phrase: not inside a longer word, not after a word character; LONGEST name first, each match consumed so that `Basic bound` inside `Basic bound extended` is not "
+    @case("MTR-RESTS-NOSOURCE", "check (a) of C5: every statement human name that occurs in the visible text (case-sensitive, the whole phrase: not inside a longer word, not after a word character, so a Unicode letter next to a name is no mention while `-` or `'s` after it is; LONGEST name first, each match consumed so that `Basic bound` inside `Basic bound extended` is not "
                                 "counted again; the reading's OWN statement excluded; only a statement with a names row can be found) must have a `result` source with those words: `SKEL-MATHS-READING-RESTS <statement> <name> no-source`")
     def _():
         names = [_mth_n("alpha", "Basic bound"), _mth_n("beta", "Basic bound extended"), _mth_n("countError", "Count error")]
@@ -9249,10 +9277,12 @@ def _selftest_cases():
         got = {"longest": run("It follows from Basic bound extended.", [sb]), "both-missing": run("From Basic bound extended and from Basic bound.", [sb]), "both": run("From Basic bound extended and from Basic bound.", [sb, sa]),
                "none": run("It follows from Basic bound extended.", []), "lower": run("It follows from basic bound extended.", []), "after-word": run("Basic bounds and xBasic bound and Basic bound_q.", []),
                "punctuation": run("From (Basic bound), then.", []), "own": run("The Count error is small.", []), "other-reads-it": _mtr_one(_mtr_text(target="The Count error is small.")[0], names=names)[:2],
-               "no-row": run("From Beta lemma.", [], nm=[_mth_n("alpha", "Basic bound")]), "second-name": run("From Basic bound and Basic bound extended.", [sa])}
+               "no-row": run("From Beta lemma.", [], nm=[_mth_n("alpha", "Basic bound")]), "second-name": run("From Basic bound and Basic bound extended.", [sa]),
+               "letter-after": run("Basic bound\u00e9 and \u00e9Basic bound and Basic bound\u00df.", []), "hyphen": run("The Basic bound-wise form.", []), "possessive": run("The Basic bound's proof.", [])}
         mc = lambda what: mr("RESTS", what, "countError")
         return _eq(got, {"longest": (0, []), "both-missing": (1, [mc("Basic bound no-source")]), "both": (0, []), "none": (1, [mc("Basic bound extended no-source")]), "lower": (0, []), "after-word": (0, []),
-                         "punctuation": (1, [mc("Basic bound no-source")]), "own": (0, []), "other-reads-it": (1, [mtr_rests("Count error no-source")]), "no-row": (0, []), "second-name": (1, [mc("Basic bound extended no-source")])})
+                         "punctuation": (1, [mc("Basic bound no-source")]), "own": (0, []), "other-reads-it": (1, [mtr_rests("Count error no-source")]), "no-row": (0, []), "second-name": (1, [mc("Basic bound extended no-source")]),
+                         "letter-after": (0, []), "hyphen": (1, [mc("Basic bound no-source")]), "possessive": (1, [mc("Basic bound no-source")])})
 
     @case("MTR-RESTS-INSOURCES", "check (b) of C5: every `rests_on` entry that has a `step` must have a `result` source with that step: `SKEL-MATHS-READING-RESTS <statement> <name> not-in-sources` (the head of the reading's OWN statement in its uses section, which check (a) excludes, with no own "
                                  "Sources line; the line is printed after the `no-source` lines); the same head with the source passes; a head that is not a statement name needs none")
@@ -9317,8 +9347,8 @@ def _selftest_cases():
                    (0, ["by", "date", "rests_on", "second_read_by", "sources", "text"], ["Bee def", "first of the library.", "Beta lemma", "quote", "Alpha result", "second of the library."], ["Beta lemma", "Standing assumptions", "Bee def"], True,
                     ("Agent One", "Agent Two", "2026-11-27"), [], False, ["readings lean-p-a: 1 readings written", "readings lean-p-b: 0 readings written", "readings lean-p-c: 0 readings written", "readings lean-q-d: 0 readings written"], [1]))
 
-    @case("MTR-ORDER", "the order of refusals (C7), through the command line, only the FIRST stage that has a refusal is printed (all its lines, every reading), exit 1, nothing written: the three tables (names, statements, notation), then for the readings the file, text, name and date checks, the target "
-                       "(a statement the build wrote), the headings, the Sources shapes, the results (the line check), the quote pairing (count, order, unknown), the visible text, the links and rests_on, the quote bytes: here ONE reading holds a defect of each stage from the one under test "
+    @case("MTR-ORDER", "the order of refusals (C7), through the command line, only the FIRST stage that has a refusal is printed (all its lines, every reading), exit 1, nothing written: the three tables (names, statements, notation), then for the readings the file, text, name and date checks, the headings (PR 140's place), the target "
+                       "(a statement the build wrote), the Sources shapes, the results (the line check), the quote pairing (count, order, unknown), the visible text, the links and rests_on, the quote bytes: here ONE reading holds a defect of each stage from the one under test "
                        "to the last, and only the one under test is printed; two readings with the same defect are two lines in the order of the file, and a defect of the second reading in a LATER stage is not printed")
     def _():
         def text(h, s, r, q, v, e):
@@ -9330,13 +9360,13 @@ def _selftest_cases():
                 t = t.replace(a, "@@").replace(b, a).replace("@@", b)
             return t
         names_bad = MTR_NAMES + [_mth_n("alpha", "Again")]
-        stages = ["tables", "name", "target", "headings", "shape", "line", "quote", "visible", "rests", "bytes"]
-        want = [["SKEL-MATHS-ROWS names alpha duplicate"], ["SKEL-STATEMENT-READING-NAME nope by"], ["SKEL-STATEMENT-READING-TARGET nope"], [mhd("order")], [mtr_src("shape")], [mtr_src("result 1 line %d" % MTR_LN["alpha"])],
+        stages = ["tables", "name", "headings", "target", "shape", "line", "quote", "visible", "rests", "bytes"]
+        want = [["SKEL-MATHS-ROWS names alpha duplicate"], ["SKEL-STATEMENT-READING-NAME nope by"], [mhd("order", "nope")], ["SKEL-STATEMENT-READING-TARGET nope"], [mtr_src("shape")], [mtr_src("result 1 line %d" % MTR_LN["alpha"])],
                 [mtr_src("quote order")], [mtr_vis("link")], [mtr_rests("Beta lemma no-source")], [mqq(1, "text")]]
         got = []
         for i in range(len(stages)):
-            entry = _mtr_e("nope" if i <= 2 else "alpha", **({"by": ""} if i <= 1 else {}))
-            r = _mtr_go([(entry, text(i <= 3, i <= 4, i <= 5, i <= 6, i <= 7, i <= 8))], names=names_bad if i == 0 else MTR_NAMES)
+            entry = _mtr_e("nope" if i <= 3 else "alpha", **({"by": ""} if i <= 1 else {}))
+            r = _mtr_go([(entry, text(i <= 2, i <= 4, i <= 5, i <= 6, i <= 7, i <= 8))], names=names_bad if i == 0 else MTR_NAMES)
             got.append((r[0], r[1], r[3]))
         shape, line = text(False, True, False, False, False, False), text(False, False, True, False, False, False)
         both = _mtr_go([(_mtr_e("alpha", text_path="a.md"), shape), (_mtr_e("beta"), line)])
@@ -9416,7 +9446,7 @@ def _selftest_cases():
                 if "name" in o:
                     steps[o["name"]] = o
         report = [x for x in r[1].splitlines()]
-        out = []
+        out, all_heads = [], []
         for e, text in zip(entries, authored):
             o = steps[e["statement"]]
             rd = o["reading"]
@@ -9435,12 +9465,13 @@ def _selftest_cases():
             uses = visible[visible.index("## " + MTR_H["decl_reading_uses"]):].split("\n## ")[0]
             heads = [b[2:].split(": ", 1)[0] for b in uses.split("\n") if b.startswith("- ")]
             want_rests = [{"words": h, **({"name": by_human[h], "step": steps[by_human[h]]["id"]} if h in by_human else {})} for h in heads]
+            all_heads.append(heads)
             out.append((len(rd["sources"]), len(res), len([x for x in rd["sources"] if x["kind"] == "result"]), len([x for x in rd["sources"] if x["kind"] == "quote"]), ok_lines,
                         [x["paragraph"] for x in rd["sources"] if x["kind"] == "quote"] == para, rd["text"] == visible, [{k: v for k, v in x.items() if k != "gives"} for x in rd["rests_on"]] == want_rests,
-                        (len(rd["rests_on"]), len([x for x in rd["rests_on"] if "step" in x]))))
+                        (len(rd["rests_on"]), len([x for x in rd["rests_on"] if "step" in x])), len([b for b in bullets if b.startswith("- Quotation ")]), len([h for h in heads if h in by_human])))
         adv = [x for x in report if x.startswith("maths reading")]
         return _eq((out, sorted(a.split("possible mention of ")[1].split(" without")[0] for a in adv), [a.split(":")[0] for a in adv] == ["maths reading " + entries[0]["statement"]] * 2),
-                   ([(out[0][0], 10, 10, 1, True, True, True, True, (6, 4)), (out[1][0], 8, 8, 0, True, True, True, True, (5, 1))], ["Count error", "The mean logarithmic derivative"], True))
+                   ([(o[0], o[1], o[1], o[9], True, True, True, True, (len(h), o[10]), o[9], o[10]) for o, h in zip(out, all_heads)], ["Count error", "The mean logarithmic derivative"], True))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
