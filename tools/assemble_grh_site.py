@@ -8,8 +8,8 @@ The tool writes, from the data of `build_grh_skeleton.py` (index.json, spine.jso
 and a page made by `build_site._graph_page`, the tree below, FLAT (the page loads its data and scripts relative to its own address):
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
-build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A27 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
-mutation controls M-a to M-t and M-v, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
+build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A28 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
+mutation controls M-a to M-v, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
@@ -64,7 +64,7 @@ sk = _load("build_grh_skeleton")
 
 _FROM_BUILD_SITE = ("_graph_assets", "_graph_sink_errors", "_graph_asset_errors", "_graph_page", "GRAPH_SHELL_KEYS", "_graph_bytes", "_dump", "_sha",
                     "graph_element_problems", "static_problems", "head_meta_problems", "surface_scan",
-                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems", "element_problems", "link_problems")
+                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems", "element_problems", "link_problems", "_GRAPH_TOKEN")
 _FROM_SKELETON = ("_read_in", "_contained")
 _UNRESOLVED = [f"build_site.{n}" for n in _FROM_BUILD_SITE if not hasattr(bs, n)] + [f"build_grh_skeleton.{n}" for n in _FROM_SKELETON if not hasattr(sk, n)]
 if _UNRESOLVED:   # something the contract imports cannot be imported as it stands: stop, never copy it
@@ -89,6 +89,7 @@ _publish = bs._publish
 _graph_static_problems = bs._graph_static_problems
 element_problems = bs.element_problems
 link_problems = bs.link_problems
+_GRAPH_TOKEN = bs._GRAPH_TOKEN
 _read_in, _contained = sk._read_in, sk._contained
 
 TOP_READ_LIMIT = 4 * 1024 * 1024    # index.json, spine.json, uses.json, the strings file, the shell: the most bytes of each read (A1)
@@ -335,6 +336,15 @@ def _stage_page(shell_bytes, assets, strings, index, names, credits=None, pin=No
             lines.append(f"ASM-STRINGS {key} not-a-string")
         elif key in ABOUT_CREDITS_KEYS and not strings[key]:
             lines.append(f"ASM-STRINGS {key} missing")
+    seen = set()   # A28: every other key a shell token names, in the order the tokens first appear (the builder's own token pattern); readings_front is A18's, below
+    for mt in _GRAPH_TOKEN.finditer(shell_bytes.decode("utf-8")):
+        key = mt.group(1)
+        if key in SHELL_KEYS and key != READINGS_FRONT_KEY and key in strings and key not in seen:
+            seen.add(key)
+            if not isinstance(strings[key], str):
+                lines.append(f"ASM-STRINGS {key} not-a-string")
+            elif not strings[key]:
+                lines.append(f"ASM-STRINGS {key} empty")
     if "{{S:" + READINGS_FRONT_KEY + "}}" in shell_bytes.decode("utf-8"):   # A18: the key is used only when the shell holds the token
         template, rows = strings.get(READINGS_FRONT_KEY), index.get(READINGS_KEY)
         bad_template = not (isinstance(template, str) and template.count("{n}") == 1)
@@ -479,6 +489,65 @@ def _eq(actual, expected):
 
 def _tmp():
     return tempfile.TemporaryDirectory(prefix="grh-asm-")
+
+
+# ---------------------------------------------------------------- the temporary folder of one self-test run (TMP1)
+# One folder for the whole run (`_RUN_TMP`), a private sub-folder of it for every child process the self-test starts (`_spawn`). A child that finishes must leave its
+# sub-folder empty (else a LEAK, named); a child killed at its limit cannot clean up, so the PARENT removes what it left and records the kill in `_KILLED`: the kill is the
+# failure of the control that started the child, never a leak. `_run_report()` is the list of leaks of the run (empty = clean).
+_RUN_TMP = None
+_KILLED = []
+_LEAKS = []
+
+
+def _spawn(argv, timeout, **kw):
+    """`subprocess.run(argv, timeout=timeout, **kw)` for a child of the self-test. Inside a run (`_RUN_TMP` set) the child gets a private sub-folder of the run's folder as its TMPDIR
+    (whatever `env` it was given, TMPDIR replaced). A child that FINISHES must leave that sub-folder empty: what it left is a LEAK, recorded in `_LEAKS` by name and removed. A child killed at
+    its `timeout` (TimeoutExpired, re-raised: the control that started it reports it as its OWN failure) cannot clean up, so the PARENT removes what it left and records the kill, with the
+    names it removed, in `_KILLED`: a kill is never counted as a leak. Whatever else happens (an error of the call itself) the sub-folder is removed. Outside a run: a plain run."""
+    if _RUN_TMP is None:
+        return subprocess.run(argv, timeout=timeout, **kw)
+    sub = tempfile.mkdtemp(prefix="child-", dir=_RUN_TMP)
+    label = " ".join(str(a) for a in argv[2:])[:60]
+    kw = dict(kw, env=dict(os.environ if kw.get("env") is None else kw["env"], TMPDIR=sub))
+    try:
+        r = subprocess.run(argv, timeout=timeout, **kw)
+        left = sorted(os.listdir(sub))
+        if left:
+            _LEAKS.append(f"{label}: {len(left)} left in its TMPDIR: " + ", ".join(left[:20]))
+        return r
+    except subprocess.TimeoutExpired:
+        _KILLED.append((label, sorted(os.listdir(sub))))
+        raise
+    finally:
+        shutil.rmtree(sub, ignore_errors=True)
+
+
+def _run_report():
+    """The leaks of the run, as lines (empty: clean): what the children that finished left (`_LEAKS`), and whatever the run's own folder still holds (an in-process case that left something).
+    The kills of `_KILLED` are not in it."""
+    out = list(_LEAKS)
+    left = sorted(os.listdir(_RUN_TMP)) if _RUN_TMP and os.path.isdir(_RUN_TMP) else []
+    if left:
+        out.append(f"the run's folder holds {len(left)}: " + ", ".join(left[:20]))
+    return out
+
+
+class _scratch_run:
+    """The test scaffolding of TMP1: a fresh run folder and empty records for the body of the `with`, the previous ones restored after."""
+    def __enter__(self):
+        global _RUN_TMP
+        self.saved = (_RUN_TMP, list(_KILLED), list(_LEAKS))
+        self.t = tempfile.mkdtemp(prefix="rh-tmp1-")
+        _RUN_TMP = self.t
+        del _KILLED[:], _LEAKS[:]
+        return self.t
+
+    def __exit__(self, *exc):
+        global _RUN_TMP
+        shutil.rmtree(self.t, ignore_errors=True)
+        _RUN_TMP = self.saved[0]
+        _KILLED[:], _LEAKS[:] = self.saved[1], self.saved[2]
 
 
 # ---------------------------------------------------------------- fixtures: every one is built in a temp folder from literals and from the skeleton builder's own machinery
@@ -627,7 +696,7 @@ def _argv(w, pin=PIN, drop=(), **over):
 def _cli(argv, env=None, cwd=None, preexec=None):
     """(exit code, stdout lines, stderr) of the tool run in a SUBPROCESS (`-I`, 60 s timeout: a tool that blocks on a FIFO fails the case, it does not hang the self-test).
     The stub's NotImplementedError is `_Absent`: the case is red because the behaviour is absent."""
-    r = subprocess.run([sys.executable, "-I", TOOL] + argv, capture_output=True, text=True, timeout=60, env=env, cwd=cwd, preexec_fn=preexec)
+    r = _spawn([sys.executable, "-I", TOOL] + argv, 60, capture_output=True, text=True, env=env, cwd=cwd, preexec_fn=preexec)
     if "NotImplementedError: phase 2" in r.stderr:
         raise _Absent("behaviour absent: the stub raised NotImplementedError('phase 2')")
     return r.returncode, r.stdout.splitlines(), r.stderr
@@ -764,7 +833,7 @@ def _limit_writes(n):
 
 # ---------------------------------------------------------------- the mutation controls: exact specifications, for phase 2 to turn into live checks
 
-CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 28))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
+CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 29))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
 MUTATIONS = {
     "M-a": ("A3", "in the pin stage, skip the comparison of `commit` with --pin for every step/<id>.json (index.json, spine.json and uses.json are still compared)", ("A3",)),
     "M-b": ("A1", "in the data stage, read a step/<id>.json that is a symlink as if it were a regular file (follow it; no `symlink` refusal for it). Every other symlink refusal "
@@ -800,6 +869,8 @@ MUTATIONS = {
                    "allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
     "M-t": ("A27", "loosen the repository constant of the credits page's outbound-link check to `https://github.com/` (the repository is no longer the one `lsernau/grh-lean`): the allowed set is no longer the "
                    "one repository's, so A27 is red; no other case builds a page with an outbound link, so every other A-case stays green", ("A27",)),
+    "M-u": ("A28", "drop the check of the strings keys a shell token names (the loop over the shell's tokens never tests a key, so a value that is not a str or is empty is written as text as before): "
+                   "A28 is red; no other case puts a bad value under a shell key, so every other A-case stays green", ("A28",)),
     "M-v": ("A27", "drop the dot-segment check of the credits page's outbound-link check (A27b: a tail with a `.` or `..` segment is accepted again; the other tail checks stay): a link such as "
                    "`.../tree/<PIN>/../x` is then allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
 }
@@ -833,6 +904,7 @@ MUTATION_EDITS = {
     "M-r": ('static_problems(cpage, "") + element_problems(cpage) + head_meta_problems(cpage)', 'static_problems(cpage, "") + [] + head_meta_problems(cpage)'),
     "M-s": ('if not (commit == pin and (sep == "/" or kind == "tree/")):', 'if not (bool(_PIN.fullmatch(commit)) and (sep == "/" or kind == "tree/")):'),   # (A27b moved the `return` of this test into an `if`; the same wrong implementation)
     "M-t": ('CREDITS_REPO = "https://github.com/lsernau/grh-lean/"', 'CREDITS_REPO = "https://github.com/"'),
+    "M-u": ('        if key in SHELL_KEYS and key != READINGS_FRONT_KEY and key in strings and key not in seen:\n', '        if False:\n'),
     "M-v": ('return not any(g in (".", "..") for g in segs) and "" not in segs[:-1]', 'return "" not in segs[:-1]'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
@@ -864,11 +936,11 @@ def _mutation_case(mid):
         with open(os.path.join(copy, os.path.basename(TOOL)), "w", encoding="utf-8") as f:
             f.write(head.replace(old, new) + tail)
         try:
-            r = subprocess.run([sys.executable, "-I", os.path.join(copy, os.path.basename(TOOL)), "--selftest", "--only", ",".join(CLAUSES)], capture_output=True, text=True,
-                               timeout=MUTATION_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            return False, f"{mid}: the self-test of the mutated copy did not finish in {MUTATION_TIMEOUT} s"
-    seen = {m.group(1): m.group(2) for m in re.finditer(r"^CASE (\S+) (PASS|FAIL|SKIP)", r.stdout, re.M)}
+            r = _spawn([sys.executable, "-I", os.path.join(copy, os.path.basename(TOOL)), "--selftest", "--only", ",".join(CLAUSES)], MUTATION_TIMEOUT,
+                       capture_output=True, text=True)
+        except subprocess.TimeoutExpired:   # the child could not clean up: _spawn removed what it left; this control fails, the run's leak check is not touched
+            return False, f"{mid}: killed at its limit: the self-test of the mutated copy did not finish in {MUTATION_TIMEOUT} s"
+    seen = {m.group(1): m.group(2) for m in re.finditer(r"^CASE (\S+) (PASS|FAIL|SKIP)", r.stdout, re.M) if m.group(1) in CLAUSES}   # the run's own CASE TMP1 line is not an A-case
     if sorted(seen) != sorted(CLAUSES):
         return False, f"{mid}: the mutated copy reported {sorted(seen)}, not every A-case; stderr {r.stderr[-300:]!r}"
     observed = sorted((c for c in CLAUSES if seen[c] != "PASS"), key=CLAUSES.index)
@@ -1523,7 +1595,7 @@ diffs = [k for k in before if before[k] != after[k]]
 bs_diff = sorted(k for k in set(vars_of(fresh)) | set(vars_of(mod.bs)) if vars_of(fresh).get(k) != vars_of(mod.bs).get(k))
 print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": bs_diff}))
 '''
-        r = subprocess.run([sys.executable, "-I", "-c", probe, TOOL, _HERE], capture_output=True, text=True, timeout=120)
+        r = _spawn([sys.executable, "-I", "-c", probe, TOOL, _HERE], 120, capture_output=True, text=True)
         if r.returncode != 0:
             return False, f"the probe failed: {r.stderr[-300:]}"
         got = json.loads(r.stdout)
@@ -2197,9 +2269,167 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                 note("in-process allowed: " + what, _eq(refs(f'<p><a href="{ref}">x</a></p>'), []))
         return (not fails, "; ".join(fails))
 
+    @case("A28", "every strings key a shell token names is a non-empty string: for each `{{S:key}}` token the shell holds (the builder's own token pattern) whose key is one of SHELL_KEYS and is PRESENT in the "
+                 "strings file, a value that is not a str (an int, a bool, null, a list, an object, a float) is `ASM-STRINGS <key> not-a-string` and the empty string is `ASM-STRINGS <key> empty`, one line "
+                 "per key, after the about_text lines and in the order the tokens first appear in the shell, exit 1, nothing written; a key the shell does not hold is not checked (any value); a missing "
+                 "key stays the builder's refusal; `readings_front` keeps A18's rule and is not reported twice; with --page the three credits keys keep A24's lines; a non-empty str passes unchanged")
+    def _():
+        _need_pr_c()
+
+        def put_strings(w, **over):   # written as JSON directly: `_asm_strings` drops a None, and a null is one of the cases
+            _put(w["strings"], json.dumps(dict(_asm_strings(), **over)))
+
+        for what, val in (("an int", 7), ("a bool", True), ("null", None), ("a list", ["x"]), ("an object", {"a": 1}), ("a float", 1.5)):   # (a) every non-str type, one shell key
+            with _tmp() as d:
+                w = _world(d)
+                put_strings(w, title=val)
+                good, why = _refused(w, _argv(w), ["ASM-STRINGS title not-a-string"], f"title is {what}")
+                if not good:
+                    return good, why
+        with _tmp() as d:   # (b) the empty string
+            w = _world(d)
+            put_strings(w, title="")
+            good, why = _refused(w, _argv(w), ["ASM-STRINGS title empty"], "title is the empty string")
+            if not good:
+                return good, why
+        with _tmp() as d:   # (c) two bad keys and a bad about_text: all the lines, the about_text line first, then the keys in the order of the tokens in the shell (not the strings file's order, which here puts close first)
+            w = _world(d)
+            rest = _asm_strings()
+            rest.pop("close"), rest.pop("title")
+            _put(w["strings"], json.dumps({"close": ["x"], **rest, "title": "", ABOUT_KEY: 7}))   # the file puts close first and title last; the shell holds title before close
+            rc, lines, err = _cli(_argv(w))
+            ok, why = _eq((rc, lines, "Traceback" in err, os.path.exists(w["out"])),
+                          (1, [f"ASM-STRINGS {ABOUT_KEY} not-a-string", "ASM-STRINGS title empty", "ASM-STRINGS close not-a-string"], False, False))
+            if not ok:
+                return ok, "two bad keys and a bad about_text, in order: " + why
+        with _tmp() as d:   # (d) a bad value under a key the shell does NOT hold (SHELL has no scope line and no readings line) is not looked at; a padded str is passed unchanged
+            w = _world(d)
+            put_strings(w, **{SCOPE_KEY: 7, READINGS_FRONT_KEY: ["x"], "unused_key": None, "sentence": "  padded & <b>x</b>  "})
+            tree = _ok_run(w)[0]
+            ok, why = _eq(_no_feedback(tree["index.html"].decode("utf-8")), _no_feedback(_expected_page(w, SHELL, _asm_strings(sentence="  padded & <b>x</b>  "))))   # the section attribute is A7's and A8's (M-h)
+            if not ok:
+                return ok, "a bad value under a key the shell does not hold: " + why
+        with _tmp() as d:   # (d2) a whitespace-only title is a non-empty str: it builds
+            w = _world(d)
+            put_strings(w, title="   ")
+            tree = _ok_run(w)[0]
+            ok, why = _eq(_no_feedback(tree["index.html"].decode("utf-8")), _no_feedback(_expected_page(w, SHELL, _asm_strings(title="   "))))
+            if not ok:
+                return ok, "a whitespace-only title: " + why
+        with _tmp() as d:   # (e) a clean world builds the same tree as before: the page is the builder's, the files are the closed set
+            w = _world(d, scope=True)
+            tree, empty = _ok_run(w)
+            ok, why = _eq((sorted(tree), empty, _no_feedback(tree["index.html"].decode("utf-8"))), (tree_names(w), [], _no_feedback(_expected_page(w, SHELL_SCOPE, _asm_strings()))))   # the section attribute is A7's and A8's (M-h)
+            if not ok:
+                return ok, "a clean world: " + why
+        for what, val in (("an int", 7), ("the empty string", ""), ("a template with no {n}", "no braces")):   # (f) readings_front: A18's line alone (the fixture index has no list, so A18's shape line follows), never an A28 line
+            with _tmp() as d:
+                w = _world(d, shell=SHELL_READINGS)
+                put_strings(w, **{READINGS_FRONT_KEY: val})
+                good, why = _refused(w, _argv(w), [f"ASM-READINGS {READINGS_FRONT_KEY} template", f"ASM-READINGS {READINGS_KEY} shape"], f"readings_front is {what}")
+                if not good:
+                    return good, why
+        with _tmp() as d:   # (g) with --page: A24's lines for the three credits keys are unchanged and appear once; a bad shell key adds its own line after them
+            w = _page_world(d)
+            _put(w["strings"], json.dumps(dict(_page_strings(), **{CREDITS_KEYS[0]: 7, CREDITS_KEYS[1]: "", CREDITS_KEYS[2]: None, "title": 7})))
+            rc, lines, err = _cli(_argv(w))
+            ok, why = _eq((rc, lines, os.path.exists(w["out"])),
+                          (1, [f"ASM-STRINGS {CREDITS_KEYS[0]} not-a-string", f"ASM-STRINGS {CREDITS_KEYS[1]} missing", f"ASM-STRINGS {CREDITS_KEYS[2]} not-a-string", "ASM-STRINGS title not-a-string"], False))
+            if not ok:
+                return ok, "with --page, the three credits keys and a bad title: " + why
+        return True, ""
+
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(
             (lambda m: lambda: _mutation_case(m))(mid))
+    # ---- TMP1: the temporary folder of a run. Children are small programs of the standard library (the tool itself is not needed to show what the parent does).
+    MAKE = "import os, sys, tempfile, time\nd = tempfile.mkdtemp(prefix='grh-asm-')\nprint(os.environ.get('TMPDIR'), os.path.basename(d), flush=True)\n"
+    CLEAN = MAKE + "os.rmdir(d)\n"
+    LEAK = MAKE
+    HANG = MAKE + "time.sleep(60)\n"
+
+    def kid(code, limit=30):
+        return _spawn([sys.executable, "-I", "-c", code], limit, capture_output=True, text=True)
+
+    @case("TMP1a", "a child that cleans up after itself: its TMPDIR was a sub-folder of the run's folder (it prints it), the run's folder is empty afterwards, no kill and no leak is recorded")
+    def _():
+        with _scratch_run() as t:
+            r = kid(CLEAN)
+            seen = r.stdout.split()[0] if r.stdout.split() else ""
+            return _eq((r.returncode, os.path.dirname(seen) == t, sorted(os.listdir(t)), _run_report(), list(_KILLED)), (0, True, [], [], []))
+
+    @case("TMP1b", "a child killed at its limit (made a `grh-asm-` folder, then sleeps past a 2 s limit): TimeoutExpired reaches the caller, the PARENT removed the leftover (the run's folder is "
+                   "empty), the kill is recorded with the name of the folder it removed, and the leak report is EMPTY: a kill is the control's own failure, not a leak")
+    def _():
+        with _scratch_run() as t:
+            try:
+                kid(HANG, limit=2)
+                raised = False
+            except subprocess.TimeoutExpired:
+                raised = True
+            return _eq((raised, sorted(os.listdir(t)), _run_report(), len(_KILLED), "grh-asm-" in repr(_KILLED)), (True, [], [], 1, True))
+
+    @case("TMP1c", "five children that each leave one `grh-asm-` folder and exit: the leak report names every one of the five (not the first only), and the parent removed them (the run's folder is empty)")
+    def _():
+        with _scratch_run() as t:
+            names = [kid(LEAK).stdout.split()[1] for _i in range(5)]
+            rep = " ".join(_run_report())
+            return _eq((len(set(names)), [n for n in names if n not in rep], sorted(os.listdir(t)), list(_KILLED)), (5, [], [], []))
+
+    @case("TMP1d", "under load and alone: 12 clean children at once leave nothing and record nothing; 12 children killed at their limit at once record 12 kills and no leak and leave nothing; "
+                   "one clean child alone the same as the first")
+    def _():
+        from concurrent.futures import ThreadPoolExecutor
+        out = []
+        with _scratch_run() as t:
+            with ThreadPoolExecutor(max_workers=12) as ex:
+                rcs = list(ex.map(lambda _i: kid(CLEAN).returncode, range(12)))
+            out.append((rcs, sorted(os.listdir(t)), _run_report(), len(_KILLED)))
+        with _scratch_run() as t:
+            def hung(_i):
+                try:
+                    kid(HANG, limit=3)
+                except subprocess.TimeoutExpired:
+                    return "killed"
+                return "finished"
+            with ThreadPoolExecutor(max_workers=12) as ex:
+                res = list(ex.map(hung, range(12)))
+            out.append((sorted(set(res)), sorted(os.listdir(t)), _run_report(), len(_KILLED)))
+        with _scratch_run() as t:
+            out.append(([kid(CLEAN).returncode], sorted(os.listdir(t)), _run_report(), len(_KILLED)))
+        return _eq(out, [([0] * 12, [], [], 0), (["killed"], [], [], 12), ([0], [], [], 0)])
+
+    @case("TMP1e", "a whole self-test run (`--selftest --only A17`, as a child) ends with its own CASE TMP1 line, PASS, and exits 0: the run's folder is asserted empty at the end of every run")
+    def _():
+        with _scratch_run():
+            r = kid("import sys; sys.argv = ['x', '--selftest', '--only', 'A17']; import runpy; runpy.run_path(%r, run_name='__main__')" % TOOL, limit=300)
+            return _eq((r.returncode, "CASE TMP1 PASS" in r.stdout), (0, True))
+
+    @case("TMP1f", "a run whose own case leaks a folder (a stand-in case that makes one in the process, run as a child through selftest()) ends with `CASE TMP1 FAIL`, names the leftover, and exits 4: "
+                   "the end-of-run assertion changes the exit code (found by the mutant that left it out, which TMP1e does not see)")
+    def _():
+        code = ("import importlib.util, sys\n"
+                "spec = importlib.util.spec_from_file_location('asm_under_test', %r)\n"
+                "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+                "m._selftest_cases = lambda: [('X', 'a case that leaks', lambda: (bool(m.tempfile.mkdtemp(prefix='planted-leak-')), ''))]\n"
+                "sys.exit(m.selftest())\n" % TOOL)
+        with _scratch_run():
+            r = kid(code, limit=120)
+        return _eq((r.returncode, "CASE TMP1 FAIL" in r.stdout, "planted-leak-" in r.stdout), (4, True, True))
+
+    @case("TMP1g", "a REAL kill: the first mutation control run with its limit set to 3 s is killed at it (its mutated copy is mid-run, with folders already made under the run's TMPDIR): the control "
+                   "returns False naming `killed at its limit`, the kill is recorded, the PARENT removed what the copy had made (the run's folder is empty) and the leak report is empty")
+    def _():
+        first = next(m for m in MUTATIONS if m in MUTATION_EDITS)
+        saved = globals()["MUTATION_TIMEOUT"]
+        with _scratch_run() as t:
+            globals()["MUTATION_TIMEOUT"] = 3
+            try:
+                good, detail = _mutation_case(first)
+            finally:
+                globals()["MUTATION_TIMEOUT"] = saved
+            return _eq((good, "killed at its limit" in detail, len(_KILLED), sorted(os.listdir(t)), _run_report()), (False, True, 1, [], []))
+
     return cases
 
 
@@ -2212,26 +2442,44 @@ def selftest(verbose=True, only=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
+    global _RUN_TMP
     ok, skipped = True, 0
-    for cid, desc, fn in cases:
-        try:
-            good, detail = fn()
-        except _SkipCase as e:
-            skipped += 1
+    saved = (_RUN_TMP, tempfile.tempdir, os.environ.get("TMPDIR"))
+    run_tmp = tempfile.mkdtemp(prefix="grh-run-")   # ONE folder for the whole run: the cases' own temporary folders and the sub-folders of the children are made in it
+    _RUN_TMP, tempfile.tempdir, os.environ["TMPDIR"] = run_tmp, run_tmp, run_tmp
+    try:
+        for cid, desc, fn in cases:
+            try:
+                good, detail = fn()
+            except _SkipCase as e:
+                skipped += 1
+                if verbose:
+                    print(f"CASE {cid} SKIP {e}")
+                continue
+            except _Absent as e:   # the stub: red because the behaviour is absent
+                good, detail = False, str(e)
+            except _FixtureError as e:   # a bug of the case itself, named so it is never read as a finding about the tool
+                good, detail = False, f"FIXTURE INVALID: {e}"
+            except Exception as e:   # a crash is a failed case, not a skipped one
+                good, detail = False, f"{type(e).__name__}: {e}"
+            ok = ok and bool(good)
             if verbose:
-                print(f"CASE {cid} SKIP {e}")
-            continue
-        except _Absent as e:   # the stub: red because the behaviour is absent
-            good, detail = False, str(e)
-        except _FixtureError as e:   # a bug of the case itself, named so it is never read as a finding about the tool
-            good, detail = False, f"FIXTURE INVALID: {e}"
-        except Exception as e:   # a crash is a failed case, not a skipped one
-            good, detail = False, f"{type(e).__name__}: {e}"
-        ok = ok and bool(good)
+                print(f"CASE {cid} {'PASS' if good else 'FAIL'} {desc}")
+                if not good:
+                    print(f"  detail: {detail}")
+        leaks = _run_report()   # the end of EVERY run: the run's folder must be empty and no child may have left anything; the kills (`_KILLED`) are the controls' own failures, not leaks
+        ok = ok and not leaks
         if verbose:
-            print(f"CASE {cid} {'PASS' if good else 'FAIL'} {desc}")
-            if not good:
-                print(f"  detail: {detail}")
+            print("CASE TMP1 " + ("FAIL the run left temporary entries (a kill is not one)" if leaks else "PASS the run left nothing in its temporary folder"))
+            for ln in leaks:
+                print(f"  detail: {ln}")
+    finally:
+        _RUN_TMP, tempfile.tempdir = saved[0], saved[1]
+        if saved[2] is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = saved[2]
+        shutil.rmtree(run_tmp, ignore_errors=True)
     if verbose:
         print("SELFTEST " + ("PASS" if ok else "FAIL") + (f" ({skipped} skipped)" if ok and skipped else ""))
     return 0 if ok else 4
