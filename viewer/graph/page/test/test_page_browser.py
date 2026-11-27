@@ -4584,7 +4584,7 @@ def c_rd_block(b, S0, engine, mutate=None):
         body = "#graph-sheet-body .decl-reading-body"
         assert pg.ev("document.querySelector('%s').textContent" % btn) == "Show an AI agent's reading"
         assert pg.ev("document.querySelector('%s').getAttribute('aria-expanded')" % btn) == "false"
-        assert pg.ev("document.querySelector('%s').className" % btn) == "sheet-tool"
+        assert pg.ev("document.querySelector('%s').className" % btn) == "sheet-tool sheet-tool-main"      # the filled main style (the cue's open-card half)
         assert not pg.ev("document.querySelector('%s').offsetParent !== null" % body), "the reading is closed when the card opens"
         assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading-none').length") == 0, "no 'no reading yet' line on a card that has one"
         pg.page.click(btn)
@@ -4626,6 +4626,135 @@ def c_rd_mutants(b, S0, engine):
         raise AssertionError("MUTANT SURVIVED: " + name)
 
 
+# ---- the reading cue (Lei, 11-27; Ariadne's note v1): the outlined tag on a box with a reading, the count line on the boxes above it; fixture fixtures/cues (made up) ----
+CUE_LONG = "A made-up and rather long title of a box that goes on over three full lines of the face so that nothing may be hidden by the tag"
+CUE_BOXES = ["fx-part", "fx-group", "fx-stmt-file", "fx-thm-a", "fx-lem-b", "fx-file-2"]
+
+
+def cue_long_titles(steps):
+    """Every step's own card and every children entry of the three boxes that carry the cue get the long title (3 lines at 15 px in the box): the worst case for the tag."""
+    for st in steps.values():
+        if st["card"]["id"] in ("fx-part", "fx-group", "fx-stmt-file", "fx-thm-a"):
+            st["card"]["title"] = CUE_LONG
+        for c in st["children"]:
+            if c["id"] in ("fx-part", "fx-group", "fx-stmt-file", "fx-thm-a"):
+                c["title"] = CUE_LONG
+
+
+def cue_measure(b, engine, w, h, fix="cues", step_edit=None, mutate=None):
+    """Opens the map at w x h down to the statements and measures every box: its face, title, foot and tag rects, the title's visible height and text."""
+    root = tempfile.mkdtemp(prefix="pg-cue-")
+    assemble.assemble(root, engine, fix=fix, step_edit=step_edit, mutate=mutate)
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", w, h, mobile=True).settled()
+    try:
+        at_hash(pg, "fx-stmt-file")
+        pg.wait("document.querySelector('#graph-sheet-body .claim') !== null && document.querySelector('[data-node=\"fx-group\"]') !== null", 8000)
+        pg.page.wait_for_timeout(500)
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        pg.wait("['fx-thm-a', 'fx-lem-b', 'fx-def-c'].every(i => document.querySelector('[data-node=\"' + i + '\"]'))", 8000)
+        pg.page.wait_for_timeout(500)
+        got = pg.ev("""(() => { const out = {}; for (const i of %s) { const n = document.querySelector('[data-node="' + i + '"]'); if (!n) { out[i] = null; continue; }
+          const f = n.querySelector('.face'), r = (e) => { if (!e) return null; const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, h: b.height }; };
+          const t = f.querySelector('.face-title');
+          out[i] = { face: r(f), title: r(t), foot: r(f.querySelector('.face-foot')), tag: r(f.querySelector('.face-reading')), tagText: (f.querySelector('.face-reading') || {}).textContent || null,
+                     cls: f.className, titleClient: t.clientHeight, titleScroll: t.scrollHeight, lineH: parseFloat(getComputedStyle(t).lineHeight), titleText: t.textContent,
+                     faceScroll: f.scrollHeight, faceClient: f.clientHeight }; } return out; })()""" % json.dumps(CUE_BOXES))
+        pg.csp_clean()
+        return got
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_cue_faces(b, S0, engine, mutate=None):
+    """The tag on a box with a reading and the count line above it, at 390 x 844 and 360 x 640: statement tag 'AI reading', file, group and part '1 AI reading' under the foot; no tag on the
+    statement without a reading or on the file without one; the tag is INSIDE the face (nothing clipped), under the title, and does not push the title out: the title shows as many lines as the
+    same box in the map WITHOUT the count (fixture readings) shows, with the short titles and with the long one (3 lines)."""
+    for w, h in ((390, 844), (360, 640)):
+        for edit in (None, cue_long_titles):
+            cue = cue_measure(b, engine, w, h, "cues", edit, mutate)
+            base = cue_measure(b, engine, w, h, "readings", edit, None)
+            for i in ("fx-part", "fx-group", "fx-stmt-file", "fx-thm-a"):
+                c, o = cue[i], base[i]
+                assert c is not None and o is not None, (w, h, i)
+                want = "AI reading" if i == "fx-thm-a" else "1 AI reading"
+                assert c["tagText"] == want, (w, h, i, c["tagText"])
+                assert "has-cue" in c["cls"].split() and "has-cue" not in o["cls"].split(), (w, h, i)
+                assert o["tag"] is None, (w, h, i, "the map without the count draws no tag")
+                t, g, f = c["tag"], c["face"], c["title"]
+                assert t["left"] >= g["left"] - 0.5 and t["right"] <= g["right"] + 0.5 and t["top"] >= g["top"] - 0.5 and t["bottom"] <= g["bottom"] + 0.5, (w, h, i, "the tag is clipped", t, g)
+                assert t["top"] >= f["bottom"] - 0.5, (w, h, i, "the tag overlaps the title", t, f)
+                if c["foot"]:
+                    assert t["top"] >= c["foot"]["bottom"] - 0.5, (w, h, i, "the tag is above the foot", t, c["foot"])
+                assert c["face"]["h"] == o["face"]["h"], (w, h, i, "the box changed size")
+                assert abs(c["titleClient"] - o["titleClient"]) <= 1 and c["titleText"] == o["titleText"], (w, h, i, "the title was pushed out", c["titleClient"], o["titleClient"])
+                assert c["faceScroll"] <= c["faceClient"] + 1, (w, h, i, "the face overflows", c["faceScroll"], c["faceClient"])
+            for i in ("fx-lem-b", "fx-file-2"):
+                if cue[i] is not None:
+                    assert cue[i]["tag"] is None and "has-cue" not in cue[i]["cls"].split(), (w, h, i, "a box without a reading has no tag")
+
+
+def c_cue_mutants(b, S0, engine):
+    """Cue mutants: no tag drawn, the tag drawn before the foot, the tag taken out of the flow (it lies on the title), the tag word on the boxes above too (the many-count fill is the node cases', the sample has one reading):
+    each turns the cue case red (the unmutated case is green first, so a red is the case's own assertion)."""
+    face = "page/face.js"
+    css = "graph.css"
+    muts = (("no tag drawn", {face: lambda t: t.replace("if (cue !== null) kids.push(el(\"div\", { class: \"face-reading\" }, [cue]));", "")}),
+            ("tag before the foot", {face: lambda t: t.replace("if (spec.childCount > 0) kids.push(el(\"div\", { class: \"face-foot\" }", "if (cueText(strings, d.readingCount, spec.childCount) !== null) kids.push(el(\"div\", { class: \"face-reading\" }, [cueText(strings, d.readingCount, spec.childCount)]));\n    if (spec.childCount > 0) kids.push(el(\"div\", { class: \"face-foot\" }").replace("if (cue !== null) kids.push(el(\"div\", { class: \"face-reading\" }, [cue]));", "")}),
+            ("tag out of the flow", {css: lambda t: t.replace(".face-reading { margin-top: auto;", ".face-reading { position: absolute; top: 6px; margin-top: auto;")}),
+            ("tag word above too", {face: lambda t: t.replace("if (!(childCount > 0)) return strings.face_reading_cue;", "return strings.face_reading_cue;")}))
+    for name, mut in muts:
+        try:
+            c_cue_faces(b, S0, engine, mutate=mut)
+        except AssertionError:
+            continue
+        raise AssertionError("MUTANT SURVIVED: " + name)
+
+
+def c_cue_card_and_key(b, S0, engine):
+    """The open card of a statement with a reading: its show button is the filled main style (the page's background is not its background), still between the Lean statement and the uses lists and
+    still closed; the card of a statement without one has no such button. The Key ends with the cue sentence after the statements text; a map without the cue words has no such line."""
+    root = tempfile.mkdtemp(prefix="pg-cue-")
+    assemble.assemble(root, engine, fix="cues")
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+    try:
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        btn = "#graph-sheet-body .decl-reading > button"
+        assert pg.ev("document.querySelector('%s').className" % btn) == "sheet-tool sheet-tool-main"
+        assert pg.ev("getComputedStyle(document.querySelector('%s')).backgroundColor !== getComputedStyle(document.body).backgroundColor" % btn), "the reading button is not filled"
+        kids = pg.ev(CARD_CHILDREN_JS)
+        assert kids.index("decl-lean") < kids.index("decl-reading") < kids.index("decl-uses decl-uses-here"), kids
+        assert not pg.ev("document.querySelector('#graph-sheet-body .decl-reading-body').offsetParent !== null")
+        open_card_by_hash(pg, "fx-lem-b", "baz")
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading').length") == 0
+        pg.page.click("#graph-key")
+        pg.wait("document.querySelector('#graph-sheet-body .key-content') !== null", 6000)
+        paras = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content .key-statements')].map(e => e.textContent)")
+        assert len(paras) == 2 and paras[1].startswith("A box tagged \"AI reading\" has an AI agent's reading"), paras
+        last = pg.ev("document.querySelector('#graph-sheet-body .key-content').lastElementChild.textContent")
+        assert last == paras[1], last
+        pg.csp_clean()
+    finally:
+        pg.close()
+        S.stop()
+    root2 = tempfile.mkdtemp(prefix="pg-cue-")
+    assemble.assemble(root2, engine, fix="readings")
+    S2 = Served(root2)
+    pg2 = Pg(b, S2.base + "graph/index.html", 390, 844, mobile=True).settled()
+    try:
+        pg2.page.click("#graph-key")
+        pg2.wait("document.querySelector('#graph-sheet-body .key-content') !== null", 6000)
+        assert pg2.ev("document.querySelectorAll('#graph-sheet-body .key-content .key-statements').length") == 1, "a map without the cue words has no cue sentence"
+        open_card_by_hash(pg2, "fx-thm-a", "foo_bar")
+        assert pg2.ev("document.querySelector('#graph-sheet-body .decl-reading > button').className") == "sheet-tool sheet-tool-main"
+        pg2.csp_clean()
+    finally:
+        pg2.close()
+        S2.stop()
+
+
 STMT_CASES = [
     ("stmt (a): the file's sheet says 'Open its statements', its button opens three boxes in source order with code titles; the foot reads '3 statements'", c_stmt_path_down),
     ("stmt (b): a statement card shows name, heading, doc-string, Lean button, uses, prompt in order; show/hide and aria-expanded; the variables note only where true", c_stmt_card_order),
@@ -4635,6 +4764,9 @@ STMT_CASES = [
     ("stmt (f): the key ends with the statements section", c_stmt_key),
     ("stmt (A3): without decl_reading_none the copy button stands alone in its block", c_stmt_reading_none_absent),
     ("reading: the block sits between the Lean statement and the uses lists, closed at the card's opening, label, headings and byline inside; none on a card without one", c_rd_block),
+    ("cue: the tag on a box with a reading and the count line above it, at 390 x 844 and 360 x 640, nothing clipped, the title not pushed out, none without a reading", c_cue_faces),
+    ("cue: the reading button of an open card is the filled main style, the Key ends with the cue sentence, a map without the cue words has none", c_cue_card_and_key),
+    ("cue mutants: no tag, the tag before the foot, out of the flow, the tag word above too: each turns the cue case red", c_cue_mutants),
     ("reading mutants: open at the card's opening, the block after the uses lists, the byline first: each turns the reading case red", c_rd_mutants),
     ("stmt: a map with part of the statement words missing is the fallback", c_stmt_group_off_refused),
     ("stmt (F1): a statement card's doc-string source line reads 'Comment on this statement in ...', a file card's note keeps 'Opening note of ...'", c_stmt_note_source_words),

@@ -124,6 +124,10 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; bottom: 0;
 .spine-panel .spine-label { font-family: var(--sans); font-size: 14px; color: var(--muted); margin: 0 0 2px; }
 .spine-panel .spine-content { margin: 0 0 10px; }
 .spine-panel .spine-lives { font-family: var(--sans); font-size: 15px; margin: 0 0 12px; }
+/* THE READING CUE (Ariadne's note v1): the same outlined tag at every level, made by CSS from the words alone (no icon character). A box with no children (a statement) has it in the foot
+   position; a box above statements has it as a second foot line, under the foot. */
+.face-reading { margin-top: auto; align-self: flex-start; font-family: var(--sans); font-size: 13px; line-height: 1.2; color: var(--fg); border: 1px solid var(--fg); border-radius: 10px; padding: 1px 8px; white-space: nowrap; }
+.face-foot + .face-reading { margin-top: 0; }
 .face-foot { margin-top: auto; font-family: var(--sans); font-size: 14px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 3px; }
 
 /* ---- the sheet: a bottom sheet under 768 px (up to 85% of the height, the graph visible above), a side panel from 768 ---- */
@@ -204,6 +208,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; bottom: 0;
 .graph-sheet-body .decl-prompt-status { margin: 6px 0 0; font-family: var(--sans); font-size: 14px; }
 .graph-sheet-body .decl-prompt-status:empty { display: none; }
 .decl-reading { margin: 12px 0 0; }
+.decl-reading > .sheet-tool-main { display: block; width: 100%; }   /* the filled main style, in the card body (the sheet's tools row is not its parent here) */
 /* the reading is OURS: the label above it and the byline under it are muted, the reading itself is the note renderer's (same type as a file's note) */
 .graph-sheet-body .decl-reading-about, .graph-sheet-body .decl-reading-byline { margin: 8px 0 0; font-family: var(--sans); font-size: 14px; color: var(--muted); }
 .decl-reading-text { margin: 8px 0 0; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
