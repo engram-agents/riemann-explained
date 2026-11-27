@@ -3,6 +3,16 @@
 These are text tools; they find where to read, they do not prove a dependency. Python 3, standard library
 only. Each one runs its own self-test first and refuses (exit 4) if it fails. `--selftest` shows the cases. In `notes_meta.py` a case id registered twice stops the tool at load with a message naming the id and both descriptions; ids are compared as exact strings, so `rec1`, `REC1` and `REC1 ` are three ids.
 
+**Python floor.** The tools need Python 3.12 or newer; 3.12 is the tested version. 3.10 and 3.11 are untested, and 3.9
+is measured to fail (on a Mac, the system Python 3.9.6 ran the self-test of `build_site.py` as 181 cases passed and 401
+failed; 3.12 passes them all). On an older interpreter every tool stops before it reads or writes anything, with one line
+on stderr and exit status 1, for example `scan_graph.py: needs Python 3.12 or newer (tested with 3.12); this is 3.9.6 at
+/usr/bin/python3`. The line names the interpreter's path, because plain `python3` on a Mac may be the old system one.
+The guard is the first statement of every `tools/*.py`, the libraries included (a library imported on an old
+interpreter stops the importer with the same line), and `python3 tools/check_python_floor.py` checks it: PYF-ALL reads
+every file, PYF-REFUSE, PYF-ORDER and PYF-PASS run every tool with a faked version, so a new tool without the guard
+turns PYF-ALL red and the case names the file.
+
 A run that checks nothing (no `.lean` file under SRC_ROOT) writes nothing. If OUT_DIR already holds a file that run
 would have written, an earlier result looks like this run's to the next tool; so `scan_graph.py`, `alias_edges.py`
 and `decl_table.py` print one more line after `CHECKED NOTHING`, `OUT_DIR holds files from an earlier run: <names>;
