@@ -1,0 +1,43 @@
+{
+ "card": {
+  "child_count": 2,
+  "child_kind": "file",
+  "id": "fx-group",
+  "kind": "group",
+  "path": [],
+  "proof": "none",
+  "state": "none",
+  "title": "Group `Fx`"
+ },
+ "children": [
+  {
+   "child_count": 3,
+   "id": "fx-stmt-file",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "fx-group"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Lean file `Fx.File`"
+  },
+  {
+   "child_count": 0,
+   "id": "fx-file-2",
+   "kind": "file",
+   "parent_rests_on": true,
+   "path": [
+    "fx-group"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Lean file `Fx.Other`"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "fx-group",
+ "path": [],
+ "rests_on": []
+}

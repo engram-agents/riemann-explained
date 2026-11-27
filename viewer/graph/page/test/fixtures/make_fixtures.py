@@ -16,6 +16,8 @@ note-spans-classes.json   Sol's span classes (6,459 distinct real spans, cls3's 
 skeleton/    the map of a Lean repository's parts, groups and files (data v3: sibling_layout, open_scale_floor, link flags on one group, index_rows and spine_rows on two files): kinds part, group, file, each a table row with `words` (the key's label)
              and `card_words` (the sheet's one line), the group and file rows with `count_words` (the foot's one/many); state "none", proof "none", no role on every step; symbols.order lists only
              the rows that occur (kinds [part, group, file], states [], proofs []) while the tables keep every row.
+statements/  the statement-level sample (PR statements): one group, two files, the first file with three statements (theorem, lemma, def) in source order.
+             Field names exactly as the data contract's section 31 amended; the words are read from site/strings-lean-statements.json (the one source).
 
 Test-only. Never shipped (lives under test/).
 """
@@ -469,6 +471,83 @@ def graphview_build():
     return index, steps, kids, title, spine
 
 
+# ---------------------------------------------------------------------------------------------------------- statements/
+STATEMENT_WORDS_FILE = os.path.join(HERE, "..", "..", "..", "..", "..", "site", "strings-lean-statements.json")
+STMT_FILE_SOURCE = "grh/src/New/Fx/File.lean"
+FX_PROMPT = "You are helping me read one statement. <b>x</b> and {page_url} stay literal.\nSecond line: &amp; <script>alert(1)</script>\n"
+FX_HEADING = "### Section on the bounds\n\nThe lemmas of this section bound `f`."
+FX_DOC = "The theorem `foo_bar`: for every `n` the bound holds.\n\nSecond paragraph of the repository's own comment."
+FX_NOTE_SOURCE = "grh/src/New/Fx/File.lean"
+HOSTILE_STATEMENT = "lemma baz (n : \u2115) : n \u2264 n + 1 := <script>alert(1)</script> {page_url}"
+
+
+def statements_words():
+    with open(STATEMENT_WORDS_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def statements_build():
+    """(index, steps): the statement sample. fx-group (kind group) holds fx-stmt-file and fx-file-2 (kind file); fx-stmt-file holds three statements."""
+    W = statements_words()
+    fixed = ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused", "parts_failed_notice",
+             "key_kinds_heading", "key_states_heading", "sheet_statement_read", "sheet_statement_census", "sheet_statement_not_read",
+             "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none"]
+    strings = {k: STRINGS[k] for k in fixed}
+    strings.update({"symbol_kind_group": "Group of files", "symbol_kind_file": "Lean file", "symbol_kind_theorem": "Theorem", "symbol_kind_lemma": "Lemma",
+                    "symbol_kind_def": "Definition", "card_kind_group": "Group", "card_kind_file": "File", "count_file_one": "{n} file", "count_file_many": "{n} files",
+                    "spine_content_label": "In the repository's words", "note_label": NOTE_LABEL, "note_source": NOTE_SOURCE})
+    strings.update(TYPESET_STRINGS)
+    wanted = ["open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def",
+              "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading",
+              "key_statements_text", "decl_heading_label", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note"]
+    strings.update({k: W[k] for k in wanted})
+    rows = _rows([("group", "symbol_kind_group"), ("file", "symbol_kind_file"), ("theorem", "symbol_kind_theorem"), ("lemma", "symbol_kind_lemma"), ("def", "symbol_kind_def")],
+                 strings,
+                 {"group": "card_kind_group", "file": "card_kind_file", "theorem": "decl_kind_theorem", "lemma": "decl_kind_lemma", "def": "decl_kind_def"},
+                 {"file": {"one": "count_file_one", "many": "count_file_many"}})
+    rows["group"]["open_words"] = {"open": "open_parts", "close": "close_parts"}
+    rows["file"]["open_words"] = {"open": "open_statements", "close": "close_statements"}
+    rows["file"]["child_count_words"] = {"one": "count_statement_one", "many": "count_statement_many"}
+    symbols = {"order": {"kinds": ["group", "file", "theorem", "lemma", "def"], "proofs": [], "states": []}, "kinds": rows,
+               "proofs": SYMBOLS["proofs"], "states": SYMBOLS["states"]}
+
+    def card(i, title, kind, path, n=0, child_kind=None):
+        c = {"id": i, "title": title, "kind": kind, "state": "none", "proof": "none", "child_count": n, "path": path}
+        if child_kind:
+            c["child_kind"] = child_kind
+        return c
+
+    def child(c, pro=False):
+        d = dict(c); d["parent_rests_on"] = pro; return d
+
+    here = ["fx-group", "fx-stmt-file"]
+    g = card("fx-group", "Group `Fx`", "group", [], 2, "file")
+    f1 = card("fx-stmt-file", "Lean file `Fx.File`", "file", ["fx-group"], 3)
+    f2 = card("fx-file-2", "Lean file `Fx.Other`", "file", ["fx-group"])
+    t1 = card("fx-thm-a", "`foo_bar`", "theorem", here)
+    t2 = card("fx-lem-b", "`baz`", "lemma", here)
+    t3 = card("fx-def-c", "`Fx.qux`", "def", here)
+    base = {"format": 1, "commit": COMMIT}
+    link = lambda a, b: {"from": a, "to": b, "from_path": here, "to_path": here, "weight": 1, "in_reduction": True}
+    decl = lambda name, kw, text, var, uh, ue, heading=None: dict(
+        name=name, source_path="src/New/Fx/File.lean", statement={"keyword": kw, "text": text}, variables=var, uses_here=uh, uses_elsewhere=ue, prompt=FX_PROMPT, **({"heading": heading} if heading else {}))
+    steps = {
+        "fx-group": dict(base, id="fx-group", path=[], card=g, children=[child(f1), child(f2, True)], rests_on=[]),
+        "fx-stmt-file": dict(base, id="fx-stmt-file", path=["fx-group"], card=f1, children=[child(t1), child(t2), child(t3)],
+                             rests_on=[link("fx-thm-a", "fx-lem-b"), link("fx-lem-b", "fx-def-c")]),
+        "fx-file-2": dict(base, id="fx-file-2", path=["fx-group"], card=f2, children=[], rests_on=[]),
+        "fx-thm-a": dict(base, id="fx-thm-a", path=here, card=t1, children=[], rests_on=[], note={"text": FX_DOC, "source": FX_NOTE_SOURCE},
+                         **decl("Fx.foo_bar", "theorem", "theorem foo_bar (n : \u2115) : n \u2264 n + 1", False, [], [], FX_HEADING)),
+        "fx-lem-b": dict(base, id="fx-lem-b", path=here, card=t2, children=[], rests_on=[],
+                         **decl("Fx.baz", "lemma", HOSTILE_STATEMENT, True, [], [])),
+        "fx-def-c": dict(base, id="fx-def-c", path=here, card=t3, children=[], rests_on=[], note={"text": "The definition `qux` of the file.", "source": FX_NOTE_SOURCE},
+                         **decl("Fx.qux", "def", "def qux (n : \u2115) : \u2115 := n", False, ["fx-lem-b"], [{"name": "New.Other.helper", "step": "fx-file-2"}, {"name": "Mathlib.Foo.bar"}])),
+    }
+    index = {"format": 1, "commit": COMMIT, "max_children": 40, "top": ["fx-group"], "rests_on": [], "steps": len(steps),
+             "symbols": symbols, "assets": {}, "strings": strings, "sibling_layout": "column", "open_scale_floor": 1}
+    return index, steps
+
+
 def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None):
     index, steps, _k, _p, _n = build()
     # a small build: one top step with its children
@@ -497,7 +576,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 def main():
     check_inputs()
-    for sub in ("real", "refusals", "skeleton", "notes", "typeset"):
+    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -538,6 +617,13 @@ def main():
     tparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, tkids, ttitle) for t in tindex["top"]] + ["</ul>"]
     open(os.path.join(HERE, "typeset", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + tparts) + "\n")
+
+    xindex, xsteps = statements_build()
+    write_json(os.path.join(HERE, "statements", "index.json"), xindex)
+    for i, st in xsteps.items():
+        write_json(os.path.join(HERE, "statements", "step", i + ".json"), st)
+    open(os.path.join(HERE, "statements", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)
 
