@@ -3407,6 +3407,129 @@ def _mth_cli(d, g, names=None, statements=None, notation=None, extra=(), ids=","
     return _stm_cli(d, g, (["--statements-for", ids] if ids is not None else []) + more + list(extra), out=out)
 
 
+# ---- the readings in the maths surface (contract section 34, C1 to C7 and B4): fixtures and helpers of the MTR cases; every file, name, reading and sentence here is made up.
+MTR_A = _stm_src("/-- **Alpha result.** One. Two is longer. -/\ntheorem alpha : True := trivial\n\n/-- Beta one. Beta two. -/\nlemma beta : True := trivial\n\ndef primeRemainder : Nat := 0\n\ntheorem countError : True := trivial\n")
+MTR_B = _stm_src("/-- Bee one. -/\ntheorem bdef : True := trivial\n\nlemma ne_of_lt : True := trivial\n")
+MTR_SRCS = dict(MTH_SRCS, **{"New/P/A": MTR_A, "New/P/B": MTR_B})
+
+
+def _mtr_decls(src, names):
+    """{name: range entry} of the declarations `names` of the source `src`, each placed on its own line (the entry's 5th number, the NAME line, counts from 0: what the compiled index holds)."""
+    lines, out = src.split("\n"), {}
+    for n in names:
+        i = next(k for k, ln in enumerate(lines) if re.match(r"(theorem|lemma|def) %s\b" % re.escape(n), ln))
+        col = lines[i].index(n)
+        start = i - 1 if i > 0 and lines[i - 1].startswith("/--") else i   # a declaration with a doc-string starts, in the index, at the doc-string's line: the name line is another number
+        out[n] = [start, 0, i, len(lines[i]), i, col, i, col + len(n)]
+    return out
+
+
+def _mtr_at(line, width=9):
+    """A range entry that places a declaration on the 1-BASED source line `line` (the index counts from 0)."""
+    return [line - 1, 0, line - 1, width, line - 1, 8, line - 1, width]
+
+
+MTR_LIB = _stm_ilean("Lib/Other/Srcs", {"Foo.one": _mtr_at(11), "Foo.dup": _mtr_at(21), "Bar.dup": _mtr_at(31), "Foo.integral_q": _mtr_at(41)})   # a library module of the repository's own (`src/Lib/...`): known to the index, no source file in the fixture
+MTR_ILEANS = dict(MTH_ILEANS, **{"New/P/A": _stm_ilean("New/P/A", _mtr_decls(MTR_A, ("alpha", "beta", "primeRemainder", "countError"))), "New/P/B": _stm_ilean("New/P/B", _mtr_decls(MTR_B, ("bdef", "ne_of_lt"))),
+                                 "Lib/Other/Srcs": MTR_LIB})
+MTR_LN = {n: _rdg_ln(MTR_A, ("theorem " if n in ("alpha", "countError") else "lemma " if n == "beta" else "def ") + n) for n in ("alpha", "beta", "primeRemainder", "countError")}   # the 1-based line of each declaration of A
+MTR_LNB = _rdg_ln(MTR_B, "theorem bdef")   # the line of bdef in B
+MTR_DOC_ALPHA, MTR_DOC_BETA = _rdg_ln(MTR_A, "/-- **Alpha"), _rdg_ln(MTR_A, "/-- Beta one")   # the (one) line of each doc-string
+MTR_NAMES = [_mth_n("alpha", "Alpha result"), _mth_n("beta", "Beta lemma"), _mth_n("bdef", "Bee def"), _mth_n("countError", "Count error"), _mth_n("primeRemainder", "Prime remainder")]
+MTR_FILE_OF = {"alpha": "lean-p-a", "beta": "lean-p-a", "primeRemainder": "lean-p-a", "countError": "lean-p-a", "bdef": "lean-p-b", "ne_of_lt": "lean-p-b"}
+MTR_WORDS = dict(RDG_WORDS, decl_reading_sources="Sources")   # the 41 words of the overlay file of the maths surface
+MTR_H = {k: RDG_WORDS[k] for k in RDG_HEADING_KEYS}
+MTR_OPENER = "The repository's comment says:"
+
+
+def _mtr_res(words, lean, path, line):
+    """A `result` bullet of the Sources section."""
+    return "- %s: `%s` (%s line %d)" % (words, lean, path, line)
+
+
+def _mtr_own(line=None):
+    """The result bullet of the reading's own statement, alpha, at its right line."""
+    return _mtr_res("Alpha result", "alpha", "src/New/P/A.lean", MTR_LN["alpha"] if line is None else line)
+
+
+def _mtr_quote(quoted):
+    """A quote paragraph in the new form."""
+    return '%s "%s"' % (MTR_OPENER, quoted)
+
+
+def _mtr_text(uses="- Standing assumptions: none.", target="It is a number.", argument="It is trivial.", quotes=(), adds=None, sources=None, between=""):
+    """(the authored text, the visible text it should give) of a reading in the maths surface: the headings in order, a made-up paragraph each, the quote paragraphs after the argument, then the Sources section
+    (`sources`: its lines; None: the own result of alpha; False: no Sources section at all). The visible text is what comes before the Sources heading, trailing newlines taken off."""
+    parts = ["## " + MTR_H["decl_reading_uses"], uses, "## " + MTR_H["decl_reading_target"], target, "## " + MTR_H["decl_reading_argument"], argument] + list(quotes)
+    if adds is not None:
+        parts += ["## " + MTR_H["decl_reading_adds"], adds]
+    body = "\n\n".join(parts) + between
+    if sources is False:
+        return body + "\n", body
+    lines = [_mtr_own()] if sources is None else list(sources)
+    return body + "\n\n## Sources\n\n" + "\n".join(lines) + "\n", body
+
+
+def _mtr_e(statement="alpha", **kw):
+    """An entry of the readings file for a statement of the fixture."""
+    return _rdg_entry(statement, file=MTR_FILE_OF.get(statement, "lean-p-a"), **kw)
+
+
+def _mtr_go(pairs, names=MTR_NAMES, words=MTR_WORDS, extra=(), maths=True, tables=None, files=None, readings=True):
+    """(exit code, the SKEL- lines, {statement: written reading} or None, whether OUT_DIR exists, all stdout lines) of the command line for the fixture of two parts and four files with `--readings` over `pairs`
+    ([(entry, text or bytes)], each text planted as its own file) and, with `maths`, the three tables (`tables` whole, else the names `names` and two empty tables). `words` is the overlay file (41 keys)."""
+    with _tmp() as d:
+        g = _tree(d, RDC_BODY, MTR_SRCS, ileans=MTR_ILEANS)
+        base = os.path.join(d, "rd")
+        os.makedirs(base)
+        entries = []
+        for i, (e, t) in enumerate(pairs):
+            with open(os.path.join(base, "t%d.md" % i), "wb") as f:
+                f.write(t if isinstance(t, bytes) else t.encode("utf-8"))
+            entries.append(dict(e, text_path="t%d.md" % i))
+        rp = os.path.join(base, "readings.json")
+        with open(rp, "w", encoding="utf-8") as f:
+            json.dump(entries, f)
+        more = ["--statements-for", ",".join(RDC_FILES)] + (["--readings", rp] if readings else [])
+        if maths:
+            tabs = tables if tables is not None else {"names": {"rows": list(names)}, "statements": {"rows": []}, "notation": {"rows": []}}
+            for t in MATHS_TABLES:
+                p = os.path.join(d, "maths-%s.json" % t)
+                with open(p, "wb") as f:
+                    f.write(tabs[t] if isinstance(tabs[t], bytes) else json.dumps(tabs[t]).encode("utf-8"))
+                more += ["--maths-" + t, p]
+        r = _stm_cli(d, g, more + list(extra), words=words)
+        got = {e["statement"]: _rdg_step(d, MTH_IDS[e["statement"]]).get("reading") for e in entries} if r[0] == 0 and readings else None
+        if files is not None and r[0] == 0:
+            files.update(_tree_files(os.path.join(d, "out")))
+    return r[0], _rdg_skel(r[1]), got, r[3], r[1]
+
+
+def _mtr_one(text, entry=None, **kw):
+    """`_mtr_go` for ONE reading of alpha: (exit code, the SKEL- lines, its written reading or None, whether OUT_DIR exists)."""
+    r = _mtr_go([(entry or _mtr_e(), text)], **kw)
+    return r[0], r[1], (r[2] or {}).get("alpha"), r[3]
+
+
+def _mtr_chunks(text):
+    """The chunks of `text` as the page's rule gives them, found by reading the LINES, not by the tool's regular expression: a BLANK line (only spaces and tabs) that ends with a newline, and every blank line
+    right after it, are ONE separator when they follow a line that ends with a newline; everything else belongs to the chunk."""
+    lines = text.split("\n")   # the last element is the text after the last newline: it ends with none
+    n, out, cur, i = len(lines), [], [], 0
+    while i < n:
+        j = i + 1
+        while j < n - 1 and lines[j].strip(" \t") == "":
+            j += 1
+        if i < n - 1 and j > i + 1:
+            out.append("\n".join(cur + [lines[i]]))
+            cur, i = [], j
+        else:
+            cur.append(lines[i])
+            i += 1
+    out.append("\n".join(cur))
+    return out
+
+
 def _selftest_cases():
     cases = []
 
@@ -8522,6 +8645,403 @@ def _selftest_cases():
                     sorted(f0) == sorted(f1), absent),
                    ("", ["maths names: 37 rows, 37 used, 0 not in this build", "maths statements: 37 rows, 37 used, 0 not in this build", "maths notation: 18 rows, 18 used, 0 not in this build"],
                     [ids[1], ids[0], ids[2]], {ids[0]: 1, ids[1]: 24, ids[2]: 12}, "1.1", "1.24", ["2.1"], "3.1", "3.12", True, 37, [], True, True, True, []))
+
+    # ---------------------------------------------------------------- the readings in the maths surface (MTR cases; contract section 34, C1 to C7 and B4): with `--readings` AND the three maths options
+
+    mr = lambda kind, what, st="alpha": "SKEL-MATHS-READING-%s %s %s" % (kind, st, what)
+    mhd = lambda why, st="alpha": "SKEL-STATEMENT-READING-HEADINGS %s %s" % (st, why)
+    mqq = lambda n, w, st="alpha": "SKEL-STATEMENT-READING-QUOTE %s paragraph %d %s" % (st, n, w)
+    mtr_src = lambda *x: mr("SOURCES", " ".join(str(y) for y in x))
+    mtr_vis = lambda w: mr("VISIBLE", w)
+    mtr_rests = lambda *x: mr("RESTS", " ".join(str(y) for y in x))
+    mtr_h = lambda k: "## " + MTR_H[k]
+
+    @case("MTR-OPTIONS", "with `--readings` and NO maths option the reading is as in PR 137 to 140 (the old shape, the old opener `In the repository's words (`, four keys `by`, `date`, `second_read_by`, `text`, the text unchanged; a `## Sources` heading is just an extra heading line); "
+                         "with both, a reading of the old shape (no Sources heading) is refused `missing decl_reading_sources`")
+    def _():
+        quote = _rdg_q("line %d" % RDG_L2, "Let `p` be prime. It is odd.")
+        old = _rdg_one(quote + "\n")
+        extra = _rdg_one(_rdg_with_heads(quote + "\n") + "\n\n## Sources\n\n- x\n", heads=False)
+        old_in_maths = _mtr_one(_rdg_with_heads(quote + "\n"))
+        return _eq((old[0], old[1], sorted(old[2]), old[2]["text"], extra[0], extra[1][0].startswith("SKEL-STATEMENT-READING-HEADINGS alpha extra line"), old_in_maths[0], old_in_maths[1], old_in_maths[3]),
+                   (0, [], ["by", "date", "second_read_by", "text"], quote, 1, True, 1, [mhd("missing decl_reading_sources")], False))
+
+    @case("MTR-WORDS", "the overlay file of `--strings-overlay-statements` in the maths surface holds EXACTLY the 40 keys of today and `decl_reading_sources` (41): the 41 build; the 40 are refused `SKEL-STATEMENT-WORDS decl_reading_sources missing`; the 41 WITHOUT the maths "
+                       "options (with and without `--readings`) are refused `SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word` and the 40 still build; the new key is never written to index.json `strings` (nor is any of the four heading words), and the value of the "
+                       "word is read from the file: a build whose overlay says `Origins` takes `## Origins` as the Sources heading and refuses `## Sources` (`missing decl_reading_sources`)")
+    def _():
+        text, vis = _mtr_text()
+        files = {}
+        ok = _mtr_go([(_mtr_e(), text)], files=files)
+        strings = json.loads(files["graph/index.json"].decode("utf-8"))["strings"] if ok[0] == 0 else {}
+        forty = _mtr_go([(_mtr_e(), text)], words=RDG_WORDS)
+        with _tmp() as d:
+            r1, g = _rdg_run(d, [], words=MTR_WORDS, out="o1")
+            no_maths = [r1, _rdg_run(d, [], words=MTR_WORDS, readings=False, out="o2", g=g)[0], _rdg_run(d, [], words=RDG_WORDS, out="o3", g=g)[0]]
+        again = _mtr_one(text.replace("## Sources", "## Origins"), words=dict(MTR_WORDS, decl_reading_sources="Origins"))
+        old_word = _mtr_one(text, words=dict(MTR_WORDS, decl_reading_sources="Origins"))
+        refused = (1, ["SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word"])
+        return _eq((ok[0], ok[1], [k for k in ("decl_reading_sources",) + RDG_HEADING_KEYS if k in strings], forty[:2], forty[3], [(c[0], _rdg_skel(c[1])) for c in no_maths], again[:2], old_word[:2]),
+                   (0, [], [], (1, ["SKEL-STATEMENT-WORDS decl_reading_sources missing"]), False, [refused, refused, (0, [])], (0, []), (1, [mhd("missing decl_reading_sources")])))
+
+    @case("MTR-HEADINGS", "the heading lines of the AUTHORED text in the maths surface: `## ` + uses, target, argument, optionally adds, then the REQUIRED `## ` + the Sources word, last. All five, and the four without adds, are written; the Sources heading missing is "
+                          "`SKEL-STATEMENT-READING-HEADINGS <statement> missing decl_reading_sources`; any heading line after it (an unknown heading, one of the four words, a second Sources heading, a heading inside the Sources section) is `extra line <n>`, n the "
+                          "1-based line of the authored text; the refusals of PR 140 still apply with the fifth heading (`order`, `missing decl_reading_uses`, `duplicate`, `level`, `extra line`); trailing spaces after the Sources heading are cut as for the others")
+    def _():
+        plain = _mtr_text()[0]
+        n = len(plain.split("\n"))
+        n_src = plain.split("\n").index("## Sources") + 1
+        swapped = plain.replace(mtr_h("decl_reading_uses"), "@@").replace(mtr_h("decl_reading_target"), mtr_h("decl_reading_uses")).replace("@@", mtr_h("decl_reading_target"))
+        no_uses = plain.replace(mtr_h("decl_reading_uses") + "\n\n- Standing assumptions: none.\n\n", "")
+        run = lambda t: _mtr_one(t)[:2]
+        got = {"five": run(_mtr_text(adds="It adds a bit.")[0]), "four": run(plain), "none": run(_mtr_text(sources=False)[0]),
+               "after-unknown": run(plain + "\n## Other words\n"), "after-argument": run(plain + "\n" + mtr_h("decl_reading_argument") + "\n"), "after-adds": run(plain + "\n" + mtr_h("decl_reading_adds") + "\n"), "twice": run(plain + "\n## Sources\n"),
+               "level": run(plain.replace("## Sources", "### Sources")), "inside": run(plain.replace("## Sources\n", "## Sources\n\n## Inside\n")), "spaces": run(plain.replace("## Sources", "## Sources  ")),
+               "order": run(swapped), "no-uses": run(no_uses), "dup": run(plain.replace("## Sources", mtr_h("decl_reading_uses") + "\n\n## Sources")), "extra-before": run(plain.replace("## Sources", "## Other\n\n## Sources"))}
+        return _eq(got, {"five": (0, []), "four": (0, []), "none": (1, [mhd("missing decl_reading_sources")]), "after-unknown": (1, [mhd("extra line %d" % (n + 1))]), "after-argument": (1, [mhd("extra line %d" % (n + 1))]),
+                         "after-adds": (1, [mhd("extra line %d" % (n + 1))]), "twice": (1, [mhd("extra line %d" % (n + 1))]), "level": (1, [mhd("level decl_reading_sources")]), "inside": (1, [mhd("extra line %d" % (n_src + 2))]),
+                         "spaces": (0, []), "order": (1, [mhd("order")]), "no-uses": (1, [mhd("missing decl_reading_uses")]), "dup": (1, [mhd("duplicate decl_reading_uses")]), "extra-before": (1, [mhd("extra line %d" % n_src)])})
+
+    @case("MTR-SPLIT", "the AUTHORED text is cut at the line `## Sources`: everything before it, with ALL trailing newlines taken off and otherwise unchanged (inner blank lines, trailing spaces of a line, a final line of spaces), is the written `text`, which ends with no newline; "
+                       "nothing of the Sources section is in it; the size limit (20000 bytes) counts the AUTHORED file (a file of 20001 bytes is refused `-TEXT size`, though its visible part is small) and a control character in the Sources section is refused `-TEXT control-character`")
+    def _():
+        text, vis = _mtr_text(between="\n\n\n\n")
+        spaced = _mtr_text(target="Line one.   \n\n\n\nLine two.", between="\n  ")
+        r1, r2 = _mtr_one(text), _mtr_one(spaced[0])
+        big = _mtr_text(sources=["- Not opened: " + "a" * 19600])[0]
+        over = _mtr_text(sources=["- Not opened: " + "a" * 20000])[0]
+        ctl = _mtr_text(sources=["- Not opened: a\x01b"])[0]
+        return _eq((r1[0], r1[2]["text"] == vis, r1[2]["text"].endswith("\n"), "Sources" in r1[2]["text"], r2[0], r2[2]["text"] == spaced[1], len(big.encode()) < 20000, _mtr_one(big)[:2], _mtr_one(over)[1], _mtr_one(ctl)[1]),
+                   (0, True, False, False, 0, True, True, (0, []), ["SKEL-STATEMENT-READING-TEXT alpha size %d bytes, at most 20000" % len(over.rstrip("\n").encode())], ["SKEL-STATEMENT-READING-TEXT alpha control-character"]))
+
+    MTR_PA, MTR_PB, MTR_PL = "src/New/P/A.lean", "src/New/P/B.lean", "src/Lib/Other/Srcs.lean"
+
+    @case("MTR-SRC-FORMS", "the Sources section (C2): the three bullet forms, one line each, in the order written: `- <words>: `<Lean name>` (<path> line <n>)` (a result: `{kind, lean (the RESOLVED full name), line, path, step (only when the declaration is a statement of the build), words}`), "
+                           "`- Quotation <k>: <path> line <a>` and `lines <a>-<b>` (`{kind, from, paragraph, path, to}`) and `- Not opened: <words>` (`{kind, text}`); blank lines between bullets are fine; an empty Sources section is an empty list; a short name is written in full "
+                           "(`one` is `Foo.one`); a result whose words are no table name but whose declaration IS a statement of the build carries its `step` too; the written `reading` has exactly the keys by, date, rests_on, second_read_by, sources, text")
+    def _():
+        q1, q2 = _mtr_quote("One. Two is longer."), _mtr_quote("Beta one. Beta two.")
+        src = [_mtr_own(), _mtr_res("Beta lemma", "beta", MTR_PA, MTR_LN["beta"]), _mtr_res("Foo one", "one", MTR_PL, 11), _mtr_res("The count", "countError", MTR_PA, MTR_LN["countError"]), "",
+               "- Quotation 1: %s line %d" % (MTR_PA, MTR_DOC_ALPHA), "- Quotation 2: %s lines %d-%d" % (MTR_PA, MTR_DOC_BETA, MTR_DOC_BETA), "- Not opened: Something of the library, in words."]
+        text, vis = _mtr_text(quotes=[q1, q2], sources=src)
+        r = _mtr_one(text)
+        empty = _mtr_one(_mtr_text(sources=[])[0])
+        want = [{"kind": "result", "lean": "alpha", "line": MTR_LN["alpha"], "path": MTR_PA, "step": "lean-p-a-alpha", "words": "Alpha result"},
+                {"kind": "result", "lean": "beta", "line": MTR_LN["beta"], "path": MTR_PA, "step": "lean-p-a-beta", "words": "Beta lemma"},
+                {"kind": "result", "lean": "Foo.one", "line": 11, "path": MTR_PL, "words": "Foo one"},
+                {"kind": "result", "lean": "countError", "line": MTR_LN["countError"], "path": MTR_PA, "step": "lean-p-a-counterror", "words": "The count"},
+                {"from": MTR_DOC_ALPHA, "kind": "quote", "paragraph": 6, "path": MTR_PA, "to": MTR_DOC_ALPHA}, {"from": MTR_DOC_BETA, "kind": "quote", "paragraph": 7, "path": MTR_PA, "to": MTR_DOC_BETA},
+                {"kind": "unopened", "text": "Something of the library, in words."}]
+        return _eq((r[:2], r[2] and sorted(r[2]), r[2] and r[2]["sources"], r[2] and r[2]["text"] == vis, r[2] and r[2]["rests_on"], empty[:2], empty[2] and empty[2]["sources"]),
+                   ((0, []), ["by", "date", "rests_on", "second_read_by", "sources", "text"], want, True, [], (0, []), []))
+
+    @case("MTR-SRC-SHAPE", "a line of the Sources section that is not one of the three forms is `SKEL-MATHS-READING-SOURCES <statement> shape` (one line per reading, nothing written): a non-bullet line, `*` for the bullet, an indented bullet, a result with no backticks, with `lines`, with line 0 or a "
+                           "leading zero, with text after the bracket; a quotation whose number is not digits, whose range is backwards, with no line part; `Not opened` with no words or no space; each beside the good bullet that passes")
+    def _():
+        L = MTR_LN["alpha"]
+        bad = ["A plain line.", "* Alpha result: `alpha` (%s line %d)" % (MTR_PA, L), "  " + _mtr_own(), "- Alpha result: alpha (%s line %d)" % (MTR_PA, L), "- Alpha result: `alpha` (%s lines %d)" % (MTR_PA, L),
+               "- Alpha result: `alpha` (%s line 0)" % MTR_PA, "- Alpha result: `alpha` (%s line 0%d)" % (MTR_PA, L), _mtr_own() + " more", "- Alpha result `alpha` (%s line %d)" % (MTR_PA, L),
+               "- Quotation one: %s line %d" % (MTR_PA, MTR_DOC_ALPHA), "- Quotation 1: %s lines %d-%d" % (MTR_PA, MTR_DOC_ALPHA + 1, MTR_DOC_ALPHA), "- Quotation 1: %s" % MTR_PA, "- Not opened:", "- Not opened:x", "-"]
+        got = [_mtr_one(_mtr_text(sources=[_mtr_own(), b])[0])[:2] for b in bad]
+        good = [_mtr_one(_mtr_text(sources=[_mtr_own(), "- Not opened: x", "", "- Not opened: y"])[0])[:2]]
+        return _eq(got + good, [(1, [mtr_src("shape")])] * len(bad) + [(0, [])])
+
+    @case("MTR-LINE", "THE LINE CHECK of every `result` (C2): the path is `src/<Module path>.lean` and the module's compiled index must exist (`result <k> path`: no such module, a library path outside the repository, `..`, an empty segment, a file that is not `.lean`); the Lean name is a declaration "
+                      "of THAT module, in full or by its short name (`unknown`; `ambiguous` when two declarations of the module share the short name; the full name of one of them passes); the cited line is the index's NAME line plus 1 (`result <k> line <right line>`: a line one too high, "
+                      "one too low and the line of the doc-string are refused and name the right one; the index's first number is the doc-string's line, so the check reads the fifth); k counts the `result` bullets; a result for the reading's OWN statement is allowed; "
+                      "one result bullet that is refused does not hide the next one's refusal")
+    def _():
+        L, run = MTR_LN["alpha"], lambda *src: _mtr_one(_mtr_text(sources=list(src))[0])[:2]
+        res = lambda lean, line, path=MTR_PA, words="W": _mtr_res(words, lean, path, line)
+        got = {"right": run(_mtr_own()), "plus": run(res("alpha", L + 1)), "minus": run(res("alpha", L - 1)), "doc": run(res("alpha", MTR_DOC_ALPHA)), "lib": run(res("one", 11, MTR_PL), res("Foo.one", 11, MTR_PL)), "lib-line": run(res("one", 12, MTR_PL)),
+               "unknown": run(res("nope", L)), "unknown-full": run(res("Foo.nope", 11, MTR_PL)), "other-module": run(res("alpha", L, MTR_PB)), "short-elsewhere": run(res("one", 11)),
+               "ambiguous": run(res("dup", 21, MTR_PL)), "full-one": run(res("Foo.dup", 21, MTR_PL)), "full-two": run(res("Bar.dup", 31, MTR_PL)), "full-wrong": run(res("Foo.dup", 31, MTR_PL)),
+               "missing": run(res("alpha", L, "src/New/P/Z.lean")), "library": run(res("alpha", L, ".lake/packages/mathlib/Mathlib/Order/Basic.lean")), "dotdot": run(res("alpha", L, "src/New/../P/A.lean")), "empty-segment": run(res("alpha", L, "src/New//P/A.lean")),
+               "not-lean": run(res("alpha", L, "src/New/P/A.txt")), "no-src": run(res("alpha", L, "New/P/A.lean")),
+               "second": run(_mtr_own(), res("alpha", L, MTR_PB)), "both": run(res("alpha", L + 2), res("beta", MTR_LN["beta"] + 1, words="X"), res("nope", 1, words="Y"))}
+        lb = MTR_LN["beta"]
+        return _eq(got, {"right": (0, []), "plus": (1, [mtr_src("result 1 line %d" % L)]), "minus": (1, [mtr_src("result 1 line %d" % L)]), "doc": (1, [mtr_src("result 1 line %d" % L)]), "lib": (0, []), "lib-line": (1, [mtr_src("result 1 line 11")]),
+                         "unknown": (1, [mtr_src("result 1 unknown")]), "unknown-full": (1, [mtr_src("result 1 unknown")]), "other-module": (1, [mtr_src("result 1 unknown")]), "short-elsewhere": (1, [mtr_src("result 1 unknown")]),
+                         "ambiguous": (1, [mtr_src("result 1 ambiguous")]), "full-one": (0, []), "full-two": (0, []), "full-wrong": (1, [mtr_src("result 1 line 21")]),
+                         "missing": (1, [mtr_src("result 1 path")]), "library": (1, [mtr_src("result 1 path")]), "dotdot": (1, [mtr_src("result 1 path")]), "empty-segment": (1, [mtr_src("result 1 path")]),
+                         "not-lean": (1, [mtr_src("result 1 path")]), "no-src": (1, [mtr_src("result 1 path")]), "second": (1, [mtr_src("result 2 unknown")]),
+                         "both": (1, [mtr_src("result 1 line %d" % L), mtr_src("result 2 line %d" % lb), mtr_src("result 3 unknown")])})
+
+    @case("MTR-MISMATCH", "a result whose `words` equal the human name of a statement of the build (a names row) must name THAT statement: another declaration is `SKEL-MATHS-READING-SOURCES <statement> result <k> mismatch` (a short name that resolves to the right one passes, and then carries the statement's `step`); "
+                         "words that are no table name are free; the name of a statement with NO names row is no human name, so its words are free; a result for a declaration of the build under other words still carries its `step`")
+    def _():
+        run = lambda *src, **kw: _mtr_one(_mtr_text(sources=list(src))[0], **kw)
+        la, lb = MTR_LN["alpha"], MTR_LN["beta"]
+        wrong = run(_mtr_res("Beta lemma", "alpha", MTR_PA, la))
+        right = run(_mtr_res("Beta lemma", "beta", MTR_PA, lb))
+        free = run(_mtr_res("Beta, the lemma", "alpha", MTR_PA, la))
+        library = run(_mtr_res("Beta lemma", "Foo.one", MTR_PL, 11))
+        no_row = run(_mtr_res("Alpha result", "beta", MTR_PA, lb), names=[_mth_n("beta", "Beta lemma")])
+        return _eq((wrong[:2], right[:2], right[2]["sources"][0].get("step"), free[:2], free[2]["sources"][0].get("step"), library[:2], no_row[:2]),
+                   ((1, [mtr_src("result 1 mismatch")]), (0, []), "lean-p-a-beta", (0, []), "lean-p-a-alpha", (1, [mtr_src("result 1 mismatch")]), (0, [])))
+
+    @case("MTR-QUOTE", "THE OPENER AND THE QUOTE CHECK (C3): the visible text holds the opener `The repository's comment says: \"` QUOTED `\"` and nothing else in its paragraph; the k-th opener paragraph pairs with the k-th `Quotation` source (both written, `paragraph` 6 and 7 here); counts "
+                       "unequal either way are `quote count`; Quotation numbers that are not 1, 2, 3 in order are `quote order`; a quotation whose file is missing, or whose lines are covered by no doc-comment or by two, is `quote unknown <k>`; pairing is BY NUMBER: "
+                       "with the two sources swapped each quote is compared with the other's doc-string (`SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> text`, twice); whole sentences of the ONE doc-comment as in PR 137 (a sentence, the run of two, white space collapsed pass; "
+                       "a cut sentence is `text`); a paragraph with text after the closing quote, without quote marks, without the space after the colon or with the opener elsewhere than at its start is `paragraph <n> form` (n counts the opener paragraphs, or all paragraphs for the opener elsewhere)")
+    def _():
+        QA, QB = _mtr_quote("One. Two is longer."), _mtr_quote("Beta one. Beta two.")
+        own = _mtr_own()
+        qs = lambda n, d=MTR_DOC_ALPHA, p=MTR_PA: "- Quotation %d: %s line %d" % (n, p, d)
+        run = lambda quotes, sources: _mtr_one(_mtr_text(quotes=quotes, sources=sources)[0])
+        two = run([QA, QB], [own, qs(1), qs(2, MTR_DOC_BETA)])
+        got = {"one": run([QA], [own, qs(1)])[:2], "count-more-sources": run([QA], [own]) [:2], "count-more-openers": run([], [own, qs(1)])[:2], "count-two-one": run([QA, QB], [own, qs(1)])[:2], "count-one-two": run([QA], [own, qs(1), qs(2)])[:2],
+               "order": run([QA, QB], [own, qs(2, MTR_DOC_BETA), qs(1)])[:2], "order-gap": run([QA, QB], [own, qs(1), qs(3, MTR_DOC_BETA)])[:2],
+               "missing": run([QA], [own, qs(1, p="src/New/P/Z.lean")])[:2], "uncovered": run([QA], [own, qs(1, 1)])[:2],
+               "two-docs": run([QA], [own, "- Quotation 1: %s lines %d-%d" % (MTR_PA, MTR_DOC_ALPHA, MTR_DOC_BETA)])[:2],
+               "swapped": run([QA, QB], [own, qs(1, MTR_DOC_BETA), qs(2)])[:2],
+               "sentence": run([_mtr_quote("One.")], [own, qs(1)])[:2], "second-sentence": run([_mtr_quote("Two is longer.")], [own, qs(1)])[:2], "collapsed": run([_mtr_quote("One.  Two is\nlonger.")], [own, qs(1)])[:2],
+               "cut": run([_mtr_quote("One. Two is longer")], [own, qs(1)])[:2], "start": run([_mtr_quote("wo is longer.")], [own, qs(1)])[:2],
+               "after": run([QA + " And more."], [own, qs(1)])[:2], "no-marks": run([MTR_OPENER + " One."], [own, qs(1)])[:2], "no-space": run([MTR_OPENER + '"One."'], [own, qs(1)])[:2], "open-only": run([MTR_OPENER + ' "One.'], [own, qs(1)])[:2],
+               "elsewhere": run(["Words then " + QA], [own])[:2], "elsewhere-and-count": run(["Words then " + QA], [own, qs(1)])[:2]}
+        return _eq((two[:2], [x for x in two[2]["sources"] if x["kind"] == "quote"], got),
+                   ((0, []), [{"from": MTR_DOC_ALPHA, "kind": "quote", "paragraph": 6, "path": MTR_PA, "to": MTR_DOC_ALPHA}, {"from": MTR_DOC_BETA, "kind": "quote", "paragraph": 7, "path": MTR_PA, "to": MTR_DOC_BETA}],
+                    {"one": (0, []), "count-more-sources": (1, [mtr_src("quote count")]), "count-more-openers": (1, [mtr_src("quote count")]), "count-two-one": (1, [mtr_src("quote count")]), "count-one-two": (1, [mtr_src("quote count")]),
+                     "order": (1, [mtr_src("quote order")]), "order-gap": (1, [mtr_src("quote order")]),
+                     "missing": (1, [mtr_src("quote unknown 1")]), "uncovered": (1, [mtr_src("quote unknown 1")]), "two-docs": (1, [mtr_src("quote unknown 1")]),
+                     "swapped": (1, [mqq(1, "text"), mqq(2, "text")]), "sentence": (0, []), "second-sentence": (0, []), "collapsed": (0, []), "cut": (1, [mqq(1, "text")]), "start": (1, [mqq(1, "text")]),
+                     "after": (1, [mqq(1, "form")]), "no-marks": (1, [mqq(1, "form")]), "no-space": (1, [mqq(1, "form")]), "open-only": (1, [mqq(1, "form")]),
+                     "elsewhere": (1, [mqq(7, "form")]), "elsewhere-and-count": (1, [mtr_src("quote count")])}))
+
+    @case("MTR-CHUNKS", "`paragraph` of a written quote is the 0-BASED index of its opener's CHUNK in the chunks of the written `text`, which are exactly `re.split(r\"\\n(?:[ \\t]*\\n)+\", text)`, no trim: a blank line is spaces and tabs ONLY (a no-break-space-only line, an em space line are NOT blank, "
+                        "so the paragraphs around them are one chunk), several blank lines are one separator, a heading glued to its paragraph is one chunk with it, every item of a list with blank lines is its own chunk; each index is recomputed here by reading the lines (not by the "
+                        "tool's expression), and is equal to a hand count; a quote after a no-break-space line has index 6, after a space or tab line 7; the index is taken on the text WITHOUT its trailing newlines")
+    def _():
+        QA = _mtr_quote("One. Two is longer.")
+        pre = "## " + MTR_H["decl_reading_uses"] + "\n\n- Standing assumptions: none.\n\n- Library facts: more.\n\n## " + MTR_H["decl_reading_target"] + "\nglued paragraph line\n\npA\n"
+        post = "\npB\n\n## " + MTR_H["decl_reading_argument"] + "\n\n"
+        out = {}
+        for label, sep in (("nbsp", " "), ("emsp", " "), ("space", " "), ("tab", "\t"), ("two-blank", " \n\t\n\n")):
+            body = pre + sep + post + QA
+            text = body + "\n\n## Sources\n\n" + _mtr_own() + "\n- Quotation 1: %s line %d\n" % (MTR_PA, MTR_DOC_ALPHA)
+            r = _mtr_one(text)
+            chunks = _mtr_chunks(body)
+            want = [i for i, c in enumerate(chunks) if c.startswith(MTR_OPENER)]
+            out[label] = (r[:2], [x["paragraph"] for x in r[2]["sources"] if x["kind"] == "quote"] if r[2] else None, want, [i for i, c in enumerate(re.split(r"\n(?:[ \t]*\n)+", body)) if c.startswith(MTR_OPENER)])
+        return _eq(out, {"nbsp": ((0, []), [6], [6], [6]), "emsp": ((0, []), [6], [6], [6]), "space": ((0, []), [7], [7], [7]), "tab": ((0, []), [7], [7], [7]), "two-blank": ((0, []), [8], [8], [8])})
+
+    @case("MTR-RESTS", "`rests_on` (C5) is DERIVED from the bullets (lines starting `- `) of the section of the uses heading of the written text and only them, in order: `- <head>: <gives>` split at the FIRST `: `; a head equal to the human name of a statement of the build gives "
+                       "`{gives, name (the full Lean name), step, words}`, any other head `{gives, words}` (no name, no step); a prose line and a quotation paragraph in that section, and a bullet in another section, are ignored; a bullet with no `: ` is "
+                       "`SKEL-MATHS-READING-RESTS <statement> bullet` (an empty head or an empty rest too); no bullet gives an empty list")
+    def _():
+        QB = _mtr_quote("Beta one. Beta two.")
+        uses = "- Beta lemma: gives the bound.\n- Standing assumptions: nothing odd: really.\nA prose line is ignored.\n- Bee def: gives the definition.\n\n" + QB
+        src = [_mtr_res("Beta lemma", "beta", MTR_PA, MTR_LN["beta"]), _mtr_res("Bee def", "bdef", MTR_PB, MTR_LNB), "- Quotation 1: %s line %d" % (MTR_PA, MTR_DOC_BETA)]
+        r = _mtr_one(_mtr_text(uses=uses, target="- Foo: ignored in this section.", sources=src)[0])
+        none = _mtr_one(_mtr_text(uses="No bullet here.")[0])
+        bad = [_mtr_one(_mtr_text(uses=u)[0])[:2] for u in ("- no colon here", "- head:no space", "- : empty head", "- head: ", "- ok: fine\n- broken")]
+        return _eq((r[:2], r[2] and r[2]["rests_on"], none[2]["rests_on"], bad),
+                   ((0, []), [{"gives": "gives the bound.", "name": "beta", "step": "lean-p-a-beta", "words": "Beta lemma"}, {"gives": "nothing odd: really.", "words": "Standing assumptions"},
+                              {"gives": "gives the definition.", "name": "bdef", "step": "lean-p-b-bdef", "words": "Bee def"}], [], [(1, [mtr_rests("bullet")])] * 5))
+
+    @case("MTR-RESTS-NOSOURCE", "check (a) of C5: every statement human name that occurs in the visible text (case-sensitive, the whole phrase: not inside a longer word, not after a word character; LONGEST name first, each match consumed so that `Alpha result` inside `Alpha result bound` is not "
+                                "counted again; the reading's OWN statement excluded; only a statement with a names row can be found) must have a `result` source with those words: `SKEL-MATHS-READING-RESTS <statement> <name> no-source`")
+    def _():
+        names = [_mth_n("alpha", "Alpha result"), _mth_n("beta", "Alpha result bound"), _mth_n("countError", "Count error")]
+        own = _mtr_e("countError")
+        sb = _mtr_res("Alpha result bound", "beta", MTR_PA, MTR_LN["beta"])
+        sa = _mtr_res("Alpha result", "alpha", MTR_PA, MTR_LN["alpha"])
+        run = lambda target, src, entry=own, nm=names: _mtr_one(_mtr_text(target=target, sources=src)[0], entry, names=nm)[:2]
+        got = {"longest": run("It follows from Alpha result bound.", [sb]), "both-missing": run("From Alpha result bound and from Alpha result.", [sb]), "both": run("From Alpha result bound and from Alpha result.", [sb, sa]),
+               "none": run("It follows from Alpha result bound.", []), "lower": run("It follows from alpha result bound.", []), "after-word": run("Alpha results and xAlpha result and Alpha result_q.", []),
+               "punctuation": run("From (Alpha result), then.", []), "own": run("The Count error is small.", []), "other-reads-it": _mtr_one(_mtr_text(target="The Count error is small.")[0], names=names)[:2],
+               "no-row": run("From Beta lemma.", [], nm=[_mth_n("alpha", "Alpha result")]), "second-name": run("From Alpha result and Alpha result bound.", [sa])}
+        mc = lambda what: mr("RESTS", what, "countError")
+        return _eq(got, {"longest": (0, []), "both-missing": (1, [mc("Alpha result no-source")]), "both": (0, []), "none": (1, [mc("Alpha result bound no-source")]), "lower": (0, []), "after-word": (0, []),
+                         "punctuation": (1, [mc("Alpha result no-source")]), "own": (0, []), "other-reads-it": (1, [mtr_rests("Count error no-source")]), "no-row": (0, []), "second-name": (1, [mc("Alpha result bound no-source")])})
+
+    @case("MTR-RESTS-INSOURCES", "check (b) of C5: every `rests_on` entry that has a `step` must have a `result` source with that step: `SKEL-MATHS-READING-RESTS <statement> <name> not-in-sources` (the head of the reading's OWN statement in its uses section, which check (a) excludes, with no own "
+                                 "Sources line; the line is printed after the `no-source` lines); the same head with the source passes; a head that is not a statement name needs none")
+    def _():
+        own_head = "- Alpha result: the statement itself.\n- Standing assumptions: none."
+        got = [_mtr_one(_mtr_text(uses=own_head, sources=[])[0])[:2], _mtr_one(_mtr_text(uses=own_head)[0])[:2],
+               _mtr_one(_mtr_text(uses="- Beta lemma: a bound.\n" + own_head, sources=[])[0])[:2]]
+        return _eq(got, [(1, [mtr_rests("Alpha result not-in-sources")]), (0, []), (1, [mtr_rests("Beta lemma no-source"), mtr_rests("Beta lemma not-in-sources"), mtr_rests("Alpha result not-in-sources")])])
+
+    @case("MTR-ADVISORY", "check (c) of C5, ADVISORY: a statement name that occurs only when the case of its FIRST letter is folded (the rest exact) and has no Sources line is PRINTED, after the `readings <file>` line, as `maths reading <statement>: possible mention of <name> without a "
+                          "source line`, and refuses nothing (exit 0, the reading written); not printed when the name has a Sources line, when it is also found in exact case, or when it matches only with another letter changed; a name inside a longer exact name is "
+                          "not found again")
+    def _():
+        adv = lambda n: "maths reading alpha: possible mention of %s without a source line" % n
+        run = lambda target, src=None, nm=MTR_NAMES: _mtr_go([(_mtr_e(), _mtr_text(target=target, sources=src)[0])], names=nm)
+        advs = lambda r: [x for x in r[4] if x.startswith("maths reading")]
+        a = run("The count error is small.")
+        k = a[4].index("readings lean-p-a: 1 readings written")
+        src = _mtr_res("Count error", "countError", MTR_PA, MTR_LN["countError"])
+        with_src = run("The count error is small.", [_mtr_own(), src])
+        exact = run("The Count error and the count error.", [_mtr_own(), src])
+        two = run("Then the prime remainder and the count error follow.")
+        other = run("The count Error and the COUNT error.")
+        inside = run("A Count error bound and the count error bound.", [_mtr_own(), src])
+        lower = run("Then The beta lemma follows.", nm=[_mth_n("alpha", "Alpha result"), _mth_n("beta", "the beta lemma")])
+        return _eq((a[0], a[1], a[4][k + 1], advs(a), advs(with_src), with_src[0], advs(exact), exact[0], advs(two), two[0], advs(other), other[0], advs(inside), advs(lower), lower[0]),
+                   (0, [], adv("Count error"), [adv("Count error")], [], 0, [], 0, [adv("Count error"), adv("Prime remainder")], 0, [], 0, [], [adv("the beta lemma")], 0))
+
+    @case("MTR-VISIBLE", "THE VISIBLE-TEXT REFUSAL (C6) on the written text (the Sources section is outside it: it holds `.lean` and `line <n>` and passes): `SKEL-MATHS-READING-VISIBLE <statement> <what>`, `<what>` one of `P <token>` (a declaration name the index knows, underscore ALLOWED: `primeRemainder`, "
+                         "`Foo.integral_q`, also in code spans), `lean-file`, `line-number` (`line` or `lines`, white space, a digit, any case) and `link` (`[[`); the neighbours pass (`the prime remainder`, `R_q`, `integral_q`, `the line of`, `outline 3`, `[x]`); several in "
+                         "one text are several lines in the order P, lean-file, line-number, link; the OLD opener `In the repository's words (` is refused through its path and its lines")
+    def _():
+        run = lambda t: _mtr_one(_mtr_text(target=t)[0])[:2]
+        got = {"short": run("Use primeRemainder here."), "full": run("Use Foo.integral_q here."), "code": run("The `primeRemainder` bound."), "lean": run("See New/P/A.lean for it."), "line": run("At line 3 of it."), "lines": run("At lines 3-4."),
+               "upper": run("At LINE 7."), "link": run("See [[x]]."), "all": run("primeRemainder New/P/A.lean line 3 [[x]]"),
+               "ok-words": run("The prime remainder, the line of it, outline 3 and a line."), "ok-under": run("The sum over R_q and integral_q is small."), "ok-bracket": run("See [x] and (y)."),
+               "old-path": run('In the repository\'s words (src/New/P/A.lean, lines 3-4): "x"'), "old-line": run('In the repository\'s words (line 5): "x"'), "old-own": run('In the repository\'s words (lines 3-4): "x"')}
+        return _eq(got, {"short": (1, [mtr_vis("P primeRemainder")]), "full": (1, [mtr_vis("P Foo.integral_q")]), "code": (1, [mtr_vis("P primeRemainder")]), "lean": (1, [mtr_vis("lean-file")]), "line": (1, [mtr_vis("line-number")]),
+                         "lines": (1, [mtr_vis("line-number")]), "upper": (1, [mtr_vis("line-number")]), "link": (1, [mtr_vis("link")]),
+                         "all": (1, [mtr_vis("P primeRemainder"), mtr_vis("lean-file"), mtr_vis("line-number"), mtr_vis("link")]), "ok-words": (0, []), "ok-under": (0, []), "ok-bracket": (0, []),
+                         "old-path": (1, [mtr_vis("lean-file"), mtr_vis("line-number")]), "old-line": (1, [mtr_vis("line-number")]), "old-own": (1, [mtr_vis("line-number")])})
+
+    @case("MTR-WRITTEN", "what is written (B4, item 7): `reading` has exactly the keys by, date, rests_on, second_read_by, sources, text, in sorted order, and so has every object inside it (the rests_on entries, the sources entries); the order of `sources` and of `rests_on` is the order of the "
+                         "authored text; `text` is the authored text up to the Sources heading without its trailing newlines; `by`, `second_read_by` and `date` are as given; a statement with no reading has none; no other file differs by a `reading` key (the card and the entry "
+                         "carry the `reading_count` of today); the report line is the one of PR 137 and nothing new")
+    def _():
+        QA = _mtr_quote("One. Two is longer.")
+        uses = "- Beta lemma: first.\n- Standing assumptions: second.\n- Bee def: third."
+        src = [_mtr_res("Bee def", "bdef", MTR_PB, MTR_LNB), "- Not opened: first of the library.", _mtr_res("Beta lemma", "beta", MTR_PA, MTR_LN["beta"]), "- Quotation 1: %s line %d" % (MTR_PA, MTR_DOC_ALPHA), _mtr_own(), "- Not opened: second of the library."]
+        text, vis = _mtr_text(uses=uses, quotes=[QA], sources=src)
+        files = {}
+        r = _mtr_go([(_mtr_e(), text)], files=files)
+        rd = r[2]["alpha"]
+        raw = files["graph/step/lean-p-a-alpha.json"]
+        unsorted = []
+        json.loads(raw.decode("utf-8"), object_pairs_hook=lambda pairs: (unsorted.append([k for k, _v in pairs]) if [k for k, _v in pairs] != sorted(k for k, _v in pairs) else None) or dict(pairs))
+        other = json.loads(files["graph/step/lean-p-a-beta.json"].decode("utf-8"))
+        card = json.loads(files["graph/step/lean-p-a.json"].decode("utf-8"))
+        readings_lines = [x for x in r[4] if x.startswith("readings ")]
+        return _eq((r[0], list(rd), [x["words"] if "words" in x else x["text"] if "text" in x else "quote" for x in rd["sources"]], [x["words"] for x in rd["rests_on"]], rd["text"] == vis, (rd["by"], rd["second_read_by"], rd["date"]), unsorted,
+                    "reading" in other, readings_lines, [c.get("reading_count") for c in card["children"] if c["id"] == "lean-p-a-alpha"]),
+                   (0, ["by", "date", "rests_on", "second_read_by", "sources", "text"], ["Bee def", "first of the library.", "Beta lemma", "quote", "Alpha result", "second of the library."], ["Beta lemma", "Standing assumptions", "Bee def"], True,
+                    ("Agent One", "Agent Two", "2026-11-27"), [], False, ["readings lean-p-a: 1 readings written", "readings lean-p-b: 0 readings written", "readings lean-p-c: 0 readings written", "readings lean-q-d: 0 readings written"], [1]))
+
+    @case("MTR-ORDER", "the order of refusals (C7), through the command line, only the FIRST stage that has a refusal is printed (all its lines, every reading), exit 1, nothing written: the three tables (names, statements, notation), then for the readings the file, text, name and date checks, the target "
+                       "(a statement the build wrote), the headings, the Sources shapes, the results (the line check), the quote pairing (count, order, unknown), the visible text, the links and rests_on, the quote bytes: here ONE reading holds a defect of each stage from the one under test "
+                       "to the last, and only the one under test is printed; two readings with the same defect are two lines in the order of the file, and a defect of the second reading in a LATER stage is not printed")
+    def _():
+        def text(h, s, r, q, v, e):
+            target = "It is a number." + (" See [[x]]." if v else "") + (" From Beta lemma." if e else "")
+            src = [_mtr_own(MTR_LN["alpha"] + 1 if r else None), "- Quotation %d: %s line %d" % (2 if q else 1, MTR_PA, MTR_DOC_ALPHA)] + (["A plain line."] if s else [])
+            t = _mtr_text(target=target, quotes=[_mtr_quote("One. Two is longer")], sources=src)[0]
+            if h:
+                a, b = mtr_h("decl_reading_uses"), mtr_h("decl_reading_target")
+                t = t.replace(a, "@@").replace(b, a).replace("@@", b)
+            return t
+        names_bad = MTR_NAMES + [_mth_n("alpha", "Again")]
+        stages = ["tables", "name", "target", "headings", "shape", "line", "quote", "visible", "rests", "bytes"]
+        want = [["SKEL-MATHS-ROWS names alpha duplicate"], ["SKEL-STATEMENT-READING-NAME nope by"], ["SKEL-STATEMENT-READING-TARGET nope"], [mhd("order")], [mtr_src("shape")], [mtr_src("result 1 line %d" % MTR_LN["alpha"])],
+                [mtr_src("quote order")], [mtr_vis("link")], [mtr_rests("Beta lemma no-source")], [mqq(1, "text")]]
+        got = []
+        for i in range(len(stages)):
+            entry = _mtr_e("nope" if i <= 2 else "alpha", **({"by": ""} if i <= 1 else {}))
+            r = _mtr_go([(entry, text(i <= 3, i <= 4, i <= 5, i <= 6, i <= 7, i <= 8))], names=names_bad if i == 0 else MTR_NAMES)
+            got.append((r[0], r[1], r[3]))
+        shape, line = text(False, True, False, False, False, False), text(False, False, True, False, False, False)
+        both = _mtr_go([(_mtr_e("alpha", text_path="a.md"), shape), (_mtr_e("beta"), line)])
+        twice = _mtr_go([(_mtr_e("alpha"), shape), (_mtr_e("beta"), shape)])
+        return _eq((got, both[:2], both[3], twice[:2]),
+                   ([(1, w, False) for w in want], (1, [mtr_src("shape")]), False, (1, [mtr_src("shape"), mtr_src("shape").replace(" alpha ", " beta ")])))
+
+    @case("MTR-ABSENT", "the maths options WITHOUT `--readings` write no `reading` and no `reading_count` anywhere and print no `readings` or `maths reading` line (the 28 words suffice); the overlay of 41 words is refused there `SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word`")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTR_SRCS, ileans=MTR_ILEANS)
+            a = _mth_cli(d, g, names={"rows": MTR_NAMES}, statements={"rows": []}, notation={"rows": []})
+            files = _tree_files(os.path.join(d, "out"))
+        plain = _mtr_go([], readings=False, words=STM_WORDS)
+        many = _mtr_go([], readings=False, words=MTR_WORDS)
+        return _eq((a[0], [k for k, v in files.items() if b'"reading' in v], [x for x in a[1] if x.startswith("readings ") or x.startswith("maths reading")], plain[:2], many[:2]),
+                   (0, [], [], (0, []), (1, ["SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word"])))
+
+    # ---- the two real readings of Kepler and Halley with Ariadne's read tables (paths given by the environment; never copied into the repository)
+
+    @case("MTR-REAL", "the two real readings (MTR_READING_FILES: their two paths separated by `:`) with the real tables (MTH_SAMPLE_DIR) and the real source (`--selftest --grh DIR --ilean-dir DIR`), otherwise SKIPPED with a printed reason: both are written with no refusal; 10 and 8 `result` sources, 1 and 0 `quote` "
+                      "sources; every result's line and resolved name equal an independent read of the compiled index, every `quote` paragraph equals the chunk index recomputed independently, and the written `text` equals the authored text up to the Sources heading minus its trailing "
+                      "newlines; `rests_on` of the first has 6 entries (4 name a statement with its step, 2 are words only) and of the second 5 (1 on the map); the only advisory lines are `The mean logarithmic derivative` and `Count error`, for the first")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        paths = [p for p in os.environ.get("MTR_READING_FILES", "").split(":") if p]
+        tdir = os.environ.get("MTH_SAMPLE_DIR", "")
+        if len(paths) != 2 or not tdir:
+            raise _SkipCase("SKIPPED: MTR_READING_FILES (two paths separated by ':') and MTH_SAMPLE_DIR are not both set")
+        try:
+            raws = []
+            for p in paths:
+                with open(p, "rb") as fh:
+                    raws.append(fh.read())
+            tables = {}
+            for t in MATHS_TABLES:
+                with open(os.path.join(tdir, t + ".json"), encoding="utf-8") as fh:
+                    tables[t] = json.load(fh)
+        except (OSError, ValueError):
+            raise _SkipCase("SKIPPED: the reading files or the tables are not readable here")
+        file_ids = {"PrimeNumberTheorem": "lean-reduction-zeros-prime-number-theorem", "Criterion": "lean-reduction-zeros-criterion", "PrimeError": "lean-reduction-zeros-prime-error"}
+        ids = ["lean-reduction-zeros-criterion", "lean-reduction-zeros-prime-error", "lean-reduction-zeros-prime-number-theorem"]
+        own_re = re.compile(r"- This statement: `([^`]+)` \((src/[^ ]+\.lean) line [0-9]+\)")
+        entries, authored = [], []
+        for raw in raws:
+            text = raw.decode("utf-8")
+            m = own_re.search(text)
+            entries.append({"statement": m.group(1), "file": file_ids[os.path.basename(m.group(2))[:-5]], "text_path": "", "by": "Agent One", "second_read_by": "Agent Two", "date": "2026-11-27"})
+            authored.append(text)
+        names = {r["statement"]: r["name"] for r in tables["names"]["rows"]}
+        by_human = {v: k for k, v in names.items()}
+        real_pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
+        with _tmp() as d:
+            base = os.path.join(d, "rd")
+            os.makedirs(base)
+            for i, e in enumerate(entries):
+                e["text_path"] = "r%d.md" % i
+                with open(os.path.join(base, e["text_path"]), "wb") as fh:
+                    fh.write(raws[i])
+            rp = os.path.join(base, "readings.json")
+            with open(rp, "w", encoding="utf-8") as fh:
+                json.dump(entries, fh)
+            wp = os.path.join(d, "words.json")
+            with open(wp, "w", encoding="utf-8") as fh:
+                json.dump(MTR_WORDS, fh)
+            args = ["--grh", _GRH_FOR_SK13, "--pin", real_pin, "--strings", os.path.join(_HERE, os.pardir, "site", "strings.json"), "--ilean-dir", _ILEAN_FOR_SK13, "--strings-overlay-statements", wp, "--statements-for", ",".join(ids),
+                    "--readings", rp, "--out", os.path.join(d, "o")] + sum([["--maths-" + t, os.path.join(tdir, t + ".json")] for t in MATHS_TABLES], [])
+            r = _cli(args)
+            files = _tree_files(os.path.join(d, "o")) if r[0] == 0 else {}
+        if r[0]:
+            return False, (r[0], r[1][:20], r[2][:2000])
+        steps = {}
+        for k, v in files.items():
+            if k.startswith("graph/step/"):
+                o = json.loads(v.decode("utf-8"))
+                if "name" in o:
+                    steps[o["name"]] = o
+        report = [x for x in r[1].splitlines()]
+        out = []
+        for e, text in zip(entries, authored):
+            o = steps[e["statement"]]
+            rd = o["reading"]
+            lines = text.split("\n")
+            head = lines.index("## " + MTR_WORDS["decl_reading_sources"])
+            visible = "\n".join(lines[:head]).rstrip("\n")
+            bullets = [x for x in lines[head + 1:] if x.startswith("- ")]
+            res = [b for b in bullets if re.fullmatch(r"- .+: `[^`]+` \(src/\S+\.lean line [0-9]+\)", b)]
+            ok_lines = True
+            for src in [x for x in rd["sources"] if x["kind"] == "result"]:
+                with open(os.path.join(_ILEAN_FOR_SK13, *src["path"][4:-5].split("/")) + ".ilean", encoding="utf-8") as fh:
+                    decls = json.load(fh)["decls"]
+                ok_lines = ok_lines and src["lean"] in decls and decls[src["lean"]][4] + 1 == src["line"]
+            chunks = _mtr_chunks(visible)
+            para = [i for i, c in enumerate(chunks) if c.startswith(MTR_OPENER)]
+            uses = visible[visible.index("## " + MTR_H["decl_reading_uses"]):].split("\n## ")[0]
+            heads = [b[2:].split(": ", 1)[0] for b in uses.split("\n") if b.startswith("- ")]
+            want_rests = [{"words": h, **({"name": by_human[h], "step": steps[by_human[h]]["id"]} if h in by_human else {})} for h in heads]
+            out.append((len(rd["sources"]), len(res), len([x for x in rd["sources"] if x["kind"] == "result"]), len([x for x in rd["sources"] if x["kind"] == "quote"]), ok_lines,
+                        [x["paragraph"] for x in rd["sources"] if x["kind"] == "quote"] == para, rd["text"] == visible, [{k: v for k, v in x.items() if k != "gives"} for x in rd["rests_on"]] == want_rests,
+                        (len(rd["rests_on"]), len([x for x in rd["rests_on"] if "step" in x]))))
+        adv = [x for x in report if x.startswith("maths reading")]
+        return _eq((out, sorted(a.split("possible mention of ")[1].split(" without")[0] for a in adv), [a.split(":")[0] for a in adv] == ["maths reading " + entries[0]["statement"]] * 2),
+                   ([(out[0][0], 10, 10, 1, True, True, True, True, (6, 4)), (out[1][0], 8, 8, 0, True, True, True, True, (5, 1))], ["Count error", "The mean logarithmic derivative"], True))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
