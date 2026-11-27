@@ -1,0 +1,50 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "fx-def-c",
+  "kind": "def",
+  "path": [
+   "fx-part",
+   "fx-group",
+   "fx-stmt-file"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "`Fx.qux`"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "fx-def-c",
+ "name": "Fx.qux",
+ "note": {
+  "source": "grh/src/New/Fx/File.lean",
+  "text": "The definition `qux` of the file."
+ },
+ "path": [
+  "fx-part",
+  "fx-group",
+  "fx-stmt-file"
+ ],
+ "prompt": "You are helping me read one statement. <b>x</b> and {page_url} stay literal.\nSecond line: &amp; <script>alert(1)</script>\n",
+ "rests_on": [],
+ "source_path": "src/New/Fx/File.lean",
+ "statement": {
+  "keyword": "def",
+  "text": "def qux (n : ℕ) : ℕ := n"
+ },
+ "uses_elsewhere": [
+  {
+   "name": "New.Other.helper",
+   "step": "fx-file-2"
+  },
+  {
+   "name": "New.Elsewhere.thing"
+  }
+ ],
+ "uses_here": [
+  "fx-lem-b"
+ ],
+ "uses_library_count": 43,
+ "variables": false
+}
