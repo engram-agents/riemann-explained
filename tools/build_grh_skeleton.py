@@ -1637,7 +1637,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
                 prefix.insert(0, raw_lines[a - 1].rstrip())
                 a -= 1
             decls.append({"kw": kw, "name": name, "short": name.rsplit(".", 1)[-1] or name, "text": "\n".join(prefix + [raw[start:cut].rstrip()]), "doc": doc[2] if doc else None,
-                          "heading": head[-1][1] if head else None, "variables": flags.get(line_no, False)})
+                          "heading": (head[-1][1] or None) if head else None, "variables": flags.get(line_no, False)})
         rep["statements"][fid] = {"found": len(found) + len(reported), "written": 0 if bad else len(decls), "reported": [(r[1], r[0]) + tuple(r[2:]) for r in reported]}
         if bad:
             continue
@@ -1673,7 +1673,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
             except PromptError as e:
                 errors.append(("SKEL-STATEMENT-PROMPT", f"{e.field} {_escaped(e.value)}", ""))
                 continue
-            new_rows.append({"id": d["id"], "parent": fid, "order": i, "premises": [decls[j]["id"] for j in kept[i]], "kind": d["kw"], "state": "none", "proof": "none", "title": "`" + d["short"] + "`"})   # the short name in backticks: the page sets a title in code style by its span rule, naming no kind
+            new_rows.append({"id": d["id"], "parent": fid, "order": i, "premises": [decls[j]["id"] for j in kept[i]], "kind": d["kw"], "state": "none", "proof": "none", "title": "`" + d["short"] + "`", "role": STATEMENT_KIND_WORDS[d["kw"]]})   # the short name in backticks: the page sets a title in code style by its span rule, naming no kind
             titles.append(d["short"])
             titles.append("`" + d["short"] + "`")
             links.update({(d["id"], decls[j]["id"]): {"weight": 1, "in_reduction": True} for j in kept[i]})
