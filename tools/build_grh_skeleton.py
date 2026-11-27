@@ -1947,6 +1947,7 @@ def _maths_lines(rep):
 READING_CUE_KEYS = ("face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text")   # the 4 words of the reading cue (contract section 33, Ariadne's strings file, section 'Reading cues'): page keys, written to index.json `strings`
 READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline") + READING_CUE_KEYS   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card) and the 4 of the cue; with the option the file of --strings-overlay-statements holds the 28 words and these (40), without it the 28
 READING_BUILDER_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")   # the four heading words of a reading: required in the overlay file with --readings, never written to index.json `strings` (the page reads four of the eight and refuses an index that holds these; the builder reads them, from the overlay file, to check the `##` heading lines of every reading: `_reading_heading_why`)
+READING_SOURCES_KEY = "decl_reading_sources"   # the fifth builder-only heading word, present in the overlay file only in the maths surface (`--readings` with the three maths options): 41 keys then; the value is read from the file, never a constant (contract section 34, C1)
 READING_ENTRY_KEYS = ("statement", "file", "text_path", "by", "second_read_by", "date")   # the six string keys of an entry of the readings file, and no other
 READING_TEXT_MAX = 20000   # the most BYTES (UTF-8) of a reading's `text`, counted on the text as written (after the one trailing newline is dropped)
 READING_NAME_MAX = 80   # the most CHARACTERS of `by` and of `second_read_by`
@@ -1957,6 +1958,10 @@ QUOTE_OPEN = "In the repository's words ("   # a paragraph that STARTS with thes
 _QUOTE_FORM = re.compile(   # every number has at most 9 digits: a longer one is a form refusal, never an int() of thousands of digits
     r"In the repository's words \((?:(?P<path>[^\s,()]+), )?(?:lines (?P<a>[1-9][0-9]{0,8})-(?P<b>[1-9][0-9]{0,8})|line (?P<c>[1-9][0-9]{0,8}))\): \"(?P<q>.*)\"\s*", re.S)
 _QUOTE_PATH = re.compile(r"src/[A-Za-z0-9_./-]+\.lean")
+QUOTE_OPEN_MATHS = "The repository's comment says:"   # the opener of a quote paragraph in the maths surface (contract section 34, C3): a CHUNK that starts with it is an opener paragraph and pairs with the `Quotation` source of its number
+_QUOTE_FORM_MATHS = re.compile(r"The repository's comment says: \"(?P<q>.*)\"\s*", re.S)   # the whole paragraph: the opener, a space, a double quote, the quotation, a double quote and nothing else
+_SOURCES_RESULT = re.compile(r"- (?P<words>[^`\n]+?): `(?P<lean>[^`\s]+)` \((?P<path>[^\s()]+) line (?P<n>[1-9][0-9]{0,8})\)")   # C2: `- <words>: `<Lean name>` (<path> line <n>)`
+_SOURCES_QUOTE = re.compile(r"- Quotation (?P<k>[0-9]{1,9}): (?P<path>[^\s()]+) (?:lines (?P<a>[1-9][0-9]{0,8})-(?P<b>[1-9][0-9]{0,8})|line (?P<c>[1-9][0-9]{0,8}))")   # C2: `- Quotation <k>: <path> lines <a>-<b>` or `... line <a>`
 SENTENCE_END_MARKS = "*_)]\""   # the closing marks a sentence end may carry between its `.`, `?` or `!` and the space: a bold title `**Title.**` ends with `.**`, `(really!)`, `"go."`
 
 
@@ -2078,36 +2083,40 @@ JS_WHITESPACE = "\t\n\x0b\x0c\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205
 _HEADING_LINE = re.compile("#{1,6}[" + JS_WHITESPACE + "]")   # a HEADING LINE, as the page decides it (viewer/graph/page/note.js: `^(#{1,6})\s+`): one to six `#` and then a character of JS white space
 
 
-def _reading_heading_why(text, words):
+def _reading_heading_why(text, words, sources=False):
     """None, or the reason (`SKEL-STATEMENT-READING-HEADINGS <statement> <reason>`) that the heading lines of the reading `text` are not the four of the overlay `words` (READING_BUILDER_KEYS: `decl_reading_uses`, `_target`,
     `_argument` required, then `_adds`, optional, in this order, each once, as `## ` + the word). A HEADING LINE is a line (split on `\\n`) that matches _HEADING_LINE, the page's predicate, ANYWHERE in the text, a quote paragraph
     included; it is one of the four only if it is `#`, `#`, one ASCII space and the word, after its trailing spaces and tabs are cut, exactly. Of several defects the first of these is the reason: the first offending LINE, whichever it is
     (`extra line <n>`, n counting the lines of the text from 1; a heading line whose white space is not one ASCII space is extra; or `level <key>`: the words are right, the `#` run is not two); `duplicate <key>` (the first key in order);
-    `missing <key>` (the first required key in order); `order`."""
-    found = []   # the index in READING_BUILDER_KEYS of each heading line that is right, in the order of the text
+    `missing <key>` (the first required key in order); `order`. With `sources` (the maths surface, contract section 34, C1) the word `decl_reading_sources` is a fifth heading, REQUIRED and LAST: `missing decl_reading_sources` after the
+    other required keys, and ANY heading line after the Sources heading is an offending line, `extra line <n>` (nothing may follow the Sources heading, a second Sources heading included)."""
+    keys = READING_BUILDER_KEYS + ((READING_SOURCES_KEY,) if sources else ())
+    found = []   # the index in `keys` of each heading line that is right, in the order of the text
     for n, line in enumerate(text.split("\n"), 1):
         if not _HEADING_LINE.match(line):
             continue
+        if sources and 4 in found:
+            return f"extra line {n}"
         level = len(line) - len(line.lstrip("#"))
         body = line.rstrip(" \t")[level + 1:] if line[level] == " " else None
-        hit = [i for i, k in enumerate(READING_BUILDER_KEYS) if body == words[k]]
+        hit = [i for i, k in enumerate(keys) if body == words[k]]
         if not hit:
             return f"extra line {n}"
         if level != 2:
-            return f"level {READING_BUILDER_KEYS[hit[0]]}"
+            return f"level {keys[hit[0]]}"
         found.append(hit[0])
-    for i, k in enumerate(READING_BUILDER_KEYS):
+    for i, k in enumerate(keys):
         if found.count(i) > 1:
             return f"duplicate {k}"
-    for i, k in enumerate(READING_BUILDER_KEYS[:3]):
+    for i in (0, 1, 2) + ((4,) if sources else ()):
         if i not in found:
-            return f"missing {k}"
+            return f"missing {keys[i]}"
     return None if found == sorted(found) else "order"
 
 
-def _reading_heading_errors(entries, words):
+def _reading_heading_errors(entries, words, sources=False):
     """[(SKEL-STATEMENT-READING-HEADINGS, statement through `_safe`, reason)] for the entries of `_reading_entries`, in their order, at most one per entry (`_reading_heading_why`)."""
-    return [("SKEL-STATEMENT-READING-HEADINGS", _safe(e["statement"]), why) for e in entries for why in [_reading_heading_why(e["text"], words)] if why]
+    return [("SKEL-STATEMENT-READING-HEADINGS", _safe(e["statement"]), why) for e in entries for why in [_reading_heading_why(e["text"], words, sources)] if why]
 
 
 def _sentence_bounds(body):
@@ -2227,6 +2236,267 @@ def _readings_attach(grh, entries, stm, ids):
     return errors, done, counts
 
 
+def _sources_cut(text, word):
+    """(written, section) of the AUTHORED text `text` in the maths surface (contract section 34, C1 and C3): `written` is everything before the line `## ` + `word` (the Sources heading, its trailing spaces and tabs cut) with ALL trailing
+    newlines taken off and otherwise unchanged; `section` is the list of the lines after the heading line. The heading check has already passed, so the line exists once."""
+    lines = text.split("\n")
+    i = next(k for k, ln in enumerate(lines) if ln.rstrip(" \t") == "## " + word)
+    return "\n".join(lines[:i]).rstrip("\n"), lines[i + 1:]
+
+
+def _sources_parse(section):
+    """[source] for the lines of a Sources section (C2), or None when a line is not one of the three forms (`shape`): blank lines (spaces and tabs only) are skipped, every other line is a bullet of exactly one form, its trailing spaces and tabs
+    cut: {"kind": "result", "words", "lean" (as written), "path", "line"}, {"kind": "quote", "k", "path", "from", "to"} or {"kind": "unopened", "text"}."""
+    items = []
+    for raw in section:
+        ln = raw.rstrip(" \t")
+        if ln == "":
+            continue
+        if ln.startswith("- Not opened: "):
+            if ln[len("- Not opened: "):].strip() == "":
+                return None
+            items.append({"kind": "unopened", "text": ln[len("- Not opened: "):]})
+        elif ln.startswith("- Quotation "):
+            m = _SOURCES_QUOTE.fullmatch(ln)
+            if m is None or (m["b"] is not None and int(m["a"]) > int(m["b"])):
+                return None
+            items.append({"kind": "quote", "k": int(m["k"]), "path": m["path"], "from": int(m["a"] or m["c"]), "to": int(m["b"] or m["c"])})
+        else:
+            m = _SOURCES_RESULT.fullmatch(ln)
+            if m is None:
+                return None
+            items.append({"kind": "result", "words": m["words"], "lean": m["lean"], "path": m["path"], "line": int(m["n"])})
+    return items
+
+
+def _sources_module(ilean_dir, path, cache):
+    """{declared name: range entry} of the module of the repository file `path` (`src/<Module path>.lean`, no empty, `.` or `..` segment) read from its compiled index, or None when the path is not of that form or the module has no index (C2, `path`)."""
+    if path not in cache:
+        cache[path] = None
+        if _QUOTE_PATH.fullmatch(path) and not any(seg in ("", ".", "..") for seg in path.split("/")):
+            try:
+                obj = _load_json_in(ilean_dir, os.path.join(ilean_dir, *path[4:-5].split("/")) + ".ilean", ILEAN_READ_LIMIT)
+            except SourceError:
+                obj = None
+            if isinstance(obj, dict) and isinstance(obj.get("decls"), dict):
+                cache[path] = obj["decls"]
+    return cache[path]
+
+
+def _sources_results(statement, items, ilean_dir, cache, human, step_of):
+    """[(SKEL-MATHS-READING-SOURCES, statement, `result <k> <why>`)] for the `result` items of one reading (k counts the results from 1), each item with at most one why, in this order: `path` (no module with an index), `unknown` (no
+    declaration of the module has that name, in full or as its short name), `ambiguous` (two share the short name; a name that is a full name of the module is taken as it stands), `mismatch` (the words are the human name of a statement of
+    the build and the declaration is not that statement: `human` {name: [full names]}), `line <right>` (the cited line is not the NAME line of the index, whose lines count from 0, plus 1: the message names the right one). A result that passes gets
+    `full` (the resolved full name) and, when the declaration is a statement of the build (`step_of` {full name: step id}), `step`."""
+    errors, k = [], 0
+    for it in items:
+        if it["kind"] != "result":
+            continue
+        k += 1
+        decls, why = _sources_module(ilean_dir, it["path"], cache), None
+        if decls is None:
+            why = "path"
+        else:
+            lean = it["lean"]
+            found = [lean] if lean in decls else ([n for n in decls if n.rsplit(".", 1)[-1] == lean] if "." not in lean else [])
+            if not found:
+                why = "unknown"
+            elif len(found) > 1:
+                why = "ambiguous"
+            else:
+                it["full"] = found[0]
+                pos = decls[found[0]]
+                if it["words"] in human and found[0] not in human[it["words"]]:
+                    why = "mismatch"
+                elif not (isinstance(pos, list) and len(pos) > 4 and isinstance(pos[4], int) and not isinstance(pos[4], bool)):
+                    why = "path"
+                elif pos[4] + 1 != it["line"]:
+                    why = "line %d" % (pos[4] + 1)
+                elif found[0] in step_of:
+                    it["step"] = step_of[found[0]]
+        if why:
+            errors.append(("SKEL-MATHS-READING-SOURCES", statement, f"result {k} {why}"))
+    return errors
+
+
+def _sources_cover(grh, it, cache):
+    """The ONE doc-comment of the repository file `it["path"]` that covers the lines of the quotation `it` completely, or None (no readable `src/...lean` file, none covering, or more than one)."""
+    path = it["path"]
+    if not _QUOTE_PATH.fullmatch(path) or any(seg in ("", ".", "..") for seg in path.split("/")):
+        return None
+    src = _quote_source(grh, path, cache)
+    cover = [d for d in src or [] if d[0] <= it["from"] and it["to"] <= d[1]]
+    return cover[0] if len(cover) == 1 else None
+
+
+def _sources_quote_errors(statement, items, chunks, grh, cache):
+    """[(SKEL-MATHS-READING-SOURCES, statement, why)] for the pairing of the opener paragraphs (CHUNKS of the written text that start with QUOTE_OPEN_MATHS) with the `Quotation` sources (C3): `quote count` (the numbers are not equal),
+    `quote order` (the numbers `Quotation <k>` are not 1, 2, 3 ... in order), `quote unknown <n>` (the n-th quotation names no readable file, or its lines are covered by no doc-comment or by two)."""
+    quotes = [it for it in items if it["kind"] == "quote"]
+    out = []
+    if sum(1 for c in chunks if c.startswith(QUOTE_OPEN_MATHS)) != len(quotes):
+        out.append("quote count")
+    if [q["k"] for q in quotes] != list(range(1, len(quotes) + 1)):
+        out.append("quote order")
+    out += [f"quote unknown {n}" for n, q in enumerate(quotes, 1) if _sources_cover(grh, q, cache) is None]
+    return [("SKEL-MATHS-READING-SOURCES", statement, w) for w in out]
+
+
+def _sources_quote_bytes(grh, items, chunks, cache):
+    """[`paragraph <n> <form|text>`] for the opener paragraphs of `chunks` (the n-th opener paragraph is compared with the n-th quotation; the counts are equal, checked before): not exactly the opener, a space, `"`, the quotation, `"` (`form`), or
+    a quotation that is not a run of whole sentences of the doc-comment covering the cited lines (`text`, the rule of PR 137). A chunk that holds the opener elsewhere than at its start is `paragraph <k> form`, k counting ALL chunks from 1."""
+    quotes = [it for it in items if it["kind"] == "quote"]
+    out, n = [], 0
+    for k, para in enumerate(chunks, 1):
+        if not para.startswith(QUOTE_OPEN_MATHS):
+            if QUOTE_OPEN_MATHS in para:
+                out.append(f"paragraph {k} form")
+            continue
+        n += 1
+        m = _QUOTE_FORM_MATHS.fullmatch(para)
+        if m is None:
+            out.append(f"paragraph {n} form")
+        elif not _is_whole_sentences(m["q"], _doc_sentences(_sources_cover(grh, quotes[n - 1], cache))):
+            out.append(f"paragraph {n} text")
+    return out
+
+
+def _rests_bullets(text, uses_word):
+    """([(head, gives)], bad) from the BULLETS (lines that start `- `) of the section of the uses heading of the written `text` (C5): the section runs to the next heading line; a bullet is `- <head>: <gives>`, the head ending at the FIRST `: `; a bullet with no `: `,
+    an empty head or an empty rest makes `bad` True. Every other line of the section (a paragraph, a quotation) is ignored."""
+    lines = text.split("\n")
+    i = next(k for k, ln in enumerate(lines) if ln.rstrip(" \t") == "## " + uses_word)
+    out, bad = [], False
+    for ln in lines[i + 1:]:
+        if _HEADING_LINE.match(ln):
+            break
+        if ln.startswith("- "):
+            j = ln[2:].find(": ")
+            if j <= 0 or ln[2 + j + 2:].strip() == "":
+                bad = True
+            else:
+                out.append((ln[2:2 + j], ln[2 + j + 2:]))
+    return out, bad
+
+
+def _names_in(text, names):
+    """(found, masked): the names of `names` that occur in `text` (case-sensitive, the whole phrase: no word character before or after), LONGEST first and each match replaced by NULs in `masked` so a name inside a longer one is not found twice."""
+    found, masked = set(), text
+    for n in sorted(names, key=lambda x: (-len(x), x)):
+        def mark(m, n=n):
+            found.add(n)
+            return "\x00" * len(m.group(0))
+        masked = re.sub(r"(?<![\w])" + re.escape(n) + r"(?![\w])", mark, masked)
+    return found, masked
+
+
+def _names_folded(masked, names):
+    """The names of `names` whose phrase occurs in `masked` (the text with the exact matches taken out) when the case of its FIRST letter is folded and the rest is exact, in sorted order (C5 (c), advisory)."""
+    hit = []
+    for n in sorted(names, key=lambda x: (-len(x), x)):
+        v = n[0].lower() if n[0].isupper() else n[0].upper() if n[0].islower() else n[0]
+        if v == n[0]:
+            continue
+        pat = r"(?<![\w])" + re.escape(v + n[1:]) + r"(?![\w])"
+        if re.search(pat, masked):
+            hit.append(n)
+            masked = re.sub(pat, lambda m: "\x00" * len(m.group(0)), masked)
+    return sorted(hit)
+
+
+def _readings_maths(grh, ilean_dir, entries, words, stm, ids):
+    """(errors, {step id: reading}, {file id: n}, {file id: [advisory line]}) for the validated `entries` in the MATHS SURFACE (`--readings` with the three maths options, contract section 34, B4 and C): the stages of C7 in this order, and ONLY the first
+    stage that has a refusal is returned, with all its lines, every reading: the target (`SKEL-STATEMENT-READING-TARGET`), the heading lines (`_reading_heading_errors` with the Sources heading), the Sources shapes, the results (the line check), the quote
+    pairing, the visible text (`SKEL-MATHS-READING-VISIBLE`), `rests_on` and its checks (`SKEL-MATHS-READING-RESTS`), the bytes of the quotes (`SKEL-STATEMENT-READING-QUOTE`). `stm` is the statement level after the maths tables (the rows carry the human title,
+    the step extras `human`). A reading is written as {by, date, rests_on, second_read_by, sources, text}."""
+    wrote = {(r["parent"], stm["step_extra"][r["id"]]["name"]): r["id"] for r in stm["rows"]}
+    errors, seen = [], set()
+    for e in entries:
+        key = (e["file"], e["statement"])
+        if key not in wrote or key in seen:
+            errors.append(("SKEL-STATEMENT-READING-TARGET", _safe(e["statement"]), ""))
+        seen.add(key)
+    if errors:
+        return errors, {}, {}, {}
+    errors = _reading_heading_errors(entries, words, True)
+    if errors:
+        return errors, {}, {}, {}
+    title = {r["id"]: r["title"] for r in stm["rows"]}
+    step_of = {x["name"]: sid for sid, x in stm["step_extra"].items()}
+    human = {}
+    for sid, x in stm["step_extra"].items():
+        if "human" in x:
+            human.setdefault(title[sid], []).append(x["name"])
+    reads = []
+    for e in entries:
+        written, section = _sources_cut(e["text"], words[READING_SOURCES_KEY])
+        reads.append({"e": e, "name": _safe(e["statement"]), "sid": wrote[(e["file"], e["statement"])], "text": written, "items": _sources_parse(section), "chunks": re.split(r"\n(?:[ \t]*\n)+", written)})
+    errors = [("SKEL-MATHS-READING-SOURCES", r["name"], "shape") for r in reads if r["items"] is None]
+    if errors:
+        return errors, {}, {}, {}
+    cache, errors = {}, []
+    for r in reads:
+        errors += _sources_results(r["name"], r["items"], ilean_dir, cache, human, step_of)
+    if errors:
+        return errors, {}, {}, {}
+    qcache = {}
+    for r in reads:
+        errors += _sources_quote_errors(r["name"], r["items"], r["chunks"], grh, qcache)
+    if errors:
+        return errors, {}, {}, {}
+    _ie, where, _uses, _pos = _ilean_index(ilean_dir, set())
+    known = _maths_known(where)
+    for r in reads:
+        errors += [("SKEL-MATHS-READING-VISIBLE", r["name"], w) for w in _maths_visible(r["text"], known, True)]
+    if errors:
+        return errors, {}, {}, {}
+    advice = {fid: [] for fid in ids}
+    for r in reads:
+        items = r["items"]
+        sourced = {it["words"] for it in items if it["kind"] == "result"}
+        steps = {it["step"] for it in items if it.get("step")}
+        own = title[r["sid"]] if "human" in stm["step_extra"][r["sid"]] else None
+        found, masked = _names_in(r["text"], human)
+        missing = sorted(n for n in found if n != own and n not in sourced)
+        bullets, bad = _rests_bullets(r["text"], words["decl_reading_uses"])
+        rests = []
+        for head, gives in bullets:
+            cand = human.get(head, [])
+            if len(cand) > 1:
+                cand = [it["full"] for it in items if it["kind"] == "result" and it["words"] == head and it["full"] in cand][:1] or cand
+            if len(cand) > 1:
+                errors.append(("SKEL-MATHS-READING-RESTS", r["name"], f"{head} ambiguous"))
+            elif cand:
+                rests.append({"gives": gives, "name": cand[0], "step": step_of[cand[0]], "words": head})
+            else:
+                rests.append({"gives": gives, "words": head})
+        if bad:
+            errors.append(("SKEL-MATHS-READING-RESTS", r["name"], "bullet"))
+        errors += [("SKEL-MATHS-READING-RESTS", r["name"], f"{n} no-source") for n in missing]
+        errors += [("SKEL-MATHS-READING-RESTS", r["name"], f"{x['words']} not-in-sources") for x in rests if "step" in x and x["step"] not in steps]
+        r["rests"] = rests
+        advice[r["e"]["file"]] += [f"maths reading {r['name']}: possible mention of {_safe(n)} without a source line" for n in _names_folded(masked, [n for n in human if n != own and n not in found and n not in sourced])]
+    if errors:
+        return errors, {}, {}, {}
+    for r in reads:
+        errors += [("SKEL-STATEMENT-READING-QUOTE", r["name"], w) for w in _sources_quote_bytes(grh, r["items"], r["chunks"], qcache)]
+    if errors:
+        return errors, {}, {}, {}
+    done, counts = {}, {fid: 0 for fid in ids}
+    for r in reads:
+        e, para, sources = r["e"], [i for i, c in enumerate(r["chunks"]) if c.startswith(QUOTE_OPEN_MATHS)], []
+        for it in r["items"]:
+            if it["kind"] == "result":
+                sources.append(dict({"kind": "result", "lean": it["full"], "line": it["line"], "path": it["path"], "words": it["words"]}, **({"step": it["step"]} if "step" in it else {})))
+            elif it["kind"] == "quote":
+                sources.append({"kind": "quote", "from": it["from"], "paragraph": para[it["k"] - 1], "path": it["path"], "to": it["to"]})
+            else:
+                sources.append({"kind": "unopened", "text": it["text"]})
+        done[r["sid"]] = {"by": e["by"], "date": e["date"], "rests_on": r["rests"], "second_read_by": e["second_read_by"], "sources": sources, "text": r["text"]}
+        counts[e["file"]] += 1
+    return [], done, counts, advice
+
+
 def _reading_counts(all_rows, attached):
     """{step id: n} for every step with at least one statement that GOT a reading (`attached`: {statement step id: reading}, the readings that passed every check) on or under it: the statement itself (1) and,
     walking the parent chain of the rows (statement, file, group, part), every step above it, each by the number of its statements with a reading. A step with none beneath is not a key (the card writes nothing for it)."""
@@ -2240,12 +2510,14 @@ def _reading_counts(all_rows, attached):
     return counts
 
 
-def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None, statements_for=None, page_url=None, page_title=None, readings=None, maths=None):
+def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None, statements_for=None, page_url=None, page_title=None, readings=None, maths=None, reading_words=None, reading_errors=()):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build; `notes_lean_dir` (optional) is the folder of the contributed notes (readings); `statements_for` (optional, a list of FILE step ids) opens those files
     to their statements (one step per declaration, contract section 31), with the options `page_url` and `page_title` of the prompt; `readings` (optional, the entries `_reading_entries` returns, needs
     `statements_for`) puts a `reading` on the statement steps they name; `maths` (optional, needs `statements_for`: {"names", "statements", "notation"}, each the parsed JSON of a table file, contract section 34) writes the number, the
-    human title, `math`, `human` and the file steps' `notation` (`_maths_check`); absent, every file is today's."""
+    human title, `math`, `human` and the file steps' `notation` (`_maths_check`); absent, every file is today's. `readings` with `maths` AND `reading_words` (the overlay words, the heading words of the five among them; the command line gives
+    them whenever it has both options) is the MATHS SURFACE of the readings (`_readings_maths`: sources, `rests_on`, the visible-text check; `reading_errors` are the file, text, name and date refusals of the readings file, held back by the
+    command line so that the three tables come first); without `reading_words` the readings are checked as without the maths options."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
     if open_scale_floor is not None:
@@ -2279,13 +2551,21 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     if readings is not None:   # the readings: each names a statement the build wrote; its quotes are checked against the repository's doc-strings
         if stm is None:
             return [("SKEL-STATEMENT-READING-OPTIONS", "readings", "needs --statements-for")], {}, rows, rep
-        errors, attached, counts = _readings_attach(grh, readings, stm, statements_for)
+        if maths_out is not None and reading_words is not None:
+            if reading_errors:
+                return list(reading_errors), {}, rows, rep
+            errors, attached, counts, advice = _readings_maths(grh, ilean_dir, readings, reading_words, stm, statements_for)
+        else:
+            errors, attached, counts = _readings_attach(grh, readings, stm, statements_for)
+            advice = {}
         if errors:
             return errors, {}, rows, rep
         for sid, reading in attached.items():
             stm["step_extra"][sid]["reading"] = reading
         for fid, n in counts.items():
             rep["statements"][fid]["readings"] = n
+        for fid, lines in advice.items():
+            rep["statements"][fid]["advice"] = lines
         reading_counts = _reading_counts(rows + stm["rows"], attached)
     syms, orders, hidden = _statement_symbols(stm["kinds"]) if stm and stm["rows"] else (SYMBOLS, MAP_ORDERS, bs.GRAPH_STATUS_HIDDEN)
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(syms) if k in strings}, syms)   # only the missing ones: it holds a subset
@@ -2398,6 +2678,7 @@ def _statement_lines(rep):
         out += [f"statements {fid} reported {r[0]} line {r[1]}" + (f" name {_safe(r[2])}" if len(r) > 2 else "") for r in s["reported"]]
         if "readings" in s:   # only with --readings: the readings written on the statements of this file (0 when none)
             out.append(f"readings {fid}: {s['readings']} readings written")
+            out += s.get("advice", [])   # the maths surface only: `maths reading <statement>: possible mention of <name> without a source line`, never a refusal
     return out
 
 
@@ -2451,11 +2732,11 @@ def _run(opts):
     if clash:
         return refuse([("SKEL-OVERLAY-CLASH", k, "") for k in clash])
     page_keys = set(bs._graph_strings_keys(SYMBOLS)) | set(bs.GRAPH_OPTIONAL_KEYS)   # what _graph_files copies into index.json `strings`: anything else of an overlay would be dropped without a word
-    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph), ("strings-overlay-statements", words)) for k in obj if k not in page_keys and not (opt == "strings-overlay-statements" and k in READING_BUILDER_KEYS))
+    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph), ("strings-overlay-statements", words)) for k in obj if k not in page_keys and not (opt == "strings-overlay-statements" and k in READING_BUILDER_KEYS + (READING_SOURCES_KEY,)))
     if unknown:
         return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
     if "strings-overlay-statements" in opts:   # exactly the statement words: a missing key and a page key that is not one of them are refused by name
-        expected = set(STATEMENT_WORD_KEYS) | (set(READING_WORD_KEYS) if "readings" in opts else set())   # all-or-none: the 12 words of the reading (8) and of its cue (4) come with --readings and only then
+        expected = set(STATEMENT_WORD_KEYS) | (set(READING_WORD_KEYS) if "readings" in opts else set()) | ({READING_SOURCES_KEY} if "readings" in opts and "maths-names" in opts else set())   # all-or-none: the 12 words of the reading (8) and of its cue (4) come with --readings and only then, and the 41st (the Sources heading) with the maths options too
         wrong = [("SKEL-STATEMENT-WORDS", k, "missing") for k in sorted(expected - set(words))] + [("SKEL-STATEMENT-WORDS", k, "is not a statement word") for k in sorted(set(words) - expected)]
         if wrong:
             return refuse(wrong)
@@ -2466,10 +2747,10 @@ def _run(opts):
     problems = bs._strings_problems(strings)
     if problems:
         return refuse(problems)
-    for k in READING_BUILDER_KEYS:   # checked above with the others, and not written: the page does not read them
+    for k in READING_BUILDER_KEYS + (READING_SOURCES_KEY,):   # checked above with the others, and not written: the page does not read them
         if k in words:
             strings.pop(k, None)
-    entries = None
+    entries, reading_errors, maths_surface = None, (), "readings" in opts and "maths-names" in opts   # the maths surface: the readings file's own refusals and the heading check wait until the three tables have passed (C7), inside `build`
     if "readings" in opts:   # the readings file: its shape, its texts, names and dates are checked here; its targets and quotes are checked by the build, which has the statements and the source
         try:
             raw_readings = _read_bounded(opts["readings"], READING_FILE_LIMIT)
@@ -2478,9 +2759,11 @@ def _run(opts):
                 return refuse([("SKEL-STATEMENT-READING-FILE", "too-large", "")])
             raise Unreadable(f"--readings: cannot read {opts['readings']}: {e.reason}")
         errors, entries = _reading_entries(raw_readings, os.path.dirname(os.path.abspath(opts["readings"])))
-        if errors:
+        if errors and maths_surface:
+            reading_errors = errors
+        elif errors:
             return refuse(errors)
-        errors = _reading_heading_errors(entries, words)   # after the text, name and date checks (above), before the quotes, the targets and the rest of the build (`build`): the first class that fails is the one printed
+        errors = [] if maths_surface else _reading_heading_errors(entries, words)   # after the text, name and date checks (above), before the quotes, the targets and the rest of the build (`build`): the first class that fails is the one printed
         if errors:
             return refuse(errors)
     maths = None
@@ -2500,7 +2783,7 @@ def _run(opts):
                 maths[t] = None
     errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
                                        _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None, opts.get("notes-lean-dir"),
-                                       opts["statements-for"].split(",") if "statements-for" in opts else None, opts.get("statement-page-url"), opts.get("statement-page-title"), entries, maths)
+                                       opts["statements-for"].split(",") if "statements-for" in opts else None, opts.get("statement-page-url"), opts.get("statement-page-title"), entries, maths, words if maths_surface else None, reading_errors)
     if errors:
         return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
     try:
@@ -3465,9 +3748,9 @@ def _mtr_text(uses="- Standing assumptions: none.", target="It is a number.", ar
         parts += ["## " + MTR_H["decl_reading_adds"], adds]
     body = "\n\n".join(parts) + between
     if sources is False:
-        return body + "\n", body
+        return body + "\n", body.rstrip("\n")
     lines = [_mtr_own()] if sources is None else list(sources)
-    return body + "\n\n## Sources\n\n" + "\n".join(lines) + "\n", body
+    return body + "\n\n## Sources\n\n" + "\n".join(lines) + "\n", body.rstrip("\n")
 
 
 def _mtr_e(statement="alpha", **kw):
@@ -8667,8 +8950,8 @@ def _selftest_cases():
                    (0, [], ["by", "date", "second_read_by", "text"], quote, 1, True, 1, [mhd("missing decl_reading_sources")], False))
 
     @case("MTR-WORDS", "the overlay file of `--strings-overlay-statements` in the maths surface holds EXACTLY the 40 keys of today and `decl_reading_sources` (41): the 41 build; the 40 are refused `SKEL-STATEMENT-WORDS decl_reading_sources missing`; the 41 WITHOUT the maths "
-                       "options (with and without `--readings`) are refused `SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word` and the 40 still build; the new key is never written to index.json `strings` (nor is any of the four heading words), and the value of the "
-                       "word is read from the file: a build whose overlay says `Origins` takes `## Origins` as the Sources heading and refuses `## Sources` (`missing decl_reading_sources`)")
+                       "options are refused `SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word` (alone with `--readings`, beside the twelve reading words without it) and the 40 still build; the new key is never written to index.json `strings` (nor is any of the four heading words), and the value of the "
+                       "word is read from the file: a build whose overlay says `Origins` takes `## Origins` as the Sources heading and refuses `## Sources` (an `extra line`)")
     def _():
         text, vis = _mtr_text()
         files = {}
@@ -8680,9 +8963,9 @@ def _selftest_cases():
             no_maths = [r1, _rdg_run(d, [], words=MTR_WORDS, readings=False, out="o2", g=g)[0], _rdg_run(d, [], words=RDG_WORDS, out="o3", g=g)[0]]
         again = _mtr_one(text.replace("## Sources", "## Origins"), words=dict(MTR_WORDS, decl_reading_sources="Origins"))
         old_word = _mtr_one(text, words=dict(MTR_WORDS, decl_reading_sources="Origins"))
-        refused = (1, ["SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word"])
-        return _eq((ok[0], ok[1], [k for k in ("decl_reading_sources",) + RDG_HEADING_KEYS if k in strings], forty[:2], forty[3], [(c[0], _rdg_skel(c[1])) for c in no_maths], again[:2], old_word[:2]),
-                   (0, [], [], (1, ["SKEL-STATEMENT-WORDS decl_reading_sources missing"]), False, [refused, refused, (0, [])], (0, []), (1, [mhd("missing decl_reading_sources")])))
+        refusal = "SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word"
+        return _eq((ok[0], ok[1], [k for k in ("decl_reading_sources",) + RDG_HEADING_KEYS if k in strings], forty[:2], forty[3], [(c[0], refusal in _rdg_skel(c[1]), len(_rdg_skel(c[1]))) for c in no_maths], again[:2], old_word[:2]),
+                   (0, [], [], (1, ["SKEL-STATEMENT-WORDS decl_reading_sources missing"]), False, [(1, True, 1), (1, True, 13), (0, False, 0)], (0, []), (1, [mhd("extra line %d" % (text.split("\n").index("## Sources") + 1))])))
 
     @case("MTR-HEADINGS", "the heading lines of the AUTHORED text in the maths surface: `## ` + uses, target, argument, optionally adds, then the REQUIRED `## ` + the Sources word, last. All five, and the four without adds, are written; the Sources heading missing is "
                           "`SKEL-STATEMENT-READING-HEADINGS <statement> missing decl_reading_sources`; any heading line after it (an unknown heading, one of the four words, a second Sources heading, a heading inside the Sources section) is `extra line <n>`, n the "
@@ -8733,7 +9016,7 @@ def _selftest_cases():
                 {"from": MTR_DOC_ALPHA, "kind": "quote", "paragraph": 6, "path": MTR_PA, "to": MTR_DOC_ALPHA}, {"from": MTR_DOC_BETA, "kind": "quote", "paragraph": 7, "path": MTR_PA, "to": MTR_DOC_BETA},
                 {"kind": "unopened", "text": "Something of the library, in words."}]
         return _eq((r[:2], r[2] and sorted(r[2]), r[2] and r[2]["sources"], r[2] and r[2]["text"] == vis, r[2] and r[2]["rests_on"], empty[:2], empty[2] and empty[2]["sources"]),
-                   ((0, []), ["by", "date", "rests_on", "second_read_by", "sources", "text"], want, True, [], (0, []), []))
+                   ((0, []), ["by", "date", "rests_on", "second_read_by", "sources", "text"], want, True, [{"gives": "none.", "words": "Standing assumptions"}], (0, []), []))
 
     @case("MTR-SRC-SHAPE", "a line of the Sources section that is not one of the three forms is `SKEL-MATHS-READING-SOURCES <statement> shape` (one line per reading, nothing written): a non-bullet line, `*` for the bullet, an indented bullet, a result with no backticks, with `lines`, with line 0 or a "
                            "leading zero, with text after the bracket; a quotation whose number is not digits, whose range is backwards, with no line part; `Not opened` with no words or no space; each beside the good bullet that passes")
@@ -8809,21 +9092,21 @@ def _selftest_cases():
                      "elsewhere": (1, [mqq(7, "form")]), "elsewhere-and-count": (1, [mtr_src("quote count")])}))
 
     @case("MTR-CHUNKS", "`paragraph` of a written quote is the 0-BASED index of its opener's CHUNK in the chunks of the written `text`, which are exactly `re.split(r\"\\n(?:[ \\t]*\\n)+\", text)`, no trim: a blank line is spaces and tabs ONLY (a no-break-space-only line, an em space line are NOT blank, "
-                        "so the paragraphs around them are one chunk), several blank lines are one separator, a heading glued to its paragraph is one chunk with it, every item of a list with blank lines is its own chunk; each index is recomputed here by reading the lines (not by the "
-                        "tool's expression), and is equal to a hand count; a quote after a no-break-space line has index 6, after a space or tab line 7; the index is taken on the text WITHOUT its trailing newlines")
+                        "so the paragraphs around them are one chunk; a tab never reaches the check, the text rule refuses it), several blank lines are one separator, a heading glued to its paragraph is one chunk with it, every item of a list with blank lines is its own chunk; each index is recomputed here by reading the lines (not by the "
+                        "tool's expression), and is equal to a hand count; a quote after a no-break-space line has index 6, after a line of spaces 7; the index is taken on the text WITHOUT its trailing newlines")
     def _():
         QA = _mtr_quote("One. Two is longer.")
         pre = "## " + MTR_H["decl_reading_uses"] + "\n\n- Standing assumptions: none.\n\n- Library facts: more.\n\n## " + MTR_H["decl_reading_target"] + "\nglued paragraph line\n\npA\n"
         post = "\npB\n\n## " + MTR_H["decl_reading_argument"] + "\n\n"
         out = {}
-        for label, sep in (("nbsp", " "), ("emsp", " "), ("space", " "), ("tab", "\t"), ("two-blank", " \n\t\n\n")):
+        for label, sep in (("nbsp", "\u00a0"), ("emsp", "\u2003"), ("space", " "), ("spaces", "   "), ("several-blank", " \n  \n\n")):
             body = pre + sep + post + QA
             text = body + "\n\n## Sources\n\n" + _mtr_own() + "\n- Quotation 1: %s line %d\n" % (MTR_PA, MTR_DOC_ALPHA)
             r = _mtr_one(text)
             chunks = _mtr_chunks(body)
             want = [i for i, c in enumerate(chunks) if c.startswith(MTR_OPENER)]
             out[label] = (r[:2], [x["paragraph"] for x in r[2]["sources"] if x["kind"] == "quote"] if r[2] else None, want, [i for i, c in enumerate(re.split(r"\n(?:[ \t]*\n)+", body)) if c.startswith(MTR_OPENER)])
-        return _eq(out, {"nbsp": ((0, []), [6], [6], [6]), "emsp": ((0, []), [6], [6], [6]), "space": ((0, []), [7], [7], [7]), "tab": ((0, []), [7], [7], [7]), "two-blank": ((0, []), [8], [8], [8])})
+        return _eq(out, {"nbsp": ((0, []), [6], [6], [6]), "emsp": ((0, []), [6], [6], [6]), "space": ((0, []), [7], [7], [7]), "spaces": ((0, []), [7], [7], [7]), "several-blank": ((0, []), [7], [7], [7])})
 
     @case("MTR-RESTS", "`rests_on` (C5) is DERIVED from the bullets (lines starting `- `) of the section of the uses heading of the written text and only them, in order: `- <head>: <gives>` split at the FIRST `: `; a head equal to the human name of a statement of the build gives "
                        "`{gives, name (the full Lean name), step, words}`, any other head `{gives, words}` (no name, no step); a prose line and a quotation paragraph in that section, and a bullet in another section, are ignored; a bullet with no `: ` is "
@@ -8839,21 +9122,21 @@ def _selftest_cases():
                    ((0, []), [{"gives": "gives the bound.", "name": "beta", "step": "lean-p-a-beta", "words": "Beta lemma"}, {"gives": "nothing odd: really.", "words": "Standing assumptions"},
                               {"gives": "gives the definition.", "name": "bdef", "step": "lean-p-b-bdef", "words": "Bee def"}], [], [(1, [mtr_rests("bullet")])] * 5))
 
-    @case("MTR-RESTS-NOSOURCE", "check (a) of C5: every statement human name that occurs in the visible text (case-sensitive, the whole phrase: not inside a longer word, not after a word character; LONGEST name first, each match consumed so that `Alpha result` inside `Alpha result bound` is not "
+    @case("MTR-RESTS-NOSOURCE", "check (a) of C5: every statement human name that occurs in the visible text (case-sensitive, the whole phrase: not inside a longer word, not after a word character; LONGEST name first, each match consumed so that `Basic bound` inside `Basic bound extended` is not "
                                 "counted again; the reading's OWN statement excluded; only a statement with a names row can be found) must have a `result` source with those words: `SKEL-MATHS-READING-RESTS <statement> <name> no-source`")
     def _():
-        names = [_mth_n("alpha", "Alpha result"), _mth_n("beta", "Alpha result bound"), _mth_n("countError", "Count error")]
+        names = [_mth_n("alpha", "Basic bound"), _mth_n("beta", "Basic bound extended"), _mth_n("countError", "Count error")]
         own = _mtr_e("countError")
-        sb = _mtr_res("Alpha result bound", "beta", MTR_PA, MTR_LN["beta"])
-        sa = _mtr_res("Alpha result", "alpha", MTR_PA, MTR_LN["alpha"])
+        sb = _mtr_res("Basic bound extended", "beta", MTR_PA, MTR_LN["beta"])
+        sa = _mtr_res("Basic bound", "alpha", MTR_PA, MTR_LN["alpha"])
         run = lambda target, src, entry=own, nm=names: _mtr_one(_mtr_text(target=target, sources=src)[0], entry, names=nm)[:2]
-        got = {"longest": run("It follows from Alpha result bound.", [sb]), "both-missing": run("From Alpha result bound and from Alpha result.", [sb]), "both": run("From Alpha result bound and from Alpha result.", [sb, sa]),
-               "none": run("It follows from Alpha result bound.", []), "lower": run("It follows from alpha result bound.", []), "after-word": run("Alpha results and xAlpha result and Alpha result_q.", []),
-               "punctuation": run("From (Alpha result), then.", []), "own": run("The Count error is small.", []), "other-reads-it": _mtr_one(_mtr_text(target="The Count error is small.")[0], names=names)[:2],
-               "no-row": run("From Beta lemma.", [], nm=[_mth_n("alpha", "Alpha result")]), "second-name": run("From Alpha result and Alpha result bound.", [sa])}
+        got = {"longest": run("It follows from Basic bound extended.", [sb]), "both-missing": run("From Basic bound extended and from Basic bound.", [sb]), "both": run("From Basic bound extended and from Basic bound.", [sb, sa]),
+               "none": run("It follows from Basic bound extended.", []), "lower": run("It follows from basic bound extended.", []), "after-word": run("Basic bounds and xBasic bound and Basic bound_q.", []),
+               "punctuation": run("From (Basic bound), then.", []), "own": run("The Count error is small.", []), "other-reads-it": _mtr_one(_mtr_text(target="The Count error is small.")[0], names=names)[:2],
+               "no-row": run("From Beta lemma.", [], nm=[_mth_n("alpha", "Basic bound")]), "second-name": run("From Basic bound and Basic bound extended.", [sa])}
         mc = lambda what: mr("RESTS", what, "countError")
-        return _eq(got, {"longest": (0, []), "both-missing": (1, [mc("Alpha result no-source")]), "both": (0, []), "none": (1, [mc("Alpha result bound no-source")]), "lower": (0, []), "after-word": (0, []),
-                         "punctuation": (1, [mc("Alpha result no-source")]), "own": (0, []), "other-reads-it": (1, [mtr_rests("Count error no-source")]), "no-row": (0, []), "second-name": (1, [mc("Alpha result bound no-source")])})
+        return _eq(got, {"longest": (0, []), "both-missing": (1, [mc("Basic bound no-source")]), "both": (0, []), "none": (1, [mc("Basic bound extended no-source")]), "lower": (0, []), "after-word": (0, []),
+                         "punctuation": (1, [mc("Basic bound no-source")]), "own": (0, []), "other-reads-it": (1, [mtr_rests("Count error no-source")]), "no-row": (0, []), "second-name": (1, [mc("Basic bound extended no-source")])})
 
     @case("MTR-RESTS-INSOURCES", "check (b) of C5: every `rests_on` entry that has a `step` must have a `result` source with that step: `SKEL-MATHS-READING-RESTS <statement> <name> not-in-sources` (the head of the reading's OWN statement in its uses section, which check (a) excludes, with no own "
                                  "Sources line; the line is printed after the `no-source` lines); the same head with the source passes; a head that is not a statement name needs none")
@@ -8878,9 +9161,9 @@ def _selftest_cases():
         two = run("Then the prime remainder and the count error follow.")
         other = run("The count Error and the COUNT error.")
         inside = run("A Count error bound and the count error bound.", [_mtr_own(), src])
-        lower = run("Then The beta lemma follows.", nm=[_mth_n("alpha", "Alpha result"), _mth_n("beta", "the beta lemma")])
+        lower = run("Then The delta lemma follows.", nm=[_mth_n("alpha", "Alpha result"), _mth_n("beta", "the delta lemma")])
         return _eq((a[0], a[1], a[4][k + 1], advs(a), advs(with_src), with_src[0], advs(exact), exact[0], advs(two), two[0], advs(other), other[0], advs(inside), advs(lower), lower[0]),
-                   (0, [], adv("Count error"), [adv("Count error")], [], 0, [], 0, [adv("Count error"), adv("Prime remainder")], 0, [], 0, [], [adv("the beta lemma")], 0))
+                   (0, [], adv("Count error"), [adv("Count error")], [], 0, [], 0, [adv("Count error"), adv("Prime remainder")], 0, [], 0, [], [adv("the delta lemma")], 0))
 
     @case("MTR-VISIBLE", "THE VISIBLE-TEXT REFUSAL (C6) on the written text (the Sources section is outside it: it holds `.lean` and `line <n>` and passes): `SKEL-MATHS-READING-VISIBLE <statement> <what>`, `<what>` one of `P <token>` (a declaration name the index knows, underscore ALLOWED: `primeRemainder`, "
                          "`Foo.integral_q`, also in code spans), `lean-file`, `line-number` (`line` or `lines`, white space, a digit, any case) and `link` (`[[`); the neighbours pass (`the prime remainder`, `R_q`, `integral_q`, `the line of`, `outline 3`, `[x]`); several in "
@@ -8953,8 +9236,8 @@ def _selftest_cases():
             files = _tree_files(os.path.join(d, "out"))
         plain = _mtr_go([], readings=False, words=STM_WORDS)
         many = _mtr_go([], readings=False, words=MTR_WORDS)
-        return _eq((a[0], [k for k, v in files.items() if b'"reading' in v], [x for x in a[1] if x.startswith("readings ") or x.startswith("maths reading")], plain[:2], many[:2]),
-                   (0, [], [], (0, []), (1, ["SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word"])))
+        return _eq((a[0], [k for k, v in files.items() if b'"reading' in v], [x for x in a[1] if x.startswith("readings ") or x.startswith("maths reading")], plain[:2], many[0], "SKEL-STATEMENT-WORDS decl_reading_sources is not a statement word" in many[1]),
+                   (0, [], [], (0, []), 1, True))
 
     # ---- the two real readings of Kepler and Halley with Ariadne's read tables (paths given by the environment; never copied into the repository)
 
