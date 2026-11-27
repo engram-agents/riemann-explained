@@ -83,6 +83,11 @@ export const USES_LIBRARY_STRINGS = Object.freeze(["decl_uses_library_one", "dec
    the page reads no heading key. */
 export const READING_STRINGS = Object.freeze(["decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline"]);
 export const readingWordsOn = (strings) => READING_STRINGS.some((k) => has(strings, k));
+/* THE READING CUE's words (Ariadne's reading-cues note v1): the tag on a box that has a reading and the count line on the boxes above it. All four or none; only with the
+   reading words on (`bad-cue-strings` names the first missing or empty one, or says the reading words are missing); `count_reading_many` holds `{n}` (filled as TEXT).
+   A map with the reading words and no cue words draws no cue. */
+export const CUE_STRINGS = Object.freeze(["face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text"]);
+export const cueWordsOn = (strings) => CUE_STRINGS.some((k) => has(strings, k));
 export const statementsOn = (strings) => STATEMENT_STRINGS.some((k) => has(strings, k));
 /* One more word of the Graph view that a map MAY hold (Lei, 11-26: the way back from a card to the box it was opened from): present, the sheet shows the control; absent, it does not. Present it is not empty. */
 export const GRAPH_VIEW_OPTIONAL = Object.freeze(["spine_back_to_graph"]);
@@ -282,6 +287,11 @@ export function validateIndex(raw) {
     refuseEmptyOptional(raw.strings, [READING_NONE, ...DECL_KIND_STRINGS, ...USES_LIBRARY_STRINGS]);
     for (const k of USES_LIBRARY_STRINGS) if (!has(raw.strings, k) && USES_LIBRARY_STRINGS.some((o) => has(raw.strings, o))) throw new DataError("bad-statement-strings", "index strings holds only one of decl_uses_library_one and decl_uses_library_many, lacks " + k);
     for (const k of READING_STRINGS) if (readingWordsOn(raw.strings) && (!has(raw.strings, k) || raw.strings[k] === "")) throw new DataError("bad-reading-strings", "index strings holds part of the reading words, lacks " + k);
+    if (cueWordsOn(raw.strings)) {
+      if (!readingWordsOn(raw.strings)) throw new DataError("bad-cue-strings", "index strings holds cue words but no reading words");
+      for (const k of CUE_STRINGS) if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("bad-cue-strings", "index strings holds part of the cue words, lacks " + k);
+      if (!raw.strings.count_reading_many.includes("{n}")) throw new DataError("bad-cue-strings", "count_reading_many holds no {n}");
+    }
   }
   /* The page treats a map as carrying notes only when strings hold BOTH note words; one alone would open note-carrying cards silently without their note. */
   if (has(raw.strings, "note_label") !== has(raw.strings, "note_source"))
@@ -301,7 +311,7 @@ export function validateIndex(raw) {
     if (has(raw.strings, k) && !viewOn) throw new DataError("bad-view-words", "index strings holds " + k + " without the Graph view words");
     if (has(raw.strings, k) && raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty Graph view word " + k);
   }
-  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && (GRAPH_VIEW_STRINGS.includes(k) || GRAPH_VIEW_OPTIONAL.includes(k))) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE || DECL_KIND_STRINGS.includes(k) || USES_LIBRARY_STRINGS.includes(k) || READING_STRINGS.includes(k)));
+  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && (GRAPH_VIEW_STRINGS.includes(k) || GRAPH_VIEW_OPTIONAL.includes(k))) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE || DECL_KIND_STRINGS.includes(k) || USES_LIBRARY_STRINGS.includes(k) || READING_STRINGS.includes(k) || CUE_STRINGS.includes(k)));
   const leftover = Object.keys(raw.strings).filter((k) => !known(k));
   if (viewOn && leftover.length === 0) throw new DataError("bad-view-words", "index strings carries no spine sentence key beside the Graph view words");
   for (const k of viewOn ? leftover.slice(1) : leftover) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
@@ -347,7 +357,7 @@ function spineRowsOf(v) {
 }
 
 function closedOf(c, ctx, isChild, where) {
-  exactKeys(c, ["id", "title", "kind", "state", "proof", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role", "child_kind"], where);
+  exactKeys(c, ["id", "title", "kind", "state", "proof", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role", "child_kind", "reading_count"], where);
   idOf(c.id, where + ".id");
   if (!isStr(c.title) || c.title === "") throw new DataError("bad-title", where + " has no title");
   if (!isStr(c.kind) || !ctx.symbols.names.kinds.includes(c.kind)) throw new DataError("unknown-kind", where + " has a kind that symbols does not list");
@@ -365,6 +375,12 @@ function closedOf(c, ctx, isChild, where) {
   if (has(c, "role")) out.role = c.role;
   if (has(c, "child_kind")) out.child_kind = c.child_kind;
   if (isChild) out.parent_rests_on = c.parent_rests_on;
+  /* THE READING COUNT (optional): the number of statements WITH a reading on or under this card, an integer of 1 or more, ABSENT when there is none (never 0). The sums are checked
+     in validateStep and across steps in createData, so a builder slip cannot show a false cue. */
+  if (has(c, "reading_count")) {
+    if (!isInt(c.reading_count) || c.reading_count < 1) throw new DataError("bad-reading-count", where + " has a reading_count that is not an integer of 1 or more");
+    out.reading_count = c.reading_count;
+  }
   return out;
 }
 
@@ -490,6 +506,12 @@ export function validateStep(raw, ctx) {
   if (has(raw, "index_rows")) out.index_rows = indexRowsOf(raw.index_rows);
   if (has(raw, "spine_rows")) out.spine_rows = spineRowsOf(raw.spine_rows);
   if (has(raw, "note")) out.note = { ...noteOf(raw.note, ctx, raw.id), commit: raw.commit };
+  /* The counts are CHECKED only on a map that holds the cue words (the map that asks for the cue): a map with readings and no counts, which is the data before the cue, must still load. */
+  const cueOn = cueWordsOn(ctx.strings || {});
+  if (cueOn && !carriesStatement) {      // a card above statements counts the readings below it: its reading_count is the SUM of its children entries' (absent = 0)
+    const below = children.reduce((n, c) => n + (c.reading_count || 0), 0);
+    if ((card.reading_count || 0) !== below) throw new DataError("bad-reading-count", "step " + raw.id + " has a reading_count of " + (card.reading_count || 0) + " but its children hold " + below);
+  }
   if (carriesStatement) {
     if (card.child_count !== 0 || children.length !== 0) throw new DataError("bad-statement", "step " + raw.id + " is a statement but has children");
     out.decl = declOf(raw, ctx, raw.id);
@@ -497,6 +519,8 @@ export function validateStep(raw, ctx) {
       if (!readingWordsOn(ctx.strings || {})) throw new DataError("bad-reading-strings", "step " + raw.id + " carries a reading but the index strings hold no reading words");
       out.decl.reading = readingOf(raw.reading, raw.id);
     }
+    const own = out.card.reading_count || 0;
+    if (cueOn && own !== (out.decl.reading ? 1 : 0)) throw new DataError("bad-reading-count", "step " + raw.id + " has a reading_count of " + own + " but " + (out.decl.reading ? "carries a reading" : "carries none"));
   }
   return out;
 }
@@ -542,9 +566,14 @@ export function createData(fetchLike) {
   const steps = new Map();      // id -> Promise of a validated step (bounded, oldest out)
   const metaOf = new Map();     // id -> what the breadcrumb needs about a step already seen
 
-  function note(c) {
+  const counts = new Map();     // id -> the reading_count the page was first told of this card (a parent's entry or its own step), 0 when none
+  function note(c, cueOn) {
     const m = { id: c.id, title: c.title, kind: c.kind, state: c.state, proof: c.proof, childCount: c.child_count, path: c.path.slice() };
     if (has(c, "role")) m.role = c.role;
+    /* One card, one count: the parent's entry for a step and the step's own card must say the same (a builder slip would show a cue on the box and none on the card, or the reverse). */
+    const n = c.reading_count || 0;
+    if (cueOn && counts.has(c.id) && counts.get(c.id) !== n) throw new DataError("bad-reading-count", "step " + c.id + " is told as holding " + counts.get(c.id) + " readings and as holding " + n);
+    counts.set(c.id, n);
     metaOf.set(c.id, m);
   }
 
@@ -568,8 +597,9 @@ export function createData(fetchLike) {
       p.catch(() => { if (steps.get(id) === p) steps.delete(id); });
     }
     const v = await steps.get(id);
-    note(v.card);
-    v.children.forEach(note);
+    const cueOn = cueWordsOn(ctx.strings);
+    note(v.card, cueOn);
+    v.children.forEach((c) => note(c, cueOn));
     return v;
   }
 
@@ -606,6 +636,7 @@ export function createData(fetchLike) {
 function dataOf(c) {
   const d = { title: c.title, kind: c.kind, state: c.state };
   if (has(c, "role")) d.role = c.role;
+  if (has(c, "reading_count")) d.readingCount = c.reading_count;
   if (has(c, "child_kind")) d.childKind = c.child_kind;
   return d;
 }

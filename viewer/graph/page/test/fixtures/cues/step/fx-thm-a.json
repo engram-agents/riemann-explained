@@ -1,0 +1,48 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "fx-thm-a",
+  "kind": "theorem",
+  "path": [
+   "fx-part",
+   "fx-group",
+   "fx-stmt-file"
+  ],
+  "proof": "none",
+  "reading_count": 1,
+  "state": "none",
+  "title": "`foo_bar`"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "heading": "### Section on the bounds\n\nThe lemmas of this section bound `f`.",
+ "id": "fx-thm-a",
+ "name": "Fx.foo_bar",
+ "note": {
+  "source": "grh/src/New/Fx/File.lean",
+  "text": "The theorem `foo_bar`: for every `n` the bound holds.\n\nSecond paragraph of the repository's own comment."
+ },
+ "path": [
+  "fx-part",
+  "fx-group",
+  "fx-stmt-file"
+ ],
+ "prompt": "You are helping me read one statement. <b>x</b> and {page_url} stay literal.\nSecond line: &amp; <script>alert(1)</script>\n",
+ "reading": {
+  "by": "Made-Up Writer",
+  "date": "2026-01-02",
+  "second_read_by": "Made-Up Checker",
+  "text": "A made-up preface paragraph, plain text, before the first heading. <b>x</b> and {by} stay literal.\n\n## What it rests on\n\n- `Fx.helper`, a made-up result the statement uses.\n- `Fx.other`, another one.\n\n## What it states\n\nFor every `n` the made-up bound holds.\n\n## How the Lean proof goes\n\n1. Unfold the definition.\n2. Apply `Fx.helper` to `n`.\n3. Close the goal.\n\n## What the Lean text adds to the comment\n\nIn the repository's words (lines 3-4): \"A made-up quoted comment.\"\n\nThe made-up comment says nothing of the type of `n`."
+ },
+ "rests_on": [],
+ "source_path": "src/New/Fx/File.lean",
+ "statement": {
+  "keyword": "theorem",
+  "text": "theorem foo_bar (n : ℕ) : n ≤ n + 1"
+ },
+ "uses_elsewhere": [],
+ "uses_here": [],
+ "uses_library_count": 0,
+ "variables": false
+}

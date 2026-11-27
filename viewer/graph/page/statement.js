@@ -108,7 +108,7 @@ export function buildStatement({ strings, decl, hasNote, titleOf, el, doc, signa
   const parts = [lean];
   if (decl.reading) {
     const r = decl.reading;
-    const btn = el("button", { type: "button", class: "sheet-tool", "aria-expanded": "false" }, [strings.decl_reading_show]);
+    const btn = el("button", { type: "button", class: "sheet-tool sheet-tool-main", "aria-expanded": "false" }, [strings.decl_reading_show]);   // the filled main style: a card that has a reading says so (Lei, 11-27)
     const text = el("div", { class: "decl-reading-text" }, []);
     text.appendChild(renderNote(r.text, el, !!typeset));
     const body = el("div", { class: "decl-reading-body" }, [el("p", { class: "decl-reading-about" }, [strings.decl_reading_about]), text,

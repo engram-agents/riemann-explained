@@ -10,7 +10,7 @@
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
 import { createGraph, checkOptions } from "../engine/index.js";
 import { el, isId, titleChildren } from "./dom.js";
-import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING, TYPESET_STRINGS, statementsOn } from "./data.js";
+import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING, TYPESET_STRINGS, statementsOn, cueWordsOn } from "./data.js";
 import { makeRenderFace } from "./face.js";
 import { templateParts } from "./note.js";
 import { createSheet, partsWords } from "./sheet.js";
@@ -71,6 +71,8 @@ function buildKey(index) {
   if (index.edgeBasis) parts.push(el("h2", {}, [s[EDGE_BASIS_HEADING]]), el("p", { class: "key-lines" }, [s[index.edgeBasis.words]]));
   /* When the statement words are on, the key ENDS with their section: an h2 (key_statements_heading) and one paragraph (key_statements_text). */
   if (statementsOn(s)) parts.push(el("h2", {}, [s.key_statements_heading]), el("p", { class: "key-statements" }, [s.key_statements_text]));
+  /* The reading cue's sentence, when the cue words are on: one more paragraph at the end of the statements section. */
+  if (cueWordsOn(s)) parts.push(el("p", { class: "key-statements" }, [s.key_reading_cue_text]));
   return el("div", { class: "key-content" }, parts);
 }
 
