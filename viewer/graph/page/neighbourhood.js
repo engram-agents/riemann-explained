@@ -75,3 +75,13 @@ export function buildNeighbourhood(deps) {
   ]);
   return { root, shown: { above: Math.min(above, builtOn.length), below: Math.min(below, uses.length) } };
 }
+
+/* The WHOLE side as a list for the sheet (the "+ n more" row): the side's heading with its total, then every row in the same order; a tap on a row asks to make that file
+   the centre, as in the view. deps: strings, titles, kindWord, rows (as validateUses gives them), which ("built_on" or "uses"), onMove(id), signal. */
+export function buildFullSide(deps) {
+  const { strings, titles, kindWord, rows, which, onMove, signal } = deps;
+  const ordered = orderRows(rows, titles);
+  const kids = [el("h2", { class: "nb-heading" }, [fill(strings[which === "uses" ? "nb_uses" : "nb_built_on"], "n", ordered.length)])];
+  for (const r of ordered) kids.push(rowOf(strings, kindWord, r, titles, onMove, signal));
+  return el("div", { class: "nb-full" }, kids);
+}

@@ -14,12 +14,14 @@
 import { el, titleChildren } from "./dom.js";
 import { DataError, fetchJson, isTransportCode } from "./data.js";
 import { validateSpine, spineRoots } from "./spine.js";
+import { validateUses } from "./uses.js";
+import { buildNeighbourhood } from "./neighbourhood.js";
 
 /* THE EVENT. One name for the whole page ('graphpage-failure', namespaced so a bare generic name on document cannot be fired or clobbered by another script),
    detail {stage: 'graph', code}; the start failure's {stage: 'start', code} is the smoke test's own stacked change. `code` is a member of FAILURE_CODES or null. */
 export const FAILURE_EVENT = "graphpage-failure";
 export const FAILURE_CODES = Object.freeze(["fetch-failed", "not-json", "http-error", "bad-type", "missing-key", "extra-key", "bad-format", "bad-commit",
-  "bad-edge-basis", "bad-spine-node", "bad-spine-link", "engine-refused", "graph-failed"]);
+  "bad-edge-basis", "bad-spine-node", "bad-spine-link", "bad-titles", "bad-uses", "uses-inverse-mismatch", "engine-refused", "graph-failed"]);
 
 /* The code of a failure: the DataError's own code when it is one of the fixed set, `http-error` for any HTTP status code (the number is data), and
    `graph-failed` for everything else (an engine exception, a plain error). No text of an exception, and no text of the data, ever becomes a code. */
@@ -89,6 +91,10 @@ export function createGraphView(deps) {
   bGraph.addEventListener("click", () => deps.onSwitch("graph"), { signal });
 
   let view = "cards", spine = null, handle = null, refused = false, keyEl = null;
+  let usesRec = null, nbId = null, nbOn = false;      // the neighbourhood: the validated uses.json (read once, on the first open), the file at the centre, whether it is showing
+  const nbStage = el("div", { class: "stage graph-nb", hidden: "" });
+  nbStage.hidden = true;
+  layer.insertBefore(nbStage, stage.nextSibling);
   const offs = [];     // the unsubscribe function of every engine subscription (the page's one teardown rule)
   function release() {
     for (const off of offs.splice(0)) { try { off(); } catch (e) { /* the stage is being put back */ } }
@@ -105,7 +111,8 @@ export function createGraphView(deps) {
     } catch (e) { /* the event is for a test's listener; nothing here depends on it */ }
   }
   function flipTo(which) {
-    stage.hidden = which !== "graph";
+    stage.hidden = which !== "graph" || nbOn;
+    nbStage.hidden = which !== "graph" || !nbOn;
     cardsStage.hidden = which === "graph";
   }
   function rollback() {
@@ -161,13 +168,71 @@ export function createGraphView(deps) {
   function fit() { if (handle) handle.fit(); }
   function hide() {
     view = "cards";
+    nbOn = false;
+    nbId = null;
     flipTo("cards");
     pressed();
   }
   function destroy() {
     release();
     if (stage.parentNode) stage.parentNode.removeChild(stage);
+    if (nbStage.parentNode) nbStage.parentNode.removeChild(nbStage);
     if (sw.parentNode) sw.parentNode.removeChild(sw);
+  }
+  /* THE NEIGHBOURHOOD of a file (G2). Only on a map whose index holds the nine nb_ words (index.graphView.neighbourhood). uses.json is read ONCE, on the first open, after
+     the spine (the Graph view is showing before the neighbourhood is), validated by uses.js, and any refusal is the Graph view's refusal: the notice, the code in memory, the
+     event; the view stays as it was. deps.nb brings what only the page knows: nb.centreFace(id) (the closed card's face, made by the page's own renderFace), nb.kindWord(kind),
+     and the reader's requests: onMove(id), onMore(side, id), onCentre(id), onBack(). */
+  const nbEnabled = Boolean(index.graphView && index.graphView.neighbourhood);
+  async function loadUses() {
+    if (usesRec) return;
+    const raw = await fetchJson(deps.fetch, "uses.json");
+    usesRec = validateUses(raw, { commit: index.commit, steps: index.steps, top: index.top, kinds: index.symbols.names.kinds });
+  }
+  function showSpine() {
+    nbOn = false;
+    nbId = null;
+    flipTo("graph");
+  }
+  function renderNb(id, face, from) {
+    nbOn = true;
+    flipTo("graph");      // the stage must be showing to be measured
+    while (nbStage.firstChild) nbStage.removeChild(nbStage.firstChild);
+    const prev = from ? usesRec.titles.get(from) : null;
+    const built = buildNeighbourhood({
+      strings, titles: usesRec.titles, kindWord: deps.nb.kindWord, record: { id, builtOn: usesRec.usedBy.get(id), uses: usesRec.uses.get(id) },
+      stageH: nbStage.clientHeight || doc.defaultView.innerHeight, centre: face, back: prev ? { title: prev.title } : null,
+      onMove: (to) => deps.nb.onMove(to), onMore: (side) => deps.nb.onMore(side, id), onCentre: () => deps.nb.onCentre(id), onBack: () => deps.nb.onBack(), signal,
+    });
+    nbStage.appendChild(built.root);
+    nbStage.scrollTop = 0;
+    nbId = id;
+  }
+  /* neighbourhood(t, id, from): true when the file's neighbourhood is showing on return; "spine" when the id is a step that is no file (the main results are shown); false
+     when nothing changed (the id names no step: the page's refused-link notice; or a refusal: the notice, the code, the event). `from` is the file the reader came from. */
+  async function neighbourhood(t, id, from) {
+    if (!nbEnabled) return false;
+    try {
+      if (!(await show(t))) return false;
+      await loadUses();
+      if (!current(t)) return false;
+      if (!usesRec.titles.has(id)) { say(strings.link_refused); return false; }
+      if (!usesRec.uses.has(id)) { showSpine(); return "spine"; }
+      const face = await deps.nb.centreFace(id);
+      if (!current(t)) return false;
+      renderNb(id, face, from);
+    } catch (e) {
+      if (!current(t)) return false;
+      say(strings.graph_failed_notice);
+      failure.graph = failureCode(e);
+      refused = true;
+      report(failureCode(e));
+      return false;
+    }
+    hush();
+    failure.graph = null;
+    if (refused) { refused = false; report(null); }
+    return true;
   }
   return {
     show, hide, fit, destroy,
@@ -180,5 +245,13 @@ export function createGraphView(deps) {
       return keyEl;
     },
     node: (id) => (spine ? spine.nodes.find((n) => n.id === id) || null : null),
+    neighbourhood, showSpine,
+    nbEnabled: () => nbEnabled,
+    nbActive: () => nbOn,
+    nbId: () => nbId,
+    /* a side's rows and the titles, for the full list the sheet shows (the "+ n more" row) */
+    side: (which, id) => (usesRec && usesRec.uses.has(id) ? { rows: which === "uses" ? usesRec.uses.get(id) : usesRec.usedBy.get(id), titles: usesRec.titles } : null),
+    pathOf: (id) => (usesRec && usesRec.titles.has(id) ? usesRec.titles.get(id).path.slice() : null),
+    titleOf: (id) => (usesRec && usesRec.titles.has(id) ? usesRec.titles.get(id).title : null),
   };
 }
