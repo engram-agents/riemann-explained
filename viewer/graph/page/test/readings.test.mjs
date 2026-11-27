@@ -79,6 +79,7 @@ test("reading: not an object, a missing key, an extra key, or a key that is not 
   bad((r) => { r.extra = "x"; });
   for (const k of ["text", "by", "second_read_by", "date"]) {
     bad((r) => { r[k] = ""; });
+    bad((r) => { r[k] = " \t\u00a0\u2028\ufeff\n"; });      // white space only is empty (JS trim: no-break space, line separator, BOM)
     bad((r) => { r[k] = 7; });
     bad((r) => { r[k] = null; });
   }
