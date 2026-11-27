@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The one-command acceptance test of a BUILT site tree: the merge seat's check before any deploy of the Lean map.
 
-  python3 viewer/graph/page/test/smoke_tree.py SITE_DIR [--no-note | --require-note] [--require-floor] [--require-credits] [--only-viewport 390x844|1280x900]
+  python3 viewer/graph/page/test/smoke_tree.py SITE_DIR [--no-note | --require-note] [--require-framed] [--require-credits] [--only-viewport 390x844|1280x900]
   (run it with a Python that has playwright; the module itself imports without one, so the containment cases of test_smoke_tree.py
   run on any Python 3: `python3 test_smoke_tree.py --no-browser`)
 
@@ -33,11 +33,18 @@ In Chromium, for each viewport (390x844 mobile with touch; 1280x900):
   note          for the file: the sheet's .note-body contains the first 30 letters and digits of THAT step's note.text, both sides lowercased
                 and cut to letters and digits (the renderer drops markdown markers: a leading '# ', backticks, list marks) (A2). An absent or empty .note-body is a FAIL; no file step carries a note, or --no-note, is a SKIP, never a pass
                 (and a FAIL with --require-note: the merge seat's run that must have the real check).
-  scale-floor   390x844 only: the engine world's rendered scale is >= index.json open_scale_floor (A3), read where the floor applies: on an OPENED
-                box. A deep link frames its target CLOSED and is not floored, so the part is deep-linked, then its parts are opened through the sheet's
-                own parts button (the page's open-parts route, as a reader does), the engine is let settle, and only then is the scale read. A sheet with
-                no such button, or parts that do not open, is a FAIL (the opened framing was not measured).
-                No such key in the data: SKIP, never a pass (a FAIL with --require-floor, which is a usage error, exit 2, with --only-viewport 1280x900: the floor runs at 390x844 only).
+  framed        at 390x844 and at 360x640 (the two phone sizes; never at 1280x900; 360x640 runs this check alone): after the reader presses the open
+                sheet's parts button, the WHOLE opened box, title included, is inside the visible part of the map and nothing covers it. Read where
+                the reader sees it: the part is deep-linked, the sheet's own parts button (`#graph-sheet button.sheet-tool-main`) is pressed, the
+                engine is let settle (and the header fold, when the shell has one), and then, in one read, the box (`.ge-node[data-node=<id>]`) must lie
+                inside the map STAGE (`#graph`, clipped to the window) within 1 px on every side, and document.elementFromPoint at the box's four corners
+                (2 px in) and at the centre of its face (`.ge-face`, the title) must each land inside `#graph`: what covers the box is found by asking
+                the page, never from a list of known covers. A box that cannot fit even at the engine's smallest zoom FAILs with its scale printed, never
+                SKIPs. The data's open_scale_floor is not read. A sheet with no parts button, or parts that do not open, is a FAIL.
+                The line: `PASS|FAIL <vp> framed <id> scale=<k> folded=<yes|no|n/a> box=<l,t,r,b> stage=<l,t,r,b> viewport=<w>x<h>`, a FAIL naming
+                its reasons first (`box outside stage by <side>=<px>`, `overlaid at <probe>: <tag>#<id>.<class>`, every failing probe).
+                No part with parts to open in the tree: SKIP `framed (no part with parts to open)`, a FAIL with --require-framed (which is a usage error,
+                exit 2, with --only-viewport 1280x900: the framed check runs at phone sizes only). `--require-floor` is a usage error naming --require-framed.
 
   credits       if SITE_DIR holds credits/index.html: at 1280x900 it answers 200, its console and requests are clean, and a link ON THE PAGE
                 (read from the page, never guessed) resolves to the map's index (the folder of the tree's index.html) and that loads and boots.
@@ -51,7 +58,7 @@ Output: one line per check `PASS|FAIL|SKIP <viewport> <check> <detail>`, a line 
 really opened, M the index's step count: one part, one group and one file are opened, not the tree), and a last line `SMOKE FAIL (<n> failed)` or
 `SMOKE PASS`. An exception in a viewport, or anywhere after the server is up, prints `FAIL <viewport> exception <type>: <first line of the message>`
 and the run still ends on the verdict line and exits 1.
-The PASS line names what the run did not do: `SMOKE PASS (2 skipped: note, scale-floor)` when any check skipped, `(partial: 390x844 only)`
+The PASS line names what the run did not do: `SMOKE PASS (2 skipped: framed, note)` when any check skipped, `(partial: 390x844 only)`
 with --only-viewport, the two joined by `;`. A plain `SMOKE PASS` means a whole run with nothing skipped.
 Exit 0 only if every check passed in every viewport; 1 if any failed; 2 if SITE_DIR is neither tree shape, or on a usage error.
 When the page's fallback ran, its reason is not exposed by the page (start() returns it and nothing keeps it, and nothing is logged),
@@ -79,7 +86,10 @@ import test_page_browser as T  # noqa: E402  (the suite's server class and its C
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 LAUNCH_ARGS = ["--no-sandbox"]       # the page browser suite's own launch args (its main() writes them inline, so they are copied here)
-VIEWPORTS = {"390x844": (390, 844, True), "1280x900": (1280, 900, False)}
+VIEWPORTS = {"390x844": (390, 844, True), "1280x900": (1280, 900, False), "360x640": (360, 640, True)}
+RUN_VIEWPORTS = ("390x844", "1280x900")      # what --only-viewport takes and what the full run visits; 360x640 runs the framed check alone (run_framed)
+FRAMED_VIEWPORTS = ("390x844", "360x640")    # the two phone sizes of the framed check
+FRAMED_TOLERANCE_PX = 1                      # how far the box may lie outside the stage before it counts as outside
 BOOT_TIMEOUT_MS = 15000
 OPEN_TIMEOUT_MS = 10000
 OUTSIDE = []                      # every request path or tool read that resolved outside SITE_DIR
@@ -433,33 +443,101 @@ def settled_scale(v):
     return None
 
 
-def scale_check(v, vp, index, require_floor, part_id):
-    """The floor governs framing an OPENED box (a deep link frames its target closed): press the open sheet's own parts button, wait for the engine's
-    open to settle, then read the scale."""
-    if "open_scale_floor" not in index:
-        skip_or_fail(vp, "scale-floor", "the index has no open_scale_floor", require_floor, "--require-floor")
-        return
-    floor = index["open_scale_floor"]
-    label = index["strings"]["open_parts"]
-    pressed = v.ev("(() => { const b = [...document.querySelectorAll('#graph-sheet .sheet-tool')].find((x) => x.textContent === %s); if (b) b.click(); return !!b; })()"
-                   % json.dumps(label))
-    if not pressed:
-        out("FAIL", vp, "scale-floor", "no parts button on %s (the open sheet has no %r button, so the opened framing was not measured)" % (part_id, label))
-        return
-    if not v.wait("document.querySelector('.ge-node.ge-open') && !document.querySelector('.ge-loading')", 10000):
-        out("FAIL", vp, "scale-floor", "parts did not open on %s (nothing opened after %r, so the opened framing was not measured)" % (part_id, label))
-        return
-    k = settled_scale(v)
-    how = "after opening the part's parts through the sheet"
-    if k is None:
-        out("FAIL", vp, "scale-floor", "no settled .ge-world scale() to read %s" % how)
-    elif k + 1e-9 < floor:
-        out("FAIL", vp, "scale-floor", "world scale %.3f < open_scale_floor %s (%s)" % (k, floor, how))
-    else:
-        out("PASS", vp, "scale-floor", "world scale %.3f >= open_scale_floor %s (%s)" % (k, floor, how))
+FRAMED_MEASURE = """((id) => {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const rect = (e) => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.right, b.bottom]; };
+  const node = document.querySelector('.ge-node[data-node="' + CSS.escape(id) + '"]'), stageEl = document.getElementById('graph');
+  if (!node) return { missing: 'the opened box (.ge-node[data-node=' + id + '])' };
+  if (!stageEl) return { missing: 'the map stage (#graph)' };
+  const faceEl = node.querySelector('.ge-face');
+  if (!faceEl) return { missing: 'the box face (.ge-face)' };
+  const s = rect(stageEl), stage = [Math.max(s[0], 0), Math.max(s[1], 0), Math.min(s[2], vw), Math.min(s[3], vh)];
+  const box = rect(node), face = rect(faceEl);
+  const describe = (e) => !e ? null : e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + [...e.classList].map((c) => '.' + c).join('');
+  const probe = (name, x, y) => { const h = document.elementFromPoint(x, y); return { name: name, hit: describe(h), inside: !!(h && h.closest('#graph')) }; };
+  const probes = [probe('top-left', box[0] + 2, box[1] + 2), probe('top-right', box[2] - 2, box[1] + 2), probe('bottom-left', box[0] + 2, box[3] - 2),
+                  probe('bottom-right', box[2] - 2, box[3] - 2), probe('title', (face[0] + face[2]) / 2, (face[1] + face[3]) / 2)];
+  return { vw: vw, vh: vh, stage: stage, box: box, face: face, probes: probes };
+})(%s)"""
+FOLDED = ("(() => { const b = document.getElementById('graph-intro-bar'), h = document.querySelector('header.intro');"
+          " return !!b && !!h && !b.hidden && h.hidden; })()")
 
 
-def run_viewport(browser, vp, base, site, index, picked, no_note, require_note, require_floor):
+def rect_text(r):
+    return ",".join("%.1f" % x for x in r)
+
+
+def framed_reasons(m):
+    """The reasons a measured box is not framed, in the order the line names them (an empty list: framed). `m` is FRAMED_MEASURE's answer."""
+    box, stage, reasons = m["box"], m["stage"], []
+    t = FRAMED_TOLERANCE_PX
+    sides = (("left", stage[0] - box[0]), ("top", stage[1] - box[1]), ("right", box[2] - stage[2]), ("bottom", box[3] - stage[3]))
+    out = ["%s=%.1f" % (name, d) for name, d in sides if d > t]
+    if out:
+        reasons.append("box outside stage by " + ", ".join(out))
+    for pr in m["probes"]:
+        if not pr["inside"]:
+            reasons.append("overlaid at %s: %s" % (pr["name"], pr["hit"] or "nothing (outside the window)"))
+    return reasons
+
+
+def framed_check(browser, base, vp, part_id):
+    """One phone size of the framed check: deep-link the part, press the open sheet's parts button, let the engine (and the header fold) settle, then
+    measure the opened box against the map stage in one read."""
+    v = View(browser, base + "#" + part_id, vp, {"console": [], "requests": []})
+    try:
+        if not (v.wait(SETTLED, BOOT_TIMEOUT_MS) and v.ev(BOOTED)):
+            out("FAIL", vp, "framed", "the map did not boot on %s, so the opened framing was not measured" % part_id)
+            return
+        shown = v.wait("!(document.getElementById('graph-sheet') || {hidden: true}).hidden", OPEN_TIMEOUT_MS)
+        if not shown or not v.wait("document.querySelector('#graph-sheet button.sheet-tool-main')", 2000):
+            out("FAIL", vp, "framed", "no parts button on %s (the %s, so the opened framing was not measured)"
+                % (part_id, "sheet has no parts button" if shown else "sheet did not open"))
+            return
+        v.ev("document.querySelector('#graph-sheet button.sheet-tool-main').click()")
+        if not v.wait("document.querySelector('.ge-node.ge-open') && !document.querySelector('.ge-loading')", OPEN_TIMEOUT_MS):
+            out("FAIL", vp, "framed", "parts did not open on %s (nothing opened after the parts button, so the opened framing was not measured)" % part_id)
+            return
+        folded = "n/a"
+        if v.ev("!!document.getElementById('graph-intro-bar')"):
+            folded = "yes" if v.wait(FOLDED, 2000) else "no"       # a header that never folds is measured as it is, and says so
+        k = settled_scale(v)
+        if k is None:
+            out("FAIL", vp, "framed", "no settled .ge-world scale() to read after opening the part's parts through the sheet")
+            return
+        m = v.ev(FRAMED_MEASURE % json.dumps(part_id))
+        if "missing" in m:
+            out("FAIL", vp, "framed", "no %s to measure on %s (scale=%.3f)" % (m["missing"], part_id, k))
+            return
+        b, f = m["box"], m["face"]
+        if not (b[0] - 1 <= f[0] and b[1] - 1 <= f[1] and f[2] <= b[2] + 1 and f[3] <= b[3] + 1):
+            out("FAIL", vp, "framed", "the box rect does not contain its face rect on %s: box=%s face=%s (the title cannot be told from the box)"
+                % (part_id, rect_text(b), rect_text(f)))
+            return
+        reasons = framed_reasons(m)
+        facts = "%s scale=%.3f folded=%s box=%s stage=%s viewport=%dx%d" % (part_id, k, folded, rect_text(b), rect_text(m["stage"]), m["vw"], m["vh"])
+        if reasons:
+            out("FAIL", vp, "framed", "; ".join(reasons) + " | " + facts)
+        else:
+            out("PASS", vp, "framed", facts)
+    finally:
+        v.close()
+
+
+def run_framed(browser, base, part, required):
+    """The framed check at both phone sizes, each in its own View (360x640 has no other check). `part` is the picked part's dict; None means the tree
+    gave none: a SKIP, or a FAIL when --require-framed."""
+    if part is None:
+        skip_or_fail("all", "framed", "no part with parts to open", required, "--require-framed")
+        return
+    for vp in FRAMED_VIEWPORTS:
+        try:
+            framed_check(browser, base, vp, part["id"])
+        except Exception as e:  # noqa: BLE001  (a page that throws in View.ev, a closed browser: a FAIL line for this size, the other still runs)
+            out("FAIL", vp, "framed", "exception " + exception_detail(e))
+
+
+def run_viewport(browser, vp, base, site, index, picked, no_note, require_note, require_framed):
     shared = {"console": [], "requests": []}
     csp_events = []
     boot = View(browser, base, vp, shared)
@@ -483,8 +561,6 @@ def run_viewport(browser, vp, base, site, index, picked, no_note, require_note, 
             OPENED.add(p["id"])
         if what == "file":
             note_check(v, vp, p, no_note, opened, require_note)
-        if what == "part" and vp == "390x844":
-            scale_check(v, vp, index, require_floor, p["id"])
         v.page.wait_for_timeout(200)
         csp_events += v.ev("window.__csp || []") or []
         v.close()
@@ -493,6 +569,8 @@ def run_viewport(browser, vp, base, site, index, picked, no_note, require_note, 
     out("FAIL" if cons else "PASS", vp, "console", "; ".join(cons)[:300] if cons else "no console error, no uncaught exception")
     out("FAIL" if cspc else "PASS", vp, "csp", "; ".join(cspc)[:300] if cspc else "no securitypolicyviolation")
     out("FAIL" if shared["requests"] else "PASS", vp, "requests", "; ".join(shared["requests"])[:300] if shared["requests"] else "no response >= 400, no failed request")
+    if vp == "390x844":          # the framed check runs at both phone sizes, from here (phones only; the 1280x900 run never reaches it)
+        run_framed(browser, base, picked[0], require_framed)
 
 
 CREDITS_LINKS = "[...document.querySelectorAll('a[href]')].map((a) => a.href)"
@@ -544,17 +622,20 @@ def main(argv):
         i = args.index("--only-viewport")
         only = args[i + 1] if i + 1 < len(args) else None
         del args[i:i + 2]
-        if only not in VIEWPORTS:
+        if only not in RUN_VIEWPORTS:
             print("--only-viewport takes 390x844 or 1280x900", file=sys.stderr)
             return 2
-    flags = ("--no-note", "--require-note", "--require-floor", "--require-credits")
-    no_note, require_note, require_floor, require_credits = (f in args for f in flags)
+    if "--require-floor" in args:
+        print("--require-floor is gone: the scale-floor check was replaced by the framed check; use --require-framed", file=sys.stderr)
+        return 2
+    flags = ("--no-note", "--require-note", "--require-framed", "--require-credits")
+    no_note, require_note, require_framed, require_credits = (f in args for f in flags)
     args = [a for a in args if a not in flags]
     if len(args) != 1 or args[0].startswith("-") or (no_note and require_note):
-        print("usage: smoke_tree.py SITE_DIR [--no-note | --require-note] [--require-floor] [--require-credits] [--only-viewport 390x844|1280x900]", file=sys.stderr)
+        print("usage: smoke_tree.py SITE_DIR [--no-note | --require-note] [--require-framed] [--require-credits] [--only-viewport 390x844|1280x900]", file=sys.stderr)
         return 2
-    if require_floor and only == "1280x900":
-        print("--require-floor cannot be combined with --only-viewport 1280x900: the floor check runs only at 390x844", file=sys.stderr)
+    if require_framed and only == "1280x900":
+        print("--require-framed cannot be combined with --only-viewport 1280x900: the framed check runs at phone sizes only", file=sys.stderr)
         return 2
     site = os.path.abspath(args[0])
     sub, shape = tree_shape(site)
@@ -579,9 +660,9 @@ def main(argv):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(executable_path=T.SHELL[0], args=LAUNCH_ARGS) if T.SHELL else p.chromium.launch(args=LAUNCH_ARGS)
-            for vp in ([only] if only else list(VIEWPORTS)):
+            for vp in ([only] if only else list(RUN_VIEWPORTS)):
                 try:
-                    run_viewport(browser, vp, base, base_dir, index, picked, no_note, require_note, require_floor)
+                    run_viewport(browser, vp, base, base_dir, index, picked, no_note, require_note, require_framed)
                 except Exception as e:  # noqa: BLE001  (a page that throws in View.ev, a closed browser: a FAIL line, then the verdict like any other run)
                     out("FAIL", vp, "exception", exception_detail(e))
             try:

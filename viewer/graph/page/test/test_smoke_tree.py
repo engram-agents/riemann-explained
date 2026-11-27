@@ -73,6 +73,13 @@ PARTS_NEVER_OPEN = sub_once("if (m && await viaRoute(t, path, () => handle.open(
 NO_NOTE_BODY = sub_once("    if (info.note) {\n      const n = info.note, t", "    if (false && info.note) {\n      const n = info.note, t")
 
 
+def no_floor(index):
+    """The committed note and skeleton fixtures carry a floor key the engine HONORS (it frames the opened box at that scale), and the skeleton's opened part is then
+    taller than a 360x640 stage: the framed check rightly FAILs it. The cases that use those fixtures are about notes, ids and skips, so they build the tree
+    without the key, as the real fixture is (t42 builds the real fixture with and without the floor)."""
+    index.pop("open_scale_floor", None)
+
+
 def t1_real_fixture(tmp):
     out = build(tmp)
     code, o = run_tool(out, "--no-note")
@@ -162,13 +169,13 @@ def t5_note_fixture_or_skip(tmp):
     if not have:
         raise Skip("no committed fixture on this base carries a note (PR 97 adds them); the positive note PASS is not exercised")
     names = sorted({f.split(os.sep)[-3] for f in have})
-    out = build(tmp, fix=names[0])
+    out = build(tmp, fix=names[0], index_edit=no_floor)
     code, o = run_tool(out)
     assert code == 0 and lines(o, "PASS", "note"), (code, o)
 
 
 def t5b_no_notes_in_data_is_a_skip(tmp):
-    out = build(tmp, fix="skeleton")
+    out = build(tmp, fix="skeleton", index_edit=no_floor)
     code, o = run_tool(out)
     assert code == 0, (code, o)
     assert [l for l in lines(o, "SKIP", "note") if "no file step carries a note" in l], o
@@ -199,7 +206,7 @@ def t6_console_error_alone_fails_s2(tmp):
 
 def t7_second_fixture_different_ids(tmp):
     """K2's case: ids come from the data. The skeleton has a part, a group and a file that the real fixture has not."""
-    out = build(tmp, fix="skeleton")
+    out = build(tmp, fix="skeleton", index_edit=no_floor)
     code, o = run_tool(out, "--no-note")
     assert code == 0 and last(o).startswith("SMOKE PASS"), (code, o)
     ids = {l.split()[1]: l.split()[2] for l in lines(o, "ID")}
@@ -257,7 +264,7 @@ def t12_skips_named_in_last_line(tmp):
     def no_notes(steps):
         for st in steps.values():
             st.pop("note", None)
-    out = build(tmp, fix="skeleton", step_edit=no_notes)       # each skip's condition is built here, not read off the fixture
+    out = build(tmp, fix="skeleton", index_edit=no_floor, step_edit=no_notes)       # each skip's condition is built here, not read off the fixture
     code, o = run_tool(out)
     assert code == 0, (code, o)
     assert lines(o, "SKIP", "note") and not lines(o, "SKIP", "framed") and lines(o, "PASS", "framed"), o
@@ -277,7 +284,7 @@ def t12b_verdict_line_unit(tmp):
 
 def t13_require_note(tmp):
     """P2: --require-note turns the note SKIP into a FAIL that says why; without it the same tree skips and exits 0."""
-    out = build(tmp, fix="skeleton")
+    out = build(tmp, fix="skeleton", index_edit=no_floor)
     code, o = run_tool(out)
     assert code == 0 and lines(o, "SKIP", "note"), (code, o)
     code, o = run_tool(out, "--require-note")
