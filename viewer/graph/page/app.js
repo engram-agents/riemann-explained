@@ -14,7 +14,7 @@ import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STA
 import { makeRenderFace } from "./face.js";
 import { templateParts } from "./note.js";
 import { createSheet, partsWords } from "./sheet.js";
-import { buildStatement } from "./statement.js";
+import { buildStatement, docstringTypeset } from "./statement.js";
 import { createGraphView, buildSpinePanel } from "./graphview.js";
 import { createFold } from "./viewfold.js";
 
@@ -202,7 +202,7 @@ export async function start(doc, deps) {
         ...(pieces ? { lead: pieces.lead, tail: pieces.tail } : {}),
         currentListed: cardWord === undefined,
         ...(step === undefined ? {} : {
-          note: step.note ? { label: decl ? strings.spine_content_label : strings.note_label, text: step.note.text, typeset: typesetWords,
+          note: step.note ? { label: decl ? strings.spine_content_label : strings.note_label, text: step.note.text, typeset: decl ? docstringTypeset(strings, typesetWords) : typesetWords,
             sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null }),
         crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
       });

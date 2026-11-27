@@ -4113,8 +4113,9 @@ def c_stmt_card_order(b, S0, engine):
         assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .decl-heading > *')].map(e => e.className)") == ["decl-heading-label", "decl-heading-body"]
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-heading-label').textContent") == "In the file's section:"
         assert "Section on the bounds" in pg.ev("document.querySelector('#graph-sheet-body .decl-heading-body').textContent")
-        # the maths face is on in this fixture: the label is the maths view's own words; the exact-text view shows the doc-string label, spine_content_label (never note_label)
-        assert pg.ev("document.querySelector('#graph-sheet-body .note-label').textContent") == json.load(open(os.path.join(assemble.HERE, "fixtures", "statements", "index.json")))["strings"]["note_label_typeset"]
+        # the maths face is on in this fixture: the doc-string's label is spine_content_label in BOTH views (never note_label_typeset)
+        assert json.load(open(os.path.join(assemble.HERE, "fixtures", "statements", "index.json")))["strings"]["note_label_typeset"] != "In the repository's words"
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-label').textContent") == "In the repository's words"
         pg.page.click("#graph-sheet-body .note-toggle")
         assert pg.ev("document.querySelector('#graph-sheet-body .note-label').textContent") == "In the repository's words"
         pg.page.click("#graph-sheet-body .note-toggle")

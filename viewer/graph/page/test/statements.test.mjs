@@ -8,7 +8,7 @@ import path from "node:path";
 import { DataError, validateIndex, validateStep, KIND_CLASS, requiredStrings } from "../data.js";
 import { footText, makeRenderFace } from "../face.js";
 import { partsWords } from "../sheet.js";
-import { buildStatement } from "../statement.js";
+import { buildStatement, docstringTypeset } from "../statement.js";
 import { makeEl } from "../dom.js";
 import { makeFakeDoc } from "./fakedoc.mjs";
 
@@ -506,4 +506,11 @@ test("H: every listener the builder adds carries the page's abort signal", () =>
     assert.ok(bs.length >= 2);
     for (const n of bs) for (const l of n.listeners) assert.equal(l.opts && l.opts.signal, ctl.signal);
   } finally { delete globalThis.document; }
+});
+
+test("label: a statement card's doc-string label is spine_content_label in the maths view (docstringTypeset), never note_label_typeset; the other three words are kept; null stays null", () => {
+  const tw = { label: "[note_label_typeset]", line: "L", exactButton: "E", renderButton: "R" };
+  assert.deepEqual(docstringTypeset({ spine_content_label: "[label]" }, tw), { label: "[label]", line: "L", exactButton: "E", renderButton: "R" });
+  assert.equal(docstringTypeset({ spine_content_label: "[label]" }, null), null);
+  assert.equal(tw.label, "[note_label_typeset]", "the page's own words are not edited");
 });

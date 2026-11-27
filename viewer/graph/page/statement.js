@@ -19,6 +19,12 @@ import { renderNote } from "./note.js";
 
 const fill = (template, n) => String(template).replace("{n}", () => String(n));
 
+/* The maths-face words of a STATEMENT card's doc-string: the same four words, but the label is spine_content_label in the maths view as in the exact one
+   (design note section 4 item 2); note_label_typeset is never used on a statement card. null stays null (the maths face is off). */
+export function docstringTypeset(strings, typesetWords) {
+  return typesetWords ? { ...typesetWords, label: strings.spine_content_label } : null;
+}
+
 /* params: strings, decl (data.js step.decl), hasNote (the step has a note: the sheet draws the doc-string), titleOf(id) -> a title or undefined,
    el (dom.js), doc, signal, typeset (the maths face is on). */
 export function buildStatement({ strings, decl, hasNote, titleOf, el, doc, signal, typeset }) {
