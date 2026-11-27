@@ -1,0 +1,99 @@
+{
+ "card": {
+  "child_count": 3,
+  "id": "fx-stmt-file",
+  "kind": "file",
+  "path": [
+   "fx-part",
+   "fx-group"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Lean file `Fx.File`"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "fx-thm-a",
+   "kind": "theorem",
+   "parent_rests_on": false,
+   "path": [
+    "fx-part",
+    "fx-group",
+    "fx-stmt-file"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "`foo_bar`"
+  },
+  {
+   "child_count": 0,
+   "id": "fx-lem-b",
+   "kind": "lemma",
+   "parent_rests_on": false,
+   "path": [
+    "fx-part",
+    "fx-group",
+    "fx-stmt-file"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "`baz`"
+  },
+  {
+   "child_count": 0,
+   "id": "fx-def-c",
+   "kind": "def",
+   "parent_rests_on": false,
+   "path": [
+    "fx-part",
+    "fx-group",
+    "fx-stmt-file"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "`Fx.qux`"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "fx-stmt-file",
+ "path": [
+  "fx-part",
+  "fx-group"
+ ],
+ "rests_on": [
+  {
+   "from": "fx-thm-a",
+   "from_path": [
+    "fx-part",
+    "fx-group",
+    "fx-stmt-file"
+   ],
+   "in_reduction": true,
+   "to": "fx-lem-b",
+   "to_path": [
+    "fx-part",
+    "fx-group",
+    "fx-stmt-file"
+   ],
+   "weight": 1
+  },
+  {
+   "from": "fx-lem-b",
+   "from_path": [
+    "fx-part",
+    "fx-group",
+    "fx-stmt-file"
+   ],
+   "in_reduction": true,
+   "to": "fx-def-c",
+   "to_path": [
+    "fx-part",
+    "fx-group",
+    "fx-stmt-file"
+   ],
+   "weight": 1
+  }
+ ]
+}

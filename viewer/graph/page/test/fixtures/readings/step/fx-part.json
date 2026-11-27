@@ -1,0 +1,32 @@
+{
+ "card": {
+  "child_count": 1,
+  "child_kind": "group",
+  "id": "fx-part",
+  "kind": "part",
+  "path": [],
+  "proof": "none",
+  "state": "none",
+  "title": "Part `Fx`"
+ },
+ "children": [
+  {
+   "child_count": 2,
+   "child_kind": "file",
+   "id": "fx-group",
+   "kind": "group",
+   "parent_rests_on": false,
+   "path": [
+    "fx-part"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Group `Fx`"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "fx-part",
+ "path": [],
+ "rests_on": []
+}

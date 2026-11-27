@@ -77,6 +77,12 @@ export const DECL_KIND_STRINGS = Object.freeze(["decl_kind_theorem", "decl_kind_
 /* Two more OPTIONAL statement words, as a PAIR (both or neither): the line under the other-files list that says how many library names are left out of it. One without the
    other is `bad-statement-strings`; with the group off they are extra-strings; present, each is non-empty. With both absent nothing is drawn. */
 export const USES_LIBRARY_STRINGS = Object.freeze(["decl_uses_library_one", "decl_uses_library_many"]);
+/* THE READING's words (Kepler 39806, Ariadne's note v2.1 section 9): the block on a statement card that carries an AI agent's reading. All four or none, and only with the
+   statement group on (`bad-reading-strings` names the first missing one; with the group off they are extra-strings like any key the page does not read); present, each is
+   non-empty. `readings_byline` is the template of the byline ({by}, {second_read_by}, {date}, filled as TEXT). The four headings of a reading are lines of its own text, so
+   the page reads no heading key. */
+export const READING_STRINGS = Object.freeze(["decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline"]);
+export const readingWordsOn = (strings) => READING_STRINGS.some((k) => has(strings, k));
 export const statementsOn = (strings) => STATEMENT_STRINGS.some((k) => has(strings, k));
 /* One more word of the Graph view that a map MAY hold (Lei, 11-26: the way back from a card to the box it was opened from): present, the sheet shows the control; absent, it does not. Present it is not empty. */
 export const GRAPH_VIEW_OPTIONAL = Object.freeze(["spine_back_to_graph"]);
@@ -275,6 +281,7 @@ export function validateIndex(raw) {
   if (stmtOn) {
     refuseEmptyOptional(raw.strings, [READING_NONE, ...DECL_KIND_STRINGS, ...USES_LIBRARY_STRINGS]);
     for (const k of USES_LIBRARY_STRINGS) if (!has(raw.strings, k) && USES_LIBRARY_STRINGS.some((o) => has(raw.strings, o))) throw new DataError("bad-statement-strings", "index strings holds only one of decl_uses_library_one and decl_uses_library_many, lacks " + k);
+    for (const k of READING_STRINGS) if (readingWordsOn(raw.strings) && (!has(raw.strings, k) || raw.strings[k] === "")) throw new DataError("bad-reading-strings", "index strings holds part of the reading words, lacks " + k);
   }
   /* The page treats a map as carrying notes only when strings hold BOTH note words; one alone would open note-carrying cards silently without their note. */
   if (has(raw.strings, "note_label") !== has(raw.strings, "note_source"))
@@ -294,7 +301,7 @@ export function validateIndex(raw) {
     if (has(raw.strings, k) && !viewOn) throw new DataError("bad-view-words", "index strings holds " + k + " without the Graph view words");
     if (has(raw.strings, k) && raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty Graph view word " + k);
   }
-  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && (GRAPH_VIEW_STRINGS.includes(k) || GRAPH_VIEW_OPTIONAL.includes(k))) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE || DECL_KIND_STRINGS.includes(k) || USES_LIBRARY_STRINGS.includes(k)));
+  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && (GRAPH_VIEW_STRINGS.includes(k) || GRAPH_VIEW_OPTIONAL.includes(k))) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE || DECL_KIND_STRINGS.includes(k) || USES_LIBRARY_STRINGS.includes(k) || READING_STRINGS.includes(k)));
   const leftover = Object.keys(raw.strings).filter((k) => !known(k));
   if (viewOn && leftover.length === 0) throw new DataError("bad-view-words", "index strings carries no spine sentence key beside the Graph view words");
   for (const k of viewOn ? leftover.slice(1) : leftover) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
@@ -416,17 +423,38 @@ function declOf(raw, ctx, id) {
   return out;
 }
 
+/* THE READING of a statement (optional key `reading` on a statement step): exactly {text, by, second_read_by, date}, all non-empty strings; `text` at most 20000 BYTES (the
+   note renderer's subset, headings and all, is the reading's own); `by` and `second_read_by` at most 80 characters, no control character; `date` YYYY-MM-DD. Anything else is
+   `bad-reading`, naming the step. The text is data: it reaches the page only through note.js. */
+/* A real calendar day (2026-02-30 and 2026-13-45 are not): the date's parts rebuilt through UTC must give the same parts back. */
+function realDay(d) {
+  const [y, m, day] = d.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, day));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === day;
+}
+const READING_TEXT_MAX_BYTES = 20000;
+const READING_NAME_MAX = 80;
+function readingOf(raw, id) {
+  const bad = (why) => new DataError("bad-reading", "step " + id + " has a reading " + why);
+  if (!isObj(raw) || Object.keys(raw).length !== 4 || !["text", "by", "second_read_by", "date"].every((k) => has(raw, k))) throw bad("that is not exactly {text, by, second_read_by, date}");
+  for (const k of ["text", "by", "second_read_by", "date"]) if (!isStr(raw[k]) || raw[k] === "") throw bad("whose " + k + " is not a non-empty string");
+  if (new TextEncoder().encode(raw.text).length > READING_TEXT_MAX_BYTES) throw bad("whose text is over " + READING_TEXT_MAX_BYTES + " bytes");
+  for (const k of ["by", "second_read_by"]) if ([...raw[k]].length > READING_NAME_MAX || /[\p{Cc}\p{Cf}]/u.test(raw[k])) throw bad("whose " + k + " is over " + READING_NAME_MAX + " characters or holds a control or format character");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw.date) || !realDay(raw.date)) throw bad("whose date is not a real day, YYYY-MM-DD");
+  return { text: raw.text, by: raw.by, secondReadBy: raw.second_read_by, date: raw.date };
+}
+
 export function validateStep(raw, ctx) {
   const carriesStatement = isObj(raw) && (STMT_KEYS.some((k) => has(raw, k)) || has(raw, "heading"));
   if (carriesStatement && !statementsOn(ctx.strings || {}))
     throw new DataError("bad-statement-strings", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " carries a statement but the index strings hold no statement words");
   if (carriesStatement && !STMT_KEYS.some((k) => has(raw, k))) throw new DataError("bad-statement", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " has a heading but no statement");
   if (carriesStatement) {      // an unknown key on a statement step is bad-statement (named), where on any other step it is extra-key
-    const known = new Set(["format", "commit", "id", "path", "card", "children", "rests_on", "note", "index_rows", "spine_rows", "heading", ...STMT_KEYS]);
+    const known = new Set(["format", "commit", "id", "path", "card", "children", "rests_on", "note", "index_rows", "spine_rows", "heading", "reading", ...STMT_KEYS]);
     const extra = Object.keys(raw).find((k) => !known.has(k));
     if (extra !== undefined) throw new DataError("bad-statement", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " has a key a statement step does not: " + extra.slice(0, 40));
   }
-  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows", ...(carriesStatement ? [...STMT_KEYS, "heading"] : [])], "step");
+  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows", ...(carriesStatement ? [...STMT_KEYS, "heading", "reading"] : [])], "step");
   if (raw.format !== 1) throw new DataError("bad-format", "step format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "step commit is not a non-empty string");
   if (raw.commit !== ctx.commit) throw new DataError("commit-mismatch", "step commit differs from the index's");
@@ -465,6 +493,10 @@ export function validateStep(raw, ctx) {
   if (carriesStatement) {
     if (card.child_count !== 0 || children.length !== 0) throw new DataError("bad-statement", "step " + raw.id + " is a statement but has children");
     out.decl = declOf(raw, ctx, raw.id);
+    if (has(raw, "reading")) {
+      if (!readingWordsOn(ctx.strings || {})) throw new DataError("bad-reading-strings", "step " + raw.id + " carries a reading but the index strings hold no reading words");
+      out.decl.reading = readingOf(raw.reading, raw.id);
+    }
   }
   return out;
 }

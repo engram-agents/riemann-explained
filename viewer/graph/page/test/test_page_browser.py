@@ -4553,6 +4553,79 @@ def c_stmt_long_title_wraps(b, S0, engine):
             S.stop()
 
 
+def no_console_errors_but_favicon(pg):
+    """no_console_errors, except the one 404 line a browser prints for /favicon.ico when the page asked for it (a Chrome on this Mac does; the served tree has no icon)."""
+    ico = "/favicon.ico" in Handler.seen
+    bad = [c for c in pg.console if c[0] in ("error", "warning", "pageerror") and not (ico and c[0] == "error" and c[1].startswith("Failed to load resource") and "404" in c[1])]
+    assert not bad, bad
+    pg.csp_clean()
+
+
+def rd_open(b, engine, mutate=None):
+    root = tempfile.mkdtemp(prefix="pg-rd-")
+    assemble.assemble(root, engine, fix="readings", mutate=mutate)
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+    return S, pg
+
+
+def c_rd_block(b, S0, engine, mutate=None):
+    """The reading block (Kepler 39806, note v2.1 section 9): on the card WITH a reading (fx-thm-a, made-up text) the block sits between the Lean statement and the two uses lists,
+    CLOSED when the card opens, behind its own button; opened it shows the label (ours, muted), the reading through the note renderer (its ## lines are h4 headings) and the byline
+    last; the 'No AI agent's reading yet' line is not shown on that card; shut again it hides; the card WITHOUT one (fx-lem-b) has no block and keeps the line; reopening the first
+    shows the block closed again. At 390 x 844, nothing wider than the card."""
+    S, pg = rd_open(b, engine, mutate)
+    try:
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        kids = pg.ev(CARD_CHILDREN_JS)
+        assert kids == ["claim", "sheet-status", "decl-name", "decl-heading", "note-label", "note-source", "note-typeset-line", "note-toggle", "note-body", "decl-lean", "decl-reading",
+                        "decl-uses decl-uses-here", "decl-uses decl-uses-elsewhere", "decl-prompt"], kids
+        btn = "#graph-sheet-body .decl-reading > button"
+        body = "#graph-sheet-body .decl-reading-body"
+        assert pg.ev("document.querySelector('%s').textContent" % btn) == "Show an AI agent's reading"
+        assert pg.ev("document.querySelector('%s').getAttribute('aria-expanded')" % btn) == "false"
+        assert pg.ev("document.querySelector('%s').className" % btn) == "sheet-tool"
+        assert not pg.ev("document.querySelector('%s').offsetParent !== null" % body), "the reading is closed when the card opens"
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading-none').length") == 0, "no 'no reading yet' line on a card that has one"
+        pg.page.click(btn)
+        assert pg.ev("document.querySelector('%s').offsetParent !== null" % body)
+        assert pg.ev("document.querySelector('%s').textContent" % btn) == "Hide the AI agent's reading"
+        assert pg.ev("document.querySelector('%s').getAttribute('aria-expanded')" % btn) == "true"
+        assert pg.ev("[...document.querySelector('%s').children].map(e => e.className)" % body) == ["decl-reading-about", "decl-reading-text", "decl-reading-byline"]
+        assert pg.ev("document.querySelector('%s .decl-reading-about').textContent" % body).startswith("Our words, not the repository's: an AI agent's reading")
+        assert pg.ev("[...document.querySelectorAll('%s h4')].map(e => e.textContent)" % body) == ["What it rests on", "What it states", "How the Lean proof goes", "What the Lean text adds to the comment"]
+        assert pg.ev("document.querySelector('%s .decl-reading-byline').textContent" % body) == "Written by Made-Up Writer, checked by Made-Up Checker, 2026-01-02"
+        assert pg.ev("document.querySelectorAll('%s script, %s b, %s img').length" % (body, body, body)) == 0, "the made-up <b>x</b> in the text stays text"
+        assert "<b>x</b>" in pg.ev("document.querySelector('%s').textContent" % body)
+        assert pg.ev("(() => { const c = document.querySelector('#graph-sheet-body'); return c.scrollWidth <= c.clientWidth + 1; })()"), "the reading is wider than the card"
+        pg.page.click(btn)
+        assert not pg.ev("document.querySelector('%s').offsetParent !== null" % body)
+        pg.page.click(btn)           # open it again, then leave the card
+        open_card_by_hash(pg, "fx-lem-b", "baz")
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading').length") == 0
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading-none').length") == 1
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        assert not pg.ev("document.querySelector('%s').offsetParent !== null" % body), "a card opened again starts closed"
+        assert pg.ev("document.querySelector('%s').textContent" % btn) == "Show an AI agent's reading"
+        no_console_errors_but_favicon(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_rd_mutants(b, S0, engine):
+    """Reading mutants: the block open when the card opens, the block put after the uses lists, the byline put first: each turns the case red."""
+    for name, mut in (("open at the card's opening", {"page/statement.js": lambda t: t.replace("body.hidden = true;\n    btn.addEventListener", "body.hidden = false;\n    btn.addEventListener")}),
+                      ("block after the uses lists", {"page/statement.js": lambda t: t.replace("tail: [...parts, usesHere, usesElse, prompt]", "tail: [usesHere, usesElse, ...parts, prompt]")}),
+                      ("byline first", {"page/statement.js": lambda t: t.replace("[el(\"p\", { class: \"decl-reading-about\" }, [strings.decl_reading_about]), text,\n      el(\"p\", { class: \"decl-reading-byline\" }, bylineParts(strings.readings_byline, r))]",
+                                                                               "[el(\"p\", { class: \"decl-reading-byline\" }, bylineParts(strings.readings_byline, r)), el(\"p\", { class: \"decl-reading-about\" }, [strings.decl_reading_about]), text]")})):
+        try:
+            c_rd_block(b, S0, engine, mutate=mut)
+        except AssertionError:
+            continue
+        raise AssertionError("MUTANT SURVIVED: " + name)
+
+
 STMT_CASES = [
     ("stmt (a): the file's sheet says 'Open its statements', its button opens three boxes in source order with code titles; the foot reads '3 statements'", c_stmt_path_down),
     ("stmt (b): a statement card shows name, heading, doc-string, Lean button, uses, prompt in order; show/hide and aria-expanded; the variables note only where true", c_stmt_card_order),
@@ -4561,6 +4634,8 @@ STMT_CASES = [
     ("stmt (e): the uses links open the statement or file; plain names are code; empty lists have 0 and no list; nothing is underlined", c_stmt_links),
     ("stmt (f): the key ends with the statements section", c_stmt_key),
     ("stmt (A3): without decl_reading_none the copy button stands alone in its block", c_stmt_reading_none_absent),
+    ("reading: the block sits between the Lean statement and the uses lists, closed at the card's opening, label, headings and byline inside; none on a card without one", c_rd_block),
+    ("reading mutants: open at the card's opening, the block after the uses lists, the byline first: each turns the reading case red", c_rd_mutants),
     ("stmt: a map with part of the statement words missing is the fallback", c_stmt_group_off_refused),
     ("stmt (F1): a statement card's doc-string source line reads 'Comment on this statement in ...', a file card's note keeps 'Opening note of ...'", c_stmt_note_source_words),
     ("stmt: a long unbroken short name in the card's title wraps inside the sheet at 390 x 844 and 360 x 640", c_stmt_long_title_wraps),
