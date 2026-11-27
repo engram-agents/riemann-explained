@@ -356,8 +356,9 @@ function spineRowsOf(v) {
   return v.slice();
 }
 
+const NUMBER_SHAPE = /^[1-9][0-9]{0,5}\.[1-9][0-9]{0,5}$/;
 function closedOf(c, ctx, isChild, where) {
-  exactKeys(c, ["id", "title", "kind", "state", "proof", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role", "child_kind", "reading_count"], where);
+  exactKeys(c, ["id", "title", "kind", "state", "proof", "child_count", "path"].concat(isChild ? ["parent_rests_on"] : []), ["role", "child_kind", "reading_count", "number"], where);
   idOf(c.id, where + ".id");
   if (!isStr(c.title) || c.title === "") throw new DataError("bad-title", where + " has no title");
   if (!isStr(c.kind) || !ctx.symbols.names.kinds.includes(c.kind)) throw new DataError("unknown-kind", where + " has a kind that symbols does not list");
@@ -380,6 +381,12 @@ function closedOf(c, ctx, isChild, where) {
   if (has(c, "reading_count")) {
     if (!isInt(c.reading_count) || c.reading_count < 1) throw new DataError("bad-reading-count", where + " has a reading_count that is not an integer of 1 or more");
     out.reading_count = c.reading_count;
+  }
+  /* THE NUMBER (optional, maths-first part 1; Sol's contract section 34 B1/B2): "<file>.<n>", two counters of 1 or more, joined by one full stop, no zero and no leading zero (`2.1`, `1.24`). The page draws
+     nothing from it yet; it only refuses a malformed one, and createData refuses a parent's entry and the step's own card that disagree. */
+  if (has(c, "number")) {
+    if (!isStr(c.number) || !NUMBER_SHAPE.test(c.number)) throw new DataError("bad-number", where + " has a number that is not <file>.<n>, two counters of 1 or more");
+    out.number = c.number;
   }
   return out;
 }
@@ -460,17 +467,51 @@ function readingOf(raw, id) {
   return { text: raw.text, by: raw.by, secondReadBy: raw.second_read_by, date: raw.date };
 }
 
+/* THE MATHS-FIRST KEYS (part 1; Sol's contract section 34 B1 to B3, Kepler 40464: the page ACCEPTS and VALIDATES them and draws nothing new; the surface is a later PR). All three are optional.
+   `math` on a statement step: exactly {status, text}: status `draft` or `read`, text a statement of ours, 1 to 600 characters (code points), no control character and no lone surrogate (the builder's
+   rules, here as the net). `human` on a statement step: exactly {rule, status}: rule one of the four naming rules, status `draft` or `read`. `notation` on a step that is not a statement (the file's):
+   a list of at most 200 rows, each exactly {lean, status, symbol, text}: lean a list of at most 50 non-empty names of at most 300 characters (it may be empty), status as above, symbol 1 to 200 and text
+   1 to 600 characters with the same character rule. A wrong shape is `bad-maths` naming the step and the key. The page does not look at a kind or a name to decide any of it. */
+const MATHS_STATUS = ["draft", "read"];
+const NAME_RULES = ["repository-bold", "classical", "lean-name", "ours"];
+const MATHS_TEXT_MAX = 600, NOTATION_SYMBOL_MAX = 200, NOTATION_ROWS_MAX = 200, NOTATION_LEAN_MAX = 50;
+const visibleText = (v, max) => isStr(v) && v !== "" && [...v].length <= max && !/[\p{Cc}]/u.test(v) && (typeof v.isWellFormed !== "function" || v.isWellFormed());
+function mathsErr(id, key, why) { return new DataError("bad-maths", "step " + id + " has a " + key + " " + why); }
+function mathOf(v, id) {
+  if (!isObj(v) || Object.keys(v).length !== 2 || !has(v, "status") || !has(v, "text")) throw mathsErr(id, "math", "that is not exactly {status, text}");
+  if (!isStr(v.status) || !MATHS_STATUS.includes(v.status)) throw mathsErr(id, "math", "whose status is not draft or read");
+  if (!visibleText(v.text, MATHS_TEXT_MAX)) throw mathsErr(id, "math", "whose text is not 1 to " + MATHS_TEXT_MAX + " characters of visible text");
+  return { status: v.status, text: v.text };
+}
+function humanOf(v, id) {
+  if (!isObj(v) || Object.keys(v).length !== 2 || !has(v, "rule") || !has(v, "status")) throw mathsErr(id, "human", "that is not exactly {rule, status}");
+  if (!isStr(v.rule) || !NAME_RULES.includes(v.rule)) throw mathsErr(id, "human", "whose rule is not one of the four");
+  if (!isStr(v.status) || !MATHS_STATUS.includes(v.status)) throw mathsErr(id, "human", "whose status is not draft or read");
+  return { rule: v.rule, status: v.status };
+}
+function notationOf(v, id) {
+  if (!Array.isArray(v) || v.length > NOTATION_ROWS_MAX) throw mathsErr(id, "notation", "that is not a list of at most " + NOTATION_ROWS_MAX + " rows");
+  return v.map((r) => {
+    if (!isObj(r) || Object.keys(r).length !== 4 || !["lean", "status", "symbol", "text"].every((k) => has(r, k))) throw mathsErr(id, "notation", "with a row that is not exactly {lean, status, symbol, text}");
+    if (!Array.isArray(r.lean) || r.lean.length > NOTATION_LEAN_MAX || r.lean.some((n) => !visibleText(n, NAME_MAX))) throw mathsErr(id, "notation", "with a lean that is not a list of at most " + NOTATION_LEAN_MAX + " names of 1 to " + NAME_MAX + " characters of visible text");
+    if (!isStr(r.status) || !MATHS_STATUS.includes(r.status)) throw mathsErr(id, "notation", "with a row whose status is not draft or read");
+    if (!visibleText(r.symbol, NOTATION_SYMBOL_MAX)) throw mathsErr(id, "notation", "with a symbol that is not 1 to " + NOTATION_SYMBOL_MAX + " characters of visible text");
+    if (!visibleText(r.text, MATHS_TEXT_MAX)) throw mathsErr(id, "notation", "with a text that is not 1 to " + MATHS_TEXT_MAX + " characters of visible text");
+    return { lean: r.lean.slice(), status: r.status, symbol: r.symbol, text: r.text };
+  });
+}
+
 export function validateStep(raw, ctx) {
   const carriesStatement = isObj(raw) && (STMT_KEYS.some((k) => has(raw, k)) || has(raw, "heading"));
   if (carriesStatement && !statementsOn(ctx.strings || {}))
     throw new DataError("bad-statement-strings", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " carries a statement but the index strings hold no statement words");
   if (carriesStatement && !STMT_KEYS.some((k) => has(raw, k))) throw new DataError("bad-statement", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " has a heading but no statement");
   if (carriesStatement) {      // an unknown key on a statement step is bad-statement (named), where on any other step it is extra-key
-    const known = new Set(["format", "commit", "id", "path", "card", "children", "rests_on", "note", "index_rows", "spine_rows", "heading", "reading", ...STMT_KEYS]);
+    const known = new Set(["format", "commit", "id", "path", "card", "children", "rests_on", "note", "index_rows", "spine_rows", "heading", "reading", "math", "human", ...STMT_KEYS]);
     const extra = Object.keys(raw).find((k) => !known.has(k));
     if (extra !== undefined) throw new DataError("bad-statement", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " has a key a statement step does not: " + extra.slice(0, 40));
   }
-  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows", ...(carriesStatement ? [...STMT_KEYS, "heading", "reading"] : [])], "step");
+  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows", "notation", ...(carriesStatement ? [...STMT_KEYS, "heading", "reading", "math", "human"] : [])], "step");
   if (raw.format !== 1) throw new DataError("bad-format", "step format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "step commit is not a non-empty string");
   if (raw.commit !== ctx.commit) throw new DataError("commit-mismatch", "step commit differs from the index's");
@@ -508,6 +549,7 @@ export function validateStep(raw, ctx) {
   if (has(raw, "note")) out.note = { ...noteOf(raw.note, ctx, raw.id), commit: raw.commit };
   /* The counts are CHECKED only on a map that holds the cue words (the map that asks for the cue): a map with readings and no counts, which is the data before the cue, must still load. */
   const cueOn = cueWordsOn(ctx.strings || {});
+  if (!carriesStatement && has(raw, "notation")) out.notation = notationOf(raw.notation, raw.id);
   if (cueOn && !carriesStatement) {      // a card above statements counts the readings below it: its reading_count is the SUM of its children entries' (absent = 0)
     const below = children.reduce((n, c) => n + (c.reading_count || 0), 0);
     if ((card.reading_count || 0) !== below) throw new DataError("bad-reading-count", "step " + raw.id + " has a reading_count of " + (card.reading_count || 0) + " but its children hold " + below);
@@ -519,6 +561,8 @@ export function validateStep(raw, ctx) {
       if (!readingWordsOn(ctx.strings || {})) throw new DataError("bad-reading-strings", "step " + raw.id + " carries a reading but the index strings hold no reading words");
       out.decl.reading = readingOf(raw.reading, raw.id);
     }
+    if (has(raw, "math")) out.decl.math = mathOf(raw.math, raw.id);
+    if (has(raw, "human")) out.decl.human = humanOf(raw.human, raw.id);
     const own = out.card.reading_count || 0;
     if (cueOn && own !== (out.decl.reading ? 1 : 0)) throw new DataError("bad-reading-count", "step " + raw.id + " has a reading_count of " + own + " but " + (out.decl.reading ? "carries a reading" : "carries none"));
   }
@@ -566,6 +610,7 @@ export function createData(fetchLike) {
   const steps = new Map();      // id -> Promise of a validated step (bounded, oldest out)
   const metaOf = new Map();     // id -> what the breadcrumb needs about a step already seen
 
+  const numbers = new Map();    // id -> the number the page was first told of this card ("" when none): a parent's entry and the step's own card must agree
   const counts = new Map();     // id -> the reading_count the page was first told of this card (a parent's entry or its own step), 0 when none
   function note(c, cueOn) {
     const m = { id: c.id, title: c.title, kind: c.kind, state: c.state, proof: c.proof, childCount: c.child_count, path: c.path.slice() };
@@ -574,6 +619,9 @@ export function createData(fetchLike) {
     const n = c.reading_count || 0;
     if (cueOn && counts.has(c.id) && counts.get(c.id) !== n) throw new DataError("bad-reading-count", "step " + c.id + " is told as holding " + counts.get(c.id) + " readings and as holding " + n);
     counts.set(c.id, n);
+    const nb = has(c, "number") ? c.number : "";
+    if (numbers.has(c.id) && numbers.get(c.id) !== nb) throw new DataError("bad-number", "step " + c.id + " is told as numbered '" + numbers.get(c.id) + "' and as '" + nb + "'");
+    numbers.set(c.id, nb);
     metaOf.set(c.id, m);
   }
 
