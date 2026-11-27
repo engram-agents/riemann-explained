@@ -43,6 +43,9 @@ a { color: var(--theorem); text-underline-offset: 0.15em; }
 .seg-here, .seg-link { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 14px; font-size: 14px; }
 .seg-here { background: var(--fg); color: var(--bg); font-weight: 600; }
 .seg-link { text-decoration: none; }
+/* ---- the Graph view's switch (Cards | Graph): the same shape as Map | List, the pressed one filled ---- */
+.view-switch .view-btn { min-width: 44px; min-height: 44px; padding: 0 14px; border: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 14px; cursor: pointer; }
+.view-switch .view-btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); font-weight: 600; }
 .tool { min-width: 44px; min-height: 44px; padding: 0 14px; border: 1px solid var(--rule); background: var(--bg); font-family: var(--sans); font-size: 14px; cursor: pointer; }
 
 /* ---- the layer and the stage ----
@@ -86,6 +89,12 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .face-title { font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 /* a code span in a title keeps the title's size (the browser's own monospace default is smaller, under the 15 px floor) */
 .face-title code, .crumb code, .crumb-here code { font-family: var(--mono); font-size: 1em; }
+/* a box of the Graph view's spine: one sentence, framed like a result */
+.face.spine-face { --kc: var(--theorem); }
+.spine-panel h2.spine-names { font-family: var(--mono); font-size: 16px; margin: 0 0 8px; overflow-wrap: anywhere; }
+.spine-panel .spine-label { font-family: var(--sans); font-size: 14px; color: var(--muted); margin: 0 0 2px; }
+.spine-panel .spine-content { margin: 0 0 10px; }
+.spine-panel .spine-lives { font-family: var(--sans); font-size: 15px; margin: 0 0 12px; }
 .face-foot { margin-top: auto; font-family: var(--sans); font-size: 14px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 3px; }
 
 /* ---- the sheet: a bottom sheet under 768 px (up to 85% of the height, the graph visible above), a side panel from 768 ---- */
