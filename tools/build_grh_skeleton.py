@@ -3831,7 +3831,7 @@ def _selftest_cases():
         return _eq((got, calls), (True, [(resource.RLIMIT_AS, (2 * 1024 ** 3, 2 * 1024 ** 3))]))
 
     # ---------------------------------------------------------------- contributed notes ("readings"): --notes-lean-dir (contract section 28, rulings 17:19Z and 17:22Z)
-    RD_BODY = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"   # ids: lean-s (part), lean-s--g (group), lean-s-a and lean-s-b (files)
+    RD_BODY = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"   # ids: lean-s (part), lean-s-g (group), lean-s-a and lean-s-b (files)
     RD_SRCS = {"New/S/A": _lean(), "New/S/B": _lean()}
     RD_ILEANS = {"New/S/A": _ilean("New/S/A", {}, decls=("New.S.alpha", "New.S.beta")), "New/S/B": _ilean("New/S/B", {}, decls=("New.S.gamma",)),
                  "Lib/Other/File": _ilean("Lib/Other/File", {}, decls=("Lib.thing",))}
@@ -3929,7 +3929,7 @@ def _selftest_cases():
         by = [rd_errs(by=""), rd_errs(second_read_by=""), rd_errs(by="", second_read_by=""), rd_errs(by="Kepler", second_read_by="Kepler")]
         title = [rd_errs(title="has `tick`"), rd_errs(title="")]
         src = [rd_errs(source_commit=PIN[:-1] + "8"), rd_errs(source_commit=PIN.upper()), rd_build({"n.md": rd_note()}, pin=RD_PIN2)[0]]
-        att = [rd_errs(attaches=v) for v in ("[]", "[lean-s-a, lean-s-b]", "[lean-s-a, lean-s-a]", "[lean-s-zz]", "[lean-s]", "[lean-s--g]")]
+        att = [rd_errs(attaches=v) for v in ("[]", "[lean-s-a, lean-s-b]", "[lean-s-a, lean-s-a]", "[lean-s-zz]", "[lean-s]", "[lean-s-g]")]
         about = [rd_errs(about=v) for v in ("[S.alpha]", "[New.S.nope]", "[New.S.alpha, S.beta, New.S.zz]", "[Lib.thing, New.S.gamma]", "[New.S.zz, New.S.zz]")]
         dup = rd_build({"a.md": rd_note(), "b.md": rd_note(title="Other")})[0]
         many = rd_build({"a.md": rd_note(id="Bad", date="2026-99-99", by="X", second_read_by="X"), "b.md": rd_note(drop=("date",)), "c.md": rd_note(id="ok-one")})[0]
@@ -3942,7 +3942,7 @@ def _selftest_cases():
                     [[("SKEL-READING-TITLE", "n.md", "backtick")], [("SKEL-READING-TITLE", "n.md", "empty")]],
                     [[("SKEL-READING-SOURCE", "n.md", PIN[:-1] + "8")], [("SKEL-READING-SOURCE", "n.md", PIN.upper())], [("SKEL-READING-SOURCE", "n.md", PIN)]],
                     [[("SKEL-READING-ATTACHES", "n.md", "none")], [("SKEL-READING-ATTACHES", "n.md", "many")], [("SKEL-READING-ATTACHES", "n.md", "many")],
-                     [("SKEL-READING-ATTACHES", "n.md", "unknown lean-s-zz")], [("SKEL-READING-ATTACHES", "n.md", "not-a-file lean-s")], [("SKEL-READING-ATTACHES", "n.md", "not-a-file lean-s--g")]],
+                     [("SKEL-READING-ATTACHES", "n.md", "unknown lean-s-zz")], [("SKEL-READING-ATTACHES", "n.md", "not-a-file lean-s")], [("SKEL-READING-ATTACHES", "n.md", "not-a-file lean-s-g")]],
                     [[("SKEL-READING-ABOUT", "n.md", "S.alpha")], [("SKEL-READING-ABOUT", "n.md", "New.S.nope")],
                      [("SKEL-READING-ABOUT", "n.md", "S.beta"), ("SKEL-READING-ABOUT", "n.md", "New.S.zz")], [], [("SKEL-READING-ABOUT", "n.md", "New.S.zz")]],
                     [("SKEL-READING-DUP", "b.md", "id n-one also in a.md")],
