@@ -20,6 +20,11 @@ placeholders of CREDITS_PLACEHOLDERS added to the builder's table for the call.
 
 Exit codes: 0 written, 1 refused (one `CREDITS-<CODE> <what>` line per refusal, nothing written), 2 usage. --selftest: 0 all pass, 4 one fails.
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("build_grh_credits.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import argparse
 import hashlib
 import html.parser

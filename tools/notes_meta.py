@@ -355,6 +355,11 @@ usage: notes_meta.py NOTES_DIR OUTLINE DECLS_TSV [--base REV] [--repo DIR] [--st
                      [--glob PATTERN] [--today YYYY-MM-DD]
        notes_meta.py --selftest
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("notes_meta.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import contextlib
 import datetime
 import difflib

@@ -41,6 +41,11 @@ so START's proofs may use it; it never says they do.
 usage: in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE [--control MODULE ...]
        in_closure.py --selftest
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("in_closure.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import collections
 import contextlib
 import io

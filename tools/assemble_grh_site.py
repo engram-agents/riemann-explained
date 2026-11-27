@@ -31,6 +31,11 @@ to another name by assignment; passing it is evidence about the routes it models
 Exit codes: 0 built, 1 refused (OUT_DIR not created and not touched), 2 usage. --selftest: 0 all pass (a skipped case does not fail), 4 one fails, 2 an unknown id after --only or a bad
 self-test command line.
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("assemble_grh_site.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import importlib.util
 import json
 import os
@@ -983,6 +988,8 @@ def _scan_source(src, loader="_load"):
             base = n.value
             if n.attr == "exec_module" and id(n) in inside:   # the one place a module of this folder is executed: `_load`, which loads the two builders
                 continue
+            if n.attr == "executable" and isinstance(base, ast.Name) and base.id == "sys":   # the Python-floor guard names the interpreter's path with it: a string, it runs nothing
+                continue
             if A16_ATTRS.fullmatch(n.attr):
                 found.append(f"line {n.lineno}: attribute .{n.attr}")
             elif n.attr in A16_DUNDER:
@@ -1016,6 +1023,7 @@ A16_LURES = (   # (what, source): each must be FLAGGED by the scan, or the scan 
     ("import shutil", "import shutil\n"), ("from shutil import copy", "from shutil import copy\n"), ("import tempfile", "import tempfile\n"), ("import builtins", "import builtins\n"),
     ("from builtins import eval", "from builtins import eval\n"), ("import os as o (the alias alone)", "import os as o\n"),
     ("import ctypes", "import ctypes\n"), ("import pickle", "import pickle\n"), ("import runpy", "import runpy\n"), ("import marshal", "import marshal\n"), ("bare import importlib", "import importlib\n"),
+    ("os.executable (the `executable` exemption is for the plain name sys only)", "import os\nx = os.executable\n"), ("bs.executable (the same, another base)", "x = bs.executable\n"),
     ("exec_module outside _load", "def f(spec, mod):\n    spec.loader.exec_module(mod)\n"), ("from importlib import import_module", "from importlib import import_module\n"), ("importlib used outside _load", "import importlib.util\nimportlib.util.module_from_spec(1)\n"),
 )
 A16_CLEAN = (   # (what, source): each must be NOT flagged (the scan is an allowlist, not a ban on everything)
@@ -1024,6 +1032,7 @@ A16_CLEAN = (   # (what, source): each must be NOT flagged (the scan is an allow
     ("bs.<function> and sk.<function> uses", "x = bs._graph_assets(1)\ny = sk._read_in(1, 2, 3)\nz = sk.SourceError\n"), ("bs.CODE_ON_SURFACE_REFUSES", "if bs.CODE_ON_SURFACE_REFUSES:\n    pass\n"),
     ("dunder names and attributes the tool does use", "x = __file__\nif __name__ == '__main__':\n    pass\ny = f.__name__\n"),
     ("names that merely contain `open`", "def reopen(p):\n    return p\n\n\nreopen(1)\nbs.open_page\nsk.is_open\n"),
+    ("the Python-floor guard (it reads sys.executable to name the interpreter; a path, it runs nothing)", "import sys\nif sys.version_info[:2] < (3, 12):\n    raise SystemExit('x: needs Python 3.12 or newer; this is %d.%d.%d at %s' % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))\n"),
     ("exec_module inside _load", "def _load(spec, mod):\n    spec.loader.exec_module(mod)\n"), ("importlib inside _load", "import importlib.util\n\n\ndef _load(p):\n    return importlib.util.spec_from_file_location('k', p)\n"),
 )
 

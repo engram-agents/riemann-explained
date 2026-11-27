@@ -129,6 +129,10 @@ checker that reads the notes, not to this module.
 """
 from __future__ import annotations
 
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("rh_anchor.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import contextlib
 import datetime
 import io

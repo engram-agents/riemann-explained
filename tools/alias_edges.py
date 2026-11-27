@@ -82,6 +82,11 @@ byte-order mark at the start of a file is not removed.
 usage: alias_edges.py SRC_ROOT OUT_DIR
        alias_edges.py --selftest
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("alias_edges.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import collections
 import contextlib
 import io

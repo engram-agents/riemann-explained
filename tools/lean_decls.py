@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """The text rule for reading Lean declarations: the regexes and `parse_decls`, shared by the tools that read them."""
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("lean_decls.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import re
 
 

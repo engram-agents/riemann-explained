@@ -32,6 +32,11 @@ CONTRACT
 usage: check_lean_blocks.py SRC_ROOT NOTE.md [NOTE.md ...]
        check_lean_blocks.py --selftest
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("check_lean_blocks.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import os, re, sys, tempfile
 
 FENCE = re.compile(r"^```lean[ \t]*\n(.*?)^```[ \t]*$", re.S | re.M)

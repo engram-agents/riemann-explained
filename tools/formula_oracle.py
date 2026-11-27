@@ -11,6 +11,11 @@ dependency. With pandoc missing from the PATH, a formulas file that cannot be re
 usage: formula_oracle.py --run FORMULAS_FILE [FORMULAS_FILE ...]   (needs pandoc on the path; the formulas of the files are merged, sorted, once each)
        formula_oracle.py --selftest                               (no pandoc: built-in formulas and a recorded pandoc output)
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("formula_oracle.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import html.parser
 import importlib.util
 import os

@@ -24,6 +24,11 @@ Checks, each a `LEAN-SHELL <what> <reason>` line on failure (exit 1; 0 when clea
      because the assembler runs them, and no case can tell them apart (said here so it is not mistaken for coverage).
 It reads the shell and the strings file and imports build_site and build_grh_credits; it writes nothing.
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("check_lean_shell.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import argparse
 import html.parser
 import importlib.util

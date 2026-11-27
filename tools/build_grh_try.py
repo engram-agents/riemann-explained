@@ -24,6 +24,11 @@ The page passes build_site's static_problems, element_problems (the document tab
 Exit codes: 0 written, 1 refused (one `TRY-<CODE> <what>` line per refusal, nothing written), 2 usage. --selftest: 0 all pass, 4 one fails.
 Same inputs, same bytes (LF, UTF-8, one final newline).
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("build_grh_try.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import argparse
 import contextlib
 import html.parser

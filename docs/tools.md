@@ -3,6 +3,24 @@
 These are text tools; they find where to read, they do not prove a dependency. Python 3, standard library
 only. Each one runs its own self-test first and refuses (exit 4) if it fails. `--selftest` shows the cases. In `notes_meta.py` a case id registered twice stops the tool at load with a message naming the id and both descriptions; ids are compared as exact strings, so `rec1`, `REC1` and `REC1 ` are three ids.
 
+**Python floor.** The tools need Python 3.12 or newer (3.12 is the tested version; 3.10 and 3.11 are untested). On an
+older interpreter every tool stops before it reads or writes anything, with one line on stderr and exit status 1, for
+example `scan_graph.py: needs Python 3.12 or newer (tested with 3.12); this is 3.9.6 at /usr/bin/python3`. The line
+names the interpreter's path, because plain `python3` on a Mac may be the old system one. The guard is the first
+statement of every `tools/*.py`, the libraries included.
+
+**The page builder needs a parser feature, not only a version.** `tools/build_site.py` also needs an `html.parser`
+that has `HTMLParser.RCDATA_CONTENT_ELEMENTS`; without it `<title>` is not a hiding element and the page's own check
+refuses the page (`element style outside head`), so the self-test fails 401 cases. Measured: CPython 3.9.6 fails and
+python.org 3.12.10 fails (181 cases pass, 401 fail); 3.12.13, 3.12.15 and the Ubuntu 3.12.3 pass. `build_site.py` has
+a second guard, after the version guard, with one stderr line and exit status 1: `build_site.py: needs an html.parser
+with RCDATA_CONTENT_ELEMENTS (CPython 3.12.13 or newer has it; 3.12.10 does not); this is 3.12.10 at <interpreter>`.
+The tools that load it by path stop with the same line: `build_grh_skeleton.py`, `build_grh_credits.py`,
+`build_grh_try.py`, `assemble_grh_site.py`, `check_lean_shell.py` and `formula_oracle.py`. No other tool carries it.
+`python3 tools/check_python_floor.py` checks both guards: PYF-ALL reads every file, PYF-REFUSE, PYF-ORDER and PYF-PASS
+run every tool with a faked version, and PYF-FEATURE-STATIC, PYF-FEATURE, PYF-FEATURE-PASS and PYF-FEATURE-ORDER do the
+same for the parser feature, so a new tool without the guard turns a case red and the case names the file.
+
 A run that checks nothing (no `.lean` file under SRC_ROOT) writes nothing. If OUT_DIR already holds a file that run
 would have written, an earlier result looks like this run's to the next tool; so `scan_graph.py`, `alias_edges.py`
 and `decl_table.py` print one more line after `CHECKED NOTHING`, `OUT_DIR holds files from an earlier run: <names>;
