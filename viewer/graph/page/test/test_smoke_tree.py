@@ -66,8 +66,6 @@ def sub_once(old, new):
     return f
 
 
-# A page that ignores the map's open_scale_floor (it does not hand it to the engine as the floor of an opened node's framing): the defect the scale-floor check exists to catch.
-IGNORE_FLOOR = sub_once("...(index.openScaleFloor !== undefined ? { frameMin: index.openScaleFloor } : {})", "")
 # A page whose open sheet offers no parts button (the sheet's `canParts` block is never reached), and a page whose open-parts route opens nothing.
 NO_PARTS_BUTTON = sub_once("    if (info.canParts) {", "    if (false && info.canParts) {")
 PARTS_NEVER_OPEN = sub_once("if (m && await viaRoute(t, path, () => handle.open(id))) {", "if (false && m && await viaRoute(t, path, () => handle.open(id))) {")
@@ -76,11 +74,10 @@ NO_NOTE_BODY = sub_once("    if (info.note) {\n      const n = info.note, t", " 
 
 
 def no_floor(index):
+    """The committed note and skeleton fixtures carry a floor key the engine HONORS (it frames the opened box at that scale), and the skeleton's opened part is then
+    taller than a 360x640 stage: the framed check rightly FAILs it. The cases that use those fixtures are about notes, ids and skips, so they build the tree
+    without the key, as the real fixture is (t42 builds the real fixture with and without the floor)."""
     index.pop("open_scale_floor", None)
-
-
-def with_floor(value):
-    return lambda index: index.update({"open_scale_floor": value})
 
 
 def t1_real_fixture(tmp):
@@ -94,8 +91,6 @@ def t1_real_fixture(tmp):
         assert lines(o, "PASS", chk), (chk, o)
     assert lines(o, "PASS", "boot")[0].split()[1] in ("390x844", "1280x900"), o
     assert {l.split()[1] for l in lines(o, "PASS", "boot")} == {"390x844", "1280x900"}, o
-    assert lines(o, "SKIP", "scale-floor") and "scale-floor (the index has no open_scale_floor)" in o, o      # A3 without the key is a SKIP
-    assert not lines(o, "PASS", "scale-floor"), o
 
 
 def t1b_flat_shape(tmp):
@@ -170,17 +165,29 @@ def t4b_symlink_read_by_tool(tmp):
 
 
 def t5_note_fixture_or_skip(tmp):
-    have = [f for f in glob.glob(os.path.join(HERE, "fixtures", "*", "step", "*.json")) if '"note"' in open(f, encoding="utf-8").read()]
-    if not have:
-        raise Skip("no committed fixture on this base carries a note (PR 97 adds them); the positive note PASS is not exercised")
-    names = sorted({f.split(os.sep)[-3] for f in have})
-    out = build(tmp, fix=names[0])
+    """The fixture is chosen by the tool's OWN pick (smoke_tree.pick_ids): one whose picked file step carries a note. A substring or sort-order
+    choice is wrong: a statement step's doc-string note also holds '"note"', so a fixture can have notes while the tool's file pick has none."""
+    import smoke_tree
+    names = []
+    for d in sorted(glob.glob(os.path.join(HERE, "fixtures", "*", "index.json"))):
+        fx = os.path.dirname(d)
+        try:
+            with contextlib.redirect_stdout(open(os.devnull, "w")):
+                picked = smoke_tree.pick_ids(fx, json.load(open(d, encoding="utf-8")), False)
+        except (ValueError, KeyError, OSError):      # a fixture the tool could not run on at all is not a candidate
+            continue
+        if isinstance(picked[2].get("note"), dict) and picked[2]["note"].get("text"):
+            names.append(os.path.basename(fx))
+    if not names:
+        raise Skip("no committed fixture on this base has a file step that carries a note (the tool's own pick); the positive note PASS is not exercised")
+    out = build(tmp, fix=names[0], index_edit=no_floor)
     code, o = run_tool(out)
-    assert code == 0 and lines(o, "PASS", "note"), (code, o)
+    assert code == 0 and lines(o, "PASS", "note"), (names[0], code, o)
+    print("      (T5 chose fixture %r; candidates %s)" % (names[0], names))
 
 
 def t5b_no_notes_in_data_is_a_skip(tmp):
-    out = build(tmp, fix="skeleton")
+    out = build(tmp, fix="skeleton", index_edit=no_floor)
     code, o = run_tool(out)
     assert code == 0, (code, o)
     assert [l for l in lines(o, "SKIP", "note") if "no file step carries a note" in l], o
@@ -211,7 +218,7 @@ def t6_console_error_alone_fails_s2(tmp):
 
 def t7_second_fixture_different_ids(tmp):
     """K2's case: ids come from the data. The skeleton has a part, a group and a file that the real fixture has not."""
-    out = build(tmp, fix="skeleton")
+    out = build(tmp, fix="skeleton", index_edit=no_floor)
     code, o = run_tool(out, "--no-note")
     assert code == 0 and last(o).startswith("SMOKE PASS"), (code, o)
     ids = {l.split()[1]: l.split()[2] for l in lines(o, "ID")}
@@ -227,19 +234,6 @@ def t8_csp_header_is_checked(tmp):
     code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
     assert lines(o, "PASS", "csp-header"), o
     assert "default-src 'none'" in "".join(lines(o, "PASS", "csp-header")), o
-
-
-def t9_scale_floor(tmp):
-    """A3 mechanics on the real page, which hands the floor to the engine: a tree whose floor the page honors passes at 390x844 only; the same
-    tree on a COPY of the page that ignores the floor FAILs the check (the opened box's scale is below it)."""
-    ok = build(tmp, name="floor-ok", index_edit=with_floor(0.6))
-    code, o = run_tool(ok, "--no-note")
-    assert code == 0, (code, o)
-    assert [l for l in lines(o, "PASS", "scale-floor") if "390x844" in l], o
-    assert not [l for l in lines(o, "PASS", "scale-floor") + lines(o, "FAIL", "scale-floor") if "1280x900" in l], o     # phone only
-    bad = build(tmp, name="floor-ignored", index_edit=with_floor(0.6), mutate={"page/app.js": IGNORE_FLOOR})
-    code, o = run_tool(bad, "--no-note")
-    assert code == 1 and [l for l in lines(o, "FAIL", "scale-floor") if "390x844" in l], (code, o)
 
 
 def t9b_base_refuses_unknown_index_key(tmp):
@@ -278,15 +272,15 @@ def t11_empty_heading_fails(tmp):
 
 
 def t12_skips_named_in_last_line(tmp):
-    """P2: a SKIP is named in the verdict line; a tree with no notes, no scale floor and no credits/ skips all three."""
+    """P2: a SKIP is named in the verdict line; a tree with no notes and no credits/ skips both, and the framed check (which runs here) is not among them."""
     def no_notes(steps):
         for st in steps.values():
             st.pop("note", None)
     out = build(tmp, fix="skeleton", index_edit=no_floor, step_edit=no_notes)       # each skip's condition is built here, not read off the fixture
     code, o = run_tool(out)
     assert code == 0, (code, o)
-    assert lines(o, "SKIP", "note") and lines(o, "SKIP", "scale-floor"), o
-    assert last(o) == "SMOKE PASS (3 skipped: credits, note, scale-floor)", o        # the skeleton tree has no credits/ either
+    assert lines(o, "SKIP", "note") and not lines(o, "SKIP", "framed") and lines(o, "PASS", "framed"), o
+    assert last(o) == "SMOKE PASS (2 skipped: credits, note)", o        # the skeleton tree has no credits/ either
 
 
 def t12b_verdict_line_unit(tmp):
@@ -294,7 +288,7 @@ def t12b_verdict_line_unit(tmp):
     import smoke_tree as S
     assert S.verdict(0, [], None) == "SMOKE PASS"
     assert S.verdict(0, ["note"], None) == "SMOKE PASS (1 skipped: note)"
-    assert S.verdict(0, ["note", "scale-floor"], None) == "SMOKE PASS (2 skipped: note, scale-floor)"
+    assert S.verdict(0, ["note", "framed"], None) == "SMOKE PASS (2 skipped: framed, note)"      # framed is named in the skipped list as any check is
     assert S.verdict(0, [], "390x844") == "SMOKE PASS (partial: 390x844 only)"
     assert S.verdict(0, ["note"], "1280x900") == "SMOKE PASS (partial: 1280x900 only; 1 skipped: note)"
     assert S.verdict(2, ["note"], "390x844") == "SMOKE FAIL (2 failed)"
@@ -302,7 +296,7 @@ def t12b_verdict_line_unit(tmp):
 
 def t13_require_note(tmp):
     """P2: --require-note turns the note SKIP into a FAIL that says why; without it the same tree skips and exits 0."""
-    out = build(tmp, fix="skeleton")
+    out = build(tmp, fix="skeleton", index_edit=no_floor)
     code, o = run_tool(out)
     assert code == 0 and lines(o, "SKIP", "note"), (code, o)
     code, o = run_tool(out, "--require-note")
@@ -314,22 +308,8 @@ def t13_require_note(tmp):
     assert code == 2, (code, o)
 
 
-def t13b_require_floor(tmp):
-    """P2: --require-floor turns the scale-floor SKIP into a FAIL that says why; a tree that has the key still passes with it."""
-    out = build(tmp, fix="skeleton", index_edit=no_floor)       # the missing key is built here, not read off the fixture
-    code, o = run_tool(out, "--no-note")
-    assert code == 0 and lines(o, "SKIP", "scale-floor"), (code, o)
-    code, o = run_tool(out, "--no-note", "--require-floor")
-    assert code == 1, (code, o)
-    assert [l for l in lines(o, "FAIL", "scale-floor") if "no open_scale_floor" in l], o
-    assert not lines(o, "SKIP", "scale-floor"), o
-    ok = build(tmp, name="floor-ok", index_edit=with_floor(0.6))
-    code, o = run_tool(ok, "--no-note", "--require-floor")
-    assert code == 0 and [l for l in lines(o, "PASS", "scale-floor") if "390x844" in l], (code, o)
-
-
 def t14_partial_run_says_so(tmp):
-    """P3: --only-viewport ends in a line that says the run was partial (the floor is phone-only, so only the note skips here)."""
+    """P3: --only-viewport ends in a line that says the run was partial (the framed check is phone-only, so it neither runs nor skips here; only the note and credits skip)."""
     out = build(tmp)
     code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
     assert code == 0, (code, o)
@@ -581,13 +561,22 @@ def t20_prefix_boundary(tmp):
     no_leak(swept, ["/x.txt"])
 
 
-def t21_require_floor_needs_phone_viewport(tmp):
-    """C3: --require-floor with --only-viewport 1280x900 never checks the floor (it runs at 390x844 only): a usage error, exit 2, saying so."""
+def t21_require_framed_needs_phone_viewport(tmp):
+    """C8 (e): --require-framed with --only-viewport 1280x900 never checks anything (the framed check runs at phone sizes only): a usage error, exit 2, saying so."""
     out = build(tmp)
-    code, o = run_tool(out, "--no-note", "--require-floor", "--only-viewport", "1280x900")
+    code, o = run_tool(out, "--no-note", "--require-framed", "--only-viewport", "1280x900")
     assert code == 2, (code, o)
-    assert "390x844" in o and "floor" in o, o
-    assert "SMOKE PASS" not in o, o
+    assert "phone sizes only" in o, o
+    assert "SMOKE PASS" not in o and not lines(o, "PASS"), o
+
+
+def t21b_require_floor_is_a_usage_error_naming_the_new_flag(tmp):
+    """C8 (d): the old flag is never silently ignored: --require-floor is a usage error, exit 2, whose message names --require-framed."""
+    out = build(tmp)
+    code, o = run_tool(out, "--no-note", "--require-floor")
+    assert code == 2, (code, o)
+    assert "--require-floor" in o and "--require-framed" in o, o
+    assert "SMOKE PASS" not in o and not lines(o, "PASS"), o
 
 
 def t22_blank_note_text_fails(tmp):
@@ -1045,63 +1034,6 @@ def t39_note_compared_on_what_survives_rendering(tmp):
 
 
 
-WORLD_SCALE_JS = ("(() => { const w = document.querySelector('.ge-world'); if (!w) return null; "
-                  "const m = /scale\\(([-0-9.e]+)\\)/.exec(w.getAttribute('style') || ''); return m ? parseFloat(m[1]) : null; })()")
-
-
-def floor_tree(tmp, name, floor, ignored=False):
-    """A real-fixture tree with open_scale_floor `floor`; ignored=True runs a COPY of the page that does not hand the floor to the engine."""
-    return build(tmp, name=name, index_edit=with_floor(floor), mutate={"page/app.js": IGNORE_FLOOR} if ignored else None)
-
-
-def scale_numbers(o):
-    got = [l for l in lines(o, "PASS", "scale-floor") + lines(o, "FAIL", "scale-floor") if "390x844" in l]
-    assert len(got) == 1, o
-    return got[0], float(re.search(r"world scale ([0-9.]+)", got[0]).group(1))
-
-
-def t40_scale_floor_reads_the_opened_box(tmp):
-    """F3a: the floor governs framing an OPENED box, so the check deep-links the part, presses the sheet's own parts button, lets the engine settle and
-    reads the world scale then. On a tree whose opened framing reaches the floor it passes and the PASS line says the parts were opened."""
-    out = floor_tree(tmp, "floor-ok", 0.6)
-    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
-    line, k = scale_numbers(o)
-    assert code == 0 and line.startswith("PASS") and k >= 0.6, (code, o)
-    assert "after opening the part's parts through the sheet" in line, line
-
-
-def t40b_a_deep_link_only_measurement_is_not_what_the_check_reads(tmp):
-    """F3b: a page that ignores the floor, on a tree whose floor sits BETWEEN the opened box's scale and the deep link's (opening lowers the scale on this
-    engine): a measurement right after the deep link would pass, the opened measurement must FAIL. The case reads the deep-link-only scale itself, in the
-    browser, and skips by name when this machine's layout leaves no such split."""
-    from playwright.sync_api import sync_playwright
-    import smoke_tree as S
-    floor = 0.6
-    out = floor_tree(tmp, "floor-split", floor, ignored=True)
-    part = json.load(open(os.path.join(out, "graph", "index.json")))["top"][0]
-    srv, base = S.serve(out)
-    try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(executable_path=S.T.SHELL[0], args=S.LAUNCH_ARGS) if S.T.SHELL else pw.chromium.launch(args=S.LAUNCH_ARGS)
-            v = S.View(browser, base + "graph/#" + part, "390x844", {"console": [], "requests": []})
-            v.wait("document.querySelector('#graph-sheet-body article')", 8000)
-            v.page.wait_for_timeout(1500)
-            closed = v.ev(WORLD_SCALE_JS)
-            v.close()
-            browser.close()
-    finally:
-        srv.shutdown()
-        srv.server_close()
-        S.reset_state()
-    if closed is None or closed < floor:
-        raise Skip("this machine's deep-link scale %r is not at or above the floor %s, so there is no split to discriminate on" % (closed, floor))
-    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
-    line, k = scale_numbers(o)
-    assert code == 1 and line.startswith("FAIL"), (code, o)
-    assert k < floor <= closed, ("the check must have read the opened box's scale, not the deep link's", k, floor, closed)
-
-
-
 def real_top(fix_dir=None):
     return json.load(open(os.path.join(HERE, "fixtures", "real", "index.json")))["top"]
 
@@ -1116,26 +1048,27 @@ def childless(*ids):
     return edit
 
 
-def t41_floor_check_names_a_missing_parts_button(tmp):
-    """F3 (a): the part the floor check opens has parts, but its open sheet offers no parts button (a COPY of the page never builds it): FAIL
-    `scale-floor no parts button on <id>`, by name, never a crash and never a pass."""
-    out = build(tmp, index_edit=with_floor(0.6), mutate={"page/sheet.js": NO_PARTS_BUTTON})
+def t41_framed_check_names_a_missing_parts_button(tmp):
+    """C3 (g): the part the framed check opens has parts, but its open sheet offers no parts button (a COPY of the page never builds it): at each phone
+    size FAIL `framed no parts button on <id>`, by name, never a crash and never a pass."""
+    out = build(tmp, mutate={"page/sheet.js": NO_PARTS_BUTTON})
     part = real_top()[0]
     code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
     assert code == 1, (code, o)
-    assert [l for l in lines(o, "FAIL", "scale-floor") if l.startswith("FAIL 390x844 scale-floor no parts button on %s" % part)], o
-    assert not lines(o, "PASS", "scale-floor") and "Traceback" not in o, o
+    for vp in ("390x844", "360x640"):
+        assert [l for l in lines(o, "FAIL", "framed") if l.startswith("FAIL %s framed no parts button on %s" % (vp, part))], (vp, o)
+    assert not lines(o, "PASS", "framed") and "Traceback" not in o, o
 
 
-def t41b_floor_check_names_parts_that_did_not_open(tmp):
-    """F3 (b): the button is pressed and no part opens within the timeout (a COPY of the page's open-parts route opens nothing): FAIL
-    `scale-floor parts did not open on <id>`, by name."""
-    out = build(tmp, index_edit=with_floor(0.6), mutate={"page/app.js": PARTS_NEVER_OPEN})
+def t41b_framed_check_names_parts_that_did_not_open(tmp):
+    """C3: the button is pressed and no part opens within the timeout (a COPY of the page's open-parts route opens nothing): FAIL
+    `framed parts did not open on <id>`, by name."""
+    out = build(tmp, mutate={"page/app.js": PARTS_NEVER_OPEN})
     part = real_top()[0]
     code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
     assert code == 1, (code, o)
-    assert [l for l in lines(o, "FAIL", "scale-floor") if l.startswith("FAIL 390x844 scale-floor parts did not open on %s" % part)], o
-    assert not lines(o, "PASS", "scale-floor") and "Traceback" not in o, o
+    assert [l for l in lines(o, "FAIL", "framed") if l.startswith("FAIL 390x844 framed parts did not open on %s" % part)], o
+    assert not lines(o, "PASS", "framed") and "Traceback" not in o, o
 
 
 def t41c_part_is_the_first_top_part_with_children(tmp):
@@ -1161,11 +1094,195 @@ def t41c_part_is_the_first_top_part_with_children(tmp):
 
 def t41d_no_top_part_with_children_is_a_named_fail(tmp):
     """F3: a tree in which no top part has children has no box to open and no group to open either: the run FAILs by name at the ids (it cannot reach the
-    floor check, so there is no scale-floor SKIP to name here), never a crash and never a pass."""
-    out = build(tmp, index_edit=with_floor(0.6), step_edit=childless(*real_top()))
+    framed check, so no framed line is printed here at all), never a crash and never a pass."""
+    out = build(tmp, step_edit=childless(*real_top()))
     code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
     assert code == 1 and [l for l in lines(o, "FAIL", "ids") if "no top part has children" in l], (code, o)
     assert "Traceback" not in o and "SMOKE PASS" not in o, o
+    assert not lines(o, "PASS", "framed") and not lines(o, "FAIL", "framed"), o
+    code, o = run_tool(out, "--no-note", "--require-framed", "--only-viewport", "390x844")      # required or not, the run ends at the ids: exit 1
+    assert code == 1 and lines(o, "FAIL", "ids") and "SMOKE PASS" not in o, (code, o)
+
+
+# ---- the framed check (R2): the opened box, title included, inside the visible map stage, at two phone sizes ----
+PHONES = ("390x844", "360x640")
+FLOOR_1_2 = lambda index: index.update({"open_scale_floor": 1.2})        # 1.2: the largest floor the engine still accepts (its open-framing cap), so the map boots
+# A fixed banner over the upper-middle of the window, outside #graph: it moves nothing (the box rect is unchanged) and covers the box's top corners
+# and its title at 390x844 (the box sits well below the stage's own first 40 px on this fixture, so a strip there would cover nothing).
+OVERLAY_BANNER = '<div id="smoke-overlay" style="position:fixed;left:0;right:0;top:25%;height:30%;z-index:9999;background:#c00"></div>'
+
+
+def framed_lines(o, vp):
+    return [l for l in o.splitlines() if (l.startswith("PASS %s framed " % vp) or l.startswith("FAIL %s framed " % vp) or l.startswith("SKIP %s framed " % vp))]
+
+
+def t42_framed_passes_on_the_real_fixture_without_a_floor_key(tmp):
+    """(a): the real fixture carries no floor key in its index; the opened box is framed whole inside the stage at both phone sizes, with the line's fields; no
+    framed line at 1280x900; at 360x640 nothing but the framed line is run."""
+    out = build(tmp)
+    code, o = run_tool(out, "--no-note")
+    assert code == 0, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("PASS %s framed %s scale=" % (vp, real_top()[0])), (vp, o)
+        assert re.search(r" folded=n/a box=[-0-9.]+,[-0-9.]+,[-0-9.]+,[-0-9.]+ stage=[-0-9.]+,[-0-9.]+,[-0-9.]+,[-0-9.]+ viewport=%s$" % vp, got[0]), got[0]
+    assert not framed_lines(o, "1280x900"), o
+    assert not [l for l in o.splitlines() if len(l.split(" ")) > 2 and l.split(" ")[1] == "360x640" and l.split(" ")[2] != "framed"], o      # no boot/open/note/console line there
+    assert "framed" not in last(o), o
+
+
+def t42b_a_floor_the_engine_accepts_but_the_stage_cannot_hold_fails_framed_alone(tmp):
+    """(b) THE DISCRIMINATING CONTROL: the identical tree with ONE key, the index floor set to 1.2 (the largest floor that still boots), frames the opened box at
+    scale 1.2, far wider than the phone: FAIL framed at 360x640 with `box outside stage`, while boot, open and console stay PASS."""
+    out = build(tmp, index_edit=FLOOR_1_2)
+    code, o = run_tool(out, "--no-note")
+    assert code == 1, (code, o)
+    bad = framed_lines(o, "360x640")
+    assert len(bad) == 1 and bad[0].startswith("FAIL 360x640 framed ") and "box outside stage" in bad[0] and "scale=1.2" in bad[0], o
+    for chk in ("boot", "open-part", "open-group", "open-file", "console", "requests", "csp"):
+        assert {l.split()[1] for l in lines(o, "PASS", chk)} == {"390x844", "1280x900"}, (chk, o)
+    fails = [l for l in o.splitlines() if l.startswith("FAIL ")]
+    assert fails and all(" framed " in l for l in fails), o      # the failure is the framed check's alone
+
+
+def t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe(tmp):
+    """(c) OVERLAY CONTROL: a copy of the fixture whose shell adds a fixed banner over the box: the box rect is inside the stage (no `box outside stage`),
+    yet the check FAILs, naming the covering element by what elementFromPoint returned."""
+    out = build(tmp, shell_edit=sub_once("</body>", OVERLAY_BANNER + "</body>"))
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 1, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("FAIL %s framed " % vp), (vp, o)
+        assert "overlaid at" in got[0] and "div#smoke-overlay" in got[0] and "box outside stage" not in got[0], got[0]
+
+
+def t42f_no_part_to_open_is_a_skip_or_a_required_fail(tmp):
+    """(f) C7: the framed runner given no part SKIPs `framed (no part with parts to open)` (named in the verdict's skipped list), and FAILs when the check
+    is required; it touches no browser. (Through the whole tool a tree with no part with children ends at the ids, t41d, before any viewport runs.)"""
+    import contextlib, io, smoke_tree as S
+    for required in (False, True):
+        S.reset_state()
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                S.run_framed(None, "http://127.0.0.1:1/", None, required)
+            o, failed, skipped = buf.getvalue(), S.FAILED[0], list(S.SKIPPED)
+        finally:
+            S.reset_state()
+        if required:
+            assert failed == 1 and not skipped and [l for l in lines(o, "FAIL", "framed") if "no part with parts to open" in l and "--require-framed" in l], o
+        else:
+            assert failed == 0 and skipped == ["framed"] and "SKIP all framed (no part with parts to open)" in o.splitlines(), (o, skipped)
+            assert S.verdict(0, skipped, None) == "SMOKE PASS (1 skipped: framed)"
+
+
+def t42h_only_viewport_phone_runs_framed_at_both_phone_sizes(tmp):
+    """(h) C2: --only-viewport 390x844 runs the framed check at 390x844 AND 360x640 (nothing else at 360x640), none at 1280x900, and the verdict says partial."""
+    out = build(tmp)
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 0, (code, o)
+    for vp in PHONES:
+        assert len(framed_lines(o, vp)) == 1 and framed_lines(o, vp)[0].startswith("PASS "), (vp, o)
+    assert not [l for l in o.splitlines() if "1280x900" in l.split(" ")[:2]], o
+    assert "partial: 390x844 only" in last(o) and "framed" not in last(o), o
+    code, o = run_tool(out, "--no-note", "--only-viewport", "1280x900")
+    assert code == 0 and not [l for l in o.splitlines() if " framed " in l], (code, o)
+
+
+# ---- fold 1 of R2: the button lookup is by class (a kind row's open_words relabels it), and the framed View is not blind ----
+# Two strings keys the real fixture already carries, whose values differ from open_parts / close_parts: the tree has no key to add (an extra string is refused).
+RELABEL_THEOREM = lambda index: index["symbols"]["kinds"]["theorem"].update({"open_words": {"open": "claim_more", "close": "claim_less"}})
+
+
+def drawn_parts_label(out, vp, part_id):
+    """What the page DRAWS on the picked part's parts button at `vp`: the sheet's own `button.sheet-tool-main` text, read in a browser of this process
+    (the tool's lines do not print it)."""
+    import smoke_tree as S
+    srv, host = S.serve(out)
+    try:
+        with S.sync_playwright() as p:
+            b = p.chromium.launch(executable_path=S.T.SHELL[0], args=S.LAUNCH_ARGS) if S.T.SHELL else p.chromium.launch(args=S.LAUNCH_ARGS)
+            v = S.View(b, host + "graph/#" + part_id, vp, {"console": [], "requests": []})
+            try:
+                assert v.wait(S.SETTLED, S.BOOT_TIMEOUT_MS) and v.wait("document.querySelector('#graph-sheet button.sheet-tool-main')", S.OPEN_TIMEOUT_MS), "no parts button drawn"
+                return v.ev("document.querySelector('#graph-sheet button.sheet-tool-main').textContent")
+            finally:
+                v.close()
+                b.close()
+    finally:
+        srv.shutdown()
+
+
+def t43_framed_finds_a_button_the_kind_row_relabelled(tmp):
+    """F1: the picked part's kind row carries open_words naming two other strings keys, so the page draws the parts button with THOSE words (read in a
+    browser here, so the fixture really relabels it) and not open_parts: the framed check still finds it, by its class, and PASSes at both phone sizes.
+    A check that finds the button by the text open_parts would FAIL `no parts button` here, and only here."""
+    out = build(tmp, index_edit=RELABEL_THEOREM)
+    part = real_top()[0]
+    idx = json.load(open(os.path.join(out, "graph", "index.json"), encoding="utf-8"))
+    assert idx["symbols"]["kinds"]["theorem"]["open_words"]["open"] == "claim_more" and idx["strings"]["claim_more"] != idx["strings"]["open_parts"], idx["strings"]
+    label = drawn_parts_label(out, "390x844", part)
+    assert label == idx["strings"]["claim_more"] and label != idx["strings"]["open_parts"], (label, idx["strings"]["open_parts"])
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 0, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("PASS %s framed %s scale=" % (vp, part)), (vp, o)
+    assert "no parts button" not in o, o
+
+
+# A COPY of the page whose parts button logs a console error when pressed: nothing else in the run presses it, so the error exists only in the framed run.
+ERROR_ON_PARTS_PRESS = sub_once('b.addEventListener("click", () => (rec.partsOpen ?', 'b.addEventListener("click", () => (console.error("smoke-after-parts-press"), rec.partsOpen ?')
+
+
+def t43b_framed_view_reports_its_own_console(tmp):
+    """F2: the framed check's View collects its console errors and failed requests like the viewport run's, so a page that errors only after the parts
+    button is pressed FAILs `framed` with a `console:` reason at each phone size, while the console check of the full-size run (which never presses the
+    button) stays PASS. The framed line still carries the measured facts."""
+    out = build(tmp, mutate={"page/sheet.js": ERROR_ON_PARTS_PRESS})
+    code, o = run_tool(out, "--no-note")
+    assert code == 1, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("FAIL %s framed " % vp) and "console: smoke-after-parts-press" in got[0], (vp, o)
+        assert " | %s scale=" % real_top()[0] in got[0] and "box outside stage" not in got[0], got[0]      # the facts are still on the line; the box itself was fine
+    assert {l.split()[1] for l in lines(o, "PASS", "console")} == {"390x844", "1280x900"}, o      # the error exists only in the framed run
+
+
+# A COPY of the page whose parts button makes one request for a file the tree does not have (it answers 404): nothing else in the run presses the button.
+FETCH_MISSING_ON_PARTS_PRESS = sub_once('b.addEventListener("click", () => (rec.partsOpen ?', 'b.addEventListener("click", () => (fetch("smoke-missing-after-press.json"), rec.partsOpen ?')
+
+
+def t43c_framed_view_reports_its_own_failed_requests(tmp):
+    """S1: the framed check's View collects failed requests like the viewport run's, so a page that makes a request answering 404 only after the parts button
+    is pressed FAILs `framed` with a `requests:` reason at each phone size, while the 1280x900 `requests` check (which never presses the button) stays PASS."""
+    out = build(tmp, mutate={"page/sheet.js": FETCH_MISSING_ON_PARTS_PRESS})
+    code, o = run_tool(out, "--no-note")
+    assert code == 1, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("FAIL %s framed " % vp) and "requests: " in got[0] and "smoke-missing-after-press.json" in got[0], (vp, o)
+        assert " | %s scale=" % real_top()[0] in got[0] and "box outside stage" not in got[0], got[0]      # the box itself was fine
+    assert "1280x900" in {l.split()[1] for l in lines(o, "PASS", "requests")}, o      # the request exists only in the framed run
+    assert not [l for l in lines(o, "FAIL") if l.split()[1] == "1280x900"], o
+
+
+# The fold elements the page's viewfold.js looks for, copied from site/shell-lean.html (header.intro is already in the fixture shell; the bar is the missing one).
+INTRO_BAR = ('<div id="graph-intro-bar" class="intro-bar" hidden><span class="bar-title">{{S:title}}</span>'
+             '<button type="button" id="graph-intro-show" class="linkbtn">{{S:about_link}}</button></div>')
+
+
+def t44_framed_folds_the_header_where_the_shell_has_the_bar(tmp):
+    """S4: a copy of the fixture whose shell carries the fold bar (after header.intro, as the Lean shell does): on a phone the header folds when the sheet
+    opens, and the framed line says `folded=yes` at 390x844 and at 360x640, and PASSes. Every other fixture shell lacks the bar (`folded=n/a`)."""
+    out = build(tmp, shell_edit=sub_once("</header>\n", "</header>\n" + INTRO_BAR + "\n"))
+    assert 'id="graph-intro-bar"' in open(os.path.join(out, "graph", "index.html"), encoding="utf-8").read()
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 0, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("PASS %s framed %s scale=" % (vp, real_top()[0])) and " folded=yes " in got[0], (vp, o)
 
 
 CASES = [
@@ -1182,14 +1299,12 @@ CASES = [
     ("T6 K1: a console error alone fails the console check", t6_console_error_alone_fails_s2),
     ("T7 K2: a second fixture with different ids passes and its ids are the data's", t7_second_fixture_different_ids),
     ("T8 K3: the Content-Security-Policy header is sent and reported", t8_csp_header_is_checked),
-    ("T9 A3: the scale floor is read at 390x844 only; a floor the page honors passes, one it ignores fails", t9_scale_floor),
     ("T9b a tree with an unknown index key is refused at boot and the tool fails it", t9b_base_refuses_unknown_index_key),
     ("T10 --only-viewport runs one viewport", t10_only_viewport),
     ("T11 P1: an empty card title fails the heading check", t11_empty_heading_fails),
     ("T12 P2: the verdict line names every skip", t12_skips_named_in_last_line),
     ("T12b P2/P3: the verdict function: plain only with no skip and a whole run", t12b_verdict_line_unit),
     ("T13 P2: --require-note turns the note skip into a fail", t13_require_note),
-    ("T13b P2: --require-floor turns the scale-floor skip into a fail", t13b_require_floor),
     ("T14 P3: a one-viewport run says it was partial", t14_partial_run_says_so),
     ("T15 P4: HEAD is refused outside the folder as GET is", t15_head_is_contained_like_get),
     ("T16 P5: the case runner counts a skip apart from a pass", t16_runner_counts_skips_apart),
@@ -1197,7 +1312,8 @@ CASES = [
     ("T18 C2b: a sub-directory's index.html linked outside: GET /d/ and HEAD /d/ refused", t18_subdir_index_linked_out),
     ("T19 C2c: graph/index.html linked outside: the tool exits 1 naming containment, never SMOKE PASS", t19_end_to_end_graph_index_linked_out),
     ("T20 C2d: a sibling folder named like the site plus a suffix is outside (the prefix boundary)", t20_prefix_boundary),
-    ("T21 C3: --require-floor with --only-viewport 1280x900 is a usage error", t21_require_floor_needs_phone_viewport),
+    ("T21 C8 (e): --require-framed with --only-viewport 1280x900 is a usage error", t21_require_framed_needs_phone_viewport),
+    ("T21b C8 (d): --require-floor is a usage error that names --require-framed", t21b_require_floor_is_a_usage_error_naming_the_new_flag),
     ("T22 C4: a note whose text is blank after collapse FAILs, never passes on an empty want", t22_blank_note_text_fails),
     ("T23 C5: module state is reset at the start of each run", t23_state_reset_per_run),
     ("T24 C5: a NUL in the request path answers 400 with no traceback", t24_nul_in_path_is_400),
@@ -1222,27 +1338,37 @@ CASES = [
     ("T37 F1: the sheet is open on a markup card of the id or a made card of the title; anything else fails", t37_open_check_accepts_a_markup_card_or_a_made_card),
     ("T38 F1: a tree with no card articles opens its part, group and file on the cards the page makes from the data", t38_made_card_tree_opens),
     ("T39 F2: the note is compared on lowercase letters and digits, contained in the rendered body", t39_note_compared_on_what_survives_rendering),
-    ("T40 F3a: the scale floor is read on the opened box and the PASS line says so", t40_scale_floor_reads_the_opened_box),
-    ("T40b F3b: a deep-link-only measurement is not what the floor check reads", t40b_a_deep_link_only_measurement_is_not_what_the_check_reads),
-    ("T41 F3a: a sheet with no parts button is a named FAIL of the floor check", t41_floor_check_names_a_missing_parts_button),
-    ("T41b F3b: parts that do not open are a named FAIL of the floor check", t41b_floor_check_names_parts_that_did_not_open),
+    ("T41 (g): a sheet with no parts button is a named FAIL of the framed check", t41_framed_check_names_a_missing_parts_button),
+    ("T41b: parts that do not open are a named FAIL of the framed check", t41b_framed_check_names_parts_that_did_not_open),
     ("T41c F3: the part opened is the first top part that has children", t41c_part_is_the_first_top_part_with_children),
     ("T41d F3: no top part with children is a named FAIL at the ids", t41d_no_top_part_with_children_is_a_named_fail),
+    ("T42 (a): the real fixture without a floor key is framed at both phone sizes, and nowhere else", t42_framed_passes_on_the_real_fixture_without_a_floor_key),
+    ("T42b (b): a floor of 1.2 the stage cannot hold fails the framed check alone", t42b_a_floor_the_engine_accepts_but_the_stage_cannot_hold_fails_framed_alone),
+    ("T42c (c): an overlay the rect math cannot see fails the probe and is named", t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe),
+    ("T42f (f): no part to open is a SKIP, a FAIL when required", t42f_no_part_to_open_is_a_skip_or_a_required_fail),
+    ("T42h (h): --only-viewport 390x844 runs framed at both phone sizes", t42h_only_viewport_phone_runs_framed_at_both_phone_sizes),
+    ("T43 F1: a button the kind row relabelled (open_words) is found by the framed check", t43_framed_finds_a_button_the_kind_row_relabelled),
+    ("T43b F2: a console error only after the parts press fails the framed line, with a console reason", t43b_framed_view_reports_its_own_console),
+    ("T43c S1: a failed request only after the parts press fails the framed line, with a requests reason", t43c_framed_view_reports_its_own_failed_requests),
+    ("T44 S4: a shell with the fold bar folds the header: the framed line says folded=yes at both phone sizes", t44_framed_folds_the_header_where_the_shell_has_the_bar),
 ]
 
 # The cases that start a browser (the tool's whole run, or the page suite's). The rest speak plain HTTP to the tool's server or call its functions,
 # and pass on a Python with no playwright: `test_smoke_tree.py --no-browser`.
 NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_step, t4c_symlink_out_of_tree_end_to_end, t5_note_fixture_or_skip,
                  t5b_no_notes_in_data_is_a_skip, t5c_missing_note_section_fails, t6_console_error_alone_fails_s2, t7_second_fixture_different_ids,
-                 t8_csp_header_is_checked, t9_scale_floor, t9b_base_refuses_unknown_index_key, t10_only_viewport, t11_empty_heading_fails,
-                 t12_skips_named_in_last_line, t13_require_note, t13b_require_floor, t14_partial_run_says_so, t17c_root_index_linked_out_end_to_end,
+                 t8_csp_header_is_checked, t9b_base_refuses_unknown_index_key, t10_only_viewport, t11_empty_heading_fails,
+                 t12_skips_named_in_last_line, t13_require_note, t14_partial_run_says_so, t17c_root_index_linked_out_end_to_end,
                  t19c_end_to_end_graph_index_linked_out_tool, t25c_ordinary_tree_through_the_tool, t33_opened_count_end_to_end,
                  t35_credits_page_answers_and_links_back_to_the_map, t35b_credits_link_that_does_not_reach_the_map_fails, t35c_credits_console_error_fails,
                  t36_credits_absent_is_a_named_skip_or_a_required_fail,
                  t37_open_check_accepts_a_markup_card_or_a_made_card, t38_made_card_tree_opens,
-                 t40_scale_floor_reads_the_opened_box, t40b_a_deep_link_only_measurement_is_not_what_the_check_reads,
-                 t41_floor_check_names_a_missing_parts_button, t41b_floor_check_names_parts_that_did_not_open,
-                 t41d_no_top_part_with_children_is_a_named_fail}
+                 t41_framed_check_names_a_missing_parts_button, t41b_framed_check_names_parts_that_did_not_open,
+                 t41d_no_top_part_with_children_is_a_named_fail, t42_framed_passes_on_the_real_fixture_without_a_floor_key,
+                 t42b_a_floor_the_engine_accepts_but_the_stage_cannot_hold_fails_framed_alone, t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe,
+                 t42h_only_viewport_phone_runs_framed_at_both_phone_sizes,
+                 t43_framed_finds_a_button_the_kind_row_relabelled, t43b_framed_view_reports_its_own_console,
+                 t43c_framed_view_reports_its_own_failed_requests, t44_framed_folds_the_header_where_the_shell_has_the_bar}
 
 
 def run_cases(cases, only, no_browser=False):
