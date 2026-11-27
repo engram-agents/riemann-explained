@@ -19,6 +19,7 @@ skeleton/    the map of a Lean repository's parts, groups and files (data v3: si
 statements/  the statement-level sample (PR statements): one group, two files, the first file with three statements (theorem, lemma, def) in source order.
              Field names exactly as the data contract's section 31 amended; the words are read from site/strings-lean-statements.json (the one source).
 
+cues/        the readings fixture plus the four cue words and the reading_count on the cards above the reading (made-up; the shape of Sol's contract section 33).
 readings/    the statements sample plus the reading words and a `reading` on fx-thm-a (made-up text): the reading block of a statement card.
 
 Test-only. Never shipped (lives under test/).
@@ -565,6 +566,12 @@ READING_WORDS = {
     "decl_reading_about": "Our words, not the repository's: an AI agent's reading of this statement and its Lean proof, checked against the source by a second agent. No mathematician has checked it.",
     "readings_byline": "Written by {by}, checked by {second_read_by}, {date}",
 }
+CUE_WORDS = {
+    "face_reading_cue": "AI reading",
+    "count_reading_one": "1 AI reading",
+    "count_reading_many": "{n} AI readings",
+    "key_reading_cue_text": "A box tagged \"AI reading\" has an AI agent's reading of the statement and its proof, marked as ours. A box above it counts the readings inside, so you can follow the tags down.",
+}
 FX_READING = {
     "text": ("A made-up preface paragraph, plain text, before the first heading. <b>x</b> and {by} stay literal.\n\n"
              "## What it rests on\n\n- `Fx.helper`, a made-up result the statement uses.\n- `Fx.other`, another one.\n\n"
@@ -580,6 +587,22 @@ def readings_build():
     index, steps = statements_build()
     index["strings"].update(READING_WORDS)
     steps["fx-thm-a"]["reading"] = dict(FX_READING)
+    return index, steps
+
+
+def cues_build():
+    """(index, steps): readings_build plus the four cue words and the reading_count the builder writes (Sol's contract section 33): 1 on the statement with a reading (its own card
+    and its entry in the file step), and the sum above it on the file, the group and the part (each card and each parent's entry); fx-file-2 and the other statements have none."""
+    index, steps = readings_build()
+    index["strings"].update(CUE_WORDS)
+    chain = {"fx-thm-a": "fx-stmt-file", "fx-stmt-file": "fx-group", "fx-group": "fx-part"}
+    for sid in ("fx-thm-a", "fx-stmt-file", "fx-group", "fx-part"):
+        steps[sid]["card"]["reading_count"] = 1
+        parent = chain.get(sid)
+        if parent:
+            for c in steps[parent]["children"]:
+                if c["id"] == sid:
+                    c["reading_count"] = 1
     return index, steps
 
 
@@ -611,7 +634,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 def main():
     check_inputs()
-    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements", "readings"):
+    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements", "readings", "cues"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -665,6 +688,13 @@ def main():
     for i, st in rsteps.items():
         write_json(os.path.join(HERE, "readings", "step", i + ".json"), st)
     open(os.path.join(HERE, "readings", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
+
+    cindex, csteps = cues_build()
+    write_json(os.path.join(HERE, "cues", "index.json"), cindex)
+    for i, st in csteps.items():
+        write_json(os.path.join(HERE, "cues", "step", i + ".json"), st)
+    open(os.path.join(HERE, "cues", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)

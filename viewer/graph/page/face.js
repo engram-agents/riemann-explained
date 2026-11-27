@@ -2,7 +2,7 @@
    and the foot '{n} parts' when the step has children. The title is the contract's `title` field and nothing else:
    the builder already resolved which line it is. Colour and frame come from the enumerated kind and state tables. */
 import { el, titleChildren } from "./dom.js";
-import { KIND_CLASS, STATE_CLASS } from "./data.js";
+import { KIND_CLASS, STATE_CLASS, cueWordsOn } from "./data.js";
 
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -23,6 +23,14 @@ export function footText(strings, countWords, childKind, n, ownKind, childCountW
   return partsText(strings, n);
 }
 
+/* The reading cue's text for a box (Ariadne's reading-cues note v1): a box with no children (a statement) says the tag word; a box above statements says the count, `1 AI reading`
+   for one and the many word with '{n}' filled as TEXT otherwise. Only when the map holds the cue words and the card has a reading_count of 1 or more; otherwise null. */
+export function cueText(strings, readingCount, childCount) {
+  if (!cueWordsOn(strings) || !Number.isInteger(readingCount) || readingCount < 1) return null;
+  if (!(childCount > 0)) return strings.face_reading_cue;
+  return readingCount === 1 ? strings.count_reading_one : strings.count_reading_many.replace("{n}", () => String(readingCount));
+}
+
 /* makeRenderFace(strings, countWords, childCountWords) -> renderFace(nodeSpec) -> Element, the engine's one-argument face function. */
 export function makeRenderFace(strings, countWords = {}, childCountWords = {}) {
   return function renderFace(spec) {
@@ -33,6 +41,8 @@ export function makeRenderFace(strings, countWords = {}, childCountWords = {}) {
     if (typeof d.role === "string" && d.role !== "") kids.push(el("span", { class: "face-role" }, [d.role]));
     kids.push(el("div", { class: "face-title" }, titleChildren(d.title)));
     if (spec.childCount > 0) kids.push(el("div", { class: "face-foot" }, [footText(strings, countWords, d.childKind, spec.childCount, d.kind, childCountWords)]));
-    return el("div", { class: "face " + KIND_CLASS[d.kind] + " " + STATE_CLASS[d.state] }, kids);
+    const cue = cueText(strings, d.readingCount, spec.childCount);
+    if (cue !== null) kids.push(el("div", { class: "face-reading" }, [cue]));
+    return el("div", { class: "face " + KIND_CLASS[d.kind] + " " + STATE_CLASS[d.state] + (cue !== null ? " has-cue" : "") }, kids);
   };
 }
