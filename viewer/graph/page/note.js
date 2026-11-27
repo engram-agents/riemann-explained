@@ -56,8 +56,10 @@ const mathsFace = (sp) => oneLetter(sp) || spanClass(sp) === "formula";
        (a ^ b ^ c); any script left over; an operand that is none of (a)-(d); a combining mark directly after an operand (it would attach to the
        wrong glyph); a ^ whose base WORD follows another word, or a closing bracket, and a space (`g k ^ d` means (g k)^d in Lean, where an
        application binds tighter than ^, and setting d over k alone would read g(k^d); look-alikes that read correctly cannot be told apart by
-       syntax, so the whole shape is code). The base word is the run of word characters and their marks that ends at the base; a closing-bracket
-       base, a ^ at a group's start and a ^ after an operator and a space are not covered. One _ and one ^ on one base is allowed, in either order.
+       syntax, so the whole shape is code). The base word is the run of word characters and their marks that ends at the base; a base that carries
+       a subscript (`g k_1 ^ d`, `g k_{ij}^d`: a _ operand directly before the ^, on the same base) is that base's word, so the test is made on the
+       word before the _; a closing-bracket base, a ^ at a group's start and a ^ after an operator and a space are not covered. A combining mark
+       directly after the opening { or ( of an operand group is refused too (the same reason). One _ and one ^ on one base is allowed, in either order.
    G5  spaces after an operand stay as typed.
    Nothing but the script characters, the spaces round a ^, and the brackets of a {...} or ^(...) operand is ever dropped; every other character
    comes through in its place. */
@@ -113,6 +115,7 @@ function parseOperand(cs, i, j, end, c, level) {
   if ((cs[j] === "{" && j === i + 1) || (cs[j] === "(" && c === "^")) {          // (a) and (b): a group, its brackets dropped
     const k = closeAt(cs, j, end);
     if (k < 0 || k === j + 1) return null;
+    if (MARK.test(cs[j + 1])) return null;                                          // a mark right after the opening bracket would attach to the wrong glyph
     const children = parseGroup(cs, j + 1, k, level + 1);
     if (children === null || children.every((t) => typeof t === "string" && t.trim() === "")) return null;
     return done(children, k + 1);
@@ -131,24 +134,24 @@ function parseOperand(cs, i, j, end, c, level) {
 /* One group cs[start..end) -> parts, or null. `level` counts the script groups this one sits inside. */
 function parseGroup(cs, start, end, level) {
   const out = [];
-  let buf = "", runEnd = -1, run = new Set(), i = start;
+  let buf = "", runEnd = -1, runStart = -1, run = new Set(), i = start;
   while (i < end) {
     const c = cs[i];
     if (c !== "^" && c !== "_") { buf += c; i++; continue; }
     if (level >= MAX_SCRIPT_LEVELS) return null;
     const base = baseAt(cs, start, i, c);                               // G1: the base
     if (base < 0) return null;
-    if (c === "^" && followsWord(cs, start, base)) return null;         // G4: a juxtaposed power
+    const attached = c === "_" ? i === runEnd : runEnd >= 0 && cs.slice(runEnd, i).every((t) => t === " ");   // G4: the same run of scripts
+    if (c === "^" && followsWord(cs, start, attached ? runStart - 1 : base)) return null;   // G4: a juxtaposed power; a subscripted base is the word before its _
     let j = i + 1;                                                      // G2: the operand
     if (c === "^") while (j < end && cs[j] === " ") j++;
     const operand = parseOperand(cs, i, j, end, c, level);
     if (operand === null) return null;
     const { children, next } = operand;
-    const attached = c === "_" ? i === runEnd : runEnd >= 0 && cs.slice(runEnd, i).every((t) => t === " ");   // G4: the same run of scripts
     if (attached) {
       if (run.has(c)) return null;
       run.add(c);
-    } else run = new Set([c]);
+    } else { run = new Set([c]); runStart = i; }
     if (c === "^") buf = buf.replace(/ +$/, "");                        // the spaces directly before a set ^ are dropped
     if (buf !== "") out.push(buf);
     buf = "";
