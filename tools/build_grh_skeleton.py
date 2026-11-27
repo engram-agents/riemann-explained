@@ -2221,6 +2221,7 @@ STM_A = _stm_src("open Nat\n\n/-! ### First part -/\n\n/-- Doc one: `x`. -/\nthe
                  "/-! ### Second part\nmore -/\n\nnoncomputable def three (a : Nat) : Nat   :=\n  a\n", imports=["New.S.B"])
 STM_A_ILEAN = _stm_ilean("New/S/A", ("one", "two", "three"), [
     ("two", "New.S.A", "one", 9, 5), ("two", "New.S.B", "bdef", 10, 3), ("two", "Lib.Foo", "bar", 11, 3), ("two", "New.S.A", "two", 12, 3), ("two", "New.S.A", "two.aux", 12, 9),
+    ("two", "Lib.Other.File", "libthing", 13, 3), ("two", "Mathlib.Data.Real.Basic", "Real.sqrt", 14, 3),   # a file of the repository's Lib (kept, step absent); a module that is no file of grh/src, and Mathlib (left out)
     ("three", "New.S.A", "two", 16, 3), ("three", "New.S.A", "one", 17, 3)])
 STM_B = _stm_src("theorem bdef : True := trivial\n")
 STM_B_ILEAN = _stm_ilean("New/S/B", ("bdef",))
@@ -5412,10 +5413,12 @@ def _selftest_cases():
         fa = json.loads(files["graph/step/lean-s-a.json"].decode("utf-8"))
         kid = lambda i, k, t: dict(card(i, k, t), parent_rests_on=False)
         links = [(l["from"], l["to"], l["in_reduction"], l["weight"]) for l in fa["rests_on"]]
-        return _eq((got, [c for c in fa["children"]], fa["card"]["child_count"], "child_kind" in fa["card"], links, fa["note"]["review"], fa["note"]["source"],
+        keys = {n: sorted(o) for n, o in st.items()}
+        common = ["card", "children", "commit", "format", "heading", "id", "name", "path", "prompt", "rests_on", "source_path", "statement", "uses_elsewhere", "uses_here", "uses_library_count", "variables"]
+        return _eq((keys, got, [c for c in fa["children"]], fa["card"]["child_count"], "child_kind" in fa["card"], links, fa["note"]["review"], fa["note"]["source"],
                     [r["id"] for r in rows if r["parent"] == "lean-s-a"], [r["order"] for r in rows if r["parent"] == "lean-s-a"],
                     all(o["prompt"].startswith("You are helping me read one statement of a Lean proof.") for o in st.values())),
-                   (want, [kid("lean-s-a-one", "theorem", "`one`"), kid("lean-s-a-two", "lemma", "`two`"), kid("lean-s-a-three", "def", "`three`")], 3, False,
+                   ({"one": sorted(common + ["note"]), "two": common, "three": common}, want, [kid("lean-s-a-one", "theorem", "`one`"), kid("lean-s-a-two", "lemma", "`two`"), kid("lean-s-a-three", "def", "`three`")], 3, False,
                     [("lean-s-a-two", "lean-s-a-one", True, 1), ("lean-s-a-three", "lean-s-a-two", True, 1)], {"state": "converter"}, "grh/src/New/S/A.lean",
                     ["lean-s-a-one", "lean-s-a-two", "lean-s-a-three"], [0, 1, 2], True))
 
@@ -5504,14 +5507,15 @@ def _selftest_cases():
 
     @case("STM-USES", "`uses_here` lists the statements of the same file that the declaration uses, UNREDUCED, in the SOURCE order of the statements (not the order of use, not by name), never itself and "
                       "never a name of the file that is not a statement; `uses_elsewhere` lists `{name, step}` of declarations of other files in the order of first use in the declaration (not by name), "
-                      "`step` the FILE step id when the owning file is a file of the map and ABSENT for a library file; a declaration that uses nothing has two empty lists")
+                      "`step` the FILE step id when the owning file is a file of the map and ABSENT for a file of Lib; names of modules that are no file of grh/src (Mathlib, Lean core) are LEFT OUT and counted in "
+                      "`uses_library_count` (an integer, always present, 0 allowed); a declaration that uses nothing has two empty lists and count 0")
     def _():
         got = _stm_one({"New/S/A": STM_A, "New/S/B": STM_B}, {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN}, None)
         if isinstance(got, list):
             return False, got
-        pick = lambda n: (got[n]["uses_here"], got[n]["uses_elsewhere"])
+        pick = lambda n: (got[n]["uses_here"], got[n]["uses_elsewhere"], got[n]["uses_library_count"])
         return _eq((pick("one"), pick("two"), pick("three")),
-                   (([], []), (["lean-s-a-one"], [{"name": "bdef", "step": "lean-s-b"}, {"name": "bar"}]), (["lean-s-a-one", "lean-s-a-two"], [])))
+                   (([], [], 0), (["lean-s-a-one"], [{"name": "bdef", "step": "lean-s-b"}, {"name": "libthing"}], 2), (["lean-s-a-one", "lean-s-a-two"], [], 0)))
 
     @case("STM-LINES", "the file step's `rests_on` is the TRANSITIVE REDUCTION of the uses among its statements, in the existing link shape (from, from_path, to, to_path, in_reduction true, weight 1): "
                        "a diamond keeps its four sides and drops the diagonal, a chain with a shortcut drops the shortcut, a shortcut over three steps is dropped too (a reduction that drops only shortcuts over one step is wrong), a file whose statements use nothing has none; `uses_here` stays unreduced")
@@ -5595,18 +5599,49 @@ def _selftest_cases():
                     {c["id"]: c.get("child_kind", "<absent>") for c in grp}, [card(i).get("child_kind", "<absent>") for i in ("lean-s", "lean-s-g")]),
                    ([], ["<absent>"] * 5, {"lean-s-a": "<absent>", "lean-s-b": "<absent>", "lean-s-r": "<absent>"}, ["group", "file"]))
 
-    @case("STM-USES-ELSEWHERE-LIBRARY", "`USES_ELSEWHERE_LIBRARY` (default True) is the one switch for the names of modules that are not files of the map: True lists them with `step` absent (the contract), False drops "
-                                        "them and keeps the names of other FILES of the map; the constant is True as shipped, so a later ruling is one edit")
+    @case("STM-USES-ELSEWHERE-LIBRARY", "`USES_ELSEWHERE_LIBRARY` is the one switch for the names of modules that are no file of grh/src (Mathlib, Lean core): False as shipped (Kepler 39779: the repository "
+                                        "only) leaves them out of `uses_elsewhere` and counts them in `uses_library_count`; True restores them (count 0). The names of other files of the map and of the repository's Lib stay "
+                                        "either way. The per-file line `statements <file id>: <n> library names left out of uses_elsewhere` says the same number")
     def _():
         srcs, ils = {"New/S/A": STM_A, "New/S/B": STM_B}, {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN}
         shipped = USES_ELSEWHERE_LIBRARY
-        on = _stm_one(srcs, ils, "uses_elsewhere")["two"]
+        with _tmp() as d:
+            g, (errs, files, rows, rep) = _stm_build(d, srcs, ils, statements_for=["lean-s-a"])
+        two = _stm_names(files)["two"]
+        line = [x for x in report_lines(rep) if "library names left out" in x]
         try:
-            globals()["USES_ELSEWHERE_LIBRARY"] = False
-            off = _stm_one(srcs, ils, "uses_elsewhere")["two"]
+            globals()["USES_ELSEWHERE_LIBRARY"] = True
+            allk = _stm_one(srcs, ils)["two"]
         finally:
             globals()["USES_ELSEWHERE_LIBRARY"] = shipped
-        return _eq((shipped, on, off), (True, [{"name": "bdef", "step": "lean-s-b"}, {"name": "bar"}], [{"name": "bdef", "step": "lean-s-b"}]))
+        return _eq((shipped, two["uses_elsewhere"], two["uses_library_count"], line, allk["uses_elsewhere"], allk["uses_library_count"]),
+                   (False, [{"name": "bdef", "step": "lean-s-b"}, {"name": "libthing"}], 2, ["statements lean-s-a: 2 library names left out of uses_elsewhere"],
+                    [{"name": "bdef", "step": "lean-s-b"}, {"name": "bar"}, {"name": "libthing"}, {"name": "Real.sqrt"}], 0))
+
+    @case("STM-PREFIX-LINES", "a `<command> ... in` line at column 0 that stands IMMEDIATELY above a declaration (above its doc-string when it has one, above its attribute line when it has one) is the first line of "
+                              "`statement.text`, verbatim, then a newline, then the declaration as before; the doc-string between them is not part of `text` (it is still the note); several such lines in a row "
+                              "(`omit ... in`, `variable ... in`, `open ... in`, `set_option ... in`) are all taken, in order; a blank line between the `in` line and the declaration, another declaration "
+                              "between, and an indented `in` line give NO prefix; with no doc-string the line is just above the declaration; `variable ... in` and `omit ... in` alike; the `variables` flag "
+                              "stays as pinned (a `variable ... in` counts for the next declaration only, a blank line does not end it, `omit`/`open`/`set_option` lines set nothing)")
+    def _():
+        body = ("variable (a : Nat) in\n/-- doc p1 -/\ntheorem p1 : True := trivial\n\n"
+                "omit [Foo] in\ntheorem p2 : True := trivial\n\n"
+                "variable (b : Nat) in\n\ntheorem p3 : True := trivial\n\n"
+                "variable (c : Nat) in\ntheorem p4a : True := trivial\ntheorem p4b : True := trivial\n\n"
+                "omit [A] in\nvariable (e : Nat) in\n/-- d -/\nlemma p6 : True := trivial\n\n"
+                "variable (f : Nat) in\n@[simp]\ntheorem p7 : True := trivial\n\n"
+                "open Nat in\nset_option maxHeartbeats 1 in\ntheorem p8 : True := trivial\n\n"
+                "  indented in\ntheorem p9 : True := trivial\n")
+        names = ["p1", "p2", "p3", "p4a", "p4b", "p6", "p7", "p8", "p9"]
+        got = _stm_one({"New/S/A": _stm_src(body)}, {"New/S/A": _stm_ilean("New/S/A", names)})
+        if isinstance(got, list):
+            return False, got
+        return _eq(({n: got[n]["statement"]["text"] for n in names}, {n: got[n]["variables"] for n in names}, {n: got[n].get("note", {}).get("text") for n in ("p1", "p6", "p2")}),
+                   ({"p1": "variable (a : Nat) in\ntheorem p1 : True", "p2": "omit [Foo] in\ntheorem p2 : True", "p3": "theorem p3 : True",
+                     "p4a": "variable (c : Nat) in\ntheorem p4a : True", "p4b": "theorem p4b : True", "p6": "omit [A] in\nvariable (e : Nat) in\nlemma p6 : True",
+                     "p7": "variable (f : Nat) in\n@[simp]\ntheorem p7 : True", "p8": "open Nat in\nset_option maxHeartbeats 1 in\ntheorem p8 : True", "p9": "theorem p9 : True"},
+                    {"p1": True, "p2": False, "p3": True, "p4a": True, "p4b": False, "p6": True, "p7": True, "p8": False, "p9": False},
+                    {"p1": " doc p1 ", "p6": " d ", "p2": None}))
 
     @case("STM-KIND-REFUSAL", "a keyword the reader yields for which the builder has no kind word is refused by name `SKEL-STATEMENT-KIND <keyword> <name>` and nothing is built, never a fallback word: "
                               "the word table is patched to lack `instance` for the case (no real source is edited); the other kinds of the same file do not hide it, and with the word back it builds")
@@ -5678,8 +5713,8 @@ def _selftest_cases():
         with _tmp() as d:
             g, (errs, files, rows, rep) = _stm_build(d, {"New/S/E": src}, {"New/S/E": _stm_ilean("New/S/E", ["e1", "e2"])}, statements_for=["lean-s-e"])
         s = rep["statements"]["lean-s-e"]
-        printed = [x for x in report_lines(rep) if x.startswith("statements ")]
-        want = ["statements lean-s-e: 5 declarations, 2 written, 3 reported", f"statements lean-s-e reported instance line {ln('instance : Inhabited Nat')}",
+        printed = [x for x in report_lines(rep) if x.startswith("statements ")]   # the counts line, the library line, then the reported ones
+        want = ["statements lean-s-e: 5 declarations, 2 written, 3 reported", "statements lean-s-e: 0 library names left out of uses_elsewhere", f"statements lean-s-e reported instance line {ln('instance : Inhabited Nat')}",
                 f"statements lean-s-e reported example line {ln('example : True')}", f"statements lean-s-e reported example line {ln('@[simp] example')}"]
         return _eq((errs, (s["found"], s["written"], len(s["reported"])), s["found"] == s["written"] + len(s["reported"]), printed), ([], (5, 2, 3), True, want))
 
@@ -5905,7 +5940,7 @@ def _selftest_cases():
     @case("STM-REAL", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED), the three files `lean-reduction-zeros-criterion`, `-prime-error` and "
                       "`-prime-number-theorem` named: 356 files without the option and 393 with it (356 + 37), the files that differ are index.json, the three file steps and their group; "
                       "the counts lines are 1/1/0, 24/24/0, 12/12/0 (found = written + reported, 37 in all); 34 doc-strings, 3 distinct headings that are the headings of the 24 declarations of PrimeError and of no other file; every statement id matches "
-                      "the id rule and every step file parses; the whole prompt of `New.LFunction_ne_zero_of_primeRemainder_le`, with and without the address, equals the expected text; "
+                      "the id rule and every step file parses; the `text` of exactly four statements begins with a prefix line (`variable {d q} in`, `omit [NeZero q] in` twice, `variable (d q) in`); `uses_elsewhere` holds no Lean core or Mathlib name and the library counts add up per file; the whole prompt of `New.LFunction_ne_zero_of_primeRemainder_le`, with and without the address, equals the expected text; "
                       "the build without the option has no `open_words`")
     def _():
         if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
@@ -5939,12 +5974,18 @@ def _selftest_cases():
         cli_ix = json.loads(cli_files["graph/index.json"].decode("utf-8")) if cli_files else {"strings": {}}
         via_cli = (rc, len(cli_files), sorted(k for k in cli_ix["strings"] if k in STM_WORDS) == sorted(STM_WORDS), [k for k in cli_ix["strings"] if "template" in k],
                    {k: json.loads(v.decode("utf-8"))["prompt"] for k, v in cli_files.items() if k.startswith("graph/step/") and "prompt" in v.decode("utf-8")} == {"graph/step/%s.json" % o["id"]: o["prompt"] for o in st.values()})
+        first = lambda o: o["statement"]["text"].split("\n")[0]
+        prefixed = sorted(first(o) for o in st.values() if first(o).endswith(" in"))
+        library = ({i: p1["statements"][i]["library_left_out"] for i in ids}, sum(o["uses_library_count"] for o in st.values()),
+                   sorted({e["name"] for o in st.values() for e in o["uses_elsewhere"]} & {"Nat", "NeZero", "Real", "Complex"}),
+                   all(o["uses_library_count"] >= 0 for o in st.values()))
         kind_of = ([_j(f1, f"graph/step/{i}.json")["card"].get("child_kind") for i in ids],
                    [c.get("child_kind") for c in _j(f1, "graph/step/lean-reduction-from-a-one-sided-bound-to-the-zeros.json")["children"] if c["id"] in ids])
-        return _eq((via_cli, kind_of, len(f0), len(f1), len(f2), differ, counts, len(st), sum(1 for o in st.values() if "note" in o), len(head), len(set(head.values())), head_files, shape,
+        by_file = {i: sum(o["uses_library_count"] for o in st.values() if o["path"][-1] == i) for i in ids}
+        return _eq((via_cli, kind_of, prefixed, library[0] == by_file, library[1] > 0, library[2], library[3], len(f0), len(f1), len(f2), differ, counts, len(st), sum(1 for o in st.values() if "note" in o), len(head), len(set(head.values())), head_files, shape,
                     st[crit]["prompt"] == STM_EXPECT_REAL_ADDR, pn == STM_EXPECT_REAL_NOADDR, ["open_words" in r for r in ix0["symbols"]["kinds"].values()],
                     [c for c in f1 if c.startswith("graph/step/") and c.endswith(".json") and not json.loads(f1[c].decode("utf-8")).get("id")]),
-                   ((0, 393, True, [], True), ([None] * 3, [None] * 3), 356, 393, 393, ["graph/index.json", "graph/step/lean-reduction-from-a-one-sided-bound-to-the-zeros.json"] + [f"graph/step/{i}.json" for i in ids], dict(zip(ids, [(1, 1, 0), (24, 24, 0), (12, 12, 0)])),
+                   ((0, 393, True, [], True), ([None] * 3, [None] * 3), ["omit [NeZero q] in", "omit [NeZero q] in", "variable (d q) in", "variable {d q} in"], True, True, [], True, 356, 393, 393, ["graph/index.json", "graph/step/lean-reduction-from-a-one-sided-bound-to-the-zeros.json"] + [f"graph/step/{i}.json" for i in ids], dict(zip(ids, [(1, 1, 0), (24, 24, 0), (12, 12, 0)])),
                     37, 34, 24, 3, ["src/New/Reduction/Zeros/PrimeError.lean"], True, True, True, [False, False, False], []))
 
     return cases
