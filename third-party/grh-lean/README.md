@@ -24,7 +24,7 @@ Only in tests, in two places:
   it writes. Between them they hold titles of parts, groups and files from the repository's contents list; two sentences from line 15 of
   `grh/README.md` (the second cut before its colon); the opening notes of two files (`grh/src/New/Reduction/OneSidedBound.lean` and
   `grh/src/New/OneLift/ComparisonOperator/LineCoordinates.lean`); and the code spans of the opening notes of the 306 files under
-  `grh/src/New`, each span once (`fixtures/note-spans-classes.json`). A fixture is often written in several copies, so one piece of text can sit in many files.
+  `grh/src/New`, each span once (`fixtures/note-spans-classes.json`); and, from those same spans, the 454 that are formulas and hold a `^` or a `_`, each once with the structure the maths face is expected to set (or the reason it is left as typed), at most 50 characters each (`fixtures/note-spans-scripts.json`). A fixture is often written in several copies, so one piece of text can sit in many files.
 - **The self-tests inside `tools/build_site.py` and `tools/build_grh_skeleton.py`**: the same two sentences of `grh/README.md`, as test
   data (in `tools/build_grh_skeleton.py` they sit in a constant that one self-test expects).
 
