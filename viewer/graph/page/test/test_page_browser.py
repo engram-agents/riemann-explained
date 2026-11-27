@@ -4094,6 +4094,47 @@ def c_gv_stalled_spine(b, S0, engine):
         gate.set(); S.stop(); gv_clean()
 
 
+def c_gv_notice_clear_of_controls(b, S0, engine, mutate=None):
+    """N1 (Borges, 11-27): after a refusal the notice must not cover a control: at 390 x 844 and 360 x 640 the point at the centre of the Graph button, the Cards button, Show all and Key
+    is that control itself (not the notice), a press on Graph then tries again and, the server answering this time, draws the spine; and a tap on the notice puts it away."""
+    for w, h in ((390, 844), (360, 640)):
+        root = tempfile.mkdtemp(prefix="pg-gv-")
+        assemble.assemble(root, engine, fix="graphview", mutate=mutate, shell_edit=lambda t: fold_shell(t, True))      # the Lean map's header: the toolbar sits under it
+        Handler.seen.clear()
+        S = Served(root)
+        Handler.status[GV_PATH] = 404
+        try:
+            pg = Pg(b, S.base + "graph/index.html", w, h, init=GV_INIT, mobile=True).settled()
+            gv_press(pg, "graph")
+            pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+            got = pg.ev("""(() => { const out = {}; for (const [k, q] of [['graph', 'button.view-btn[data-id="graph"]'], ['cards', 'button.view-btn[data-id="cards"]'],
+              ['showall', '#graph-show-all'], ['key', '#graph-key']]) { const e = document.querySelector(q), r = e.getBoundingClientRect();
+              const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); out[k] = t === e || e.contains(t); } return out; })()""")
+            assert all(got.values()), (w, h, got)
+            pg.ev("document.getElementById('graph-notice').click()")
+            assert pg.ev("document.getElementById('graph-notice').hidden") is True, "a tap on the notice does not put it away"
+            gv_press(pg, "graph")
+            pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+            Handler.status.pop(GV_PATH, None)
+            gv_press(pg, "graph")
+            pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+            assert pg.ev("document.getElementById('graph-notice').hidden") is True
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+
+
+def c_gv_notice_mutants(b, S0, engine):
+    """N1 mutants: the notice put back at the top edge; the dismiss listener removed: each turns N1 red."""
+    for name, mut in (("notice at the top again", {"graph.css": lambda t: t.replace("position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;", "position: fixed; top: 0; left: 0; right: 0; z-index: 30;")}),
+                      ("no dismiss listener", {"page/app.js": lambda t: t.replace('notice.addEventListener("click", () => hush(), { signal });', "")})):
+        try:
+            c_gv_notice_clear_of_controls(b, S0, engine, mutate=mut)
+        except AssertionError:
+            continue
+        raise AssertionError("MUTANT SURVIVED: " + name)
+
+
 def c_gv_showall_and_address(b, S0, engine):
     """GV15: in the Graph view 'Show all' frames the spine (its boxes stay) and an address (#id) shows that card in CARDS: the view switches back first, the card's sheet opens."""
     S, pg = gv(b, engine)
@@ -4174,6 +4215,8 @@ GV_CASES = [
     ("GV20: after 'Show its file in Cards' one control goes back to the graph with that box selected and framed; none after a tap in Cards", c_gv_back_to_graph),
     ("GV21: three mutants of the way back (graph not shown, a control that does nothing, another box selected) each turn GV20 red", c_gv_back_mutants),
     ("GV19: a spine.json request that never answers ends, after the fixed time, as the ordinary refusal (fetch-failed), and a later press draws the spine", c_gv_stalled_spine),
+    ("N1: after a refusal the notice covers no control of the toolbar at 390 x 844 and 360 x 640, a tap on it puts it away, Graph tries again", c_gv_notice_clear_of_controls),
+    ("N1 mutants: the notice at the top again, no dismiss listener: each turns N1 red", c_gv_notice_mutants),
     ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
 ]
 
