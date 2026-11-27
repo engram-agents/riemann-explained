@@ -45,19 +45,26 @@ const mathsFace = (sp) => oneLetter(sp) || spanClass(sp) === "formula";
    not: never half set. scriptParts(span) -> the parts (a string is text; {tag: "sup"|"sub", children: parts}) or null (refused).
 
    G1  a script is ^ or _ with a BASE before it in the same group: for _ the character right before, for ^ the nearest non-space character before
-       (the spaces between are dropped); a base is a letter, a digit (also a subscript digit), a prime, or a closing ) ] }. No base: refuse.
+       (the spaces between are dropped); a base is a letter, a digit (also a subscript digit), a prime, a closing ) ] }, or a letter followed by
+       combining marks (the marks belong to the letter and the script is drawn after both). No base: refuse. A mark run that does not start at a
+       letter (the group's start, a digit, a bracket, a space) is no base.
    G2  only the OPERAND to the right is parsed: (a) {...} directly after the script character (braces dropped); (b) (...) after ^, optionally after
        spaces (parens dropped); (c) a WORD of letters, digits and primes (after ^ optional spaces, dropped; after _ none); (d) ONE of * × + - ∨ ∞ ⊥
        directly after the script character, then the group's end, a space or a closing bracket.
    G3  a group's content is parsed by the same grammar, at most two script levels deep.
    G4  refuse on: an unmatched or crossing bracket in an operand group; an empty group; a second ^ (or second _) attached to the same run of scripts
-       (a ^ b ^ c); any script left over; an operand that is none of (a)-(d). One _ and one ^ on one base is allowed, in either order.
+       (a ^ b ^ c); any script left over; an operand that is none of (a)-(d); a combining mark directly after an operand (it would attach to the
+       wrong glyph); a ^ whose base WORD follows another word, or a closing bracket, and a space (`g k ^ d` means (g k)^d in Lean, where an
+       application binds tighter than ^, and setting d over k alone would read g(k^d); look-alikes that read correctly cannot be told apart by
+       syntax, so the whole shape is code). The base word is the run of word characters and their marks that ends at the base; a closing-bracket
+       base, a ^ at a group's start and a ^ after an operator and a space are not covered. One _ and one ^ on one base is allowed, in either order.
    G5  spaces after an operand stay as typed.
    Nothing but the script characters, the spaces round a ^, and the brackets of a {...} or ^(...) operand is ever dropped; every other character
    comes through in its place. */
 const BASE_CHAR = /^[\p{L}\p{Nd}₀-₉′'’)\]}]$/u;
 const WORD_CHAR = /^[\p{L}\p{Nd}₀-₉′'’]$/u;
 const MARK = /^\p{M}$/u;
+const LETTER = /^\p{L}$/u;
 const SYMBOLS = new Set(["*", "×", "+", "-", "∨", "∞", "⊥"]);
 const OPENERS = new Map([["(", ")"], ["[", "]"], ["{", "}"]]);
 const CLOSERS = new Set([")", "]", "}"]);
@@ -76,24 +83,47 @@ function closeAt(cs, i, end) {
   return -1;
 }
 
-/* G2, the operand of the script character c at cs[i], which starts at cs[j] (j is past the spaces after a ^): {children, next} or null. */
+/* G1, the base of the script character c at cs[i] in the group cs[start..): the index of the base's LAST character (a letter's last mark), or -1. */
+function baseAt(cs, start, i, c) {
+  let p = i - 1;
+  if (c === "^") while (p >= start && cs[p] === " ") p--;
+  if (p < start) return -1;
+  if (BASE_CHAR.test(cs[p])) return p;
+  if (!MARK.test(cs[p])) return -1;
+  let q = p;
+  while (q >= start && MARK.test(cs[q])) q--;                                       // the mark run must start at a letter
+  return q >= start && LETTER.test(cs[q]) ? p : -1;
+}
+
+/* G4, the juxtaposed power: does the base word that ends at cs[last] follow another word, or a closing bracket, and a space? A closing-bracket base has no base word. */
+function followsWord(cs, start, last) {
+  const isWord = (ch) => WORD_CHAR.test(ch) || MARK.test(ch);
+  let s = last;
+  while (s >= start && isWord(cs[s])) s--;
+  if (s === last || s < start || cs[s] !== " ") return false;
+  while (s >= start && cs[s] === " ") s--;
+  return s >= start && (isWord(cs[s]) || CLOSERS.has(cs[s]));
+}
+
+/* G2, the operand of the script character c at cs[i], which starts at cs[j] (j is past the spaces after a ^): {children, next} or null.
+   G4: a combining mark directly after the operand refuses it. */
 function parseOperand(cs, i, j, end, c, level) {
   if (j >= end) return null;
+  const done = (children, next) => (next < end && MARK.test(cs[next]) ? null : { children, next });
   if ((cs[j] === "{" && j === i + 1) || (cs[j] === "(" && c === "^")) {          // (a) and (b): a group, its brackets dropped
     const k = closeAt(cs, j, end);
     if (k < 0 || k === j + 1) return null;
     const children = parseGroup(cs, j + 1, k, level + 1);
     if (children === null || children.every((t) => typeof t === "string" && t.trim() === "")) return null;
-    return { children, next: k + 1 };
+    return done(children, k + 1);
   }
   if (WORD_CHAR.test(cs[j])) {                                                       // (c): a word
     let k = j;
     while (k < end && WORD_CHAR.test(cs[k])) k++;
-    if (k < end && MARK.test(cs[k])) return null;                                   // a combining mark would attach to the wrong letter
-    return { children: [cs.slice(j, k).join("")], next: k };
+    return done([cs.slice(j, k).join("")], k);
   }
   if (j === i + 1 && SYMBOLS.has(cs[j]) && (j + 1 >= end || cs[j + 1] === " " || CLOSERS.has(cs[j + 1]))) {   // (d): one symbol
-    return { children: [cs[j]], next: j + 1 };
+    return done([cs[j]], j + 1);
   }
   return null;
 }
@@ -106,9 +136,9 @@ function parseGroup(cs, start, end, level) {
     const c = cs[i];
     if (c !== "^" && c !== "_") { buf += c; i++; continue; }
     if (level >= MAX_SCRIPT_LEVELS) return null;
-    let p = i - 1;                                                      // G1: the base
-    if (c === "^") while (p >= start && cs[p] === " ") p--;
-    if (p < start || !BASE_CHAR.test(cs[p])) return null;
+    const base = baseAt(cs, start, i, c);                               // G1: the base
+    if (base < 0) return null;
+    if (c === "^" && followsWord(cs, start, base)) return null;         // G4: a juxtaposed power
     let j = i + 1;                                                      // G2: the operand
     if (c === "^") while (j < end && cs[j] === " ") j++;
     const operand = parseOperand(cs, i, j, end, c, level);

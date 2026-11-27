@@ -36,7 +36,8 @@ function elements(frag) { const out = []; walk(frag, (n) => { if (n.nodeType ===
 function allText(frag) { let s = ""; walk(frag, (n) => { if (n.nodeType === 3) s += n.textContent; }); return s; }
 const flat = (s) => s.replace(/\s+/g, "");
 const J = JSON.stringify;
-/* What a set span may lose (maths_scripts.test.mjs states the whole contract): a script character, a space, a brace or a paren, and nothing is reordered. */
+/* What a set span may lose (maths_scripts.test.mjs states the whole contract): a script character, a space, a brace or a paren, and nothing is reordered.
+   It cannot see a KEPT extra character, so C5 is guarded by maths_scripts.test.mjs's exact oracle (expectedFlatten), not here. */
 function onlyAllowedLoss(span, out) {
   const cs = [...span], os = [...out];
   let j = 0;
