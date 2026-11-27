@@ -130,8 +130,10 @@ test("summary: not an object, a missing or extra key, a bad status, text empty, 
 });
 
 test("summary names itself in the refusal (not math), and a statement step carrying it is the statement refusal", () => {
-  const s = stp("fx-stmt-file"); s.summary.status = "final";
-  assert.throws(() => validateStep(s, ctxOf()), (e) => e.code === "bad-maths" && e.reason.includes("summary") && !e.reason.includes("math"));
+  for (const edit of [(s) => { s.summary.status = "final"; }, (s) => { s.summary = []; }, (s) => { s.summary.text = ""; }]) {      // the status, the shape and the text refusals each name the key
+    const s = stp("fx-stmt-file"); edit(s);
+    assert.throws(() => validateStep(s, ctxOf()), (e) => e.code === "bad-maths" && e.reason.includes("summary") && !e.reason.includes("math"));
+  }
   const t = stp("fx-thm-a"); t.summary = clone(stp("fx-stmt-file").summary);
   refuses(() => validateStep(t, ctxOf()), "bad-statement", "fx-thm-a");
 });
