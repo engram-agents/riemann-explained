@@ -1215,7 +1215,7 @@ STATEMENT_KIND_WORDS = {"theorem": "Theorem", "lemma": "Lemma", "def": "Definiti
 STATEMENT_WORD_KEYS = ("open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                        "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
                        "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note",
-                       "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many")   # the EXACT keys of the file of --strings-overlay-statements (Ariadne's strings v2.1; the page PR ships it as site/strings-lean-statements.json): the prompt templates are not among them
+                       "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source")   # the EXACT 28 keys of the file of --strings-overlay-statements (Ariadne's strings v2.1, sha256 prefix 60196f14; the page PR ships it as site/strings-lean-statements.json): the prompt templates are not among them
 USES_ELSEWHERE_LIBRARY = False   # `uses_elsewhere` is the REPOSITORY only (Kepler 39779): names of modules that are files of grh/src (New: with a `step`; Lib: `step` absent). False leaves out the names of every other module (Mathlib, Lean core) and counts them in `uses_library_count`; True lists them too (count 0): one edit for a later ruling
 STATEMENT_COUNT_WORDS = {"many": "count_statement_many", "one": "count_statement_one"}   # the count words of the statements of a file: `child_count_words` of the FILE row (a statement row has no count_words: the children of a file have mixed kinds)
 STATEMENT_HEADING = re.compile(r"###(?!#)")
@@ -1637,7 +1637,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
                 prefix.insert(0, raw_lines[a - 1].rstrip())
                 a -= 1
             decls.append({"kw": kw, "name": name, "short": name.rsplit(".", 1)[-1] or name, "text": "\n".join(prefix + [raw[start:cut].rstrip()]), "doc": doc[2] if doc else None,
-                          "heading": head[-1][1] if head else None, "variables": flags.get(line_no, False)})
+                          "heading": (head[-1][1] or None) if head else None, "variables": flags.get(line_no, False)})
         rep["statements"][fid] = {"found": len(found) + len(reported), "written": 0 if bad else len(decls), "reported": [(r[1], r[0]) + tuple(r[2:]) for r in reported]}
         if bad:
             continue
@@ -1673,7 +1673,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
             except PromptError as e:
                 errors.append(("SKEL-STATEMENT-PROMPT", f"{e.field} {_escaped(e.value)}", ""))
                 continue
-            new_rows.append({"id": d["id"], "parent": fid, "order": i, "premises": [decls[j]["id"] for j in kept[i]], "kind": d["kw"], "state": "none", "proof": "none", "title": "`" + d["short"] + "`"})   # the short name in backticks: the page sets a title in code style by its span rule, naming no kind
+            new_rows.append({"id": d["id"], "parent": fid, "order": i, "premises": [decls[j]["id"] for j in kept[i]], "kind": d["kw"], "state": "none", "proof": "none", "title": "`" + d["short"] + "`", "role": STATEMENT_KIND_WORDS[d["kw"]]})   # the short name in backticks: the page sets a title in code style by its span rule, naming no kind
             titles.append(d["short"])
             titles.append("`" + d["short"] + "`")
             links.update({(d["id"], decls[j]["id"]): {"weight": 1, "in_reduction": True} for j in kept[i]})
@@ -2213,7 +2213,8 @@ STM_WORDS = {"open_statements": "Open its statements", "close_statements": "Clos
              "decl_heading_label": "In the file's section:",
              "decl_reading_none": "No AI agent's reading of this statement yet. You can ask your own AI assistant for one:",
              "decl_uses_library_one": "It also uses 1 name from Lean's libraries (Mathlib or Lean itself), not listed here.",
-             "decl_uses_library_many": "It also uses {n} names from Lean's libraries (Mathlib or Lean itself), not listed here."}   # Ariadne's strings v2.1 (27 keys), written once more here as literals; the page PR ships them as site/strings-lean-statements.json
+             "decl_uses_library_many": "It also uses {n} names from Lean's libraries (Mathlib or Lean itself), not listed here.",
+             "decl_note_source": "Comment on this statement in {source} · version {commit} of lsernau/grh-lean"}   # Ariadne's strings v2.1 (28 keys, sha256 prefix 60196f14), written once more here as literals; the page PR ships them as site/strings-lean-statements.json
 STM_URL = "https://engram-agents.org/review/files/"
 STM_TITLE = "A map of the Lean files of the Riemann Hypothesis proof"   # the demo value of --statement-page-title: the map's own title
 STM_KIND_TEXT = {"theorem": "Theorem", "lemma": "Lemma", "def": "Definition", "abbrev": "Abbreviation", "structure": "Structure", "class": "Class", "inductive": "Inductive type", "instance": "Instance"}
@@ -2255,6 +2256,17 @@ def _stm_one(srcs, ileans, field=None, ids=("lean-s-a",), **kw):
     with _tmp() as d:
         g, (errs, files, rows, rep) = _stm_build(d, srcs, ileans, statements_for=list(ids), **kw)
     return errs if errs else {n: (o if field is None else o.get(field)) for n, o in _stm_names(files).items()}
+
+
+def _stm_role_entries(files):
+    """[(step file id, "card" or "child", the entry)] of every card and every closed child of every step file of a build."""
+    out = []
+    for k, v in sorted(files.items()):
+        if k.startswith("graph/step/"):
+            o = json.loads(v.decode("utf-8"))
+            out.append((o["id"], "card", o["card"]))
+            out += [(o["id"], "child", c) for c in o["children"]]
+    return out
 
 
 def _stm_cli(d, g, extra, words=STM_WORDS, out="out", strings_extra=None, graph_words=None):
@@ -5468,7 +5480,7 @@ def _selftest_cases():
             return False, errs
         st = _stm_names(files)
         path = ["lean-s", "lean-s-g", "lean-s-a"]
-        card = lambda i, k, t: {"child_count": 0, "id": i, "kind": k, "path": path, "proof": "none", "state": "none", "title": t}
+        card = lambda i, k, t: {"child_count": 0, "id": i, "kind": k, "path": path, "proof": "none", "role": STM_KIND_TEXT[k], "state": "none", "title": t}   # the role: the English word of the kind, on the card and on the closed child
         got = {n: {k: v for k, v in o.items() if k not in ("prompt", "uses_here", "uses_elsewhere", "uses_library_count", "heading", "variables", "commit", "format")} for n, o in st.items()}
         want = {"one": {"card": card("lean-s-a-one", "theorem", "`one`"), "children": [], "id": "lean-s-a-one", "path": path, "rests_on": [], "name": "one", "source_path": "src/New/S/A.lean",
                         "statement": {"keyword": "theorem", "text": "theorem one : True"},
@@ -6074,38 +6086,39 @@ def _selftest_cases():
         return _eq(out, {"part": refused("S part"), "group": refused("G"), "file": refused("A"), "statement": refused("one"), "backticked": refused("`one`"), "contents": refused("Intro."), "padded": refused(" G "),
                          "demo": (0, ["steps: 3"], True)})
 
-    @case("STM-STRINGS", "the statement words are optional strings keys of the page (GRAPH_OPTIONAL_KEYS, 27 keys, each with its placeholder `{n}` where it has one: count_statement_one, count_statement_many, "
-                         "decl_uses_here, decl_uses_elsewhere), the prompt templates are NOT keys of index.json `strings` and a map with statements that lacks a word its rows name (a `decl_kind_<k>` "
+    @case("STM-STRINGS", "the statement words are optional strings keys of the page (GRAPH_OPTIONAL_KEYS, 28 keys, each with its placeholder `{n}` where it has one: count_statement_one, count_statement_many, "
+                         "decl_uses_here, decl_uses_elsewhere, decl_uses_library_many; decl_note_source takes {source} and {commit} like note_source, and decl_no_note and decl_prompt_note take none), the prompt templates are NOT keys of index.json `strings` and a map with statements that lacks a word its rows name (a `decl_kind_<k>` "
                          "of an occurring kind, `open_statements`, `count_statement_one`) is refused GRAPH-STRINGS <key> missing")
     def _():
         keys = sorted(STM_WORDS)
         in_opt = [k for k in keys if k in bs.GRAPH_OPTIONAL_KEYS]
-        ph = {k: bs.PLACEHOLDERS.get(k) for k in ("count_statement_one", "count_statement_many", "decl_uses_here", "decl_uses_elsewhere", "decl_show_lean", "decl_uses_library_one", "decl_uses_library_many")}
+        ph = {k: bs.PLACEHOLDERS.get(k) for k in ("count_statement_one", "count_statement_many", "decl_uses_here", "decl_uses_elsewhere", "decl_show_lean", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source", "decl_no_note", "decl_prompt_note", "note_source")}
         out = {}
         for label, drop in (("kind", "decl_kind_lemma"), ("open", "open_statements"), ("count", "count_statement_one"), ("close", "close_statements")):
             s = dict(_strings(), **{k: v for k, v in STM_WORDS.items() if k != drop})
             out[label] = _stm_one({"New/S/A": _stm_src("lemma l : True := trivial\n")}, {"New/S/A": _stm_ilean("New/S/A", ["l"])}, strings=s)
         return _eq((len(keys), in_opt == keys, ph, out),
-                   (27, True, {"count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_show_lean": None,
-                               "decl_uses_library_one": None, "decl_uses_library_many": {"n"}},
+                   (28, True, {"count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_show_lean": None,
+                               "decl_uses_library_one": None, "decl_uses_library_many": {"n"}, "decl_note_source": {"source", "commit"}, "decl_no_note": None, "decl_prompt_note": None,
+                               "note_source": {"source", "commit"}},
                     {k: [("GRAPH-STRINGS", w, "missing")] for k, w in (("kind", "decl_kind_lemma"), ("open", "open_statements"), ("count", "count_statement_one"), ("close", "close_statements"))}))
 
-    @case("STM-WORD-KEYS", "the statement words are EXACTLY 27 keys (STATEMENT_WORD_KEYS: open_statements, close_statements, count_statement_one, count_statement_many, the eight decl_kind_<k>, decl_show_lean, "
+    @case("STM-WORD-KEYS", "the statement words are EXACTLY 28 keys (STATEMENT_WORD_KEYS: open_statements, close_statements, count_statement_one, count_statement_many, the eight decl_kind_<k>, decl_show_lean, "
                            "decl_hide_lean, decl_lean_note, decl_uses_here, decl_uses_elsewhere, decl_no_note, key_statements_heading, key_statements_text, decl_prompt_button, decl_prompt_copied, "
-                           "decl_prompt_note, decl_heading_label, decl_reading_none, decl_uses_library_one and decl_uses_library_many), the keys of the test copy of the words, every one an optional key of the page (GRAPH_OPTIONAL_KEYS), and the two prompt templates are "
+                           "decl_prompt_note, decl_heading_label, decl_reading_none, decl_uses_library_one, decl_uses_library_many and decl_note_source), the keys of the test copy of the words, every one an optional key of the page (GRAPH_OPTIONAL_KEYS), and the two prompt templates are "
                            "in neither: they are constants of the builder")
     def _():
         keys = set(STATEMENT_WORD_KEYS)
         return _eq((len(STATEMENT_WORD_KEYS), len(keys), keys == set(STM_WORDS), keys <= set(bs.GRAPH_OPTIONAL_KEYS), "decl_heading_label" in keys and "decl_reading_none" in keys,
                     [k for k in ("decl_prompt_template", "decl_prompt_template_noaddr") if k in keys or k in bs.GRAPH_OPTIONAL_KEYS]),
-                   (27, 27, True, True, True, []))
+                   (28, 28, True, True, True, []))
 
     @case("STM-WORDS-OPTION", "`--strings-overlay-statements FILE` (the words of the statement level, read by the machinery of the other overlay files): REQUIRED with --statements-for (missing: "
                               "`SKEL-STATEMENT-WORDS strings-overlay-statements is required with --statements-for`) and REFUSED without it (`... needs --statements-for`, the file is NEVER read: a path that "
-                              "does not exist gives that line and exit 1, not a read error); its keys are EXACTLY the 27: a missing key is `SKEL-STATEMENT-WORDS <key> missing` (all, sorted; an empty "
-                              "object lists all 27; an overlay of the 25 words before decl_uses_library_one and _many is refused by those two names; `{n}` in the one form is an unknown placeholder), a page key that is not a statement word is `SKEL-STATEMENT-WORDS <key> is not a statement word`, a key that is no key of the page is the "
+                              "does not exist gives that line and exit 1, not a read error); its keys are EXACTLY the 28: a missing key is `SKEL-STATEMENT-WORDS <key> missing` (all, sorted; an empty "
+                              "object lists all 28; an overlay of the 25 words before decl_uses_library_one and _many is refused by those two names; the 27 words of the file before decl_note_source (sha256 prefix 5d1918bf) is refused `decl_note_source missing` and the 28 pass; decl_note_source with `{source}` and `{commit}` builds, with `{bogus}` it is an unknown placeholder; `{n}` in the one form is an unknown placeholder), a page key that is not a statement word is `SKEL-STATEMENT-WORDS <key> is not a statement word`, a key that is no key of the page is the "
                               "overlays' `SKEL-OVERLAY-KEY <file> <key> is not a key the page reads`, a key that is also in the strings file or in the Graph overlay is `SKEL-OVERLAY-CLASH <key>`, a file "
-                              "that is not JSON is exit 2; every refusal writes nothing; a good file builds and its 27 words are in index.json `strings`, the templates are not")
+                              "that is not JSON is exit 2; every refusal writes nothing; a good file builds and its 28 words are in index.json `strings`, the templates are not")
     def _():
         out = {}
         with _tmp() as d:
@@ -6121,6 +6134,9 @@ def _selftest_cases():
             out["missing"] = _stm_cli(d, g, base, words={k: v for k, v in STM_WORDS.items() if k not in ("decl_kind_def", "open_statements")}, out="o-mis")
             out["empty"] = _stm_cli(d, g, base, words={}, out="o-emp")
             out["old25"] = _stm_cli(d, g, base, words={k: v for k, v in STM_WORDS.items() if k not in ("decl_uses_library_one", "decl_uses_library_many")}, out="o-o25")
+            out["old27"] = _stm_cli(d, g, base, words={k: v for k, v in STM_WORDS.items() if k != "decl_note_source"}, out="o-o27")
+            out["note-bogus"] = _stm_cli(d, g, base, words=dict(STM_WORDS, decl_note_source="C {source} {commit} {bogus}"), out="o-nbg")
+            out["note-both"] = _stm_cli(d, g, base, words=dict(STM_WORDS, decl_note_source="C {commit} in {source}"), out="o-nbo")
             out["n-in-one"] = _stm_cli(d, g, base, words=dict(STM_WORDS, decl_uses_library_one="It also uses {n} name."), out="o-nin")
             out["extra-page-key"] = _stm_cli(d, g, base, words=dict(STM_WORDS, view_cards="Cards"), out="o-ext")
             out["bogus"] = _stm_cli(d, g, base, words=dict(STM_WORDS, bogus="x"), out="o-bog")
@@ -6133,14 +6149,130 @@ def _selftest_cases():
             out["not-json"] = (r[0], os.path.exists(os.path.join(d, "o-bad")))
         pick = lambda k: (out[k][0], out[k][1], out[k][3])
         w = lambda k, what: f"SKEL-STATEMENT-WORDS {k} {what}"
-        return _eq((out["ok"], pick("required"), out["unread"], pick("missing"), pick("empty"), pick("old25"), pick("n-in-one"), pick("extra-page-key"), pick("bogus"), pick("clash-strings"), pick("clash-graph"), out["not-json"]),
-                   ((0, True, True, 27, []), (1, [w("strings-overlay-statements", "is required with --statements-for")], False),
+        return _eq((out["ok"], pick("required"), out["unread"], pick("missing"), pick("empty"), pick("old25"), pick("old27"), pick("note-bogus"), (out["note-both"][0], out["note-both"][3]), pick("n-in-one"), pick("extra-page-key"), pick("bogus"), pick("clash-strings"), pick("clash-graph"), out["not-json"]),
+                   ((0, True, True, 28, []), (1, [w("strings-overlay-statements", "is required with --statements-for")], False),
                     (1, [w("strings-overlay-statements", "needs --statements-for")], False), (1, [w("decl_kind_def", "missing"), w("open_statements", "missing")], False),
                     (1, [w(k, "missing") for k in sorted(STM_WORDS)], False),
                     (1, [w("decl_uses_library_many", "missing"), w("decl_uses_library_one", "missing")], False),
+                    (1, [w("decl_note_source", "missing")], False), (1, ["STRINGS-KEY decl_note_source has an unknown placeholder {bogus}"], False), (0, True),
                     (1, ["STRINGS-KEY decl_uses_library_one has an unknown placeholder {n}"], False), (1, [w("view_cards", "is not a statement word")], False),
                     (1, ["SKEL-OVERLAY-KEY statement-words.json bogus is not a key the page reads"], False), (1, ["SKEL-OVERLAY-CLASH decl_show_lean"], False),
                     (1, ["SKEL-OVERLAY-CLASH decl_show_lean"], False), (2, False)))
+
+    STM_ROLE_BODY = ("theorem k1 : True := trivial\nlemma k2 : True := trivial\nnoncomputable def k3 : Nat := 1\nabbrev k4 : Nat := 1\nstructure K5 : Type := (x : Nat)\n"
+                     "class K6 : Type := (x : Nat)\ninductive K7 : Type := | a\ninstance k8 : Inhabited Nat := \u27e80\u27e9\n")
+    STM_ROLE_NAMES = ["k1", "k2", "k3", "k4", "K5", "K6", "K7", "k8"]
+    STM_ROLE_WORDS = ["Theorem", "Lemma", "Definition", "Abbreviation", "Structure", "Class", "Inductive type", "Instance"]   # the English word of each of the eight kinds, in table order, typed here
+
+    @case("STM-ROLE-FIELDS", "the kind word on the box: every statement step's `card` has `role` equal to the English word of its kind (theorem Theorem, lemma Lemma, a noncomputable def Definition) and the "
+                             "closed child of that statement in its FILE step's `children` has the same `role`; the keys of both are in the one sorted order (child_count, id, kind, path, proof, role, state, "
+                             "title; the child adds parent_rests_on); no other card and no other closed child has a `role`: not the file step's own card, not the group step, not the part step, not the "
+                             "children of the group and the part, not the file that is not named")
+    def _():
+        with _tmp() as d:
+            g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": STM_A, "New/S/B": STM_B}, {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN}, statements_for=["lean-s-a"])
+        if errs:
+            return False, errs
+        st = _stm_names(files)
+        entries = _stm_role_entries(files)
+        ids = {o["id"] for o in st.values()}
+        fa = json.loads(files["graph/step/lean-s-a.json"].decode("utf-8"))
+        card_roles = {n: o["card"].get("role", "<absent>") for n, o in st.items()}
+        child_roles = {c["id"]: c.get("role", "<absent>") for c in fa["children"]}
+        with_role = sorted({(i, w, e["id"]) for i, w, e in entries if "role" in e and e["id"] not in ids})
+        stray = sorted({(i, w, e["id"]) for i, w, e in entries if e["id"] in ids and "role" in e and not (w == "card" and i == e["id"] or w == "child" and i == "lean-s-a")})
+        return _eq((errs, card_roles, child_roles, with_role, stray, list(st["one"]["card"]), list(fa["children"][0]), len(fa["children"])),
+                   ([], {"one": "Theorem", "two": "Lemma", "three": "Definition"}, {"lean-s-a-one": "Theorem", "lean-s-a-two": "Lemma", "lean-s-a-three": "Definition"}, [], [],
+                    ["child_count", "id", "kind", "path", "proof", "role", "state", "title"], ["child_count", "id", "kind", "parent_rests_on", "path", "proof", "role", "state", "title"], 3))
+
+    @case("STM-ROLE-ABSENT", "the option absent (or None): no `role` is written anywhere: no card and no closed child of any step file has the key, and the bytes of the build equal the build with `statements_for=None`; "
+                             "named for one file, the `role` appears only on the statement steps and on the closed children of the file step that is named (3 + 3 entries), never in index.json")
+    def _():
+        srcs, ils = {"New/S/A": STM_A, "New/S/B": STM_B}, {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN}
+        with _tmp() as d:
+            g, (e0, plain, _r, _p) = _stm_build(d, srcs, ils)
+            e1, none = build(g, PIN, dict(_strings(), **STM_WORDS), (), _ildir(g), statements_for=None)[:2]
+            e2, named = build(g, PIN, dict(_strings(), **STM_WORDS), (), _ildir(g), statements_for=["lean-s-a"])[:2]
+        roles = lambda files: sorted((i, w, e["id"]) for i, w, e in _stm_role_entries(files) if "role" in e)
+        return _eq((e0, e1, e2, plain == none, roles(plain), roles(none), b'"role"' in plain["graph/index.json"], b'"role"' in named["graph/index.json"], roles(named)),
+                   ([], [], [], True, [], [], False, False,
+                    sorted([("lean-s-a-one", "card", "lean-s-a-one"), ("lean-s-a-two", "card", "lean-s-a-two"), ("lean-s-a-three", "card", "lean-s-a-three"),
+                            ("lean-s-a", "child", "lean-s-a-one"), ("lean-s-a", "child", "lean-s-a-two"), ("lean-s-a", "child", "lean-s-a-three")])))
+
+    @case("STM-ROLE-KINDS", "each of the eight kinds of STATEMENT_KIND_WORDS has its own word on the card and on the closed child (a table, one fixture with all eight): theorem Theorem, lemma Lemma, a "
+                            "noncomputable def Definition, abbrev Abbreviation, structure Structure, class Class, inductive Inductive type, instance Instance; each equals the `text` of its row of index.json "
+                            "`symbols.kinds`; a fixture of two kinds writes the words of those two only")
+    def _():
+        with _tmp() as d:
+            g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": _stm_src(STM_ROLE_BODY)}, {"New/S/A": _stm_ilean("New/S/A", STM_ROLE_NAMES)}, statements_for=["lean-s-a"])
+        if errs:
+            return False, errs
+        st = _stm_names(files)
+        fa = json.loads(files["graph/step/lean-s-a.json"].decode("utf-8"))
+        ix = json.loads(files["graph/index.json"].decode("utf-8"))
+        kids = {c["id"]: c for c in fa["children"]}
+        table = [(st[n]["card"]["kind"], st[n]["card"].get("role"), kids[st[n]["id"]].get("role"), ix["symbols"]["kinds"][st[n]["card"]["kind"]]["text"]) for n in STM_ROLE_NAMES]
+        want = [(k, w, w, w) for k, w in zip(["theorem", "lemma", "def", "abbrev", "structure", "class", "inductive", "instance"], STM_ROLE_WORDS)]
+        two = _stm_one({"New/S/A": _stm_src("theorem t1 : True := trivial\nlemma t2 : True := trivial\n")}, {"New/S/A": _stm_ilean("New/S/A", ["t1", "t2"])}, field="card")
+        return _eq((table, {n: o.get("role") for n, o in two.items()}), (want, {"t1": "Theorem", "t2": "Lemma"}))
+
+    @case("STM-ROLE-SHAPE", "the written steps pass the shape the page's own validator (data.js closedOf) checks of a card and a closed child: every `role` is a non-empty string, and no key besides the "
+                            "allowed ones is on any card or closed child (id, title, kind, state, proof, child_count, path, role, child_kind; parent_rests_on on a closed child only), in a fixture "
+                            "of three statements and in the one of all eight kinds. (data.js validateStep is not run on a statement tree: the page at this checkout does not read the statement keys, "
+                            "so it refuses the step files and the words; validateIndex's PGV1 does not read them either)")
+    def _():
+        allowed = {"id", "title", "kind", "state", "proof", "child_count", "path", "role", "child_kind"}
+        out = []
+        for srcs, ils in (({"New/S/A": STM_A, "New/S/B": STM_B}, {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN}),
+                          ({"New/S/A": _stm_src(STM_ROLE_BODY)}, {"New/S/A": _stm_ilean("New/S/A", STM_ROLE_NAMES)})):
+            with _tmp() as d:
+                g, (errs, files, rows, rep) = _stm_build(d, srcs, ils, statements_for=["lean-s-a"])
+            entries = _stm_role_entries(files)
+            extra = lambda w: allowed | ({"parent_rests_on"} if w == "child" else set())
+            out.append((errs, len(entries) > 0, [(i, w, e["id"]) for i, w, e in entries if "role" in e and not (isinstance(e["role"], str) and e["role"] != "")],
+                        [(i, w, e["id"], sorted(set(e) - extra(w))) for i, w, e in entries if set(e) - extra(w)],
+                        sum(1 for i, w, e in entries if "role" in e)))
+        return _eq(out, [([], True, [], [], 6), ([], True, [], [], 16)])
+
+    @case("STM-HEADING-EMPTY", "`heading` is ABSENT when the text of the heading line is empty after the trim (a `/-! ### -/` line, `/-! ###` with the text on no line, a whitespace-only line): an empty heading "
+                               "line is still the NEAREST heading, so a declaration under it has no `heading` key (never the earlier heading's text); the neighbours are unchanged: a normal heading is "
+                               "written (also after an empty one), a declaration with no heading line above has none, and the first LINE rule stands (a heading whose first line is empty and a later "
+                               "line has text is an EMPTY heading: absent, the later line is not used)")
+    def _():
+        body = ("theorem e_pre : True := trivial\n\n/-! ### -/\n\ntheorem e0 : True := trivial\n\n/-! ### First -/\n\ntheorem e1 : True := trivial\n\n"
+                "/-! ### -/\n\ntheorem e2 : True := trivial\n\n/-! ###  \t  -/\n\ntheorem e3 : True := trivial\n\n/-! ### Third -/\n\ntheorem e4 : True := trivial\n\n"
+                "/-! ###\n-/\n\ntheorem e5 : True := trivial\n\n/-! ###\nLater text\n-/\n\ntheorem e6 : True := trivial\n\n/-! ### Fourth\nextra -/\n\ntheorem e7 : True := trivial\n")
+        names = ["e_pre", "e0", "e1", "e2", "e3", "e4", "e5", "e6", "e7"]
+        with _tmp() as d:
+            g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": _stm_src(body)}, {"New/S/A": _stm_ilean("New/S/A", names)}, statements_for=["lean-s-a"])
+        st = _stm_names(files)
+        absent = "<absent>"
+        return _eq((errs, {n: o.get("heading", absent) for n, o in st.items()}),
+                   ([], {"e_pre": absent, "e0": absent, "e1": "First", "e2": absent, "e3": absent, "e4": "Third", "e5": absent, "e6": absent, "e7": "Fourth"}))
+
+    @case("STM-ROLE-REAL", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED), the three files named: 37 statement steps, each with a `role` equal to the `text` of its kind's row of "
+                           "index.json `symbols.kinds`, and each closed child in the three file steps with the role of its step; 37 closed children with a role in all, and no other card or child "
+                           "in the 393 files has one")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        real_pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
+        ids = ["lean-reduction-zeros-criterion", "lean-reduction-zeros-prime-error", "lean-reduction-zeros-prime-number-theorem"]
+        with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
+            live = [g["id"] for g in json.load(f)["groups"]]
+        errs, files, rows, rep = build(_GRH_FOR_SK13, real_pin, dict(_strings(), **STM_WORDS), live_ids=live, ilean_dir=_ILEAN_FOR_SK13, statements_for=ids)
+        if errs:
+            return False, errs
+        st = _stm_names(files)
+        ix = json.loads(files["graph/index.json"].decode("utf-8"))
+        text = {k: v["text"] for k, v in ix["symbols"]["kinds"].items()}
+        entries = _stm_role_entries(files)
+        sid = {o["id"] for o in st.values()}
+        kids = {e["id"]: e for i, w, e in entries if w == "child" and i in ids}
+        return _eq((len(st), sorted({o["card"].get("role") == text[o["card"]["kind"]] for o in st.values()}), sorted({o["card"].get("role") for o in st.values()} - set(text.values())),
+                    len(kids), sorted({kids[o["id"]].get("role") == o["card"].get("role") for o in st.values()}),
+                    sorted((i, w, e["id"]) for i, w, e in entries if "role" in e and not (e["id"] in sid and (w == "card" and i == e["id"] or w == "child" and i in ids)))),
+                   (37, [True], [], 37, [True], []))
 
     @case("STM-REAL", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED), the three files `lean-reduction-zeros-criterion`, `-prime-error` and "
                       "`-prime-number-theorem` named: 356 files without the option and 393 with it (356 + 37), the files that differ are index.json, the three file steps and their group; "
