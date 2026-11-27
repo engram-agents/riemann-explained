@@ -3,7 +3,7 @@
 
 usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--notes-lean-dir DIR]
                               [--statements-for ID[,ID...] --strings-overlay-statements overlay.json [--statement-page-url URL --statement-page-title TEXT]
-                              [--maths-names FILE --maths-statements FILE --maths-notation FILE]]
+                              [--maths-names FILE --maths-statements FILE --maths-notation FILE [--maths-files FILE]]]
        build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]
 
 DIR is the folder that holds CONTENTS.md and src/. The tool reads the `## New` section of CONTENTS.md and the .lean files under src/New and writes
@@ -19,7 +19,7 @@ The Graph overlay is read by the same reader as the Cards overlay and its keys m
 word `edge`) are not checked by the build: case OVL1 holds them on the checked-in file of each overlay. Every .ilean the tool loads must have `version` exactly 5 (ILEAN_VERSIONS), else
 `SKEL-ILEAN-VERSION <path under --ilean-dir> <value as JSON text, or missing>`. --notes-lean-dir (no default; absent, the output is today's) reads the contributed notes
 (readings) of a folder of `*.md` files and writes them as `readings` into the file steps they attach to and as the list `readings` of index.json: the grammar, the checks and every
-`SKEL-READING-<kind>` refusal are in docs/tools.md. --statements-for (no default; absent, the output is today's) opens the named FILE steps to their statements, with --strings-overlay-statements (required with it, refused without it) and the prompt options: the rules, the fields and the refusals `SKEL-STATEMENT-*` are in docs/tools.md. --maths-names, --maths-statements and --maths-notation (all three or none, with --statements-for; absent, the output is today's) read the three tables of ours (contract section 34) and write the number and the human title of every statement, `math`, `human` and the file steps' `notation`: the row shape, the checks and the refusals `SKEL-MATHS-*` are in docs/tools.md. Exit 0 built; 1 refused, OUT_DIR not
+`SKEL-READING-<kind>` refusal are in docs/tools.md. --statements-for (no default; absent, the output is today's) opens the named FILE steps to their statements, with --strings-overlay-statements (required with it, refused without it) and the prompt options: the rules, the fields and the refusals `SKEL-STATEMENT-*` are in docs/tools.md. --maths-names, --maths-statements and --maths-notation (all three or none, with --statements-for; absent, the output is today's) read the three tables of ours (contract section 34) and write the number and the human title of every statement, `math`, `human` and the file steps' `notation`: the row shape, the checks and the refusals `SKEL-MATHS-*` are in docs/tools.md. --maths-files (optional, needs the three; absent, the output is as without it) adds a fourth table, the summary and the optional title of a file step. Exit 0 built; 1 refused, OUT_DIR not
 written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
 self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 and U5 read the real source and run only when --grh and --ilean-dir are given to
 the self-test; otherwise they are skipped.
@@ -1719,7 +1719,9 @@ def _statement_symbols(kinds):
 MATHS_TABLES = ("names", "statements", "notation")   # the three tables, in the order they are checked and reported
 MATHS_SHAPES = {"names": {"key": ("statement",), "text": ("name", "rule"), "other": ()},   # A2, declared ONCE: the keys that name a row, the value keys that are text, the value keys of another form (`lean`: a list, checked with A5)
                 "statements": {"key": ("statement",), "text": ("text",), "other": ()},
-                "notation": {"key": ("file", "symbol"), "text": ("text",), "other": ("lean",)}}
+                "notation": {"key": ("file", "symbol"), "text": ("text",), "other": ("lean",)},
+                "files": {"key": ("file",), "text": (), "other": ("summary",), "optional": ("title",)}}   # the fourth table, only with --maths-files (A7): `summary` and `title` are checked with their limits by `_maths_check` (a wrong type is `SKEL-MATHS-FILES <file> shape`), `title` may be absent
+MATHS_SUMMARY_MAX, MATHS_TITLE_MAX = 600, 200   # the most CODE POINTS of a files row's `summary` and `title` (A7: the builder's proposal, the page's own limits are Clio's to confirm)
 MATHS_FILE_LIMIT = 1048576   # the most bytes of one table file the tool reads (1 MiB)
 MATHS_RULES = ("repository-bold", "classical", "lean-name", "ours")   # A3, Ariadne's four rules in order
 MATHS_NAME_MAX = 60   # the most CODE POINTS of a name (Kepler 40378)
@@ -1757,7 +1759,7 @@ def _maths_row_problems(table, row):
         return ["shape"]
     spec = MATHS_SHAPES[table]
     required = spec["key"] + spec["text"] + spec["other"] + ("by", "date", "status")
-    why = ["key " + k for k in required if k not in row] + ["key " + k for k in sorted(set(row) - set(required) - {"read_by", "read_date"})]
+    why = ["key " + k for k in required if k not in row] + ["key " + k for k in sorted(set(row) - set(required) - set(spec.get("optional", ())) - {"read_by", "read_date"})]
     if any(k in row and not isinstance(row[k], str) for k in spec["key"] + spec["text"]):
         why.append("shape")
     if "by" in row and (not isinstance(row["by"], str) or _reading_name_bad(row["by"])):
@@ -1803,7 +1805,7 @@ def _maths_rows(table, obj, known):
             if key in seen:
                 why.append("duplicate")
             seen.add(key)
-            if table != "notation" and row["statement"] not in known:
+            if table in ("names", "statements") and row["statement"] not in known:
                 why.append("unknown")
         where = table + " " + _maths_row_where(table, row, k)
         errors += [("SKEL-MATHS-ROWS", where, w) for w in why]
@@ -1891,6 +1893,23 @@ def _maths_name_whys(row, doc, file_id, known, taken):
     return why
 
 
+def _maths_files_whys(row, ids, known):
+    """[why] for a row of the files table (A7), in the order `file` (not one of `--statements-for` `ids`), `shape` (a `summary` of 1 to MATHS_SUMMARY_MAX or a `title` of 1 to MATHS_TITLE_MAX code points, no newline, text), `chars` (the CHARACTERS rule of A4),
+    `P <token>` (underscore allowed), `lean-file`, `line-number`, `link`, then `backtick` (the title only), each once even when the summary and the title both hold it."""
+    why = [] if row["file"] in ids else ["file"]
+    shape, chars, visible = False, False, []
+    for text, limit in [(row["summary"], MATHS_SUMMARY_MAX)] + ([(row["title"], MATHS_TITLE_MAX)] if "title" in row else []):
+        if not isinstance(text, str):
+            shape = True
+            continue
+        shape = shape or text == "" or "\n" in text or "\r" in text or len(text) > limit
+        chars = chars or _maths_chars_bad(text)
+        visible += _maths_visible(text, known, True)
+    rank = {"lean-file": 1, "line-number": 2, "link": 3}
+    title = row.get("title")
+    return why + ["shape"] * shape + ["chars"] * chars + sorted(dict.fromkeys(visible), key=lambda w: rank.get(w, 0)) + (["backtick"] if isinstance(title, str) and "`" in title else [])
+
+
 def _maths_numbers(stm_rows, rows, ids, limit=None):
     """(errors, {statement step id: `<file>.<n>`}) (contract section 34, B2; `limit`, default MATHS_NUMBER_MAX, is the most a counter may reach: a file place or a statement place beyond it is `SKEL-MATHS-NUMBERS <file id> file-place` or
     `statement-place`, one line each per file, and the numbers are then {}): `<file>` is the 1-based place of the statement's FILE step among the FILE children of its group, in the group's children order (`order`, the key `_graph_files` sorts the
@@ -1918,7 +1937,8 @@ def _maths_check(maths, ilean_dir, stm, rows, ids):
     _ie, where, _uses, _pos = _ilean_index(ilean_dir, set())   # the compiled index: every declaration of every .ilean (its errors were refused by `build_rows` before)
     known = _maths_known(where)
     errors, good = [], {}
-    for t in MATHS_TABLES:   # stage 1: the file and the rows of each table
+    tables = MATHS_TABLES + (("files",) if "files" in maths else ())   # the fourth table (A7) only when --maths-files was given
+    for t in tables:   # stage 1: the file and the rows of each table
         e, good[t] = _maths_rows(t, maths.get(t), where)
         errors += e
     by_name = {x["name"]: sid for sid, x in stm["step_extra"].items()}   # the statements of this build: full name -> step id
@@ -1946,6 +1966,8 @@ def _maths_check(maths, ilean_dir, stm, rows, ids):
             why.append("chars")
         why += list(dict.fromkeys(_maths_visible(row["text"], known, True) + _maths_visible(row["symbol"], known, True)))
         errors += [("SKEL-MATHS-NOTATION", _maths_row_where("notation", row, k), w) for w in why]
+    for _k, row in good.get("files", []):   # the files table (A7), after the other three: one line for each problem found in the summary or the title, in the order file, shape, chars, P, lean-file, line-number, link, backtick
+        errors += [("SKEL-MATHS-FILES", _safe(row["file"]), w) for w in _maths_files_whys(row, ids, known)]
     if errors:
         return errors, None
     names = {row["statement"]: row for _k, row in good["names"]}
@@ -1971,7 +1993,11 @@ def _maths_check(maths, ilean_dir, stm, rows, ids):
     in_build = set(by_name)
     used = {"names": sum(1 for _k, x in good["names"] if x["statement"] in in_build), "statements": sum(1 for _k, x in good["statements"] if x["statement"] in in_build),
             "notation": sum(1 for _k, x in good["notation"] if x["file"] in ids)}
-    return [], {"rows": sorted(new_rows, key=lambda r: order[r["id"]]), "step_extra": step_extra, "notation": notation, "report": {t: (len(good[t]), used[t], len(good[t]) - used[t]) for t in MATHS_TABLES}}
+    files = {}   # the files table (A7): {file step id: {"summary": {status, text}, "title": text when the row has one}}
+    if "files" in good:
+        used["files"] = sum(1 for _k, x in good["files"] if x["file"] in ids)
+        files = {x["file"]: dict({"summary": {"status": x["status"], "text": x["summary"]}}, **({"title": x["title"]} if "title" in x else {})) for _k, x in good["files"]}
+    return [], {"rows": sorted(new_rows, key=lambda r: order[r["id"]]), "step_extra": step_extra, "notation": notation, "files": files, "report": {t: (len(good[t]), used[t], len(good[t]) - used[t]) for t in tables}}
 
 
 def _maths_lines(rep):
@@ -2282,7 +2308,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     the folder of the .ilean files of the build; `notes_lean_dir` (optional) is the folder of the contributed notes (readings); `statements_for` (optional, a list of FILE step ids) opens those files
     to their statements (one step per declaration, contract section 31), with the options `page_url` and `page_title` of the prompt; `readings` (optional, the entries `_reading_entries` returns, needs
     `statements_for`) puts a `reading` on the statement steps they name; `maths` (optional, needs `statements_for`: {"names", "statements", "notation"}, each the parsed JSON of a table file, contract section 34) writes the number, the
-    human title, `math`, `human` and the file steps' `notation` (`_maths_check`); absent, every file is today's."""
+    human title, `math`, `human` and the file steps' `notation` (`_maths_check`), and with a fourth table `"files"` (A7) the file steps' `summary` and title; absent, every file is today's."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
     if open_scale_floor is not None:
@@ -2362,6 +2388,12 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         step_extra.update(stm["step_extra"])
         for fid, rows_of in (maths_out["notation"] if maths_out else {}).items():   # the notation rows of each file step (B3), in the table's order
             step_extra.setdefault(fid, {})["notation"] = rows_of
+    if maths_out and maths_out["files"]:   # the files table (A7): `summary` on the file step; the card and the closed entry in the group step take the row's `title` when it has one (ids stay: they come from the outline)
+        by_file = maths_out["files"]
+        step_extra = {k: dict(v) for k, v in step_extra.items()}
+        for fid, x in by_file.items():
+            step_extra.setdefault(fid, {})["summary"] = x["summary"]
+        all_rows = [dict(r, title=by_file[r["id"]]["title"]) if "title" in by_file.get(r["id"], {}) else r for r in all_rows]
     if reading_counts:   # the one writer of a card (`closed` of _graph_files) writes `reading_count` from the row: the step's own card, its entry in its parent's `children` and the top-level cards all come from it
         all_rows = [dict(r, reading_count=reading_counts[r["id"]]) if r["id"] in reading_counts else r for r in all_rows]
     errors, objs = bs._graph_files(all_rows, pin, strings, symbols=syms, orders=orders, layout="column", link_info=link_info, notes=notes, child_kinds=True, status_hidden=hidden, child_kind_off=stm["with_children"] if stm else (),
@@ -2381,7 +2413,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), all_rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR] [--statements-for ID[,ID...] --strings-overlay-statements FILE [--statement-page-url URL --statement-page-title TEXT] [--readings FILE] [--maths-names FILE --maths-statements FILE --maths-notation FILE]]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR] [--statements-for ID[,ID...] --strings-overlay-statements FILE [--statement-page-url URL --statement-page-title TEXT] [--readings FILE] [--maths-names FILE --maths-statements FILE --maths-notation FILE [--maths-files FILE]]]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]")
 
 
@@ -2389,7 +2421,7 @@ def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay][, strings-overlay-graph]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir", "--statements-for", "--statement-page-url", "--statement-page-title", "--strings-overlay-statements", "--readings", "--maths-names", "--maths-statements", "--maths-notation") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir", "--statements-for", "--statement-page-url", "--statement-page-title", "--strings-overlay-statements", "--readings", "--maths-names", "--maths-statements", "--maths-notation", "--maths-files") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -2464,8 +2496,10 @@ def _run(opts):
         return 1
     if "readings" in opts and "statements-for" not in opts:   # a reading is of a statement: nothing is read
         return refuse([("SKEL-STATEMENT-READING-OPTIONS", "readings", "needs --statements-for")])
-    if any("maths-" + t in opts for t in MATHS_TABLES):   # the three tables come all together or none, and with --statements-for: checked before any file is read
-        wrong = [("SKEL-MATHS-OPTIONS", "maths-" + t, "is missing") for t in MATHS_TABLES if "maths-" + t not in opts] + ([("SKEL-MATHS-OPTIONS", "maths", "needs --statements-for")] if "statements-for" not in opts else [])
+    if any("maths-" + t in opts for t in MATHS_TABLES) or "maths-files" in opts:   # the three tables come all together or none, and with --statements-for: checked before any file is read; --maths-files (A7) is optional and needs the three
+        three = any("maths-" + t in opts for t in MATHS_TABLES)
+        wrong = ([("SKEL-MATHS-OPTIONS", "maths-" + t, "is missing") for t in MATHS_TABLES if "maths-" + t not in opts] + ([("SKEL-MATHS-OPTIONS", "maths", "needs --statements-for")] if "statements-for" not in opts else []) if three else [])
+        wrong += [("SKEL-MATHS-OPTIONS", "files", "needs the three")] if "maths-files" in opts and not all("maths-" + t in opts for t in MATHS_TABLES) else []
         if wrong:
             return refuse(wrong)
     if ("statements-for" in opts) != ("strings-overlay-statements" in opts):   # checked before any file is read: a build without statements never reads or ships the statement words
@@ -2523,7 +2557,7 @@ def _run(opts):
     maths = None
     if "maths-names" in opts:   # the three table files (all three are named: checked above): a file that cannot be read is exit 2, one that is not JSON, or is too large, reaches the build as no object and is refused `SKEL-MATHS-ROWS <table> - shape` with the other tables' problems
         maths = {}
-        for t in MATHS_TABLES:
+        for t in MATHS_TABLES + (("files",) if "maths-files" in opts else ()):   # the files table (A7) is read the same way, last
             try:
                 raw_table = _read_bounded(opts["maths-" + t], MATHS_FILE_LIMIT)
             except SourceError as e:
@@ -8736,7 +8770,7 @@ def _selftest_cases():
     @case("MTF-TITLE-LIMITS", "a `title` has 1 to 200 CODE POINTS and no newline: 201 characters (and 201 outside the BMP), the empty text, `a\\nb` (also `chars`) and a non-text value are `SKEL-MATHS-FILES <file> shape`; 200 characters, 200 outside the BMP and 200 `é` pass; "
                              "a row with no `title` passes (the title is optional)")
     def _():
-        run = lambda t: _mtf_why([_mtf_f("lean-p-a", title=t)])
+        run = lambda t: _mtf_why([dict(_mtf_f("lean-p-a"), title=t)])   # `title` set as given, null included
         S, astral = ["SKEL-MATHS-FILES lean-p-a shape"], "\U0001d4d0"
         return _eq({"200": run("x" * 200), "201": run("x" * 201), "200-astral": run(astral * 200), "201-astral": run(astral * 201), "200-e": run("é" * 200), "empty": run(""), "newline": run("a\nb"), "int": run(5), "none": run(None),
                     "absent": _mtf_why([_mtf_f("lean-p-a")])},
