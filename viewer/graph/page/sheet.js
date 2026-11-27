@@ -1,13 +1,14 @@
-/* The sheet: a bottom sheet under 768 px, a side panel above (that is CSS). It shows ONE thing at a time: a card's
-   own <article> (moved in with appendChild and moved back to a placeholder comment on close, R2), the About
-   content (builder markup, moved the same way) or the key (generated). The List markup is never copied or reparsed.
+/* The sheet: a bottom sheet under 768 px, a side panel above (that is CSS). It shows ONE thing at a time: a card (either
+   the page's own <article> from the markup, moved in with appendChild and moved back to a placeholder comment on close, R2;
+   or a div.card the page made from the data, which has no place in the page, so on close it is removed, not moved back),
+   the About content (builder markup, moved the same way) or the key (generated). The List markup is never copied or reparsed.
 
    CLASS TABLE this module sets or honours (all fixed here, none from data):
      graph-sheet        on the sheet element (the comment script finds it with article.closest('.graph-sheet'))
      comments-editing   set and removed ONLY by the comment script; graph.css makes the sheet full height with it
-     graph-sheet-body   the body container; its SINGLE child is the moved root (a card's <article>, the About block's root,
-                        or the generated key); `sheetclose` is dispatched on that root, `sheetcloserequest` from anywhere in it
-                        runs close()
+     graph-sheet-body   the body container; its SINGLE child is the moved root (a card's root: its <article>, or the div.card
+                        the page made; the About block's root, or the generated key); `sheetclose` is dispatched on that root,
+                        `sheetcloserequest` from anywhere in it runs close()
      claim-clamped      on the sheet body while the claim is clamped to 10 lines (graph.css)
      sheet-status, sheet-tool, crumbs, crumb, crumb-here, crumb-role   chrome this module creates
      note-label, note-source, note-body   the repository's note, only when the card has one (info.note), directly after the status line
@@ -66,9 +67,13 @@ export function createSheet(parts, strings, hooks, signal) {
   /* For the fallback only: put everything home even if a listener would have cancelled. */
   function dispose() { if (cur) release(cur); }
 
+  /* Both callers (showCard and showPanel) call close() before adopt, so a card the page made is always parentless when adopted
+     and gets no home comment. A future route that adopted a made card while it was still in the sheet body would give it a home
+     comment, and release would then leave the card behind. The browser cell that catches it is the reopen case
+     c_made_close_reopen (made B3), which expects the same element back with one child. */
   function adopt(node, moveHome) {
     const rec = { node, home: null, details: [], status: null };
-    if (moveHome) {
+    if (moveHome && node.parentNode) {   // a card the page made has no home in the page: on close it leaves (release removes a parentless card)
       rec.home = doc.createComment("");
       node.parentNode.insertBefore(rec.home, node);
     }
@@ -169,7 +174,7 @@ export function createSheet(parts, strings, hooks, signal) {
   }
 
   /* A claim taller than 10 lines shows 10 and a 'Show the whole claim' button. The clamp is a class on the body, so
-     the article itself gets no class, style or attribute from us. */
+     the card itself gets no class, style or attribute from us. */
   function clamp(claim) {
     if (!claim) return;
     body.classList.add("claim-clamped");

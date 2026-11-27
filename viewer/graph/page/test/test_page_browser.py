@@ -108,9 +108,11 @@ class Pg:
     """A page with its console, errors and dialogs collected; ev() evaluates through DevTools (Playwright's own evaluate
     compiles strings with eval, which this CSP rightly blocks)."""
 
-    def __init__(self, browser, url, width=1024, height=800, js=True, mobile=False):
+    def __init__(self, browser, url, width=1024, height=800, js=True, mobile=False, init=None):
         self.ctx = browser.new_context(viewport={"width": width, "height": height}, java_script_enabled=js,
                                        is_mobile=mobile, has_touch=mobile, device_scale_factor=1)
+        if init:
+            self.ctx.add_init_script(init)     # runs before any script of the page: a listener registered here cannot miss an early event
         self.page = self.ctx.new_page()
         self.console, self.dialogs = [], []
         self.page.on("console", lambda m: self.console.append((m.type, m.text)))
@@ -2953,6 +2955,622 @@ def c_mutant(b):
     c_mutant.fails = fails
 
 
+# ---------------------------------------------------------------------------------------------------------- made cards
+# The assembler writes an EMPTY card block (its clause A7: the page has no card articles): the cards block of the page is the
+# graph-about section and nothing else. A card the markup lacks is MADE from the data (app.js madeCard); a card the markup has is
+# used as it is. The tree is the skeleton map with notes (fixtures/notes), its titles and its one note made SYNTHETIC at assembly time.
+MADE_VIEWS = [(390, 844, True), (1280, 900, False)]
+MADE_ABOUT_BLOCK = ('<section id="graph-about" data-page-feedback="off">\n<p>Synthetic about words for the made-card cases.</p>\n'
+                    '<p class="roots-only">Synthetic roots-only sentence.</p>\n</section>\n')
+MADE_TITLES = {"sk-file-1": "Synthetic file one with a `code span` in it", "sk-file-4": "Synthetic file four with `two words`",
+               "sk-file-5": "Synthetic file five", "sk-group-b": "Synthetic group b"}
+MADE_FILE1_PLAIN = "Synthetic file one with a code span in it"
+MADE_NOTE = {"text": "# Synthetic note heading\n\nA synthetic paragraph of the note.\n", "source": "synthetic/FileOne.lean"}
+
+
+def made_steps(steps):
+    for sid, title in MADE_TITLES.items():
+        steps[sid]["card"]["title"] = title
+        for s in steps.values():
+            for c in s["children"]:
+                if c["id"] == sid:
+                    c["title"] = title
+    steps["sk-file-1"]["note"] = dict(MADE_NOTE)
+
+
+def made_served(engine, cards):
+    root = tempfile.mkdtemp(prefix="pg-made-")
+    assemble.assemble(root, engine, fix="notes", cards_edit=lambda c: cards, step_edit=made_steps)
+    return Served(root)
+
+
+MADE_STATE_JS = """(() => { const b = document.getElementById('graph-sheet-body'), c = b.firstElementChild;
+  if (!c) return null;
+  const cl = c.querySelector('.claim'), nl = c.querySelector('.note-label'), ns = c.querySelector('.note-source'), nb = c.querySelector('.note-body');
+  return { n: b.childElementCount, tag: c.tagName, cls: c.className, id: c.getAttribute('id'), dataId: c.getAttribute('data-id'),
+    claim: cl && cl.textContent, codes: cl ? cl.querySelectorAll('code').length : -1, visible: !!cl && cl.offsetHeight > 0 && !document.getElementById('graph-sheet').hidden,
+    kids: [...c.children].map(e => e.tagName + '.' + e.className), status: cl && cl.nextElementSibling && cl.nextElementSibling.textContent,
+    note: nb ? { label: nl.textContent, source: ns.textContent, body: nb.textContent } : null }; })()"""
+
+
+def made_wait_claim(pg, text):
+    pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === %s" % json.dumps(text), 6000)
+
+
+def made_healthy(pg):
+    assert pg.ev("document.getElementById('graph-fallback').hidden === true && !document.getElementById('graph-layer').hidden"), "the page fell back"
+    pg.csp_clean()
+
+
+def made_expect(pg, sid, tag, claim, word, with_note=False, codes=0, markup_id=None):
+    made_wait_claim(pg, claim)
+    st = pg.ev(MADE_STATE_JS)
+    assert st["n"] == 1 and st["tag"] == tag and st["id"] == markup_id and st["dataId"] is None, (sid, st)
+    assert st["cls"] == "card" and st["claim"] == claim and st["codes"] == codes and st["visible"], (sid, st)
+    if tag == "DIV":      # a made card holds nothing but what the sheet puts in it
+        assert st["kids"][:2] == ["H3.claim", "P.sheet-status"] and st["status"] == word, (sid, st)
+        want = ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "DIV.note-body"] if with_note else ["H3.claim", "P.sheet-status"]
+        assert st["kids"] == want, (sid, st["kids"])
+    if with_note:
+        assert st["note"]["label"] == "From the repository, unchanged" and "A synthetic paragraph of the note." in st["note"]["body"], (sid, st["note"])
+        assert st["note"]["source"].startswith("Source file: synthetic/FileOne.lean"), st["note"]
+    else:
+        assert st["note"] is None, (sid, st["note"])
+
+
+def c_made_deep_link(b, S0, engine, w, h, mobile):
+    """B1: on a tree whose card block is the assembler's (no articles), a deep link to a part, a group and a file opens the sheet, the title is the
+    .claim (a backtick span a code element), the status line follows it, the note section shows for a file with a note and not for one without."""
+    S = made_served(engine, MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html#sk-part", w, h, mobile=mobile).settled()
+        made_expect(pg, "sk-part", "DIV", "Part sk-part", "Part")
+        for sid, claim, word, note, codes in (("sk-group-a", "Group sk-group-a", "Group", False, 0), ("sk-file-1", MADE_FILE1_PLAIN, "File", True, 1),
+                                              ("sk-file-3", "File sk-file-3", "File", False, 0)):
+            at_hash(pg, sid)
+            made_expect(pg, sid, "DIV", claim, word, note, codes)
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+# ---- the Graph view (graphview.js): the switch, the lazy read of spine.json, the spine drawn by a second engine, the failure event ----
+GV_INIT = ("window.__gp = []; window.__gpmeta = []; document.addEventListener('graphpage-failure', function (e) { window.__gp.push(e.detail); "
+           "window.__gpmeta.push({ cancelable: e.cancelable, composed: e.composed, bubbles: e.bubbles, type: e.type, isTrusted: e.isTrusted }); });")
+GV_PATH = "/graph/spine.json"
+
+
+def gv(b, engine, spine_edit=None, index_edit=None, fix="graphview", width=390, height=844, wait_for="graph", cards_edit=None):
+    """The graphview fixture (made-up text) served, a listener for the failure event registered BEFORE the page loads, the page open at `width`."""
+    root = tempfile.mkdtemp(prefix="pg-gv-")
+    assemble.assemble(root, engine, fix=fix, spine_edit=spine_edit, index_edit=index_edit, cards_edit=cards_edit)
+    Handler.seen.clear()
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", width, height, init=GV_INIT)
+    if wait_for == "graph":
+        pg.settled()
+    return S, pg
+
+
+def gv_clean():
+    Handler.blocked.clear(); Handler.garbage.clear(); Handler.status.clear(); Handler.delay.clear()
+
+
+def gv_spine_requests():
+    return len([x for x in Handler.seen if x.split("?")[0] == GV_PATH])
+
+
+def gv_state(pg):
+    return pg.ev("""(() => { const q = (s) => document.querySelector(s);
+      return { cards: q('#graph').hidden === false, spine: q('.graph-spine') ? q('.graph-spine').hidden === false : null, notice: q('#graph-notice').hidden === false,
+        noticeText: q('#graph-notice').textContent, nodes: document.querySelectorAll('.graph-spine .ge-node').length, cardNodes: document.querySelectorAll('#graph .ge-node').length,
+        pressed: [...document.querySelectorAll('button.view-btn')].map((x) => x.getAttribute('data-id') + ':' + x.getAttribute('aria-pressed')), events: window.__gp }; })()""")
+
+
+def gv_press(pg, which):
+    pg.page.click('button.view-btn[data-id="%s"]' % which)
+    pg.page.wait_for_timeout(250)
+
+
+def c_gv_live_silent(b, S0, engine):
+    """GV1: on the live map (no view words) there is no switch, no Graph stage, no request for spine.json and not one event, through taps, a key, the About
+    block and deep links."""
+    root = tempfile.mkdtemp(prefix="pg-gv-live-")
+    assemble.assemble(root, engine)
+    Handler.seen.clear()
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 1024, 800, init=GV_INIT).settled()
+        tap(pg, "goal-chain")
+        wait_sheet(pg, True)
+        pg.page.click("#graph-key")
+        pg.page.click("#graph-about-open")
+        at_hash(pg, "a1")
+        pg.page.wait_for_timeout(400)
+        st = gv_state(pg)
+        assert st["spine"] is None and pg.ev("document.querySelectorAll('button.view-btn').length") == 0, st
+        assert pg.ev("document.querySelectorAll('.view-switch').length") == 0
+        assert st["events"] == [], st["events"]
+        assert gv_spine_requests() == 0, Handler.seen
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop()
+
+
+def c_made_tap(b, S0, engine, w, h, mobile):
+    """B2: a tap on a drawn box opens the same card; the parts button on a part with children opens its parts."""
+    S = made_served(engine, MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=mobile).settled()
+        tap(pg, "sk-part-2")
+        made_expect(pg, "sk-part-2", "DIV", "Part sk-part-2", "Part")
+        tap(pg, "sk-part")
+        made_expect(pg, "sk-part", "DIV", "Part sk-part", "Part")
+        assert pg.ev("document.querySelector('#graph-sheet-tools .sheet-tool').textContent") == "Open its parts"
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        pg.wait("document.querySelector('[data-node=\"sk-group-a\"]')")
+        tap(pg, "sk-group-a")
+        made_expect(pg, "sk-group-a", "DIV", "Group sk-group-a", "Group")
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        pg.wait("document.querySelector('[data-node=\"sk-file-1\"]')")
+        tap(pg, "sk-file-1")
+        made_expect(pg, "sk-file-1", "DIV", MADE_FILE1_PLAIN, "File", True, 1)
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+MADE_TRACE_JS = ("document.querySelectorAll('.card, .claim, .sheet-status, .note-label, .note-source, .note-body').length === 0 && "
+                 "document.getElementById('graph-sheet-body').childNodes.length === 0 && document.getElementById('graph-sheet').hidden === true")
+
+
+def c_made_close_reopen(b, S0, engine, w, h, mobile):
+    """B3 (M3): closing a made card leaves no trace (no placeholder, nothing in #graph-cards or the sheet, the card is out of the page); a reopen shows
+    the SAME card again (the same element, made once and kept), identical, twice over."""
+    S = made_served(engine, MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=mobile).settled()
+        cards = pg.ev("document.getElementById('graph-cards').outerHTML")
+        assert pg.ev(MADE_TRACE_JS), "a clean start"
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')", 6000)
+        pg.ev("(() => { const c = document.getElementById('graph-sheet-body').firstElementChild; window.__c = c; window.__html = c.outerHTML; })()")
+        assert pg.ev("window.__c.querySelectorAll('.note-body').length") == 1
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev(MADE_TRACE_JS), "close leaves a trace"
+        assert pg.ev("window.__c.parentNode === null && !window.__c.isConnected"), "the made card is out of the page"
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == cards, "#graph-cards changed"
+        assert pg.ev("window.__c.querySelectorAll('.sheet-status, .note-label, .note-source, .note-body').length") == 0, "what the sheet added went with it"
+        for how in ("tap", "escape"):
+            tap(pg, "sk-file-1")
+            pg.wait("document.getElementById('graph-sheet-body').firstElementChild", 6000)
+            assert pg.ev("document.getElementById('graph-sheet-body').firstElementChild === window.__c"), "a reopen made a new card"
+            assert pg.ev("document.getElementById('graph-sheet-body').firstElementChild.outerHTML === window.__html"), "a reopen is not identical"
+            assert pg.ev("document.getElementById('graph-sheet-body').childElementCount") == 1
+            if how == "tap":
+                pg.page.click("#graph-sheet-close")
+            else:
+                pg.page.keyboard.press("Escape")
+            wait_sheet(pg, False)
+            assert pg.ev(MADE_TRACE_JS), "close leaves a trace (" + how + ")"
+            assert pg.ev("document.getElementById('graph-cards').outerHTML") == cards
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_made_unknown(b, S0, engine, w, h, mobile):
+    """B4: an id the data does not know is still link_refused and opens nothing; a card that was open stays open; a known id still opens made."""
+    S = made_served(engine, MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=mobile).settled()
+        refused = "That address does not name a step on this map."
+        at_hash(pg, "no-such-step")
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert pg.ev("document.getElementById('graph-notice').textContent") == refused
+        assert pg.ev("document.getElementById('graph-sheet').hidden") and pg.ev(MADE_TRACE_JS)
+        at_hash(pg, "Bad Id")
+        pg.page.wait_for_timeout(300)
+        assert pg.ev("document.getElementById('graph-sheet').hidden") and pg.ev("!document.getElementById('graph-notice').hidden")
+        at_hash(pg, "sk-part-2")
+        made_expect(pg, "sk-part-2", "DIV", "Part sk-part-2", "Part")
+        assert pg.ev("document.getElementById('graph-notice').hidden"), "a card that opens hushes the notice"
+        at_hash(pg, "sk-nope")
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert pg.ev("document.getElementById('graph-notice').textContent") == refused
+        made_expect(pg, "sk-part-2", "DIV", "Part sk-part-2", "Part")      # the open card stays open
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+MADE_LOOK_JS = """(() => { const b = document.getElementById('graph-sheet-body'), c = b.firstElementChild, cl = c.querySelector('.claim'), st = c.querySelector('.sheet-status'),
+  nl = c.querySelector('.note-label'), ns = c.querySelector('.note-source'), nb = c.querySelector('.note-body'), B = b.getBoundingClientRect(), cs = getComputedStyle(cl);
+  const at = (e) => { const r = e.getBoundingClientRect(); return [Math.round(r.left - B.left), Math.round(r.top - B.top), Math.round(r.width), Math.round(r.height)]; };
+  const card = c.getBoundingClientRect();
+  return { tag: c.tagName, id: c.getAttribute('id'), kids: [...c.children].map(e => e.tagName + '.' + e.className).filter(k => k !== 'P.note'),
+    claimStyle: [cs.fontSize, cs.fontWeight, cs.lineHeight, cs.display, cs.color, cs.marginTop, cs.marginBottom], claimHTML: cl.innerHTML,
+    claim: at(cl), status: [st.textContent, at(st)], label: [nl.textContent, at(nl)], source: [ns.textContent, at(ns)], noteBody: [nb.textContent, at(nb)],
+    card: [Math.round(card.left - B.left), Math.round(card.width)] }; })()"""
+
+MADE_MARKUP_FILE1 = ('<article class="card" id="sk-file-1"><h3 class="claim">Synthetic file one with a <code>code span</code> in it</h3>'
+                     '<p class="note">Synthetic markup note.</p></article>\n')
+
+
+def c_made_looks_like_markup(b, S0, engine, w, h, mobile):
+    """B5: a made card's sheet looks the same as a markup card's for the same step: the .claim (its style and box), the status line directly under
+    it, the note section in the same place. (The markup tree is a precondition: its card is the article with its id.)"""
+    sig = {}
+    for name, cards in (("made", MADE_ABOUT_BLOCK), ("markup", MADE_ABOUT_BLOCK + MADE_MARKUP_FILE1)):
+        S = made_served(engine, cards)
+        try:
+            pg = Pg(b, S.base + "graph/index.html#sk-file-1", w, h, mobile=mobile).settled()
+            made_wait_claim(pg, MADE_FILE1_PLAIN)
+            pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+            sig[name] = pg.ev(MADE_LOOK_JS)
+            made_healthy(pg)
+            pg.close()
+        finally:
+            S.stop()
+    assert (sig["markup"]["tag"], sig["markup"]["id"]) == ("ARTICLE", "sk-file-1"), ("the markup tree must show the markup's article", sig["markup"])
+    assert (sig["made"]["tag"], sig["made"]["id"]) == ("DIV", None), sig["made"]
+    for k in ("kids", "claimStyle", "claimHTML", "claim", "status", "label", "source", "noteBody", "card"):
+        assert sig["made"][k] == sig["markup"][k], (k, sig["made"][k], sig["markup"][k])
+    assert sig["made"]["kids"] == ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "DIV.note-body"], sig["made"]["kids"]
+
+
+def c_made_markup_wins(b, S0, engine, w, h, mobile):
+    """B6 (M2): a page WITH an article for an id shows that article (as today: moved in, and home again byte for byte); the made card is for the ids it
+    has none for, in the same page."""
+    marked = '<article class="card" id="sk-part"><h3 class="claim">Synthetic marked claim</h3></article>\n'
+    S = made_served(engine, MADE_ABOUT_BLOCK + marked)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=mobile).settled()
+        cards = pg.ev("document.getElementById('graph-cards').outerHTML")
+        at_hash(pg, "sk-part")
+        made_expect(pg, "sk-part", "ARTICLE", "Synthetic marked claim", "Part", markup_id="sk-part")
+        assert pg.ev("document.getElementById('sk-part').parentElement === document.getElementById('graph-sheet-body')"), "the markup's article is moved in"
+        pg.ev("window.__m = document.getElementById('sk-part')")
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == cards, "the markup is not back byte for byte"
+        at_hash(pg, "sk-group-a")
+        made_expect(pg, "sk-group-a", "DIV", "Group sk-group-a", "Group")
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == cards
+        assert pg.ev("document.getElementById('graph-sheet-body').childNodes.length === 0 && document.getElementById('graph-sheet').hidden === true "
+                     "&& document.querySelectorAll('.card').length === 1"), "a made card left a trace (the markup's one card is the only .card)"
+        tap(pg, "sk-part")
+        pg.wait("document.getElementById('graph-sheet-body').firstElementChild === window.__m", 6000)
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_gv_switch_present(b, S0, engine):
+    """GV2: with both view words the switch is two buttons in span.seg.view-switch inside nav.toolbar (data-id cards and graph, aria-pressed on Cards), the
+    Graph stage exists hidden and empty, and spine.json has NOT been requested."""
+    S, pg = gv(b, engine)
+    try:
+        assert pg.ev("[...document.querySelectorAll('nav.toolbar > span.seg.view-switch > button.view-btn')].map((x) => x.getAttribute('data-id') + ':' + x.textContent)") == ["cards:Cards", "graph:Graph"]
+        st = gv_state(pg)
+        assert st["pressed"] == ["cards:true", "graph:false"] and st["spine"] is False and st["nodes"] == 0 and st["cards"] is True, st
+        assert gv_spine_requests() == 0
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_draw(b, S0, engine):
+    """GV3 + GV4: pressing Graph reads spine.json ONCE and draws one box per node of the file (the count is the file's, not a literal) in the second stage; Cards is
+    hidden, the notice hidden, the pressed button follows; pressing Graph again does nothing more; Cards returns and back is no new request. The links drawn are
+    the ones in the reduction: the same page without the non-reduction link has the same number of link strokes, and a control that flags it in_reduction draws more."""
+    counts = {}
+    for name, edit in (("full", None), ("without", lambda s: s.__setitem__("links", [l for l in s["links"] if l["in_reduction"]])),
+                       ("flagged", lambda s: [l.__setitem__("in_reduction", True) for l in s["links"]])):
+        S, pg = gv(b, engine, spine_edit=edit)
+        try:
+            n = pg.ev("fetch('/graph/spine.json').then((r) => r.json()).then((j) => j.nodes.length)")
+            Handler.seen.clear()
+            gv_press(pg, "graph")
+            pg.wait("document.querySelectorAll('.graph-spine .ge-node').length > 0", 6000)
+            st = gv_state(pg)
+            assert st["nodes"] == n == 4 and st["spine"] is True and st["cards"] is False and st["notice"] is False, st
+            assert st["pressed"] == ["cards:false", "graph:true"] and st["events"] == [], st
+            counts[name] = pg.ev("document.querySelectorAll('.graph-spine .ge-link').length")
+            if name == "full":
+                assert gv_spine_requests() == 1, Handler.seen
+                gv_press(pg, "graph")
+                assert gv_spine_requests() == 1 and gv_state(pg)["nodes"] == 4
+                gv_press(pg, "cards")
+                st = gv_state(pg)
+                assert st["cards"] is True and st["spine"] is False and st["pressed"] == ["cards:true", "graph:false"], st
+                gv_press(pg, "graph")
+                assert gv_state(pg)["spine"] is True and gv_spine_requests() == 1, Handler.seen
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+    assert counts["full"] == counts["without"] and counts["flagged"] > counts["full"] and counts["full"] > 0, counts
+
+
+def c_gv_faces_and_sheet(b, S0, engine):
+    """GV5 + GV6: a box's face is the row's sentence alone, as text (hostile content stays text: no element from it); a tap opens the sheet with the names as code, the
+    label, the sentence, the line 'Lives in: <the file's title>' and the button; the button switches to Cards and opens THAT file's sheet there."""
+    hostile = "<img src=x onerror=alert(1)> and `<b>code</b>` text"
+
+    def edit(s):
+        s["nodes"][0]["content"] = hostile
+        s["nodes"][0]["names"] = ["<i>x</i>", "Made.second"]
+    S, pg = gv(b, engine, spine_edit=edit)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        faces = pg.ev("[...document.querySelectorAll('.graph-spine .ge-node')].map((n) => n.getAttribute('data-node') + '|' + n.querySelector('.face-title').textContent)")
+        assert faces[0] == "spine-made-a|" + hostile.replace("`", ""), faces[0]
+        assert faces[1:] == ["spine-made-b|Made-up sentence of box b.", "spine-made-c|Made-up sentence of box c.", "spine-made-d|Made-up sentence of box d."], faces
+        assert pg.ev("document.querySelectorAll('.graph-spine img, .graph-spine i, .graph-spine b').length") == 0
+        assert pg.ev("document.querySelectorAll('.graph-spine .face-title code').length") == 1
+        tap(pg, "spine-made-a")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        panel = pg.ev("""(() => { const p = document.querySelector('#graph-sheet-body .spine-panel');
+          return { names: [...p.querySelectorAll('h2 code')].map((c) => c.textContent), label: p.querySelector('.spine-label').textContent,
+                   content: p.querySelector('.spine-content').textContent, lives: p.querySelector('.spine-lives').textContent,
+                   button: p.querySelector('button').textContent, file: p.querySelector('button').getAttribute('data-id'), img: p.querySelectorAll('img, b, i').length }; })()""")
+        assert panel["names"] == ["<i>x</i>", "Made.second"] and panel["label"] == "In the repository's words", panel
+        assert panel["content"] == hostile.replace("`", "") and panel["lives"] == "Lives in: File sk-file-1" and panel["button"] == "Show its file in Cards", panel
+        assert panel["file"] == "sk-file-1" and panel["img"] == 0, panel
+        pg.page.click("#graph-sheet-body .spine-show-file")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-1'", 8000)
+        st = gv_state(pg)
+        assert st["cards"] is True and st["spine"] is False and st["pressed"] == ["cards:true", "graph:false"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_key(b, S0, engine):
+    """GV7: in the Graph view the Key says what a box is and prints the spine's own sentence (the key the spine's edge_basis names); in Cards it is the index's key as before."""
+    S, pg = gv(b, engine)
+    try:
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        cards_key = pg.ev("document.querySelector('#graph-sheet-body .key-content').textContent")
+        assert "Each box is one of the main results" not in cards_key and "Made-up words of the fixture" not in cards_key
+        pg.page.click("#graph-sheet-close")
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        key = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content > *')].map((e) => e.tagName + ':' + e.textContent)")
+        assert key[0] == "P:Each box is one of the main results the repository names in its last step.", key
+        assert key[-1] == "P:A line means the upper result rests on the lower one. Made-up words of the fixture.", key
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_refusals(b, S0, engine):
+    """GV8 + GV9 + GV10: each way the spine can fail at the switch leaves Cards standing (its nodes drawn, shown), the Graph stage hidden and EMPTY, one page-constant
+    notice, and ONE event {stage: graph, code} whose code is a member of the fixed set and nothing else (a hostile value in the refused file never reaches it);
+    pressing Graph again after the cause is gone draws the view, hides the notice and fires {stage: graph, code: null} once."""
+    CODES = ["fetch-failed", "not-json", "http-error", "bad-type", "missing-key", "extra-key", "bad-format", "bad-commit", "bad-edge-basis", "bad-spine-node", "bad-spine-link",
+             "engine-refused", "graph-failed"]
+    hostile = "<img src=x onerror=alert(1)> SECRET-DATA-VALUE"
+    cases = [("a missing file", lambda s: Handler.blocked.add(GV_PATH), None, "http-error"),
+             ("a failing server", lambda s: Handler.status.__setitem__(GV_PATH, 500), None, "http-error"),
+             ("not JSON", lambda s: Handler.garbage.add(GV_PATH), None, "not-json"),
+             ("a hostile edge_basis words", None, lambda sp: sp["edge_basis"].__setitem__("words", hostile), "bad-edge-basis"),
+             ("a cycle in the reduction", None, lambda sp: sp["links"].append({"from": "spine-made-d", "in_reduction": True, "to": "spine-made-a"}), "bad-spine-link"),
+             ("a wrong commit", None, lambda sp: sp.__setitem__("commit", "f" * 40), "bad-commit"),
+             ("an unknown key", None, lambda sp: sp.__setitem__("extra", 1), "extra-key")]
+    for name, serve, edit, code in cases:
+        S, pg = gv(b, engine, spine_edit=edit)
+        try:
+            if serve:
+                serve(S)
+            gv_press(pg, "graph")
+            pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+            st = gv_state(pg)
+            assert st["notice"] and st["noticeText"] == "The graph could not be opened; tap Graph to try again.", (name, st)
+            assert st["nodes"] == 0 and st["spine"] is False and st["cards"] is True and st["cardNodes"] > 0, (name, st)
+            assert st["pressed"] == ["cards:true", "graph:false"], (name, st)
+            assert len(st["events"]) == 1 and sorted(st["events"][0]) == ["code", "stage"] and st["events"][0]["stage"] == "graph", (name, st["events"])
+            assert st["events"][0]["code"] == code and st["events"][0]["code"] in CODES, (name, st["events"])
+            assert "SECRET-DATA-VALUE" not in json.dumps(st["events"]), name
+            assert all(isinstance(e["code"], str) and 0 < len(e["code"]) <= 32 for e in st["events"]), (name, st["events"])      # a string of the fixed set, bounded
+            # Zephyr's conditions on the event itself: not cancelable, not composed, named for this page only
+            assert pg.ev("window.__gpmeta") == [{"cancelable": False, "composed": False, "bubbles": False, "type": "graphpage-failure", "isTrusted": False}], name
+            assert pg.ev("document.getElementById('graph-fallback').hidden") is True, name      # Cards still standing: no fallback of the whole page
+            # the cause goes away: the next press draws the view, clears the notice and tells the clearing once
+            gv_clean()
+            if edit:
+                open(os.path.join(S.srv.RequestHandlerClass.root, "graph", "spine.json"), "w").write(open(os.path.join(assemble.HERE, "fixtures", "graphview", "spine.json")).read())
+            gv_press(pg, "graph")
+            pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+            st = gv_state(pg)
+            assert st["notice"] is False and st["spine"] is True and st["cards"] is False, (name, st)
+            assert len(st["events"]) == 2 and st["events"][1] == {"stage": "graph", "code": None}, (name, st["events"])
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+
+
+def c_gv_ticket(b, S0, engine):
+    """GV11: a press of Graph whose spine is still loading, then a press of Cards: the late answer changes nothing (Cards stays, the stage stays hidden and empty,
+    no notice, no event); the route's ticket was superseded."""
+    S, pg = gv(b, engine)
+    try:
+        ev = threading.Event()
+        Handler.delay[GV_PATH] = ev
+        pg.page.click('button.view-btn[data-id="graph"]')
+        pg.page.wait_for_timeout(200)
+        pg.page.click('button.view-btn[data-id="cards"]')
+        ev.set()
+        pg.page.wait_for_timeout(600)
+        st = gv_state(pg)
+        assert st["cards"] is True and st["spine"] is False and st["nodes"] == 0 and st["notice"] is False and st["events"] == [], st
+        assert st["pressed"] == ["cards:true", "graph:false"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_one_view_word(b, S0, engine):
+    """GV12: a map with only ONE of the two view words is refused at start (bad-view-words): the fallback shows and Cards' markup stays, as for any refused index."""
+    for drop in ("view_cards", "view_graph"):
+        S, pg = gv(b, engine, index_edit=lambda i, d=drop: i["strings"].pop(d), wait_for="load")
+        try:
+            pg.wait("document.getElementById('graph-fallback').hidden === false", 6000)
+            assert pg.ev("document.querySelectorAll('button.view-btn').length") == 0 and pg.ev("document.getElementById('graph-cards').hidden") is False
+            assert gv_spine_requests() == 0
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop(); gv_clean()
+
+
+def c_gv_engine_refused(b, S0, engine):
+    """GV13: the engine itself refuses the spine's roots (more boxes than the map's max_children): this happens AFTER the stage was shown, so the page must put
+    itself back: Cards shown and drawn, the Graph stage hidden and empty, the one notice, one event with the code engine-refused, the pressed button back on Cards."""
+    S, pg = gv(b, engine, index_edit=lambda i: i.__setitem__("max_children", 3))
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+        st = gv_state(pg)
+        assert st["noticeText"] == "The graph could not be opened; tap Graph to try again." and st["cards"] is True and st["spine"] is False and st["nodes"] == 0 and st["cardNodes"] > 0, st
+        assert st["events"] == [{"stage": "graph", "code": "engine-refused"}] and st["pressed"] == ["cards:true", "graph:false"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_unknown_file(b, S0, engine):
+    """GV14: a spine box whose file is no step the page can load: the tap shows the page's refused-link notice, opens no panel, and leaves the Graph view as it is."""
+    S, pg = gv(b, engine, spine_edit=lambda sp: sp["nodes"][0].__setitem__("file", "no-such-step"))
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        tap(pg, "spine-made-a")
+        pg.wait("document.getElementById('graph-notice').hidden === false", 6000)
+        st = gv_state(pg)
+        assert st["noticeText"] == "That address does not name a step on this map." and st["spine"] is True and st["cards"] is False and st["nodes"] == 4, st
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .spine-panel').length") == 0 and not sheet_open(pg)
+        assert st["events"] == [], st["events"]      # a bad box is not a failure of the view: no event
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_show_file_made_card(b, S0, engine):
+    """GV18: on a tree whose card block is the assembler's (no articles, as on the real map), 'Show its file in Cards' switches to Cards and opens THAT file's sheet
+    as a card the page MADE from the data (a div, no markup id): the Graph view is hidden, the claim is the file's title, the sheet is open and the page is healthy."""
+    S, pg = gv(b, engine, cards_edit=lambda c: MADE_ABOUT_BLOCK)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        assert pg.ev("document.querySelectorAll('#graph-about ~ article, article.card').length") == 0, "the tree has a markup card"
+        tap(pg, "spine-made-a")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        pg.page.click("#graph-sheet-body .spine-show-file")
+        made_expect(pg, "sk-file-1", "DIV", "File sk-file-1", "File")
+        st = gv_state(pg)
+        assert st["cards"] is True and st["spine"] is False and st["pressed"] == ["cards:true", "graph:false"] and st["notice"] is False, st
+        assert st["events"] == [], st["events"]
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_showall_and_address(b, S0, engine):
+    """GV15: in the Graph view 'Show all' frames the spine (its boxes stay) and an address (#id) shows that card in CARDS: the view switches back first, the card's sheet opens."""
+    S, pg = gv(b, engine)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        pg.page.click("#graph-show-all")
+        pg.page.wait_for_timeout(300)
+        st = gv_state(pg)
+        assert st["nodes"] == 4 and st["spine"] is True and st["cards"] is False and not sheet_open(pg), st
+        pg.ev("location.hash = '#sk-file-1'")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-1'", 8000)
+        st = gv_state(pg)
+        assert st["cards"] is True and st["spine"] is False and st["pressed"] == ["cards:true", "graph:false"], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_view_routes_close(b, S0, engine):
+    """GV16: the Graph view's routes begin with the sheet's one close function: with a listener that cancels `sheetclose` on the shown panel, pressing Cards, tapping another
+    box, pressing 'Show its file' and pressing Graph each leave the panel and the view exactly as they were. The route names are the module's own VIEW_ROUTES."""
+    S, pg = gv(b, engine)
+    try:
+        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["spine-open", "spine-show-file", "view-cards", "view-graph"]
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        tap(pg, "spine-made-a")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        pg.ev("document.querySelector('#graph-sheet-body .spine-panel').addEventListener('sheetclose', (e) => e.preventDefault())")
+        names = lambda: pg.ev("[...document.querySelectorAll('#graph-sheet-body .spine-panel h2 code')].map((c) => c.textContent)")
+        for what, act in (("Cards", lambda: pg.page.click('button.view-btn[data-id="cards"]')), ("another box", lambda: tap(pg, "spine-made-b")),
+                          ("Show its file", lambda: pg.page.click("#graph-sheet-body .spine-show-file")), ("Graph", lambda: pg.page.click('button.view-btn[data-id="graph"]'))):
+            act()
+            pg.page.wait_for_timeout(300)
+            st = gv_state(pg)
+            assert names() == ["Made.a"] and st["spine"] is True and st["cards"] is False and st["pressed"] == ["cards:false", "graph:true"], (what, names(), st)
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_stale_spine_open(b, S0, engine):
+    """GV17: a tap on a box whose file is still loading, then a tap on another box: the second box's panel is shown, and the first one's late answer changes nothing."""
+    S, pg = gv(b, engine)
+    try:
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        ev = threading.Event()
+        Handler.delay["/graph/step/sk-file-2.json"] = ev
+        tap(pg, "spine-made-b")
+        pg.page.wait_for_timeout(200)
+        tap(pg, "spine-made-c")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel h2 code')?.textContent === 'Made.c'", 6000)
+        ev.set()
+        pg.page.wait_for_timeout(500)
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .spine-panel h2 code')].map((c) => c.textContent)") == ["Made.c"]
+        assert gv_state(pg)["notice"] is False
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+GV_CASES = [
+    ("GV1: the live map has no switch, no Graph stage, no spine request and no event", c_gv_live_silent),
+    ("GV2: with both view words the switch is two buttons (Cards pressed), the stage hidden and empty, spine.json not requested", c_gv_switch_present),
+    ("GV3/GV4: Graph reads spine.json once, draws one box per node, only the reduction's links, and switches back and forth without a new request", c_gv_draw),
+    ("GV5/GV6: a box's face is its sentence as text, its sheet holds names, label, sentence, 'Lives in' and the button, which opens the file's sheet in Cards", c_gv_faces_and_sheet),
+    ("GV7: the Graph view's key says what a box is and prints the spine's own sentence; Cards' key is unchanged", c_gv_key),
+    ("GV8/GV9/GV10: seven ways the spine fails each leave Cards standing, one notice, one event with a fixed-set code only, and a retry draws it and tells the clearing once", c_gv_refusals),
+    ("GV11: a press of Graph superseded by a press of Cards changes nothing when the spine arrives late", c_gv_ticket),
+    ("GV12: one view word without the other is refused at start", c_gv_one_view_word),
+    ("GV14: a box whose file is no loadable step shows the refused-link notice and no panel, and leaves the Graph view as it is", c_gv_unknown_file),
+    ("GV15: in the Graph view 'Show all' frames the spine and an address shows its card in Cards", c_gv_showall_and_address),
+    ("GV16: the Graph view's routes honour a cancelled sheetclose: Cards, another box, 'Show its file' and Graph change nothing", c_gv_view_routes_close),
+    ("GV17: a box tapped while its file loads, then another box: the first one's late answer changes nothing", c_gv_stale_spine_open),
+    ("GV18: on a tree with an empty card block, 'Show its file in Cards' opens the file's made card in Cards", c_gv_show_file_made_card),
+    ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
+]
+
+
 def main():
     only = None
     engines = ["double", "real"]
@@ -3073,7 +3691,18 @@ def main():
                 run("round 6 C2: on the live map a tap whose step fetch never settles (held) has the sheet open before it settles", c_live_open_fetch_held, eng)
                 run("round 6 C3: the 26 live sheet snapshots (23 by address, 3 by tap) equal what main's page drew", c_live_sheets_match_main, eng)
                 run("round 7: a map with only ONE of note_label and note_source is refused at start: the fallback, bad-note-strings recorded, no card opens", c_note_one_key_refused, eng)
+                for mw, mh, mm in MADE_VIEWS:
+                    vw = " @%dx%d" % (mw, mh)
+                    run("made B1: an empty card block: a deep link to a part, a group and a file opens the sheet, the title is the .claim, the note section shows for a file with a note" + vw, c_made_deep_link, eng, mw, mh, mm)
+                    run("made B2: an empty card block: a tap on a drawn box opens the same card; the parts button on a part with children works" + vw, c_made_tap, eng, mw, mh, mm)
+                    run("made B3: a made card's close leaves no trace; a reopen shows the same card, identical" + vw, c_made_close_reopen, eng, mw, mh, mm)
+                    run("made B4: an unknown id is still link_refused and opens nothing" + vw, c_made_unknown, eng, mw, mh, mm)
+                    run("made B5: a made card's sheet looks the same as a markup card's (claim, status and note placement)" + vw, c_made_looks_like_markup, eng, mw, mh, mm)
+                    run("made B6: a page with an article shows it, byte for byte as today; a made card only for an id it has none for" + vw, c_made_markup_wins, eng, mw, mh, mm)
+                run(GV_CASES[0][0], GV_CASES[0][1], eng)
                 if eng == "real":
+                    for gname, gfn in GV_CASES[1:]:
+                        run(gname, gfn, eng)
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
                     run("REAL: pinch semantic-opens a step and loads its step file; no sheet", c_real_pinch)

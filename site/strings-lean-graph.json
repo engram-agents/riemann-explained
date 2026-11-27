@@ -1,3 +1,10 @@
 {
- "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real."
+ "graph_failed_notice": "The graph could not be opened; tap Graph to try again.",
+ "graph_nodes_text": "Each box is one of the main results the repository names in its last step.",
+ "spine_content_label": "In the repository's words",
+ "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real.",
+ "spine_lives_in": "Lives in: {title}",
+ "spine_show_file": "Show its file in Cards",
+ "view_cards": "Cards",
+ "view_graph": "Graph"
 }

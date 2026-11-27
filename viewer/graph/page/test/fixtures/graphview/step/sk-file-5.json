@@ -1,0 +1,23 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "sk-file-5",
+  "kind": "file",
+  "path": [
+   "sk-part",
+   "sk-group-b"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip."
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "sk-file-5",
+ "path": [
+  "sk-part",
+  "sk-group-b"
+ ],
+ "rests_on": []
+}

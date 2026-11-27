@@ -9,17 +9,21 @@
    THE SEAM: start(doc, {createGraph, fetch}) takes the engine's createGraph and a fetch-like as arguments. The last
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
 import { createGraph, checkOptions } from "../engine/index.js";
-import { el, isId } from "./dom.js";
+import { el, isId, titleChildren } from "./dom.js";
 import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING, TYPESET_STRINGS } from "./data.js";
 import { makeRenderFace } from "./face.js";
 import { templateParts } from "./note.js";
 import { createSheet } from "./sheet.js";
+import { createGraphView, buildSpinePanel } from "./graphview.js";
 
 /* Every way the sheet can close. Each one is a function in `routes` below that begins with the sheet's one close
    function; a case drives each of these with a cancelling listener installed. */
 export const CLOSE_ROUTES = Object.freeze([
   "close-button", "tap-outside", "escape", "open-card", "deep-link", "toolbar-show-all", "toolbar-key", "toolbar-about", "open-parts",
 ]);
+/* The routes of the Graph view (graphview.js); they exist on every map but do something only on one that carries the view. Each begins with the sheet's close
+   function like the routes above, so the same cancelling-listener case drives them on a map that has the view. */
+export const VIEW_ROUTES = Object.freeze(["view-graph", "view-cards", "spine-open", "spine-show-file"]);
 
 /* ONE fixed closed size, chosen by measuring in the browser (the browser case "one fixed closed size"): a 50-character title of
    the widest glyphs takes three lines at 15 px in the engine's default 300 px width, and with the role word and the foot at
@@ -29,6 +33,14 @@ export const CLOSE_ROUTES = Object.freeze([
    14.49 px at fit. gapY 56 (still room for the link arrow, 20 px) takes the world from 572 to 532 px high and the scale to
    1.038. The engine's other sizes stay at its defaults. */
 const CARD_SIZES = Object.freeze({ nodeH: 140, gapY: 56 });
+
+/* THE MADE CARD. The builder's card block may hold no card articles at all (the Lean map's assembler writes the About section only); a card the
+   markup lacks for an id the data knows is MADE here, from the step's title alone: a div.card holding one h3.claim (the title through titleChildren,
+   so a backtick span is a code element and nothing in a title is markup). Nothing else is invented: no paragraph, no list of parts, and no id of any
+   kind on it (the page keys cards by its own Map, never by a DOM id). The sheet adds the status line and the note, as for any card. */
+export function madeCard(title, elFn = el) {
+  return elFn("div", { class: "card" }, [elFn("h3", { class: "claim" }, titleChildren(title, elFn))]);
+}
 
 const SHELL = ["graph-layer", "graph", "graph-sheet", "graph-crumbs", "graph-sheet-tools", "graph-sheet-body", "graph-sheet-close",
   "graph-show-all", "graph-key", "graph-about-open", "graph-fallback", "graph-cards", "graph-notice", "graph-about"];
@@ -60,7 +72,7 @@ function buildKey(index) {
 
 export async function start(doc, deps) {
   const failure = { reason: null };
-  let handle = null, sheet = null, layer = null, fallbackEl = null, cardsEl = null;
+  let handle = null, sheet = null, layer = null, fallbackEl = null, cardsEl = null, view = null;
 
   /* THE ONE TEARDOWN. `signal` goes to EVERY addEventListener in page code (the sheet's too), `offs` holds the unsubscribe
      function of EVERY engine subscription, and `dead` is the mark each async continuation checks after an await. The
@@ -79,6 +91,7 @@ export async function start(doc, deps) {
     ctl.abort();
     for (const off of offs.splice(0)) { try { off(); } catch (e) { /* the page is being put back; carry on */ } }
     try { if (handle) handle.destroy(); } catch (e) { /* the same */ }
+    try { if (view) view.destroy(); } catch (e) { /* the same */ }
     try { if (sheet) sheet.dispose(); } catch (e) { /* the same */ }
     if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
     if (fallbackEl) fallbackEl.hidden = false;
@@ -97,7 +110,8 @@ export async function start(doc, deps) {
     const strings = index.strings;
     const roots = await data.loadRoots();
 
-    /* The cards: id -> the builder's own <article>, read once. Keys are checked ids; a lookup never builds a selector. */
+    /* The cards: id -> the builder's own <article>, read once. Keys are checked ids; a lookup never builds a selector. A card the markup lacks is
+       made on its first open (openCard) and kept in this same Map, so a reopen shows the same element. */
     const articles = new Map();
     cardsEl.querySelectorAll("article[id]").forEach((a) => { if (isId(a.id) && !articles.has(a.id)) articles.set(a.id, a); });
     const aboutEl = q["graph-about"];
@@ -185,9 +199,11 @@ export async function start(doc, deps) {
     /* Not async, on purpose: on a map that carries no notes it returns the boolean at once, as it always did, and an exception from the sheet reaches
        the caller synchronously (a tap's guard, or go's catch). On a map that carries notes it returns the promise of the open. */
     function openCard(t, id) {
-      const art = articles.get(id), m = data.meta(id);
+      const m = data.meta(id);
       const anc = m ? m.path.map((a) => data.meta(a)) : [];
-      if (!art || !m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
+      if (!m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
+      let art = articles.get(id);       // the markup's own card wins; only an id it has none for gets a made one
+      if (!art) { art = madeCard(m.title); articles.set(id, art); }
       if (!carriesNotes) return showOpenCard(id, art, m, anc, undefined);
       return openCardWithNote(t, id, art, m, anc);
     }
@@ -227,6 +243,7 @@ export async function start(doc, deps) {
         const step = await data.loadStep(id);
         if (!current(t)) return false;
         if (!sheet.close()) return false;
+        if (view && view.view() === "graph") view.hide();      // an address names a card: it is shown in Cards, the view the cards live in
         const path = step.path.concat(id);
         await viaRoute(t, path, () => handle.reveal(path));
         if (!current(t)) return false;
@@ -242,8 +259,11 @@ export async function start(doc, deps) {
     routes["escape"] = () => sheet.close();
     routes["open-card"] = (t, id) => openCard(t, id);
     routes["deep-link"] = go;
-    routes["toolbar-show-all"] = () => { if (sheet.close()) handle.fit(); };
-    routes["toolbar-key"] = () => { if (sheet.shown() === keyEl) sheet.close(); else sheet.showPanel(keyEl, false); };
+    routes["toolbar-show-all"] = () => { if (sheet.close()) { if (view && view.view() === "graph") view.fit(); else handle.fit(); } };
+    routes["toolbar-key"] = () => {
+      const k = view && view.view() === "graph" ? view.key(EDGE_BASIS_HEADING) : keyEl;     // the Graph view's key says what its boxes and lines are
+      if (sheet.shown() === k) sheet.close(); else sheet.showPanel(k, false);
+    };
     routes["toolbar-about"] = () => { if (sheet.shown() === aboutEl) sheet.close(); else sheet.showPanel(aboutEl, true); };
     routes["open-parts"] = async (t, id) => {
       try {
@@ -257,6 +277,52 @@ export async function start(doc, deps) {
       } catch (e) {
         if (!current(t)) return;
         failed(e);
+      }
+    };
+    /* THE GRAPH VIEW's routes (graphview.js). They exist on every map and do nothing on one without the view (`view` stays null: no switch is drawn, no
+       request is made). Each begins with the sheet's close function and takes its ticket like the routes above. */
+    routes["view-graph"] = async (t) => {
+      if (!view || !current(t) || !sheet.close()) return false;
+      return view.show(t);
+    };
+    routes["view-cards"] = (t) => {
+      if (!view || !current(t) || !sheet.close()) return false;
+      view.hide();
+      return true;
+    };
+    /* A spine box tapped: the file's own title is wanted for the sheet's line, so the step is loaded BEFORE the sheet is touched (a failed load changes nothing:
+       the retry story of go). The sheet shows the box's names, its sentence, where it lives and the button to the file's sheet in Cards. */
+    routes["spine-open"] = async (t, id) => {
+      if (!view || !current(t)) return false;
+      const node = view.node(id);
+      if (!node) { say(strings.link_refused); return false; }
+      try {
+        const step = await data.loadStep(node.file);
+        if (!current(t)) return false;
+        if (!sheet.close()) return false;
+        const panel = buildSpinePanel(strings, node, titleChildren(step.card.title), (file) => routes["spine-show-file"](file), signal);
+        if (!sheet.showPanel(panel, false)) return false;
+        hush();
+        view.select(id);
+        return true;
+      } catch (e) {
+        if (!current(t)) return false;
+        return failed(e);
+      }
+    };
+    /* 'Show its file': switch to Cards and open that file's sheet there. The file's step is loaded first, so an id that is no step the page can load is the
+       refused-link notice and leaves the Graph view as it is; then the one navigation continues into go with the same ticket. */
+    routes["spine-show-file"] = async (t, id) => {
+      if (!view || !current(t)) return false;
+      try {
+        await data.loadStep(id);
+        if (!current(t)) return false;
+        if (!sheet.close()) return false;
+        view.hide();
+        return await go(t, id);
+      } catch (e) {
+        if (!current(t)) return false;
+        return failed(e);
       }
     };
     /* The one place a route takes its ticket: every entry above is wrapped here, so a route added later cannot forget it. */
@@ -317,6 +383,17 @@ export async function start(doc, deps) {
     if (dead) return failure;
     fallbackEl.hidden = true;     // only after the first graph frame is drawn
     cardsEl.hidden = true;
+    /* The Graph view, only on a map whose index carries both view words (validateIndex says so in index.graphView): the switch and the view's stage are made
+       now, and nothing is requested until the reader presses Graph. */
+    if (index.graphView) {
+      failure.graph = null;
+      view = createGraphView({
+        doc, layer, cardsStage: q["graph"], strings, index, fetch: deps.fetch, createGraph: deps.createGraph, checkOptions, checkedOptions, say, hush, failure, current: (t) => current(t),
+        onSwitch: (which) => routes[which === "graph" ? "view-graph" : "view-cards"](),
+        onTap: (node) => { if (node) routes["spine-open"](node.id); else routes["tap-outside"](); },
+        signal,
+      });
+    }
     const first = hashId(doc);
     if (first !== null) await routes["deep-link"](first);
   } catch (e) {
