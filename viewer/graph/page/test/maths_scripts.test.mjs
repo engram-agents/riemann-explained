@@ -459,7 +459,7 @@ const OLD_JUXTAPOSED = String.raw`/^[\p{L}\p{Nd}₀-₉′'’]+(?:_| +[\p{L}\p{
 async function loadReference() {
   const here = path.join(HERE, "..");
   let src = readFileSync(path.join(here, "note.js"), "utf8");
-  const guard = /JUXTAPOSED\.test\(cs\.slice\(j, end\)\.join\(""\)\)|juxtaposed\(cs, j, end\)/g;
+  const guard = /(?<=j > i \+ 1 && )(?:JUXTAPOSED\.test\(cs\.slice\(j, end\)\.join\(""\)\)|juxtaposed\(cs, j, end\))/g;
   assert.equal((src.match(guard) || []).length, 1, "the guard call appears once in note.js");
   src = src.replace(guard, "OLD_JUXTAPOSED.test(cs.slice(j, end).join(\"\"))");
   src = src.replace('from "./dom.js"', 'from "' + pathToFileURL(path.join(here, "dom.js")).href + '"');

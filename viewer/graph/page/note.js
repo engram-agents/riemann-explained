@@ -68,12 +68,20 @@ const mathsFace = (sp) => oneLetter(sp) || spanClass(sp) === "formula";
 const BASE_CHAR = /^[\p{L}\p{Nd}₀-₉′'’)\]}]$/u;
 const WORD_CHAR = /^[\p{L}\p{Nd}₀-₉′'’]$/u;
 const MARK = /^\p{M}$/u;
-const JUXTAPOSED = /^[\p{L}\p{Nd}₀-₉′'’]+(?:_| +[\p{L}\p{Nd}₀-₉′'’(\[{])/u;          // G4: the rest of a spaced ^'s word operand, then arm (b) _ or arm (a) spaces and a word or opening bracket
 const LETTER = /^\p{L}$/u;
 const SYMBOLS = new Set(["*", "×", "+", "-", "∨", "∞", "⊥"]);
 const OPENERS = new Map([["(", ")"], ["[", "]"], ["{", "}"]]);
 const CLOSERS = new Set([")", "]", "}"]);
 const MAX_SCRIPT_LEVELS = 2;
+
+/* G4, the exponent side: does the word at cs[j..end) end directly at a _, or at spaces and then a word or an opening bracket? By index, nothing copied. */
+function juxtaposed(cs, j, end) {
+  const at = (k) => (k < end ? cs[k] : "");
+  let k = j, m;
+  while (WORD_CHAR.test(at(k))) k++;
+  for (m = k; at(m) === " "; m++);
+  return k > j && (at(k) === "_" || (m > k && (WORD_CHAR.test(at(m)) || OPENERS.has(at(m)))));
+}
 
 /* The index of the bracket that closes the one opening at cs[i], looking only below `end`; -1 when it is unmatched or the brackets cross. */
 function closeAt(cs, i, end) {
@@ -148,7 +156,7 @@ function parseGroup(cs, start, end, level) {
     if (c === "^" && followsWord(cs, start, attached ? runStart - 1 : base)) return null;   // G4: a juxtaposed power; a subscripted base is the word before its _
     let j = i + 1;                                                      // G2: the operand
     if (c === "^") while (j < end && cs[j] === " ") j++;
-    if (c === "^" && j > i + 1 && JUXTAPOSED.test(cs.slice(j, end).join(""))) return null;   // G4: a juxtaposed exponent
+    if (c === "^" && j > i + 1 && juxtaposed(cs, j, end)) return null;   // G4: a juxtaposed exponent
     const operand = parseOperand(cs, i, j, end, c, level);
     if (operand === null) return null;
     const { children, next } = operand;
