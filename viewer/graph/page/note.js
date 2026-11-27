@@ -62,12 +62,14 @@ const mathsFace = (sp) => oneLetter(sp) || spanClass(sp) === "formula";
        directly after the opening { or ( of an operand group is refused too (the same reason). One _ and one ^ on one base is allowed, in either order.
        The exponent side too: a ^ with spaces before a WORD operand that is followed by spaces and a word or an opening bracket, or directly by a _, is refused
        (`a ^ b c` is a^(b c); `a ^ b_c` has the one name b_c as its exponent). An unspaced ^, an operator, comma or closing bracket after it, or the end: not covered.
+       A ^ whose operand is followed directly by a superscript glyph (¹ ² ³ ⁰ ⁱ ⁴-⁹ ⁺ ⁻ ⁼ ⁽ ⁾ ⁿ: U+00B9, U+00B2, U+00B3, U+2070, U+2071, U+2074-U+207F) is refused: the glyph is a raised character of its own that the operand cannot absorb (`x ^ 10⁶` is x ^ (10 ^ 6) in Lean; set, it would read x^10 and then a raised 6). Modifier letters, a space before the glyph, and a _ operand followed by a glyph are not covered.
    G5  spaces after an operand stay as typed.
    Nothing but the script characters, the spaces round a ^, and the brackets of a {...} or ^(...) operand is ever dropped; every other character
    comes through in its place. */
 const BASE_CHAR = /^[\p{L}\p{Nd}₀-₉′'’)\]}]$/u;
 const WORD_CHAR = /^[\p{L}\p{Nd}₀-₉′'’]$/u;
 const MARK = /^\p{M}$/u;
+const SUP_GLYPH = /^[\u00B9\u00B2\u00B3\u2070\u2071\u2074-\u207F]$/u;   // G4: U+00B9, U+00B2, U+00B3, U+2070, U+2071, U+2074-U+207F
 const LETTER = /^\p{L}$/u;
 const SYMBOLS = new Set(["*", "×", "+", "-", "∨", "∞", "⊥"]);
 const OPENERS = new Map([["(", ")"], ["[", "]"], ["{", "}"]]);
@@ -122,7 +124,7 @@ function followsWord(cs, start, last) {
    G4: a combining mark directly after the operand refuses it. */
 function parseOperand(cs, i, j, end, c, level) {
   if (j >= end) return null;
-  const done = (children, next) => (next < end && MARK.test(cs[next]) ? null : { children, next });
+  const done = (children, next) => (next < end && (MARK.test(cs[next]) || (c === "^" && SUP_GLYPH.test(cs[next]))) ? null : { children, next });
   if ((cs[j] === "{" && j === i + 1) || (cs[j] === "(" && c === "^")) {          // (a) and (b): a group, its brackets dropped
     const k = closeAt(cs, j, end);
     if (k < 0 || k === j + 1) return null;
