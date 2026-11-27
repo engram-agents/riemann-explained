@@ -5351,6 +5351,16 @@ def _selftest_cases():
                 bad.append(f"exit codes {got}, wanted {want}")
         return (not bad), "; ".join(bad)
 
+    @case("TMP2", "the self-test as the GATE of a normal build (`selftest_quiet`) skips TMP1 (its three child runs would double the time of every real build, and the leak it checks is already "
+                  "closed at its source); the self-test run directly (`selftest`) runs it: with stand-in cases [TMP1 (fails), X (passes)], the gate returns 0 and runs only X, the direct run returns 4")
+    def _():
+        ran = []
+        stand_in = lambda: [("TMP1", "t", lambda: (ran.append("TMP1") or False, "ran")), ("X", "x", lambda: (ran.append("X") or True, ""))]
+        with _patched("_selftest_cases", stand_in):
+            gate = selftest_quiet()
+            direct = selftest(verbose=False)
+        return _eq((gate, direct, ran), (0, 4, ["X", "TMP1", "X"]))
+
     # ---- data
     @case("L0", "level0.json: the level-1 steps g1 g3 g2 in `order` (the outline lists g3 first, and `order` is not the id order), each with its "
                 "facts (statement_read and proof_read when EVERY root has them, unread) and counts; `facts` counts the steps per fact "
