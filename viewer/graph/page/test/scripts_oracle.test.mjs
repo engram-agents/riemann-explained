@@ -37,9 +37,9 @@ test("SO1 the oracle covers exactly the formula-class spans with a script of the
 });
 
 /* the counts are pinned on purpose: a regeneration that changes them is a decision, so the test is edited with it */
-test("SO2 the counts the oracle states are the counts of its rows: 454 distinct, 371 set, 83 left", () => {
+test("SO2 the counts the oracle states are the counts of its rows: 454 distinct, 369 set, 85 left", () => {
   const set = ORACLE.spans.filter((r) => r.expected !== null).length;
-  assert.deepEqual([ORACLE.distinct, ORACLE.set, ORACLE.left], [454, 371, 83]);
+  assert.deepEqual([ORACLE.distinct, ORACLE.set, ORACLE.left], [454, 369, 85]);
   assert.deepEqual([set, ORACLE.spans.length - set], [ORACLE.set, ORACLE.left]);
   assert.ok(ORACLE.spans.every((r) => (r.expected === null) === (typeof r.reason === "string" && r.reason !== "")), "a left span names its reason, a set span has none");
 });
@@ -71,8 +71,8 @@ test("SO5 a set span keeps every character: the text of its structure, with the 
   }
 });
 
-test("SO6 the synthetic pinned spans (shapes no real span has): the page agrees with the reference: a second script in one run, a combining mark after a group or symbol operand and a blank group are left as typed; one _ and one ^ on one base are set", () => {
-  assert.ok(ORACLE.pinned.length >= 12);
+test("SO6 the synthetic pinned spans (shapes no real span has): the page agrees with the reference: a second script in one run, a combining mark after a group or symbol operand and a blank group are left as typed; one _ and one ^ on one base are set, an operand followed directly by a superscript glyph is refused (x ^ 10⁶) while a word operand that absorbs one (a ^ bⁿ) is set", () => {
+  assert.ok(ORACLE.pinned.length >= 14);
   const bad = [];
   for (const r of ORACLE.pinned) {
     const got = canon(NOTE.scriptParts(r.span));
@@ -80,5 +80,5 @@ test("SO6 the synthetic pinned spans (shapes no real span has): the page agrees 
   }
   assert.deepEqual(bad, []);
   const left = ORACLE.pinned.filter((r) => r.expected === null).map((r) => r.span);
-  assert.equal(left.length, 8, "eight of the twelve are refused");
+  assert.equal(left.length, 9, "nine of the fourteen are refused");
 });

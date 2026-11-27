@@ -26,6 +26,7 @@ SUBDIG = "₀₁₂₃₄₅₆₇₈₉"
 PRIMES = "′'’"
 OPS = "*×+-∨∞⊥"
 CLOSERS = ")]}"
+GLYPHS = set("\u00b9\u00b2\u00b3\u2070\u2071") | set(chr(c) for c in range(0x2074, 0x2080))   # the superscript glyphs of the G4 rule of PR 132: 1 2 3 0 i 4-9 + - = ( ) n
 OPEN = {"(": ")", "[": "]", "{": "}"}
 
 
@@ -173,6 +174,9 @@ def parse(cs, depth, start=0, end=None):
             raise Refuse("no operand")
         if nxt < end and is_mark(cs[nxt]):
             raise Refuse("mark after the operand")
+        # G4 (PR 132): a ^ whose operand is followed DIRECTLY by a superscript glyph is refused (x ^ 10\u2076 is x ^ (10 ^ 6) in Lean); no space, no modifier letters, only on ^
+        if c == "^" and nxt < end and cs[nxt] in GLYPHS:
+            raise Refuse("operand followed by a superscript glyph")
         # emit
         if c == "^":
             buf = buf.rstrip(" ")
@@ -220,7 +224,7 @@ def norm(parts):
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLASSES = os.path.join(HERE, "note-spans-classes.json")
 FIXTURE = os.path.join(HERE, "note-spans-scripts.json")
-PINNED = ["a^b^c", "a_b_c", "1_'_'", "x_₁_x", "a^( )", "a_{ }", "a^{b}\u0304", "a_+\u0304", "a_b^c", "a^b_c", "x_i^2", "x^2_i"]
+PINNED = ["a^b^c", "a_b_c", "1_'_'", "x_₁_x", "a^( )", "a_{ }", "a^{b}\u0304", "a_+\u0304", "a_b^c", "a^b_c", "x_i^2", "x^2_i", "x ^ 10\u2076", "a ^ b\u207f"]
 MAX_SPAN = 50   # the public-text rule: short fragments only (README, docstring)
 
 

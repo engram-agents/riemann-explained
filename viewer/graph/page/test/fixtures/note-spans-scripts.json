@@ -3,8 +3,8 @@
  "source": "the module note (first /-! block) of each of the 306 src/New files",
  "rule": "formula-class code spans with ^ or _; expected by the reference of make_scripts_oracle.py (grammar G1-G5 of viewer/graph/page/note.js)",
  "distinct": 454,
- "set": 371,
- "left": 83,
+ "set": 369,
+ "left": 85,
  "spans": [
   {
    "span": "(-1)^j",
@@ -3245,16 +3245,8 @@
   {
    "span": "x ^ 10⁶ ≤ x₁",
    "count": 1,
-   "expected": [
-    "x",
-    [
-     "sup",
-     [
-      "10"
-     ]
-    ],
-    "⁶ ≤ x₁"
-   ]
+   "expected": null,
+   "reason": "operand followed by a superscript glyph"
   },
   {
    "span": "x ^ 12",
@@ -3367,16 +3359,8 @@
   {
    "span": "x₁ ^ 10⁶ ≤ b",
    "count": 1,
-   "expected": [
-    "x₁",
-    [
-     "sup",
-     [
-      "10"
-     ]
-    ],
-    "⁶ ≤ b"
-   ]
+   "expected": null,
+   "reason": "operand followed by a superscript glyph"
   },
   {
    "span": "y (M) + p ^ j₀ • M",
@@ -6050,6 +6034,23 @@
      "sub",
      [
       "i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x ^ 10⁶",
+   "expected": null,
+   "reason": "operand followed by a superscript glyph"
+  },
+  {
+   "span": "a ^ bⁿ",
+   "expected": [
+    "a",
+    [
+     "sup",
+     [
+      "bⁿ"
      ]
     ]
    ]
