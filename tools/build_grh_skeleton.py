@@ -1715,7 +1715,7 @@ def _statement_symbols(kinds):
 
 # ---------------------------------------------------------------- the reading of a statement (`--readings FILE`): our own words about one statement, from a file, checked here so the page never meets a shape it refuses
 
-READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card); with the option the file of --strings-overlay-statements holds the 27 words and these, without it the 27
+READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card); with the option the file of --strings-overlay-statements holds the 28 words and these (36), without it the 28
 READING_ENTRY_KEYS = ("statement", "file", "text_path", "by", "second_read_by", "date")   # the six string keys of an entry of the readings file, and no other
 READING_TEXT_MAX = 20000   # the most BYTES (UTF-8) of a reading's `text`, counted on the text as written (after the one trailing newline is dropped)
 READING_NAME_MAX = 80   # the most CHARACTERS of `by` and of `second_read_by`
@@ -1723,14 +1723,16 @@ READING_FILE_LIMIT = 1048576   # the most bytes of the readings file itself the 
 READING_TEXT_READ_LIMIT = 65536   # the most bytes of one text file the tool reads (64 KiB; the text has its own, smaller bound)
 _READING_DATE_SHAPE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 QUOTE_OPEN = "In the repository's words ("   # a paragraph that STARTS with these characters is a quote paragraph and is checked; one that starts `In the repository's words` without ` (` is not (the limit of the rule)
-_QUOTE_FORM = re.compile(r"In the repository's words \((?:(?P<path>[^\s,()]+), )?(?:lines (?P<a>[1-9][0-9]*)-(?P<b>[1-9][0-9]*)|line (?P<c>[1-9][0-9]*))\): \"(?P<q>.*)\"\s*", re.S)
+_QUOTE_FORM = re.compile(   # every number has at most 9 digits: a longer one is a form refusal, never an int() of thousands of digits
+    r"In the repository's words \((?:(?P<path>[^\s,()]+), )?(?:lines (?P<a>[1-9][0-9]{0,8})-(?P<b>[1-9][0-9]{0,8})|line (?P<c>[1-9][0-9]{0,8}))\): \"(?P<q>.*)\"\s*", re.S)
 _QUOTE_PATH = re.compile(r"src/[A-Za-z0-9_./-]+\.lean")
 SENTENCE_END_MARKS = "*_)]\""   # the closing marks a sentence end may carry between its `.`, `?` or `!` and the space: a bold title `**Title.**` ends with `.**`, `(really!)`, `"go."`
 
 
 def _reading_name_bad(value):
-    """True when `by` or `second_read_by` may not be written: empty, over READING_NAME_MAX characters, or not printable (a control character, a bidi mark, a zero-width character: the predicate of the prompt path)."""
-    return value == "" or len(value) > READING_NAME_MAX or not value.isprintable()
+    """True when `by` or `second_read_by` may not be written: empty or only white space, not printable (a control character, a bidi mark, a zero-width character: the predicate of the prompt path), or over
+    READING_NAME_MAX characters counted in UTF-16 UNITS (what a page's `.length` counts, the stricter of the two ways: an astral character is two). The printable test comes first, so a lone surrogate never reaches the encoder."""
+    return value.strip() == "" or not value.isprintable() or len(value.encode("utf-16-le")) // 2 > READING_NAME_MAX
 
 
 def _reading_path_error(base, rel):
@@ -1865,12 +1867,21 @@ def _sentence_bounds(body):
     return starts, ends
 
 
-def _is_whole_sentences(quoted, body):
-    """True when `quoted` is a non-empty RUN OF WHOLE SENTENCES of `body`, both with every run of white space collapsed to one space and stripped: it occurs at a start of a sentence and ends at a sentence end."""
-    q, b = re.sub(r"\s+", " ", quoted).strip(), re.sub(r"\s+", " ", body).strip()
+def _doc_sentences(doc):
+    """(body with white space collapsed and stripped, starts, ends) of the doc-comment `doc` = [first line, last line, body, cached or None]: computed ONCE per doc-comment, however many quotes it has."""
+    if doc[3] is None:
+        b = re.sub(r"\s+", " ", doc[2]).strip()
+        doc[3] = (b,) + _sentence_bounds(b)
+    return doc[3]
+
+
+def _is_whole_sentences(quoted, sentences):
+    """True when `quoted` is a non-empty RUN OF WHOLE SENTENCES of a doc-comment (`sentences` = `_doc_sentences` of it), `quoted` with every run of white space collapsed to one space and stripped: it occurs at a start of a sentence
+    and ends at a sentence end."""
+    q = re.sub(r"\s+", " ", quoted).strip()
+    b, starts, ends = sentences
     if q == "":
         return False
-    starts, ends = _sentence_bounds(b)
     i = b.find(q)
     while i != -1:
         if i in starts and i + len(q) in ends:
@@ -1880,24 +1891,33 @@ def _is_whole_sentences(quoted, body):
 
 
 def _quote_source(grh, path, cache):
-    """(raw text, [(start, end, text) of the doc comments]) of the repository file `path` (`src/...lean`) read as the builder reads a source file, or None when it cannot be read (missing, a symlink, outside the
-    checkout, too large, not UTF-8). The answer is cached by path."""
+    """[[first line, last line, body, None] of each doc comment] of the repository file `path` (`src/...lean`) read as the builder reads a source file, or None when it cannot be read (missing, a symlink at ANY
+    component below the grh root (the root itself may be reached through a link), outside the checkout, too large, not UTF-8). The answer is cached by path; a doc-comment's lines are counted once here."""
     if path not in cache:
+        cache[path] = None
+        cur = grh
+        for seg in path.split("/"):
+            cur = os.path.join(cur, seg)
+            if os.path.islink(cur):
+                return None
         try:
             raw = _read_in(grh, os.path.join(grh, *path.split("/")), SOURCE_READ_LIMIT).decode("utf-8")
-            cache[path] = (raw, _lex_blocks(raw)[0])
+            cache[path] = [[raw.count("\n", 0, d[0]) + 1, raw.count("\n", 0, d[1] - 1) + 1, d[2], None] for d in _lex_blocks(raw)[0]]
         except (SourceError, UnicodeDecodeError):
-            cache[path] = None
+            pass
     return cache[path]
 
 
 def _quote_errors(grh, own_path, text, cache):
     """[`paragraph <n> <form|path|lines|text>`] for the quote paragraphs of `text` (the paragraphs, split on blank lines, that start with QUOTE_OPEN; n counts them from 1) that are not exactly
     `In the repository's words (` HEAD `): "` QUOTED `"` with HEAD `lines A-B` or `line A` (A >= 1, A <= B, no leading zero) after an optional `PATH, `, whose PATH is a `src/...lean` file of the checkout
-    (`path`), whose doc-comment covering the lines A..B completely is exactly one (`lines`), and whose QUOTED text is a run of whole sentences of that doc-comment (`text`)."""
+    (`path`), whose doc-comment covering the lines A..B completely is exactly one (`lines`), and whose QUOTED text is a run of whole sentences of that doc-comment (`text`). A paragraph that does NOT start with
+    QUOTE_OPEN but holds it later is `paragraph <k> form` with k counting ALL paragraphs from 1 (such a paragraph is never skipped unchecked)."""
     out, n = [], 0
-    for para in re.split(r"\n(?:[ \t]*\n)+", text):
+    for k, para in enumerate(re.split(r"\n(?:[ \t]*\n)+", text), 1):
         if not para.startswith(QUOTE_OPEN):
+            if QUOTE_OPEN in para:
+                out.append(f"paragraph {k} form")
             continue
         n += 1
         m = _QUOTE_FORM.fullmatch(para)
@@ -1905,20 +1925,19 @@ def _quote_errors(grh, own_path, text, cache):
             out.append(f"paragraph {n} form")
             continue
         path = m["path"] or own_path
-        if m["path"] and (not _QUOTE_PATH.fullmatch(path) or any(seg in (".", "..") for seg in path.split("/"))):
+        if m["path"] and (not _QUOTE_PATH.fullmatch(path) or any(seg in ("", ".", "..") for seg in path.split("/"))):
             out.append(f"paragraph {n} path")
             continue
         src = _quote_source(grh, path, cache)
         if src is None:
             out.append(f"paragraph {n} path")
             continue
-        raw, docs = src
         a = int(m["a"] or m["c"])
         b = int(m["b"] or m["c"])
-        cover = [d for d in docs if raw.count("\n", 0, d[0]) + 1 <= a and b <= raw.count("\n", 0, d[1] - 1) + 1]
+        cover = [d for d in src if d[0] <= a and b <= d[1]]
         if len(cover) != 1:
             out.append(f"paragraph {n} lines")
-        elif not _is_whole_sentences(m["q"], cover[0][2]):
+        elif not _is_whole_sentences(m["q"], _doc_sentences(cover[0])):
             out.append(f"paragraph {n} text")
     return out
 
@@ -7013,8 +7032,8 @@ def _selftest_cases():
     @case("RDG-QUOTE-HUGE", "a number of a quote HEAD has at most 9 digits (`[1-9][0-9]{0,8}`): a longer one (`line 1` and 5000 zeros, either number of `lines`, the number after a PATH) is refused `SKEL-STATEMENT-READING-QUOTE "
                             "<statement> paragraph <n> form`, exit 1, one SKEL line, no traceback; a number of 9 digits is a good form (and has no doc-string: `lines`)")
     def _():
-        big = "1" + "0" * 5000
-        paras = [_rdg_q("line %s" % big, "x"), _rdg_q("lines 1-%s" % big, "x"), _rdg_q("lines %s-%s" % (big, big), "x"), _rdg_q("src/New/S/B.lean, line %s" % big, "x"), _rdg_q("line 999999999", "x"),
+        big, mid = "1" + "0" * 5000, "1" + "0" * 4400   # both over the 4300 digits Python's int() takes; the text stays under 20000 bytes
+        paras = [_rdg_q("line %s" % big, "x"), _rdg_q("lines 1-%s" % mid, "x"), _rdg_q("lines %s-%s" % (mid, 1), "x"), _rdg_q("src/New/S/B.lean, line %s" % mid, "x"), _rdg_q("line 999999999", "x"),
                  _rdg_q("line 1000000000", "x")]
         res = _rdg_one("\n\n".join(paras) + "\n")
         q = lambda n, w: "SKEL-STATEMENT-READING-QUOTE alpha paragraph %d %s" % (n, w)
