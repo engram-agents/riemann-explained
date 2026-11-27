@@ -8815,7 +8815,26 @@ def _selftest_cases():
                     cards_of(f) == cards_of(f0), [type(card("lean-p-a")).__name__, type(entry("lean-p-a", "lean-p-g-one")).__name__]),
                    ([], "Title of the first file", "Title of the first file", "b", "b", "The remainders R_q", "The remainders R_q", "d", "d", True, ["str", "str"]))
 
-    @case("MTF-WRITTEN-IDS", "ids do NOT move (ids come from the outline, never from the new title): the rows' (id, parent, order, premises, kind), the set of written files, every card's id and path and every entry's id and path are those of a build without the "
+    @case("MTF-WRITTEN-SAME-TITLE", "the title override is keyed by the file STEP ID, never by the title text: two files of one group with the SAME outline title (`a`), a title row for ONE of them only: that file's card AND its entry in the group step's `children` get the "
+                                    "new title, the other file's card and entry keep the shared outline title (tested for each of the two files in turn, so a first-match or a last-match by text is seen), the ids and the order of the children are unchanged; "
+                                    "the neighbour, the same fixture with summary-only rows (no title row), retitles nothing")
+    def _():
+        body = RDC_BODY.replace("(1): b", "(1): a")   # the files `lean-p-a` and `lean-p-b` now share the outline title `a`
+
+        def run(rows):
+            with _tmp() as d:
+                g = _tree(d, body, MTH_SRCS, ileans=MTH_ILEANS)
+                return build(g, PIN, dict(_strings(), **STM_WORDS), (), _ildir(g), statements_for=list(RDC_FILES), maths=dict(_mth_tables(), files={"rows": rows}))
+        titles = lambda f: [(_j(f, "graph/step/lean-p-a.json")["card"]["title"], _j(f, "graph/step/lean-p-b.json")["card"]["title"]), [(c["id"], c["title"]) for c in _j(f, "graph/step/lean-p-g-one.json")["children"]]]
+        e0, f0, r0, p0 = run([_mtf_f("lean-p-a", "One."), _mtf_f("lean-p-b", "Two.")])
+        eb, fb, rb, pb = run([_mtf_f("lean-p-a", "One."), _mtf_f("lean-p-b", "Two.", title="New title of b")])
+        ea, fa, ra, pa = run([_mtf_f("lean-p-a", "One.", title="New title of a"), _mtf_f("lean-p-b", "Two.")])
+        ids = lambda f: [(c["id"], c["kind"], c["path"]) for c in _j(f, "graph/step/lean-p-g-one.json")["children"]]
+        return _eq((e0, eb, ea, titles(f0), titles(fb), titles(fa), ids(f0) == ids(fb) == ids(fa), sorted(f0) == sorted(fb) == sorted(fa)),
+                   ([], [], [], [("a", "a"), [("lean-p-a", "a"), ("lean-p-b", "a")]], [("a", "New title of b"), [("lean-p-a", "a"), ("lean-p-b", "New title of b")]],
+                    [("New title of a", "a"), [("lean-p-a", "New title of a"), ("lean-p-b", "a")]], True, True))
+
+    @case("MTF-WRITTEN-IDS","ids do NOT move (ids come from the outline, never from the new title): the rows' (id, parent, order, premises, kind), the set of written files, every card's id and path and every entry's id and path are those of a build without the "
                              "files table, with titles that differ from every outline title")
     def _():
         e0, f0, r0, p0 = _mth_run()
