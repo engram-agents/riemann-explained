@@ -2832,6 +2832,9 @@ RDG_WORDS_NEW = {
     "decl_reading_adds": "What the Lean text adds to the comment",
     "readings_byline": "Written by {by}, checked by {second_read_by}, {date}",
 }   # the 8 words of the reading, taken from the shared file by a script (byte for byte), not typed
+RDG_PAGE_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline")   # the four the page reads (its READING_STRINGS); the other four are the builder's own, never written
+RDG_HEADING_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")
+RDG_LAST_SENTENCE = "Proofs are not opened, except in an AI agent's reading, marked as ours, which a few statements carry; on the others you can ask your own AI assistant for one."   # the new end of key_statements_text, Ariadne's file (the line of key_statements_text)
 RDG_WORDS = dict(STM_WORDS, **RDG_WORDS_NEW)   # the 28 words and the 8 of the reading: the file of --strings-overlay-statements when --readings is given
 RDG_A = _stm_src(
     "/-- Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three\ncontinues on a second line. Alpha four ends. -/\ntheorem alpha : True := trivial\n\n"
@@ -6736,7 +6739,7 @@ def _selftest_cases():
         has = lambda f: [k for k in f if k.startswith("graph/step/") and b'"reading"' in f[k]]
         return _eq((r0[0], r1[0], sorted(f0) == sorted(f1), rest == sorted(k for k in rest if f0[k] == f1.get(k)), len(rest) > 7, i0 == i1, sorted(set(s1) - set(s0)), sorted(set(s0) - set(s1)),
                     s0 == {k: s1[k] for k in s0}, has(f0), has(f1), [x for x in r0[1] if x.startswith("readings ")], [x for x in r1[1] if x.startswith("readings ")]),
-                   (0, 0, True, True, True, True, sorted(RDG_WORDS_NEW), [], True, [], [], [], ["readings lean-s-a: 0 readings written"]))
+                   (0, 0, True, True, True, True, sorted(RDG_PAGE_KEYS), [], True, [], [], [], ["readings lean-s-a: 0 readings written"]))
 
     @case("RDG-FILE", "the readings file is a JSON LIST of objects with EXACTLY the six string keys: anything else is `SKEL-STATEMENT-READING-FILE <what>` (exit 1, nothing written) and the file's text is never echoed: not "
                       "JSON or not UTF-8 `not-json`; an object or a string at the top `not-a-list`; an entry that is no object `entry N not-an-object`; another key set (an extra key, a missing key, `{}`) `entry N keys`; "
@@ -7000,7 +7003,7 @@ def _selftest_cases():
                    ({"28+opt": (1, [w(k, "missing") for k in new], False), "36": (1, [w(k, "is not a statement word") for k in new], False), "minus1": (1, [w("decl_reading_uses", "missing")], False),
                      "no-date": (1, ["STRINGS-KEY readings_byline is missing the placeholder {date}"], False), "n": (1, ["STRINGS-KEY readings_byline has an unknown placeholder {n}"], False),
                      "by-in-show": (1, ["STRINGS-KEY decl_reading_show has an unknown placeholder {by}"], False), "extra": (1, [w("view_cards", "is not a statement word")], False)},
-                    RDG_WORDS_NEW, [True] * 8, {"readings_byline": {"by", "second_read_by", "date"}}, ("by", "second_read_by", "date"), 28, True))
+                    {k: (RDG_WORDS_NEW[k] if k in RDG_PAGE_KEYS else None) for k in new}, [k in RDG_PAGE_KEYS for k in new], {"readings_byline": {"by", "second_read_by", "date"}}, ("by", "second_read_by", "date"), 28, True))
 
     @case("RDG-WORDS-COPY", "the test copy of the 8 words of the reading equals the values in Ariadne's strings file when that file is readable at its shared path (SKIPPED when it is not: the path is "
                             "in RDG_WORDS_SHARED_PATH)")
@@ -7118,6 +7121,50 @@ def _selftest_cases():
         refused = _rdg_one("\n\n".join(bad) + "\n", prep=prep)
         ok = _rdg_one(_rdg_q("src/Lib/Other/File.lean, line %d" % ll, "Lib one.") + "\n", prep=prep)
         return _eq((refused[:2], ok[:2]), ((1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 1 path", "SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 path"]), (0, [])))
+
+    # ---------------------------------------------------------------- round 4: the four heading words are the builder's, the page reads four of the eight
+
+    @case("RDG-STRINGS-WRITTEN", "with --readings the overlay file holds the 28 + 8 words, and the written index.json `strings` holds the 28 + ONLY the four page keys (decl_reading_show, decl_reading_hide, decl_reading_about, "
+                                 "readings_byline): the four heading words (decl_reading_uses, _target, _argument, _adds) are not written, with a reading written or with an empty list (32 keys both ways), and the `reading` of a step is "
+                                 "unaffected; without --readings nothing changes (28); a heading word in the Graph overlay is still `SKEL-OVERLAY-KEY`")
+    def _():
+        with _tmp() as d:
+            r0, g = _rdg_run(d, [], words=STM_WORDS, readings=False, out="o0")
+            r1, _g = _rdg_run(d, [_rdg_entry("alpha")], {"r.md": "Text."}, out="o1", g=g)
+            r2, _g = _rdg_run(d, [], out="o2", g=g)
+            r3 = _stm_cli(d, g, ["--statements-for", "lean-s-a"], words=STM_WORDS, graph_words={"decl_reading_uses": "x"}, out="o3")
+            ix = lambda o: json.loads(_tree_files(os.path.join(d, o))["graph/index.json"].decode("utf-8"))["strings"]
+            s0, s1, s2 = ix("o0"), ix("o1"), ix("o2")
+            step = _rdg_step(d, "lean-s-a-alpha", out="o1")
+        want = set(s0) | set(RDG_PAGE_KEYS)
+        return _eq((r0[0], r1[0], r2[0], len(s1) - len(s0), set(s1) == want, set(s2) == want, len(s1), len(s2), [k for k in RDG_HEADING_KEYS if k in s1 or k in s2], {k: s1[k] for k in RDG_PAGE_KEYS} == {k: RDG_WORDS_NEW[k] for k in RDG_PAGE_KEYS},
+                    step["reading"]["text"], (r3[0], r3[1])),
+                   (0, 0, 0, 4, True, True, len(s0) + 4, len(s0) + 4, [], True, "Text.", (1, ["SKEL-OVERLAY-KEY graph-words.json decl_reading_uses is not a key the page reads"])))
+
+    @case("RDG-WORDS-FILE", "site/strings-lean-statements-readings.json is the 36-word overlay: exactly 36 keys; its 27 other statement keys equal site/strings-lean-statements.json; key_statements_text differs only in its last sentence "
+                            "(`Proofs are not opened.` becomes Ariadne's sentence); its 8 reading values equal Ariadne's file when that is readable (SKIPPED, said, otherwise); a build over the fixture with --readings and THIS file as the overlay passes")
+    def _():
+        here = os.path.join(_HERE, os.pardir, "site")
+        with open(os.path.join(here, "strings-lean-statements.json"), encoding="utf-8") as f:
+            f28 = json.load(f)
+        with open(os.path.join(here, "strings-lean-statements-readings.json"), encoding="utf-8") as f:
+            f36 = json.load(f)
+        end = "Proofs are not opened."
+        old, new = f28["key_statements_text"], f36["key_statements_text"]
+        with _tmp() as d:
+            r, g = _rdg_run(d, [], words=f36)
+        got = (len(f36), set(f36) == set(f28) | set(RDG_WORDS_NEW), len(f28) - 1, {k for k in f28 if k != "key_statements_text" and f36[k] != f28[k]}, old.endswith(end) and new == old[:-len(end)] + RDG_LAST_SENTENCE,
+               {k: f36[k] for k in RDG_WORDS_NEW} == RDG_WORDS_NEW, r[0], _rdg_skel(r[1]))
+        ok, why = _eq(got, (36, True, 27 + 0 + 0 + 0 + 0, set(), True, True, 0, []))
+        if not ok:
+            return ok, why
+        try:
+            with open(RDG_WORDS_SHARED_PATH, encoding="utf-8") as f:
+                t = f.read()
+        except OSError:
+            raise _SkipCase("SKIPPED: %s is not readable here (the other checks of the file passed)" % RDG_WORDS_SHARED_PATH)
+        found = {k: re.findall(r"^- " + k + r"[^\n]*?: `([^`\n]*)`", t, re.M) for k in RDG_WORDS_NEW}
+        return _eq({k: f36[k] for k in RDG_WORDS_NEW}, {k: v[0] for k, v in found.items() if len(v) == 1})
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
