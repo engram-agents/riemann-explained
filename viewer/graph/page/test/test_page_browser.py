@@ -3638,24 +3638,41 @@ def c_nb_lazy_and_open(b, S0, engine):
 
 def c_nb_order_and_count(b, S0, engine):
     """NB2: a file with six users and seven used files: the rows are heaviest by names first, ties by title (code-unit order, so the markup title '<img...' comes before 'File') then
-    id; the headings say the side's TOTAL; as many rows as the stage fits, at least two, and the last place is '+ n more' with n the rest; at 390x844 on this shell that is
-    three rows (the Lean shell folds the header and gets four, FD cases); in a short window (390x500) two rows."""
-    for w, h, want_rows in ((390, 844, 3), (390, 500, 2)):
+    id; the headings say the side's TOTAL; as many rows as the stage fits beside the centre (the page's own rule, written out here from the measured stage height), at least two, and
+    the last place is '+ n more' with n the rest. On this shell (no folded header) the stage at 390x844 is 592 px: two rows and the more row; at 390x1200 it is 948 px: the six users
+    all show with no more row, the used files show five and '+ 2 more'; the Lean shell folds its header and gets four rows at 844 (the fold cases)."""
+    order_above = ["nb-f09", "nb-f10", "nb-f11", "nb-f14", "nb-f12", "nb-f13"]
+    order_below = ["nb-f08", "nb-f01", "nb-f03", "nb-f02", "nb-f04", "nb-f06", "nb-f07"]
+
+    def shown(total, stage_h):
+        room = stage_h - 44 - 120 - 2 * 30 - 12
+        fit = max(2, int(room // 2 // 52))
+        return total if total <= fit else max(2, fit - 1)
+    for w, h, want_above, want_below in ((390, 844, 2, 2), (390, 1200, 6, 5)):
         S, pg = nbp(b, engine, width=w, height=h)
         try:
             nb_open(pg, "nb-f05")
+            stage_h = pg.ev("document.querySelector('.graph-nb').clientHeight")
             st = pg.ev(NB_STATE_JS)
             assert st["above"]["heading"] == "Built on it (6)" and st["below"]["heading"] == "It uses (7)", st
-            order_above = ["nb-f09", "nb-f10", "nb-f11", "nb-f14", "nb-f12", "nb-f13"]
-            order_below = ["nb-f08", "nb-f01", "nb-f03", "nb-f02", "nb-f04", "nb-f06", "nb-f07"]
-            assert st["above"]["rows"] == order_above[:want_rows] and st["below"]["rows"] == order_below[:want_rows], (w, h, st["above"], st["below"])
-            assert st["above"]["more"] == "+ %d more" % (6 - want_rows) and st["below"]["more"] == "+ %d more" % (7 - want_rows), (w, h, st["above"]["more"], st["below"]["more"])
+            assert shown(6, stage_h) == want_above and shown(7, stage_h) == want_below, (w, h, stage_h)
+            assert st["above"]["rows"] == order_above[:want_above] and st["below"]["rows"] == order_below[:want_below], (w, h, st["above"], st["below"])
+            assert st["above"]["more"] == (None if want_above == 6 else "+ %d more" % (6 - want_above)), (w, h, st["above"]["more"])
+            assert st["below"]["more"] == "+ %d more" % (7 - want_below), (w, h, st["below"]["more"])
             names = pg.ev("[...document.querySelectorAll('.nb-above .nb-row:not(.nb-more) .nb-names')].map((n) => n.textContent)")
-            assert names[0] == "4 names" and (len(names) < 4 or names[3] == "1 name"), names
+            assert names[0] == "4 names" and names[1] == "2 names", names
             assert pg.ev("[...document.querySelectorAll('.nb-row')].every((r) => r.getBoundingClientRect().height >= 44)"), "a row is under 44 px"
             pg.csp_clean(); pg.close()
         finally:
             S.stop(); gv_clean()
+    S, pg = nbp(b, engine, width=390, height=500)      # a short window: at least two rows, whatever the stage
+    try:
+        nb_open(pg, "nb-f05")
+        st = pg.ev(NB_STATE_JS)
+        assert len(st["above"]["rows"]) == 2 and len(st["below"]["rows"]) == 2 and st["above"]["more"] == "+ 4 more" and st["below"]["more"] == "+ 5 more", st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
 
 
 def c_nb_history(b, S0, engine):
@@ -3710,16 +3727,23 @@ def c_nb_more_list(b, S0, engine):
 
 
 def c_nb_hostile_title(b, S0, engine):
-    """NB5: a title with markup stays text in a row (and in the full list): no element from it, a backtick span is code."""
+    """NB5: a title with markup stays text: in the full list of a side, in a row once its file is the centre's neighbour (nb-f14 uses nb-f05: its title is in f05's list), and in the
+    centre's face: no element from it, a backtick span is code."""
     S, pg = nbp(b, engine)
     try:
         nb_open(pg, "nb-f05")
-        assert pg.ev("document.querySelectorAll('.nb-root img, .nb-root b, .nb-root i').length") == 0
-        t = pg.ev("document.querySelector('.nb-above .nb-row[data-id=\"nb-f14\"] .nb-title').textContent")
-        assert t == "<img src=x onerror=1> and <b>code</b> title", t
-        assert pg.ev("document.querySelectorAll('.nb-above .nb-row[data-id=\"nb-f14\"] .nb-title code').length") == 1
         pg.page.click(".nb-above .nb-more"); pg.wait("document.querySelector('#graph-sheet-body .nb-full')", 6000)
-        assert pg.ev("document.querySelectorAll('#graph-sheet-body img, #graph-sheet-body b').length") == 0
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body img, #graph-sheet-body b, #graph-sheet-body i').length") == 0
+        t = pg.ev("document.querySelector('#graph-sheet-body .nb-row[data-id=\"nb-f14\"] .nb-title').textContent")
+        assert t == "<img src=x onerror=1> and <b>code</b> title", t
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .nb-row[data-id=\"nb-f14\"] .nb-title code').length") == 1
+        pg.page.click('#graph-sheet-body .nb-row[data-id="nb-f14"]')
+        pg.wait("document.querySelector('.nb-centre').getAttribute('data-id') === 'nb-f14'", 6000)
+        assert pg.ev("document.querySelectorAll('.nb-root img, .nb-root b, .nb-root i').length") == 0
+        assert pg.ev("document.querySelector('.nb-centre .face-title').textContent") == "<img src=x onerror=1> and <b>code</b> title"
+        assert pg.ev("document.querySelectorAll('.nb-centre .face-title code').length") == 1
+        row = pg.ev("document.querySelector('.nb-below .nb-row').getAttribute('data-id')")
+        assert row == "nb-f05", row
         pg.csp_clean(); pg.close()
     finally:
         S.stop(); gv_clean()

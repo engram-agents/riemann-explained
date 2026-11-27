@@ -50,7 +50,7 @@ function sideOf(strings, cls, headKey, emptyKey, rows, titles, shown, kindWord, 
     more.addEventListener("click", () => onMore(), { signal });
     kids.push(more);
   }
-  return el("section", { class: "nb-side " + cls }, kids);
+  return el("div", { class: "nb-side " + cls }, kids);
 }
 
 /* buildNeighbourhood(deps) returns {root, shown: {above, below}}. deps:
