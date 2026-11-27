@@ -3445,6 +3445,39 @@ def _mth_cli(d, g, names=None, statements=None, notation=None, extra=(), ids=","
     return _stm_cli(d, g, (["--statements-for", ids] if ids is not None else []) + more + list(extra), out=out)
 
 
+# ---- the files table (contract section 34, A7; the MTF cases): helpers; every file, summary and title here is made up.
+
+def _mtf_f(file, summary="A made-up summary of the file.", title=None, status="draft"):
+    """A row of the files table (`title` only when given)."""
+    row = dict({"file": file, "summary": summary}, **_mth_stamp(status))
+    if title is not None:
+        row["title"] = title
+    return row
+
+
+def _mtf_run(files, names=(), statements=(), notation=(), ids=RDC_FILES, **kw):
+    """(errors, files, rows, report) of a build of the MTH fixture with the three tables and the files table `files` (a list of rows, or a whole table object)."""
+    tables = dict(_mth_tables(names, statements, notation), files=files if isinstance(files, dict) else {"rows": list(files)})
+    return _mth_run(ids=ids, tables=tables, **kw)
+
+
+def _mtf_why(files, **kw):
+    """The refusal lines of a build with the files table `files`, or None when it built."""
+    return _mth_why(_mtf_run(files, **kw)[0])
+
+
+def _mtf_cli(d, g, files=None, names=True, statements=True, notation=True, extra=(), ids=",".join(RDC_FILES), out="out"):
+    """`_mth_cli` with `--maths-files` (a Python object written as JSON, or bytes as they are) and the three tables empty (a table given as None is left out of the command line)."""
+    more = []
+    if files is not None:
+        p = os.path.join(d, "maths-files.json")
+        with open(p, "wb") as fh:
+            fh.write(files if isinstance(files, bytes) else json.dumps(files).encode("utf-8"))
+        more += ["--maths-files", p]
+    T = {"rows": []}
+    return _mth_cli(d, g, names=T if names is True else names, statements=T if statements is True else statements, notation=T if notation is True else notation, extra=more + list(extra), ids=ids, out=out)
+
+
 def _selftest_cases():
     cases = []
 
@@ -8579,6 +8612,249 @@ def _selftest_cases():
                         "SKEL-MATHS-NAMES bdef chars", "SKEL-MATHS-STATEMENTS cdef shape", "SKEL-MATHS-NOTATION lean-nope z file"], False,
                     1, ["SKEL-MATHS-ROWS names - shape", "SKEL-MATHS-STATEMENTS cdef shape"], False))
 
+    # ---- the files table (MTF cases; contract section 34, A7): a fourth table, optional, keyed by the FILE step
+
+    @case("MTF-OPTIONS", "`--maths-files` is OPTIONAL and needs the three: alone it is refused `SKEL-MATHS-OPTIONS files needs the three` (with or without `--statements-for`; exit 1; OUT_DIR not written); with only some of the three, the missing ones "
+                         "are named first and the files line last; with the three and `--statements-for` it builds (exit 0); the three without `--statements-for` are `maths needs --statements-for`; an option given twice, with no value, or naming a missing file is exit 2")
+    def _():
+        T = {"rows": []}
+        out = {}
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            for label, kw in (("alone", dict(files=T, names=None, statements=None, notation=None)), ("alone-no-for", dict(files=T, names=None, statements=None, notation=None, ids=None)),
+                              ("names+files", dict(files=T, statements=None, notation=None)), ("all", dict(files=T)), ("all-no-for", dict(files=T, ids=None))):
+                r = _mtf_cli(d, g, out="o-" + label, **kw)
+                out[label] = (r[0], [x for x in r[1] if x.startswith("SKEL-")], r[3])
+            twice = _mtf_cli(d, g, files=T, extra=["--maths-files", os.path.join(d, "maths-files.json")], out="o-twice")
+            novalue = _mtf_cli(d, g, extra=["--maths-files"], out="o-novalue")
+            missing = _mtf_cli(d, g, extra=["--maths-files", os.path.join(d, "nope.json")], out="o-missing")
+        files_line = "SKEL-MATHS-OPTIONS files needs the three"
+        return _eq((out, twice[0], twice[3], novalue[0], novalue[3], missing[0], missing[3]),
+                   ({"alone": (1, [files_line], False), "alone-no-for": (1, [files_line], False),
+                     "names+files": (1, ["SKEL-MATHS-OPTIONS maths-statements is missing", "SKEL-MATHS-OPTIONS maths-notation is missing", files_line], False),
+                     "all": (0, [], True), "all-no-for": (1, ["SKEL-MATHS-OPTIONS maths needs --statements-for"], False)}, 2, False, 2, False, 2, False))
+
+    @case("MTF-ABSENT", "WITHOUT `--maths-files` nothing of the files table is written and nothing is printed: no step file holds `summary`, no `maths files` line (the report, the command line), the card and entry titles of the files are the outline's; "
+                        "with the option and an EMPTY table (`{\"rows\": []}`) the written tree is byte-for-byte that of the build without it and only the report differs (`maths files: 0 rows, 0 used, 0 not in this build`), through the function and through the command line")
+    def _():
+        e0, f0, r0, p0 = _mth_run()
+        e1, f1, r1, p1 = _mtf_run([])
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            a = _mtf_cli(d, g, out="o-a")
+            b = _mtf_cli(d, g, files={"rows": []}, out="o-b")
+            ta, tb = _tree_files(os.path.join(d, "o-a")), _tree_files(os.path.join(d, "o-b"))
+        line = lambda lines: [x for x in lines if x.startswith("maths files")]
+        return _eq((e0, e1, [k for k, v in f0.items() if b'"summary"' in v], f0 == f1, line(report_lines(p0)), line(report_lines(p1)), [_j(f0, "graph/step/lean-p-%s.json" % x)["card"]["title"] for x in "abc"],
+                    (a[0], b[0]), line(a[1]), line(b[1]), ta == tb, len(ta) > 0, [x for x in a[1] if not x.startswith("maths files")] == [x for x in b[1] if not x.startswith("maths files")]),
+                   ([], [], [], True, [], ["maths files: 0 rows, 0 used, 0 not in this build"], ["a", "b", "c"], (0, 0), [], ["maths files: 0 rows, 0 used, 0 not in this build"], True, True, True))
+
+    # ---- the rows (A2) of the files table
+
+    @case("MTF-ROWS-KEYS", "a files row's keys (A2): a MISSING key (`file`, `summary`, `by`, `date`, `status`) and an UNKNOWN key (`statement`, a key of another table) are each `SKEL-MATHS-ROWS files <file> key <name>` (a row with no `file` is `row#<k>`); "
+                           "`title` is optional (a row with and without it passes); a row that is not an object, or whose `file` is not text, is `row#<k> shape`; a `summary` or a `title` that is not text is `SKEL-MATHS-FILES <file> shape`; "
+                           "an empty `by`, an impossible `date`: `by`, `date`")
+    def _():
+        ok = _mtf_f("lean-p-a", title="A title")
+        drop = lambda r, k: {a: b for a, b in r.items() if a != k}
+        run = lambda row: _mtf_why([row])
+        R = lambda who, why: ["SKEL-MATHS-ROWS files %s %s" % (who, why)]
+        F = lambda why: ["SKEL-MATHS-FILES lean-p-a " + why]
+        return _eq({"ok": (run(ok), run(drop(ok, "title"))), "no-summary": run(drop(ok, "summary")), "no-file": run(drop(ok, "file")), "extra": run(dict(ok, extra=1)), "statement-key": run(dict(ok, statement="alpha")),
+                    "not-object": run("lean-p-a"), "file-int": run(dict(ok, file=3)), "summary-int": run(dict(ok, summary=5)), "summary-null": run(dict(ok, summary=None)), "title-int": run(dict(ok, title=5)),
+                    "no-by": run(drop(ok, "by")), "no-date": run(drop(ok, "date")), "no-status": run(drop(ok, "status")), "by-empty": run(dict(ok, by="")), "bad-date": run(dict(ok, date="2026-02-30"))},
+                   {"ok": (None, None), "no-summary": R("lean-p-a", "key summary"), "no-file": R("row#1", "key file"), "extra": R("lean-p-a", "key extra"), "statement-key": R("lean-p-a", "key statement"),
+                    "not-object": R("row#1", "shape"), "file-int": R("row#1", "shape"), "summary-int": F("shape"), "summary-null": F("shape"), "title-int": F("shape"),
+                    "no-by": R("lean-p-a", "key by"), "no-date": R("lean-p-a", "key date"), "no-status": R("lean-p-a", "key status"), "by-empty": R("lean-p-a", "by"), "bad-date": R("lean-p-a", "date")})
+
+    @case("MTF-ROWS-STATUS", "`status` is `draft` or `read` (anything else is `SKEL-MATHS-ROWS files <file> status`); `read_by` and `read_date` are present EXACTLY when it is `read`, and `read_by` differs from `by`: a read row without either, a draft row with either, "
+                             "the same reader are `read-fields`; an impossible `read_date` is `date`; the neighbours (a draft row, a whole read row) pass")
+    def _():
+        run = lambda row: _mtf_why([row])
+        L = lambda why: ["SKEL-MATHS-ROWS files lean-p-a " + why]
+        d, r = _mtf_f("lean-p-a"), _mtf_f("lean-p-a", status="read")
+        drop = lambda row, k: {a: b for a, b in row.items() if a != k}
+        return _eq({"draft": run(d), "read": run(r), "read-no-by": run(drop(r, "read_by")), "read-no-date": run(drop(r, "read_date")), "draft-read-by": run(dict(d, read_by="Agent Two")), "draft-read-date": run(dict(d, read_date="2026-11-28")),
+                    "same-reader": run(dict(r, read_by=r["by"])), "bad-status": run(dict(d, status="final")), "status-int": run(dict(d, status=1)), "bad-read-date": run(dict(r, read_date="2026-13-01"))},
+                   {"draft": None, "read": None, "read-no-by": L("read-fields"), "read-no-date": L("read-fields"), "draft-read-by": L("read-fields"), "draft-read-date": L("read-fields"),
+                    "same-reader": L("read-fields"), "bad-status": L("status"), "status-int": L("status"), "bad-read-date": L("date")})
+
+    @case("MTF-ROWS-DUP-FILE", "ONE row per file step: a second row for one file is `SKEL-MATHS-ROWS files <file> duplicate` (two rows for two files pass); a row whose `file` is not one of `--statements-for` (a file of the fixture left out of the list, an id that is no step, "
+                               "a GROUP step) is `SKEL-MATHS-FILES <file> file`, and the same file listed passes")
+    def _():
+        short = ("lean-p-a", "lean-p-b", "lean-q-d")
+        return _eq((_mtf_why([_mtf_f("lean-p-a"), _mtf_f("lean-p-a", "Another.")]), _mtf_why([_mtf_f("lean-p-a"), _mtf_f("lean-p-b")]),
+                    _mtf_why([_mtf_f("lean-p-c")], ids=short), _mtf_why([_mtf_f("lean-p-c")]), _mtf_why([_mtf_f("lean-nope")]), _mtf_why([_mtf_f("lean-p-g-one")]),
+                    _mtf_why([_mtf_f("lean-p-a"), _mtf_f("lean-p-c")], ids=short)),
+                   (["SKEL-MATHS-ROWS files lean-p-a duplicate"], None, ["SKEL-MATHS-FILES lean-p-c file"], None, ["SKEL-MATHS-FILES lean-nope file"], ["SKEL-MATHS-FILES lean-p-g-one file"], ["SKEL-MATHS-FILES lean-p-c file"]))
+
+    @case("MTF-ROWS-FILE", "through the command line, a files table file that is not JSON, is not an object, has a key besides `rows`, or whose `rows` is not a list is `SKEL-MATHS-ROWS files - shape` (exit 1, nothing written); the neighbour, `{\"rows\": []}`, builds")
+    def _():
+        out = {}
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            for label, bad in (("not-json", b"{"), ("array", b"[]"), ("extra-key", b'{"rows": [], "x": 1}'), ("rows-object", b'{"rows": {}}'), ("no-rows", b"{}"), ("empty", b"")):
+                r = _mtf_cli(d, g, files=bad, out="o-" + label)
+                out[label] = (r[0], [x for x in r[1] if x.startswith("SKEL-")], r[3])
+            fine = _mtf_cli(d, g, files={"rows": []}, out="o-fine")
+        return _eq((out, fine[0]), ({label: (1, ["SKEL-MATHS-ROWS files - shape"], False) for label in ("not-json", "array", "extra-key", "rows-object", "no-rows", "empty")}, 0))
+
+    # ---- the summary (A7): 1 to 600 code points, the CHARACTERS rule, no `[[`, no `.lean`, no `line N`, no declaration name (P, underscore allowed)
+
+    @case("MTF-SUM-SHAPE", "a summary has 1 to 600 CODE POINTS and no newline: `SKEL-MATHS-FILES <file> shape` for the empty text, 601 characters (and 601 outside the BMP, which a UTF-16 count would reach at 301), `a\\nb` and `a\\rb` (both also `chars`) "
+                           "and a non-text value; 600 characters, 600 outside the BMP, 600 `é` and a text with code spans pass")
+    def _():
+        run = lambda s: _mtf_why([_mtf_f("lean-p-a", s)])
+        S, astral = ["SKEL-MATHS-FILES lean-p-a shape"], "\U0001d4d0"
+        C = ["SKEL-MATHS-FILES lean-p-a chars"]
+        return _eq({"600": run("x" * 600), "601": run("x" * 601), "600-astral": run(astral * 600), "601-astral": run(astral * 601), "600-e": run("é" * 600), "empty": run(""), "newline": run("a\nb"), "cr": run("a\rb"),
+                    "code": run("`n ≤ x` and `1/2`"), "list": run(["x"]), "dict": run({"a": 1})},
+                   {"600": None, "601": S, "600-astral": None, "601-astral": S, "600-e": None, "empty": S, "newline": S + C, "cr": S + C, "code": None, "list": S, "dict": S})
+
+    @case("MTF-SUM-CHARS", "the CHARACTERS rule on a summary: a control character (Unicode category Cc: BEL, tab, NUL) or a lone surrogate (not encodable as UTF-8) is `SKEL-MATHS-FILES <file> chars`, never an uncaught exception; "
+                           "a no-break space, a zero-width space and a bidi mark pass (typesetting may need them)")
+    def _():
+        run = lambda s: _mtf_why([_mtf_f("lean-p-a", s)])
+        C = ["SKEL-MATHS-FILES lean-p-a chars"]
+        return _eq({t: run(t) for t in ("a\x07b", "a\tb", "a\x00b", "a\ud800b", "a b", "a​b", "a‮b", "ab")},
+                   {"a\x07b": C, "a\tb": C, "a\x00b": C, "a\ud800b": C, "a b": None, "a​b": None, "a‮b": None, "ab": None})
+
+    @case("MTF-SUM-VISIBLE", "a summary holds no declaration name the index knows (predicate P, underscore ALLOWED: `R_q` and `my_name` pass; `Foo.fullName`, `primeRemainder`, `CMType`, `Nat.le` are `SKEL-MATHS-FILES <file> P <token>`), no `.lean` (`lean-file`), "
+                             "no `line` or `lines` followed by a number (`line-number`: `line 12`, `lines 3-4`; `baseline 3` and `line one` pass) and no `[[` (`link`); a plain word that is a short name (`le`, `Prime`) is not flagged; several problems are printed in the order P, lean-file, line-number, link")
+    def _():
+        run = lambda s: _mtf_why([_mtf_f("lean-p-a", s)])
+        W = lambda why: ["SKEL-MATHS-FILES lean-p-a " + why]
+        return _eq({"fullName": run("It uses `Foo.fullName` here."), "short": run("It uses primeRemainder here."), "cap": run("A CMType appears."), "nat": run("`Nat.le` holds."), "R_q": run("The error R_q is small."), "my_name": run("A `my_name` holds."),
+                    "le": run("An le and a Prime appear."), "lean": run("See the file A.lean."), "line": run("It is at line 12."), "lines": run("It is at lines 3-4."), "baseline": run("The baseline 3 holds."), "line-one": run("The line one is short."),
+                    "link": run("See [[the note]]."), "bracket": run("See [the note]."),
+                    "all": run("Foo.fullName in A.lean at line 12 and [[x]]")},
+                   {"fullName": W("P Foo.fullName"), "short": W("P primeRemainder"), "cap": W("P CMType"), "nat": W("P Nat.le"), "R_q": None, "my_name": None, "le": None, "lean": W("lean-file"), "line": W("line-number"), "lines": W("line-number"),
+                    "baseline": None, "line-one": None, "link": W("link"), "bracket": None, "all": W("P Foo.fullName") + W("lean-file") + W("line-number") + W("link")})
+
+    # ---- the title (A7): optional, 1 to 200 code points, no backtick, the same checks as the summary
+
+    @case("MTF-TITLE-LIMITS", "a `title` has 1 to 200 CODE POINTS and no newline: 201 characters (and 201 outside the BMP), the empty text, `a\\nb` (also `chars`) and a non-text value are `SKEL-MATHS-FILES <file> shape`; 200 characters, 200 outside the BMP and 200 `é` pass; "
+                             "a row with no `title` passes (the title is optional)")
+    def _():
+        run = lambda t: _mtf_why([_mtf_f("lean-p-a", title=t)])
+        S, astral = ["SKEL-MATHS-FILES lean-p-a shape"], "\U0001d4d0"
+        return _eq({"200": run("x" * 200), "201": run("x" * 201), "200-astral": run(astral * 200), "201-astral": run(astral * 201), "200-e": run("é" * 200), "empty": run(""), "newline": run("a\nb"), "int": run(5), "none": run(None),
+                    "absent": _mtf_why([_mtf_f("lean-p-a")])},
+                   {"200": None, "201": S, "200-astral": None, "201-astral": S, "200-e": None, "empty": S, "newline": S + ["SKEL-MATHS-FILES lean-p-a chars"], "int": S, "none": S, "absent": None})
+
+    @case("MTF-TITLE-CHECKS", "the other checks of a `title`: a backtick is `SKEL-MATHS-FILES <file> backtick` (a summary may hold code spans: that passes); the CHARACTERS rule (`chars`), P with underscore allowed (`The prime number theorem for the remainders R_q` passes, "
+                              "`Foo.fullName` is `P Foo.fullName`), `.lean`, `line 12` and `[[` as for the summary; one line for a problem found in both the summary and the title, in the order shape, chars, P, lean-file, line-number, link, backtick")
+    def _():
+        run = lambda t, s="Made up.": _mtf_why([_mtf_f("lean-p-a", s, title=t)])
+        W = lambda why: ["SKEL-MATHS-FILES lean-p-a " + why]
+        return _eq({"backtick": run("The `R` number"), "summary-code": run("A title", "The `R` number is small."), "chars": run("a\x07b"), "surrogate": run("a\ud800b"), "nbsp": run("a b"), "real": run("The prime number theorem for the remainders R_q"),
+                    "P": run("About Foo.fullName"), "lean": run("About A.lean"), "line": run("At line 12"), "link": run("About [[x]]", ), "both-link": run("About [[x]]", "Also [[y]]."), "both-P": run("About primeRemainder", "Also primeRemainder."),
+                    "mixed": run("`x` [[y]] A.lean", "Foo.fullName and line 3")},
+                   {"backtick": W("backtick"), "summary-code": None, "chars": W("chars"), "surrogate": W("chars"), "nbsp": None, "real": None, "P": W("P Foo.fullName"), "lean": W("lean-file"), "line": W("line-number"), "link": W("link"),
+                    "both-link": W("link"), "both-P": W("P primeRemainder"), "mixed": W("P Foo.fullName") + W("lean-file") + W("line-number") + W("link") + W("backtick")})
+
+    # ---- what is written (A7 WRITTEN): `summary` on the FILE step; the card title and the group's entry title when a row has a `title`
+
+    def _mtf_entry(f, group, fid):
+        """The closed entry of the file step `fid` in the `children` of its group step `group`."""
+        return next(c for c in _j(f, "graph/step/%s.json" % group)["children"] if c["id"] == fid)
+
+    @case("MTF-WRITTEN-SUMMARY", "on the FILE step of a file with a row, `summary` = {\"status\": <the row's status>, \"text\": <the row's summary>} (a draft row says `draft`, a read row `read`; two keys); a file with NO row has no `summary`; no statement step, no part or "
+                                 "group step and no entry holds a `summary`")
+    def _():
+        e, f, r, p = _mtf_run([_mtf_f("lean-p-a", "Summary one.", status="read"), _mtf_f("lean-p-b", "Summary `two`.", title="Second")])
+        has = sorted(k for k, v in f.items() if b'"summary"' in v)
+        return _eq((e, _j(f, "graph/step/lean-p-a.json").get("summary"), _j(f, "graph/step/lean-p-b.json").get("summary"), list(_j(f, "graph/step/lean-p-a.json").get("summary", {})),
+                    [k for k in ("lean-p-c", "lean-q-d") if "summary" in _j(f, "graph/step/%s.json" % k)], has),
+                   ([], {"status": "read", "text": "Summary one."}, {"status": "draft", "text": "Summary `two`."}, ["status", "text"], [], ["graph/step/lean-p-a.json", "graph/step/lean-p-b.json"]))
+
+    @case("MTF-WRITTEN-TITLE", "when a row has a `title`, the file step's `card.title` AND the `title` of its closed entry in the GROUP step's `children` are that text (a plain string); a row with no `title` (summary only) and a file with no row keep the outline's title "
+                               "(`b`, `d`) on the card and on the entry; across groups (the file of the second group too); no `title` of a statement or of a group changes")
+    def _():
+        e0, f0, r0, p0 = _mth_run()
+        e, f, r, p = _mtf_run([_mtf_f("lean-p-a", "One.", title="Title of the first file"), _mtf_f("lean-p-b", "Two."), _mtf_f("lean-p-c", "Three.", title="The remainders R_q")])
+        card = lambda fid, files=f: _j(files, "graph/step/%s.json" % fid)["card"]["title"]
+        entry = lambda fid, grp, files=f: _mtf_entry(files, grp, fid)["title"]
+        cards_of = lambda files: {k: [x["title"] for x in [json.loads(v.decode("utf-8"))["card"]] + json.loads(v.decode("utf-8"))["children"]] for k, v in files.items() if k.startswith("graph/step/") and "lean-p-a.json" not in k
+                                  and "lean-p-c.json" not in k and "lean-p-g-one.json" not in k and "lean-p-g-two.json" not in k}
+        return _eq((e, card("lean-p-a"), entry("lean-p-a", "lean-p-g-one"), card("lean-p-b"), entry("lean-p-b", "lean-p-g-one"), card("lean-p-c"), entry("lean-p-c", "lean-p-g-two"), card("lean-q-d"), entry("lean-q-d", "lean-q-g-three"),
+                    cards_of(f) == cards_of(f0), [type(card("lean-p-a")).__name__, type(entry("lean-p-a", "lean-p-g-one")).__name__]),
+                   ([], "Title of the first file", "Title of the first file", "b", "b", "The remainders R_q", "The remainders R_q", "d", "d", True, ["str", "str"]))
+
+    @case("MTF-WRITTEN-IDS", "ids do NOT move (ids come from the outline, never from the new title): the rows' (id, parent, order, premises, kind), the set of written files, every card's id and path and every entry's id and path are those of a build without the "
+                             "files table, with titles that differ from every outline title")
+    def _():
+        e0, f0, r0, p0 = _mth_run()
+        e1, f1, r1, p1 = _mtf_run([_mtf_f("lean-p-a", "One.", title="A new title for the first file"), _mtf_f("lean-p-c", "Three.", title="Another title"), _mtf_f("lean-q-d", "Four.", title="A third title")])
+        key = lambda rows: [(x["id"], x["parent"], x["order"], x["premises"], x["kind"]) for x in rows]
+        shape = lambda files: {k: ([(o["card"]["id"], o["card"]["path"], o["card"]["kind"])] + [(c["id"], c["path"], c["kind"]) for c in o["children"]]) for k, o in ((k, json.loads(v.decode("utf-8"))) for k, v in files.items() if k.startswith("graph/step/"))}
+        titles = [_j(f1, "graph/step/lean-p-a.json")["card"]["title"], _mtf_entry(f1, "lean-p-g-one", "lean-p-a")["title"], _j(f1, "graph/step/lean-q-d.json")["card"]["title"]]   # the titles DID change (else nothing moved by default)
+        return _eq((e0, e1, key(r0) == key(r1), sorted(f0) == sorted(f1), shape(f0) == shape(f1), len(shape(f1)) > 10, titles),
+                   ([], [], True, True, True, True, ["A new title for the first file", "A new title for the first file", "A third title"]))
+
+    @case("MTF-WRITTEN-NOTHING-ELSE", "nothing else changes: between a build without the files table and one with rows (with titles, with statements and with a reading on a statement), every file that is not a step file is byte-identical, and every step file equals its twin once "
+                                      "the file steps' `summary` and the `title` of the titled files' cards and entries are taken away")
+    def _():
+        def norm(raw, titled):
+            o = json.loads(raw.decode("utf-8"))
+            for x in [o["card"]] + o["children"]:
+                if x["id"] in titled:
+                    x["title"] = ""
+            o.pop("summary", None)
+            return o
+        titled = {"lean-p-a", "lean-p-c"}
+        rows = [_mtf_f("lean-p-a", "One.", title="Title one"), _mtf_f("lean-p-b", "Two.", status="read"), _mtf_f("lean-p-c", "Three.", title="Title three")]
+        out = []
+        for readings in (None, [_rdc_entry("alpha")]):
+            e0, f0, r0, p0 = _mth_run(names=[_mth_n("alpha", "Alpha name")], statements=[_mth_s("alpha")], notation=[_mth_t("lean-p-a")], readings=readings)
+            e1, f1, r1, p1 = _mtf_run(rows, names=[_mth_n("alpha", "Alpha name")], statements=[_mth_s("alpha")], notation=[_mth_t("lean-p-a")], readings=readings)
+            steps = sorted(k for k in f0 if k.startswith("graph/step/"))
+            out.append((e0, e1, sorted(f0) == sorted(f1), [k for k in f0 if not k.startswith("graph/step/") and f0[k] != f1[k]], [k for k in steps if norm(f0[k], titled) != norm(f1[k], titled)], [k for k in steps if f0[k] != f1[k]]))
+        return _eq(out, [([], [], True, [], [], ["graph/step/lean-p-a.json", "graph/step/lean-p-b.json", "graph/step/lean-p-c.json", "graph/step/lean-p-g-one.json", "graph/step/lean-p-g-two.json"])] * 2)
+
+    @case("MTF-WRITTEN-SORTED", "the keys of a file step that holds a `summary` are sorted on disk, at every level, as everywhere (the `summary` is {status, text}, in that order)")
+    def _():
+        e, f, r, p = _mtf_run([_mtf_f("lean-p-a", "One.", title="Title one"), _mtf_f("lean-p-b", "Two.", status="read")])
+
+        def unsorted(o, at=""):
+            if isinstance(o, list):
+                return [x for i, v in enumerate(o) for x in unsorted(v, at + "[%d]" % i)]
+            if isinstance(o, dict):
+                keys = list(o)
+                return ([at] if keys != sorted(keys) else []) + [x for k, v in o.items() for x in unsorted(v, at + "." + k)]
+            return []
+        bad = {k: unsorted(json.loads(v.decode("utf-8"), object_pairs_hook=lambda pairs: dict(pairs))) for k, v in f.items() if k.startswith("graph/step/") and b'"summary"' in v}
+        return _eq((e, bad), ([], {"graph/step/lean-p-a.json": [], "graph/step/lean-p-b.json": []}))
+
+    # ---- the report and the order of refusals
+
+    @case("MTF-REPORT", "with the option the build prints, AFTER the three `maths` lines, `maths files: <n> rows, <m> used, <k> not in this build` (n the rows, m those whose file is one of `--statements-for`, here all of them: a row for another file is refused `file`, so k is 0), "
+                        "through the command line; with an empty table `maths files: 0 rows, 0 used, 0 not in this build`")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            r = _mtf_cli(d, g, files={"rows": [_mtf_f("lean-p-a"), _mtf_f("lean-p-b", title="B title"), _mtf_f("lean-q-d")]}, out="o-r")
+            e = _mtf_cli(d, g, files={"rows": []}, out="o-e")
+        lines = r[1]
+        first = min((i for i, x in enumerate(lines) if x.startswith("maths ")), default=len(lines))
+        return _eq((r[0], lines[first:], e[0], [x for x in e[1] if x.startswith("maths files")]),
+                   (0, ["maths names: 0 rows, 0 used, 0 not in this build", "maths statements: 0 rows, 0 used, 0 not in this build", "maths notation: 0 rows, 0 used, 0 not in this build", "maths files: 3 rows, 3 used, 0 not in this build"],
+                    0, ["maths files: 0 rows, 0 used, 0 not in this build"]))
+
+    @case("MTF-ORDER", "the order of refusals, through the command line, ALL printed, exit 1, nothing written: each table's file and ROWS problems (names, statements, notation, files), then the content problems table by table in the order names, statements, notation, files, "
+                       "each in row order; a files problem is printed AFTER the names, statements and notation problems and its ROWS problem after theirs; a files table that is not JSON is `ROWS files - shape` and the other tables' content problems still follow")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            a = _mtf_cli(d, g, names={"rows": [_mth_n("alpha", "Alpha"), _mth_n("alpha", "Alpha again"), _mth_n("bdef", "Bad_name")]}, statements={"rows": [_mth_s("cdef", "")]}, notation={"rows": [_mth_t("lean-nope", "z")]},
+                         files={"rows": [_mtf_f("lean-p-a", "", title="x" * 201), _mtf_f("lean-p-a", "Again."), _mtf_f("lean-nope", "S."), _mtf_f("lean-p-b", "See [[x]].")]}, out="o-a")
+            b = _mtf_cli(d, g, names={"rows": [_mth_n("bdef", "Bad_name")]}, files=b"{", out="o-b")
+        sk = lambda r: [x for x in r[1] if x.startswith("SKEL-")]
+        return _eq((a[0], sk(a), a[3], b[0], sk(b), b[3]),
+                   (1, ["SKEL-MATHS-ROWS names alpha duplicate", "SKEL-MATHS-ROWS files lean-p-a duplicate", "SKEL-MATHS-NAMES bdef chars", "SKEL-MATHS-STATEMENTS cdef shape", "SKEL-MATHS-NOTATION lean-nope z file",
+                        "SKEL-MATHS-FILES lean-p-a shape", "SKEL-MATHS-FILES lean-nope file", "SKEL-MATHS-FILES lean-p-b link"], False,
+                    1, ["SKEL-MATHS-ROWS files - shape", "SKEL-MATHS-NAMES bdef chars"], False))
+
     # ---- the real source with Ariadne's draft tables (read only where they are readable; never copied into the repository)
 
     MTH_REAL_DIR = os.environ.get("MTH_SAMPLE_DIR")   # the folder of the draft tables (names.json, statements.json, notation.json); unset: MTH-REAL is skipped
@@ -8638,6 +8914,57 @@ def _selftest_cases():
                     sorted(f0) == sorted(f1), absent),
                    ("", ["maths names: 37 rows, 37 used, 0 not in this build", "maths statements: 37 rows, 37 used, 0 not in this build", "maths notation: 18 rows, 18 used, 0 not in this build"],
                     [ids[1], ids[0], ids[2]], {ids[0]: 1, ids[1]: 24, ids[2]: 12}, "1.1", "1.24", ["2.1"], "3.1", "3.12", True, 37, [], True, True, True, []))
+
+    @case("MTF-REAL", "the real source with the draft files table (give `--selftest --grh DIR --ilean-dir DIR`; the folder of the draft tables is MTH_SAMPLE_DIR; SKIPPED, with the reason printed, when it is not set or holds no readable `files.json`, `names.json`, "
+                      "`statements.json` and `notation.json`, never a failure): the build with `--maths-files` refuses nothing and prints `maths files: <n> rows, <n> used, 0 not in this build` (n the rows of the file); every row's file step holds `summary` = "
+                      "{status, text} of the row; a row with a `title` replaces the card title AND the entry in the group step's `children`, a row without one leaves both as the build without `--maths-files` has them; the step ids, the file set and "
+                      "every other byte of the tree equal that build (the step files equal once the `summary` and the titled titles are taken away)")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        if not MTH_REAL_DIR:
+            raise _SkipCase("SKIPPED: MTH_SAMPLE_DIR is not set (the folder of the draft files.json and the three tables)")
+        try:
+            for t in ("names", "statements", "notation", "files"):
+                with open(os.path.join(MTH_REAL_DIR, t + ".json"), encoding="utf-8") as fh:
+                    table = json.load(fh)
+                if t == "files":
+                    rows = table["rows"]
+        except (OSError, ValueError, KeyError, TypeError):
+            raise _SkipCase("SKIPPED: MTH_SAMPLE_DIR holds no readable files.json (and names.json, statements.json, notation.json)")
+        real_pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
+        ids = ["lean-reduction-zeros-criterion", "lean-reduction-zeros-prime-error", "lean-reduction-zeros-prime-number-theorem"]
+        group = "lean-reduction-from-a-one-sided-bound-to-the-zeros"
+        with _tmp() as d:
+            wp = os.path.join(d, "strings-lean-statements.json")
+            with open(wp, "w", encoding="utf-8") as fh:
+                json.dump(STM_WORDS, fh)
+            base = ["--grh", _GRH_FOR_SK13, "--pin", real_pin, "--strings", os.path.join(_HERE, os.pardir, "site", "strings.json"), "--ilean-dir", _ILEAN_FOR_SK13, "--strings-overlay-statements", wp, "--statements-for", ",".join(ids)]
+            three = sum([["--maths-" + t, os.path.join(MTH_REAL_DIR, t + ".json")] for t in ("names", "statements", "notation")], [])
+            r0 = _cli(base + three + ["--out", os.path.join(d, "o0")])
+            r1 = _cli(base + three + ["--maths-files", os.path.join(MTH_REAL_DIR, "files.json"), "--out", os.path.join(d, "o1")])
+            f0 = _tree_files(os.path.join(d, "o0")) if r0[0] == 0 else {}
+            f1 = _tree_files(os.path.join(d, "o1")) if r1[0] == 0 else {}
+        if r0[0] or r1[0]:
+            return False, (r0[0], r0[2], r1[0], r1[1][:20], r1[2])
+        titled = {x["file"] for x in rows if "title" in x}
+
+        def norm(raw):
+            o = json.loads(raw.decode("utf-8"))
+            for x in [o["card"]] + o["children"]:
+                if x["id"] in titled:
+                    x["title"] = ""
+            o.pop("summary", None)
+            return o
+        steps = sorted(k for k in f0 if k.startswith("graph/step/"))
+        got = {x["file"]: _j(f1, "graph/step/%s.json" % x["file"]) for x in rows}
+        entry = lambda fid: next(c for c in _j(f1, "graph/step/%s.json" % group)["children"] if c["id"] == fid)
+        old = lambda fid: next(c for c in _j(f0, "graph/step/%s.json" % group)["children"] if c["id"] == fid)
+        return _eq(([x for x in r1[1].splitlines() if x.startswith("maths files")], {fid: o.get("summary") for fid, o in got.items()},
+                    {fid: (o["card"]["title"], entry(fid)["title"]) for fid, o in got.items() if fid in titled}, {fid: (o["card"]["title"], entry(fid)["title"]) for fid, o in got.items() if fid not in titled} == {fid: (_j(f0, "graph/step/%s.json" % fid)["card"]["title"], old(fid)["title"]) for fid in got if fid not in titled},
+                    sorted(f0) == sorted(f1), [k for k in f0 if not k.startswith("graph/step/") and f0[k] != f1[k]], [k for k in steps if norm(f0[k]) != norm(f1[k])], [k for k, v in f0.items() if b'"summary"' in v]),
+                   (["maths files: %d rows, %d used, 0 not in this build" % (len(rows), len(rows))], {x["file"]: {"status": x["status"], "text": x["summary"]} for x in rows},
+                    {x["file"]: (x["title"], x["title"]) for x in rows if "title" in x}, True, True, [], [], []))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
