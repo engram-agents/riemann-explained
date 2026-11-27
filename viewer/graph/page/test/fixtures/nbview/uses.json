@@ -1,0 +1,352 @@
+{
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 3,
+ "imports": {
+  "nb-f01": [],
+  "nb-f02": [],
+  "nb-f03": [],
+  "nb-f04": [],
+  "nb-f05": [],
+  "nb-f06": [],
+  "nb-f07": [],
+  "nb-f08": [],
+  "nb-f09": [],
+  "nb-f10": [],
+  "nb-f11": [],
+  "nb-f12": [],
+  "nb-f13": [],
+  "nb-f14": []
+ },
+ "lib_index_rows": [],
+ "titles": {
+  "nb-f01": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "title": "File nb-f01"
+  },
+  "nb-f02": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "title": "File two beta"
+  },
+  "nb-f03": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "title": "File three alpha"
+  },
+  "nb-f04": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "title": "File nb-f04"
+  },
+  "nb-f05": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "title": "File nb-f05"
+  },
+  "nb-f06": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "title": "File nb-f06"
+  },
+  "nb-f07": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "title": "File nb-f07"
+  },
+  "nb-f08": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "title": "File nb-f08"
+  },
+  "nb-f09": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "title": "File nb-f09"
+  },
+  "nb-f10": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "title": "File nb-f10"
+  },
+  "nb-f11": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "title": "File nb-f11"
+  },
+  "nb-f12": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "title": "File nb-f12"
+  },
+  "nb-f13": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "title": "File nb-f13"
+  },
+  "nb-f14": {
+   "kind": "file",
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "title": "<img src=x onerror=1> and `<b>code</b>` title"
+  },
+  "nb-g-a": {
+   "kind": "group",
+   "path": [
+    "nb-part"
+   ],
+   "title": "Group nb-g-a"
+  },
+  "nb-g-b": {
+   "kind": "group",
+   "path": [
+    "nb-part"
+   ],
+   "title": "Group nb-g-b"
+  },
+  "nb-part": {
+   "kind": "part",
+   "path": [],
+   "title": "Part nb-part"
+  }
+ },
+ "used_by": {
+  "nb-f01": [
+   {
+    "id": "nb-f05",
+    "names": 5,
+    "same_group": true
+   },
+   {
+    "id": "nb-f06",
+    "names": 2,
+    "same_group": true
+   },
+   {
+    "id": "nb-f09",
+    "names": 1,
+    "same_group": false
+   }
+  ],
+  "nb-f02": [
+   {
+    "id": "nb-f05",
+    "names": 3,
+    "same_group": true
+   }
+  ],
+  "nb-f03": [
+   {
+    "id": "nb-f05",
+    "names": 3,
+    "same_group": true
+   }
+  ],
+  "nb-f04": [
+   {
+    "id": "nb-f05",
+    "names": 2,
+    "same_group": true
+   }
+  ],
+  "nb-f05": [
+   {
+    "id": "nb-f09",
+    "names": 4,
+    "same_group": false
+   },
+   {
+    "id": "nb-f10",
+    "names": 2,
+    "same_group": false
+   },
+   {
+    "id": "nb-f11",
+    "names": 2,
+    "same_group": false
+   },
+   {
+    "id": "nb-f12",
+    "names": 1,
+    "same_group": false
+   },
+   {
+    "id": "nb-f13",
+    "names": 1,
+    "same_group": false
+   },
+   {
+    "id": "nb-f14",
+    "names": 1,
+    "same_group": false
+   }
+  ],
+  "nb-f06": [
+   {
+    "id": "nb-f05",
+    "names": 1,
+    "same_group": true
+   }
+  ],
+  "nb-f07": [
+   {
+    "id": "nb-f05",
+    "names": 1,
+    "same_group": true
+   }
+  ],
+  "nb-f08": [
+   {
+    "id": "nb-f05",
+    "names": 7,
+    "same_group": true
+   }
+  ],
+  "nb-f09": [],
+  "nb-f10": [],
+  "nb-f11": [],
+  "nb-f12": [],
+  "nb-f13": [],
+  "nb-f14": []
+ },
+ "uses": {
+  "nb-f01": [],
+  "nb-f02": [],
+  "nb-f03": [],
+  "nb-f04": [],
+  "nb-f05": [
+   {
+    "id": "nb-f01",
+    "names": 5,
+    "same_group": true
+   },
+   {
+    "id": "nb-f02",
+    "names": 3,
+    "same_group": true
+   },
+   {
+    "id": "nb-f03",
+    "names": 3,
+    "same_group": true
+   },
+   {
+    "id": "nb-f04",
+    "names": 2,
+    "same_group": true
+   },
+   {
+    "id": "nb-f06",
+    "names": 1,
+    "same_group": true
+   },
+   {
+    "id": "nb-f07",
+    "names": 1,
+    "same_group": true
+   },
+   {
+    "id": "nb-f08",
+    "names": 7,
+    "same_group": true
+   }
+  ],
+  "nb-f06": [
+   {
+    "id": "nb-f01",
+    "names": 2,
+    "same_group": true
+   }
+  ],
+  "nb-f07": [],
+  "nb-f08": [],
+  "nb-f09": [
+   {
+    "id": "nb-f01",
+    "names": 1,
+    "same_group": false
+   },
+   {
+    "id": "nb-f05",
+    "names": 4,
+    "same_group": false
+   }
+  ],
+  "nb-f10": [
+   {
+    "id": "nb-f05",
+    "names": 2,
+    "same_group": false
+   }
+  ],
+  "nb-f11": [
+   {
+    "id": "nb-f05",
+    "names": 2,
+    "same_group": false
+   }
+  ],
+  "nb-f12": [
+   {
+    "id": "nb-f05",
+    "names": 1,
+    "same_group": false
+   }
+  ],
+  "nb-f13": [
+   {
+    "id": "nb-f05",
+    "names": 1,
+    "same_group": false
+   }
+  ],
+  "nb-f14": [
+   {
+    "id": "nb-f05",
+    "names": 1,
+    "same_group": false
+   }
+  ]
+ }
+}

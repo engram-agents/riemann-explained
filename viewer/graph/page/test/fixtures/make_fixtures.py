@@ -466,6 +466,67 @@ def graphview_build():
     return index, steps, kids, title, spine
 
 
+NB_WORDS = {
+    "nb_built_on": "Built on it ({n})", "nb_uses": "It uses ({n})", "nb_names_one": "1 name", "nb_names_many": "{n} names", "nb_more": "+ {n} more",
+    "nb_back": "\u2039 Back to {title}", "nb_back_spine": "\u2039 Back to the main results", "nb_empty_uses": "Uses no other file on this map.",
+    "nb_empty_built_on": "No file on this map uses it.",
+}
+NB_HOSTILE = "<img src=x onerror=1> and `<b>code</b>` title"
+# the made-up map of the neighbourhood fixture: one part, two groups (single-hyphen ids), fourteen files; nb-f05 is the centre of most cases
+NB_FILES = ["nb-f%02d" % n for n in range(1, 15)]
+NB_GROUP = {f: ("nb-g-a" if int(f[-2:]) <= 8 else "nb-g-b") for f in NB_FILES}
+NB_TITLES = {f: "File %s" % f for f in NB_FILES}
+NB_TITLES.update({"nb-f14": NB_HOSTILE, "nb-f02": "File two beta", "nb-f03": "File three alpha"})
+# (user, used, names): nb-f05 uses seven files and is used by six; the weights and titles make ties (f02 and f03, both 3 names; f10 and f11 both 2)
+NB_EDGES = [("nb-f05", "nb-f01", 5), ("nb-f05", "nb-f02", 3), ("nb-f05", "nb-f03", 3), ("nb-f05", "nb-f04", 2), ("nb-f05", "nb-f06", 1), ("nb-f05", "nb-f07", 1), ("nb-f05", "nb-f08", 7),
+            ("nb-f09", "nb-f05", 4), ("nb-f10", "nb-f05", 2), ("nb-f11", "nb-f05", 2), ("nb-f12", "nb-f05", 1), ("nb-f13", "nb-f05", 1), ("nb-f14", "nb-f05", 1),
+            ("nb-f09", "nb-f01", 1), ("nb-f06", "nb-f01", 2)]
+
+
+def nbview_build():
+    """The neighbourhood fixture (made-up text): the skeleton's symbols, the view words and the nb_ words, a four-box spine over nb-f01..nb-f04 and a uses.json over 14 files.
+    The card block is empty (the cards are made from the data, as on the real map)."""
+    ids = ["nb-part", "nb-g-a", "nb-g-b"] + NB_FILES
+    parent = {"nb-part": None, "nb-g-a": "nb-part", "nb-g-b": "nb-part", **{f: NB_GROUP[f] for f in NB_FILES}}
+    kind = {"nb-part": "part", "nb-g-a": "group", "nb-g-b": "group", **{f: "file" for f in NB_FILES}}
+    title = {"nb-part": "Part nb-part", "nb-g-a": "Group nb-g-a", "nb-g-b": "Group nb-g-b", **NB_TITLES}
+    kids = {i: [c for c in ids if parent[c] == i] for i in ids}
+
+    def anc(i):
+        out, p = [], parent[i]
+        while p:
+            out.insert(0, p); p = parent[p]
+        return out
+
+    def card(i):
+        c = {"id": i, "title": title[i], "kind": kind[i], "state": "none", "proof": "none", "child_count": len(kids[i]), "path": anc(i)}
+        if kids[i]:
+            c["child_kind"] = kind[kids[i][0]]
+        return c
+
+    steps = {}
+    for i in ids:
+        ch = []
+        for c in kids[i]:
+            d = card(c); d["parent_rests_on"] = False; ch.append(d)
+        steps[i] = {"format": 1, "commit": COMMIT, "id": i, "path": anc(i), "card": card(i), "children": ch, "rests_on": []}
+    index = {"format": 1, "commit": COMMIT, "max_children": 40, "top": ["nb-part"], "rests_on": [], "steps": len(ids), "symbols": SYMBOLS_SKELETON, "assets": {},
+             "strings": {**SKELETON_STRINGS, **GRAPHVIEW_WORDS, **NB_WORDS, "spine_show_file": "Show its file in the graph"},
+             "sibling_layout": "column", "open_scale_floor": 1, "edge_basis": {"basis": "names-written-in-source-from-compiled-index", "words": "key_lines_text"}}
+    spine = {"commit": COMMIT, "format": 1, "edge_basis": {"basis": "reaches-through-any-chain-of-uses", "words": "spine_lines_text"},
+             "nodes": [{"constants": ["New.Made.%s" % k], "content": "Made-up sentence of box %s." % k, "counts": {"mentions": 1, "no_doc": 1, "other_constants": 0}, "file": "nb-f0%d" % (n + 1),
+                        "id": "spine-made-%s" % k, "mentions": [{"constant": "New.Made.other"}], "names": ["Made.%s" % k], "source": "grh/INDEX.md", "theorem": "`Made.%s`" % k}
+                       for n, k in enumerate("abcd")],
+             "links": [{"from": "spine-made-a", "in_reduction": True, "to": "spine-made-b"}, {"from": "spine-made-a", "in_reduction": True, "to": "spine-made-c"},
+                       {"from": "spine-made-b", "in_reduction": True, "to": "spine-made-d"}, {"from": "spine-made-c", "in_reduction": True, "to": "spine-made-d"}]}
+    row = lambda other, names, a, b: {"id": other, "names": names, "same_group": NB_GROUP[a] == NB_GROUP[b]}
+    uses = {f: sorted((row(u, n, f, u) for (x, u, n) in NB_EDGES if x == f), key=lambda r: r["id"]) for f in NB_FILES}
+    used_by = {f: sorted((row(x, n, f, x) for (x, u, n) in NB_EDGES if u == f), key=lambda r: r["id"]) for f in NB_FILES}
+    uses_json = {"commit": COMMIT, "format": 3, "imports": {f: [] for f in NB_FILES}, "lib_index_rows": [], "uses": uses, "used_by": used_by,
+                 "titles": {i: {"kind": kind[i], "path": anc(i), "title": title[i]} for i in ids}}
+    return index, steps, spine, uses_json
+
+
 def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None):
     index, steps, _k, _p, _n = build()
     # a small build: one top step with its children
@@ -519,6 +580,15 @@ def main():
     gparts = ["<ul class=\"chain\">"] + ["<li>\n%s\n</li>" % skeleton_article(t, gkids, gtitle) for t in gindex["top"]] + ["</ul>"]
     open(os.path.join(HERE, "graphview", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"] + gparts) + "\n")
+
+    bindex, bsteps, bspine, buses = nbview_build()
+    shutil.rmtree(os.path.join(HERE, "nbview"), ignore_errors=True)
+    write_json(os.path.join(HERE, "nbview", "index.json"), bindex)
+    write_json(os.path.join(HERE, "nbview", "spine.json"), bspine)
+    write_json(os.path.join(HERE, "nbview", "uses.json"), buses)
+    for i, st in bsteps.items():
+        write_json(os.path.join(HERE, "nbview", "step", i + ".json"), st)
+    open(os.path.join(HERE, "nbview", "cards.html"), "w", encoding="utf-8").write('<section id="graph-about"><h2>About this page</h2>\n<p>A map of made-up files.</p>\n</section>\n')
 
     nindex, nsteps, nkids, ntitle = notes_build()
     write_json(os.path.join(HERE, "notes", "index.json"), nindex)

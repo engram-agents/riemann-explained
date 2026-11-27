@@ -1,0 +1,101 @@
+{
+ "card": {
+  "child_count": 6,
+  "child_kind": "file",
+  "id": "nb-g-b",
+  "kind": "group",
+  "path": [
+   "nb-part"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Group nb-g-b"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "nb-f09",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f09"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f10",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f10"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f11",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f11"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f12",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f12"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f13",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f13"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f14",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-b"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "<img src=x onerror=1> and `<b>code</b>` title"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "nb-g-b",
+ "path": [
+  "nb-part"
+ ],
+ "rests_on": []
+}

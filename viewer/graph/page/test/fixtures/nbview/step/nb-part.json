@@ -1,0 +1,45 @@
+{
+ "card": {
+  "child_count": 2,
+  "child_kind": "group",
+  "id": "nb-part",
+  "kind": "part",
+  "path": [],
+  "proof": "none",
+  "state": "none",
+  "title": "Part nb-part"
+ },
+ "children": [
+  {
+   "child_count": 8,
+   "child_kind": "file",
+   "id": "nb-g-a",
+   "kind": "group",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Group nb-g-a"
+  },
+  {
+   "child_count": 6,
+   "child_kind": "file",
+   "id": "nb-g-b",
+   "kind": "group",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "Group nb-g-b"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "nb-part",
+ "path": [],
+ "rests_on": []
+}

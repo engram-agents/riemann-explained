@@ -1,0 +1,127 @@
+{
+ "card": {
+  "child_count": 8,
+  "child_kind": "file",
+  "id": "nb-g-a",
+  "kind": "group",
+  "path": [
+   "nb-part"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Group nb-g-a"
+ },
+ "children": [
+  {
+   "child_count": 0,
+   "id": "nb-f01",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f01"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f02",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File two beta"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f03",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File three alpha"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f04",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f04"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f05",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f05"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f06",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f06"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f07",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f07"
+  },
+  {
+   "child_count": 0,
+   "id": "nb-f08",
+   "kind": "file",
+   "parent_rests_on": false,
+   "path": [
+    "nb-part",
+    "nb-g-a"
+   ],
+   "proof": "none",
+   "state": "none",
+   "title": "File nb-f08"
+  }
+ ],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "nb-g-a",
+ "path": [
+  "nb-part"
+ ],
+ "rests_on": []
+}
