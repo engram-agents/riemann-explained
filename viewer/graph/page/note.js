@@ -17,8 +17,10 @@
                are characters), no escapes, no links, no entities.
 
    THE MATHS FACE (renderNote's third argument, off by default): a backtick span that is ONE LETTER, or FORMULA-ONLY by the classes below, is not
-   <code> but <span class="m"> (class "m m1" for one letter) whose only child is ONE text node holding the span's characters exactly. A name, a name
-   with arguments and a name inside a formula stay <code>; an unsure class is code. It changes appearance only: every character, in the same order.
+   <code> but <span class="m"> (class "m m1" for one letter) holding the span's characters in ONE text node. A name, a name with arguments and a
+   name inside a formula stay <code>; an unsure class is code. A formula span with ^ or _ is set with <sup> and <sub> when it parses under the
+   grammar of scriptParts below, and is <code>, as typed, when it does not. Apart from the script characters, the spaces round a ^ and the brackets
+   of a {...} or ^(...) operand, every character comes through, in the same order.
    The classes are a port of the measurement's cls3 (one definition, here); fixtures/note-spans-classes.json holds its answer for every real span. */
 import { titleChildren, titleSegments } from "./dom.js";
 
@@ -39,12 +41,108 @@ export function oneLetter(sp) { return [...sp].length === 1 && /^\p{L}$/u.test(s
 
 const mathsFace = (sp) => oneLetter(sp) || spanClass(sp) === "formula";
 
+/* ---- scripts. A formula span with ^ or _ is set with <sup> and <sub> when it parses under the grammar below, and is code, as typed, when it does
+   not: never half set. scriptParts(span) -> the parts (a string is text; {tag: "sup"|"sub", children: parts}) or null (refused).
+
+   G1  a script is ^ or _ with a BASE before it in the same group: for _ the character right before, for ^ the nearest non-space character before
+       (the spaces between are dropped); a base is a letter, a digit (also a subscript digit), a prime, or a closing ) ] }. No base: refuse.
+   G2  only the OPERAND to the right is parsed: (a) {...} directly after the script character (braces dropped); (b) (...) after ^, optionally after
+       spaces (parens dropped); (c) a WORD of letters, digits and primes (after ^ optional spaces, dropped; after _ none); (d) ONE of * × + - ∨ ∞ ⊥
+       directly after the script character, then the group's end, a space or a closing bracket.
+   G3  a group's content is parsed by the same grammar, at most two script levels deep.
+   G4  refuse on: an unmatched or crossing bracket in an operand group; an empty group; a second ^ (or second _) attached to the same run of scripts
+       (a ^ b ^ c); any script left over; an operand that is none of (a)-(d). One _ and one ^ on one base is allowed, in either order.
+   G5  spaces after an operand stay as typed.
+   Nothing but the script characters, the spaces round a ^, and the brackets of a {...} or ^(...) operand is ever dropped; every other character
+   comes through in its place. */
+const BASE_CHAR = /^[\p{L}\p{Nd}₀-₉′'’)\]}]$/u;
+const WORD_CHAR = /^[\p{L}\p{Nd}₀-₉′'’]$/u;
+const MARK = /^\p{M}$/u;
+const SYMBOLS = new Set(["*", "×", "+", "-", "∨", "∞", "⊥"]);
+const OPENERS = new Map([["(", ")"], ["[", "]"], ["{", "}"]]);
+const CLOSERS = new Set([")", "]", "}"]);
+const MAX_SCRIPT_LEVELS = 2;
+
+/* The index of the bracket that closes the one opening at cs[i], looking only below `end`; -1 when it is unmatched or the brackets cross. */
+function closeAt(cs, i, end) {
+  const stack = [];
+  for (let k = i; k < end; k++) {
+    if (OPENERS.has(cs[k])) stack.push(OPENERS.get(cs[k]));
+    else if (CLOSERS.has(cs[k])) {
+      if (stack.pop() !== cs[k]) return -1;
+      if (stack.length === 0) return k;
+    }
+  }
+  return -1;
+}
+
+/* One group cs[start..end) -> parts, or null. `level` counts the script groups this one sits inside. */
+function parseGroup(cs, start, end, level) {
+  const out = [];
+  let buf = "", runEnd = -1, run = new Set(), i = start;
+  while (i < end) {
+    const c = cs[i];
+    if (c !== "^" && c !== "_") { buf += c; i++; continue; }
+    if (level >= MAX_SCRIPT_LEVELS) return null;
+    let p = i - 1;                                                      // G1: the base
+    if (c === "^") while (p >= start && cs[p] === " ") p--;
+    if (p < start || !BASE_CHAR.test(cs[p])) return null;
+    let j = i + 1;                                                      // G2: the operand
+    if (c === "^") while (j < end && cs[j] === " ") j++;
+    if (j >= end) return null;
+    let children, next;
+    if ((cs[j] === "{" && j === i + 1) || (cs[j] === "(" && c === "^")) {          // (a) and (b): a group, its brackets dropped
+      const k = closeAt(cs, j, end);
+      if (k < 0 || k === j + 1) return null;
+      children = parseGroup(cs, j + 1, k, level + 1);
+      if (children === null || children.every((t) => typeof t === "string" && t.trim() === "")) return null;
+      next = k + 1;
+    } else if (WORD_CHAR.test(cs[j])) {                                              // (c): a word
+      let k = j;
+      while (k < end && WORD_CHAR.test(cs[k])) k++;
+      if (k < end && MARK.test(cs[k])) return null;                                   // a combining mark would attach to the wrong letter
+      children = [cs.slice(j, k).join("")];
+      next = k;
+    } else if (j === i + 1 && SYMBOLS.has(cs[j]) && (j + 1 >= end || cs[j + 1] === " " || CLOSERS.has(cs[j + 1]))) {   // (d): one symbol
+      children = [cs[j]];
+      next = j + 1;
+    } else return null;
+    const attached = c === "_" ? i === runEnd : runEnd >= 0 && cs.slice(runEnd, i).every((t) => t === " ");   // G4: the same run of scripts
+    if (attached) {
+      if (run.has(c)) return null;
+      run.add(c);
+    } else run = new Set([c]);
+    if (c === "^") buf = buf.replace(/ +$/, "");                        // the spaces directly before a set ^ are dropped
+    if (buf !== "") out.push(buf);
+    buf = "";
+    out.push({ tag: c === "^" ? "sup" : "sub", children });
+    runEnd = next;
+    i = next;
+  }
+  if (buf !== "") out.push(buf);
+  return out;
+}
+
+/* span text -> parts, or null when the grammar refuses it. A span with no script is its own text. */
+export function scriptParts(span) {
+  const cs = Array.from(String(span));
+  if (!cs.some((c) => c === "^" || c === "_")) return [String(span)];
+  return parseGroup(cs, 0, cs.length, 0);
+}
+const setChildren = (parts, el) => parts.map((p) => (typeof p === "string" ? p : el(p.tag, {}, setChildren(p.children, el))));
+
+/* One backtick span in the maths view: span.m (class "m m1" for one letter) when it is set, else code with its characters as typed. */
+function typesetSpan(sp, el) {
+  if (!mathsFace(sp)) return el("code", {}, [sp]);
+  if (oneLetter(sp)) return el("span", { class: "m m1" }, [sp]);
+  if (!/[\^_]/.test(sp)) return el("span", { class: "m" }, [sp]);
+  const parts = scriptParts(sp);
+  return parts === null ? el("code", {}, [sp]) : el("span", { class: "m" }, setChildren(parts, el));
+}
+
 /* The inline children with the maths face: a plain string for text, el("span") for a maths span, el("code") for the rest. */
 function typesetChildren(text, el) {
-  return titleSegments(text).map((seg) => {
-    if (seg.kind !== "code") return seg.text;
-    return mathsFace(seg.text) ? el("span", { class: oneLetter(seg.text) ? "m m1" : "m" }, [seg.text]) : el("code", {}, [seg.text]);
-  });
+  return titleSegments(text).map((seg) => (seg.kind !== "code" ? seg.text : typesetSpan(seg.text, el)));
 }
 
 /* The exact text: the note's text verbatim in ONE <pre> (one text node, every character, backticks included). */

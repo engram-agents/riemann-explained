@@ -1120,7 +1120,7 @@ OVERLAY_WORDS = {"key_kinds_heading": "What a box is", "symbol_kind_part": "Part
 OPTIONAL_WORDS = {"key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md); the titles of parts, groups and files are copied from it word for word.",
                   "note_label": "The file's opening note, from the repository, unchanged",
                   "note_source": "Opening note of {source} \u00b7 version {commit} of lsernau/grh-lean"}   # the three optional page-drawn words, final
-NOTE_WORDS = {"note_label_typeset": "The file's opening note, from the repository", "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
+NOTE_WORDS = {"note_label_typeset": "The file's opening note, from the repository", "note_typeset_line": "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.",
               "note_exact_button": "Show the exact text", "note_render_button": "Show in maths type"}   # the note words, final
 
 
@@ -2871,7 +2871,7 @@ def _selftest_cases():
     def _():
         typed = {"note_label": "The file's opening note, from the repository, unchanged", "note_label_typeset": "The file's opening note, from the repository",
                  "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
-                 "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.", "note_exact_button": "Show the exact text", "note_render_button": "Show in maths type", "key_lines_heading": "What a line is",
+                 "note_typeset_line": "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.", "note_exact_button": "Show the exact text", "note_render_button": "Show in maths type", "key_lines_heading": "What a line is",
                  "key_lines_text": LINES_WORDS["key_lines_text"],   # the one literal of the test: LINES_WORDS
                  "spine_lines_text": "A line means the upper result rests on the lower one, directly or through steps not drawn here. Lean also uses results it fills in on its own without naming "
                                      "them; those are not counted, so a result can rest on more than its lines show. Every line drawn is real."}
@@ -3245,12 +3245,12 @@ def _selftest_cases():
                     full.replace(quote, "{readme_quote}") == ov["key_scope_text"], bs._strings_problems(strings)),
                    ([], False, SCOPE_TEMPLATE, SCOPE_FULL, True, 1, False, 37, True, []))
 
-    @case("NW1", "the maths-view note words of the Lean map: the overlay of this checkout holds note_label_typeset `The file's opening note, from the repository`, note_typeset_line `Formulas set in "
-                 "maths type by us; every symbol is the repository's.`, note_exact_button `Show the exact text` and note_render_button `Show in maths type`, each equal to the literal typed here, with "
+    @case("NW1", "the maths-view note words of the Lean map: the overlay of this checkout holds note_label_typeset `The file's opening note, from the repository`, note_typeset_line `Formulas are set in maths type by us from the repository's text, "
+                 "so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.`, note_exact_button `Show the exact text` and note_render_button `Show in maths type`, each equal to the literal typed here, with "
                  "no placeholder; a Lean build with the overlay's words carries all four in index.json `strings` with those values; the builder's own check takes each of the four as an optional page "
                  "key (a build that holds only three carries those three: whether the page shows the maths view without all four is the page's rule, not pinned here)")
     def _():
-        four = {"note_label_typeset": "The file's opening note, from the repository", "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
+        four = {"note_label_typeset": "The file's opening note, from the repository", "note_typeset_line": "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.",
                 "note_exact_button": "Show the exact text", "note_render_button": "Show in maths type"}
         with open(os.path.join(_HERE, os.pardir, "site", "strings-lean.json"), encoding="utf-8") as f:
             ov = json.load(f)

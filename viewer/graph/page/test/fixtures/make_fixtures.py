@@ -266,7 +266,7 @@ TYPESET_STRINGS = {
     "note_label": "The file's opening note, from the repository, unchanged",
     "note_label_typeset": "The file's opening note, from the repository",
     "note_source": "Opening note of {source} \u00b7 version {commit} of lsernau/grh-lean",
-    "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
+    "note_typeset_line": "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.",
     "note_exact_button": "Show the exact text",
     "note_render_button": "Show the note with formulas set in maths type",
 }
@@ -274,7 +274,7 @@ TYPESET_STRINGS = {
 HOSTILE_FORMULAS = "\n\n`<b>x</b>` and `a<i>b` and `x&y`\n"
 # synthetic formula-class spans with scripts (sk-file-2, typeset map only): the first three are set (sup, sub and sup, a group with a sub),
 # the last two are refused and stay code as typed. No real note text.
-MATHS_SCRIPTS = "\nA power `y ^ 12`, a pair `P_\u03b4^N`, a group `x^{a_i}`, and two refused: `x^-1` and `a ^ b ^ c`.\n"
+MATHS_SCRIPTS = "\nA power `y ^ 12`, a pair `P_\u03b4^N`, a group `x^{\u03b1_i}`, and two refused: `x^-1` and `a ^ b ^ c`.\n"
 
 
 def note_of_file(path):

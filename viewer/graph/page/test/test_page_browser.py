@@ -2818,7 +2818,7 @@ def c_typeset_sheet(b, S0, engine):
         assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent") == \
             "Opening note of grh/src/New/OneLift/ComparisonOperator/LineCoordinates.lean · version 01234567 of lsernau/grh-lean"
         body = pg.ev(NOTE_BODY_JS)
-        assert body["tags"] == ["CODE", "H3", "H4", "LI", "P", "SPAN", "UL"], body["tags"]
+        assert body["tags"] == ["CODE", "H3", "H4", "LI", "P", "SPAN", "SUP", "UL"], body["tags"]
         assert body["attrs"] == ["H3:class", "H4:class", "SPAN:class"], body["attrs"]
         assert body["stray"] == 0 and body["handlers"] == 0, body
         assert st["maths"] >= 10, st["maths"]
@@ -2892,7 +2892,7 @@ def c_typeset_hostile(b, S0, engine):
 
 
 def c_typeset_scripts(b, S0, engine):
-    """The maths face sets scripts: on the synthetic note of sk-file-2 a set span (`y ^ 12`, `P_d^N`, `x^{a_i}`) holds a <sup> or <sub> and no
+    """The maths face sets scripts: on the synthetic note of sk-file-2 a set span (`y ^ 12`, `P_d^N`, `x^{a_i}` written with a Greek a) holds a <sup> or <sub> and no
     `.m` text holds ^ or _; a refused span (`x^-1`, `a ^ b ^ c`) is <code> with its characters as typed; sup and sub carry no attribute; the exact
     view is byte-equal to the note."""
     S = _typeset_site(engine)
@@ -2909,7 +2909,7 @@ def c_typeset_scripts(b, S0, engine):
         assert got["badMaths"] == 0, got["mathsText"]
         assert ["y12", "y<sup>12</sup>"] in got["sets"], got["sets"]
         assert ["PδN", "P<sub>δ</sub><sup>N</sup>"] in got["sets"], got["sets"]
-        assert ["xai", "x<sup>a<sub>i</sub></sup>"] in got["sets"], got["sets"]
+        assert ["xαi", "x<sup>α<sub>i</sub></sup>"] in got["sets"], got["sets"]
         assert got["attrs"] == [] and got["supInCode"] == 0, got
         assert "x^-1" in got["codes"] and "a ^ b ^ c" in got["codes"], got["codes"]
         assert not any(("x^-1" in t or "a ^ b ^ c" in t) for t in got["mathsText"]), got["mathsText"]

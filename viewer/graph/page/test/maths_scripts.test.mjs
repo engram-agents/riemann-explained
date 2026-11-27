@@ -85,8 +85,11 @@ const SET = [
   ["K^∞", '"K"|sup("∞")'],
   ["K^⊥", '"K"|sup("⊥")'],
   ["K^× y", '"K"|sup("×")|" y"'],                      // a symbol followed by a space
-  ["(K^×)", '"("|"K"|sup("×")|")"'],                   // a symbol followed by a closing bracket
+  ["(K^×)", '"(K"|sup("×")|")"'],                   // a symbol followed by a closing bracket
   ["K_*", '"K"|sub("*")'],
+  ["x ^{a}", '"x"|sup("a")'],                          // the spaces are BEFORE the ^: dropped; the brace is directly after it
+  ["x^{a}}", '"x"|sup("a")|"}"'],
+  ["x^a}", '"x"|sup("a")|"}"'],                       // a bracket outside an operand group is plain text (G4 speaks of operand groups only)
   ["x^{a_i}", '"x"|sup("a"|sub("i"))'],                // G3: two levels
   ["x^(a_i)", '"x"|sup("a"|sub("i"))'],
   ["x_{a^b}", '"x"|sub("a"|sup("b"))'],
@@ -111,6 +114,7 @@ const SET = [
 ];
 const REFUSED = [
   "x^-1", "x^**", "x^×+", "x^+1",             // G2d: a symbol must be the whole operand; two symbols
+  "x^=", "x^/ y", "x^!)", "x_<", "x^†", "x_.",  // G2d: a lone character that is not one of the seven is no operand
   "a ^ b ^ c", "a^b^c", "a ^ b ^ c ^ d",      // G4 chain of ^
   "a_b_c", "x_a_b",                           // G4 chain of _
   "x^a_b^c",                                  // two sups on one base (a ^ run)
@@ -119,11 +123,11 @@ const REFUSED = [
   " ^x", "+^x", "x +^2", "a b_ ^",
   "x_ i", "x_ 1",                             // G2c: no space after _
   "x^{}", "x^()", "x_{}",                     // G4: empty groups
-  "x^{a", "x^(a", "x^a}", "x^{a)", "x^{(a}b)", "x^{[a}]", // G4: unmatched or crossing brackets
+  "x^{a", "x^(a", "x^{a)", "x^{(a}b)", "x^{[a}]", // G4: unmatched or crossing brackets
   "x_(a)", "x_[a]", "x^[a]",                  // G2: no such operand
-  "x ^ {a}", "x ^{a}",                        // (a) braces are DIRECTLY after the script character
+  "x ^ {a}", "x ^ \u00d7 y",                  // (a) braces and (d) a symbol are DIRECTLY after the script character
   "x^{_a}", "x^{ ^a}",                        // a group's content has its own bases
-  "x^{a}}", "x^{a} ^ b",                      // a following ^ after a group
+  "x^{a} ^ b", "x^{a}^b",                     // a following ^ after a group
   "x^2̄", "x_i̅",                   // a combining mark after an operand would attach to the wrong letter
   "x ^ ^ y",
 ];
