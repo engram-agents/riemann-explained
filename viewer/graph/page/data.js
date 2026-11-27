@@ -62,6 +62,8 @@ export const TYPESET_STRINGS = Object.freeze(["note_label_typeset", "note_typese
    view, the sheet's label and its two lines, and the notice for a failed read of the spine. The spine's own sentence is one more key, whose NAME the page does
    not know: spine.json's edge_basis names it (spine.js), and the index may carry exactly one key beyond the lists. */
 export const GRAPH_VIEW_STRINGS = Object.freeze(["view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"]);
+/* The file neighbourhood's words (G2): all nine or none, and only on a map that has the Graph view. When they are there the view offers the neighbourhood of a file. */
+export const NEIGHBOURHOOD_STRINGS = Object.freeze(["nb_built_on", "nb_uses", "nb_names_one", "nb_names_many", "nb_more", "nb_back", "nb_back_spine", "nb_empty_uses", "nb_empty_built_on"]);
 export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source", ...TYPESET_STRINGS]);
 /* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
    `edge_basis.words` names. They are neither fixed nor optional: validateIndex adds them to the required set when edge_basis is there, and
@@ -242,14 +244,23 @@ export function validateIndex(raw) {
       if (raw.strings[k] === "") throw new DataError(viewPair.includes(k) ? "bad-view-words" : "empty-string", "index strings holds an empty Graph view word " + k);
     }
   }
-  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k));
+  /* THE NEIGHBOURHOOD (G2): any of its nine words needs the view words; then all nine are required and not empty. */
+  const nbAny = NEIGHBOURHOOD_STRINGS.some((k) => has(raw.strings, k));
+  if (nbAny && !viewOn) throw new DataError("bad-view-words", "index strings holds neighbourhood words without the Graph view words");
+  if (nbAny) {
+    for (const k of NEIGHBOURHOOD_STRINGS) {
+      if (!has(raw.strings, k)) throw new DataError("missing-string", "index strings lacks the neighbourhood word " + k);
+      if (raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty neighbourhood word " + k);
+    }
+  }
+  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && (GRAPH_VIEW_STRINGS.includes(k) || NEIGHBOURHOOD_STRINGS.includes(k)));
   const leftover = Object.keys(raw.strings).filter((k) => !known(k));
   if (viewOn && leftover.length === 0) throw new DataError("bad-view-words", "index strings carries no spine sentence key beside the Graph view words");
   for (const k of viewOn ? leftover.slice(1) : leftover) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
   if (viewOn && raw.strings[leftover[0]] === "") throw new DataError("empty-string", "index strings holds an empty spine sentence key " + leftover[0]);
   const out = { commit: raw.commit, maxChildren: raw.max_children, top, rests, steps: raw.steps, symbols, strings: { ...raw.strings }, assets: { ...raw.assets } };
   if (edgeBasis) out.edgeBasis = edgeBasis;
-  if (viewOn) out.graphView = { spineWords: leftover[0] };
+  if (viewOn) out.graphView = { spineWords: leftover[0], neighbourhood: nbAny };
   /* The two optional per-map keys (data contract sections 15 and 24), each absent on the live map and then absent from the record too.
      `sibling_layout`: the only value is "column". `open_scale_floor`: a finite number above 0 here; its range (zoom.min up to the open-framing
      cap) is the ENGINE's rule, asked of the engine itself at start by checkedOptions below, never copied into the page. */
