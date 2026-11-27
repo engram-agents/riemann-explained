@@ -1089,9 +1089,10 @@ def c_live_sheets_match_main(b, S, engine):
         want = json.load(f)
     assert sorted(want) == sorted(ALL_IDS) and len(want) == 23, "the golden covers the 23 live cards"
     snap_js = """(() => { const s = document.getElementById('graph-sheet');
-      return { hidden: s.hidden, cls: s.className, crumbs: document.getElementById('graph-crumbs').innerHTML,
-               tools: document.getElementById('graph-sheet-tools').innerHTML, body: document.getElementById('graph-sheet-body').innerHTML,
-               notice: document.getElementById('graph-notice').hidden }; })()"""
+      return { hidden: s.hidden, cls: s.className.split(' sheet-settling').join(''), crumbs: document.getElementById('graph-crumbs').innerHTML,
+               tools: document.getElementById('graph-sheet-tools').innerHTML.split(' sheet-tool-main').join(''),
+               body: document.getElementById('graph-sheet-body').innerHTML,
+               notice: document.getElementById('graph-notice').hidden }; })()"""    # R1: the one class the parts button gained (case R1 holds it) and the sheet's 400 ms opening class are taken out, so every other byte is still main's
     digest = lambda v: hashlib.sha256(json.dumps(v, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     n = 0
     for card in ALL_IDS:
@@ -3123,10 +3124,49 @@ def c_r1_r4_mutants(b, S0, engine):
             globals()["fold_served"] = orig
 
 
+def c_r5_opening_guard(b, S0, engine):
+    """R5 (found by FD9 once R1 made the sheet's main button 48 px and full width): a TAP on a box opens the sheet at the release, and the click that ends the tap used to land on the
+    button now under the finger, so one tap opened a card and pressed 'Open its parts' (the sheet shut at once). The sheet takes no pointer for 400 ms after it opens (class sheet-settling),
+    so the box tapped here, the one at the lower edge of a 390 x 844 phone, stays open after the guard has ended."""
+    S, pg = fold_open(b, engine, 390, 844, fix="graphview")
+    try:
+        n = [x for x in pg.ev(FOLD_TAP_JS) if x["id"] == "sk-part-2"][0]
+        fold_tap(pg, n["x"], n["y"])
+        pg.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+        pg.page.wait_for_timeout(800)
+        assert pg.ev("document.getElementById('graph-sheet').hidden") is False, "the sheet shut again: the click that ended the tap pressed its button"
+        assert pg.ev("document.getElementById('graph-sheet').classList.contains('sheet-settling')") is False, "the guard did not end"
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop()
+
+
+def c_r5_mutants(b, S0, engine):
+    """R5 mutants (the real engine only: the double sends no click after a tap): the guard's CSS rule gone, the guard never put on: each turns R5 red."""
+    if engine != "real":
+        return
+    orig = fold_served
+    for name, mut in (("no CSS rule", {"graph.css": lambda t: t.replace(".graph-sheet.sheet-settling { pointer-events: none; }", "")}),
+                      ("never put on", {"page/sheet.js": lambda t: t.replace('root.classList.add("sheet-settling");', "")})):
+        def served(engine_, bar=True, mutate=None, live=False, fix=None, _m=mut):
+            return orig(engine_, bar, _m, live, fix)
+        globals()["fold_served"] = served
+        try:
+            try:
+                c_r5_opening_guard(b, S0, engine)
+            except AssertionError:
+                continue
+            raise AssertionError("MUTANT SURVIVED: " + name)
+        finally:
+            globals()["fold_served"] = orig
+
+
 R14_CASES = [
     ("R1: 'Open its parts' is the sheet's first row, full width, filled, at least 48 px", c_r1_parts_button_first),
     ("R4: in-place controls are buttons drawn as buttons; every link is a real jump", c_r4_buttons_look_like_buttons),
     ("R1/R4 mutants: no main class, underlined again: each turns its case red", c_r1_r4_mutants),
+    ("R5: a tap that opens the sheet is not a press on its button (the sheet takes no pointer for 400 ms)", c_r5_opening_guard),
+    ("R5 mutants: no CSS rule, never put on: each turns R5 red", c_r5_mutants),
 ]
 
 
