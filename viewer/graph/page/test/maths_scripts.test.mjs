@@ -69,7 +69,6 @@ const flatParts = (parts) => parts.map((p) => (typeof p === "string" ? p : flatP
 const SET = [
   ["y ^ 12", '"y"|sup("12")'],                         // G2c, spaces round ^ dropped
   ["x^10", '"x"|sup("10")'],
-  ["3 s ^ 7", '"3 s"|sup("7")'],                       // the base is only the character before; the rest stays text
   ["x ^ (a + b)", '"x"|sup("a + b")'],                 // G2b, ruling B: parens dropped, inner spaces stay
   ["x^(a+b)", '"x"|sup("a+b")'],
   ["Y_{j-1}", '"Y"|sub("j-1")'],                       // G2a
@@ -234,6 +233,96 @@ test("C7: dom.js TAGS gains sup and sub, and nothing else", () => {
   assert.deepEqual([...TAGS].filter((t) => !["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code", "h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"].includes(t)), ["sup", "sub"]);
 });
 
+/* ---------------------------------------------------------------- fold 1 (rulings 39389, 39396, 39398). Synthetic spans only; marks are written as \u escapes. */
+const M1 = "̄", M2 = "̈", M3 = "̂", M4 = "̃";   // combining macron, diaeresis, circumflex, tilde
+
+/* F1: a base may be a LETTER followed by combining marks; the mark belongs to the letter and the script is drawn after both. */
+const SET_MARKS = [
+  ["X" + M1 + "_ℓ", '"X' + M1 + '"|sub("ℓ")'],
+  ["a" + M1 + "^2", '"a' + M1 + '"|sup("2")'],
+  ["y" + M3 + " ^ 3", '"y' + M3 + '"|sup("3")'],                 // the spaces before a ^ are dropped, the mark stays on its letter
+  ["b" + M4 + "_{i-1}", '"b' + M4 + '"|sub("i-1")'],
+  ["x" + M2 + M1 + "_i", '"x' + M2 + M1 + '"|sub("i")'],       // two marks on one letter
+];
+test("F1: a letter with combining marks is a base; the marks stay on the letter and the script follows both (C4, C5 on each)", () => {
+  for (const [span, want] of SET_MARKS) {
+    const parts = NOTE.scriptParts(span);
+    assert.ok(parts !== null, "scriptParts " + JSON.stringify(span));
+    assert.equal(pp(parts), want, JSON.stringify(span));
+    const got = flatParts(parts);
+    assert.ok(!/[\^_]/.test(got), "C4 " + JSON.stringify(span));
+    assert.equal(got, expectedFlatten(span), "C5 " + JSON.stringify(span));
+    assert.ok(onlyAllowedLoss(span, got), "C5 loss " + JSON.stringify(span));
+    if (NOTE.spanClass(span) === "formula") assert.equal(ser(spanOf(span)), "span.m(" + want + ")", JSON.stringify(span));
+  }
+});
+const REFUSED_MARKS = [
+  M1 + "_x", M1 + "^2",                     // a mark run at the span's start is no base
+  "2" + M1 + "_x", "2" + M1 + " ^ 3",       // a digit then a mark
+  ")" + M1 + "_x", ")" + M1 + "^2",         // a closing bracket then a mark
+  " " + M1 + "_x",                          // a space then a mark
+];
+test("F1: a mark run that does not start at a letter is still no base: refused, drawn as code, as typed", () => {
+  for (const span of REFUSED_MARKS) {
+    assert.equal(NOTE.scriptParts(span), null, "scriptParts " + JSON.stringify(span));
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")", JSON.stringify(span));
+  }
+});
+
+/* F2a: a combining mark directly after ANY operand is refused (it would attach to the wrong glyph). */
+const REFUSED_AFTER_OPERAND = [
+  "x^{a}" + M1,                             // after a {...} group
+  "x ^ (a)" + M1,                           // after a ^(...) group
+  "x^×" + M1,                               // after a symbol
+  "x^a" + M1, "x_i" + M1,                   // after a word (already refused before the fold)
+];
+test("F2a: a combining mark directly after an operand (group, parenthesised group, symbol, word) refuses the span", () => {
+  for (const span of REFUSED_AFTER_OPERAND) {
+    assert.equal(NOTE.scriptParts(span), null, "scriptParts " + JSON.stringify(span));
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")", JSON.stringify(span));
+  }
+});
+
+/* F3: a ^ whose BASE WORD follows another word (or a closing bracket) and a space is refused. THE 13 REFUSED SHAPES:
+   (1) (g k ^ d)⁻¹   (2) φ (t + 1) ≡ φ t ^ Q   (3) 2 q ^ 2   (4) 400 q ^ 3 + B   (5) μ Z ^ (q + 1)   (6) a Ê ^ (σ × σ')   (7) w Ê^ν
+   (8) (ρ θ^t)⁻¹   (9) x y ^ k   (10) σ ^ (m + 4) E ζ ^ (-k)   (11) κ ≤ 2 q ^ 2   (12) z w^C   (13) 5 m₀ 2 ^ t
+   (1) and (2) read falsely in Lean syntax, where an application binds tighter than ^; the other eleven read correctly but cannot be told from them by syntax. */
+const JUXTAPOSED = [
+  "(g k ^ d)⁻¹", "φ (t + 1) ≡ φ t ^ Q",
+  "2 q ^ 2", "400 q ^ 3 + B", "μ Z ^ (q + 1)", "a Ê ^ (σ × σ')", "w Ê^ν", "(ρ θ^t)⁻¹", "x y ^ k",
+  "σ ^ (m + 4) E ζ ^ (-k)", "κ ≤ 2 q ^ 2", "z w^C", "5 m₀ 2 ^ t",
+];
+test("F3: the juxtaposed-power list has 13 distinct shapes", () => {
+  assert.equal(new Set(JUXTAPOSED).size, 13);
+});
+for (const span of JUXTAPOSED) {
+  test("F3 refused: " + JSON.stringify(span), () => {
+    assert.equal(NOTE.scriptParts(span), null);
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")");
+  });
+}
+/* A combining mark on the base word counts as part of the word (the same shape as (6) and (7), with a mark on the base). */
+test("F3 refused: the base word keeps its combining marks", () => {
+  for (const span of ["a E" + M1 + " ^ 2", "w y" + M3 + "^3"]) assert.equal(NOTE.scriptParts(span), null, JSON.stringify(span));
+});
+const STILL_SET = [
+  ["y = x ^ 2", '"y = x"|sup("2")'],                  // an operator and a space before the base word
+  ["(x ^ 2)", '"(x"|sup("2")|")"'],                   // a bracket directly before the base word
+  ["(g k)^d", '"(g k)"|sup("d")'],                    // a closing bracket is the base: a grouped base
+  ["X Y_i", '"X Y"|sub("i")'],                        // a subscript in the same place stays set
+  ["a + b ^ 2", '"a + b"|sup("2")'],
+  ["x ^ 2", '"x"|sup("2")'],                          // the span's start
+  ["x^{y ^ 2}", '"x"|sup("y"|sup("2"))'],             // a group's start
+];
+test("F3: the shapes the rule does not name stay set", () => {
+  for (const [span, want] of STILL_SET) {
+    const parts = NOTE.scriptParts(span);
+    assert.ok(parts !== null, "scriptParts " + span);
+    assert.equal(pp(parts), want, span);
+    assert.equal(flatParts(parts), expectedFlatten(span), "C5 " + span);
+  }
+});
+
 /* ---------------------------------------------------------------- the population: every real span, from the committed class file, read only */
 const SPANS = JSON.parse(readFileSync(path.join(HERE, "fixtures", "note-spans-classes.json"), "utf8")).spans;
 
@@ -267,4 +356,20 @@ test("population: C4 holds on every real span in the maths face; C5 on every set
   assert.deepEqual(bad, []);
   assert.equal(set + refused + noScript, formulas);
   assert.ok(set > 0 && refused > 0 && noScript > 0);
+});
+
+test("F1 population: no real formula span that parses once the marks on its letters are removed is refused with them (computed, nothing copied)", () => {
+  let checked = 0, withMarks = 0;
+  const bad = [];
+  for (const row of SPANS) {
+    if (row.class !== "formula" || !/[\^_]/.test(row.span)) continue;
+    const stripped = row.span.replace(/(\p{L})\p{M}+/gu, "$1");
+    if (stripped !== row.span) withMarks++;
+    if (NOTE.scriptParts(stripped) !== null) {
+      checked++;
+      if (NOTE.scriptParts(row.span) === null) bad.push(row.span.length);
+    }
+  }
+  console.log("F1 population: %d formula spans with a script parse once stripped; %d of the script spans carry marks on a letter; %d refused with them", checked, withMarks, bad.length);
+  assert.deepEqual(bad, []);
 });

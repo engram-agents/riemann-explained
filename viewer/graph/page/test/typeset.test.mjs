@@ -77,9 +77,9 @@ test("T2 the named anchors from Sol's measurement: formula spans are span.m, one
   for (const sp of formula) { assert.equal(NOTE.spanClass(sp), "formula", sp); assert.deepEqual(topT("`" + sp + "`"), ["p(span.m(" + J(sp) + "))"], sp); }
   for (const sp of withArgs) { assert.equal(NOTE.spanClass(sp), "name-with-arguments", sp); assert.deepEqual(topT("`" + sp + "`"), ["p(code(" + J(sp) + "))"], sp); }
   for (const sp of inFormula) { assert.equal(NOTE.spanClass(sp), "name-in-formula", sp); assert.deepEqual(topT("`" + sp + "`"), ["p(code(" + J(sp) + "))"], sp); }
-  // a formula span with a script is set or refused by scriptParts (maths_scripts.test.mjs): here a combining mark stands before the _, G1 gives it no base, so it is code as typed
+  // a formula span with a script is set or refused by scriptParts (maths_scripts.test.mjs): here a combining mark stands on the letter before the _, which is the base (the mark stays on it)
   assert.equal(NOTE.spanClass("ℚ̄_ℓ"), "formula");
-  assert.deepEqual(topT("`ℚ̄_ℓ`"), ["p(code(" + J("ℚ̄_ℓ") + "))"]);
+  assert.deepEqual(topT("`ℚ̄_ℓ`"), ["p(span.m(" + J("ℚ̄") + "|sub(" + J("ℓ") + ")))"]);
   for (const sp of ["Parameters", "S.frameProducts", "x₁"]) assert.equal(NOTE.spanClass(sp), "name", sp);
   assert.deepEqual(topT("`Parameters`"), ['p(code("Parameters"))']);
   for (const sp of ["x", "γ"]) {
