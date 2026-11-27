@@ -19,7 +19,7 @@ export function createFold({ doc, layer, signal, afterFold }) {
   const win = doc.defaultView;
   const phone = win.matchMedia("(max-width: 600px), (max-height: 519px)");
   const short = win.matchMedia("(max-height: 519px)");
-  let folded = false;
+  let folded = false, disposed = false;
 
   function set(f) {
     folded = f;
@@ -28,7 +28,7 @@ export function createFold({ doc, layer, signal, afterFold }) {
     header.removeAttribute("data-full");
   }
   function fold(target) {
-    if (folded || !phone.matches) return;
+    if (disposed || folded || !phone.matches) return;
     set(true);
     if (target && afterFold) afterFold(target);
   }
@@ -75,5 +75,5 @@ export function createFold({ doc, layer, signal, afterFold }) {
     });
     for (const c of copies.reverse()) aboutEl.insertBefore(c, aboutEl.firstChild);
   }
-  return { dispose: () => { if (watch) watch.disconnect(); putBack(); }, folded: () => folded, syncAbout };
+  return { dispose: () => { disposed = true; if (watch) watch.disconnect(); putBack(); }, folded: () => folded, syncAbout };
 }
