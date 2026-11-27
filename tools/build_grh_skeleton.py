@@ -1216,7 +1216,7 @@ STATEMENT_WORD_KEYS = ("open_statements", "close_statements", "count_statement_o
                        "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
                        "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note",
                        "decl_heading_label", "decl_reading_none")   # the EXACT keys of the file of --strings-overlay-statements (Ariadne's strings v2.1; the page PR ships it as site/strings-lean-statements.json): the prompt templates are not among them
-USES_ELSEWHERE_LIBRARY = True   # `uses_elsewhere` lists every constant of another module; True keeps the ones whose module is not a file of the map (Init, Mathlib, Lib: `step` absent), False drops them: one edit for a later ruling
+USES_ELSEWHERE_LIBRARY = False   # `uses_elsewhere` is the REPOSITORY only (Kepler 39779): names of modules that are files of grh/src (New: with a `step`; Lib: `step` absent). False leaves out the names of every other module (Mathlib, Lean core) and counts them in `uses_library_count`; True lists them too (count 0): one edit for a later ruling
 STATEMENT_COUNT_WORDS = {"many": "count_statement_many", "one": "count_statement_one"}   # the count words of the statements of a file: `child_count_words` of the FILE row (a statement row has no count_words: the children of a file have mixed kinds)
 STATEMENT_HEADING = re.compile(r"###(?!#)")
 _STATEMENT_PREFIX = re.compile(r"(?:(?:@\[[^\]\n]*\]|private|protected|noncomputable|nonrec|unsafe|partial)[ \t]*)+")   # a line that holds only attributes and modifiers: the declaration starts on it
@@ -1501,7 +1501,7 @@ def _variable_flags(masked):
         if ld.DECL.match(line):
             flags[k + 1] = top or any(e[2] for e in stack) or pending
             pending = False
-        elif line[0] not in " \t" and not _IN_END.search(line):
+        elif line[0] not in " \t" and not _IN_END.search(line) and not _STATEMENT_PREFIX.fullmatch(line.strip()):   # an attribute or modifier line belongs to the declaration below: it does not end a `variable ... in`
             pending = False
     return flags
 
@@ -1546,6 +1546,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
     module_fid = {p.replace("/", "."): i for i, p in file_paths.items()}
     new_rows, step_extra, notes, links, with_children, kinds, titles = [], {}, {}, {}, [], [], []
     rep["statements"] = {}
+    repo_cache = {}
     for fid in ids:
         p = file_paths[fid]
         try:
@@ -1567,6 +1568,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
             starts.append(pos)
             pos += len(line) + 1
         masked_lines = masked.split("\n")
+        raw_lines = raw.split("\n")
         docs, heads = _lex_blocks(raw)
         flags = _variable_flags(masked)
         reported = sorted([(k + 1, "instance") for k, ln in enumerate(masked_lines) if (lambda m: bool(m) and m.group(1) == "instance" and not m.group(2).rstrip("."))(ld.DECL.match(ln))]
@@ -1603,7 +1605,12 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
                 continue
             doc = next((d for d in docs if d[1] <= start and raw[d[1]:start].strip() == ""), None)   # only white space may lie between the doc-string and the declaration
             head = [h for h in heads if h[0] <= start]
-            decls.append({"kw": kw, "name": name, "short": name.rsplit(".", 1)[-1] or name, "text": raw[start:cut].rstrip(), "doc": doc[2] if doc else None,
+            a = raw.count("\n", 0, doc[0]) if doc else j   # the line the declaration starts on (its doc-string's first line when it has one): the prefix lines stand directly above it
+            prefix = []
+            while a > 0 and masked_lines[a - 1][:1] not in ("", " ", "\t") and _IN_END.search(masked_lines[a - 1]) and not ld.DECL.match(masked_lines[a - 1]):   # `<command> ... in` at column 0, no blank line between
+                prefix.insert(0, raw_lines[a - 1].rstrip())
+                a -= 1
+            decls.append({"kw": kw, "name": name, "short": name.rsplit(".", 1)[-1] or name, "text": "\n".join(prefix + [raw[start:cut].rstrip()]), "doc": doc[2] if doc else None,
                           "heading": head[-1][1] if head else None, "variables": flags.get(line_no, False)})
         rep["statements"][fid] = {"found": len(found) + len(reported), "written": 0 if bad else len(decls), "reported": [(kind, line) for line, kind in reported]}
         if bad:
@@ -1614,17 +1621,20 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
         index = {d["name"]: i for i, d in enumerate(decls)}
         uses = []
         for i, d in enumerate(decls):
-            here, elsewhere = set(), []
+            here, elsewhere, left_out = set(), [], 0
             for m, n in uses_in.get(d["name"], ()):
                 if m == module:
                     if n in index and index[n] != i:
                         here.add(index[n])
-                elif m in module_fid or USES_ELSEWHERE_LIBRARY:
+                elif m in module_fid or _repo_module(grh, m, repo_cache) or USES_ELSEWHERE_LIBRARY:
                     e = {"name": n}
                     if m in module_fid:
                         e["step"] = module_fid[m]
                     elsewhere.append(e)
-            uses.append((sorted(here), elsewhere))
+                else:
+                    left_out += 1   # a name of Mathlib or Lean core: counted, not listed
+            uses.append((sorted(here), elsewhere, left_out))
+        rep["statements"][fid]["library_left_out"] = sum(u[2] for u in uses)
         adj = {i: u[0] for i, u in enumerate(uses)}
         kept = _reduce(adj)
         review = rep["notes"][fid].get("review")
@@ -1642,7 +1652,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
             titles.append("`" + d["short"] + "`")
             links.update({(d["id"], decls[j]["id"]): {"weight": 1, "in_reduction": True} for j in kept[i]})
             x = {"name": d["name"], "source_path": source_path, "statement": {"keyword": d["kw"], "text": d["text"]}, "variables": d["variables"],
-                 "uses_here": [decls[j]["id"] for j in uses[i][0]], "uses_elsewhere": uses[i][1], "prompt": prompt}
+                 "uses_here": [decls[j]["id"] for j in uses[i][0]], "uses_elsewhere": uses[i][1], "uses_library_count": uses[i][2], "prompt": prompt}
             if d["heading"] is not None:
                 x["heading"] = d["heading"]
             step_extra[d["id"]] = x
@@ -1770,12 +1780,25 @@ def _parse(a):
     return opts if {"grh", "pin", "strings", "out", "ilean-dir"} <= set(opts) and opts["pin"] else None
 
 
+def _repo_module(grh, module, cache):
+    """True when `module` (a module name read from an .ilean, so text of the build's inputs) is a file of the repository's src folder (`<grh>/src/<a>/<b>.lean`, a regular file): the names of such a module are
+    the repository's own (New and Lib), any other (Mathlib, Lean core) is library. Only letters, digits, `_` and `'` in each dotted component are looked up."""
+    if module not in cache:
+        parts = module.split(".")
+        ok = bool(parts) and all(re.fullmatch(r"[A-Za-z0-9_']+", c) for c in parts)
+        path = os.path.join(grh, "src", *parts) + ".lean" if ok else None
+        cache[module] = bool(path) and os.path.isfile(path) and not os.path.islink(path)
+    return cache[module]
+
+
 def _statement_lines(rep):
     """The lines of the statement level (none without `--statements-for`): per file `statements <file id>: <found> declarations, <written> written, <reported> reported`, then one line per
-    reported declaration (the reader's skipped kinds: a nameless `instance`, an `example`) by kind and line; found = written + reported always."""
+    reported declaration (the reader's skipped kinds: a nameless `instance`, an `example`) by kind and line; found = written + reported always. After the counts line, `statements <file id>: <n> library names
+    left out of uses_elsewhere` says how many names of Mathlib and Lean core the `uses_elsewhere` of the file's statements leave out."""
     out = []
     for fid, s in rep.get("statements", {}).items():
         out.append(f"statements {fid}: {s['found']} declarations, {s['written']} written, {len(s['reported'])} reported")
+        out.append(f"statements {fid}: {s.get('library_left_out', 0)} library names left out of uses_elsewhere")
         out += [f"statements {fid} reported {kind} line {line}" for kind, line in s["reported"]]
     return out
 
@@ -5402,7 +5425,7 @@ def _selftest_cases():
         st = _stm_names(files)
         path = ["lean-s", "lean-s-g", "lean-s-a"]
         card = lambda i, k, t: {"child_count": 0, "id": i, "kind": k, "path": path, "proof": "none", "state": "none", "title": t}
-        got = {n: {k: v for k, v in o.items() if k not in ("prompt", "uses_here", "uses_elsewhere", "heading", "variables", "commit", "format")} for n, o in st.items()}
+        got = {n: {k: v for k, v in o.items() if k not in ("prompt", "uses_here", "uses_elsewhere", "uses_library_count", "heading", "variables", "commit", "format")} for n, o in st.items()}
         want = {"one": {"card": card("lean-s-a-one", "theorem", "`one`"), "children": [], "id": "lean-s-a-one", "path": path, "rests_on": [], "name": "one", "source_path": "src/New/S/A.lean",
                         "statement": {"keyword": "theorem", "text": "theorem one : True"},
                         "note": {"review": {"state": "converter"}, "source": "grh/src/New/S/A.lean", "text": " Doc one: `x`. "}},
