@@ -4021,6 +4021,52 @@ def c_gv_show_file_made_card(b, S0, engine):
         S.stop(); gv_clean()
 
 
+def c_gv_back_to_graph(b, S0, engine, mutate=None):
+    """GV20: Lei's request: after 'Show its file in Cards' the card's sheet has ONE control, '< Back to the graph'; a tap closes the sheet and shows the Graph view again with THAT
+    box selected and framed inside the stage. A card opened by a tap in Cards has no such control, and the control goes when another card is shown."""
+    root = tempfile.mkdtemp(prefix="pg-gv-")
+    assemble.assemble(root, engine, fix="graphview", mutate=mutate)
+    Handler.seen.clear()
+    S = Served(root)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", 390, 844, init=GV_INIT).settled()
+        tap(pg, "sk-part")
+        pg.wait("document.getElementById('graph-sheet').hidden === false", 6000)
+        assert pg.ev("document.querySelectorAll('#graph-sheet .spine-back').length") == 0, "a card opened by a tap in Cards has the control"
+        pg.page.click("#graph-sheet-close"); pg.page.wait_for_timeout(100)
+        gv_press(pg, "graph")
+        pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
+        tap(pg, "spine-made-b")
+        pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
+        pg.page.click("#graph-sheet-body .spine-show-file")
+        pg.wait("document.querySelector('#graph-sheet-body article')?.id === 'sk-file-2'", 8000)
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet .spine-back')].map((x) => x.textContent)") == ["\u2039 Back to the graph"]
+        pg.page.click("#graph-sheet .spine-back")
+        pg.wait("document.getElementById('graph-sheet').hidden === true && !document.querySelector('.graph-spine').hidden", 8000)
+        pg.page.wait_for_timeout(600)
+        got = pg.ev("""(() => { const s = document.querySelector('.graph-spine').getBoundingClientRect(), n = document.querySelector('.graph-spine .ge-node[data-node="spine-made-b"]');
+          const q = n.getBoundingClientRect(); return { sel: n.classList.contains('ge-selected'), others: document.querySelectorAll('.graph-spine .ge-node.ge-selected').length,
+            inside: q.left >= s.left - 1 && q.right <= s.right + 1 && q.top >= s.top - 1 && q.bottom <= s.bottom + 1, cards: document.getElementById('graph').hidden }; })()""")
+        assert got == {"sel": True, "others": 1, "inside": True, "cards": True}, got
+        st = gv_state(pg)
+        assert st["spine"] is True and st["cards"] is False and st["pressed"] == ["cards:false", "graph:true"] and st["events"] == [], st
+        pg.csp_clean(); pg.close()
+    finally:
+        S.stop(); gv_clean()
+
+
+def c_gv_back_mutants(b, S0, engine):
+    """GV21: three mutants of the way back: the Graph view not shown again, the control that does nothing, and the view's hide choosing another box as the selected one: each turns GV20 red."""
+    for name, mut in (("graph not shown", {"page/app.js": lambda t: t.replace("if (!(await view.show(t))) return false;", "")}),
+                      ("control does nothing", {"page/app.js": lambda t: t.replace('back.addEventListener("click", () => routes["back-to-graph"](boxId), { signal });', "")}),
+                      ("another box selected", {"page/graphview.js": lambda t: t.replace("  function hide() {\n    view = \"cards\";", "  function hide() {\n    if (handle) handle.select(\"spine-made-a\");\n    view = \"cards\";")})):
+        try:
+            c_gv_back_to_graph(b, S0, engine, mutate=mut)
+        except AssertionError:
+            continue
+        raise AssertionError("MUTANT SURVIVED: " + name)
+
+
 def c_gv_stalled_spine(b, S0, engine):
     """GV19: a server that accepts the request for spine.json and never answers: the press of Graph ends, after the fixed time, as the ordinary refusal (here shortened to
     0.8 s in the served copy; the real constant, 20 s, is pinned by a node case): Cards stays, the stage hidden and empty, the one notice, one event with the code fetch-failed,
@@ -4072,7 +4118,7 @@ def c_gv_view_routes_close(b, S0, engine):
     box, pressing 'Show its file' and pressing Graph each leave the panel and the view exactly as they were. The route names are the module's own VIEW_ROUTES."""
     S, pg = gv(b, engine)
     try:
-        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["spine-open", "spine-show-file", "view-cards", "view-graph"]
+        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["back-to-graph", "spine-open", "spine-show-file", "view-cards", "view-graph"]
         gv_press(pg, "graph")
         pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
         tap(pg, "spine-made-a")
@@ -4125,6 +4171,8 @@ GV_CASES = [
     ("GV16: the Graph view's routes honour a cancelled sheetclose: Cards, another box, 'Show its file' and Graph change nothing", c_gv_view_routes_close),
     ("GV17: a box tapped while its file loads, then another box: the first one's late answer changes nothing", c_gv_stale_spine_open),
     ("GV18: on a tree with an empty card block, 'Show its file in Cards' opens the file's made card in Cards", c_gv_show_file_made_card),
+    ("GV20: after 'Show its file in Cards' one control goes back to the graph with that box selected and framed; none after a tap in Cards", c_gv_back_to_graph),
+    ("GV21: three mutants of the way back (graph not shown, a control that does nothing, another box selected) each turn GV20 red", c_gv_back_mutants),
     ("GV19: a spine.json request that never answers ends, after the fixed time, as the ordinary refusal (fetch-failed), and a later press draws the spine", c_gv_stalled_spine),
     ("GV13: the engine refusing the spine's roots after the stage was shown puts the page back and tells engine-refused", c_gv_engine_refused),
 ]

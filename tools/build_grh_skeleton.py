@@ -1536,7 +1536,7 @@ LINES_WORDS = {"key_lines_heading": "What a line is",
 # the Graph view's seven words (G1; the values of site/strings-lean-graph.json, written once more here so the tool's own tests do not read the file they check)
 GRAPH_VIEW_WORDS = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "Each box is one of the main results the repository names in its last step.",
                     "spine_content_label": "In the repository's words", "spine_lives_in": "Lives in: {title}", "spine_show_file": "Show its file in Cards",
-                    "graph_failed_notice": "The graph could not be opened; tap Graph to try again."}
+                    "graph_failed_notice": "The graph could not be opened; tap Graph to try again.", "spine_back_to_graph": "\u2039 Back to the graph"}
 
 
 def _strings_file(d, s=None, name="strings.json"):
@@ -4518,6 +4518,23 @@ def _selftest_cases():
         return _eq(((one_c[0], one_c[1], one_c[3]), (one_g[0], one_g[1], one_g[3]), (many[0], many[1], many[3]), known[0], real[0]),
                    ((1, [line("cx.json", "bogus")], False), (1, [line("gx.json", "bogus")], False),
                     (1, [line("cm.json", "alpha"), line("cm.json", "zeta"), line("gm.json", "beta"), line("gm.json", "mid")], False), 0, 0))
+
+    @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
+                  "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
+                  "A run whose TMPDIR starts `rh-tmp1-` runs no TMP1: the recursion guard")
+    def _():
+        if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):
+            return True, "nested: not run again"
+        t = tempfile.mkdtemp(prefix="rh-tmp1-")
+        try:
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest", "--only", ",".join(c[0] for c in cases if c[0] != "TMP1")],
+                               env=dict(os.environ, TMPDIR=t, RH_TMP1_NESTED="1"), capture_output=True, text=True, timeout=300)
+            left = sorted(os.listdir(t))
+        except subprocess.TimeoutExpired:
+            return False, "the child self-test timed out"
+        finally:
+            shutil.rmtree(t, ignore_errors=True)
+        return (not left and r.returncode == 0), "exit %d, %d left in its TMPDIR: %s" % (r.returncode, len(left), ", ".join(left[:20]))
 
     return cases
 

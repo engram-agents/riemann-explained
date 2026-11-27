@@ -355,10 +355,16 @@ MISSES = [
 
 
 def selftest():
+    """Every folder it plants lives under ONE root that is removed when it returns, on every path (a pass, a failure, an exception)."""
+    with tempfile.TemporaryDirectory() as root:
+        return _selftest(root)
+
+
+def _selftest(root):
     import io
     ok, notes = True, []
     for name, text, token in PLANTS:
-        d = tempfile.mkdtemp()
+        d = tempfile.mkdtemp(dir=root)
         p = os.path.join(d, name)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         open(p, "w").write(text + "\n")
@@ -368,7 +374,7 @@ def selftest():
         if not good:
             ok = False
             notes.append("not refused: %s in %s -> rc %d %r" % (token, name, rc, buf.getvalue()))
-    d = tempfile.mkdtemp()
+    d = tempfile.mkdtemp(dir=root)
     for name, text in CLEAN:
         open(os.path.join(d, name), "w").write(text + "\n")
     buf = io.StringIO()
@@ -376,7 +382,7 @@ def selftest():
     if rc != 0 or ("%d files checked, 0 refused, 0 skipped as test files" % len(CLEAN)) not in buf.getvalue():
         ok = False
         notes.append("clean files were refused or miscounted: " + buf.getvalue())
-    d = tempfile.mkdtemp()
+    d = tempfile.mkdtemp(dir=root)
     os.makedirs(os.path.join(d, "engine", "test", "deep"))
     open(os.path.join(d, "engine", "test", "t.js"), "w").write("x.innerHTML = 1; fetch('http://x')\n")
     open(os.path.join(d, "engine", "test", "deep", "u.js"), "w").write("eval(s)\n")
@@ -385,13 +391,13 @@ def selftest():
     if run(d, buf) != 0 or "1 files checked, 0 refused, 2 skipped as test files" not in buf.getvalue():
         ok = False
         notes.append("a token under test/ was read, or the skipped files were not counted aloud: " + buf.getvalue())
-    d = tempfile.mkdtemp()
+    d = tempfile.mkdtemp(dir=root)
     buf = io.StringIO()
     if run(d, buf) != 1 or "CHECKED NOTHING" not in buf.getvalue():
         ok = False
         notes.append("an empty tree was not CHECKED NOTHING")
     for what, name, text in MISSES:           # documented misses: each is NOT refused today
-        d = tempfile.mkdtemp()
+        d = tempfile.mkdtemp(dir=root)
         open(os.path.join(d, name), "w").write(text + "\n")
         buf = io.StringIO()
         if run(d, buf) != 0:
@@ -409,9 +415,75 @@ def selftest_quiet():
         return selftest()
 
 
+def _leak_check():
+    """`--selftest` must leave its temporary folder EMPTY (the self-test makes a folder per planted file; build_site.py runs this self-test once per
+    case that builds, so a folder left here was 8,910 folders in /tmp per run of build_site.py's own self-test). Three runs, each in a TMPDIR made here
+    (`rh-tmp1-...`): the self-test as a child process of this file, and, in this process, the self-test with the scanner made to raise (the failure path
+    must clean too), and the node tests of viewer/graph (skipped with no node). The recursion guard is the one path that could pass VACUOUSLY (a run that skips the check reports a pass): it is honoured only when BOTH the TMPDIR basename starts `rh-tmp1-` AND the parent set RH_TMP1_NESTED=1 in the child's environment, so a TMPDIR that merely looks like a child's does not skip the check, and an honoured guard says so aloud (`TMPDIR skipped: nested`). 0 clean, 4 a
+    leftover (named, at most 20) or a child that did not finish."""
+    import shutil, subprocess
+    if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):
+        print("TMPDIR skipped: nested (a child of this check)")
+        return 0
+    bad = []
+    child, inproc, node_tmp = [tempfile.mkdtemp(prefix="rh-tmp1-") for _ in range(3)]
+    try:
+        try:
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=child, RH_TMP1_NESTED="1"),
+                               capture_output=True, text=True, timeout=300)
+            if r.returncode != 0:
+                bad.append("the child self-test exited %d" % r.returncode)
+        except subprocess.TimeoutExpired:
+            bad.append("the child self-test timed out")
+        left = sorted(os.listdir(child))
+        if left:
+            bad.append("self-test left %d in its TMPDIR: %s" % (len(left), ", ".join(left[:20])))
+        real_run, real_dir = globals()["run"], tempfile.tempdir
+        def boom(*args, **kw):
+            raise RuntimeError("planted")
+        globals()["run"], tempfile.tempdir = boom, inproc
+        try:
+            selftest()
+            bad.append("a scanner that raises did not make the self-test raise")
+        except RuntimeError:
+            pass
+        finally:
+            globals()["run"], tempfile.tempdir = real_run, real_dir
+        left = sorted(os.listdir(inproc))
+        if left:
+            bad.append("a failing self-test left %d in its TMPDIR: %s" % (len(left), ", ".join(left[:20])))
+        tests = []   # the node tests of viewer/graph run this file's normal mode (its self-test gate first) once per test of boundary.test.mjs: they must leave nothing too
+        for top, _dirs, names in os.walk(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "viewer", "graph")):
+            tests += [os.path.join(top, n) for n in names if n.endswith(".test.mjs")]
+        if not (tests and shutil.which("node")):
+            print("TMPDIR skipped: the node leg did not run (no node on PATH, or no *.test.mjs under viewer/graph)")
+        if tests and shutil.which("node"):
+            try:
+                nr = subprocess.run(["node", "--test"] + sorted(tests), env=dict(os.environ, TMPDIR=node_tmp), capture_output=True, text=True, timeout=600)
+                if nr.returncode != 0:   # a node run that died early leaves nothing: an empty TMPDIR after it proves nothing
+                    bad.append("the node tests exited %d" % nr.returncode)
+                ran = re.search(r"^(?:ℹ |# )tests (\d+)\s*$", nr.stdout + "\n" + nr.stderr, re.M)
+                if ran is not None and int(ran.group(1)) == 0:
+                    bad.append("the node tests ran 0 tests")
+            except subprocess.TimeoutExpired:
+                bad.append("the node tests timed out")
+            left = sorted(os.listdir(node_tmp))
+            if left:
+                bad.append("the node tests of viewer/graph left %d in their TMPDIR: %s" % (len(left), ", ".join(left[:20])))
+    finally:
+        shutil.rmtree(child, ignore_errors=True)
+        shutil.rmtree(inproc, ignore_errors=True)
+        shutil.rmtree(node_tmp, ignore_errors=True)
+    for b in bad:
+        print("TMPDIR " + b)
+    return 4 if bad else 0
+
+
 def main(a):
     if a[1:] == ["--selftest"]:
-        return selftest()
+        rc = selftest()
+        lk = _leak_check()   # runs whether or not the self-test passed: a red self-test is no reason to skip it
+        return rc or lk
     if len(a) > 2 or (len(a) == 2 and a[1].startswith("-")):
         print(__doc__.split("usage:")[1].strip(), file=sys.stderr)
         return 2
