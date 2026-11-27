@@ -109,6 +109,33 @@ test("math or human on a step that is NOT a statement is the ordinary extra-key 
   }
 });
 
+/* ------------------------------------------------------------------------------------------------ 2b: a file's summary (part 1b, contract section 34 A7) */
+test("summary on the file step is carried as {status, text}; a step without it has none", () => {
+  const c = ctxOf();
+  const f = validateStep(stp("fx-stmt-file"), c);
+  assert.deepEqual(f.summary, { status: "draft", text: "A made-up summary of the file, written by us, in one line." });
+  assert.equal(validateStep(stp("fx-file-2"), c).summary, undefined);
+  assert.equal(validateStep(stp("fx-group"), c).summary, undefined);
+});
+
+test("summary: not an object, a missing or extra key, a bad status, text empty, over 600 code points, with a control character or a lone surrogate: bad-maths naming the step", () => {
+  const bad = (edit) => { const s = stp("fx-stmt-file"); edit(s); refuses(() => validateStep(s, ctxOf()), "bad-maths", "fx-stmt-file"); };
+  for (const v of [null, "x", [], 7]) bad((s) => { s.summary = v; });
+  for (const k of ["status", "text"]) bad((s) => { delete s.summary[k]; });
+  bad((s) => { s.summary.by = "x"; });
+  bad((s) => { s.summary.status = "final"; });
+  for (const v of ["", "a\nb", "a\tb", "x".repeat(601), "\ud800", null, 7]) bad((s) => { s.summary.text = v; });
+  const ok = stp("fx-stmt-file"); ok.summary.text = "\u{1D4DD}".repeat(600); validateStep(ok, ctxOf());
+  const one = stp("fx-stmt-file"); one.summary.text = "x"; one.summary.status = "read"; validateStep(one, ctxOf());
+});
+
+test("summary names itself in the refusal (not math), and a statement step carrying it is the statement refusal", () => {
+  const s = stp("fx-stmt-file"); s.summary.status = "final";
+  assert.throws(() => validateStep(s, ctxOf()), (e) => e.code === "bad-maths" && e.reason.includes("summary") && !e.reason.includes("math"));
+  const t = stp("fx-thm-a"); t.summary = clone(stp("fx-stmt-file").summary);
+  refuses(() => validateStep(t, ctxOf()), "bad-statement", "fx-thm-a");
+});
+
 /* ------------------------------------------------------------------------------------------------ 3: notation */
 test("notation on the file step is carried in order as {lean, status, symbol, text}; a step without it has none", () => {
   const c = ctxOf();
@@ -170,7 +197,7 @@ test("the maths fixture and the statements fixture differ ONLY by the new keys: 
   for (const id of IDS) {
     const m = stp(id), s = stp(id, "statements");
     delete m.card.number; for (const c of m.children) delete c.number;
-    delete m.math; delete m.human; delete m.notation;
+    delete m.math; delete m.human; delete m.notation; delete m.summary;
     assert.deepEqual(m, s, id);
   }
 });
