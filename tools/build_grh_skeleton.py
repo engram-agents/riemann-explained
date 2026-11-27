@@ -1844,27 +1844,22 @@ def _reading_entries(raw_file, base):
     return errors, ([] if errors else entries)
 
 
-_PARA_SEP = re.compile(r"\n(?:[ \t]*\n)+")   # the blank-line separator of a paragraph: the one `_quote_errors` splits on
-_HEADING_START = re.compile(r"#{1,6} ")   # a HEADING LINE starts with one to six `#` and a space
+JS_WHITESPACE = "\t\n\x0b\x0c\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"   # the body of a character class: JS `\s`, written out (Python's `\s` lacks U+FEFF and has U+0085 and U+001C-U+001F); case RDH-WS-CLASS compares it with node's `/\s/` over every code unit
+_HEADING_LINE = re.compile("#{1,6}[" + JS_WHITESPACE + "]")   # a HEADING LINE, as the page decides it (viewer/graph/page/note.js: `^(#{1,6})\s+`): one to six `#` and then a character of JS white space
 
 
 def _reading_heading_why(text, words):
     """None, or the reason (`SKEL-STATEMENT-READING-HEADINGS <statement> <reason>`) that the heading lines of the reading `text` are not the four of the overlay `words` (READING_BUILDER_KEYS: `decl_reading_uses`, `_target`,
-    `_argument` required, then `_adds`, optional, in this order, each once, as `## ` + the word). A HEADING LINE is a line that starts with one to six `#` and a space, outside a quote paragraph (a paragraph that starts QUOTE_OPEN: quoted text);
-    it is compared to a word after its trailing spaces and tabs are cut, exactly. Of several defects the first of these is the reason: the first offending LINE, whichever it is (`extra line <n>`, n counting the lines of the text
-    from 1, or `level <key>`: the words are right, the `#` run is not two); `duplicate <key>` (the first key in order); `missing <key>` (the first required key in order); `order`."""
-    quoted, start = set(), 0
-    for end, nxt in [(m.start(), m.end()) for m in _PARA_SEP.finditer(text)] + [(len(text), len(text))]:
-        if text.startswith(QUOTE_OPEN, start):
-            first = text.count("\n", 0, start) + 1
-            quoted.update(range(first, first + text.count("\n", start, end) + 1))
-        start = nxt
+    `_argument` required, then `_adds`, optional, in this order, each once, as `## ` + the word). A HEADING LINE is a line (split on `\\n`) that matches _HEADING_LINE, the page's predicate, ANYWHERE in the text, a quote paragraph
+    included; it is one of the four only if it is `#`, `#`, one ASCII space and the word, after its trailing spaces and tabs are cut, exactly. Of several defects the first of these is the reason: the first offending LINE, whichever it is
+    (`extra line <n>`, n counting the lines of the text from 1; a heading line whose white space is not one ASCII space is extra; or `level <key>`: the words are right, the `#` run is not two); `duplicate <key>` (the first key in order);
+    `missing <key>` (the first required key in order); `order`."""
     found = []   # the index in READING_BUILDER_KEYS of each heading line that is right, in the order of the text
     for n, line in enumerate(text.split("\n"), 1):
-        if n in quoted or not _HEADING_START.match(line):
+        if not _HEADING_LINE.match(line):
             continue
         level = len(line) - len(line.lstrip("#"))
-        body = line.rstrip(" \t")[level + 1:]
+        body = line.rstrip(" \t")[level + 1:] if line[level] == " " else None
         hit = [i for i, k in enumerate(READING_BUILDER_KEYS) if body == words[k]]
         if not hit:
             return f"extra line {n}"
@@ -7398,7 +7393,7 @@ def _selftest_cases():
         ws, hd_ = json.loads(r.stdout)
         mine_ws = [i for i in range(65536) if re.fullmatch("[" + JS_WHITESPACE + "]", chr(i))]
         mine_hd = [k * 65536 + i for k in range(9) for i in range(65536) if _HEADING_LINE.match("#" * k + chr(i) + "x")]
-        return _eq((mine_ws == ws, mine_hd == hd_, len(ws), re.fullmatch(r"\s", "﻿") is None), (True, True, 25, True))
+        return _eq((mine_ws == ws, mine_hd == sorted(hd_), len(ws), re.fullmatch(r"\s", "﻿") is None), (True, True, 25, True))
 
     @case("RDH-OVERLAY-WORDS", "the words come from the overlay file, not from the code: with the four words changed (`Uses`, `Targets`, `Argument`, `Adds`) a reading with the new words passes and one with the old words is refused "
                                "`extra line 1`; with only `decl_reading_uses` changed the old other words still pass and the old first word is refused")
