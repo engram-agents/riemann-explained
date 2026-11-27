@@ -1733,6 +1733,29 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(
             (lambda m: lambda: _mutation_case(m))(mid))
+    @case("TMP1", "the tool leaves nothing in its temporary folder: one child process of this file per other case (`--selftest --only <id>`, run 12 at a time, so the "
+                  "whole self-test fits in the time of its slowest cases), each under its OWN fresh TMPDIR (a folder made here, named `rh-tmp1-...`) and a timeout; each TMPDIR "
+                  "must be empty afterwards (the leftovers are listed, at most 20, with the case id). A run whose TMPDIR starts `rh-tmp1-` runs no TMP1: the recursion guard")
+    def _():
+        if os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-"):
+            return True, "nested: not run again"
+        from concurrent.futures import ThreadPoolExecutor
+
+        def one(cid):
+            t = tempfile.mkdtemp(prefix="rh-tmp1-")
+            try:
+                r = subprocess.run([sys.executable, "-I", TOOL, "--selftest", "--only", cid], env=dict(os.environ, TMPDIR=t),
+                                   capture_output=True, text=True, timeout=900)
+                left = sorted(os.listdir(t))
+                return [f"{cid}: {len(left)} left in its TMPDIR: " + ", ".join(left[:20])] if left else []
+            except subprocess.TimeoutExpired:
+                return [f"{cid}: timed out"]
+            finally:
+                shutil.rmtree(t, ignore_errors=True)
+        with ThreadPoolExecutor(max_workers=12) as ex:
+            bad = [b for res in ex.map(one, [c[0] for c in cases if c[0] != "TMP1"]) for b in res]
+        return (not bad), "; ".join(bad)
+
     return cases
 
 
