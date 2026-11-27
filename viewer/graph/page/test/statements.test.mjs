@@ -100,6 +100,7 @@ test("D: the group partly present is bad-statement-strings naming the first miss
 test("D: a map with none of the group's keys and no statement is the live shape (no refusal), and spine_content_label is then an extra-string", () => {
   const i = idx();
   for (const k of GROUP) delete i.strings[k];
+  delete i.strings.decl_reading_none;
   const withLabel = clone(i);
   refuses(() => validateIndex(withLabel), "extra-string", "spine_content_label");
   delete i.strings.spine_content_label;
@@ -108,6 +109,25 @@ test("D: a map with none of the group's keys and no statement is the live shape 
 test("D: with the group on, spine_content_label must be present, else missing-string", () => {
   const i = idx(); delete i.strings.spine_content_label;
   refuses(() => validateIndex(i), "missing-string", "spine_content_label");
+});
+
+/* AMENDMENT 3: the optional decl_reading_none, outside the all-or-none group */
+test("A3: decl_reading_none present (group on) validates, and is not part of the group: absent validates too", () => {
+  const i = idx();
+  assert.ok(typeof i.strings.decl_reading_none === "string" && i.strings.decl_reading_none !== "");
+  assert.doesNotThrow(() => validateIndex(i));
+  delete i.strings.decl_reading_none;
+  assert.doesNotThrow(() => validateIndex(i), "absent: the group is still complete");
+});
+test("A3: decl_reading_none empty is empty-string", () => {
+  const i = idx(); i.strings.decl_reading_none = "";
+  refuses(() => validateIndex(i), "empty-string", "decl_reading_none");
+});
+test("A3: decl_reading_none with the group off is extra-string", () => {
+  const i = idx();
+  for (const k of GROUP) delete i.strings[k];
+  delete i.strings.spine_content_label;
+  refuses(() => validateIndex(i), "extra-string", "decl_reading_none");
 });
 
 /* ------------------------------------------------------------------------------------------------ C: the statement step */
@@ -212,6 +232,7 @@ test("D: a step carrying statement keys while the group is off is bad-statement-
   const i = idx();
   for (const k of GROUP) delete i.strings[k];
   delete i.strings.spine_content_label;
+  delete i.strings.decl_reading_none;
   const ctx = validateIndex(i);
   refuses(() => validateStep(stp("fx-thm-a"), ctx), "bad-statement-strings", "fx-thm-a");
   const s = stp("fx-thm-a"); delete s.prompt;
@@ -310,7 +331,7 @@ const walk = (n, out = []) => { out.push(n); for (const c of n.children || []) w
 const cls = (n) => (n.attrs && n.attrs.class) || "";
 const decl = (extra = {}) => ({ name: "Fx.foo_bar", sourcePath: "src/New/Fx/File.lean", keyword: "theorem", text: "theorem foo_bar : True", variables: false,
   usesHere: [], usesElsewhere: [], prompt: "P", ...extra });
-const STR = { ...Object.fromEntries(GROUP.map((k) => [k, "[" + k + "]"])), spine_content_label: "[label]", decl_uses_here: "Uses here ({n})", decl_uses_elsewhere: "Uses elsewhere ({n})" };
+const STR = { ...Object.fromEntries(GROUP.map((k) => [k, "[" + k + "]"])), decl_reading_none: "[decl_reading_none]", spine_content_label: "[label]", decl_uses_here: "Uses here ({n})", decl_uses_elsewhere: "Uses elsewhere ({n})" };
 function build(over = {}) {
   const doc = richDoc();
   const el = makeEl(doc);
@@ -337,6 +358,24 @@ test("H: the builder returns lead and tail node arrays; the cards' pieces are in
     assert.equal(cls(out.tail[3].children[out.tail[3].children.length - 1]), "decl-prompt-note");
     assert.equal(textOf(out.tail[3].children[out.tail[3].children.length - 1]), "[decl_prompt_note]");
   } finally { delete globalThis.document; }
+});
+test("A3: with decl_reading_none the prompt block starts with p.decl-reading-none holding it, directly above the copy button; without it the button is first", () => {
+  const withIt = build({});
+  try {
+    const kids = withIt.out.tail[3].children;
+    assert.deepEqual(kids.map(cls), ["decl-reading-none", "sheet-tool", "decl-prompt-status", "decl-prompt-text", "decl-prompt-note"]);
+    assert.equal(kids[0].tagName, "P");
+    assert.equal(textOf(kids[0]), "[decl_reading_none]");
+  } finally { delete globalThis.document; }
+  const saved = STR.decl_reading_none;
+  delete STR.decl_reading_none;
+  try {
+    const b = build({});
+    assert.deepEqual(b.out.tail[3].children.map(cls), ["sheet-tool", "decl-prompt-status", "decl-prompt-text", "decl-prompt-note"]);
+    STR.decl_reading_none = "";
+    const c = build({});
+    assert.deepEqual(c.out.tail[3].children.map(cls), ["sheet-tool", "decl-prompt-status", "decl-prompt-text", "decl-prompt-note"], "an empty string draws nothing");
+  } finally { STR.decl_reading_none = saved; delete globalThis.document; }
 });
 test("H: no heading, no heading block; with no note the lead carries the label line then the decl_no_note paragraph; with a note it does not", () => {
   const a = build({ hasNote: false });

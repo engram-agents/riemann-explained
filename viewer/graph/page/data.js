@@ -67,6 +67,9 @@ export const GRAPH_VIEW_STRINGS = Object.freeze(["view_cards", "view_graph", "gr
    group is off and a step carrying a statement is refused. With the group on, `spine_content_label` (which labels the doc-string) is required too. */
 export const STATEMENT_STRINGS = Object.freeze(["decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note",
   "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label"]);
+/* One OPTIONAL statement word, outside the all-or-none group: `decl_reading_none`, the line above the prompt button. Allowed only with the group on (else it is an
+   extra-string like any key the page does not read); present, it is non-empty (`empty-string`). */
+export const READING_NONE = "decl_reading_none";
 export const statementsOn = (strings) => STATEMENT_STRINGS.some((k) => has(strings, k));
 export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source", ...TYPESET_STRINGS]);
 /* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
@@ -260,6 +263,7 @@ export function validateIndex(raw) {
     if (raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty edge basis key " + k);
   }
   refuseEmptyOptional(raw.strings, OPTIONAL_STRINGS);
+  if (stmtOn) refuseEmptyOptional(raw.strings, [READING_NONE]);
   /* The page treats a map as carrying notes only when strings hold BOTH note words; one alone would open note-carrying cards silently without their note. */
   if (has(raw.strings, "note_label") !== has(raw.strings, "note_source"))
     throw new DataError("bad-note-strings", "index strings holds only one of note_label and note_source: both or neither");
@@ -274,7 +278,7 @@ export function validateIndex(raw) {
       if (raw.strings[k] === "") throw new DataError(viewPair.includes(k) ? "bad-view-words" : "empty-string", "index strings holds an empty Graph view word " + k);
     }
   }
-  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k)) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label"));
+  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k)) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE));
   const leftover = Object.keys(raw.strings).filter((k) => !known(k));
   if (viewOn && leftover.length === 0) throw new DataError("bad-view-words", "index strings carries no spine sentence key beside the Graph view words");
   for (const k of viewOn ? leftover.slice(1) : leftover) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);

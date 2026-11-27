@@ -29,6 +29,7 @@
   "decl_prompt_button": "Copy a prompt for your own AI assistant",
   "decl_prompt_copied": "Copied. Paste it into your AI assistant.",
   "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant.",
+  "decl_reading_none": "No AI agent's reading of this statement yet. You can ask your own AI assistant for one:",
   "decl_show_lean": "Show the Lean statement",
   "decl_uses_elsewhere": "Uses from other files ({n})",
   "decl_uses_here": "Uses in this file ({n})",

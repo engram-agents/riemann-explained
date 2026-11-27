@@ -499,7 +499,7 @@ def statements_build():
     strings.update(TYPESET_STRINGS)
     wanted = ["open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def",
               "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading",
-              "key_statements_text", "decl_heading_label", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note"]
+              "key_statements_text", "decl_heading_label", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_reading_none"]
     strings.update({k: W[k] for k in wanted})
     rows = _rows([("group", "symbol_kind_group"), ("file", "symbol_kind_file"), ("theorem", "symbol_kind_theorem"), ("lemma", "symbol_kind_lemma"), ("def", "symbol_kind_def")],
                  strings,

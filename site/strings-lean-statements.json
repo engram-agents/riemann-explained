@@ -22,5 +22,6 @@
  "decl_prompt_button": "Copy a prompt for your own AI assistant",
  "decl_prompt_copied": "Copied. Paste it into your AI assistant.",
  "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant.",
- "decl_no_note": "No note in the repository."
+ "decl_no_note": "No note in the repository.",
+ "decl_reading_none": "No AI agent's reading of this statement yet. You can ask your own AI assistant for one:"
 }

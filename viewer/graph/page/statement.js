@@ -9,7 +9,7 @@
                                   and, only when `variables` is true, p.decl-lean-note
            div.decl-uses.decl-uses-here, div.decl-uses.decl-uses-elsewhere    a heading line with {n} (text) and, only when the list is not empty, a ul:
                                   here: li > a[href '#id'] (the title as the page knows it, else the bare id); elsewhere: li > code(name), in an a[href '#step'] with a step
-           div.decl-prompt      button.sheet-tool (copy), p[role=status] (empty until a copy succeeds), pre.decl-prompt-text (hidden; shown with its text
+           div.decl-prompt      [p.decl-reading-none, only when the optional string decl_reading_none is present,] button.sheet-tool (copy), p[role=status] (empty until a copy succeeds), pre.decl-prompt-text (hidden; shown with its text
                                   SELECTED when the clipboard is missing or refuses), and, always last, p.decl-prompt-note
 
    Everything the data gives (name, text, prompt, heading, titles) enters as a text node through el() and renderNote; nothing is parsed, nothing is filled into
@@ -80,7 +80,8 @@ export function buildStatement({ strings, decl, hasNote, titleOf, el, doc, signa
     fallback.hidden = false;
     try { win.getSelection().selectAllChildren(fallback); } catch (e) { /* the reader selects by hand */ }
   }, { signal });
-  const prompt = el("div", { class: "decl-prompt" }, [copyBtn, status, fallback, el("p", { class: "decl-prompt-note" }, [strings.decl_prompt_note])]);
+  const reading = typeof strings.decl_reading_none === "string" && strings.decl_reading_none !== "" ? [el("p", { class: "decl-reading-none" }, [strings.decl_reading_none])] : [];   // optional: ONE line directly above the button
+  const prompt = el("div", { class: "decl-prompt" }, [...reading, copyBtn, status, fallback, el("p", { class: "decl-prompt-note" }, [strings.decl_prompt_note])]);
 
   return { lead, tail: [lean, usesHere, usesElse, prompt] };
 }

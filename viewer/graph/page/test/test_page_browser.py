@@ -4171,6 +4171,11 @@ def c_stmt_copy_ok(b, S0, engine):
         open_card_by_hash(pg, "fx-thm-a", "foo_bar")
         prompt = stmt_step("fx-thm-a")["prompt"]
         assert "<b>x</b>" in prompt
+        # amendment 3: the optional line sits immediately before the copy button, as one paragraph
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt button').previousElementSibling.className") == "decl-reading-none"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt button').previousElementSibling.tagName") == "P"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-reading-none').textContent") == json.load(open(os.path.join(assemble.HERE, "fixtures", "statements", "index.json")))["strings"]["decl_reading_none"]
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading-none').length") == 1
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-note').textContent") == "This is a prompt we suggest; what your assistant does with it is between you and your assistant."
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-status').getAttribute('role')") == "status"
         assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-status').textContent") == ""
@@ -4261,6 +4266,19 @@ def c_stmt_key(b, S0, engine):
         S.stop()
 
 
+def c_stmt_reading_none_absent(b, S0, engine):
+    """Amendment 3, the variant without the optional key: the copy button stands alone, first in its block, and nothing else changes."""
+    S, pg = stmt_open(b, engine, edit=lambda i: i["strings"].pop("decl_reading_none"))
+    try:
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading-none').length") == 0
+        assert pg.ev("[...document.querySelector('#graph-sheet-body .decl-prompt').children].map(e => e.className)") == ["sheet-tool", "decl-prompt-status", "decl-prompt-text", "decl-prompt-note"]
+        no_console_errors(pg)
+    finally:
+        pg.close()
+        S.stop()
+
+
 def c_stmt_group_off_refused(b, S0, engine):
     """A map whose strings drop one statement word is the page's fallback (bad-statement-strings), and nothing of the statement level draws."""
     S, pg = stmt_open(b, engine, edit=lambda i: i["strings"].pop("decl_prompt_note"))
@@ -4279,6 +4297,7 @@ STMT_CASES = [
     ("stmt (d): a rejecting (or absent) clipboard shows the selected prompt text in a pre, with no console error", c_stmt_copy_fallback),
     ("stmt (e): the uses links open the statement or file; plain names are code; empty lists have 0 and no list; nothing is underlined", c_stmt_links),
     ("stmt (f): the key ends with the statements section", c_stmt_key),
+    ("stmt (A3): without decl_reading_none the copy button stands alone in its block", c_stmt_reading_none_absent),
     ("stmt: a map with part of the statement words missing is the fallback", c_stmt_group_off_refused),
 ]
 

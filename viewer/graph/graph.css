@@ -192,6 +192,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .decl-heading-body code { font-family: var(--mono); font-size: 13px; }
 .graph-sheet-body .decl-no-note { margin: 2px 0 8px; font-size: 15px; color: var(--muted); }
 .decl-lean, .decl-prompt { margin: 12px 0 0; }
+.graph-sheet-body .decl-reading-none { margin: 0 0 6px; font-size: 14px; color: var(--muted); }
 .decl-lean-body[hidden], .decl-prompt-text[hidden] { display: none; }
 .decl-lean-code, .decl-prompt-text { margin: 8px 0 0; padding: 6px 8px; background: var(--strip); font-family: var(--mono); font-size: 13px; line-height: 1.45; overflow-x: auto; white-space: pre; }
 .decl-lean-code code { font-family: inherit; font-size: inherit; }
