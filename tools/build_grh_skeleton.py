@@ -1726,7 +1726,7 @@ MATHS_NAME_MAX = 60   # the most CODE POINTS of a name (Kepler 40378)
 MATHS_TEXT_MAX = 600   # the most characters of a statement's text
 MATHS_STATUSES = ("draft", "read")
 _MATHS_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-_MATHS_TOKEN = re.compile(r"[A-Za-z0-9_.']+")   # predicate P: a token is a maximal run of these characters, then stripped of leading and trailing `.` and `'`
+_MATHS_TOKEN = re.compile(r"[\w.']+")   # predicate P: a token is a maximal run of Unicode word characters (letters, digits, `_`), dots and apostrophes
 _MATHS_LINE_NUMBER = re.compile(r"\blines?\s+\d", re.I)
 _MATHS_BOLD = re.compile(r"\s*\*\*([^\n]+?)\*\*")
 
@@ -1809,15 +1809,15 @@ def _maths_rows(table, obj, known):
 
 
 def _maths_known(names):
-    """(full, core, under): the names of the compiled index for predicate P: `full` every declared name; `core` the SHORT names (the last dotted component) of 4 or more characters that hold a dot or a lower-case
-    letter directly followed by an upper-case one; `under` the other short names of 4 or more characters that hold an underscore. Built once per build, from every declaration of the index."""
+    """(full, core, under): the names of the compiled index for predicate P: `full` every declared name; `core` the SHORT names (the last dotted component) of 4 or more characters that hold a dot or a
+    letter after the first character that is upper case (`CMType`, `BPlus`); `under` the other short names of 4 or more characters that hold an underscore. Built once per build, from every declaration of the index."""
     full = frozenset(names)
     core, under = set(), set()
     for n in full:
         s = n.rsplit(".", 1)[-1]
         if len(s) < 4:
             continue
-        if "." in s or any(a.islower() and b.isupper() for a, b in zip(s, s[1:])):
+        if "." in s or any(c.isupper() for c in s[1:]):
             core.add(s)
         elif "_" in s:
             under.add(s)
@@ -1825,15 +1825,28 @@ def _maths_known(names):
 
 
 def _maths_p_tokens(text, known, underscore):
-    """[token] of `text` flagged by predicate P (contract section P), in order, each once: a token (a maximal run of letters, digits, `_`, `.` and `'`, stripped of leading and trailing `.` and `'`) that equals a known
-    FULL name, or a known SHORT name of 4 or more characters that holds a dot or an inner capital, or (when `underscore` is False) an underscore. A short name that is a plain word (`le`, `mul`, `Prime`) is not flagged."""
+    """[token] of `text` flagged by predicate P (contract section P), in order, each once: a token (a maximal run of Unicode word characters, dots and apostrophes, with its leading dots and apostrophes and its trailing dots cut) that,
+    looked up as written and, when it ends in an apostrophe, also without it (the form that matched is the one reported), equals a known FULL name, or a known SHORT name of 4 or more characters that holds a dot or an inner capital
+    (any upper-case letter after the first), or (when `underscore` is False) an underscore. A short name that is a plain word (`le`, `mul`, `Prime`) is not flagged."""
     full, core, under = known
     out = []
     for t in _MATHS_TOKEN.findall(text):
-        t = t.strip(".'")
-        if t and (t in full or t in core or (not underscore and t in under)) and t not in out:
-            out.append(t)
+        t = t.lstrip(".'").rstrip(".")
+        for form in [t] + ([t[:-1].rstrip(".")] if t.endswith("'") else []):
+            if form and (form in full or form in core or (not underscore and form in under)):
+                if form not in out:
+                    out.append(form)
+                break
     return out
+
+
+def _maths_chars_bad(text):
+    """True when a text holds a control character (Unicode category Cc, a newline and a tab too) or a lone surrogate (it cannot be encoded as UTF-8): the CHARACTERS rule of A4 and A5. A no-break space, a zero-width or a bidi mark is allowed."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return True
+    return any(unicodedata.category(c) == "Cc" for c in text)
 
 
 def _maths_visible(text, known, underscore):
@@ -1874,6 +1887,20 @@ def _maths_name_whys(row, doc, file_id, known, taken):
     return why
 
 
+def _maths_numbers(stm_rows, rows, ids):
+    """{statement step id: `<file>.<n>`} (contract section 34, B2): `<file>` is the 1-based place of the statement's FILE step among the FILE children of its group, in the group's children order (`order`, the key `_graph_files` sorts the
+    children of a step by), `<n>` the 1-based place among the statements of its file in source order, one counter for every kind. `stm_rows` are the statement rows, `rows` the rows of the map, `ids` the file steps opened."""
+    by_parent = {}
+    for r in stm_rows:
+        by_parent.setdefault(r["parent"], []).append(r)
+    place = {}   # file step id -> its place among the file children of its group
+    idset = set(ids)
+    for g in {r["parent"] for r in rows if r["id"] in idset}:
+        for i, f in enumerate(sorted((r for r in rows if r["parent"] == g and r["kind"] == "file"), key=lambda r: r["order"]), 1):
+            place[f["id"]] = i
+    return {r["id"]: "%d.%d" % (place[fid], n) for fid, kids in by_parent.items() for n, r in enumerate(sorted(kids, key=lambda r: r["order"]), 1)}
+
+
 def _maths_check(maths, ilean_dir, stm, rows, ids):
     """(errors, written) for the three tables `maths` ({table: parsed JSON}) of a build with the statements `stm` (contract section 34): the rows of each table (A2), then the names, the statements and the notation (A3 to A5),
     each in row order, every refusal printed. `written` is None with errors, else {"rows": the statement rows with `number` and `title`, "step_extra": the statements' extras with `math` and `human`, "notation": {file id: [row]},
@@ -1894,39 +1921,32 @@ def _maths_check(maths, ilean_dir, stm, rows, ids):
     for _k, row in good["statements"]:
         text = row["text"]
         why = ["shape"] if text == "" or "\n" in text or "\r" in text or len(text) > MATHS_TEXT_MAX else []
-        errors += [("SKEL-MATHS-STATEMENTS", _safe(row["statement"]), w) for w in why + _maths_visible(text, known, True)]
+        errors += [("SKEL-MATHS-STATEMENTS", _safe(row["statement"]), w) for w in why + (["chars"] if _maths_chars_bad(text) else []) + _maths_visible(text, known, True)]
     for k, row in good["notation"]:
         why = [] if row["file"] in ids else ["file"]
         if any(x == "" or "\n" in x or "\r" in x for x in (row["symbol"], row["text"])) or not (isinstance(row["lean"], list) and all(isinstance(x, str) for x in row["lean"])):
             why.append("shape")
         else:
             why += ["lean " + _safe(n) for n in row["lean"] if n not in where]
+        if _maths_chars_bad(row["text"]) or _maths_chars_bad(row["symbol"]):
+            why.append("chars")
         why += list(dict.fromkeys(_maths_visible(row["text"], known, True) + _maths_visible(row["symbol"], known, True)))
         errors += [("SKEL-MATHS-NOTATION", _maths_row_where("notation", row, k), w) for w in why]
     if errors:
         return errors, None
     names = {row["statement"]: row for _k, row in good["names"]}
     stms = {row["statement"]: row for _k, row in good["statements"]}
-    by_parent, new_rows = {}, []
+    new_rows, step_extra, numbers = [], {}, _maths_numbers(stm["rows"], rows, ids)
     for r in stm["rows"]:
-        by_parent.setdefault(r["parent"], []).append(r)
-    place = {}   # file step id -> its 1-based place among the FILE children of its group, in the group's children order (`order`, the key `_graph_files` sorts the children of a step by)
-    idset = set(ids)
-    for g in {r["parent"] for r in rows if r["id"] in idset}:
-        for i, f in enumerate(sorted((r for r in rows if r["parent"] == g and r["kind"] == "file"), key=lambda r: r["order"]), 1):
-            place[f["id"]] = i
-    step_extra = {}
-    for fid, kids in by_parent.items():
-        for n, r in enumerate(sorted(kids, key=lambda r: r["order"]), 1):
-            number = "%d.%d" % (place[fid], n)
-            full = stm["step_extra"][r["id"]]["name"]
-            new_rows.append(dict(r, number=number, title=names[full]["name"] if full in names else r["role"] + " " + number))
-            extra = dict(stm["step_extra"][r["id"]])
-            if full in stms:
-                extra["math"] = {"status": stms[full]["status"], "text": stms[full]["text"]}
-            if full in names:
-                extra["human"] = {"rule": names[full]["rule"], "status": names[full]["status"]}
-            step_extra[r["id"]] = extra
+        number = numbers[r["id"]]
+        full = stm["step_extra"][r["id"]]["name"]
+        new_rows.append(dict(r, number=number, title=names[full]["name"] if full in names else r["role"] + " " + number))
+        extra = dict(stm["step_extra"][r["id"]])
+        if full in stms:
+            extra["math"] = {"status": stms[full]["status"], "text": stms[full]["text"]}
+        if full in names:
+            extra["human"] = {"rule": names[full]["rule"], "status": names[full]["status"]}
+        step_extra[r["id"]] = extra
     order = {r["id"]: i for i, r in enumerate(stm["rows"])}
     notation = {}
     for _k, row in good["notation"]:
@@ -2267,7 +2287,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     if errors:
         return errors, {}, rows, rep
     maths_out = None
-    if maths is not None:   # the three tables of ours (contract section 34): checked after the statements, before the readings (their errors come first); the statement rows then carry `number` and `title`
+    if maths is not None:   # the three tables of ours (contract section 34): checked after the statements and before the readings the build attaches (the reading file, text, name, date and heading refusals are made earlier, in `_run`, before the tables are read); the statement rows then carry `number` and `title`
         if stm is None:
             return [("SKEL-MATHS-OPTIONS", "maths", "needs --statements-for")], {}, rows, rep
         errors, maths_out = _maths_check(maths, ilean_dir, stm, rows, statements_for)
