@@ -76,6 +76,28 @@ function closeAt(cs, i, end) {
   return -1;
 }
 
+/* G2, the operand of the script character c at cs[i], which starts at cs[j] (j is past the spaces after a ^): {children, next} or null. */
+function parseOperand(cs, i, j, end, c, level) {
+  if (j >= end) return null;
+  if ((cs[j] === "{" && j === i + 1) || (cs[j] === "(" && c === "^")) {          // (a) and (b): a group, its brackets dropped
+    const k = closeAt(cs, j, end);
+    if (k < 0 || k === j + 1) return null;
+    const children = parseGroup(cs, j + 1, k, level + 1);
+    if (children === null || children.every((t) => typeof t === "string" && t.trim() === "")) return null;
+    return { children, next: k + 1 };
+  }
+  if (WORD_CHAR.test(cs[j])) {                                                       // (c): a word
+    let k = j;
+    while (k < end && WORD_CHAR.test(cs[k])) k++;
+    if (k < end && MARK.test(cs[k])) return null;                                   // a combining mark would attach to the wrong letter
+    return { children: [cs.slice(j, k).join("")], next: k };
+  }
+  if (j === i + 1 && SYMBOLS.has(cs[j]) && (j + 1 >= end || cs[j + 1] === " " || CLOSERS.has(cs[j + 1]))) {   // (d): one symbol
+    return { children: [cs[j]], next: j + 1 };
+  }
+  return null;
+}
+
 /* One group cs[start..end) -> parts, or null. `level` counts the script groups this one sits inside. */
 function parseGroup(cs, start, end, level) {
   const out = [];
@@ -89,24 +111,9 @@ function parseGroup(cs, start, end, level) {
     if (p < start || !BASE_CHAR.test(cs[p])) return null;
     let j = i + 1;                                                      // G2: the operand
     if (c === "^") while (j < end && cs[j] === " ") j++;
-    if (j >= end) return null;
-    let children, next;
-    if ((cs[j] === "{" && j === i + 1) || (cs[j] === "(" && c === "^")) {          // (a) and (b): a group, its brackets dropped
-      const k = closeAt(cs, j, end);
-      if (k < 0 || k === j + 1) return null;
-      children = parseGroup(cs, j + 1, k, level + 1);
-      if (children === null || children.every((t) => typeof t === "string" && t.trim() === "")) return null;
-      next = k + 1;
-    } else if (WORD_CHAR.test(cs[j])) {                                              // (c): a word
-      let k = j;
-      while (k < end && WORD_CHAR.test(cs[k])) k++;
-      if (k < end && MARK.test(cs[k])) return null;                                   // a combining mark would attach to the wrong letter
-      children = [cs.slice(j, k).join("")];
-      next = k;
-    } else if (j === i + 1 && SYMBOLS.has(cs[j]) && (j + 1 >= end || cs[j + 1] === " " || CLOSERS.has(cs[j + 1]))) {   // (d): one symbol
-      children = [cs[j]];
-      next = j + 1;
-    } else return null;
+    const operand = parseOperand(cs, i, j, end, c, level);
+    if (operand === null) return null;
+    const { children, next } = operand;
     const attached = c === "_" ? i === runEnd : runEnd >= 0 && cs.slice(runEnd, i).every((t) => t === " ");   // G4: the same run of scripts
     if (attached) {
       if (run.has(c)) return null;
