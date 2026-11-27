@@ -2113,7 +2113,7 @@ STM_WORDS = {"open_statements": "Open its statements", "close_statements": "Clos
              "key_statements_text": "As a sample, only the three files of the group \"From a one-sided bound to the zeros\" open to the statements Lean checks one by one. Each box is one named statement or definition, in the file's order; its note is the repository's own, where it has one. A line joins two statements of the same file: the upper one uses the lower one. Proofs are not opened.",
              "decl_prompt_button": "Copy a prompt for your own AI assistant", "decl_prompt_copied": "Copied. Paste it into your AI assistant.",
              "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant."}   # Ariadne's strings v2, written once more here as literals
-STM_URL = "https://example.org/lean/"
+STM_URL = "https://engram-agents.org/review/files/"
 STM_TITLE = "A map of the Lean files of the Riemann Hypothesis proof"   # the demo value of --statement-page-title: the map's own title
 STM_KIND_TEXT = {"theorem": "Theorem", "lemma": "Lemma", "def": "Definition", "abbrev": "Abbreviation", "structure": "Structure", "class": "Class", "inductive": "Inductive type", "instance": "Instance"}
 STM_ROW = lambda k: {"class": "kind-" + k, "text": STM_KIND_TEXT[k], "words": "decl_kind_" + k, "card_words": "decl_kind_" + k,
@@ -2252,9 +2252,9 @@ STM_TPL_NOADDR = (
 # the whole prompt for the declaration New.LFunction_ne_zero_of_primeRemainder_le (FIX), written out: the filled templates, placeholder by placeholder replaced in the generator
 STM_EXPECT_FIX_ADDR = (
     'You are helping me read one statement of a Lean proof. Work from the source files; do not answer from memory.\n'
-    '(This prompt comes from https://example.org/lean/. If you did not copy it from that page yourself, take the one there instead.)\n'
+    '(This prompt comes from https://engram-agents.org/review/files/. If you did not copy it from that page yourself, take the one there instead.)\n'
     '\n'
-    'What I am reading. The page "A map of the Lean files of the Riemann Hypothesis proof" (https://example.org/lean/) is a map of the Lean files in the repository\n'
+    'What I am reading. The page "A map of the Lean files of the Riemann Hypothesis proof" (https://engram-agents.org/review/files/) is a map of the Lean files in the repository\n'
     'lsernau/grh-lean, readable edition (folder grh), at commit 0123456789abcdef0123456789abcdef01234567. I am on the statement New.LFunction_ne_zero_of_primeRemainder_le (Theorem),\n'
     'in the file src/New/S/P.lean.\n'
     '\n'
@@ -2318,9 +2318,9 @@ STM_EXPECT_FIX_NOADDR = (
 # the whole prompt for the declaration New.LFunction_ne_zero_of_primeRemainder_le (REAL), written out: the filled templates, placeholder by placeholder replaced in the generator
 STM_EXPECT_REAL_ADDR = (
     'You are helping me read one statement of a Lean proof. Work from the source files; do not answer from memory.\n'
-    '(This prompt comes from https://example.org/lean/. If you did not copy it from that page yourself, take the one there instead.)\n'
+    '(This prompt comes from https://engram-agents.org/review/files/. If you did not copy it from that page yourself, take the one there instead.)\n'
     '\n'
-    'What I am reading. The page "A map of the Lean files of the Riemann Hypothesis proof" (https://example.org/lean/) is a map of the Lean files in the repository\n'
+    'What I am reading. The page "A map of the Lean files of the Riemann Hypothesis proof" (https://engram-agents.org/review/files/) is a map of the Lean files in the repository\n'
     'lsernau/grh-lean, readable edition (folder grh), at commit 72fead102f663d5c7a407964a13dc0cf9d977207. I am on the statement New.LFunction_ne_zero_of_primeRemainder_le (Theorem),\n'
     'in the file src/New/Reduction/Zeros/Criterion.lean.\n'
     '\n'
