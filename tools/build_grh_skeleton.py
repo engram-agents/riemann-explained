@@ -1281,7 +1281,7 @@ LINES_WORDS = {"key_lines_heading": "What a line is",
 # the Graph view's seven words (G1; the values of site/strings-lean-graph.json, written once more here so the tool's own tests do not read the file they check)
 GRAPH_VIEW_WORDS = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "Each box is one of the main results the repository names in its last step.",
                     "spine_content_label": "In the repository's words", "spine_lives_in": "Lives in: {title}", "spine_show_file": "Show its file in Cards",
-                    "graph_failed_notice": "The graph could not be opened; tap Graph to try again."}
+                    "graph_failed_notice": "The graph could not be opened; tap Graph to try again.", "spine_back_to_graph": "\u2039 Back to the graph"}
 
 
 def _strings_file(d, s=None, name="strings.json"):
