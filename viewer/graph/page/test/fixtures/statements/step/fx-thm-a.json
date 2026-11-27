@@ -1,0 +1,41 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "fx-thm-a",
+  "kind": "theorem",
+  "path": [
+   "fx-part",
+   "fx-group",
+   "fx-stmt-file"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "`foo_bar`"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "heading": "### Section on the bounds\n\nThe lemmas of this section bound `f`.",
+ "id": "fx-thm-a",
+ "name": "Fx.foo_bar",
+ "note": {
+  "source": "grh/src/New/Fx/File.lean",
+  "text": "The theorem `foo_bar`: for every `n` the bound holds.\n\nSecond paragraph of the repository's own comment."
+ },
+ "path": [
+  "fx-part",
+  "fx-group",
+  "fx-stmt-file"
+ ],
+ "prompt": "You are helping me read one statement. <b>x</b> and {page_url} stay literal.\nSecond line: &amp; <script>alert(1)</script>\n",
+ "rests_on": [],
+ "source_path": "src/New/Fx/File.lean",
+ "statement": {
+  "keyword": "theorem",
+  "text": "theorem foo_bar (n : ℕ) : n ≤ n + 1"
+ },
+ "uses_elsewhere": [],
+ "uses_here": [],
+ "uses_library_count": 0,
+ "variables": false
+}

@@ -11,13 +11,13 @@ const HOSTILE = [
 ];
 
 test("el: tag table is exactly the R1 list", () => {
-  assert.deepEqual([...dom.TAGS].sort(), ["button", "code", "div", "h2", "h3", "h4", "h5", "li", "nav", "ol", "p", "pre", "span", "sub", "sup", "table", "tbody", "td", "th", "thead", "tr", "ul"]);
+  assert.deepEqual([...dom.TAGS].sort(), ["a", "button", "code", "div", "h2", "h3", "h4", "h5", "li", "nav", "ol", "p", "pre", "span", "sub", "sup", "table", "tbody", "td", "th", "thead", "tr", "ul"]);
 });
 
-test("el: the note renderer's tags are in the one table and nothing near them is (no a, img, em, strong, h1, h6, tfoot, caption, col, br, hr)", () => {
+test("el: the note renderer's tags are in the one table and nothing near them is (no img, em, strong, h1, h6, tfoot, caption, col, br, hr)", () => {
   const el = dom.makeEl(makeFakeDoc());
   for (const t of ["h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"]) assert.equal(el(t).tagName, t.toUpperCase(), t);
-  for (const bad of ["a", "img", "em", "strong", "b", "i", "h1", "h6", "tfoot", "caption", "col", "colgroup", "br", "hr", "blockquote", "TABLE", "Pre"])
+  for (const bad of ["img", "em", "strong", "b", "i", "h1", "h6", "tfoot", "caption", "col", "colgroup", "br", "hr", "blockquote", "TABLE", "Pre"])
     assert.throws(() => el(bad), /tag/i, "tag " + bad);
 });
 
@@ -49,8 +49,8 @@ test("el: `start` is allowed on <ol> ONLY, and only as a decimal integer string 
 
 test("el: every allowed tag is created; every other tag THROWS", () => {
   const el = dom.makeEl(makeFakeDoc());
-  for (const t of dom.TAGS) assert.equal(el(t).tagName, t.toUpperCase());
-  for (const bad of ["svg", "path", "g", "script", "img", "a", "iframe", "style", "link", "input", "details", "article", "DIV", "div ", "", "constructor", "__proto__", "toString"])
+  for (const t of dom.TAGS) assert.equal(el(t, t === "a" ? { href: "#step-1" } : {}).tagName, t.toUpperCase());
+  for (const bad of ["svg", "path", "g", "script", "img", "iframe", "style", "link", "input", "details", "article", "DIV", "div ", "", "constructor", "__proto__", "toString"])
     assert.throws(() => el(bad), /tag/i, "tag " + JSON.stringify(bad));
 });
 
@@ -217,4 +217,41 @@ test("F2 foot: no child_kind, or a child_kind whose row has no count_words, or n
 test("F2 foot: {n} is filled as TEXT (a replacement pattern in the words is inert)", () => {
   const strings = { ...FOOT_STRINGS, count_file_many: "{n} files $& $1" };
   assert.equal(faceFoot(strings, COUNTS, { childKind: "file" }, 4), "4 files $& $1");
+});
+
+/* AMENDMENT 1 (A1): the one link the page draws. `a` takes exactly ONE attribute, href, and only as '#' + a valid step id. Everything else is refused
+   like an unknown tag or attribute. */
+test("A1: <a> with href '#' + a valid step id is created; the href lands as written", () => {
+  const el = dom.makeEl(makeFakeDoc());
+  const a = el("a", { href: "#step-1" }, ["text"]);
+  assert.equal(a.tagName, "A");
+  assert.equal(a.attrs.href, "#step-1");
+  assert.equal(el("a", { href: "#a.b_c-9", class: "x-y", "aria-label": "z" }).attrs.href, "#a.b_c-9");
+});
+
+test("A1: every other href is refused: javascript:, http, //x, a bare #, # + a bad id, a relative path, a number, a missing href", () => {
+  const el = dom.makeEl(makeFakeDoc());
+  for (const bad of ["javascript:alert(1)", "JAVASCRIPT:alert(1)", "http://x.test/", "https://x.test/", "//x.test/p", "#", "#Bad Id", "#Bad", "# step", "#../x", "#-x", "#a b",
+    "step-1", "/step-1", "?x=1", "", " #step-1", "#step-1 ", "#step-1\n", "data:text/html,x", "#step-1#2", "#a/b", "mailto:x@y"])
+    assert.throws(() => el("a", { href: bad }), /href|attribute/i, "href " + JSON.stringify(bad));
+  assert.throws(() => el("a", { href: 5 }), /href|attribute|string/i, "a number");
+  assert.throws(() => el("a", {}), /href|attribute/i, "an a with no href");
+  assert.throws(() => el("a"), /href|attribute/i, "an a with no attributes at all");
+});
+
+test("A1: <a> takes no attribute besides href (and the common ones): target, rel, download, src, style, handlers are refused", () => {
+  const el = dom.makeEl(makeFakeDoc());
+  for (const bad of ["target", "rel", "download", "src", "style", "onclick", "ping", "referrerpolicy", "type", "id", "name", "hreflang"])
+    assert.throws(() => el("a", { href: "#step-1", [bad]: "x" }), /attribute/i, "a with " + bad);
+});
+
+test("A1: href is refused on every other tag", () => {
+  const el = dom.makeEl(makeFakeDoc());
+  for (const t of dom.TAGS.filter((x) => x !== "a"))
+    assert.throws(() => el(t, { href: "#step-1" }), /attribute/i, "href on " + t);
+});
+
+test("A1: the tag table gains `a` and nothing else (textarea, input, img, form stay refused)", () => {
+  const el = dom.makeEl(makeFakeDoc());
+  for (const bad of ["textarea", "input", "img", "form", "iframe", "script", "A"]) assert.throws(() => el(bad), /tag/i, bad);
 });

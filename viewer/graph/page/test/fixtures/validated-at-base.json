@@ -1,0 +1,2399 @@
+{
+ "real": {
+  "index": {
+   "commit": "0123456789abcdef0123456789abcdef01234567",
+   "maxChildren": 40,
+   "top": [
+    "goal-chain",
+    "inputs",
+    "bounds"
+   ],
+   "rests": [
+    {
+     "from": "goal-chain",
+     "to": "inputs",
+     "from_path": [],
+     "to_path": []
+    },
+    {
+     "from": "inputs",
+     "to": "bounds",
+     "from_path": [],
+     "to_path": []
+    }
+   ],
+   "steps": 23,
+   "symbols": {
+    "words": {
+     "kinds": {
+      "def": "key_kind_def",
+      "structure": "key_kind_structure",
+      "theorem": "key_kind_theorem"
+     },
+     "proofs": {
+      "none": "sheet_proof_none",
+      "not_read": "sheet_proof_not_read",
+      "read": "sheet_proof_read"
+     },
+     "states": {
+      "census": "sheet_statement_census",
+      "none": "sheet_statement_not_read",
+      "read": "sheet_statement_read"
+     }
+    },
+    "names": {
+     "kinds": [
+      "def",
+      "structure",
+      "theorem"
+     ],
+     "proofs": [
+      "none",
+      "not_read",
+      "read"
+     ],
+     "states": [
+      "census",
+      "none",
+      "read"
+     ]
+    },
+    "order": {
+     "kinds": [
+      "theorem",
+      "def",
+      "structure"
+     ],
+     "proofs": [
+      "read",
+      "not_read",
+      "none"
+     ],
+     "states": [
+      "read",
+      "census",
+      "none"
+     ]
+    },
+    "cardWords": {},
+    "countWords": {}
+   },
+   "strings": {
+    "claim_less": "Show less",
+    "claim_more": "Show the whole claim",
+    "close_parts": "Close its parts",
+    "crumb_label": "Where this step sits",
+    "key_kind_def": "Definition: a named object or statement",
+    "key_kind_structure": "Structure: a bundle of named fields",
+    "key_kind_theorem": "Theorem: a result the Lean code proves",
+    "key_kinds_heading": "Colour and shape: what Lean declares",
+    "key_states_heading": "Frame: what we have read",
+    "link_refused": "That address does not name a step on this map.",
+    "open_parts": "Open its parts",
+    "part_one": "1 part",
+    "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+    "parts_n": "{n} parts",
+    "sheet_proof_none": "No proof to read",
+    "sheet_proof_not_read": "Proof: not read yet.",
+    "sheet_proof_read": "Proof read",
+    "sheet_statement_census": "Statement counted by a program",
+    "sheet_statement_not_read": "Statement not read",
+    "sheet_statement_read": "Statement read"
+   },
+   "assets": {}
+  },
+  "steps": {
+   "a1-a-1-x": {
+    "id": "a1-a-1-x",
+    "path": [
+     "goal-chain",
+     "a1",
+     "a1-a",
+     "a1-a-1"
+    ],
+    "card": {
+     "id": "a1-a-1-x",
+     "title": "Title of step a1-a-1-x",
+     "kind": "theorem",
+     "state": "census",
+     "proof": "read",
+     "child_count": 0,
+     "path": [
+      "goal-chain",
+      "a1",
+      "a1-a",
+      "a1-a-1"
+     ],
+     "role": "Theorem"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "a1-a-1": {
+    "id": "a1-a-1",
+    "path": [
+     "goal-chain",
+     "a1",
+     "a1-a"
+    ],
+    "card": {
+     "id": "a1-a-1",
+     "title": "Title of step a1-a-1",
+     "kind": "def",
+     "state": "read",
+     "proof": "none",
+     "child_count": 1,
+     "path": [
+      "goal-chain",
+      "a1",
+      "a1-a"
+     ],
+     "role": "Definition"
+    },
+    "children": [
+     {
+      "id": "a1-a-1-x",
+      "title": "Title of step a1-a-1-x",
+      "kind": "theorem",
+      "state": "census",
+      "proof": "read",
+      "child_count": 0,
+      "path": [
+       "goal-chain",
+       "a1",
+       "a1-a",
+       "a1-a-1"
+      ],
+      "role": "Theorem",
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "a1-a-2": {
+    "id": "a1-a-2",
+    "path": [
+     "goal-chain",
+     "a1",
+     "a1-a"
+    ],
+    "card": {
+     "id": "a1-a-2",
+     "title": "Title of step a1-a-2",
+     "kind": "structure",
+     "state": "census",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "goal-chain",
+      "a1",
+      "a1-a"
+     ],
+     "role": "Structure"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "a1-a": {
+    "id": "a1-a",
+    "path": [
+     "goal-chain",
+     "a1"
+    ],
+    "card": {
+     "id": "a1-a",
+     "title": "Title of step a1-a",
+     "kind": "theorem",
+     "state": "census",
+     "proof": "read",
+     "child_count": 2,
+     "path": [
+      "goal-chain",
+      "a1"
+     ],
+     "role": "Theorem"
+    },
+    "children": [
+     {
+      "id": "a1-a-1",
+      "title": "Title of step a1-a-1",
+      "kind": "def",
+      "state": "read",
+      "proof": "none",
+      "child_count": 1,
+      "path": [
+       "goal-chain",
+       "a1",
+       "a1-a"
+      ],
+      "role": "Definition",
+      "parent_rests_on": true
+     },
+     {
+      "id": "a1-a-2",
+      "title": "Title of step a1-a-2",
+      "kind": "structure",
+      "state": "census",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "goal-chain",
+       "a1",
+       "a1-a"
+      ],
+      "role": "Structure",
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "a1-b": {
+    "id": "a1-b",
+    "path": [
+     "goal-chain",
+     "a1"
+    ],
+    "card": {
+     "id": "a1-b",
+     "title": "Title of step a1-b",
+     "kind": "def",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "goal-chain",
+      "a1"
+     ],
+     "role": "Definition"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "a1-c": {
+    "id": "a1-c",
+    "path": [
+     "goal-chain",
+     "a1"
+    ],
+    "card": {
+     "id": "a1-c",
+     "title": "Title of step a1-c",
+     "kind": "structure",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "goal-chain",
+      "a1"
+     ],
+     "role": "Structure"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "a1-d": {
+    "id": "a1-d",
+    "path": [
+     "goal-chain",
+     "a1"
+    ],
+    "card": {
+     "id": "a1-d",
+     "title": "Title of step a1-d",
+     "kind": "theorem",
+     "state": "read",
+     "proof": "not_read",
+     "child_count": 0,
+     "path": [
+      "goal-chain",
+      "a1"
+     ],
+     "role": "Theorem"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "a1": {
+    "id": "a1",
+    "path": [
+     "goal-chain"
+    ],
+    "card": {
+     "id": "a1",
+     "title": "Title of step a1",
+     "kind": "theorem",
+     "state": "census",
+     "proof": "read",
+     "child_count": 4,
+     "path": [
+      "goal-chain"
+     ],
+     "role": "Theorem"
+    },
+    "children": [
+     {
+      "id": "a1-a",
+      "title": "Title of step a1-a",
+      "kind": "theorem",
+      "state": "census",
+      "proof": "read",
+      "child_count": 2,
+      "path": [
+       "goal-chain",
+       "a1"
+      ],
+      "role": "Theorem",
+      "parent_rests_on": true
+     },
+     {
+      "id": "a1-b",
+      "title": "Title of step a1-b",
+      "kind": "def",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "goal-chain",
+       "a1"
+      ],
+      "role": "Definition",
+      "parent_rests_on": false
+     },
+     {
+      "id": "a1-c",
+      "title": "Title of step a1-c",
+      "kind": "structure",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "goal-chain",
+       "a1"
+      ],
+      "role": "Structure",
+      "parent_rests_on": false
+     },
+     {
+      "id": "a1-d",
+      "title": "Title of step a1-d",
+      "kind": "theorem",
+      "state": "read",
+      "proof": "not_read",
+      "child_count": 0,
+      "path": [
+       "goal-chain",
+       "a1"
+      ],
+      "role": "Theorem",
+      "parent_rests_on": true
+     }
+    ],
+    "rests_on": [
+     {
+      "from": "a1-b",
+      "to": "a1-a",
+      "from_path": [
+       "goal-chain",
+       "a1"
+      ],
+      "to_path": [
+       "goal-chain",
+       "a1"
+      ]
+     },
+     {
+      "from": "a1-c",
+      "to": "a1-d",
+      "from_path": [
+       "goal-chain",
+       "a1"
+      ],
+      "to_path": [
+       "goal-chain",
+       "a1"
+      ]
+     }
+    ]
+   },
+   "a2": {
+    "id": "a2",
+    "path": [
+     "goal-chain"
+    ],
+    "card": {
+     "id": "a2",
+     "title": "Title of step a2",
+     "kind": "def",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "goal-chain"
+     ],
+     "role": "Definition"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "a3": {
+    "id": "a3",
+    "path": [
+     "goal-chain"
+    ],
+    "card": {
+     "id": "a3",
+     "title": "Title of step a3",
+     "kind": "structure",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "goal-chain"
+     ],
+     "role": "Structure"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "a4": {
+    "id": "a4",
+    "path": [
+     "goal-chain"
+    ],
+    "card": {
+     "id": "a4",
+     "title": "Title of step a4",
+     "kind": "theorem",
+     "state": "read",
+     "proof": "not_read",
+     "child_count": 0,
+     "path": [
+      "goal-chain"
+     ],
+     "role": "Theorem"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "a6": {
+    "id": "a6",
+    "path": [
+     "goal-chain"
+    ],
+    "card": {
+     "id": "a6",
+     "title": "Title of step a6",
+     "kind": "structure",
+     "state": "census",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "goal-chain"
+     ],
+     "role": "Structure"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "b1-a": {
+    "id": "b1-a",
+    "path": [
+     "inputs",
+     "b1"
+    ],
+    "card": {
+     "id": "b1-a",
+     "title": "Title of step b1-a",
+     "kind": "def",
+     "state": "read",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "inputs",
+      "b1"
+     ],
+     "role": "Definition"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "b1-b": {
+    "id": "b1-b",
+    "path": [
+     "inputs",
+     "b1"
+    ],
+    "card": {
+     "id": "b1-b",
+     "title": "Title of step b1-b",
+     "kind": "structure",
+     "state": "census",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "inputs",
+      "b1"
+     ],
+     "role": "Structure"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "b1": {
+    "id": "b1",
+    "path": [
+     "inputs"
+    ],
+    "card": {
+     "id": "b1",
+     "title": "Title of step b1",
+     "kind": "def",
+     "state": "none",
+     "proof": "none",
+     "child_count": 2,
+     "path": [
+      "inputs"
+     ],
+     "role": "Definition"
+    },
+    "children": [
+     {
+      "id": "b1-a",
+      "title": "Title of step b1-a",
+      "kind": "def",
+      "state": "read",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "inputs",
+       "b1"
+      ],
+      "role": "Definition",
+      "parent_rests_on": false
+     },
+     {
+      "id": "b1-b",
+      "title": "Title of step b1-b",
+      "kind": "structure",
+      "state": "census",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "inputs",
+       "b1"
+      ],
+      "role": "Structure",
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "b2": {
+    "id": "b2",
+    "path": [
+     "inputs"
+    ],
+    "card": {
+     "id": "b2",
+     "title": "Title of step b2",
+     "kind": "structure",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "inputs"
+     ],
+     "role": "Structure"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "b3": {
+    "id": "b3",
+    "path": [
+     "inputs"
+    ],
+    "card": {
+     "id": "b3",
+     "title": "Title of step b3",
+     "kind": "theorem",
+     "state": "read",
+     "proof": "not_read",
+     "child_count": 0,
+     "path": [
+      "inputs"
+     ],
+     "role": "Theorem"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "bounds": {
+    "id": "bounds",
+    "path": [],
+    "card": {
+     "id": "bounds",
+     "title": "Title of step bounds",
+     "kind": "structure",
+     "state": "census",
+     "proof": "none",
+     "child_count": 2,
+     "path": [],
+     "role": "Structure"
+    },
+    "children": [
+     {
+      "id": "c1",
+      "title": "Title of step c1",
+      "kind": "theorem",
+      "state": "census",
+      "proof": "read",
+      "child_count": 0,
+      "path": [
+       "bounds"
+      ],
+      "role": "Theorem",
+      "parent_rests_on": true
+     },
+     {
+      "id": "linkn",
+      "title": "Title of step linkn",
+      "kind": "def",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "bounds"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "c1": {
+    "id": "c1",
+    "path": [
+     "bounds"
+    ],
+    "card": {
+     "id": "c1",
+     "title": "Title of step c1",
+     "kind": "theorem",
+     "state": "census",
+     "proof": "read",
+     "child_count": 0,
+     "path": [
+      "bounds"
+     ],
+     "role": "Theorem"
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "goal-chain": {
+    "id": "goal-chain",
+    "path": [],
+    "card": {
+     "id": "goal-chain",
+     "title": "Title of step goal-chain",
+     "kind": "theorem",
+     "state": "read",
+     "proof": "not_read",
+     "child_count": 6,
+     "path": [],
+     "role": "Theorem"
+    },
+    "children": [
+     {
+      "id": "a1",
+      "title": "Title of step a1",
+      "kind": "theorem",
+      "state": "census",
+      "proof": "read",
+      "child_count": 4,
+      "path": [
+       "goal-chain"
+      ],
+      "role": "Theorem",
+      "parent_rests_on": true
+     },
+     {
+      "id": "a2",
+      "title": "Title of step a2",
+      "kind": "def",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "goal-chain"
+      ],
+      "role": "Definition",
+      "parent_rests_on": false
+     },
+     {
+      "id": "a3",
+      "title": "Title of step a3",
+      "kind": "structure",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "goal-chain"
+      ],
+      "role": "Structure",
+      "parent_rests_on": true
+     },
+     {
+      "id": "a4",
+      "title": "Title of step a4",
+      "kind": "theorem",
+      "state": "read",
+      "proof": "not_read",
+      "child_count": 0,
+      "path": [
+       "goal-chain"
+      ],
+      "role": "Theorem",
+      "parent_rests_on": false
+     },
+     {
+      "id": "topg",
+      "title": "Title of step topg",
+      "kind": "def",
+      "state": "read",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "goal-chain"
+      ],
+      "parent_rests_on": false
+     },
+     {
+      "id": "a6",
+      "title": "Title of step a6",
+      "kind": "structure",
+      "state": "census",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "goal-chain"
+      ],
+      "role": "Structure",
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": [
+     {
+      "from": "a1",
+      "to": "a2",
+      "from_path": [
+       "goal-chain"
+      ],
+      "to_path": [
+       "goal-chain"
+      ]
+     },
+     {
+      "from": "a2",
+      "to": "a3",
+      "from_path": [
+       "goal-chain"
+      ],
+      "to_path": [
+       "goal-chain"
+      ]
+     },
+     {
+      "from": "a4",
+      "to": "topg",
+      "from_path": [
+       "goal-chain"
+      ],
+      "to_path": [
+       "goal-chain"
+      ]
+     }
+    ]
+   },
+   "inputs": {
+    "id": "inputs",
+    "path": [],
+    "card": {
+     "id": "inputs",
+     "title": "Title of step inputs",
+     "kind": "def",
+     "state": "read",
+     "proof": "none",
+     "child_count": 3,
+     "path": [],
+     "role": "Definition"
+    },
+    "children": [
+     {
+      "id": "b1",
+      "title": "Title of step b1",
+      "kind": "def",
+      "state": "none",
+      "proof": "none",
+      "child_count": 2,
+      "path": [
+       "inputs"
+      ],
+      "role": "Definition",
+      "parent_rests_on": true
+     },
+     {
+      "id": "b2",
+      "title": "Title of step b2",
+      "kind": "structure",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "inputs"
+      ],
+      "role": "Structure",
+      "parent_rests_on": false
+     },
+     {
+      "id": "b3",
+      "title": "Title of step b3",
+      "kind": "theorem",
+      "state": "read",
+      "proof": "not_read",
+      "child_count": 0,
+      "path": [
+       "inputs"
+      ],
+      "role": "Theorem",
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "linkn": {
+    "id": "linkn",
+    "path": [
+     "bounds"
+    ],
+    "card": {
+     "id": "linkn",
+     "title": "Title of step linkn",
+     "kind": "def",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "bounds"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "topg": {
+    "id": "topg",
+    "path": [
+     "goal-chain"
+    ],
+    "card": {
+     "id": "topg",
+     "title": "Title of step topg",
+     "kind": "def",
+     "state": "read",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "goal-chain"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   }
+  }
+ },
+ "skeleton": {
+  "index": {
+   "commit": "0123456789abcdef0123456789abcdef01234567",
+   "maxChildren": 40,
+   "top": [
+    "sk-part",
+    "sk-part-2"
+   ],
+   "rests": [],
+   "steps": 10,
+   "symbols": {
+    "words": {
+     "kinds": {
+      "file": "symbol_kind_file",
+      "group": "symbol_kind_group",
+      "part": "symbol_kind_part"
+     },
+     "proofs": {
+      "none": "sheet_proof_none",
+      "not_read": "sheet_proof_not_read",
+      "read": "sheet_proof_read"
+     },
+     "states": {
+      "census": "sheet_statement_census",
+      "none": "sheet_statement_not_read",
+      "read": "sheet_statement_read"
+     }
+    },
+    "names": {
+     "kinds": [
+      "file",
+      "group",
+      "part"
+     ],
+     "proofs": [
+      "none",
+      "not_read",
+      "read"
+     ],
+     "states": [
+      "census",
+      "none",
+      "read"
+     ]
+    },
+    "order": {
+     "kinds": [
+      "part",
+      "group",
+      "file"
+     ],
+     "proofs": [],
+     "states": []
+    },
+    "cardWords": {
+     "file": "card_kind_file",
+     "group": "card_kind_group",
+     "part": "card_kind_part"
+    },
+    "countWords": {
+     "file": {
+      "one": "count_file_one",
+      "many": "count_file_many"
+     },
+     "group": {
+      "one": "count_group_one",
+      "many": "count_group_many"
+     }
+    }
+   },
+   "strings": {
+    "card_kind_file": "File",
+    "card_kind_group": "Group",
+    "card_kind_part": "Part",
+    "claim_less": "Show less",
+    "claim_more": "Show the whole claim",
+    "close_parts": "Close its parts",
+    "count_file_many": "{n} files",
+    "count_file_one": "{n} file",
+    "count_group_many": "{n} groups",
+    "count_group_one": "{n} group",
+    "crumb_label": "Where this step sits",
+    "key_kinds_heading": "What a box is",
+    "key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+    "key_lines_heading": "What a line is",
+    "key_lines_text": "A line joins two files of the same group: the upper file uses definitions or results from the lower one. Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. Lean also uses results it fills in on its own without naming them; those uses are not counted.",
+    "key_scope_text": "The map holds the 306 Lean files of the proof's own argument (the folder New). Two short files at the top of the repository are not on it. In the repository's words (grh/README.md): \"`src/Statements.lean` states the theorems in Mathlib's terms. `src/Main.lean` proves five theorems\", the Riemann Hypothesis among them, each in a line or two from results on this map or from one another. (The map's file named Main is New/Main.lean, a different file.) The map also leaves out the repository's own 495 library files (the folder Lib) and Mathlib. A file's uses of those are not drawn.",
+    "key_states_heading": "Frame: what we have read",
+    "link_refused": "That address does not name a step on this map.",
+    "open_parts": "Open its parts",
+    "part_one": "1 part",
+    "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+    "parts_n": "{n} parts",
+    "sheet_proof_none": "No proof to read",
+    "sheet_proof_not_read": "Proof: not read yet.",
+    "sheet_proof_read": "Proof read",
+    "sheet_statement_census": "Statement counted by a program",
+    "sheet_statement_not_read": "Statement not read",
+    "sheet_statement_read": "Statement read",
+    "symbol_kind_file": "Lean file",
+    "symbol_kind_group": "Group of files",
+    "symbol_kind_part": "Part of the argument"
+   },
+   "assets": {},
+   "edgeBasis": {
+    "basis": "names-written-in-source-from-compiled-index",
+    "words": "key_lines_text"
+   },
+   "siblingLayout": "column",
+   "openScaleFloor": 1
+  },
+  "steps": {
+   "sk-file-1": {
+    "id": "sk-file-1",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-1",
+     "title": "File sk-file-1",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "index_rows": [
+     {
+      "source": "grh/INDEX.md",
+      "text": "The first file: the definitions the later files rest on."
+     }
+    ],
+    "spine_rows": [
+     "spine-theorem-a"
+    ]
+   },
+   "sk-file-2": {
+    "id": "sk-file-2",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-2",
+     "title": "File sk-file-2",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-file-3": {
+    "id": "sk-file-3",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-3",
+     "title": "File sk-file-3",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-file-4": {
+    "id": "sk-file-4",
+    "path": [
+     "sk-part",
+     "sk-group-b"
+    ],
+    "card": {
+     "id": "sk-file-4",
+     "title": "The second moments of the operators `P* s P`, and good forms",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-b"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "index_rows": [
+     {
+      "source": "grh/INDEX.md",
+      "text": "The fourth file: the first lemma of the argument."
+     },
+     {
+      "source": "grh/INDEX.md",
+      "text": "The fourth file, again: a second sentence about it."
+     }
+    ],
+    "spine_rows": [
+     "spine-theorem-b",
+     "spine-theorem-c"
+    ]
+   },
+   "sk-file-5": {
+    "id": "sk-file-5",
+    "path": [
+     "sk-part",
+     "sk-group-b"
+    ],
+    "card": {
+     "id": "sk-file-5",
+     "title": "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip.",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-b"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-file-6": {
+    "id": "sk-file-6",
+    "path": [
+     "sk-part-2"
+    ],
+    "card": {
+     "id": "sk-file-6",
+     "title": "File sk-file-6",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part-2"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-group-a": {
+    "id": "sk-group-a",
+    "path": [
+     "sk-part"
+    ],
+    "card": {
+     "id": "sk-group-a",
+     "title": "Group sk-group-a",
+     "kind": "group",
+     "state": "none",
+     "proof": "none",
+     "child_count": 3,
+     "path": [
+      "sk-part"
+     ],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-1",
+      "title": "File sk-file-1",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-file-2",
+      "title": "File sk-file-2",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": true
+     },
+     {
+      "id": "sk-file-3",
+      "title": "File sk-file-3",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": [
+     {
+      "from": "sk-file-1",
+      "to": "sk-file-2",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 3,
+      "in_reduction": true
+     },
+     {
+      "from": "sk-file-2",
+      "to": "sk-file-3",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 1,
+      "in_reduction": true
+     },
+     {
+      "from": "sk-file-1",
+      "to": "sk-file-3",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 2,
+      "in_reduction": false
+     }
+    ]
+   },
+   "sk-group-b": {
+    "id": "sk-group-b",
+    "path": [
+     "sk-part"
+    ],
+    "card": {
+     "id": "sk-group-b",
+     "title": "Files under `Formalism/Basic`",
+     "kind": "group",
+     "state": "none",
+     "proof": "none",
+     "child_count": 2,
+     "path": [
+      "sk-part"
+     ],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-4",
+      "title": "The second moments of the operators `P* s P`, and good forms",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-b"
+      ],
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-file-5",
+      "title": "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip.",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-b"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "sk-part-2": {
+    "id": "sk-part-2",
+    "path": [],
+    "card": {
+     "id": "sk-part-2",
+     "title": "Part sk-part-2",
+     "kind": "part",
+     "state": "none",
+     "proof": "none",
+     "child_count": 1,
+     "path": [],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-6",
+      "title": "File sk-file-6",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part-2"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "sk-part": {
+    "id": "sk-part",
+    "path": [],
+    "card": {
+     "id": "sk-part",
+     "title": "Part sk-part",
+     "kind": "part",
+     "state": "none",
+     "proof": "none",
+     "child_count": 2,
+     "path": [],
+     "child_kind": "group"
+    },
+    "children": [
+     {
+      "id": "sk-group-a",
+      "title": "Group sk-group-a",
+      "kind": "group",
+      "state": "none",
+      "proof": "none",
+      "child_count": 3,
+      "path": [
+       "sk-part"
+      ],
+      "child_kind": "file",
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-group-b",
+      "title": "Files under `Formalism/Basic`",
+      "kind": "group",
+      "state": "none",
+      "proof": "none",
+      "child_count": 2,
+      "path": [
+       "sk-part"
+      ],
+      "child_kind": "file",
+      "parent_rests_on": true
+     }
+    ],
+    "rests_on": []
+   }
+  }
+ },
+ "notes": {
+  "index": {
+   "commit": "0123456789abcdef0123456789abcdef01234567",
+   "maxChildren": 40,
+   "top": [
+    "sk-part",
+    "sk-part-2"
+   ],
+   "rests": [],
+   "steps": 10,
+   "symbols": {
+    "words": {
+     "kinds": {
+      "file": "symbol_kind_file",
+      "group": "symbol_kind_group",
+      "part": "symbol_kind_part"
+     },
+     "proofs": {
+      "none": "sheet_proof_none",
+      "not_read": "sheet_proof_not_read",
+      "read": "sheet_proof_read"
+     },
+     "states": {
+      "census": "sheet_statement_census",
+      "none": "sheet_statement_not_read",
+      "read": "sheet_statement_read"
+     }
+    },
+    "names": {
+     "kinds": [
+      "file",
+      "group",
+      "part"
+     ],
+     "proofs": [
+      "none",
+      "not_read",
+      "read"
+     ],
+     "states": [
+      "census",
+      "none",
+      "read"
+     ]
+    },
+    "order": {
+     "kinds": [
+      "part",
+      "group",
+      "file"
+     ],
+     "proofs": [],
+     "states": []
+    },
+    "cardWords": {
+     "file": "card_kind_file",
+     "group": "card_kind_group",
+     "part": "card_kind_part"
+    },
+    "countWords": {
+     "file": {
+      "one": "count_file_one",
+      "many": "count_file_many"
+     },
+     "group": {
+      "one": "count_group_one",
+      "many": "count_group_many"
+     }
+    }
+   },
+   "strings": {
+    "card_kind_file": "File",
+    "card_kind_group": "Group",
+    "card_kind_part": "Part",
+    "claim_less": "Show less",
+    "claim_more": "Show the whole claim",
+    "close_parts": "Close its parts",
+    "count_file_many": "{n} files",
+    "count_file_one": "{n} file",
+    "count_group_many": "{n} groups",
+    "count_group_one": "{n} group",
+    "crumb_label": "Where this step sits",
+    "key_kinds_heading": "What a box is",
+    "key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+    "key_lines_heading": "What a line is",
+    "key_lines_text": "A line joins two files of the same group: the upper file uses definitions or results from the lower one. Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. Lean also uses results it fills in on its own without naming them; those uses are not counted.",
+    "key_scope_text": "The map holds the 306 Lean files of the proof's own argument (the folder New). Two short files at the top of the repository are not on it. In the repository's words (grh/README.md): \"`src/Statements.lean` states the theorems in Mathlib's terms. `src/Main.lean` proves five theorems\", the Riemann Hypothesis among them, each in a line or two from results on this map or from one another. (The map's file named Main is New/Main.lean, a different file.) The map also leaves out the repository's own 495 library files (the folder Lib) and Mathlib. A file's uses of those are not drawn.",
+    "key_states_heading": "Frame: what we have read",
+    "link_refused": "That address does not name a step on this map.",
+    "note_label": "From the repository, unchanged",
+    "note_source": "Source file: {source} · version {commit} of lsernau/grh-lean",
+    "open_parts": "Open its parts",
+    "part_one": "1 part",
+    "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+    "parts_n": "{n} parts",
+    "sheet_proof_none": "No proof to read",
+    "sheet_proof_not_read": "Proof: not read yet.",
+    "sheet_proof_read": "Proof read",
+    "sheet_statement_census": "Statement counted by a program",
+    "sheet_statement_not_read": "Statement not read",
+    "sheet_statement_read": "Statement read",
+    "symbol_kind_file": "Lean file",
+    "symbol_kind_group": "Group of files",
+    "symbol_kind_part": "Part of the argument"
+   },
+   "assets": {},
+   "edgeBasis": {
+    "basis": "names-written-in-source-from-compiled-index",
+    "words": "key_lines_text"
+   },
+   "siblingLayout": "column",
+   "openScaleFloor": 1
+  },
+  "steps": {
+   "sk-file-1": {
+    "id": "sk-file-1",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-1",
+     "title": "The one-sided bound, and the theorem in half-plane form",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "index_rows": [
+     {
+      "source": "grh/INDEX.md",
+      "text": "The first file: the definitions the later files rest on."
+     }
+    ],
+    "spine_rows": [
+     "spine-theorem-a"
+    ],
+    "note": {
+     "text": "\n# The one-sided bound, and the theorem in half-plane form\n\nFor admissible data at an integer `x`, the main inequality and the prime number theorem at a much\nlarger cut-off `x₁` give the bound `R_{q₀}(x) ≤ x ^ (-1/2 + ε)` for large `x`; the one-sided\ncriterion turns it into the non-vanishing of all Dirichlet `L`-functions in `re s > 1/2`.\n\nNotions from other files:\n* `Parameters`: a multiple `q₀ = P.q₀` of `18480` and a prime `d = P.d ≡ q₀ / 2 - 1` modulo `q₀`.\n* `primeRemainder d q x`: the remainder `R_q(x) = ∑_{n ≤ x} λ(n) (1/n - 1/x) - log x / φ(q) - c_q`.\n  Here `λ(n) = Λ(n) (1 - chiK d n)` for `n ≡ 1` modulo `q` and `0` otherwise, with `chiK d` the\n  Legendre symbol modulo `d`; for odd `d` prime to `q`, `c_q` is the constant with `R_q(x) → 0`.\n* `Data P`: admissible data, among them the scales `x`, `x₁`, `b`, `a = x b`, the number of lifts\n  `m` and two finite sets of places of a number field, `Φ_a = D.aPlaces` and `Φ_b = D.bPlaces`.\n",
+     "source": "grh/src/New/Reduction/OneSidedBound.lean",
+     "commit": "0123456789abcdef0123456789abcdef01234567"
+    }
+   },
+   "sk-file-2": {
+    "id": "sk-file-2",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-2",
+     "title": "File sk-file-2",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "note": {
+     "text": "# <script>alert(1)</script>\n\n<img src=x onerror=1> &amp;lt; javascript:alert(1) [x](javascript:y) <b>bold</b>\n\n* <script>alert(2)</script>\n* `<img src=x onerror=2>`\n\n3. javascript:void(0)\n4. [y](javascript:z)\n\n    <iframe src=javascript:alert(3)></iframe>\n\n| <b>h</b> | `<i>` |\n|---|---|\n| <u> | &lt; |\n",
+     "source": "grh/src/New/Hostile.lean",
+     "commit": "0123456789abcdef0123456789abcdef01234567"
+    }
+   },
+   "sk-file-3": {
+    "id": "sk-file-3",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-3",
+     "title": "File sk-file-3",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-file-4": {
+    "id": "sk-file-4",
+    "path": [
+     "sk-part",
+     "sk-group-b"
+    ],
+    "card": {
+     "id": "sk-file-4",
+     "title": "The second moments of the operators `P* s P`, and good forms",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-b"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "index_rows": [
+     {
+      "source": "grh/INDEX.md",
+      "text": "The fourth file: the first lemma of the argument."
+     },
+     {
+      "source": "grh/INDEX.md",
+      "text": "The fourth file, again: a second sentence about it."
+     }
+    ],
+    "spine_rows": [
+     "spine-theorem-b",
+     "spine-theorem-c"
+    ]
+   },
+   "sk-file-5": {
+    "id": "sk-file-5",
+    "path": [
+     "sk-part",
+     "sk-group-b"
+    ],
+    "card": {
+     "id": "sk-file-5",
+     "title": "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip.",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-b"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-file-6": {
+    "id": "sk-file-6",
+    "path": [
+     "sk-part-2"
+    ],
+    "card": {
+     "id": "sk-file-6",
+     "title": "File sk-file-6",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part-2"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-group-a": {
+    "id": "sk-group-a",
+    "path": [
+     "sk-part"
+    ],
+    "card": {
+     "id": "sk-group-a",
+     "title": "Group sk-group-a",
+     "kind": "group",
+     "state": "none",
+     "proof": "none",
+     "child_count": 3,
+     "path": [
+      "sk-part"
+     ],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-1",
+      "title": "The one-sided bound, and the theorem in half-plane form",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-file-2",
+      "title": "File sk-file-2",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": true
+     },
+     {
+      "id": "sk-file-3",
+      "title": "File sk-file-3",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": [
+     {
+      "from": "sk-file-1",
+      "to": "sk-file-2",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 3,
+      "in_reduction": true
+     },
+     {
+      "from": "sk-file-2",
+      "to": "sk-file-3",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 1,
+      "in_reduction": true
+     },
+     {
+      "from": "sk-file-1",
+      "to": "sk-file-3",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 2,
+      "in_reduction": false
+     }
+    ]
+   },
+   "sk-group-b": {
+    "id": "sk-group-b",
+    "path": [
+     "sk-part"
+    ],
+    "card": {
+     "id": "sk-group-b",
+     "title": "Files under `Formalism/Basic`",
+     "kind": "group",
+     "state": "none",
+     "proof": "none",
+     "child_count": 2,
+     "path": [
+      "sk-part"
+     ],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-4",
+      "title": "The second moments of the operators `P* s P`, and good forms",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-b"
+      ],
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-file-5",
+      "title": "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip.",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-b"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "sk-part-2": {
+    "id": "sk-part-2",
+    "path": [],
+    "card": {
+     "id": "sk-part-2",
+     "title": "Part sk-part-2",
+     "kind": "part",
+     "state": "none",
+     "proof": "none",
+     "child_count": 1,
+     "path": [],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-6",
+      "title": "File sk-file-6",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part-2"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "sk-part": {
+    "id": "sk-part",
+    "path": [],
+    "card": {
+     "id": "sk-part",
+     "title": "Part sk-part",
+     "kind": "part",
+     "state": "none",
+     "proof": "none",
+     "child_count": 2,
+     "path": [],
+     "child_kind": "group"
+    },
+    "children": [
+     {
+      "id": "sk-group-a",
+      "title": "Group sk-group-a",
+      "kind": "group",
+      "state": "none",
+      "proof": "none",
+      "child_count": 3,
+      "path": [
+       "sk-part"
+      ],
+      "child_kind": "file",
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-group-b",
+      "title": "Files under `Formalism/Basic`",
+      "kind": "group",
+      "state": "none",
+      "proof": "none",
+      "child_count": 2,
+      "path": [
+       "sk-part"
+      ],
+      "child_kind": "file",
+      "parent_rests_on": true
+     }
+    ],
+    "rests_on": []
+   }
+  }
+ },
+ "typeset": {
+  "index": {
+   "commit": "0123456789abcdef0123456789abcdef01234567",
+   "maxChildren": 40,
+   "top": [
+    "sk-part",
+    "sk-part-2"
+   ],
+   "rests": [],
+   "steps": 10,
+   "symbols": {
+    "words": {
+     "kinds": {
+      "file": "symbol_kind_file",
+      "group": "symbol_kind_group",
+      "part": "symbol_kind_part"
+     },
+     "proofs": {
+      "none": "sheet_proof_none",
+      "not_read": "sheet_proof_not_read",
+      "read": "sheet_proof_read"
+     },
+     "states": {
+      "census": "sheet_statement_census",
+      "none": "sheet_statement_not_read",
+      "read": "sheet_statement_read"
+     }
+    },
+    "names": {
+     "kinds": [
+      "file",
+      "group",
+      "part"
+     ],
+     "proofs": [
+      "none",
+      "not_read",
+      "read"
+     ],
+     "states": [
+      "census",
+      "none",
+      "read"
+     ]
+    },
+    "order": {
+     "kinds": [
+      "part",
+      "group",
+      "file"
+     ],
+     "proofs": [],
+     "states": []
+    },
+    "cardWords": {
+     "file": "card_kind_file",
+     "group": "card_kind_group",
+     "part": "card_kind_part"
+    },
+    "countWords": {
+     "file": {
+      "one": "count_file_one",
+      "many": "count_file_many"
+     },
+     "group": {
+      "one": "count_group_one",
+      "many": "count_group_many"
+     }
+    }
+   },
+   "strings": {
+    "card_kind_file": "File",
+    "card_kind_group": "Group",
+    "card_kind_part": "Part",
+    "claim_less": "Show less",
+    "claim_more": "Show the whole claim",
+    "close_parts": "Close its parts",
+    "count_file_many": "{n} files",
+    "count_file_one": "{n} file",
+    "count_group_many": "{n} groups",
+    "count_group_one": "{n} group",
+    "crumb_label": "Where this step sits",
+    "key_kinds_heading": "What a box is",
+    "key_kinds_note": "Parts and groups follow the repository's own contents list (CONTENTS.md).",
+    "key_lines_heading": "What a line is",
+    "key_lines_text": "A line joins two files of the same group: the upper file uses definitions or results from the lower one. Where a path of lines already connects two files, no direct line is drawn between them. Uses across groups are not drawn. Lean also uses results it fills in on its own without naming them; those uses are not counted.",
+    "key_scope_text": "The map holds the 306 Lean files of the proof's own argument (the folder New). Two short files at the top of the repository are not on it. In the repository's words (grh/README.md): \"`src/Statements.lean` states the theorems in Mathlib's terms. `src/Main.lean` proves five theorems\", the Riemann Hypothesis among them, each in a line or two from results on this map or from one another. (The map's file named Main is New/Main.lean, a different file.) The map also leaves out the repository's own 495 library files (the folder Lib) and Mathlib. A file's uses of those are not drawn.",
+    "key_states_heading": "Frame: what we have read",
+    "link_refused": "That address does not name a step on this map.",
+    "note_exact_button": "Show the exact text",
+    "note_label": "The file's opening note, from the repository, unchanged",
+    "note_label_typeset": "The file's opening note, from the repository",
+    "note_render_button": "Show the note with formulas set in maths type",
+    "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
+    "note_typeset_line": "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.",
+    "open_parts": "Open its parts",
+    "part_one": "1 part",
+    "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+    "parts_n": "{n} parts",
+    "sheet_proof_none": "No proof to read",
+    "sheet_proof_not_read": "Proof: not read yet.",
+    "sheet_proof_read": "Proof read",
+    "sheet_statement_census": "Statement counted by a program",
+    "sheet_statement_not_read": "Statement not read",
+    "sheet_statement_read": "Statement read",
+    "symbol_kind_file": "Lean file",
+    "symbol_kind_group": "Group of files",
+    "symbol_kind_part": "Part of the argument"
+   },
+   "assets": {},
+   "edgeBasis": {
+    "basis": "names-written-in-source-from-compiled-index",
+    "words": "key_lines_text"
+   },
+   "siblingLayout": "column",
+   "openScaleFloor": 1
+  },
+  "steps": {
+   "sk-file-1": {
+    "id": "sk-file-1",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-1",
+     "title": "The one-sided bound, and the theorem in half-plane form",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "index_rows": [
+     {
+      "source": "grh/INDEX.md",
+      "text": "The first file: the definitions the later files rest on."
+     }
+    ],
+    "spine_rows": [
+     "spine-theorem-a"
+    ],
+    "note": {
+     "text": "\n# The one-sided bound, and the theorem in half-plane form\n\nFor admissible data at an integer `x`, the main inequality and the prime number theorem at a much\nlarger cut-off `x₁` give the bound `R_{q₀}(x) ≤ x ^ (-1/2 + ε)` for large `x`; the one-sided\ncriterion turns it into the non-vanishing of all Dirichlet `L`-functions in `re s > 1/2`.\n\nNotions from other files:\n* `Parameters`: a multiple `q₀ = P.q₀` of `18480` and a prime `d = P.d ≡ q₀ / 2 - 1` modulo `q₀`.\n* `primeRemainder d q x`: the remainder `R_q(x) = ∑_{n ≤ x} λ(n) (1/n - 1/x) - log x / φ(q) - c_q`.\n  Here `λ(n) = Λ(n) (1 - chiK d n)` for `n ≡ 1` modulo `q` and `0` otherwise, with `chiK d` the\n  Legendre symbol modulo `d`; for odd `d` prime to `q`, `c_q` is the constant with `R_q(x) → 0`.\n* `Data P`: admissible data, among them the scales `x`, `x₁`, `b`, `a = x b`, the number of lifts\n  `m` and two finite sets of places of a number field, `Φ_a = D.aPlaces` and `Φ_b = D.bPlaces`.\n",
+     "source": "grh/src/New/Reduction/OneSidedBound.lean",
+     "commit": "0123456789abcdef0123456789abcdef01234567"
+    }
+   },
+   "sk-file-2": {
+    "id": "sk-file-2",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-2",
+     "title": "File sk-file-2",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "note": {
+     "text": "# <script>alert(1)</script>\n\n<img src=x onerror=1> &amp;lt; javascript:alert(1) [x](javascript:y) <b>bold</b>\n\n* <script>alert(2)</script>\n* `<img src=x onerror=2>`\n\n3. javascript:void(0)\n4. [y](javascript:z)\n\n    <iframe src=javascript:alert(3)></iframe>\n\n| <b>h</b> | `<i>` |\n|---|---|\n| <u> | &lt; |\n\n\n`<b>x</b>` and `a<i>b` and `x&y`\n\nA power `y ^ 12`, a pair `P_δ^N`, a group `x^{α_i}`, and two refused: `x^-1` and `a ^ b ^ c`.\n",
+     "source": "grh/src/New/Hostile.lean",
+     "commit": "0123456789abcdef0123456789abcdef01234567"
+    }
+   },
+   "sk-file-3": {
+    "id": "sk-file-3",
+    "path": [
+     "sk-part",
+     "sk-group-a"
+    ],
+    "card": {
+     "id": "sk-file-3",
+     "title": "The polynomial map ζ, the datum Ψ^add and the series Υ; norm, degree and denominator of ζ",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-a"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "note": {
+     "text": "\n# The polynomial map ζ, the datum Ψ^add and the series Υ; norm, degree and denominator of ζ\n\nFix admissible data `D`, a tame character `ϑ` and an index `1 ≤ j ≤ m`. Write `E^n` for the standard\ndefinite space of rank `n`, V″ for the one on `New.Data.FirstFactorIndex` and\nW^add = E^{3m−j} ⊕ W♭ ⊕ E^{3m} for the one on `New.Data.AddedIndex`. Throughout, k = `D.k`,\nm = `D.m`, M = `D.M`, and W_j is the space on `D.RowIndex` with r₊ = `D.posRank j` = k + j − 1 plus\nsigns. This file defines the constant rows 𝖼, the datum Ψ^add and the series Υ, which is built from\ntheta kernels of definite spaces. It also defines the polynomial map ζ to the Weyl module of μ⁺ with\nP_V = P_{ζ(z)}(X). Here P_V has one determinant det(𝖼; X z) for each column of μ⁺, with variables X\nin the positive basis vectors of W_j and variables z in W^add. This file bounds the norm, the degree\nand the denominator of ζ.\n\n## Main definitions and results\n\n* `New.HasWeightNormSqLe`, `New.HasWeightNormSqLeIf`: \"F has weight κ and squared norm at most b\",\n  outright or under a condition. Under finite products the weights add and the bounds multiply.\n* `New.Data.constantRows`, `New.Data.stackedDetProdCoords`: the matrices 𝖼 of 2m constant rows, one\n  for each column of μ⁺ at each infinite place (`New.Data.DetIndex`), and the coordinates of ζ.\n* `New.Data.addedDatum`, `New.Data.leftSideSeries`: the datum Ψ^add on W^add and the series Υ.\n* `New.Data.toPoly_stackedDetProdCoords`, `New.Data.weylNormSq_comp_eval_stackedDetProdCoords_le`:\n  P_V is the polynomial of ζ, and when the entries of Y and the values of z are small, the squared\n  norm of ζ(z) is bounded.\n* `New.Data.exists_isHomogeneousOverEntries_smul_stackedDetProdCoords`: ζ is homogeneous of one\n  degree `d`, and one integer `H ≤ (d ^ d) ^ 3` clears its denominators.\n\nNotions from other files:\n* `New.toPoly`, `New.weylNormSq`: the polynomial of a coordinate vector of weight κ, and the squared\n  norm of the vector for the Gram matrix of κ. Here `κ τ h` counts the columns of height `h` at `τ`.\n* `New.Data.DetIndex`: the columns of μ⁺ at the place τ. The number of those of height h < r₊ is\n  `(untwistedDescentPair j).colsPlus τ h`, and Δ′ = `D.reducedHalfGap` have height r₊.\n* `New.Data.FirstFactorIndex`: the indices of W_j, (E^j)⁻, E^{3m−j} and W♭ = E^{6m+1}.\n* `New.Data.ChoiceIndex`: the choices, each a matrix Λ modulo ϖ² with a class h♭ of U(W♭) and rows\n  for the columns of height r₊ (`New.Data.RowChoice`).\n* `New.Data.TameChar`, `New.Data.twistModulus`: a character `ϑ` of U(1)(𝔸) of weight 0 with tame\n  part on a finite set Q = `ϑ.Q` of places, and the moduli ϖ^c Q.\n\n## Relation to the literature\n\nSee `New.OneLift.ComparisonOperator.FirstFactors` for related work.\n",
+     "source": "grh/src/New/OneLift/ComparisonOperator/LineCoordinates.lean",
+     "review": {
+      "state": "converter"
+     },
+     "commit": "0123456789abcdef0123456789abcdef01234567"
+    }
+   },
+   "sk-file-4": {
+    "id": "sk-file-4",
+    "path": [
+     "sk-part",
+     "sk-group-b"
+    ],
+    "card": {
+     "id": "sk-file-4",
+     "title": "The second moments of the operators `P* s P`, and good forms",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-b"
+     ]
+    },
+    "children": [],
+    "rests_on": [],
+    "index_rows": [
+     {
+      "source": "grh/INDEX.md",
+      "text": "The fourth file: the first lemma of the argument."
+     },
+     {
+      "source": "grh/INDEX.md",
+      "text": "The fourth file, again: a second sentence about it."
+     }
+    ],
+    "spine_rows": [
+     "spine-theorem-b",
+     "spine-theorem-c"
+    ]
+   },
+   "sk-file-5": {
+    "id": "sk-file-5",
+    "path": [
+     "sk-part",
+     "sk-group-b"
+    ],
+    "card": {
+     "id": "sk-file-5",
+     "title": "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip.",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part",
+      "sk-group-b"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-file-6": {
+    "id": "sk-file-6",
+    "path": [
+     "sk-part-2"
+    ],
+    "card": {
+     "id": "sk-file-6",
+     "title": "File sk-file-6",
+     "kind": "file",
+     "state": "none",
+     "proof": "none",
+     "child_count": 0,
+     "path": [
+      "sk-part-2"
+     ]
+    },
+    "children": [],
+    "rests_on": []
+   },
+   "sk-group-a": {
+    "id": "sk-group-a",
+    "path": [
+     "sk-part"
+    ],
+    "card": {
+     "id": "sk-group-a",
+     "title": "Group sk-group-a",
+     "kind": "group",
+     "state": "none",
+     "proof": "none",
+     "child_count": 3,
+     "path": [
+      "sk-part"
+     ],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-1",
+      "title": "The one-sided bound, and the theorem in half-plane form",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-file-2",
+      "title": "File sk-file-2",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": true
+     },
+     {
+      "id": "sk-file-3",
+      "title": "File sk-file-3",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": [
+     {
+      "from": "sk-file-1",
+      "to": "sk-file-2",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 3,
+      "in_reduction": true
+     },
+     {
+      "from": "sk-file-2",
+      "to": "sk-file-3",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 1,
+      "in_reduction": true
+     },
+     {
+      "from": "sk-file-1",
+      "to": "sk-file-3",
+      "from_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "to_path": [
+       "sk-part",
+       "sk-group-a"
+      ],
+      "weight": 2,
+      "in_reduction": false
+     }
+    ]
+   },
+   "sk-group-b": {
+    "id": "sk-group-b",
+    "path": [
+     "sk-part"
+    ],
+    "card": {
+     "id": "sk-group-b",
+     "title": "Files under `Formalism/Basic`",
+     "kind": "group",
+     "state": "none",
+     "proof": "none",
+     "child_count": 2,
+     "path": [
+      "sk-part"
+     ],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-4",
+      "title": "The second moments of the operators `P* s P`, and good forms",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-b"
+      ],
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-file-5",
+      "title": "Lean file holding the definitions and the first lemmas of the zeta function on the critical strip.",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part",
+       "sk-group-b"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "sk-part-2": {
+    "id": "sk-part-2",
+    "path": [],
+    "card": {
+     "id": "sk-part-2",
+     "title": "Part sk-part-2",
+     "kind": "part",
+     "state": "none",
+     "proof": "none",
+     "child_count": 1,
+     "path": [],
+     "child_kind": "file"
+    },
+    "children": [
+     {
+      "id": "sk-file-6",
+      "title": "File sk-file-6",
+      "kind": "file",
+      "state": "none",
+      "proof": "none",
+      "child_count": 0,
+      "path": [
+       "sk-part-2"
+      ],
+      "parent_rests_on": false
+     }
+    ],
+    "rests_on": []
+   },
+   "sk-part": {
+    "id": "sk-part",
+    "path": [],
+    "card": {
+     "id": "sk-part",
+     "title": "Part sk-part",
+     "kind": "part",
+     "state": "none",
+     "proof": "none",
+     "child_count": 2,
+     "path": [],
+     "child_kind": "group"
+    },
+    "children": [
+     {
+      "id": "sk-group-a",
+      "title": "Group sk-group-a",
+      "kind": "group",
+      "state": "none",
+      "proof": "none",
+      "child_count": 3,
+      "path": [
+       "sk-part"
+      ],
+      "child_kind": "file",
+      "parent_rests_on": false
+     },
+     {
+      "id": "sk-group-b",
+      "title": "Files under `Formalism/Basic`",
+      "kind": "group",
+      "state": "none",
+      "proof": "none",
+      "child_count": 2,
+      "path": [
+       "sk-part"
+      ],
+      "child_kind": "file",
+      "parent_rests_on": true
+     }
+    ],
+    "rests_on": []
+   }
+  }
+ }
+}

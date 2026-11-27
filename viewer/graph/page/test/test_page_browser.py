@@ -4221,6 +4221,352 @@ GV_CASES = [
 ]
 
 
+# ---------------------------------------------------------------------------------------------------------------- the statement level (PR statements)
+# The fixture fixtures/statements: group fx-group, files fx-stmt-file (three statements: fx-thm-a theorem with a doc-string and a heading, fx-lem-b lemma with no
+# doc-string and variables true, fx-def-c def with uses) and fx-file-2. At 390 x 844, the phone, on both engines.
+
+def stmt_step(i):
+    return json.load(open(os.path.join(assemble.HERE, "fixtures", "statements", "step", i + ".json"), encoding="utf-8"))
+
+
+def stmt_open(b, engine, init=None, edit=None, grant=False):
+    root = tempfile.mkdtemp(prefix="pg-stmt-")
+    assemble.assemble(root, engine, fix="statements", index_edit=edit)
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True, init=init).settled()
+    if grant:
+        pg.ctx.grant_permissions(["clipboard-read", "clipboard-write"], origin=S.base.rstrip("/"))
+    return S, pg
+
+
+def card_claim(pg):
+    return pg.ev("document.querySelector('#graph-sheet-body .claim')?.textContent")
+
+
+def open_card_by_hash(pg, i, title):
+    if pg.ev("location.hash") == "#" + i:      # the same hash again is no hashchange: leave it first
+        at_hash(pg, "")
+    at_hash(pg, i)
+    pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === %s" % json.dumps(title), 6000)
+    pg.wait("document.querySelector('#graph-sheet-body .decl-name') !== null", 6000)
+
+
+CARD_CHILDREN_JS = "[...document.querySelector('#graph-sheet-body .card').children].map(e => e.className)"
+FIXTURE_TITLES = {"fx-thm-a": "foo_bar", "fx-lem-b": "baz", "fx-def-c": "Fx.qux"}
+
+
+def no_console_errors(pg):
+    bad = [c for c in pg.console if c[0] in ("error", "warning", "pageerror")]
+    assert not bad, bad
+    pg.csp_clean()
+
+
+def c_stmt_path_down(b, S0, engine):
+    """(a) The file's sheet says 'Open its statements' (the kind row's open_words); the group's says 'Open its parts' (its own open_words row); pressing the
+    file's button opens three boxes in source order whose faces show the code title; the file's face foot reads '3 statements'; reopened, it says 'Close its statements'."""
+    S, pg = stmt_open(b, engine)
+    try:
+        at_hash(pg, "fx-part")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Part Fx'", 6000)
+        assert pg.ev("document.querySelector('#graph-sheet-tools .sheet-tool').textContent") == "Open its parts"
+        assert pg.ev("document.querySelector('[data-node=\"fx-part\"] .face-foot').textContent") == "1 group"
+        at_hash(pg, "fx-group")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Group Fx'", 6000)
+        assert pg.ev("document.querySelector('#graph-sheet-tools .sheet-tool').textContent") == "Open its parts"
+        at_hash(pg, "fx-stmt-file")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Lean file Fx.File'", 6000)
+        assert pg.ev("document.querySelector('#graph-sheet-tools .sheet-tool').textContent") == "Open its statements"
+        assert pg.ev("document.querySelector('[data-node=\"fx-stmt-file\"] .face-foot').textContent") == "3 statements"
+        assert pg.ev("document.querySelector('[data-node=\"fx-group\"] .face-foot').textContent") == "2 files"
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        pg.wait("['fx-thm-a', 'fx-lem-b', 'fx-def-c'].every(i => document.querySelector('[data-node=\"' + i + '\"]'))", 8000)
+        boxes = pg.ev("""['fx-thm-a', 'fx-lem-b', 'fx-def-c'].map(i => { const f = document.querySelector('[data-node="' + i + '"] .face'), r = f.getBoundingClientRect();
+          return { id: i, top: r.top, left: r.left, title: f.querySelector('.face-title').textContent, code: f.querySelectorAll('.face-title code').length, cls: f.className }; })""")
+        order = [x["id"] for x in sorted(boxes, key=lambda x: (round(x["top"]), x["left"]))]
+        assert order == ["fx-thm-a", "fx-lem-b", "fx-def-c"], (order, boxes)
+        assert [x["title"] for x in boxes] == ["foo_bar", "baz", "Fx.qux"], boxes
+        assert all(x["code"] == 1 for x in boxes), boxes
+        assert [x["cls"].split()[1] for x in boxes] == ["k-theorem", "k-lemma", "k-def"], boxes
+        tap(pg, "fx-stmt-file")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Lean file Fx.File'", 6000)
+        assert pg.ev("document.querySelector('#graph-sheet-tools .sheet-tool').textContent") == "Close its statements"
+        no_console_errors(pg)
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_stmt_card_order(b, S0, engine):
+    """(b) Opening a statement shows H1-H6 in order: the kind word, the full name, the heading block (label then the heading), the doc-string (label, source, the maths
+    line and button, note), the Lean button, the two uses lists, the prompt control; show/hide toggles the code and aria-expanded; decl_lean_note only on the
+    variables-true one; a card without a doc-string shows the label then 'No note in the repository.' and no heading block."""
+    S, pg = stmt_open(b, engine)
+    try:
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        kids = pg.ev(CARD_CHILDREN_JS)
+        assert kids == ["claim", "sheet-status", "decl-name", "decl-heading", "note-label", "note-source", "note-typeset-line", "note-toggle", "note-body", "decl-lean",
+                        "decl-uses decl-uses-here", "decl-uses decl-uses-elsewhere", "decl-prompt"], kids
+        assert pg.ev("document.querySelector('#graph-sheet-body .sheet-status').textContent") == "Theorem"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-name').textContent") == "Fx.foo_bar"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-name code') !== null")
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .decl-heading > *')].map(e => e.className)") == ["decl-heading-label", "decl-heading-body"]
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-heading-label').textContent") == "In the file's section:"
+        assert "Section on the bounds" in pg.ev("document.querySelector('#graph-sheet-body .decl-heading-body').textContent")
+        # the maths face is on in this fixture: the doc-string's label is spine_content_label in BOTH views (never note_label_typeset)
+        assert json.load(open(os.path.join(assemble.HERE, "fixtures", "statements", "index.json")))["strings"]["note_label_typeset"] != "In the repository's words"
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-label').textContent") == "In the repository's words"
+        pg.page.click("#graph-sheet-body .note-toggle")
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-label').textContent") == "In the repository's words"
+        pg.page.click("#graph-sheet-body .note-toggle")
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent").count("grh/src/New/Fx/File.lean") == 1
+        assert pg.ev("document.querySelectorAll('#graph-sheet-tools .sheet-tool').length") == 0, "nothing of the card in the sheet's tools row"
+        # show / hide
+        btn = "#graph-sheet-body .decl-lean button"
+        assert pg.ev("document.querySelector('%s').getAttribute('aria-expanded')" % btn) == "false"
+        assert pg.ev("document.querySelector('%s').textContent" % btn) == "Show the Lean statement"
+        assert pg.ev("document.querySelector('%s').className" % btn) == "sheet-tool"
+        assert not pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code').offsetParent !== null"), "the code is hidden until asked for"
+        pg.page.click(btn)
+        assert pg.ev("document.querySelector('%s').getAttribute('aria-expanded')" % btn) == "true"
+        assert pg.ev("document.querySelector('%s').textContent" % btn) == "Hide the Lean statement"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code').offsetParent !== null")
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code code').textContent") == stmt_step("fx-thm-a")["statement"]["text"]
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-lean-note').length") == 0, "variables false: no note"
+        pg.page.click(btn)
+        assert pg.ev("document.querySelector('%s').getAttribute('aria-expanded')" % btn) == "false"
+        assert not pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code').offsetParent !== null")
+        # a statement with no doc-string and variables true
+        open_card_by_hash(pg, "fx-lem-b", "baz")
+        kids = pg.ev(CARD_CHILDREN_JS)
+        assert kids == ["claim", "sheet-status", "decl-name", "note-label", "decl-no-note", "decl-lean", "decl-uses decl-uses-here", "decl-uses decl-uses-elsewhere", "decl-prompt"], kids
+        assert pg.ev("document.querySelector('#graph-sheet-body .sheet-status').textContent") == "Lemma"
+        assert pg.ev("document.querySelector('#graph-sheet-body .note-label').textContent") == "In the repository's words"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-no-note').textContent") == "No note in the repository."
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-note') !== null")
+        assert not pg.ev("document.querySelector('#graph-sheet-body .decl-lean-note').offsetParent !== null"), "the variables note is hidden with the code"
+        pg.page.click(btn)
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-note').offsetParent !== null")
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-note').textContent").startswith("As written in the file, up to the start of its proof.")
+        # a statement whose text BEGINS with a prefix line ('omit ... in'): one text node, newline included, shown verbatim
+        pre = stmt_step("fx-lem-b")["statement"]["text"]
+        assert pre.startswith("omit [NeZero q] in\nlemma baz")
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code code').childNodes.length") == 1
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code code').firstChild.nodeValue") == pre
+        assert pg.ev("getComputedStyle(document.querySelector('#graph-sheet-body .decl-lean-code')).whiteSpace") == "pre", "the newline is kept"
+        # the library line (fold 3): lem-b leaves 1 library name out, def-c 43, thm-a none
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-elsewhere').lastElementChild.className") == "decl-uses-library"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-library').textContent") == "It also uses 1 name from Lean's libraries (Mathlib or Lean itself), not listed here."
+        # the hostile statement text is text
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-lean-code code').textContent") == stmt_step("fx-lem-b")["statement"]["text"]
+        assert pg.ev("document.querySelectorAll('script').length") == 1 and pg.ev("document.querySelectorAll('#graph-sheet-body .decl-lean-code *').length") == 1
+        # and a statement with a doc-string but no heading
+        open_card_by_hash(pg, "fx-def-c", "Fx.qux")
+        assert pg.ev(CARD_CHILDREN_JS)[2:4] == ["decl-name", "note-label"], "no heading block when the step has no heading"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-library').textContent") == "It also uses 43 names from Lean's libraries (Mathlib or Lean itself), not listed here."
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-elsewhere').lastElementChild.className") == "decl-uses-library", "under the list, inside the block"
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-uses-library').length") == 0, "a count of 0 draws nothing"
+        # closing and reopening leaves nothing behind
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.querySelectorAll('.decl-name, .decl-lean, .decl-prompt').length") == 0
+        no_console_errors(pg)
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_stmt_copy_ok(b, S0, engine):
+    """(c) With the clipboard permission granted: pressing the prompt button puts the prompt on the clipboard exactly, the role=status line shows the copied words, the
+    fallback block stays hidden; the note under the button is always there."""
+    S, pg = stmt_open(b, engine, grant=True)
+    try:
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        prompt = stmt_step("fx-thm-a")["prompt"]
+        assert "<b>x</b>" in prompt
+        # amendment 3: the optional line sits immediately before the copy button, as one paragraph
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt button').previousElementSibling.className") == "decl-reading-none"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt button').previousElementSibling.tagName") == "P"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-reading-none').textContent") == json.load(open(os.path.join(assemble.HERE, "fixtures", "statements", "index.json")))["strings"]["decl_reading_none"]
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading-none').length") == 1
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-note').textContent") == "This is a prompt we suggest; what your assistant does with it is between you and your assistant."
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-status').getAttribute('role')") == "status"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-status').textContent") == ""
+        pg.page.click("#graph-sheet-body .decl-prompt button")
+        pg.wait("document.querySelector('#graph-sheet-body .decl-prompt-status').textContent !== ''", 4000)
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-status').textContent") == "Copied. Paste it into your AI assistant."
+        assert pg.ev("navigator.clipboard.readText()") == prompt
+        assert not pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-text').offsetParent !== null"), "no fallback block after a copy"
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-prompt b, #graph-sheet-body .decl-prompt script').length") == 0
+        no_console_errors(pg)
+    finally:
+        pg.close()
+        S.stop()
+
+
+REJECT_CLIPBOARD = "Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) }, configurable: true });"
+NO_CLIPBOARD = "Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });"
+
+
+def c_stmt_copy_fallback(b, S0, engine):
+    """(d) With the clipboard API made to reject (and, second, absent): the fallback <pre> shows the prompt exactly, its contents selected, no 'copied' line, and no
+    console error."""
+    for init in (REJECT_CLIPBOARD, NO_CLIPBOARD):
+        S, pg = stmt_open(b, engine, init=init)
+        try:
+            open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+            prompt = stmt_step("fx-thm-a")["prompt"]
+            assert not pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-text').offsetParent !== null")
+            pg.page.click("#graph-sheet-body .decl-prompt button")
+            pg.wait("document.querySelector('#graph-sheet-body .decl-prompt-text').offsetParent !== null", 4000)
+            assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-text').textContent") == prompt
+            assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-text').tagName") == "PRE"
+            sel = pg.ev("""(() => { const s = getSelection(), p = document.querySelector('#graph-sheet-body .decl-prompt-text');
+              return { text: s.toString(), inside: !!s.anchorNode && p.contains(s.anchorNode) && p.contains(s.focusNode), collapsed: s.isCollapsed }; })()""")
+            assert sel["inside"] and not sel["collapsed"], sel
+            assert sel["text"].strip() == prompt.strip(), sel
+            assert pg.ev("document.querySelector('#graph-sheet-body .decl-prompt-status').textContent") == ""
+            assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-prompt b, #graph-sheet-body .decl-prompt script').length") == 0
+            no_console_errors(pg)
+        finally:
+            pg.close()
+            S.stop()
+
+
+def c_stmt_links(b, S0, engine):
+    """(e) A uses_here link opens that statement's card; a uses_elsewhere name with a step is a link to it, one without is plain code; empty lists show 0 and no list;
+    nothing in the card is underlined."""
+    S, pg = stmt_open(b, engine)
+    try:
+        open_card_by_hash(pg, "fx-def-c", "Fx.qux")
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-here .decl-uses-line').textContent") == "Uses in this file (1)"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-elsewhere .decl-uses-line').textContent") == "Uses from other files (2)"
+        links = pg.ev("[...document.querySelectorAll('#graph-sheet-body .decl-uses a')].map(a => [a.getAttribute('href'), a.textContent])")
+        assert links == [["#fx-lem-b", "baz"], ["#fx-file-2", "New.Other.helper"]], links
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-uses-here a code').length") == 1, "the title's code span stays code"
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .decl-uses-elsewhere li')].map(l => l.querySelector('code').textContent + '|' + l.querySelectorAll('a').length)") == ["New.Other.helper|1", "New.Elsewhere.thing|0"]
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .card *')].filter(e => getComputedStyle(e).textDecorationLine.includes('underline')).length") == 0, "nothing underlined"
+        pg.page.click("#graph-sheet-body .decl-uses-here a")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'baz'", 6000)
+        pg.wait("document.querySelector('#graph-sheet-body .decl-name')?.textContent === 'Fx.baz'", 6000)
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-uses ul').length") == 0, "baz has empty lists: heading with 0, no list"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-here .decl-uses-line').textContent") == "Uses in this file (0)"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-elsewhere .decl-uses-line').textContent") == "Uses from other files (0)"
+        assert pg.ev("document.querySelector('#graph-sheet-body .decl-uses-library') !== null"), "and the 0 is not the whole story: one library name is left out"
+        open_card_by_hash(pg, "fx-def-c", "Fx.qux")
+        pg.page.click("#graph-sheet-body .decl-uses-elsewhere a")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Lean file Fx.Other'", 6000)
+        no_console_errors(pg)
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_stmt_key(b, S0, engine):
+    """(f) The key ENDS with the statements section: an h2 and one paragraph, after the kind rows."""
+    S, pg = stmt_open(b, engine)
+    try:
+        pg.page.click("#graph-key")
+        wait_sheet(pg, True)
+        kids = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content > *')].map(e => e.tagName + ':' + e.textContent.slice(0, 30))")
+        assert kids[-2] == "H2:Statements" and kids[-1].startswith("P:As a sample, only the three"), kids
+        assert pg.ev("document.querySelector('#graph-sheet-body .key-content').lastElementChild.className") == "key-statements"
+        rows = pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content li')].map(e => e.textContent)")
+        assert rows == ["Part of the argument", "Group of files", "Lean file", "Theorem", "Lemma", "Definition"], rows
+        assert pg.ev("[...document.querySelectorAll('#graph-sheet-body .key-content .swatch')].map(e => e.className.split(' ')[1])") == ["k-part", "k-group", "k-file", "k-theorem", "k-lemma", "k-def"]
+        no_console_errors(pg)
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_stmt_reading_none_absent(b, S0, engine):
+    """Amendment 3, the variant without the optional key: the copy button stands alone, first in its block, and nothing else changes."""
+    S, pg = stmt_open(b, engine, edit=lambda i: i["strings"].pop("decl_reading_none"))
+    try:
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        assert pg.ev("document.querySelectorAll('#graph-sheet-body .decl-reading-none').length") == 0
+        assert pg.ev("[...document.querySelector('#graph-sheet-body .decl-prompt').children].map(e => e.className)") == ["sheet-tool", "decl-prompt-status", "decl-prompt-text", "decl-prompt-note"]
+        no_console_errors(pg)
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_stmt_group_off_refused(b, S0, engine):
+    """A map whose strings drop one statement word is the page's fallback (bad-statement-strings), and nothing of the statement level draws."""
+    S, pg = stmt_open(b, engine, edit=lambda i: i["strings"].pop("decl_prompt_note"))
+    try:
+        assert pg.ev("document.getElementById('graph-fallback').hidden === false || !document.getElementById('graph-layer')")
+        assert pg.ev("document.querySelectorAll('.decl-name').length") == 0
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_stmt_note_source_words(b, S0, engine):
+    """F1: a statement card's doc-string source line is decl_note_source ('Comment on this statement in ...'); a FILE card's note keeps note_source ('Opening note of ...')."""
+    def edit(steps):
+        steps["fx-stmt-file"]["note"] = {"source": "grh/src/New/Fx/File.lean", "text": "The file's own opening note."}
+    root = tempfile.mkdtemp(prefix="pg-stmt-")
+    assemble.assemble(root, engine, fix="statements", step_edit=edit)
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+    try:
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        src = pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent")
+        assert src.startswith("Comment on this statement in grh/src/New/Fx/File.lean"), src
+        assert "Opening note of" not in src, src
+        at_hash(pg, "")
+        at_hash(pg, "fx-stmt-file")
+        pg.wait("(document.querySelector('#graph-sheet-body .note-source')?.textContent || '').startsWith('Opening note of')", 6000)
+        src = pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent")
+        assert src.startswith("Opening note of grh/src/New/Fx/File.lean"), src
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_stmt_long_title_wraps(b, S0, engine):
+    """A statement whose short name is a long unbroken identifier (>= 40 characters, drawn as code in the card's title) WRAPS inside the sheet at 390 x 844 and
+    360 x 640: the title's scrollWidth fits its clientWidth and its right edge is inside the sheet body's."""
+    long_name = "LFunction_ne_zero_of_primeRemainder_le_and_more"
+    assert len(long_name) >= 40
+
+    def edit(steps):
+        steps["fx-lem-b"]["card"]["title"] = "`%s`" % long_name
+        for c in steps["fx-stmt-file"]["children"]:
+            if c.get("id") == "fx-lem-b":
+                c["title"] = "`%s`" % long_name
+    for w, h in ((390, 844), (360, 640)):
+        root = tempfile.mkdtemp(prefix="pg-stmt-")
+        assemble.assemble(root, engine, fix="statements", step_edit=edit)
+        S = Served(root)
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=True).settled()
+        try:
+            open_card_by_hash(pg, "fx-lem-b", long_name)
+            m = pg.ev("(() => { const t = document.querySelector('#graph-sheet-body .claim'), s = document.getElementById('graph-sheet-body');"
+                      " return [t.scrollWidth, t.clientWidth, t.getBoundingClientRect().right, s.getBoundingClientRect().right]; })()")
+            assert m[0] <= m[1] + 1 and m[2] <= m[3] + 1, (w, h, m)
+        finally:
+            pg.close()
+            S.stop()
+
+
+STMT_CASES = [
+    ("stmt (a): the file's sheet says 'Open its statements', its button opens three boxes in source order with code titles; the foot reads '3 statements'", c_stmt_path_down),
+    ("stmt (b): a statement card shows name, heading, doc-string, Lean button, uses, prompt in order; show/hide and aria-expanded; the variables note only where true", c_stmt_card_order),
+    ("stmt (c): with clipboard permission the prompt is copied exactly and the copied line shows", c_stmt_copy_ok),
+    ("stmt (d): a rejecting (or absent) clipboard shows the selected prompt text in a pre, with no console error", c_stmt_copy_fallback),
+    ("stmt (e): the uses links open the statement or file; plain names are code; empty lists have 0 and no list; nothing is underlined", c_stmt_links),
+    ("stmt (f): the key ends with the statements section", c_stmt_key),
+    ("stmt (A3): without decl_reading_none the copy button stands alone in its block", c_stmt_reading_none_absent),
+    ("stmt: a map with part of the statement words missing is the fallback", c_stmt_group_off_refused),
+    ("stmt (F1): a statement card's doc-string source line reads 'Comment on this statement in ...', a file card's note keeps 'Opening note of ...'", c_stmt_note_source_words),
+    ("stmt: a long unbroken short name in the card's title wraps inside the sheet at 390 x 844 and 360 x 640", c_stmt_long_title_wraps),
+]
+
+
 def main():
     only = None
     engines = ["double", "real"]
@@ -4350,6 +4696,8 @@ def main():
                     run("made B4: an unknown id is still link_refused and opens nothing" + vw, c_made_unknown, eng, mw, mh, mm)
                     run("made B5: a made card's sheet looks the same as a markup card's (claim, status and note placement)" + vw, c_made_looks_like_markup, eng, mw, mh, mm)
                     run("made B6: a page with an article shows it, byte for byte as today; a made card only for an id it has none for" + vw, c_made_markup_wins, eng, mw, mh, mm)
+                for sname, sfn in STMT_CASES:
+                    run(sname, sfn, eng)
                 run(GV_CASES[0][0], GV_CASES[0][1], eng)
                 for fname, ffn in FOLD_CASES:
                     run(fname, ffn, eng)

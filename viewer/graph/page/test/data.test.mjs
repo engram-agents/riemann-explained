@@ -292,7 +292,7 @@ test("SECTION 8 symbols: the exact shape is accepted, with order, words by table
   assert.deepEqual(v.symbols.words.proofs, { read: "sheet_proof_read", not_read: "sheet_proof_not_read", none: "sheet_proof_none" });
   assert.deepEqual(v.symbols.words.states, { read: "sheet_statement_read", census: "sheet_statement_census", none: "sheet_statement_not_read" });
   assert.deepEqual(Object.keys(PROOF_CLASS), ["read", "not_read", "none"]);
-  assert.deepEqual(Object.keys(KIND_CLASS), ["theorem", "def", "structure", "part", "group", "file"]);
+  assert.deepEqual(Object.keys(KIND_CLASS), ["theorem", "def", "structure", "part", "group", "file", "lemma", "abbrev", "instance", "class", "inductive"]);
   assert.deepEqual(Object.keys(STATE_CLASS), ["read", "census", "none"]);
 });
 
@@ -349,7 +349,7 @@ test("P1 KIND_CLASS has part, group and file (k-part, k-group, k-file) and no mo
   assert.equal(KIND_CLASS.part, "k-part");
   assert.equal(KIND_CLASS.group, "k-group");
   assert.equal(KIND_CLASS.file, "k-file");
-  assert.deepEqual(Object.keys(KIND_CLASS).sort(), ["def", "file", "group", "part", "structure", "theorem"]);
+  assert.deepEqual(Object.keys(KIND_CLASS).sort(), ["abbrev", "class", "def", "file", "group", "inductive", "instance", "lemma", "part", "structure", "theorem"]);
 });
 
 test("P1 a card of each of the three kinds validates", () => {

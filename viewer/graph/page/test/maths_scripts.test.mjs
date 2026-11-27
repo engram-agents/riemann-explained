@@ -231,7 +231,7 @@ test("C6: the non-maths view and the exact view are untouched", () => {
 
 test("C7: dom.js TAGS gains sup and sub, and nothing else", () => {
   assert.ok(TAGS.includes("sup") && TAGS.includes("sub"));
-  assert.deepEqual([...TAGS].filter((t) => !["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code", "h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"].includes(t)), ["sup", "sub"]);
+  assert.deepEqual([...TAGS].filter((t) => !["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code", "h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"].includes(t)), ["a", "sup", "sub"]);   // `a`: the statement card's one link (dom.js, amendment 1)
 });
 
 /* ---------------------------------------------------------------- fold 1 (rulings 39389, 39396, 39398). Synthetic spans only; marks are written as \u escapes. */
@@ -401,8 +401,74 @@ test("F4 operand-side juxtaposition: the shapes the rule does not cover stay set
   }
 });
 
+/* ---------------------------------------------------------------- the superscript glyph after a ^ operand. Synthetic spans only.
+   G4: a ^ whose operand (a group, a parenthesised group, a word, a symbol) is followed DIRECTLY by a superscript glyph is refused: `x ^ 10⁶` is
+   x ^ (10 ^ 6) in Lean, and set it would read x^10 and then a raised 6. The glyph set is U+00B9, U+00B2, U+00B3, U+2070, U+2071, U+2074-U+207F.
+   Not covered: modifier letters, a space before the glyph, a _ operand followed by a glyph. U+207F and U+2071 are letters (Lm), so a WORD operand
+   absorbs them (`a ^ bⁿ`: the exponent is the word `bⁿ`) and the rule never sees a glyph after it. */
+const SUP_REFUSED = ["x ^ 10⁶", "x^2⁻¹", "x^{a}²", "x ^ (a)⁺", "x^{a}ⁿ"];
+test("G4 superscript glyph: a ^ operand directly followed by a superscript glyph is refused, drawn as code, as typed", () => {
+  for (const span of SUP_REFUSED) {
+    assert.equal(NOTE.scriptParts(span), null, "scriptParts " + JSON.stringify(span));
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")", JSON.stringify(span));
+  }
+});
+const SUP_SET = [
+  ["x ^ 10", '"x"|sup("10")'],
+  ["w ^ c", '"w"|sup("c")'],
+  ["x ^ 10 ⁶", '"x"|sup("10")|" ⁶"'],                          // a space before the glyph: not covered
+  ["μ_j⁰", '"μ"|sub("j")|"⁰"'],                       // a _ operand: not covered
+  ["x¹¹ ≤ m ^ 22", '"x¹¹ ≤ m"|sup("22")'],  // a glyph elsewhere, not after a ^ operand
+  ["(A^⊥ / A)²", '"(A"|sup("⊥")|" / A)²"'],
+  ["a ^ bⁿ", '"a"|sup("bⁿ")'],                                  // the word operand absorbs U+207F
+];
+test("G4 superscript glyph: the shapes the rule does not cover stay set, exact children", () => {
+  for (const [span, want] of SUP_SET) {
+    const parts = NOTE.scriptParts(span);
+    assert.ok(parts !== null, "scriptParts " + JSON.stringify(span));
+    assert.equal(pp(parts), want, JSON.stringify(span));
+    assert.equal(flatParts(parts), expectedFlatten(span), "C5 " + JSON.stringify(span));
+  }
+});
+
 /* ---------------------------------------------------------------- the population: every real span, from the committed class file, read only */
 const SPANS = JSON.parse(readFileSync(path.join(HERE, "fixtures", "note-spans-classes.json"), "utf8")).spans;
+
+/* The detector for the glyph rule, written here and independent of note.js: some ^, after optional spaces, has a bracket group, a word or one symbol
+   directly followed by a superscript glyph. The glyphs are listed by code point. */
+const GLYPHS = new Set([0xb9, 0xb2, 0xb3, 0x2070, 0x2071, ...Array.from({ length: 0x207f - 0x2074 + 1 }, (_, k) => 0x2074 + k)]);
+const isGlyph = (ch) => ch !== undefined && GLYPHS.has(ch.codePointAt(0));
+function glyphAfterOperand(span) {
+  const cs = [...span], pair = { "(": ")", "[": "]", "{": "}" };
+  for (let i = 0; i < cs.length; i++) {
+    if (cs[i] !== "^") continue;
+    let j = i + 1;
+    while (cs[j] === " ") j++;
+    let next = -1;
+    if (pair[cs[j]]) {
+      const stack = [];
+      for (let k = j; k < cs.length && next < 0; k++) {
+        if (pair[cs[k]]) stack.push(pair[cs[k]]);
+        else if (")]}".includes(cs[k])) { if (stack.pop() !== cs[k]) break; if (stack.length === 0) next = k + 1; }
+      }
+    } else if (cs[j] !== undefined && /^[\p{L}\p{Nd}₀-₉′'’]$/u.test(cs[j])) {
+      next = j;
+      while (cs[next] !== undefined && /^[\p{L}\p{Nd}₀-₉′'’]$/u.test(cs[next])) next++;
+    } else if (cs[j] !== undefined && "*×+-∨∞⊥".includes(cs[j])) next = j + 1;
+    if (next >= 0 && isGlyph(cs[next])) return true;
+  }
+  return false;
+}
+test("G4 superscript glyph population: exactly 2 distinct real formula spans have a glyph after a ^ operand; each is refused and drawn as code", () => {
+  const hits = new Set();
+  for (const row of SPANS) if (row.class === "formula" && glyphAfterOperand(row.span)) hits.add(row.span);
+  console.log("glyph-after-operand population: %d distinct formula spans", hits.size);
+  assert.equal(hits.size, 2);
+  for (const span of hits) {
+    assert.equal(NOTE.scriptParts(span), null, "scriptParts " + JSON.stringify(span));
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")", JSON.stringify(span));
+  }
+});
 
 test("population: C4 holds on every real span in the maths face; C5 on every set formula span; a refused one is code as typed; counts printed", () => {
   let set = 0, refused = 0, noScript = 0, formulas = 0;
