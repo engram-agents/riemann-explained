@@ -60,12 +60,15 @@ const mathsFace = (sp) => oneLetter(sp) || spanClass(sp) === "formula";
        a subscript (`g k_1 ^ d`, `g k_{ij}^d`: a _ operand directly before the ^, on the same base) is that base's word, so the test is made on the
        word before the _; a closing-bracket base, a ^ at a group's start and a ^ after an operator and a space are not covered. A combining mark
        directly after the opening { or ( of an operand group is refused too (the same reason). One _ and one ^ on one base is allowed, in either order.
+       The exponent side too: a ^ with spaces before a WORD operand that is followed by spaces and a word or an opening bracket, or directly by a _, is refused
+       (`a ^ b c` is a^(b c); `a ^ b_c` has the one name b_c as its exponent). An unspaced ^, an operator, comma or closing bracket after it, or the end: not covered.
    G5  spaces after an operand stay as typed.
    Nothing but the script characters, the spaces round a ^, and the brackets of a {...} or ^(...) operand is ever dropped; every other character
    comes through in its place. */
 const BASE_CHAR = /^[\p{L}\p{Nd}₀-₉′'’)\]}]$/u;
 const WORD_CHAR = /^[\p{L}\p{Nd}₀-₉′'’]$/u;
 const MARK = /^\p{M}$/u;
+const JUXTAPOSED = /^[\p{L}\p{Nd}₀-₉′'’]+(?:_| +[\p{L}\p{Nd}₀-₉′'’(\[{])/u;          // G4: the rest of a spaced ^'s word operand, then arm (b) _ or arm (a) spaces and a word or opening bracket
 const LETTER = /^\p{L}$/u;
 const SYMBOLS = new Set(["*", "×", "+", "-", "∨", "∞", "⊥"]);
 const OPENERS = new Map([["(", ")"], ["[", "]"], ["{", "}"]]);
@@ -145,6 +148,7 @@ function parseGroup(cs, start, end, level) {
     if (c === "^" && followsWord(cs, start, attached ? runStart - 1 : base)) return null;   // G4: a juxtaposed power; a subscripted base is the word before its _
     let j = i + 1;                                                      // G2: the operand
     if (c === "^") while (j < end && cs[j] === " ") j++;
+    if (c === "^" && j > i + 1 && JUXTAPOSED.test(cs.slice(j, end).join(""))) return null;   // G4: a juxtaposed exponent
     const operand = parseOperand(cs, i, j, end, c, level);
     if (operand === null) return null;
     const { children, next } = operand;
