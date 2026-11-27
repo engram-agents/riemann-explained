@@ -9019,14 +9019,14 @@ def _selftest_cases():
                    ((0, []), ["by", "date", "rests_on", "second_read_by", "sources", "text"], want, True, [{"gives": "none.", "words": "Standing assumptions"}], (0, []), []))
 
     @case("MTR-SRC-SHAPE", "a line of the Sources section that is not one of the three forms is `SKEL-MATHS-READING-SOURCES <statement> shape` (one line per reading, nothing written): a non-bullet line, `*` for the bullet, an indented bullet, a result with no backticks, with `lines`, with line 0 or a "
-                           "leading zero, with text after the bracket; a quotation whose number is not digits, whose range is backwards, with no line part; `Not opened` with no words or no space; each beside the good bullet that passes")
+                           "leading zero, with text after the bracket; a quotation whose number is not digits, whose range is backwards, with no line part; `Not opened` with no words or no space; a line of only a no-break space (not blank); each beside the good bullets that pass (trailing spaces after a bullet, blank lines of spaces)")
     def _():
         L = MTR_LN["alpha"]
         bad = ["A plain line.", "* Alpha result: `alpha` (%s line %d)" % (MTR_PA, L), "  " + _mtr_own(), "- Alpha result: alpha (%s line %d)" % (MTR_PA, L), "- Alpha result: `alpha` (%s lines %d)" % (MTR_PA, L),
                "- Alpha result: `alpha` (%s line 0)" % MTR_PA, "- Alpha result: `alpha` (%s line 0%d)" % (MTR_PA, L), _mtr_own() + " more", "- Alpha result `alpha` (%s line %d)" % (MTR_PA, L),
-               "- Quotation one: %s line %d" % (MTR_PA, MTR_DOC_ALPHA), "- Quotation 1: %s lines %d-%d" % (MTR_PA, MTR_DOC_ALPHA + 1, MTR_DOC_ALPHA), "- Quotation 1: %s" % MTR_PA, "- Not opened:", "- Not opened:x", "-"]
+               "- Quotation one: %s line %d" % (MTR_PA, MTR_DOC_ALPHA), "- Quotation 1: %s lines %d-%d" % (MTR_PA, MTR_DOC_ALPHA + 1, MTR_DOC_ALPHA), "- Quotation 1: %s" % MTR_PA, "- Not opened:", "- Not opened:x", "-", "\u00a0"]
         got = [_mtr_one(_mtr_text(sources=[_mtr_own(), b])[0])[:2] for b in bad]
-        good = [_mtr_one(_mtr_text(sources=[_mtr_own(), "- Not opened: x", "", "- Not opened: y"])[0])[:2]]
+        good = [_mtr_one(_mtr_text(sources=[_mtr_own() + "  ", "- Not opened: x", "", "   ", "- Not opened: y   "])[0])[:2]]
         return _eq(got + good, [(1, [mtr_src("shape")])] * len(bad) + [(0, [])])
 
     @case("MTR-LINE", "THE LINE CHECK of every `result` (C2): the path is `src/<Module path>.lean` and the module's compiled index must exist (`result <k> path`: no such module, a library path outside the repository, `..`, an empty segment, a file that is not `.lean`); the Lean name is a declaration "
@@ -9093,20 +9093,20 @@ def _selftest_cases():
 
     @case("MTR-CHUNKS", "`paragraph` of a written quote is the 0-BASED index of its opener's CHUNK in the chunks of the written `text`, which are exactly `re.split(r\"\\n(?:[ \\t]*\\n)+\", text)`, no trim: a blank line is spaces and tabs ONLY (a no-break-space-only line, an em space line are NOT blank, "
                         "so the paragraphs around them are one chunk; a tab never reaches the check, the text rule refuses it), several blank lines are one separator, a heading glued to its paragraph is one chunk with it, every item of a list with blank lines is its own chunk; each index is recomputed here by reading the lines (not by the "
-                        "tool's expression), and is equal to a hand count; a quote after a no-break-space line has index 6, after a line of spaces 7; the index is taken on the text WITHOUT its trailing newlines")
+                        "tool's expression), and is equal to a hand count; a quote after a no-break-space line has index 6, after a line of spaces 7, and 7 again after a no-break-space line when the text starts with two blank lines (the first chunk is empty: no trim); the index is taken on the text WITHOUT its trailing newlines")
     def _():
         QA = _mtr_quote("One. Two is longer.")
         pre = "## " + MTR_H["decl_reading_uses"] + "\n\n- Standing assumptions: none.\n\n- Library facts: more.\n\n## " + MTR_H["decl_reading_target"] + "\nglued paragraph line\n\npA\n"
         post = "\npB\n\n## " + MTR_H["decl_reading_argument"] + "\n\n"
         out = {}
-        for label, sep in (("nbsp", "\u00a0"), ("emsp", "\u2003"), ("space", " "), ("spaces", "   "), ("several-blank", " \n  \n\n")):
-            body = pre + sep + post + QA
+        for label, sep, lead in (("nbsp", "\u00a0", ""), ("emsp", "\u2003", ""), ("space", " ", ""), ("spaces", "   ", ""), ("several-blank", " \n  \n\n", ""), ("leading", "\u00a0", "\n \n")):
+            body = lead + pre + sep + post + QA
             text = body + "\n\n## Sources\n\n" + _mtr_own() + "\n- Quotation 1: %s line %d\n" % (MTR_PA, MTR_DOC_ALPHA)
             r = _mtr_one(text)
             chunks = _mtr_chunks(body)
             want = [i for i, c in enumerate(chunks) if c.startswith(MTR_OPENER)]
             out[label] = (r[:2], [x["paragraph"] for x in r[2]["sources"] if x["kind"] == "quote"] if r[2] else None, want, [i for i, c in enumerate(re.split(r"\n(?:[ \t]*\n)+", body)) if c.startswith(MTR_OPENER)])
-        return _eq(out, {"nbsp": ((0, []), [6], [6], [6]), "emsp": ((0, []), [6], [6], [6]), "space": ((0, []), [7], [7], [7]), "spaces": ((0, []), [7], [7], [7]), "several-blank": ((0, []), [7], [7], [7])})
+        return _eq(out, {"nbsp": ((0, []), [6], [6], [6]), "emsp": ((0, []), [6], [6], [6]), "space": ((0, []), [7], [7], [7]), "spaces": ((0, []), [7], [7], [7]), "several-blank": ((0, []), [7], [7], [7]), "leading": ((0, []), [7], [7], [7])})
 
     @case("MTR-RESTS", "`rests_on` (C5) is DERIVED from the bullets (lines starting `- `) of the section of the uses heading of the written text and only them, in order: `- <head>: <gives>` split at the FIRST `: `; a head equal to the human name of a statement of the build gives "
                        "`{gives, name (the full Lean name), step, words}`, any other head `{gives, words}` (no name, no step); a prose line and a quotation paragraph in that section, and a bullet in another section, are ignored; a bullet with no `: ` is "
