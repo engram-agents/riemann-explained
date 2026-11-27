@@ -100,13 +100,17 @@ test("reading.by and second_read_by: 80 characters pass, 81 are refused, a contr
     const ok = stp("fx-thm-a"); ok.reading[k] = "A".repeat(80); validateStep(ok, ctx);
     const fine = stp("fx-thm-a"); fine.reading[k] = "Dr. A Name"; validateStep(fine, ctx);
     const over = stp("fx-thm-a"); over.reading[k] = "A".repeat(81); refuses(() => validateStep(over, ctx), "bad-reading", k);
-    for (const c of ["\n", "\t", "\u0000", "\u007f"]) { const bad = stp("fx-thm-a"); bad.reading[k] = "A" + c + "B"; refuses(() => validateStep(bad, ctx), "bad-reading", k); }
+    for (const c of ["\n", "\t", "\u0000", "\u007f", "\u0085", "\u202e", "\u200b", "\u2066", "\ufeff"]) { const bad = stp("fx-thm-a"); bad.reading[k] = "A" + c + "B"; refuses(() => validateStep(bad, ctx), "bad-reading", k); }
+    const astral = stp("fx-thm-a"); astral.reading[k] = "\u{1D538}".repeat(80); validateStep(astral, ctx);       // 80 code points (160 UTF-16 units) pass
+    const astralOver = stp("fx-thm-a"); astralOver.reading[k] = "\u{1D538}".repeat(81); refuses(() => validateStep(astralOver, ctx), "bad-reading", k);
   }
 });
 
-test("reading.date: YYYY-MM-DD only", () => {
+test("reading.date: a real day, YYYY-MM-DD only (a leap day passes in a leap year, 30 February never)", () => {
   const ctx = stepCtx();
-  for (const d of ["2026-1-2", "26-01-02", "2026/01/02", "2026-01-02 ", " 2026-01-02", "2026-01-02T00:00:00Z", "January 2", "2026-01-020"]) {
+  for (const d of ["2024-02-29", "2026-12-31", "2026-01-01"]) { const s = stp("fx-thm-a"); s.reading.date = d; validateStep(s, ctx); }
+  for (const d of ["2026-1-2", "26-01-02", "2026/01/02", "2026-01-02 ", " 2026-01-02", "2026-01-02T00:00:00Z", "January 2", "2026-01-020",
+                    "2026-13-45", "2026-02-30", "2026-00-10", "2026-04-31", "2025-02-29", "2026-01-00"]) {
     const s = stp("fx-thm-a"); s.reading.date = d; refuses(() => validateStep(s, ctx), "bad-reading", "date");
   }
 });

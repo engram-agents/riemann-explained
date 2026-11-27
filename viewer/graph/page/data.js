@@ -426,6 +426,12 @@ function declOf(raw, ctx, id) {
 /* THE READING of a statement (optional key `reading` on a statement step): exactly {text, by, second_read_by, date}, all non-empty strings; `text` at most 20000 BYTES (the
    note renderer's subset, headings and all, is the reading's own); `by` and `second_read_by` at most 80 characters, no control character; `date` YYYY-MM-DD. Anything else is
    `bad-reading`, naming the step. The text is data: it reaches the page only through note.js. */
+/* A real calendar day (2026-02-30 and 2026-13-45 are not): the date's parts rebuilt through UTC must give the same parts back. */
+function realDay(d) {
+  const [y, m, day] = d.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, day));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === day;
+}
 const READING_TEXT_MAX_BYTES = 20000;
 const READING_NAME_MAX = 80;
 function readingOf(raw, id) {
@@ -433,8 +439,8 @@ function readingOf(raw, id) {
   if (!isObj(raw) || Object.keys(raw).length !== 4 || !["text", "by", "second_read_by", "date"].every((k) => has(raw, k))) throw bad("that is not exactly {text, by, second_read_by, date}");
   for (const k of ["text", "by", "second_read_by", "date"]) if (!isStr(raw[k]) || raw[k] === "") throw bad("whose " + k + " is not a non-empty string");
   if (new TextEncoder().encode(raw.text).length > READING_TEXT_MAX_BYTES) throw bad("whose text is over " + READING_TEXT_MAX_BYTES + " bytes");
-  for (const k of ["by", "second_read_by"]) if (raw[k].length > READING_NAME_MAX || /[\u0000-\u001f\u007f]/.test(raw[k])) throw bad("whose " + k + " is over " + READING_NAME_MAX + " characters or holds a control character");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw.date)) throw bad("whose date is not YYYY-MM-DD");
+  for (const k of ["by", "second_read_by"]) if ([...raw[k]].length > READING_NAME_MAX || /[\p{Cc}\p{Cf}]/u.test(raw[k])) throw bad("whose " + k + " is over " + READING_NAME_MAX + " characters or holds a control or format character");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw.date) || !realDay(raw.date)) throw bad("whose date is not a real day, YYYY-MM-DD");
   return { text: raw.text, by: raw.by, secondReadBy: raw.second_read_by, date: raw.date };
 }
 
