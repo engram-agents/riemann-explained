@@ -188,6 +188,14 @@ export function createSheet(parts, strings, hooks, signal) {
     tools.appendChild(b);
   }
 
+  /* One more control for the tool strip of what is showing (the page's own, for example the way back to the graph). The strip is cleared whenever another card or panel
+     is shown or the sheet closes, so the control goes with what it was added to. False when nothing is showing. */
+  function appendTool(control) {
+    if (!cur) return false;
+    tools.appendChild(control);
+    return true;
+  }
+
   /* The parts button always reflects the open state of the SHOWN id: an event for any other id changes nothing. */
   function setPartsOpen(id, open) {
     if (!cur || !cur.parts || cur.id !== id) return;
@@ -209,7 +217,7 @@ export function createSheet(parts, strings, hooks, signal) {
   }, { signal });
 
   return {
-    close, dispose, showCard, showPanel, setPartsOpen,
+    close, dispose, showCard, showPanel, setPartsOpen, appendTool,
     isOpen: () => cur !== null,
     shown: () => (cur ? cur.node : null),
   };
