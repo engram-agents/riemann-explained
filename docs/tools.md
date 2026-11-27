@@ -16,7 +16,7 @@ python.org 3.12.10 fails (181 cases pass, 401 fail); 3.12.13, 3.12.15 and the Ub
 a second guard, after the version guard, with one stderr line and exit status 1: `build_site.py: needs an html.parser
 with RCDATA_CONTENT_ELEMENTS (CPython 3.12.13 or newer has it; 3.12.10 does not); this is 3.12.10 at <interpreter>`.
 The tools that load it by path stop with the same line: `build_grh_skeleton.py`, `build_grh_credits.py`,
-`assemble_grh_site.py`, `check_lean_shell.py` and `formula_oracle.py`. No other tool carries it.
+`build_grh_try.py`, `assemble_grh_site.py`, `check_lean_shell.py` and `formula_oracle.py`. No other tool carries it.
 `python3 tools/check_python_floor.py` checks both guards: PYF-ALL reads every file, PYF-REFUSE, PYF-ORDER and PYF-PASS
 run every tool with a faked version, and PYF-FEATURE-STATIC, PYF-FEATURE, PYF-FEATURE-PASS and PYF-FEATURE-ORDER do the
 same for the parser feature, so a new tool without the guard turns a case red and the case names the file.
