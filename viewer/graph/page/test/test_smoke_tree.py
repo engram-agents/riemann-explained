@@ -1238,6 +1238,41 @@ def t43b_framed_view_reports_its_own_console(tmp):
     assert {l.split()[1] for l in lines(o, "PASS", "console")} == {"390x844", "1280x900"}, o      # the error exists only in the framed run
 
 
+# A COPY of the page whose parts button makes one request for a file the tree does not have (it answers 404): nothing else in the run presses the button.
+FETCH_MISSING_ON_PARTS_PRESS = sub_once('b.addEventListener("click", () => (rec.partsOpen ?', 'b.addEventListener("click", () => (fetch("smoke-missing-after-press.json"), rec.partsOpen ?')
+
+
+def t43c_framed_view_reports_its_own_failed_requests(tmp):
+    """S1: the framed check's View collects failed requests like the viewport run's, so a page that makes a request answering 404 only after the parts button
+    is pressed FAILs `framed` with a `requests:` reason at each phone size, while the 1280x900 `requests` check (which never presses the button) stays PASS."""
+    out = build(tmp, mutate={"page/sheet.js": FETCH_MISSING_ON_PARTS_PRESS})
+    code, o = run_tool(out, "--no-note")
+    assert code == 1, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("FAIL %s framed " % vp) and "requests: " in got[0] and "smoke-missing-after-press.json" in got[0], (vp, o)
+        assert " | %s scale=" % real_top()[0] in got[0] and "box outside stage" not in got[0], got[0]      # the box itself was fine
+    assert "1280x900" in {l.split()[1] for l in lines(o, "PASS", "requests")}, o      # the request exists only in the framed run
+    assert not [l for l in lines(o, "FAIL") if l.split()[1] == "1280x900"], o
+
+
+# The fold elements the page's viewfold.js looks for, copied from site/shell-lean.html (header.intro is already in the fixture shell; the bar is the missing one).
+INTRO_BAR = ('<div id="graph-intro-bar" class="intro-bar" hidden><span class="bar-title">{{S:title}}</span>'
+             '<button type="button" id="graph-intro-show" class="linkbtn">{{S:about_link}}</button></div>')
+
+
+def t44_framed_folds_the_header_where_the_shell_has_the_bar(tmp):
+    """S4: a copy of the fixture whose shell carries the fold bar (after header.intro, as the Lean shell does): on a phone the header folds when the sheet
+    opens, and the framed line says `folded=yes` at 390x844 and at 360x640, and PASSes. Every other fixture shell lacks the bar (`folded=n/a`)."""
+    out = build(tmp, shell_edit=sub_once("</header>\n", "</header>\n" + INTRO_BAR + "\n"))
+    assert 'id="graph-intro-bar"' in open(os.path.join(out, "graph", "index.html"), encoding="utf-8").read()
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 0, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("PASS %s framed %s scale=" % (vp, real_top()[0])) and " folded=yes " in got[0], (vp, o)
+
+
 CASES = [
     ("T1 the real fixture (--no-note): exit 0, SMOKE PASS, three ids, the checks named", t1_real_fixture),
     ("T1b the flat shape (A1): TREE flat, exit 0", t1b_flat_shape),
@@ -1302,6 +1337,8 @@ CASES = [
     ("T42h (h): --only-viewport 390x844 runs framed at both phone sizes", t42h_only_viewport_phone_runs_framed_at_both_phone_sizes),
     ("T43 F1: a button the kind row relabelled (open_words) is found by the framed check", t43_framed_finds_a_button_the_kind_row_relabelled),
     ("T43b F2: a console error only after the parts press fails the framed line, with a console reason", t43b_framed_view_reports_its_own_console),
+    ("T43c S1: a failed request only after the parts press fails the framed line, with a requests reason", t43c_framed_view_reports_its_own_failed_requests),
+    ("T44 S4: a shell with the fold bar folds the header: the framed line says folded=yes at both phone sizes", t44_framed_folds_the_header_where_the_shell_has_the_bar),
 ]
 
 # The cases that start a browser (the tool's whole run, or the page suite's). The rest speak plain HTTP to the tool's server or call its functions,
@@ -1318,7 +1355,8 @@ NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_st
                  t41d_no_top_part_with_children_is_a_named_fail, t42_framed_passes_on_the_real_fixture_without_a_floor_key,
                  t42b_a_floor_the_engine_accepts_but_the_stage_cannot_hold_fails_framed_alone, t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe,
                  t42h_only_viewport_phone_runs_framed_at_both_phone_sizes,
-                 t43_framed_finds_a_button_the_kind_row_relabelled, t43b_framed_view_reports_its_own_console}
+                 t43_framed_finds_a_button_the_kind_row_relabelled, t43b_framed_view_reports_its_own_console,
+                 t43c_framed_view_reports_its_own_failed_requests, t44_framed_folds_the_header_where_the_shell_has_the_bar}
 
 
 def run_cases(cases, only, no_browser=False):

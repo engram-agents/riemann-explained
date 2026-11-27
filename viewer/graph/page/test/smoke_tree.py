@@ -498,7 +498,7 @@ def framed_check(browser, base, vp, part_id):
                 % (part_id, "sheet has no parts button" if shown else "sheet did not open"))
             return
         v.ev("document.querySelector('#graph-sheet button.sheet-tool-main').click()")
-        if not v.wait("document.querySelector('.ge-node.ge-open') && !document.querySelector('.ge-loading')", OPEN_TIMEOUT_MS):
+        if not v.wait("document.querySelector('.ge-node.ge-open[data-node=\"' + CSS.escape(%s) + '\"]') && !document.querySelector('.ge-loading')" % json.dumps(part_id), OPEN_TIMEOUT_MS):       # the picked part's OWN box: the measure reads that one, not any open node
             out("FAIL", vp, "framed", "parts did not open on %s (nothing opened after the parts button, so the opened framing was not measured)" % part_id)
             return
         folded = "n/a"
