@@ -362,6 +362,44 @@ test("G3: a subscripted base after an operator, or at the span's start, stays se
   }
 });
 
+/* ---------------------------------------------------------------- fold 3 (reviewer round 3). Synthetic spans only.
+   The operand-side juxtaposition set. In Lean a function application binds tighter than ^, so `a ^ b c` means a^(b c) and `a ^ b_c` has the one name
+   b_c as its exponent; setting the operand over the first word alone would draw something else. Look-alikes that read as products cannot be told apart
+   by syntax, so a spaced ^ with a word operand followed by spaces and a word or an opening bracket (arm a), or directly by a _ (arm b), is refused.
+   Asserted at the GRAMMAR layer (scriptParts), never through renderNote: spanClass sends a synthetic letter_letter span (`a ^ b_c`, `x_i ^ 2 + y`) to
+   the name-in-formula class and the code face before the grammar runs, so a renderNote assertion would pass for the wrong reason. */
+const OPERAND_REFUSED = [
+  "a ^ b c", "a ^ b (c)", "a ^ b [c]", "a ^ b  c",   // arm (a): spaces, then a word or an opening bracket
+  "a ^ b_c",                                          // arm (b): directly a _
+  "u ^ 2 v",                                          // a digit operand is a word
+  "a ^ b c + d", "s = t ^ m q",                       // later operators, or an operator before the ^, do not save it
+];
+for (const span of OPERAND_REFUSED) {
+  test("F4 operand-side juxtaposition: refused " + JSON.stringify(span), () => {
+    assert.equal(NOTE.scriptParts(span), null, "scriptParts " + JSON.stringify(span));
+  });
+}
+const OPERAND_SET = [
+  ["a ^ b + c", '"a"|sup("b")|" + c"'],               // an operator after the operand
+  ["(a ^ b) c", '"(a"|sup("b")|") c"'],               // a closing bracket after the operand
+  ["a ^ b", '"a"|sup("b")'],                          // the span's end
+  ["a ^ (b c) d", '"a"|sup("b c")|" d"'],             // a group operand is not a word operand
+  ["a^{b c}", '"a"|sup("b c")'],
+  ["w^k_3", '"w"|sup("k")|sub("3")'],                 // an unspaced ^: stacked indices stay set
+  ["x_i ^ 2 + y", '"x"|sub("i")|sup("2")|" + y"'],
+  ["[u ^ 3, v]", '"[u"|sup("3")|", v]"'],             // a comma after the operand is not covered
+  ["h^n(k)", '"h"|sup("n")|"(k)"'],                   // U1: unspaced, directly an opening bracket
+  ["(h^n q)^m", '"(h"|sup("n")|" q)"|sup("m")'],      // U2: unspaced, spaces, a word
+];
+test("F4 operand-side juxtaposition: the shapes the rule does not cover stay set, exact children", () => {
+  for (const [span, want] of OPERAND_SET) {
+    const parts = NOTE.scriptParts(span);
+    assert.ok(parts !== null, "scriptParts " + JSON.stringify(span));
+    assert.equal(pp(parts), want, span);
+    assert.equal(flatParts(parts), expectedFlatten(span), "C5 " + span);
+  }
+});
+
 /* ---------------------------------------------------------------- the population: every real span, from the committed class file, read only */
 const SPANS = JSON.parse(readFileSync(path.join(HERE, "fixtures", "note-spans-classes.json"), "utf8")).spans;
 
