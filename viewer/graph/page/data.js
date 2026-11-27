@@ -437,7 +437,7 @@ const READING_NAME_MAX = 80;
 function readingOf(raw, id) {
   const bad = (why) => new DataError("bad-reading", "step " + id + " has a reading " + why);
   if (!isObj(raw) || Object.keys(raw).length !== 4 || !["text", "by", "second_read_by", "date"].every((k) => has(raw, k))) throw bad("that is not exactly {text, by, second_read_by, date}");
-  for (const k of ["text", "by", "second_read_by", "date"]) if (!isStr(raw[k]) || raw[k] === "") throw bad("whose " + k + " is not a non-empty string");
+  for (const k of ["text", "by", "second_read_by", "date"]) if (!isStr(raw[k]) || raw[k].trim() === "") throw bad("whose " + k + " is not a non-empty string (a string of white space only is empty)");
   if (new TextEncoder().encode(raw.text).length > READING_TEXT_MAX_BYTES) throw bad("whose text is over " + READING_TEXT_MAX_BYTES + " bytes");
   for (const k of ["by", "second_read_by"]) if ([...raw[k]].length > READING_NAME_MAX || /[\p{Cc}\p{Cf}]/u.test(raw[k])) throw bad("whose " + k + " is over " + READING_NAME_MAX + " characters or holds a control or format character");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw.date) || !realDay(raw.date)) throw bad("whose date is not a real day, YYYY-MM-DD");
