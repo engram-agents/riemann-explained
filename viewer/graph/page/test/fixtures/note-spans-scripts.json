@@ -1,0 +1,6059 @@
+{
+ "pin": "72fead102f663d5c7a407964a13dc0cf9d977207",
+ "source": "the module note (first /-! block) of each of the 306 src/New files",
+ "rule": "formula-class code spans with ^ or _; expected by the reference of make_scripts_oracle.py (grammar G1-G5 of viewer/graph/page/note.js)",
+ "distinct": 454,
+ "set": 369,
+ "left": 85,
+ "spans": [
+  {
+   "span": "(-1)^j",
+   "count": 1,
+   "expected": [
+    "(-1)",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "(-p ^ e) τ",
+   "count": 1,
+   "expected": [
+    "(-p",
+    [
+     "sup",
+     [
+      "e"
+     ]
+    ],
+    ") τ"
+   ]
+  },
+  {
+   "span": "(-p) ^ j",
+   "count": 1,
+   "expected": [
+    "(-p)",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "(1 + X) ^ ℓ ^ N - 1",
+   "count": 1,
+   "expected": null,
+   "reason": "second ^ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "(1 - r / q) / q ^ r",
+   "count": 1,
+   "expected": [
+    "(1 - r / q) / q",
+    [
+     "sup",
+     [
+      "r"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "(2 Θ(G) + q ^ (|m| + |n| / 2) Y) / q",
+   "count": 1,
+   "expected": [
+    "(2 Θ(G) + q",
+    [
+     "sup",
+     [
+      "|m| + |n| / 2"
+     ]
+    ],
+    " Y) / q"
+   ]
+  },
+  {
+   "span": "(A^⊥ / A)²",
+   "count": 1,
+   "expected": [
+    "(A",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ],
+    " / A)²"
+   ]
+  },
+  {
+   "span": "(O/ℓ^M O)^n",
+   "count": 1,
+   "expected": [
+    "(O/ℓ",
+    [
+     "sup",
+     [
+      "M"
+     ]
+    ],
+    " O)",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "(O/ℓ^ν)(-e)",
+   "count": 5,
+   "expected": [
+    "(O/ℓ",
+    [
+     "sup",
+     [
+      "ν"
+     ]
+    ],
+    ")(-e)"
+   ]
+  },
+  {
+   "span": "(T / a)^{*c}",
+   "count": 1,
+   "expected": [
+    "(T / a)",
+    [
+     "sup",
+     [
+      "*c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "(V', E^b)",
+   "count": 2,
+   "expected": [
+    "(V', E",
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "(e*₁, …, e*_ϱ, x_{k₀})",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "(e₁, …, e_ϱ, z)",
+   "count": 6,
+   "expected": [
+    "(e₁, …, e",
+    [
+     "sub",
+     [
+      "ϱ"
+     ]
+    ],
+    ", z)"
+   ]
+  },
+  {
+   "span": "(f j ^ c)⁻¹",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "(l_τ - n♯)₊",
+   "count": 1,
+   "expected": [
+    "(l",
+    [
+     "sub",
+     [
+      "τ"
+     ]
+    ],
+    " - n♯)₊"
+   ]
+  },
+  {
+   "span": "(n! ^ N / β!) z ^ β",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "(q₀ d) ^ (s + 6)",
+   "count": 1,
+   "expected": [
+    "(q₀ d)",
+    [
+     "sup",
+     [
+      "s + 6"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "(t - 1) / 2 ∓ (λ_c + κ')",
+   "count": 1,
+   "expected": [
+    "(t - 1) / 2 ∓ (λ",
+    [
+     "sub",
+     [
+      "c"
+     ]
+    ],
+    " + κ')"
+   ]
+  },
+  {
+   "span": "(u x g - 1)_x",
+   "count": 7,
+   "expected": [
+    "(u x g - 1)",
+    [
+     "sub",
+     [
+      "x"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "(y_0, y*_0, …, y_(ϱ-1), y*_(ϱ-1), y_ϱ)",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "(z ^ p ^ e * z) ^ p ^ j",
+   "count": 1,
+   "expected": null,
+   "reason": "second ^ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "(Λ ∩ I^⊥)/(Λ ∩ I)",
+   "count": 1,
+   "expected": [
+    "(Λ ∩ I",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ],
+    ")/(Λ ∩ I)"
+   ]
+  },
+  {
+   "span": "(ℓ + 2) / P ^ ℓ",
+   "count": 1,
+   "expected": [
+    "(ℓ + 2) / P",
+    [
+     "sup",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "-p ^ e * τ",
+   "count": 1,
+   "expected": [
+    "-p",
+    [
+     "sup",
+     [
+      "e"
+     ]
+    ],
+    " * τ"
+   ]
+  },
+  {
+   "span": "-p ^ e τ",
+   "count": 3,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "-p ^ o₀",
+   "count": 1,
+   "expected": [
+    "-p",
+    [
+     "sup",
+     [
+      "o₀"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "-κ_j",
+   "count": 1,
+   "expected": [
+    "-κ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "-κ_{m+1/2}",
+   "count": 1,
+   "expected": [
+    "-κ",
+    [
+     "sub",
+     [
+      "m+1/2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "1 / P ^ ℓ",
+   "count": 1,
+   "expected": [
+    "1 / P",
+    [
+     "sup",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "1 ≤ |κ_v|",
+   "count": 1,
+   "expected": [
+    "1 ≤ |κ",
+    [
+     "sub",
+     [
+      "v"
+     ]
+    ],
+    "|"
+   ]
+  },
+  {
+   "span": "1[S L ⊆ L'⁺] ψ_N (u' (S ε))",
+   "count": 1,
+   "expected": [
+    "1[S L ⊆ L'⁺] ψ",
+    [
+     "sub",
+     [
+      "N"
+     ]
+    ],
+    " (u' (S ε))"
+   ]
+  },
+  {
+   "span": "2 ^ j ≥ q₁",
+   "count": 1,
+   "expected": [
+    "2",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ],
+    " ≥ q₁"
+   ]
+  },
+  {
+   "span": "2 ^ s",
+   "count": 1,
+   "expected": [
+    "2",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "2 ^ s = m ^ 22",
+   "count": 2,
+   "expected": [
+    "2",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ],
+    " = m",
+    [
+     "sup",
+     [
+      "22"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "2 c* P ^ ℓ",
+   "count": 1,
+   "expected": [
+    "2 c* P",
+    [
+     "sup",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "3 ^ c * 2 ^ s * q₀",
+   "count": 1,
+   "expected": [
+    "3",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ],
+    " * 2",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ],
+    " * q₀"
+   ]
+  },
+  {
+   "span": "3 l₀ 2 ^ s",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "3 ≤ p ^ l",
+   "count": 1,
+   "expected": [
+    "3 ≤ p",
+    [
+     "sup",
+     [
+      "l"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "500 n ^ 3 + A",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "< p ^ f",
+   "count": 1,
+   "expected": [
+    "< p",
+    [
+     "sup",
+     [
+      "f"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "A / I_γ",
+   "count": 1,
+   "expected": [
+    "A / I",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "A : (ℂ^m, η) → (ℂ^n, ε)",
+   "count": 1,
+   "expected": [
+    "A : (ℂ",
+    [
+     "sup",
+     [
+      "m"
+     ]
+    ],
+    ", η) → (ℂ",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ],
+    ", ε)"
+   ]
+  },
+  {
+   "span": "A = A_{≤j} ⊕ I_γ",
+   "count": 1,
+   "expected": [
+    "A = A",
+    [
+     "sub",
+     [
+      "≤j"
+     ]
+    ],
+    " ⊕ I",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "A ≤ p ^ l * δ",
+   "count": 1,
+   "expected": [
+    "A ≤ p",
+    [
+     "sup",
+     [
+      "l"
+     ]
+    ],
+    " * δ"
+   ]
+  },
+  {
+   "span": "A^⊥ / A",
+   "count": 1,
+   "expected": [
+    "A",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ],
+    " / A"
+   ]
+  },
+  {
+   "span": "A^⊥ / A = X₀ ⊥ E z",
+   "count": 1,
+   "expected": [
+    "A",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ],
+    " / A = X₀ ⊥ E z"
+   ]
+  },
+  {
+   "span": "A_{≤ j - 1}",
+   "count": 1,
+   "expected": [
+    "A",
+    [
+     "sub",
+     [
+      "≤ j - 1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "A_{≤ j}",
+   "count": 1,
+   "expected": [
+    "A",
+    [
+     "sub",
+     [
+      "≤ j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "A_{≤ j₀ - 1}",
+   "count": 2,
+   "expected": [
+    "A",
+    [
+     "sub",
+     [
+      "≤ j₀ - 1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "A_{≤j}",
+   "count": 1,
+   "expected": [
+    "A",
+    [
+     "sub",
+     [
+      "≤j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "A⁺ / I_γ",
+   "count": 3,
+   "expected": [
+    "A⁺ / I",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "A⁺_γ = A⁺ + γ A⁺",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "B ^ (2 s) C",
+   "count": 1,
+   "expected": [
+    "B",
+    [
+     "sup",
+     [
+      "2 s"
+     ]
+    ],
+    " C"
+   ]
+  },
+  {
+   "span": "B ^ n",
+   "count": 2,
+   "expected": [
+    "B",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "C = 64 * 38 * e ^ 4",
+   "count": 1,
+   "expected": [
+    "C = 64 * 38 * e",
+    [
+     "sup",
+     [
+      "4"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "C ^ f",
+   "count": 1,
+   "expected": [
+    "C",
+    [
+     "sup",
+     [
+      "f"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "D |c| ^ 2",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "E ^ A",
+   "count": 1,
+   "expected": [
+    "E",
+    [
+     "sup",
+     [
+      "A"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "E ^ p",
+   "count": 1,
+   "expected": [
+    "E",
+    [
+     "sup",
+     [
+      "p"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "E ^ s",
+   "count": 1,
+   "expected": [
+    "E",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "E^b",
+   "count": 1,
+   "expected": [
+    "E",
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "E^b ⊕ W'",
+   "count": 1,
+   "expected": [
+    "E",
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ],
+    " ⊕ W'"
+   ]
+  },
+  {
+   "span": "E^n",
+   "count": 4,
+   "expected": [
+    "E",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "E^κ",
+   "count": 2,
+   "expected": [
+    "E",
+    [
+     "sup",
+     [
+      "κ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "E^κ ∩ u Ô^κ",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "F = (e₁, …, e_ϱ, z)",
+   "count": 1,
+   "expected": [
+    "F = (e₁, …, e",
+    [
+     "sub",
+     [
+      "ϱ"
+     ]
+    ],
+    ", z)"
+   ]
+  },
+  {
+   "span": "F(z' + z'') ∏_(c ≠ 0) F(δ_c z')",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "G → B^d",
+   "count": 3,
+   "expected": [
+    "G → B",
+    [
+     "sup",
+     [
+      "d"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "G(F_∞)",
+   "count": 2,
+   "expected": [
+    "G(F",
+    [
+     "sub",
+     [
+      "∞"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "G(F_∞) × G(𝔸_f)",
+   "count": 1,
+   "expected": [
+    "G(F",
+    [
+     "sub",
+     [
+      "∞"
+     ]
+    ],
+    ") × G(𝔸",
+    [
+     "sub",
+     [
+      "f"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "H ≤ (d ^ d) ^ 3",
+   "count": 1,
+   "expected": [
+    "H ≤ (d",
+    [
+     "sup",
+     [
+      "d"
+     ]
+    ],
+    ")",
+    [
+     "sup",
+     [
+      "3"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "I^⊥ / I",
+   "count": 1,
+   "expected": [
+    "I",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ],
+    " / I"
+   ]
+  },
+  {
+   "span": "I_{r+t}",
+   "count": 1,
+   "expected": [
+    "I",
+    [
+     "sub",
+     [
+      "r+t"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "I_{u γ u'} = u I_γ",
+   "count": 1,
+   "expected": [
+    "I",
+    [
+     "sub",
+     [
+      "u γ u'"
+     ]
+    ],
+    " = u I",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "I_γ = A ∩ γ A",
+   "count": 1,
+   "expected": [
+    "I",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ],
+    " = A ∩ γ A"
+   ]
+  },
+  {
+   "span": "K(ζ_{q₁})",
+   "count": 1,
+   "expected": [
+    "K(ζ",
+    [
+     "sub",
+     [
+      "q₁"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "L = R ^ d",
+   "count": 1,
+   "expected": [
+    "L = R",
+    [
+     "sup",
+     [
+      "d"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "L ∩ I^⊥",
+   "count": 1,
+   "expected": [
+    "L ∩ I",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "L_*",
+   "count": 1,
+   "expected": [
+    "L",
+    [
+     "sub",
+     [
+      "*"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "L_*(-e) = L_*(e)⁻¹",
+   "count": 1,
+   "expected": null,
+   "reason": "operator operand not followed by end, space or closer"
+  },
+  {
+   "span": "L_*(e)",
+   "count": 1,
+   "expected": null,
+   "reason": "operator operand not followed by end, space or closer"
+  },
+  {
+   "span": "L_0^∨",
+   "count": 1,
+   "expected": [
+    "L",
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "∨"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "L_γ ⊆ Λ ∩ X₀",
+   "count": 1,
+   "expected": [
+    "L",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ],
+    " ⊆ Λ ∩ X₀"
+   ]
+  },
+  {
+   "span": "L_γ^M",
+   "count": 2,
+   "expected": [
+    "L",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "M"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "L⁺_γ",
+   "count": 8,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "L⁺_γ ∩ X₀^γ",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "M ^ 2",
+   "count": 1,
+   "expected": [
+    "M",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "M ^ f",
+   "count": 1,
+   "expected": [
+    "M",
+    [
+     "sup",
+     [
+      "f"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "M e_•",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "M 𝓞_E",
+   "count": 2,
+   "expected": [
+    "M 𝓞",
+    [
+     "sub",
+     [
+      "E"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "N n k (ℓ + 2) ≤ P ^ ℓ",
+   "count": 1,
+   "expected": [
+    "N n k (ℓ + 2) ≤ P",
+    [
+     "sup",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "N ≤ b ^ (60 n)",
+   "count": 1,
+   "expected": [
+    "N ≤ b",
+    [
+     "sup",
+     [
+      "60 n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "N ⊆ R^s",
+   "count": 1,
+   "expected": [
+    "N ⊆ R",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "N ⊆ R^ι",
+   "count": 2,
+   "expected": [
+    "N ⊆ R",
+    [
+     "sup",
+     [
+      "ι"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "N(Q) ^ (2 z - 1)",
+   "count": 1,
+   "expected": [
+    "N(Q)",
+    [
+     "sup",
+     [
+      "2 z - 1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "O / ℓ ^ ν",
+   "count": 1,
+   "expected": [
+    "O / ℓ",
+    [
+     "sup",
+     [
+      "ν"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "O' / ℓ ^ M",
+   "count": 1,
+   "expected": [
+    "O' / ℓ",
+    [
+     "sup",
+     [
+      "M"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "O/ℓ^ν(-e)",
+   "count": 1,
+   "expected": [
+    "O/ℓ",
+    [
+     "sup",
+     [
+      "ν"
+     ]
+    ],
+    "(-e)"
+   ]
+  },
+  {
+   "span": "P = Λ ∩ X₀ ∩ L^⊥",
+   "count": 1,
+   "expected": [
+    "P = Λ ∩ X₀ ∩ L",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "P = ψ_X(Θ_J)",
+   "count": 1,
+   "expected": [
+    "P = ψ",
+    [
+     "sub",
+     [
+      "X"
+     ]
+    ],
+    "(Θ",
+    [
+     "sub",
+     [
+      "J"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "P ^ N",
+   "count": 2,
+   "expected": [
+    "P",
+    [
+     "sup",
+     [
+      "N"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "P ^ d",
+   "count": 2,
+   "expected": [
+    "P",
+    [
+     "sup",
+     [
+      "d"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "P ^ ℓ",
+   "count": 2,
+   "expected": [
+    "P",
+    [
+     "sup",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Q̄ ^ k Λ⁻ ⊆ Λ'⁻ ⊆ Q ^ (-k) Λ⁻",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "R(F_∞)",
+   "count": 6,
+   "expected": [
+    "R(F",
+    [
+     "sub",
+     [
+      "∞"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "R^c ≅ R^∨(1 - k)",
+   "count": 1,
+   "expected": null,
+   "reason": "operator operand not followed by end, space or closer"
+  },
+  {
+   "span": "R^s / N",
+   "count": 2,
+   "expected": [
+    "R",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ],
+    " / N"
+   ]
+  },
+  {
+   "span": "R^ι / N",
+   "count": 2,
+   "expected": [
+    "R",
+    [
+     "sup",
+     [
+      "ι"
+     ]
+    ],
+    " / N"
+   ]
+  },
+  {
+   "span": "R_{q₀}(x) ≤ x ^ (-1/2 + ε)",
+   "count": 1,
+   "expected": [
+    "R",
+    [
+     "sub",
+     [
+      "q₀"
+     ]
+    ],
+    "(x) ≤ x",
+    [
+     "sup",
+     [
+      "-1/2 + ε"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "S = E^{2m,m}",
+   "count": 1,
+   "expected": [
+    "S = E",
+    [
+     "sup",
+     [
+      "2m,m"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "S = Ỹ^(j+1)_j = Y^(j+1)_j",
+   "count": 1,
+   "expected": [
+    "S = Ỹ",
+    [
+     "sup",
+     [
+      "j+1"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    " = Y",
+    [
+     "sup",
+     [
+      "j+1"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "T / ℓ ^ M",
+   "count": 1,
+   "expected": [
+    "T / ℓ",
+    [
+     "sup",
+     [
+      "M"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "T = O ^ n",
+   "count": 3,
+   "expected": [
+    "T = O",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "T ∩ u Ô^κ",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "T_{i'}",
+   "count": 1,
+   "expected": [
+    "T",
+    [
+     "sub",
+     [
+      "i'"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "T_{w,i}",
+   "count": 2,
+   "expected": [
+    "T",
+    [
+     "sub",
+     [
+      "w,i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "U = (O ^ k)^{⊗ d}",
+   "count": 1,
+   "expected": [
+    "U = (O",
+    [
+     "sup",
+     [
+      "k"
+     ]
+    ],
+    ")",
+    [
+     "sup",
+     [
+      "⊗ d"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "U(E^b)",
+   "count": 1,
+   "expected": [
+    "U(E",
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "U(X_{j+1})",
+   "count": 1,
+   "expected": [
+    "U(X",
+    [
+     "sub",
+     [
+      "j+1"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "U(Y_0)",
+   "count": 1,
+   "expected": [
+    "U(Y",
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "W (y) ⊗ W (γ⁻¹ y)^*",
+   "count": 1,
+   "expected": [
+    "W (y) ⊗ W (γ⁻¹ y)",
+    [
+     "sup",
+     [
+      "*"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "W (γ⁻¹ y) ⊗ W (y)^*",
+   "count": 1,
+   "expected": [
+    "W (γ⁻¹ y) ⊗ W (y)",
+    [
+     "sup",
+     [
+      "*"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "W = (O / a) ^ n",
+   "count": 1,
+   "expected": [
+    "W = (O / a)",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "W = E^b ⊕ W'",
+   "count": 1,
+   "expected": [
+    "W = E",
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ],
+    " ⊕ W'"
+   ]
+  },
+  {
+   "span": "W ⊕ ℍ^N",
+   "count": 2,
+   "expected": [
+    "W ⊕ ℍ",
+    [
+     "sup",
+     [
+      "N"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "W(C^♭) ⊗ L",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "W(y) ⊗ W(x⁻¹ y)^*",
+   "count": 1,
+   "expected": [
+    "W(y) ⊗ W(x⁻¹ y)",
+    [
+     "sup",
+     [
+      "*"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "W^⊥",
+   "count": 1,
+   "expected": [
+    "W",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "W♭ = E^{6m+1}",
+   "count": 1,
+   "expected": [
+    "W♭ = E",
+    [
+     "sup",
+     [
+      "6m+1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "X^⊥",
+   "count": 4,
+   "expected": [
+    "X",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "X_{i-1}",
+   "count": 1,
+   "expected": [
+    "X",
+    [
+     "sub",
+     [
+      "i-1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "X_{j+1}",
+   "count": 1,
+   "expected": [
+    "X",
+    [
+     "sub",
+     [
+      "j+1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "X_{𝔮₀} = Y",
+   "count": 2,
+   "expected": [
+    "X",
+    [
+     "sub",
+     [
+      "𝔮₀"
+     ]
+    ],
+    " = Y"
+   ]
+  },
+  {
+   "span": "X_𝔮 = s_𝔮 Y",
+   "count": 2,
+   "expected": [
+    "X",
+    [
+     "sub",
+     [
+      "𝔮"
+     ]
+    ],
+    " = s",
+    [
+     "sub",
+     [
+      "𝔮"
+     ]
+    ],
+    " Y"
+   ]
+  },
+  {
+   "span": "X₀ = E ^ κ",
+   "count": 1,
+   "expected": [
+    "X₀ = E",
+    [
+     "sup",
+     [
+      "κ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "X₀ = ℂ ^ κ",
+   "count": 1,
+   "expected": [
+    "X₀ = ℂ",
+    [
+     "sup",
+     [
+      "κ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "X₀^γ = X₀ ∩ Υ_γ⁻¹ X₀",
+   "count": 2,
+   "expected": [
+    "X₀",
+    [
+     "sup",
+     [
+      "γ"
+     ]
+    ],
+    " = X₀ ∩ Υ",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ],
+    "⁻¹ X₀"
+   ]
+  },
+  {
+   "span": "Y v_{j + 1}",
+   "count": 1,
+   "expected": [
+    "Y v",
+    [
+     "sub",
+     [
+      "j + 1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Y^i_(j+1)",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "Y_(j+1)",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "Y_{2i} → Y_{2i+1} → Y_{2i+2}",
+   "count": 1,
+   "expected": [
+    "Y",
+    [
+     "sub",
+     [
+      "2i"
+     ]
+    ],
+    " → Y",
+    [
+     "sub",
+     [
+      "2i+1"
+     ]
+    ],
+    " → Y",
+    [
+     "sub",
+     [
+      "2i+2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Z(1) / Z(ξ_ι)",
+   "count": 3,
+   "expected": [
+    "Z(1) / Z(ξ",
+    [
+     "sub",
+     [
+      "ι"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "Z(γ_Z) = Z",
+   "count": 1,
+   "expected": [
+    "Z(γ",
+    [
+     "sub",
+     [
+      "Z"
+     ]
+    ],
+    ") = Z"
+   ]
+  },
+  {
+   "span": "[g, γ_*]",
+   "count": 1,
+   "expected": [
+    "[g, γ",
+    [
+     "sub",
+     [
+      "*"
+     ]
+    ],
+    "]"
+   ]
+  },
+  {
+   "span": "[g, γ_*^c]",
+   "count": 1,
+   "expected": null,
+   "reason": "operator operand not followed by end, space or closer"
+  },
+  {
+   "span": "[x ^ 10, x ^ 12]",
+   "count": 1,
+   "expected": [
+    "[x",
+    [
+     "sup",
+     [
+      "10"
+     ]
+    ],
+    ", x",
+    [
+     "sup",
+     [
+      "12"
+     ]
+    ],
+    "]"
+   ]
+  },
+  {
+   "span": "[ν]_v",
+   "count": 1,
+   "expected": [
+    "[ν]",
+    [
+     "sub",
+     [
+      "v"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "a / p ^ e",
+   "count": 1,
+   "expected": [
+    "a / p",
+    [
+     "sup",
+     [
+      "e"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "a ^ |k| / k!",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "a υ ^ ⌊|n| / 2⌋",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "a ∣ ℓ ^ M",
+   "count": 1,
+   "expected": [
+    "a ∣ ℓ",
+    [
+     "sup",
+     [
+      "M"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "a_∞",
+   "count": 1,
+   "expected": [
+    "a",
+    [
+     "sub",
+     [
+      "∞"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "a₁ ^ 2 = 12 ℘(t)",
+   "count": 1,
+   "expected": [
+    "a₁",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ],
+    " = 12 ℘(t)"
+   ]
+  },
+  {
+   "span": "b ^ (2 k f)",
+   "count": 1,
+   "expected": [
+    "b",
+    [
+     "sup",
+     [
+      "2 k f"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "b ^ (2 k)",
+   "count": 1,
+   "expected": [
+    "b",
+    [
+     "sup",
+     [
+      "2 k"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "b ^ (37 n)",
+   "count": 1,
+   "expected": [
+    "b",
+    [
+     "sup",
+     [
+      "37 n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "b ^ (6 * 𝔰.k)",
+   "count": 2,
+   "expected": [
+    "b",
+    [
+     "sup",
+     [
+      "6 * 𝔰.k"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "b ^ 26",
+   "count": 2,
+   "expected": [
+    "b",
+    [
+     "sup",
+     [
+      "26"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "b Ô ^ (ι' × ι)",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "c_ϖ = ϖ ^ (p + 1) / p",
+   "count": 2,
+   "expected": [
+    "c",
+    [
+     "sub",
+     [
+      "ϖ"
+     ]
+    ],
+    " = ϖ",
+    [
+     "sup",
+     [
+      "p + 1"
+     ]
+    ],
+    " / p"
+   ]
+  },
+  {
+   "span": "c′_ϑ Ξ_{ϑ,i} = c″ 𝖥_i",
+   "count": 1,
+   "expected": [
+    "c′",
+    [
+     "sub",
+     [
+      "ϑ"
+     ]
+    ],
+    " Ξ",
+    [
+     "sub",
+     [
+      "ϑ,i"
+     ]
+    ],
+    " = c″ 𝖥",
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "d < p ^ f",
+   "count": 1,
+   "expected": [
+    "d < p",
+    [
+     "sup",
+     [
+      "f"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "e : E → ℚ̄_ℓ",
+   "count": 1,
+   "expected": [
+    "e : E → ℚ̄",
+    [
+     "sub",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "e = (e₁, …, e_ϱ, z)",
+   "count": 1,
+   "expected": [
+    "e = (e₁, …, e",
+    [
+     "sub",
+     [
+      "ϱ"
+     ]
+    ],
+    ", z)"
+   ]
+  },
+  {
+   "span": "e ≤ p ^ m",
+   "count": 1,
+   "expected": [
+    "e ≤ p",
+    [
+     "sup",
+     [
+      "m"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "e*_a",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "e*_b",
+   "count": 2,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "e*₁, …, e*_ϱ",
+   "count": 3,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "e_1, …, e_{n-1}",
+   "count": 2,
+   "expected": [
+    "e",
+    [
+     "sub",
+     [
+      "1"
+     ]
+    ],
+    ", …, e",
+    [
+     "sub",
+     [
+      "n-1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "e_1, …, e_ϱ, z",
+   "count": 1,
+   "expected": [
+    "e",
+    [
+     "sub",
+     [
+      "1"
+     ]
+    ],
+    ", …, e",
+    [
+     "sub",
+     [
+      "ϱ"
+     ]
+    ],
+    ", z"
+   ]
+  },
+  {
+   "span": "e_•",
+   "count": 4,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "e₁, …, e_ϱ",
+   "count": 11,
+   "expected": [
+    "e₁, …, e",
+    [
+     "sub",
+     [
+      "ϱ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "e₁, …, e_ϱ, z",
+   "count": 3,
+   "expected": [
+    "e₁, …, e",
+    [
+     "sub",
+     [
+      "ϱ"
+     ]
+    ],
+    ", z"
+   ]
+  },
+  {
+   "span": "f (s' γ_Z s)",
+   "count": 1,
+   "expected": [
+    "f (s' γ",
+    [
+     "sub",
+     [
+      "Z"
+     ]
+    ],
+    " s)"
+   ]
+  },
+  {
+   "span": "f = (e₁, …, e_ϱ, z)",
+   "count": 6,
+   "expected": [
+    "f = (e₁, …, e",
+    [
+     "sub",
+     [
+      "ϱ"
+     ]
+    ],
+    ", z)"
+   ]
+  },
+  {
+   "span": "g = g₀, g₀^{-c}",
+   "count": 1,
+   "expected": [
+    "g = g₀, g₀",
+    [
+     "sup",
+     [
+      "-c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "g ↦ g^c",
+   "count": 1,
+   "expected": [
+    "g ↦ g",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "g ↦ g^c = c g c",
+   "count": 1,
+   "expected": [
+    "g ↦ g",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ],
+    " = c g c"
+   ]
+  },
+  {
+   "span": "g^c",
+   "count": 1,
+   "expected": [
+    "g",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "g^c = c g c",
+   "count": 1,
+   "expected": [
+    "g",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ],
+    " = c g c"
+   ]
+  },
+  {
+   "span": "g^{-c}",
+   "count": 1,
+   "expected": [
+    "g",
+    [
+     "sup",
+     [
+      "-c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "g^♭",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "h_{P₀}(φ_v) = 1",
+   "count": 1,
+   "expected": [
+    "h",
+    [
+     "sub",
+     [
+      "P₀"
+     ]
+    ],
+    "(φ",
+    [
+     "sub",
+     [
+      "v"
+     ]
+    ],
+    ") = 1"
+   ]
+  },
+  {
+   "span": "j^(p^a) = i",
+   "count": 1,
+   "expected": [
+    "j",
+    [
+     "sup",
+     [
+      "p",
+      [
+       "sup",
+       [
+        "a"
+       ]
+      ]
+     ]
+    ],
+    " = i"
+   ]
+  },
+  {
+   "span": "k ^ 2",
+   "count": 1,
+   "expected": [
+    "k",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "l ^ h l",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "l! = ∏ l_τ!",
+   "count": 1,
+   "expected": [
+    "l! = ∏ l",
+    [
+     "sub",
+     [
+      "τ"
+     ]
+    ],
+    "!"
+   ]
+  },
+  {
+   "span": "m = q ^ j",
+   "count": 1,
+   "expected": [
+    "m = q",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "m ^ 2",
+   "count": 1,
+   "expected": [
+    "m",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "m ≤ p^𝔯",
+   "count": 2,
+   "expected": [
+    "m ≤ p",
+    [
+     "sup",
+     [
+      "𝔯"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "n_{j+1}",
+   "count": 2,
+   "expected": [
+    "n",
+    [
+     "sub",
+     [
+      "j+1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "n_𝔟(Ỹ^i_0)",
+   "count": 2,
+   "expected": [
+    "n",
+    [
+     "sub",
+     [
+      "𝔟"
+     ]
+    ],
+    "(Ỹ",
+    [
+     "sup",
+     [
+      "i"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "p ^ ((8 n + 4) d)",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "(8 n + 4) d"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ (-v)",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "-v"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ (2 N c₀) 𝒩",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "2 N c₀"
+     ]
+    ],
+    " 𝒩"
+   ]
+  },
+  {
+   "span": "p ^ (4 δ)",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "4 δ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ (N c₀)",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "N c₀"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ (N c₀) 𝒩",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "N c₀"
+     ]
+    ],
+    " 𝒩"
+   ]
+  },
+  {
+   "span": "p ^ (f 𝔯 t)",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "f 𝔯 t"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ (m f)",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "m f"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ 2",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ A_𝔩 • T_{𝔩,𝔯}",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "p ^ c₀",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "c₀"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ e",
+   "count": 4,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "e"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ e c",
+   "count": 5,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "p ^ f",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "f"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ i",
+   "count": 4,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ j₀",
+   "count": 3,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "j₀"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ l",
+   "count": 2,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "l"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ m",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "m"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ n",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ r j",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "p ^ w",
+   "count": 1,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "w"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ κ",
+   "count": 3,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "κ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ κ * E ^ a",
+   "count": 2,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "κ"
+     ]
+    ],
+    " * E",
+    [
+     "sup",
+     [
+      "a"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ κ * E ^ s",
+   "count": 2,
+   "expected": [
+    "p",
+    [
+     "sup",
+     [
+      "κ"
+     ]
+    ],
+    " * E",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "p ^ κ * E ^ s i",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "p ^ κ c",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "p ^ ∑ r j",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "q = P ^ N",
+   "count": 4,
+   "expected": [
+    "q = P",
+    [
+     "sup",
+     [
+      "N"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "q = z ^ 2",
+   "count": 1,
+   "expected": [
+    "q = z",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "q ^ n",
+   "count": 1,
+   "expected": [
+    "q",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "q₁ = 3 ^ c * 2 ^ s * q₀",
+   "count": 1,
+   "expected": [
+    "q₁ = 3",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ],
+    " * 2",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ],
+    " * q₀"
+   ]
+  },
+  {
+   "span": "r_ψ(s)",
+   "count": 4,
+   "expected": [
+    "r",
+    [
+     "sub",
+     [
+      "ψ"
+     ]
+    ],
+    "(s)"
+   ]
+  },
+  {
+   "span": "s + g * ∑ a < l, p ^ a < A",
+   "count": 1,
+   "expected": [
+    "s + g * ∑ a < l, p",
+    [
+     "sup",
+     [
+      "a"
+     ]
+    ],
+    " < A"
+   ]
+  },
+  {
+   "span": "s ^ k",
+   "count": 1,
+   "expected": [
+    "s",
+    [
+     "sup",
+     [
+      "k"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "s γ_Z e",
+   "count": 1,
+   "expected": [
+    "s γ",
+    [
+     "sub",
+     [
+      "Z"
+     ]
+    ],
+    " e"
+   ]
+  },
+  {
+   "span": "s ≤ 2 n ^ 2",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "s_∞",
+   "count": 2,
+   "expected": [
+    "s",
+    [
+     "sub",
+     [
+      "∞"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "t ↦ ξ t * |t| ^ (k / 2)",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "u = (a / ā) ^ ⌊(s + 2) / 2⌋",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "v = x_{k₀} / p̄ + z / N",
+   "count": 1,
+   "expected": [
+    "v = x",
+    [
+     "sub",
+     [
+      "k₀"
+     ]
+    ],
+    " / p̄ + z / N"
+   ]
+  },
+  {
+   "span": "v = x_{k₀} / π̄ + z / N",
+   "count": 1,
+   "expected": [
+    "v = x",
+    [
+     "sub",
+     [
+      "k₀"
+     ]
+    ],
+    " / π̄ + z / N"
+   ]
+  },
+  {
+   "span": "v(1(Θ_∅)) + ∑_e 2 v(ϑ(g) - 1)",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "v(P⁰(0)) ≤ β_T",
+   "count": 1,
+   "expected": [
+    "v(P⁰(0)) ≤ β",
+    [
+     "sub",
+     [
+      "T"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "v(g⁽ⁿ⁾(0)) ≤ γ_p n",
+   "count": 1,
+   "expected": [
+    "v(g⁽ⁿ⁾(0)) ≤ γ",
+    [
+     "sub",
+     [
+      "p"
+     ]
+    ],
+    " n"
+   ]
+  },
+  {
+   "span": "v(ζ_j - 1) ≤ ρ",
+   "count": 1,
+   "expected": [
+    "v(ζ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    " - 1) ≤ ρ"
+   ]
+  },
+  {
+   "span": "v(π_p)",
+   "count": 2,
+   "expected": [
+    "v(π",
+    [
+     "sub",
+     [
+      "p"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "v^B",
+   "count": 1,
+   "expected": [
+    "v",
+    [
+     "sup",
+     [
+      "B"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "v_{P_ξ}",
+   "count": 1,
+   "expected": [
+    "v",
+    [
+     "sub",
+     [
+      "P",
+      [
+       "sub",
+       [
+        "ξ"
+       ]
+      ]
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "v_{j + 1}",
+   "count": 2,
+   "expected": [
+    "v",
+    [
+     "sub",
+     [
+      "j + 1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "v_{j₀}",
+   "count": 1,
+   "expected": [
+    "v",
+    [
+     "sub",
+     [
+      "j₀"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "v_ρ(R₀ R₁) < N ρ",
+   "count": 1,
+   "expected": [
+    "v",
+    [
+     "sub",
+     [
+      "ρ"
+     ]
+    ],
+    "(R₀ R₁) < N ρ"
+   ]
+  },
+  {
+   "span": "v₁, …, v_{j₀}",
+   "count": 3,
+   "expected": [
+    "v₁, …, v",
+    [
+     "sub",
+     [
+      "j₀"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "w ^ (-n N / 2)",
+   "count": 1,
+   "expected": [
+    "w",
+    [
+     "sup",
+     [
+      "-n N / 2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "w ^ 2 = p",
+   "count": 5,
+   "expected": [
+    "w",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ],
+    " = p"
+   ]
+  },
+  {
+   "span": "w ^ c",
+   "count": 7,
+   "expected": [
+    "w",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x = (ζ_𝔮 - 1)_𝔮",
+   "count": 1,
+   "expected": [
+    "x = (ζ",
+    [
+     "sub",
+     [
+      "𝔮"
+     ]
+    ],
+    " - 1)",
+    [
+     "sub",
+     [
+      "𝔮"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x ^ 10",
+   "count": 1,
+   "expected": [
+    "x",
+    [
+     "sup",
+     [
+      "10"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x ^ 10⁶ ≤ x₁",
+   "count": 1,
+   "expected": null,
+   "reason": "operand followed by a superscript glyph"
+  },
+  {
+   "span": "x ^ 12",
+   "count": 1,
+   "expected": [
+    "x",
+    [
+     "sup",
+     [
+      "12"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x ^ m",
+   "count": 1,
+   "expected": [
+    "x",
+    [
+     "sup",
+     [
+      "m"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x ↦ ψ_f(-x / ϖ)",
+   "count": 1,
+   "expected": [
+    "x ↦ ψ",
+    [
+     "sub",
+     [
+      "f"
+     ]
+    ],
+    "(-x / ϖ)"
+   ]
+  },
+  {
+   "span": "x_{k₀}",
+   "count": 1,
+   "expected": [
+    "x",
+    [
+     "sub",
+     [
+      "k₀"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x_τ ↦ c_τᵀ x_τ g_τᵀ",
+   "count": 2,
+   "expected": [
+    "x",
+    [
+     "sub",
+     [
+      "τ"
+     ]
+    ],
+    " ↦ c",
+    [
+     "sub",
+     [
+      "τᵀ"
+     ]
+    ],
+    " x",
+    [
+     "sub",
+     [
+      "τ"
+     ]
+    ],
+    " g",
+    [
+     "sub",
+     [
+      "τᵀ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x¹¹ ≤ m ^ 22 = 2 ^ s ≤ f ≤ q₁ ≤ x¹²",
+   "count": 1,
+   "expected": [
+    "x¹¹ ≤ m",
+    [
+     "sup",
+     [
+      "22"
+     ]
+    ],
+    " = 2",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ],
+    " ≤ f ≤ q₁ ≤ x¹²"
+   ]
+  },
+  {
+   "span": "x₁ ^ 10⁶ ≤ b",
+   "count": 1,
+   "expected": null,
+   "reason": "operand followed by a superscript glyph"
+  },
+  {
+   "span": "y (M) + p ^ j₀ • M",
+   "count": 2,
+   "expected": [
+    "y (M) + p",
+    [
+     "sup",
+     [
+      "j₀"
+     ]
+    ],
+    " • M"
+   ]
+  },
+  {
+   "span": "y (M) + p ^ n • M",
+   "count": 1,
+   "expected": [
+    "y (M) + p",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ],
+    " • M"
+   ]
+  },
+  {
+   "span": "y V₋ ∩ I^⊥",
+   "count": 1,
+   "expected": [
+    "y V₋ ∩ I",
+    [
+     "sup",
+     [
+      "⊥"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "y(μ_i z)",
+   "count": 6,
+   "expected": [
+    "y(μ",
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ],
+    " z)"
+   ]
+  },
+  {
+   "span": "y(μ_j z)",
+   "count": 2,
+   "expected": [
+    "y(μ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    " z)"
+   ]
+  },
+  {
+   "span": "y⁻¹ e*_a",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "z ^ (p + 1)",
+   "count": 1,
+   "expected": [
+    "z",
+    [
+     "sup",
+     [
+      "p + 1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "z ^ (p - 1)",
+   "count": 3,
+   "expected": [
+    "z",
+    [
+     "sup",
+     [
+      "p - 1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "z ^ k",
+   "count": 2,
+   "expected": [
+    "z",
+    [
+     "sup",
+     [
+      "k"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "z ^ β",
+   "count": 1,
+   "expected": [
+    "z",
+    [
+     "sup",
+     [
+      "β"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "z' ^ ν' * z'' ^ ν''",
+   "count": 2,
+   "expected": [
+    "z'",
+    [
+     "sup",
+     [
+      "ν'"
+     ]
+    ],
+    " * z''",
+    [
+     "sup",
+     [
+      "ν''"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "z(γ_w)",
+   "count": 1,
+   "expected": [
+    "z(γ",
+    [
+     "sub",
+     [
+      "w"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "z(γ_w) = s • z(φ_w)",
+   "count": 1,
+   "expected": [
+    "z(γ",
+    [
+     "sub",
+     [
+      "w"
+     ]
+    ],
+    ") = s • z(φ",
+    [
+     "sub",
+     [
+      "w"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "z_0 = δ_0 z' + z''",
+   "count": 1,
+   "expected": [
+    "z",
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    " = δ",
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    " z' + z''"
+   ]
+  },
+  {
+   "span": "z_τ ^ p ^ e τ * z_(τ⁺)",
+   "count": 1,
+   "expected": null,
+   "reason": "second ^ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "|D_{ϱ+1}|² - N² |D_ϱ|²",
+   "count": 2,
+   "expected": [
+    "|D",
+    [
+     "sub",
+     [
+      "ϱ+1"
+     ]
+    ],
+    "|² - N² |D",
+    [
+     "sub",
+     [
+      "ϱ"
+     ]
+    ],
+    "|²"
+   ]
+  },
+  {
+   "span": "|L(z, (ν ϑ^s)⁻¹)| / |L(z, ν⁻¹)|",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "|L(z, (νϑ^s)⁻¹)| / |L(z, ν⁻¹)|",
+   "count": 1,
+   "expected": [
+    "|L(z, (νϑ",
+    [
+     "sup",
+     [
+      "s"
+     ]
+    ],
+    ")⁻¹)| / |L(z, ν⁻¹)|"
+   ]
+  },
+  {
+   "span": "|f y| ^ 2",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "|ν|_v",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "Ô ^ κ",
+   "count": 1,
+   "expected": [
+    "Ô",
+    [
+     "sup",
+     [
+      "κ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Ô^n",
+   "count": 1,
+   "expected": [
+    "Ô",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Ô^ι",
+   "count": 2,
+   "expected": [
+    "Ô",
+    [
+     "sup",
+     [
+      "ι"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ǎ_∞",
+   "count": 1,
+   "expected": [
+    "ǎ",
+    [
+     "sub",
+     [
+      "∞"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Γ_e = ∑ z_(τ,c) ^ p ^ e * z_(τ',c)",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "Γ_e ^ p ^ j",
+   "count": 1,
+   "expected": null,
+   "reason": "second ^ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "Γ_e(Z)",
+   "count": 1,
+   "expected": [
+    "Γ",
+    [
+     "sub",
+     [
+      "e"
+     ]
+    ],
+    "(Z)"
+   ]
+  },
+  {
+   "span": "Δ / 2 - κ_j",
+   "count": 1,
+   "expected": [
+    "Δ / 2 - κ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Θ = ∏ θ(μ_j z) ^ m j",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "Θ^♭",
+   "count": 2,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "Θ_{j,ϑ}",
+   "count": 1,
+   "expected": [
+    "Θ",
+    [
+     "sub",
+     [
+      "j,ϑ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Θ_ξ = D.Θ ξ",
+   "count": 1,
+   "expected": [
+    "Θ",
+    [
+     "sub",
+     [
+      "ξ"
+     ]
+    ],
+    " = D.Θ ξ"
+   ]
+  },
+  {
+   "span": "Θ_ξ 𝒫 φ",
+   "count": 1,
+   "expected": [
+    "Θ",
+    [
+     "sub",
+     [
+      "ξ"
+     ]
+    ],
+    " 𝒫 φ"
+   ]
+  },
+  {
+   "span": "Ξ = ∑ l a b • Γ_a ^ p ^ b",
+   "count": 1,
+   "expected": null,
+   "reason": "second ^ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "Ξ = ∑_{e ∈ S} ∑_j λ_{e j} Γ_e ^ p ^ j",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "Ξ₁ = -g^♭(ϖ z) / c_ϖ",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "Ξ₁ ≡ λ (Y ^ 2 - z ^ 2 / 2)",
+   "count": 1,
+   "expected": [
+    "Ξ₁ ≡ λ (Y",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ],
+    " - z",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ],
+    " / 2)"
+   ]
+  },
+  {
+   "span": "Ξ₁ ≡ λ Y ^ (p + 1)",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "Υ_γ⁻¹ z⁺",
+   "count": 3,
+   "expected": [
+    "Υ",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ],
+    "⁻¹ z⁺"
+   ]
+  },
+  {
+   "span": "Φ_v (y i)",
+   "count": 1,
+   "expected": [
+    "Φ",
+    [
+     "sub",
+     [
+      "v"
+     ]
+    ],
+    " (y i)"
+   ]
+  },
+  {
+   "span": "Ψ : O^n → O / p",
+   "count": 1,
+   "expected": [
+    "Ψ : O",
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ],
+    " → O / p"
+   ]
+  },
+  {
+   "span": "Ψ(h, h') = ⟨z(h), y(h')⟩ - ⟨z(h'^c), y(h^c)⟩",
+   "count": 1,
+   "expected": [
+    "Ψ(h, h') = ⟨z(h), y(h')⟩ - ⟨z(h'",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ],
+    "), y(h",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ],
+    ")⟩"
+   ]
+  },
+  {
+   "span": "Ω_0 × ⋯ × Ω_{k-1}",
+   "count": 1,
+   "expected": [
+    "Ω",
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    " × ⋯ × Ω",
+    [
+     "sub",
+     [
+      "k-1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Ω₀ 𝓞_K",
+   "count": 1,
+   "expected": [
+    "Ω₀ 𝓞",
+    [
+     "sub",
+     [
+      "K"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "α = b ^ (k f / 4)",
+   "count": 1,
+   "expected": [
+    "α = b",
+    [
+     "sup",
+     [
+      "k f / 4"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "α ^ i * a ∈ R",
+   "count": 1,
+   "expected": [
+    "α",
+    [
+     "sup",
+     [
+      "i"
+     ]
+    ],
+    " * a ∈ R"
+   ]
+  },
+  {
+   "span": "α ^ j * x ∈ R",
+   "count": 1,
+   "expected": [
+    "α",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ],
+    " * x ∈ R"
+   ]
+  },
+  {
+   "span": "β x • k x v^B",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "β_T + 1",
+   "count": 1,
+   "expected": [
+    "β",
+    [
+     "sub",
+     [
+      "T"
+     ]
+    ],
+    " + 1"
+   ]
+  },
+  {
+   "span": "γ A = γ A_{≤j} ⊕ I_γ",
+   "count": 1,
+   "expected": [
+    "γ A = γ A",
+    [
+     "sub",
+     [
+      "≤j"
+     ]
+    ],
+    " ⊕ I",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "γ A⁺ / I_γ",
+   "count": 3,
+   "expected": [
+    "γ A⁺ / I",
+    [
+     "sub",
+     [
+      "γ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "γ e_•",
+   "count": 3,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "γ_*",
+   "count": 5,
+   "expected": [
+    "γ",
+    [
+     "sub",
+     [
+      "*"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "γ_* = T.γ",
+   "count": 2,
+   "expected": [
+    "γ",
+    [
+     "sub",
+     [
+      "*"
+     ]
+    ],
+    " = T.γ"
+   ]
+  },
+  {
+   "span": "γ_*^c",
+   "count": 1,
+   "expected": null,
+   "reason": "operator operand not followed by end, space or closer"
+  },
+  {
+   "span": "γ_Z (u h)⁻¹",
+   "count": 1,
+   "expected": [
+    "γ",
+    [
+     "sub",
+     [
+      "Z"
+     ]
+    ],
+    " (u h)⁻¹"
+   ]
+  },
+  {
+   "span": "γ_p = 1 / (p - 1) - ρ_p",
+   "count": 3,
+   "expected": [
+    "γ",
+    [
+     "sub",
+     [
+      "p"
+     ]
+    ],
+    " = 1 / (p - 1) - ρ",
+    [
+     "sub",
+     [
+      "p"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "δ_*(γ)",
+   "count": 1,
+   "expected": null,
+   "reason": "operator operand not followed by end, space or closer"
+  },
+  {
+   "span": "δ_j ≠ 0",
+   "count": 2,
+   "expected": [
+    "δ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    " ≠ 0"
+   ]
+  },
+  {
+   "span": "ζ ^ (-p - 1) g(ζ z)",
+   "count": 1,
+   "expected": [
+    "ζ",
+    [
+     "sup",
+     [
+      "-p - 1"
+     ]
+    ],
+    " g(ζ z)"
+   ]
+  },
+  {
+   "span": "ζ ^ k * τ(e i)",
+   "count": 1,
+   "expected": [
+    "ζ",
+    [
+     "sup",
+     [
+      "k"
+     ]
+    ],
+    " * τ(e i)"
+   ]
+  },
+  {
+   "span": "ζ_*",
+   "count": 1,
+   "expected": [
+    "ζ",
+    [
+     "sub",
+     [
+      "*"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ζ_* ^ 2 - 1",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "η : T / a → (T / a)^{*c}",
+   "count": 1,
+   "expected": [
+    "η : T / a → (T / a)",
+    [
+     "sup",
+     [
+      "*c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "η(z(h)) = y(h^c)",
+   "count": 1,
+   "expected": [
+    "η(z(h)) = y(h",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "θ(μ_i z)",
+   "count": 3,
+   "expected": [
+    "θ(μ",
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ],
+    " z)"
+   ]
+  },
+  {
+   "span": "θ_W(g, h)",
+   "count": 2,
+   "expected": [
+    "θ",
+    [
+     "sub",
+     [
+      "W"
+     ]
+    ],
+    "(g, h)"
+   ]
+  },
+  {
+   "span": "θ_W(g, ·)",
+   "count": 1,
+   "expected": [
+    "θ",
+    [
+     "sub",
+     [
+      "W"
+     ]
+    ],
+    "(g, ·)"
+   ]
+  },
+  {
+   "span": "ι (s + 1) ≡ ι s ^ P",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "ι : R → ℂ_ℓ",
+   "count": 1,
+   "expected": [
+    "ι : R → ℂ",
+    [
+     "sub",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ι : ℂ → ℂ_[p]",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "ι : ℂ ≃ ℚ̄_ℓ",
+   "count": 4,
+   "expected": [
+    "ι : ℂ ≃ ℚ̄",
+    [
+     "sub",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ιₚ : ℂ → ℂ_p",
+   "count": 1,
+   "expected": [
+    "ιₚ : ℂ → ℂ",
+    [
+     "sub",
+     [
+      "p"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ιₚ : ℂ →+* ℂ_[p]",
+   "count": 8,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "ιℓ : ℂ ≃ ℚ̄_ℓ",
+   "count": 1,
+   "expected": [
+    "ιℓ : ℂ ≃ ℚ̄",
+    [
+     "sub",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "κ + x ^ 42",
+   "count": 1,
+   "expected": [
+    "κ + x",
+    [
+     "sup",
+     [
+      "42"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "κ(τ) ≤ l_τ ≤ κ(τ) + x ^ 42",
+   "count": 1,
+   "expected": [
+    "κ(τ) ≤ l",
+    [
+     "sub",
+     [
+      "τ"
+     ]
+    ],
+    " ≤ κ(τ) + x",
+    [
+     "sup",
+     [
+      "42"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "κ_j(σ) = κ(σ) + (j + 1/2) Δ",
+   "count": 2,
+   "expected": [
+    "κ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    "(σ) = κ(σ) + (j + 1/2) Δ"
+   ]
+  },
+  {
+   "span": "κ_j(τ)",
+   "count": 1,
+   "expected": [
+    "κ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    "(τ)"
+   ]
+  },
+  {
+   "span": "κ_s = κ + (s + 1/2) Δ",
+   "count": 1,
+   "expected": [
+    "κ",
+    [
+     "sub",
+     [
+      "s"
+     ]
+    ],
+    " = κ + (s + 1/2) Δ"
+   ]
+  },
+  {
+   "span": "κ_{i - 1/2} = κ_i - Δ / 2",
+   "count": 1,
+   "expected": [
+    "κ",
+    [
+     "sub",
+     [
+      "i - 1/2"
+     ]
+    ],
+    " = κ",
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ],
+    " - Δ / 2"
+   ]
+  },
+  {
+   "span": "λ + ρ - 2ρ_c",
+   "count": 1,
+   "expected": [
+    "λ + ρ - 2ρ",
+    [
+     "sub",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "λ(n) = Λ(n) (1 - χ_K(n))",
+   "count": 1,
+   "expected": [
+    "λ(n) = Λ(n) (1 - χ",
+    [
+     "sub",
+     [
+      "K"
+     ]
+    ],
+    "(n))"
+   ]
+  },
+  {
+   "span": "λ^Y = ([k - 1]; -κ_{1/2}, -κ_{3/2}, …)",
+   "count": 1,
+   "expected": [
+    "λ",
+    [
+     "sup",
+     [
+      "Y"
+     ]
+    ],
+    " = ([k - 1]; -κ",
+    [
+     "sub",
+     [
+      "1/2"
+     ]
+    ],
+    ", -κ",
+    [
+     "sub",
+     [
+      "3/2"
+     ]
+    ],
+    ", …)"
+   ]
+  },
+  {
+   "span": "λ^Y = (k/2 - 1, …, 1 - k/2; -κ_{1/2}, -κ_{3/2}, …)",
+   "count": 1,
+   "expected": [
+    "λ",
+    [
+     "sup",
+     [
+      "Y"
+     ]
+    ],
+    " = (k/2 - 1, …, 1 - k/2; -κ",
+    [
+     "sub",
+     [
+      "1/2"
+     ]
+    ],
+    ", -κ",
+    [
+     "sub",
+     [
+      "3/2"
+     ]
+    ],
+    ", …)"
+   ]
+  },
+  {
+   "span": "λ^ρ",
+   "count": 1,
+   "expected": [
+    "λ",
+    [
+     "sup",
+     [
+      "ρ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "λ_{e j}",
+   "count": 1,
+   "expected": [
+    "λ",
+    [
+     "sub",
+     [
+      "e j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "μ_i z",
+   "count": 1,
+   "expected": [
+    "μ",
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ],
+    " z"
+   ]
+  },
+  {
+   "span": "μ_j⁰ ϑ",
+   "count": 1,
+   "expected": [
+    "μ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    "⁰ ϑ"
+   ]
+  },
+  {
+   "span": "μ_j⁰ ϑ ^ j",
+   "count": 1,
+   "expected": [
+    "μ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    "⁰ ϑ",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "μ_{ℓ ^ N}",
+   "count": 1,
+   "expected": [
+    "μ",
+    [
+     "sub",
+     [
+      "ℓ",
+      [
+       "sup",
+       [
+        "N"
+       ]
+      ]
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "μ_{ℓ^ν}",
+   "count": 1,
+   "expected": [
+    "μ",
+    [
+     "sub",
+     [
+      "ℓ",
+      [
+       "sup",
+       [
+        "ν"
+       ]
+      ]
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ν ^ (-(k + i))",
+   "count": 1,
+   "expected": [
+    "ν",
+    [
+     "sup",
+     [
+      "-(k + i)"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ν(y) ^ (-(k + i))",
+   "count": 1,
+   "expected": [
+    "ν(y)",
+    [
+     "sup",
+     [
+      "-(k + i)"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ν♭ υ^m",
+   "count": 1,
+   "expected": [
+    "ν♭ υ",
+    [
+     "sup",
+     [
+      "m"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ξ ^ k",
+   "count": 1,
+   "expected": [
+    "ξ",
+    [
+     "sup",
+     [
+      "k"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ξ_ι = θ ι",
+   "count": 1,
+   "expected": [
+    "ξ",
+    [
+     "sub",
+     [
+      "ι"
+     ]
+    ],
+    " = θ ι"
+   ]
+  },
+  {
+   "span": "π_M Q",
+   "count": 1,
+   "expected": [
+    "π",
+    [
+     "sub",
+     [
+      "M"
+     ]
+    ],
+    " Q"
+   ]
+  },
+  {
+   "span": "π_p 𝒪[[y]]",
+   "count": 1,
+   "expected": [
+    "π",
+    [
+     "sub",
+     [
+      "p"
+     ]
+    ],
+    " 𝒪[[y]]"
+   ]
+  },
+  {
+   "span": "ρ / σ ≡ ± ℓ ^ j",
+   "count": 1,
+   "expected": [
+    "ρ / σ ≡ ± ℓ",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ρ ^ (9 n) / 𝗀",
+   "count": 1,
+   "expected": [
+    "ρ",
+    [
+     "sup",
+     [
+      "9 n"
+     ]
+    ],
+    " / 𝗀"
+   ]
+  },
+  {
+   "span": "ρ ∈ ℤ ^ k",
+   "count": 1,
+   "expected": [
+    "ρ ∈ ℤ",
+    [
+     "sup",
+     [
+      "k"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "σ • x ≡ x ^ q",
+   "count": 1,
+   "expected": [
+    "σ • x ≡ x",
+    [
+     "sup",
+     [
+      "q"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "τ / σ ≡ ± ℓ ^ i",
+   "count": 1,
+   "expected": [
+    "τ / σ ≡ ± ℓ",
+    [
+     "sup",
+     [
+      "i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "τ ^ (l + 6) D η ^ (-k) ≤ B",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "υ ^ (-k)",
+   "count": 1,
+   "expected": [
+    "υ",
+    [
+     "sup",
+     [
+      "-k"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "φ (z) W♭ (γ z) ⊗ W♭ (z)^*",
+   "count": 1,
+   "expected": [
+    "φ (z) W♭ (γ z) ⊗ W♭ (z)",
+    [
+     "sup",
+     [
+      "*"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "φ^a(E)",
+   "count": 1,
+   "expected": [
+    "φ",
+    [
+     "sup",
+     [
+      "a"
+     ]
+    ],
+    "(E)"
+   ]
+  },
+  {
+   "span": "φ^l",
+   "count": 2,
+   "expected": [
+    "φ",
+    [
+     "sup",
+     [
+      "l"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "φ^{-a} S",
+   "count": 1,
+   "expected": [
+    "φ",
+    [
+     "sup",
+     [
+      "-a"
+     ]
+    ],
+    " S"
+   ]
+  },
+  {
+   "span": "φ^{-c}",
+   "count": 2,
+   "expected": [
+    "φ",
+    [
+     "sup",
+     [
+      "-c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "φ_v^{-c}",
+   "count": 1,
+   "expected": [
+    "φ",
+    [
+     "sub",
+     [
+      "v"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "-c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "φ_w - 1",
+   "count": 1,
+   "expected": [
+    "φ",
+    [
+     "sub",
+     [
+      "w"
+     ]
+    ],
+    " - 1"
+   ]
+  },
+  {
+   "span": "φ_{P₀} ∈ W",
+   "count": 1,
+   "expected": [
+    "φ",
+    [
+     "sub",
+     [
+      "P₀"
+     ]
+    ],
+    " ∈ W"
+   ]
+  },
+  {
+   "span": "φ″_{ϑ,i}",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "χ ^ q₂ = 1",
+   "count": 1,
+   "expected": [
+    "χ",
+    [
+     "sup",
+     [
+      "q₂"
+     ]
+    ],
+    " = 1"
+   ]
+  },
+  {
+   "span": "χ_K = (· / d)",
+   "count": 1,
+   "expected": [
+    "χ",
+    [
+     "sub",
+     [
+      "K"
+     ]
+    ],
+    " = (· / d)"
+   ]
+  },
+  {
+   "span": "χ_K = (·/d)",
+   "count": 1,
+   "expected": [
+    "χ",
+    [
+     "sub",
+     [
+      "K"
+     ]
+    ],
+    " = (·/d)"
+   ]
+  },
+  {
+   "span": "χ_K(n) ≠ 1",
+   "count": 1,
+   "expected": [
+    "χ",
+    [
+     "sub",
+     [
+      "K"
+     ]
+    ],
+    "(n) ≠ 1"
+   ]
+  },
+  {
+   "span": "χ_K(p) ≠ 1",
+   "count": 2,
+   "expected": [
+    "χ",
+    [
+     "sub",
+     [
+      "K"
+     ]
+    ],
+    "(p) ≠ 1"
+   ]
+  },
+  {
+   "span": "ψ χ_K",
+   "count": 1,
+   "expected": [
+    "ψ χ",
+    [
+     "sub",
+     [
+      "K"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ψ_w^n ≠ 1",
+   "count": 1,
+   "expected": [
+    "ψ",
+    [
+     "sub",
+     [
+      "w"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "n"
+     ]
+    ],
+    " ≠ 1"
+   ]
+  },
+  {
+   "span": "ψ_𝖴(u)",
+   "count": 1,
+   "expected": [
+    "ψ",
+    [
+     "sub",
+     [
+      "𝖴"
+     ]
+    ],
+    "(u)"
+   ]
+  },
+  {
+   "span": "ϑ = ξ ^ j",
+   "count": 1,
+   "expected": [
+    "ϑ = ξ",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ϑ ^ (j - i)",
+   "count": 1,
+   "expected": [
+    "ϑ",
+    [
+     "sup",
+     [
+      "j - i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ϑ ^ j",
+   "count": 2,
+   "expected": [
+    "ϑ",
+    [
+     "sup",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ϑ(φ_{P₀})",
+   "count": 1,
+   "expected": [
+    "ϑ(φ",
+    [
+     "sub",
+     [
+      "P₀"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "ϖ ^ (p + 1) / p",
+   "count": 1,
+   "expected": [
+    "ϖ",
+    [
+     "sup",
+     [
+      "p + 1"
+     ]
+    ],
+    " / p"
+   ]
+  },
+  {
+   "span": "ϖ ^ e Q",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "ϖ ^ k",
+   "count": 1,
+   "expected": [
+    "ϖ",
+    [
+     "sup",
+     [
+      "k"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ϖ^c",
+   "count": 1,
+   "expected": [
+    "ϖ",
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Ỹ^0_0",
+   "count": 4,
+   "expected": [
+    "Ỹ",
+    [
+     "sup",
+     [
+      "0"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Ỹ^0_0 = Y₀ ⊕ E ẽ",
+   "count": 1,
+   "expected": [
+    "Ỹ",
+    [
+     "sup",
+     [
+      "0"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    " = Y₀ ⊕ E ẽ"
+   ]
+  },
+  {
+   "span": "Ỹ^0_0 = Y₀ ⊕ E ẽ₀",
+   "count": 1,
+   "expected": [
+    "Ỹ",
+    [
+     "sup",
+     [
+      "0"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    " = Y₀ ⊕ E ẽ₀"
+   ]
+  },
+  {
+   "span": "Ỹ^i_(j+1)",
+   "count": 1,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "Ỹ^i_0",
+   "count": 3,
+   "expected": [
+    "Ỹ",
+    [
+     "sup",
+     [
+      "i"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Ỹ^m_0",
+   "count": 4,
+   "expected": [
+    "Ỹ",
+    [
+     "sup",
+     [
+      "m"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "Ỹ^m_0, …, Ỹ^0_0",
+   "count": 1,
+   "expected": [
+    "Ỹ",
+    [
+     "sup",
+     [
+      "m"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ],
+    ", …, Ỹ",
+    [
+     "sup",
+     [
+      "0"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "0"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "‖c_ϖ π‖ ≤ p ^ (-1 / (p - 1))",
+   "count": 1,
+   "expected": [
+    "‖c",
+    [
+     "sub",
+     [
+      "ϖ"
+     ]
+    ],
+    " π‖ ≤ p",
+    [
+     "sup",
+     [
+      "-1 / (p - 1)"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "‖u‖ ≤ P ^ 20",
+   "count": 1,
+   "expected": [
+    "‖u‖ ≤ P",
+    [
+     "sup",
+     [
+      "20"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "‖x‖ = p ^ (-v x)",
+   "count": 1,
+   "expected": [
+    "‖x‖ = p",
+    [
+     "sup",
+     [
+      "-v x"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "‖x‖ ^ 2",
+   "count": 2,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "‖φ‖ ^ 2 / N(Q) ^ (2 z - 1)",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "‖φ‖² / N(Q) ^ (2 z - 1)",
+   "count": 2,
+   "expected": [
+    "‖φ‖² / N(Q)",
+    [
+     "sup",
+     [
+      "2 z - 1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℂ / Ω₀ 𝓞_K",
+   "count": 1,
+   "expected": [
+    "ℂ / Ω₀ 𝓞",
+    [
+     "sub",
+     [
+      "K"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℂ ^ l",
+   "count": 1,
+   "expected": [
+    "ℂ",
+    [
+     "sup",
+     [
+      "l"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℂ → ℂ_l",
+   "count": 1,
+   "expected": [
+    "ℂ → ℂ",
+    [
+     "sub",
+     [
+      "l"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℂ ≃ ℚ̄_l",
+   "count": 1,
+   "expected": [
+    "ℂ ≃ ℚ̄",
+    [
+     "sub",
+     [
+      "l"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℂ ≃+* ℚ̄_l",
+   "count": 1,
+   "expected": [
+    "ℂ ≃+* ℚ̄",
+    [
+     "sub",
+     [
+      "l"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℂ^I",
+   "count": 4,
+   "expected": [
+    "ℂ",
+    [
+     "sup",
+     [
+      "I"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℂ_[p]",
+   "count": 11,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "ℓ ^ M",
+   "count": 5,
+   "expected": [
+    "ℓ",
+    [
+     "sup",
+     [
+      "M"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℓ ^ N",
+   "count": 3,
+   "expected": [
+    "ℓ",
+    [
+     "sup",
+     [
+      "N"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℓ ^ h",
+   "count": 5,
+   "expected": [
+    "ℓ",
+    [
+     "sup",
+     [
+      "h"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℓ ^ m",
+   "count": 2,
+   "expected": [
+    "ℓ",
+    [
+     "sup",
+     [
+      "m"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℓ ^ ν",
+   "count": 3,
+   "expected": [
+    "ℓ",
+    [
+     "sup",
+     [
+      "ν"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℓ ^ ν / (2 n!)",
+   "count": 1,
+   "expected": [
+    "ℓ",
+    [
+     "sup",
+     [
+      "ν"
+     ]
+    ],
+    " / (2 n!)"
+   ]
+  },
+  {
+   "span": "ℚ(ζ_{q₁ d})",
+   "count": 1,
+   "expected": [
+    "ℚ(ζ",
+    [
+     "sub",
+     [
+      "q₁ d"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "ℚ̄_ℓ",
+   "count": 13,
+   "expected": [
+    "ℚ̄",
+    [
+     "sub",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℤ / ℓ ^ N",
+   "count": 8,
+   "expected": [
+    "ℤ / ℓ",
+    [
+     "sup",
+     [
+      "N"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℤ/ℓ ^ ν",
+   "count": 1,
+   "expected": [
+    "ℤ/ℓ",
+    [
+     "sup",
+     [
+      "ν"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℤ/ℓ^N",
+   "count": 1,
+   "expected": [
+    "ℤ/ℓ",
+    [
+     "sup",
+     [
+      "N"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℤ/ℓ^ν",
+   "count": 1,
+   "expected": [
+    "ℤ/ℓ",
+    [
+     "sup",
+     [
+      "ν"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "ℤ_[p]",
+   "count": 2,
+   "expected": null,
+   "reason": "no operand"
+  },
+  {
+   "span": "ℤ̄_ℓ",
+   "count": 3,
+   "expected": [
+    "ℤ̄",
+    [
+     "sub",
+     [
+      "ℓ"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "∏ (X - q ^ i)",
+   "count": 1,
+   "expected": [
+    "∏ (X - q",
+    [
+     "sup",
+     [
+      "i"
+     ]
+    ],
+    ")"
+   ]
+  },
+  {
+   "span": "∏ l < k, (q - 1) / (q ^ (l + 1) - 1)",
+   "count": 1,
+   "expected": [
+    "∏ l < k, (q - 1) / (q",
+    [
+     "sup",
+     [
+      "l + 1"
+     ]
+    ],
+    " - 1)"
+   ]
+  },
+  {
+   "span": "∏ Θ(δ_c z)",
+   "count": 1,
+   "expected": [
+    "∏ Θ(δ",
+    [
+     "sub",
+     [
+      "c"
+     ]
+    ],
+    " z)"
+   ]
+  },
+  {
+   "span": "∏ ζ_𝔮 ^ λ_𝔮",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "∏ θ(μ_j z) ^ m j",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "∏_v [ν]_v ^ (-3)",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "∑ (d T)⁻¹ ^ (#κ + 1)",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "∑ 2⁻¹ ^ i = 2",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "∑ t i • 𝔢 ^ i",
+   "count": 1,
+   "expected": [
+    "∑ t i • 𝔢",
+    [
+     "sup",
+     [
+      "i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "∑ β, F β • x ^ β",
+   "count": 1,
+   "expected": [
+    "∑ β, F β • x",
+    [
+     "sup",
+     [
+      "β"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "∑ β_a ^ p ^ e * β'_a",
+   "count": 1,
+   "expected": null,
+   "reason": "second ^ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "∑ λ(n) n ^ (-s) - s / (φ(q) (s - 1))",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed base"
+  },
+  {
+   "span": "∑_{n ≤ y} λ(n) (1/n - 1/y)",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "−κ_j",
+   "count": 1,
+   "expected": [
+    "−κ",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "∫ W ⊗ W^*",
+   "count": 1,
+   "expected": [
+    "∫ W ⊗ W",
+    [
+     "sup",
+     [
+      "*"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "⟨h, h'⟩ = ∑_β h'_β b_β h_β",
+   "count": 1,
+   "expected": null,
+   "reason": "no base"
+  },
+  {
+   "span": "⟨x ^ α, x ^ α⟩ = α!",
+   "count": 1,
+   "expected": [
+    "⟨x",
+    [
+     "sup",
+     [
+      "α"
+     ]
+    ],
+    ", x",
+    [
+     "sup",
+     [
+      "α"
+     ]
+    ],
+    "⟩ = α!"
+   ]
+  },
+  {
+   "span": "⟨θ_W(g, ·), Ξ⟩",
+   "count": 1,
+   "expected": [
+    "⟨θ",
+    [
+     "sub",
+     [
+      "W"
+     ]
+    ],
+    "(g, ·), Ξ⟩"
+   ]
+  },
+  {
+   "span": "⟨ξ̄, θ_W(g, h)⟩",
+   "count": 1,
+   "expected": [
+    "⟨ξ̄, θ",
+    [
+     "sub",
+     [
+      "W"
+     ]
+    ],
+    "(g, h)⟩"
+   ]
+  },
+  {
+   "span": "𝒜' ∩ 𝒜_ι",
+   "count": 1,
+   "expected": [
+    "𝒜' ∩ 𝒜",
+    [
+     "sub",
+     [
+      "ι"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "𝒜^L",
+   "count": 2,
+   "expected": [
+    "𝒜",
+    [
+     "sup",
+     [
+      "L"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "𝒜^∨",
+   "count": 1,
+   "expected": [
+    "𝒜",
+    [
+     "sup",
+     [
+      "∨"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "𝒲_{k+1}",
+   "count": 1,
+   "expected": [
+    "𝒲",
+    [
+     "sub",
+     [
+      "k+1"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "𝓔_q(t)",
+   "count": 1,
+   "expected": [
+    "𝓔",
+    [
+     "sub",
+     [
+      "q"
+     ]
+    ],
+    "(t)"
+   ]
+  },
+  {
+   "span": "𝔟 = π_M ^ b",
+   "count": 2,
+   "expected": [
+    "𝔟 = π",
+    [
+     "sub",
+     [
+      "M"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "𝔟 = ϖ ^ b",
+   "count": 1,
+   "expected": [
+    "𝔟 = ϖ",
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "𝔢 ^ i",
+   "count": 1,
+   "expected": [
+    "𝔢",
+    [
+     "sup",
+     [
+      "i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "𝔪 = ϖ ^ b Q",
+   "count": 1,
+   "expected": null,
+   "reason": "juxtaposed exponent"
+  },
+  {
+   "span": "𝔪₀ = π_M Q",
+   "count": 2,
+   "expected": [
+    "𝔪₀ = π",
+    [
+     "sub",
+     [
+      "M"
+     ]
+    ],
+    " Q"
+   ]
+  },
+  {
+   "span": "𝔸 ^ p",
+   "count": 1,
+   "expected": [
+    "𝔸",
+    [
+     "sup",
+     [
+      "p"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "𝖴_c(M)",
+   "count": 1,
+   "expected": [
+    "𝖴",
+    [
+     "sub",
+     [
+      "c"
+     ]
+    ],
+    "(M)"
+   ]
+  },
+  {
+   "span": "𝗇_j = k + j(t + 1)",
+   "count": 1,
+   "expected": [
+    "𝗇",
+    [
+     "sub",
+     [
+      "j"
+     ]
+    ],
+    " = k + j(t + 1)"
+   ]
+  }
+ ],
+ "pinned": [
+  {
+   "span": "a^b^c",
+   "expected": null,
+   "reason": "second ^ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "a_b_c",
+   "expected": null,
+   "reason": "second _ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "1_'_'",
+   "expected": null,
+   "reason": "second _ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "x_₁_x",
+   "expected": null,
+   "reason": "second _ on one run (a ^ b ^ c)"
+  },
+  {
+   "span": "a^( )",
+   "expected": null,
+   "reason": "empty group"
+  },
+  {
+   "span": "a_{ }",
+   "expected": null,
+   "reason": "empty group"
+  },
+  {
+   "span": "a^{b}̄",
+   "expected": null,
+   "reason": "mark after the operand"
+  },
+  {
+   "span": "a_+̄",
+   "expected": null,
+   "reason": "operator operand not followed by end, space or closer"
+  },
+  {
+   "span": "a_b^c",
+   "expected": [
+    "a",
+    [
+     "sub",
+     [
+      "b"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "a^b_c",
+   "expected": [
+    "a",
+    [
+     "sup",
+     [
+      "b"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "c"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x_i^2",
+   "expected": [
+    "x",
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ],
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x^2_i",
+   "expected": [
+    "x",
+    [
+     "sup",
+     [
+      "2"
+     ]
+    ],
+    [
+     "sub",
+     [
+      "i"
+     ]
+    ]
+   ]
+  },
+  {
+   "span": "x ^ 10⁶",
+   "expected": null,
+   "reason": "operand followed by a superscript glyph"
+  },
+  {
+   "span": "a ^ bⁿ",
+   "expected": [
+    "a",
+    [
+     "sup",
+     [
+      "bⁿ"
+     ]
+    ]
+   ]
+  }
+ ]
+}
