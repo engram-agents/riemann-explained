@@ -73,11 +73,13 @@ export const READING_NONE = "decl_reading_none";
 /* The eight kind words of the statement level: with the group on the builder writes ALL of them into `strings` even when only some kinds occur on the map,
    so each is a KNOWN optional string (non-empty when present, `empty-string`); a kind row that names one still makes it required, as for any `words`.
    With the group off they are extra-strings like any other key the page does not read. */
+export const DECL_KIND_STRINGS = Object.freeze(["decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_instance", "decl_kind_class", "decl_kind_inductive"]);
 /* Two more OPTIONAL statement words, as a PAIR (both or neither): the line under the other-files list that says how many library names are left out of it. One without the
    other is `bad-statement-strings`; with the group off they are extra-strings; present, each is non-empty. With both absent nothing is drawn. */
 export const USES_LIBRARY_STRINGS = Object.freeze(["decl_uses_library_one", "decl_uses_library_many"]);
-export const DECL_KIND_STRINGS = Object.freeze(["decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_instance", "decl_kind_class", "decl_kind_inductive"]);
 export const statementsOn = (strings) => STATEMENT_STRINGS.some((k) => has(strings, k));
+/* One more word of the Graph view that a map MAY hold (Lei, 11-26: the way back from a card to the box it was opened from): present, the sheet shows the control; absent, it does not. Present it is not empty. */
+export const GRAPH_VIEW_OPTIONAL = Object.freeze(["spine_back_to_graph"]);
 export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source", ...TYPESET_STRINGS]);
 /* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
    `edge_basis.words` names. They are neither fixed nor optional: validateIndex adds them to the required set when edge_basis is there, and
@@ -288,7 +290,11 @@ export function validateIndex(raw) {
       if (raw.strings[k] === "") throw new DataError(viewPair.includes(k) ? "bad-view-words" : "empty-string", "index strings holds an empty Graph view word " + k);
     }
   }
-  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k)) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE || DECL_KIND_STRINGS.includes(k) || USES_LIBRARY_STRINGS.includes(k)));
+  for (const k of GRAPH_VIEW_OPTIONAL) {
+    if (has(raw.strings, k) && !viewOn) throw new DataError("bad-view-words", "index strings holds " + k + " without the Graph view words");
+    if (has(raw.strings, k) && raw.strings[k] === "") throw new DataError("empty-string", "index strings holds an empty Graph view word " + k);
+  }
+  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && (GRAPH_VIEW_STRINGS.includes(k) || GRAPH_VIEW_OPTIONAL.includes(k))) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label" || k === READING_NONE || DECL_KIND_STRINGS.includes(k) || USES_LIBRARY_STRINGS.includes(k)));
   const leftover = Object.keys(raw.strings).filter((k) => !known(k));
   if (viewOn && leftover.length === 0) throw new DataError("bad-view-words", "index strings carries no spine sentence key beside the Graph view words");
   for (const k of viewOn ? leftover.slice(1) : leftover) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);

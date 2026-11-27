@@ -74,3 +74,18 @@ test("V7 the spine must name the key the index carries: any other key of the str
   assert.equal(validateSpine(spine("spine_made_up_sentence"), idx).words, "spine_made_up_sentence");
   assert.throws(() => validateSpine(spine("view_cards"), idx), (e) => e instanceof DataError && e.code === "bad-edge-basis" && e.reason.includes("carries"));
 });
+
+/* ---- the one optional word of the view: the way back from a card to the box it was opened from (Lei, 11-26) ---- */
+test("V12 spine_back_to_graph is optional beside the view words: absent or present, the map validates and the record holds the word when it is there", () => {
+  assert.equal(validateIndex(withView()).strings.spine_back_to_graph, undefined);
+  const r = validateIndex(withView((i) => { i.strings.spine_back_to_graph = "made-up back to the graph"; }));
+  assert.equal(r.strings.spine_back_to_graph, "made-up back to the graph");
+  assert.deepEqual(r.graphView, { spineWords: "spine_made_up_sentence" });
+});
+
+test("V13 spine_back_to_graph present is not empty, and is refused by name without the two view words", () => {
+  refuses(() => validateIndex(withView((i) => { i.strings.spine_back_to_graph = ""; })), "empty-string", "spine_back_to_graph");
+  const i = skIndex();
+  i.strings.spine_back_to_graph = "made-up back";
+  refuses(() => validateIndex(i), "bad-view-words", "spine_back_to_graph");
+});
