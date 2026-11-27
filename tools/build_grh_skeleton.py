@@ -2813,7 +2813,7 @@ RDG_WORDS_NEW = {
     "decl_reading_adds": "What the Lean text adds to the comment",
     "readings_byline": "Written by {by}, checked by {second_read_by}, {date}",
 }   # the 8 words of the reading, taken from the shared file by a script (byte for byte), not typed
-RDG_WORDS = dict(STM_WORDS, **RDG_WORDS_NEW)   # the 27 words and the 8 of the reading: the file of --strings-overlay-statements when --readings is given
+RDG_WORDS = dict(STM_WORDS, **RDG_WORDS_NEW)   # the 28 words and the 8 of the reading: the file of --strings-overlay-statements when --readings is given
 RDG_A = _stm_src(
     "/-- Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three\ncontinues on a second line. Alpha four ends. -/\ntheorem alpha : True := trivial\n\n"
     "/-- **Bold title.** Let `p` be prime. It is odd. -/\nlemma beta : True := trivial\n\n"
@@ -6689,7 +6689,7 @@ def _selftest_cases():
     # ---------------------------------------------------------------- the reading of a statement (RDG cases; `--readings FILE`)
 
     @case("RDG-OPTION", "`--readings FILE` REQUIRES `--statements-for`: alone it is refused `SKEL-READING-OPTIONS readings needs --statements-for` (exit 1, nothing written); the option twice or with no value is a "
-                        "usage error (exit 2); with `--statements-for`, the statement words (35) and an empty list it builds")
+                        "usage error (exit 2); with `--statements-for`, the statement words (36) and an empty list it builds")
     def _():
         with _tmp() as d:
             g = _tree(d, _flat(["A", "B"]), {"New/S/A": RDG_A, "New/S/B": RDG_B}, ileans=RDG_ILEANS)
@@ -6703,8 +6703,8 @@ def _selftest_cases():
         return _eq(((alone[0], alone[1], alone[3]), twice[0], twice[3], novalue[0], good[0], good[3]),
                    ((1, ["SKEL-READING-OPTIONS readings needs --statements-for"], False), 2, False, 2, 0, True))
 
-    @case("RDG-ABSENT", "the option absent leaves every output as it is: with `--statements-for` alone (the 27 words) no step file has a `reading`, the report has no `readings` line and index.json `strings` holds none "
-                        "of the 8 words of the reading; with `--readings` and an empty list (the 35 words) every file is byte-identical to that build except index.json, which differs by exactly the 8 words in `strings`, "
+    @case("RDG-ABSENT", "the option absent leaves every output as it is: with `--statements-for` alone (the 28 words) no step file has a `reading`, the report has no `readings` line and index.json `strings` holds none "
+                        "of the 8 words of the reading; with `--readings` and an empty list (the 36 words) every file is byte-identical to that build except index.json, which differs by exactly the 8 words in `strings`, "
                         "and the report adds `readings lean-s-a: 0 readings written`")
     def _():
         with _tmp() as d:
@@ -6959,13 +6959,13 @@ def _selftest_cases():
                    (0, 0, ["by", "date", "second_read_by", "text"], {"text": text[:-1], "by": "B1", "second_read_by": "B2", "date": "2026-01-02"}, True,
                     ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"], ["graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"]))
 
-    @case("RDG-WORDS", "the words are all-or-none with the statement words: with `--readings` the file of --strings-overlay-statements holds EXACTLY the 27 words and the 8 of the reading (`decl_reading_show`, "
-                       "`decl_reading_hide`, `decl_reading_about`, `decl_reading_uses`, `decl_reading_target`, `decl_reading_argument`, `decl_reading_adds`, `readings_byline`): the 27 alone are refused "
-                       "`SKEL-STATEMENT-WORDS <key> missing` (the eight, sorted); without the option the 35 are refused `... <key> is not a statement word`; one missing is named; `readings_byline` must hold "
+    @case("RDG-WORDS", "the words are all-or-none with the statement words: with `--readings` the file of --strings-overlay-statements holds EXACTLY the 28 words and the 8 of the reading (`decl_reading_show`, "
+                       "`decl_reading_hide`, `decl_reading_about`, `decl_reading_uses`, `decl_reading_target`, `decl_reading_argument`, `decl_reading_adds`, `readings_byline`): the 28 alone are refused "
+                       "`SKEL-STATEMENT-WORDS <key> missing` (the eight, sorted); without the option the 36 are refused `... <key> is not a statement word`; one missing is named; `readings_byline` must hold "
                        "`{by}`, `{second_read_by}` and `{date}` and no other placeholder, no other new key has one; the 8 are optional page keys; the good file builds and index.json `strings` holds the 8 verbatim")
     def _():
         out = {}
-        for label, words, opt in (("27+opt", STM_WORDS, True), ("35", RDG_WORDS, False), ("minus1", {k: v for k, v in RDG_WORDS.items() if k != "decl_reading_uses"}, True),
+        for label, words, opt in (("28+opt", STM_WORDS, True), ("36", RDG_WORDS, False), ("minus1", {k: v for k, v in RDG_WORDS.items() if k != "decl_reading_uses"}, True),
                                   ("no-date", dict(RDG_WORDS, readings_byline="Written by {by}, checked by {second_read_by}"), True), ("n", dict(RDG_WORDS, readings_byline=RDG_WORDS["readings_byline"] + " {n}"), True),
                                   ("by-in-show", dict(RDG_WORDS, decl_reading_show="Show {by}"), True), ("extra", dict(RDG_WORDS, view_cards="Cards"), True)):
             with _tmp() as d:
@@ -6978,10 +6978,10 @@ def _selftest_cases():
         new = sorted(RDG_WORDS_NEW)
         return _eq((out, {k: strings.get(k) for k in new}, [k in bs.GRAPH_OPTIONAL_KEYS for k in new], {k: bs.PLACEHOLDERS.get(k) for k in new if bs.PLACEHOLDERS.get(k)}, bs.REQUIRED_PLACEHOLDERS.get("readings_byline"),
                     len(STATEMENT_WORD_KEYS), sorted(READING_WORD_KEYS) == new),
-                   ({"27+opt": (1, [w(k, "missing") for k in new], False), "35": (1, [w(k, "is not a statement word") for k in new], False), "minus1": (1, [w("decl_reading_uses", "missing")], False),
+                   ({"28+opt": (1, [w(k, "missing") for k in new], False), "36": (1, [w(k, "is not a statement word") for k in new], False), "minus1": (1, [w("decl_reading_uses", "missing")], False),
                      "no-date": (1, ["STRINGS-KEY readings_byline is missing the placeholder {date}"], False), "n": (1, ["STRINGS-KEY readings_byline has an unknown placeholder {n}"], False),
                      "by-in-show": (1, ["STRINGS-KEY decl_reading_show has an unknown placeholder {by}"], False), "extra": (1, [w("view_cards", "is not a statement word")], False)},
-                    RDG_WORDS_NEW, [True] * 8, {"readings_byline": {"by", "second_read_by", "date"}}, ("by", "second_read_by", "date"), 27, True))
+                    RDG_WORDS_NEW, [True] * 8, {"readings_byline": {"by", "second_read_by", "date"}}, ("by", "second_read_by", "date"), 28, True))
 
     @case("RDG-WORDS-COPY", "the test copy of the 8 words of the reading equals the values in Ariadne's strings file when that file is readable at its shared path (SKIPPED when it is not: the path is "
                             "in RDG_WORDS_SHARED_PATH)")
