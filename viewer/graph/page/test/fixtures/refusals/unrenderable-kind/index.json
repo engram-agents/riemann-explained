@@ -29,15 +29,15 @@
  },
  "symbols": {
   "kinds": {
+   "conjecture": {
+    "class": "x",
+    "text": "x",
+    "words": "key_kind_theorem"
+   },
    "def": {
     "class": "builder-def",
     "text": "Definition: a named object or statement",
     "words": "key_kind_def"
-   },
-   "lemma": {
-    "class": "x",
-    "text": "x",
-    "words": "key_kind_theorem"
    },
    "structure": {
     "class": "builder-structure",
@@ -55,7 +55,7 @@
     "theorem",
     "def",
     "structure",
-    "lemma"
+    "conjecture"
    ],
    "proofs": [
     "read",

@@ -629,7 +629,7 @@ def main():
 
     refusal("bad-id", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("id", "Bad Id"))
     refusal("bad-id-in-top", index_edit=lambda i: i.__setitem__("top", ["goal-chain", "../x"]))
-    refusal("unknown-kind", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("kind", "lemma"))
+    refusal("unknown-kind", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("kind", "conjecture"))
     refusal("unknown-state", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("state", "half"))
     refusal("child-count-mismatch", step_edit=lambda st: st["goal-chain"]["card"].__setitem__("child_count", 5))
     refusal("path-invalid-id", step_edit=lambda st: st["goal-chain"]["children"][0].__setitem__("path", ["Not Valid"]))
@@ -646,10 +646,10 @@ def main():
     refusal("commit-mismatch", step_edit=lambda st: st["goal-chain"].__setitem__("commit", "f" * 40))
     refusal("symbols-lacks-kind", index_edit=lambda i: (i["symbols"]["kinds"].pop("def"), i["symbols"]["order"]["kinds"].remove("def"), i["strings"].pop("key_kind_def")))
 
-    def lemma(i):
-        i["symbols"]["kinds"]["lemma"] = {"class": "x", "text": "x", "words": "key_kind_theorem"}
-        i["symbols"]["order"]["kinds"].append("lemma")
-    refusal("unrenderable-kind", index_edit=lemma)
+    def conjecture(i):      # a kind the page has no table entry for (`lemma` was one before the statement level)
+        i["symbols"]["kinds"]["conjecture"] = {"class": "x", "text": "x", "words": "key_kind_theorem"}
+        i["symbols"]["order"]["kinds"].append("conjecture")
+    refusal("unrenderable-kind", index_edit=conjecture)
 
     def lemma_proof(i):
         i["symbols"]["proofs"]["maybe"] = {"class": "x", "text": "x", "words": "sheet_proof_read"}

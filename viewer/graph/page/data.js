@@ -6,7 +6,8 @@ import { isId, stepPath } from "./dom.js";
 /* The enumerated class tables (R3): a kind, state or proof reaches a class name only through these. One that the
    contract's `symbols` lists but that is not here is a refusal, never a blank. The `class` the builder writes in a
    symbols row is checked as a string and IGNORED. */
-export const KIND_CLASS = Object.freeze({ theorem: "k-theorem", def: "k-def", structure: "k-structure", part: "k-part", group: "k-group", file: "k-file" });
+export const KIND_CLASS = Object.freeze({ theorem: "k-theorem", def: "k-def", structure: "k-structure", part: "k-part", group: "k-group", file: "k-file",
+  lemma: "k-lemma", abbrev: "k-abbrev", instance: "k-instance", class: "k-class", inductive: "k-inductive" });
 export const STATE_CLASS = Object.freeze({ read: "s-read", census: "s-census", none: "s-none" });
 export const PROOF_CLASS = Object.freeze({ read: "p-read", not_read: "p-not-read", none: "p-none" });
 /* The class the SHEET takes from the shown card's `proof` (never from any text): only `none` has one, because a card with no proof
@@ -62,6 +63,11 @@ export const TYPESET_STRINGS = Object.freeze(["note_label_typeset", "note_typese
    view, the sheet's label and its two lines, and the notice for a failed read of the spine. The spine's own sentence is one more key, whose NAME the page does
    not know: spine.json's edge_basis names it (spine.js), and the index may carry exactly one key beyond the lists. */
 export const GRAPH_VIEW_STRINGS = Object.freeze(["view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"]);
+/* THE STATEMENT LEVEL's words (all-or-none): with ANY of them present ALL must be (non-empty), `bad-statement-strings` naming the first missing; with none the
+   group is off and a step carrying a statement is refused. With the group on, `spine_content_label` (which labels the doc-string) is required too. */
+export const STATEMENT_STRINGS = Object.freeze(["decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note",
+  "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label"]);
+export const statementsOn = (strings) => STATEMENT_STRINGS.some((k) => has(strings, k));
 export const OPTIONAL_STRINGS = Object.freeze(["key_kinds_note", "key_scope_text", "note_label", "note_source", ...TYPESET_STRINGS]);
 /* The strings the page reads ONLY because `edge_basis` is present (data contract section 25): the key's line heading, and the one key
    `edge_basis.words` names. They are neither fixed nor optional: validateIndex adds them to the required set when edge_basis is there, and
@@ -84,6 +90,8 @@ export function requiredStrings(symbols) {
   for (const [t] of TABLES) for (const name of symbols.names[t]) out.push(symbols.words[t][name]);
   for (const name of Object.keys(symbols.cardWords)) out.push(symbols.cardWords[name]);
   for (const name of Object.keys(symbols.countWords)) out.push(symbols.countWords[name].one, symbols.countWords[name].many);
+  for (const name of Object.keys(symbols.openWords)) out.push(symbols.openWords[name].open, symbols.openWords[name].close);
+  for (const name of Object.keys(symbols.childCountWords)) out.push(symbols.childCountWords[name].one, symbols.childCountWords[name].many);
   return out;
 }
 
@@ -94,11 +102,13 @@ export function requiredStrings(symbols) {
    lists exactly the rows that occur on the map, so states and proofs may be empty and kinds may not. `class` and `text` are
    strings and otherwise ignored; `words` is a string (that it is a key of `strings` is checked with the strings). A kinds row may
    also carry `card_words`, a non-empty string (the sheet's one line for that kind); `cardWords` maps the kind to it. It may carry `count_words` too,
-   {one, many}, each a non-empty string (the foot's words for a card whose children are of this kind); `countWords` maps the kind to it. */
+   {one, many}, each a non-empty string (the foot's words for a card whose children are of this kind); `countWords` maps the kind to it. It may carry `open_words`,
+   {open, close}, each a non-empty string naming a strings key (the sheet's parts button for a card of THIS kind); `openWords` maps the kind to it. And
+   `child_count_words`, {one, many} like count_words (the foot of a card of THIS kind whose children name no child_kind with count_words); `childCountWords`. */
 function symbolsOf(v) {
   exactKeys(v, ["order", "kinds", "proofs", "states"], [], "symbols");
   exactKeys(v.order, ["kinds", "proofs", "states"], [], "symbols.order");
-  const out = { words: {}, names: {}, order: {}, cardWords: {}, countWords: {} };
+  const out = { words: {}, names: {}, order: {}, cardWords: {}, countWords: {}, openWords: {}, childCountWords: {} };
   for (const [t, table, code] of TABLES) {
     const rows = v[t];
     if (!isObj(rows) || Object.keys(rows).length === 0) throw new DataError("bad-type", "symbols." + t + " is not a non-empty object");
@@ -106,7 +116,7 @@ function symbolsOf(v) {
     out.words[t] = {};
     for (const n of names) {
       if (!has(table, n)) throw new DataError(code, "symbols." + t + " names a value this page cannot draw");
-      exactKeys(rows[n], ["class", "text", "words"], t === "kinds" ? ["card_words", "count_words"] : [], "symbols." + t + " row");
+      exactKeys(rows[n], ["class", "text", "words"], t === "kinds" ? ["card_words", "count_words", "open_words", "child_count_words"] : [], "symbols." + t + " row");
       if (!isStr(rows[n].class) || !isStr(rows[n].text) || !isStr(rows[n].words))
         throw new DataError("bad-type", "symbols." + t + " row has a class, text or words that is not a string");
       out.words[t][n] = rows[n].words;
@@ -119,6 +129,18 @@ function symbolsOf(v) {
         if (!isObj(cw) || Object.keys(cw).length !== 2 || !has(cw, "one") || !has(cw, "many") || !isStr(cw.one) || cw.one === "" || !isStr(cw.many) || cw.many === "")
           throw new DataError("bad-count-words", "symbols.kinds row has a count_words that is not exactly {one, many} of non-empty strings");
         out.countWords[n] = { one: cw.one, many: cw.many };
+      }
+      if (has(rows[n], "open_words")) {
+        const ow = rows[n].open_words;
+        if (!isObj(ow) || Object.keys(ow).length !== 2 || !has(ow, "open") || !has(ow, "close") || !isStr(ow.open) || ow.open === "" || !isStr(ow.close) || ow.close === "")
+          throw new DataError("bad-open-words", "symbols.kinds row has an open_words that is not exactly {open, close} of non-empty strings");
+        out.openWords[n] = { open: ow.open, close: ow.close };
+      }
+      if (has(rows[n], "child_count_words")) {
+        const cw = rows[n].child_count_words;
+        if (!isObj(cw) || Object.keys(cw).length !== 2 || !has(cw, "one") || !has(cw, "many") || !isStr(cw.one) || cw.one === "" || !isStr(cw.many) || cw.many === "")
+          throw new DataError("bad-count-words", "symbols.kinds row has a child_count_words that is not exactly {one, many} of non-empty strings");
+        out.childCountWords[n] = { one: cw.one, many: cw.many };
       }
     }
     out.names[t] = names;
@@ -215,6 +237,16 @@ export function validateIndex(raw) {
     if (!has(raw.strings, k)) throw new DataError("missing-card-words", "index strings lacks the card word " + k);
   for (const k of Object.values(symbols.countWords).flatMap((c) => [c.one, c.many]))
     if (!has(raw.strings, k)) throw new DataError("missing-count-words", "index strings lacks the count word " + k);
+  for (const k of Object.values(symbols.openWords).flatMap((c) => [c.open, c.close]))
+    if (!has(raw.strings, k)) throw new DataError("missing-open-words", "index strings lacks the open word " + k);
+  for (const k of Object.values(symbols.childCountWords).flatMap((c) => [c.one, c.many]))
+    if (!has(raw.strings, k)) throw new DataError("missing-count-words", "index strings lacks the child count word " + k);
+  /* The statement level's words are all-or-none (the first missing or empty one is named); with the group on the doc-string's label is required too. */
+  const stmtOn = statementsOn(raw.strings);
+  if (stmtOn) {
+    for (const k of STATEMENT_STRINGS) if (!has(raw.strings, k) || raw.strings[k] === "") throw new DataError("bad-statement-strings", "index strings holds part of the statement words, lacks " + k);
+    if (!has(raw.strings, "spine_content_label") || raw.strings.spine_content_label === "") throw new DataError("missing-string", "index strings lacks spine_content_label, the doc-string's label");
+  }
   /* The set the strings check uses depends on edge_basis: present, the key's line heading and the key edge_basis.words names are read too
      (required, an empty one is empty-string); absent, neither is read, so key_lines_heading and key_lines_text are extra-string like any other. */
   const edgeBasis = has(raw, "edge_basis") ? edgeBasisOf(raw.edge_basis, raw.strings) : null;
@@ -242,7 +274,7 @@ export function validateIndex(raw) {
       if (raw.strings[k] === "") throw new DataError(viewPair.includes(k) ? "bad-view-words" : "empty-string", "index strings holds an empty Graph view word " + k);
     }
   }
-  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k));
+  const known = (k) => need.includes(k) || edgeStrings.includes(k) || OPTIONAL_STRINGS.includes(k) || (viewOn && GRAPH_VIEW_STRINGS.includes(k)) || (stmtOn && (STATEMENT_STRINGS.includes(k) || k === "spine_content_label"));
   const leftover = Object.keys(raw.strings).filter((k) => !known(k));
   if (viewOn && leftover.length === 0) throw new DataError("bad-view-words", "index strings carries no spine sentence key beside the Graph view words");
   for (const k of viewOn ? leftover.slice(1) : leftover) throw new DataError("extra-string", "index strings holds a key the page does not read: " + k);
@@ -330,8 +362,50 @@ function noteOf(v, ctx, stepId) {
   return out;
 }
 
+/* THE STATEMENT STEP. A step may carry these seven keys ALL TOGETHER OR NONE (`bad-statement`, naming the step and the first missing key), and then `heading`
+   (a non-empty string of at most 4000 characters, only on a statement step). A step carrying any of them while the strings' statement group is off is
+   `bad-statement-strings`. A statement step is a leaf (child_count 0, no children). Carried as step.decl. */
+const STMT_KEYS = ["name", "source_path", "statement", "variables", "uses_here", "uses_elsewhere", "prompt"];
+const STMT_KEYWORDS = ["theorem", "lemma", "def", "abbrev", "structure", "class", "inductive", "instance"];
+const SOURCE_PATH = /^([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+\.lean$/;
+const NAME_MAX = 300;
+function declOf(raw, ctx, id) {
+  const bad = (why) => new DataError("bad-statement", "step " + id + " " + why);
+  const missing = STMT_KEYS.find((k) => !has(raw, k));
+  if (missing) throw bad("lacks the statement key " + missing);
+  if (!isStr(raw.name) || raw.name === "" || raw.name.length > NAME_MAX) throw bad("has a name that is not a non-empty string of at most " + NAME_MAX + " characters");
+  if (!isStr(raw.source_path) || !SOURCE_PATH.test(raw.source_path) || raw.source_path.split("/").includes("..")) throw bad("has a source_path that is not a relative .lean path");
+  const st = raw.statement;
+  if (!isObj(st) || Object.keys(st).length !== 2 || !has(st, "keyword") || !has(st, "text")) throw bad("has a statement that is not exactly {keyword, text}");
+  if (!isStr(st.keyword) || !STMT_KEYWORDS.includes(st.keyword)) throw bad("has a statement keyword that is not one of the eight");
+  if (!isStr(st.text) || st.text.length < 1 || st.text.length > 65536) throw bad("has a statement text that is not a string of 1 to 65536 characters");
+  if (typeof raw.variables !== "boolean") throw bad("has a variables that is not a boolean");
+  if (!Array.isArray(raw.uses_here) || raw.uses_here.some((x) => !isId(x)) || new Set(raw.uses_here).size !== raw.uses_here.length || raw.uses_here.includes(id))
+    throw bad("has a uses_here that is not a list of other step ids without repeats");
+  if (!Array.isArray(raw.uses_elsewhere)) throw bad("has a uses_elsewhere that is not a list");
+  const elsewhere = raw.uses_elsewhere.map((u) => {
+    if (!isObj(u) || !has(u, "name") || Object.keys(u).some((k) => k !== "name" && k !== "step") || !isStr(u.name) || u.name === "" || u.name.length > NAME_MAX || (has(u, "step") && !isId(u.step)))
+      throw bad("has a uses_elsewhere item that is not {name} or {name, step}");
+    return has(u, "step") ? { name: u.name, step: u.step } : { name: u.name };
+  });
+  if (!isStr(raw.prompt) || raw.prompt.length < 1 || raw.prompt.length > 20000) throw bad("has a prompt that is not a string of 1 to 20000 characters");
+  if (has(raw, "heading") && (!isStr(raw.heading) || raw.heading === "" || raw.heading.length > 4000)) throw bad("has a heading that is not a non-empty string of at most 4000 characters");
+  const out = { name: raw.name, sourcePath: raw.source_path, keyword: st.keyword, text: st.text, variables: raw.variables, usesHere: raw.uses_here.slice(), usesElsewhere: elsewhere, prompt: raw.prompt };
+  if (has(raw, "heading")) out.heading = raw.heading;
+  return out;
+}
+
 export function validateStep(raw, ctx) {
-  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows"], "step");
+  const carriesStatement = isObj(raw) && (STMT_KEYS.some((k) => has(raw, k)) || has(raw, "heading"));
+  if (carriesStatement && !statementsOn(ctx.strings || {}))
+    throw new DataError("bad-statement-strings", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " carries a statement but the index strings hold no statement words");
+  if (carriesStatement && !STMT_KEYS.some((k) => has(raw, k))) throw new DataError("bad-statement", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " has a heading but no statement");
+  if (carriesStatement) {      // an unknown key on a statement step is bad-statement (named), where on any other step it is extra-key
+    const known = new Set(["format", "commit", "id", "path", "card", "children", "rests_on", "note", "index_rows", "spine_rows", "heading", ...STMT_KEYS]);
+    const extra = Object.keys(raw).find((k) => !known.has(k));
+    if (extra !== undefined) throw new DataError("bad-statement", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " has a key a statement step does not: " + extra.slice(0, 40));
+  }
+  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows", ...(carriesStatement ? [...STMT_KEYS, "heading"] : [])], "step");
   if (raw.format !== 1) throw new DataError("bad-format", "step format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "step commit is not a non-empty string");
   if (raw.commit !== ctx.commit) throw new DataError("commit-mismatch", "step commit differs from the index's");
@@ -367,6 +441,10 @@ export function validateStep(raw, ctx) {
   if (has(raw, "index_rows")) out.index_rows = indexRowsOf(raw.index_rows);
   if (has(raw, "spine_rows")) out.spine_rows = spineRowsOf(raw.spine_rows);
   if (has(raw, "note")) out.note = { ...noteOf(raw.note, ctx, raw.id), commit: raw.commit };
+  if (carriesStatement) {
+    if (card.child_count !== 0 || children.length !== 0) throw new DataError("bad-statement", "step " + raw.id + " is a statement but has children");
+    out.decl = declOf(raw, ctx, raw.id);
+  }
   return out;
 }
 

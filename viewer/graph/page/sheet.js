@@ -11,7 +11,9 @@
                         `sheetcloserequest` from anywhere in it runs close()
      claim-clamped      on the sheet body while the claim is clamped to 10 lines (graph.css)
      sheet-status, sheet-tool, crumbs, crumb, crumb-here, crumb-role   chrome this module creates
-     note-label, note-source, note-body   the repository's note, only when the card has one (info.note), directly after the status line
+     note-label, note-source, note-body   the repository's note, only when the card has one (info.note), directly after the status line (and after info.lead)
+     info.lead / info.tail   arrays of nodes the page built (statement.js): lead goes between the status line and the note, tail after the note; both
+                        are released with the note's nodes
      note-typeset-line, note-toggle   only when the page says the maths face is on (info.note.typeset): the line under the source line (told only of
                         the maths-type view) and the button that swaps the rendering for the exact text and back (aria-pressed true = exact text);
                         note-exact on the body while the exact text is shown. A card shown again always starts on the rendering.
@@ -21,6 +23,13 @@
    bubbling `sheetcloserequest` from inside the sheet runs the same close(). */
 import { el, titleChildren } from "./dom.js";
 import { renderNote, exactNote } from "./note.js";
+
+/* The parts button's two words for a card of `kind`: the kind row's open_words (kind -> {open, close}, strings keys) when it has one, else open_parts and
+   close_parts exactly as before. The page names no kind: the table row decides. */
+export function partsWords(strings, openWords, kind) {
+  const row = openWords && typeof kind === "string" && Object.prototype.hasOwnProperty.call(openWords, kind) ? openWords[kind] : null;
+  return row ? { open: strings[row.open], close: strings[row.close] } : { open: strings.open_parts, close: strings.close_parts };
+}
 
 export function createSheet(parts, strings, hooks, signal) {
   const { root, crumbs, tools, body, closeButton } = parts;
@@ -117,6 +126,8 @@ export function createSheet(parts, strings, hooks, signal) {
     }
     /* The repository's note, when the card has one: the label, the source line (text only, never a link), then the note rendered by note.js. They go
        directly after the status line (after the claim when there is none), and the restore half of close takes them out again. */
+    const lead = info.lead || [], tail = info.tail || [];
+    let noteKids = [];
     if (info.note) {
       const n = info.note, t = n.typeset || null;
       const label = el("p", { class: "note-label" }, [t ? t.label : n.label]);
@@ -144,17 +155,23 @@ export function createSheet(parts, strings, hooks, signal) {
         kids.push(line, toggle);
       }
       kids.push(noteBody);
-      rec.noteEls = kids;
+      noteKids = kids;
+    }
+    const placed = [...lead, ...noteKids, ...tail];
+    if (placed.length) {
+      rec.noteEls = placed;
       const first = article.firstChild;
-      let tail = rec.status || (claim && claim.parentNode ? claim : null);
-      for (const k of kids) {
-        if (tail) { tail.parentNode.insertBefore(k, tail.nextSibling); tail = k; } else article.insertBefore(k, first);
+      let after = rec.status || (claim && claim.parentNode ? claim : null);
+      for (const k of placed) {
+        if (after) { after.parentNode.insertBefore(k, after.nextSibling); after = k; } else article.insertBefore(k, first);
       }
     }
     clear(tools);
     if (info.canParts) {
-      const b = el("button", { type: "button", class: "sheet-tool" }, [info.partsOpen ? strings.close_parts : strings.open_parts]);
+      const w = info.partsWords || { open: strings.open_parts, close: strings.close_parts };   // a kind row's open_words (app.js), else the live words
+      const b = el("button", { type: "button", class: "sheet-tool" }, [info.partsOpen ? w.close : w.open]);
       rec.partsOpen = !!info.partsOpen;
+      rec.partsWords = w;
       b.addEventListener("click", () => (rec.partsOpen ? hooks.closeParts(info.id) : hooks.openParts(info.id)), { signal });
       rec.parts = b;
       tools.appendChild(b);
@@ -193,7 +210,7 @@ export function createSheet(parts, strings, hooks, signal) {
     if (!cur || !cur.parts || cur.id !== id) return;
     cur.partsOpen = !!open;
     clear(cur.parts);
-    cur.parts.appendChild(doc.createTextNode(open ? strings.close_parts : strings.open_parts));
+    cur.parts.appendChild(doc.createTextNode(open ? cur.partsWords.close : cur.partsWords.open));
   }
 
   closeButton.addEventListener("click", () => hooks.closeButton(), { signal });

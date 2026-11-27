@@ -13,7 +13,7 @@
   {
    "child_count": 4,
    "id": "a1",
-   "kind": "lemma",
+   "kind": "conjecture",
    "parent_rests_on": true,
    "path": [
     "goal-chain"

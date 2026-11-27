@@ -231,7 +231,7 @@ test("C6: the non-maths view and the exact view are untouched", () => {
 
 test("C7: dom.js TAGS gains sup and sub, and nothing else", () => {
   assert.ok(TAGS.includes("sup") && TAGS.includes("sub"));
-  assert.deepEqual([...TAGS].filter((t) => !["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code", "h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"].includes(t)), ["sup", "sub"]);
+  assert.deepEqual([...TAGS].filter((t) => !["div", "span", "button", "nav", "ol", "ul", "li", "p", "h2", "code", "h3", "h4", "h5", "pre", "table", "thead", "tbody", "tr", "th", "td"].includes(t)), ["a", "sup", "sub"]);   // `a`: the statement card's one link (dom.js, amendment 1)
 });
 
 /* ---------------------------------------------------------------- fold 1 (rulings 39389, 39396, 39398). Synthetic spans only; marks are written as \u escapes. */

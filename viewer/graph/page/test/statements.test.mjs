@@ -299,6 +299,7 @@ function richDoc() {
     n.listeners = [];
     n.addEventListener = (type, fn, opts) => { n.listeners.push({ type, fn, opts }); };
     n.removeChild = (c) => { n.children.splice(n.children.indexOf(c), 1); return c; };
+    n.replaceChildren = (...c) => { n.children.splice(0, n.children.length, ...c); };
     return n;
   };
   doc.defaultView = {};
