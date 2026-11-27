@@ -1717,7 +1717,7 @@ def _statement_symbols(kinds):
 
 READING_CUE_KEYS = ("face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text")   # the 4 words of the reading cue (contract section 33, Ariadne's strings file, section 'Reading cues'): page keys, written to index.json `strings`
 READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline") + READING_CUE_KEYS   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card) and the 4 of the cue; with the option the file of --strings-overlay-statements holds the 28 words and these (40), without it the 28
-READING_BUILDER_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")   # the four heading words of a reading: required in the overlay file with --readings, never written to index.json `strings` (the page reads four of the eight and refuses an index that holds these; the builder does not read the headings of a text today)
+READING_BUILDER_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")   # the four heading words of a reading: required in the overlay file with --readings, never written to index.json `strings` (the page reads four of the eight and refuses an index that holds these; the builder reads them, from the overlay file, to check the `##` heading lines of every reading: `_reading_heading_why`)
 READING_ENTRY_KEYS = ("statement", "file", "text_path", "by", "second_read_by", "date")   # the six string keys of an entry of the readings file, and no other
 READING_TEXT_MAX = 20000   # the most BYTES (UTF-8) of a reading's `text`, counted on the text as written (after the one trailing newline is dropped)
 READING_NAME_MAX = 80   # the most CHARACTERS of `by` and of `second_read_by`
@@ -1843,6 +1843,42 @@ def _reading_entries(raw_file, base):
         if not bad:
             entries.append({"statement": e["statement"], "file": e["file"], "text": text, "by": e["by"], "second_read_by": e["second_read_by"], "date": e["date"]})
     return errors, ([] if errors else entries)
+
+
+JS_WHITESPACE = "\t\n\x0b\x0c\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"   # the body of a character class: JS `\s`, written out (Python's `\s` lacks U+FEFF and has U+0085 and U+001C-U+001F); case RDH-WS-CLASS compares it with node's `/\s/` over every code unit
+_HEADING_LINE = re.compile("#{1,6}[" + JS_WHITESPACE + "]")   # a HEADING LINE, as the page decides it (viewer/graph/page/note.js: `^(#{1,6})\s+`): one to six `#` and then a character of JS white space
+
+
+def _reading_heading_why(text, words):
+    """None, or the reason (`SKEL-STATEMENT-READING-HEADINGS <statement> <reason>`) that the heading lines of the reading `text` are not the four of the overlay `words` (READING_BUILDER_KEYS: `decl_reading_uses`, `_target`,
+    `_argument` required, then `_adds`, optional, in this order, each once, as `## ` + the word). A HEADING LINE is a line (split on `\\n`) that matches _HEADING_LINE, the page's predicate, ANYWHERE in the text, a quote paragraph
+    included; it is one of the four only if it is `#`, `#`, one ASCII space and the word, after its trailing spaces and tabs are cut, exactly. Of several defects the first of these is the reason: the first offending LINE, whichever it is
+    (`extra line <n>`, n counting the lines of the text from 1; a heading line whose white space is not one ASCII space is extra; or `level <key>`: the words are right, the `#` run is not two); `duplicate <key>` (the first key in order);
+    `missing <key>` (the first required key in order); `order`."""
+    found = []   # the index in READING_BUILDER_KEYS of each heading line that is right, in the order of the text
+    for n, line in enumerate(text.split("\n"), 1):
+        if not _HEADING_LINE.match(line):
+            continue
+        level = len(line) - len(line.lstrip("#"))
+        body = line.rstrip(" \t")[level + 1:] if line[level] == " " else None
+        hit = [i for i, k in enumerate(READING_BUILDER_KEYS) if body == words[k]]
+        if not hit:
+            return f"extra line {n}"
+        if level != 2:
+            return f"level {READING_BUILDER_KEYS[hit[0]]}"
+        found.append(hit[0])
+    for i, k in enumerate(READING_BUILDER_KEYS):
+        if found.count(i) > 1:
+            return f"duplicate {k}"
+    for i, k in enumerate(READING_BUILDER_KEYS[:3]):
+        if i not in found:
+            return f"missing {k}"
+    return None if found == sorted(found) else "order"
+
+
+def _reading_heading_errors(entries, words):
+    """[(SKEL-STATEMENT-READING-HEADINGS, statement through `_safe`, reason)] for the entries of `_reading_entries`, in their order, at most one per entry (`_reading_heading_why`)."""
+    return [("SKEL-STATEMENT-READING-HEADINGS", _safe(e["statement"]), why) for e in entries for why in [_reading_heading_why(e["text"], words)] if why]
 
 
 def _sentence_bounds(body):
@@ -2197,6 +2233,9 @@ def _run(opts):
                 return refuse([("SKEL-STATEMENT-READING-FILE", "too-large", "")])
             raise Unreadable(f"--readings: cannot read {opts['readings']}: {e.reason}")
         errors, entries = _reading_entries(raw_readings, os.path.dirname(os.path.abspath(opts["readings"])))
+        if errors:
+            return refuse(errors)
+        errors = _reading_heading_errors(entries, words)   # after the text, name and date checks (above), before the quotes, the targets and the rest of the build (`build`): the first class that fails is the one printed
         if errors:
             return refuse(errors)
     errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
@@ -2898,9 +2937,23 @@ def _rdg_q(head, quoted):
     return "In the repository's words (%s): \"%s\"" % (head, quoted)
 
 
-def _rdg_run(d, entries, texts=None, words=RDG_WORDS, ids="lean-s-a", raw=None, sub="", extra=(), prep=None, name="readings.json", out="out", readings=True, g=None):
+RDG_HEADS_TAIL = "\n\n".join("## " + RDG_WORDS[k] + "\n\nx" for k in RDG_HEADING_KEYS[:3])   # the three required headings, with a made-up body each: what the older RDG cases append to their texts (`heads`)
+
+
+def _rdg_with_heads(text):
+    """`text` followed by one blank line and the three required headings (a text that ends with a newline keeps it, so the join is always one blank line): the headings come AFTER the text, so no paragraph number of the text changes."""
+    return text + ("\n" if text.endswith("\n") else "\n\n") + RDG_HEADS_TAIL
+
+
+def _rdg_without_heads(text):
+    """The inverse of `_rdg_with_heads` on the text a build WROTE (the one trailing newline of the file is already dropped); None stays None."""
+    tail = "\n\n" + RDG_HEADS_TAIL
+    return text[:-len(tail)] if text is not None and text.endswith(tail) else text
+
+
+def _rdg_run(d, entries, texts=None, words=RDG_WORDS, ids="lean-s-a", raw=None, sub="", extra=(), prep=None, name="readings.json", out="out", readings=True, g=None, heads=True):
     """(the `_stm_cli` result, the fixture folder) of a build of the fixture with --statements-for `ids` and --readings (unless `readings` is False): the readings file `d/rd/<sub>/<name>` holds `entries` as JSON
-    (or the bytes `raw`), `texts` ({relative path: text or bytes}) are planted beside it, `prep(g, d)` may change the fixture before the run, `g` reuses a fixture folder."""
+    (or the bytes `raw`), `texts` ({relative path: text or bytes}) are planted beside it (with `heads`, each TEXT, not bytes, gets the three required headings after it: `_rdg_with_heads`), `prep(g, d)` may change the fixture before the run, `g` reuses a fixture folder."""
     if g is None:
         g = _tree(d, _flat(["A", "B"]), {"New/S/A": RDG_A, "New/S/B": RDG_B}, ileans=RDG_ILEANS)
         if prep:
@@ -2911,7 +2964,7 @@ def _rdg_run(d, entries, texts=None, words=RDG_WORDS, ids="lean-s-a", raw=None, 
         p = os.path.join(base, *rel.split("/"))
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "wb") as f:
-            f.write(data if isinstance(data, bytes) else data.encode("utf-8"))
+            f.write(data if isinstance(data, bytes) else (_rdg_with_heads(data) if heads else data).encode("utf-8"))
     rp = os.path.join(base, name)
     with open(rp, "wb") as f:
         f.write(raw if raw is not None else json.dumps(entries).encode("utf-8"))
@@ -2927,19 +2980,25 @@ def _rdg_skel(lines):
     return [x for x in lines if x.startswith("SKEL-") or x.startswith("STRINGS-")]
 
 
-def _rdg_one(text, entry=None, **kw):
-    """(exit code, the refusal lines, the written `reading` of alpha or None, whether OUT_DIR exists) for ONE reading of alpha whose file `r.md` holds `text`."""
+def _rdg_one(text, entry=None, heads=True, **kw):
+    """(exit code, the refusal lines, the written `reading` of alpha or None, whether OUT_DIR exists) for ONE reading of alpha whose file `r.md` holds `text`; with `heads` the written text is given back without
+    the headings the helper added."""
     with _tmp() as d:
-        r, g = _rdg_run(d, [entry or _rdg_entry()], {"r.md": text}, **kw)
+        r, g = _rdg_run(d, [entry or _rdg_entry()], {"r.md": text}, heads=heads, **kw)
         step = _rdg_step(d, "lean-s-a-alpha") if r[0] == 0 else {}
-    return r[0], _rdg_skel(r[1]), step.get("reading"), r[3]
+    reading = step.get("reading")
+    if reading and heads:
+        reading = dict(reading, text=_rdg_without_heads(reading["text"]))
+    return r[0], _rdg_skel(r[1]), reading, r[3]
 
 
-def _rdg_many(entries, texts, **kw):
+def _rdg_many(entries, texts, heads=True, **kw):
     """(exit code, the refusal lines, {statement: reading} of the build or None, whether OUT_DIR exists) for several readings."""
     with _tmp() as d:
-        r, g = _rdg_run(d, entries, texts, **kw)
+        r, g = _rdg_run(d, entries, texts, heads=heads, **kw)
         got = {n: _rdg_step(d, "lean-s-a-" + n).get("reading") for n in RDG_NAMES} if r[0] == 0 else None
+    if got and heads:
+        got = {n: v and dict(v, text=_rdg_without_heads(v["text"])) for n, v in got.items()}
     return r[0], _rdg_skel(r[1]), got, r[3]
 
 
@@ -6868,20 +6927,24 @@ def _selftest_cases():
                ("nmb", "a" * 19999 + "é"), ("nmb2", "é" * 10001)]
         entries = [_rdg_entry(n, text_path="t%d.md" % i) for i, (n, _t) in enumerate(bad)]
         with _tmp() as d:
-            r, g = _rdg_run(d, entries, {"t%d.md" % i: t for i, (_n, t) in enumerate(bad)})
+            r, g = _rdg_run(d, entries, {"t%d.md" % i: t for i, (_n, t) in enumerate(bad)}, heads=False)   # the sizes are of the text as written: no headings are added
         t = lambda n, w: "SKEL-STATEMENT-READING-TEXT %s %s" % (n, w)
         return _eq((r[0], _rdg_skel(r[1]), r[3]),
                    (1, [t("nutf", "not-utf-8"), t("nempty", "empty"), t("nnl", "empty"), t("nnul", "nul"), t("ncr", "carriage-return"), t("ntab", "control-character"), t("nesc", "control-character"),
                         t("nbig", "size 20001 bytes, at most 20000"), t("nmb", "size 20001 bytes, at most 20000"), t("nmb2", "size 20002 bytes, at most 20000")], False))
 
-    @case("RDG-TEXT-OK", "the text is written UNCHANGED except for the one trailing-newline rule: 20000 `a` with the file's newline after it (20001 file bytes) is taken, and so is 10000 `é` (20000 bytes, 10000 "
-                         "characters); `abc` + newline is `abc`; `abc` + two newlines is `abc` + newline; `abc` is `abc`; leading newlines and the white space before the last newline are kept; the `**marks**` stay")
+    @case("RDG-TEXT-OK", "the text is written UNCHANGED except for the one trailing-newline rule (each text holds the three required headings, put first so that the end of the text is the payload): a text of exactly 20000 bytes with the file's newline "
+                         "after it (20001 file bytes) is taken, and so is one of 20000 bytes that ends in two-byte characters; `abc` + newline is `abc`; `abc` + two newlines is `abc` + newline; `abc` is `abc`; leading newlines "
+                         "and the white space before the last newline are kept; the `**marks**` stay")
     def _():
-        texts = {"alpha": "a" * 20000 + "\n", "beta": "é" * 10000, "gamma": "abc\n", "delta": "abc\n\n", "eps": "abc", "zeta": "\n\n  abc  \n", "eta": "A **bold** word and `code`.\n"}
+        h = RDG_HEADS_TAIL + "\n\n"
+        room = 20000 - len(h.encode("utf-8"))
+        texts = {"alpha": h + "a" * room + "\n", "beta": h + "a" * (room % 2) + "é" * (room // 2), "gamma": h + "abc\n", "delta": h + "abc\n\n", "eps": h + "abc", "zeta": "\n\n" + h + "  abc  \n",
+                 "eta": h + "A **bold** word and `code`.\n"}
         entries = [_rdg_entry(n, text_path=n + ".md") for n in texts]
-        rc, lines, got, exists = _rdg_many(entries, {n + ".md": t for n, t in texts.items()})
-        return _eq((rc, lines, exists, {n: g["text"] for n, g in got.items()}),
-                   (0, [], True, {"alpha": "a" * 20000, "beta": "é" * 10000, "gamma": "abc", "delta": "abc\n", "eps": "abc", "zeta": "\n\n  abc  ", "eta": "A **bold** word and `code`."}))
+        rc, lines, got, exists = _rdg_many(entries, {n + ".md": t for n, t in texts.items()}, heads=False)
+        return _eq((rc, lines, exists, {n: g["text"] for n, g in got.items()}, len(texts["alpha"].encode("utf-8")), len(texts["beta"].encode("utf-8"))),
+                   (0, [], True, {n: (t[:-1] if t.endswith("\n") else t) for n, t in texts.items()}, 20001, 20000))
 
     @case("RDG-NAME", "`by` and `second_read_by`: `SKEL-STATEMENT-READING-NAME <statement> <field>` when empty, over 80 CHARACTERS (81 refused, 80 taken, and 80 two-byte characters are taken: characters, not bytes), or holding a "
                       "control character, a bidi mark or a zero-width character (the predicate of the prompt path, `str.isprintable`); both fields bad give two lines, `by` first")
@@ -6915,7 +6978,7 @@ def _selftest_cases():
             with _tmp() as d:
                 r, g = _rdg_run(d, entries, {"r.md": "Text."}, ids=ids)
                 bread = _rdg_step(d, "lean-s-b-bdef").get("reading") if r[0] == 0 and "lean-s-b" in ids else None
-            return r[0], _rdg_skel(r[1]), r[3], bread
+            return r[0], _rdg_skel(r[1]), r[3], bread and dict(bread, text=_rdg_without_heads(bread["text"]))
         t = lambda n: "SKEL-STATEMENT-READING-TARGET " + n
         return _eq((run([_rdg_entry("nope")]), run([_rdg_entry("bdef", file="lean-s-b")]), run([_rdg_entry("bdef", file="lean-s-b")], ids="lean-s-a,lean-s-b")[0::3], run([_rdg_entry("alpha"), _rdg_entry("alpha")]),
                     run([_rdg_entry("alpha", file="lean-s-b")], ids="lean-s-a,lean-s-b")[:3], run([_rdg_entry("beta", file="zzz")]), run([_rdg_entry("alpha"), _rdg_entry("nope"), _rdg_entry("beta", file="zzz")])),
@@ -6931,7 +6994,7 @@ def _selftest_cases():
             os.makedirs(os.path.join(base, "real"))
             os.makedirs(os.path.join(base, "adir"))
             with open(os.path.join(base, "real", "r.md"), "w", encoding="utf-8") as f:
-                f.write("Text.")
+                f.write(_rdg_with_heads("Text."))
             os.symlink("real/r.md", os.path.join(base, "ln.md"))
             os.symlink("real", os.path.join(base, "sdir"))
             paths = [("../r.md", "dotdot"), (os.path.join(base, "real", "r.md"), "absolute"), ("real/../real/r.md", "dotdot"), ("", "empty"), ("ln.md", "symlink"), ("sdir/r.md", "symlink"),
@@ -6941,7 +7004,7 @@ def _selftest_cases():
             gstep = _rdg_step(d, "lean-s-a-alpha", out="o-good") if good[0] == 0 else {}
         with _tmp() as d:
             outside, _g = _rdg_run(d, [_rdg_entry(text_path="../r.md")], {"../r.md": "Text."}, sub="sub")
-        return _eq(((r[0], _rdg_skel(r[1]), r[3]), good[0], gstep.get("reading", {}).get("text"), (outside[0], _rdg_skel(outside[1]), outside[3])),
+        return _eq(((r[0], _rdg_skel(r[1]), r[3]), good[0], _rdg_without_heads(gstep.get("reading", {}).get("text")), (outside[0], _rdg_skel(outside[1]), outside[3])),
                    ((1, ["SKEL-STATEMENT-READING-FILE entry %d text_path %s" % (i + 1, w) for i, (_p, w) in enumerate(paths)], False), 0, "Text.", (1, ["SKEL-STATEMENT-READING-FILE entry 1 text_path dotdot"], False)))
 
     @case("RDG-QUOTE-FORM", "a QUOTE PARAGRAPH (a paragraph, split on blank lines, that starts `In the repository's words (`) has exactly the form `In the repository's words (` HEAD `): \"` QUOTED `\"` and nothing "
@@ -7044,8 +7107,8 @@ def _selftest_cases():
             return ("This reading was written for a test; it names nobody.\n\n## What it rests on\n\n- `alpha` and the lemma below it.\n- Nothing else.\n\n"
                     + _rdg_q("lines %d-%d" % (RDG_L1, RDG_L1 + 1), "Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound.") + "\n\n## What it states\n\n1. The first point, with a **bold mark** kept as written.\n2. The second point.\n\n"
                     + _rdg_q("src/New/S/B.lean, line %d" % RDG_LB, bee) + "\n\n## How the Lean proof goes\n\nThe proof is `trivial`.\n\n## What the Lean text adds to the comment\n\nNothing.\n")
-        ok = _rdg_one(make("Bee one."))
-        bad = _rdg_one(make("Bee onf."))
+        ok = _rdg_one(make("Bee one."), heads=False)
+        bad = _rdg_one(make("Bee onf."), heads=False)
         return _eq((ok[:2], ok[2] and ok[2]["text"] == make("Bee one.")[:-1], bad[:2]), ((0, []), True, (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 text"])))
 
     @case("RDG-PRINT", "the build prints, per named file and after that file's statements lines, `readings <file id>: <n> readings written` (n may be 0); without the option the line is absent")
@@ -7075,7 +7138,7 @@ def _selftest_cases():
         a1["card"].pop("reading_count", None)
         differ = sorted(k for k in f0 if f0[k] != f1[k])
         return _eq((r0[0], r1[0], sorted(reading or {}), reading, a0 == a1, differ, [k for k in f1 if k.startswith("graph/step/") and b'"reading"' in f1[k]]),
-                   (0, 0, ["by", "date", "second_read_by", "text"], {"text": text[:-1], "by": "B1", "second_read_by": "B2", "date": "2026-01-02"}, True,
+                   (0, 0, ["by", "date", "second_read_by", "text"], {"text": _rdg_with_heads(text), "by": "B1", "second_read_by": "B2", "date": "2026-01-02"}, True,
                     ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json", "graph/step/lean-s-a.json", "graph/step/lean-s-g.json", "graph/step/lean-s.json"],
                     ["graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"]))
 
@@ -7121,7 +7184,7 @@ def _selftest_cases():
         names = ["x\x1b[31m-t", "y‮-n", "z\x1b-d"]
         entries = [_rdg_entry(names[0], text_path="empty.md"), _rdg_entry(names[1], by=""), _rdg_entry(names[2], date="bad")]
         with _tmp() as d:
-            r, g = _rdg_run(d, entries, {"empty.md": "", "r.md": "Text."})
+            r, g = _rdg_run(d, entries, {"empty.md": "", "r.md": "Text."}, heads=False)   # the empty file must stay empty
         with _tmp() as d:
             r2, g = _rdg_run(d, [_rdg_entry("w\x1b[0m")], {"r.md": "Text."})
         bad = lambda text: any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 or c in "‮​" for c in text if c != "\n")
@@ -7237,7 +7300,7 @@ def _selftest_cases():
             step = _rdg_step(d, "lean-s-a-alpha", out="o1")
         want = set(s0) | set(RDG_PAGE_KEYS) | set(RDC_KEYS)
         return _eq((r0[0], r1[0], r2[0], len(s1) - len(s0), set(s1) == want, set(s2) == want, len(s1), len(s2), [k for k in RDG_HEADING_KEYS if k in s1 or k in s2], {k: s1[k] for k in RDG_PAGE_KEYS + RDC_KEYS} == {k: RDG_ALL_NEW[k] for k in RDG_PAGE_KEYS + RDC_KEYS},
-                    step["reading"]["text"], (r3[0], r3[1])),
+                    _rdg_without_heads(step["reading"]["text"]), (r3[0], r3[1])),
                    (0, 0, 0, 8, True, True, len(s0) + 8, len(s0) + 8, [], True, "Text.", (1, ["SKEL-OVERLAY-KEY graph-words.json decl_reading_uses is not a key the page reads"])))
 
     @case("RDG-WORDS-FILE", "site/strings-lean-statements-readings.json is the 40-word overlay: exactly 40 keys; its 27 other statement keys equal site/strings-lean-statements.json; key_statements_text differs only in its last sentence "
@@ -7473,6 +7536,226 @@ def _selftest_cases():
                    (["STRINGS-KEY count_reading_many is missing the placeholder {n}"], ["STRINGS-KEY count_reading_many holds the placeholder {n} 2 times"], ["STRINGS-KEY count_reading_many has an unknown placeholder {m}",
                                                                                                                                                                   "STRINGS-KEY count_reading_many is missing the placeholder {n}"],
                     ["STRINGS-KEY count_reading_one has an unknown placeholder {n}"], ["STRINGS-KEY face_reading_cue has an unknown placeholder {x}"], ["STRINGS-KEY key_reading_cue_text has an unknown placeholder {y}"], []))
+
+    # ---------------------------------------------------------------- the HEADING lines of a reading (RDH): checked against the four words of the overlay file
+
+    def _hl(key, level=2, tail=""):   # a heading line: `level` hashes, a space, the overlay word of `key`, `tail`
+        return "#" * level + " " + RDG_WORDS[key] + tail
+
+    def _ht(*lines, preface=None):   # a text: each given line is a heading followed by a blank line, a one-line body and a blank line, so the n-th heading (from 0) stands on line 4n + 1 (after the preface, if any)
+        return ("" if preface is None else preface + "\n\n") + "\n\n".join(x + "\n\nBody." for x in lines)
+
+    HU, HT, HA, HD = (_hl(k) for k in RDG_HEADING_KEYS)
+    KU, KT, KA, KD = RDG_HEADING_KEYS
+    hd = lambda why, who="alpha": "SKEL-STATEMENT-READING-HEADINGS %s %s" % (who, why)
+
+    def _hrun(text, entry=None, **kw):   # (exit code, the refusal lines, whether OUT_DIR exists) of ONE reading of alpha, the headings left as written (no `heads`)
+        r = _rdg_one(text, entry, heads=False, **kw)
+        return r[0], r[1], r[3]
+
+    @case("RDH-OK", "the heading lines of a reading must be `## ` + the overlay words `decl_reading_uses`, `_target`, `_argument` and, optionally, `_adds`, in this order: four headings, three headings (the fourth is optional), "
+                    "a preface paragraph before the first heading, text after the last heading, trailing SPACES on a heading line (a tab is refused earlier, by the text check) all pass and the text is written unchanged; "
+                    "a line that is not a heading line (`#hash`, seven `#` and a space, a space before `##`) is ignored wherever it stands")
+    def _():
+        four = _ht(HU, HT, HA, HD)
+        texts = {"four": four, "three": _ht(HU, HT, HA), "preface": _ht(HU, HT, HA, preface="A preface paragraph.\n\nA second one."), "after": four + "\n\nAfter the last heading.\n\n- a list item",
+                 "spaces": _ht(HU + " ", HT + "   ", HA + " ", HD + "  "), "nonheads": "#hash\n" + "#" * 7 + " seven\n ## indented\n\n" + _ht(HU, HT, HA)}
+        out = {}
+        for k, t in texts.items():
+            r = _rdg_one(t, heads=False)
+            out[k] = (r[0], r[1], bool(r[2]) and r[2]["text"] == t)
+        return _eq(out, {k: (0, [], True) for k in texts})
+
+    def _missing(_k):
+        @case("RDH-MISSING-" + _k.split("_")[-1].upper(), "a required heading absent is `SKEL-STATEMENT-READING-HEADINGS <statement> missing %s` (the overlay key; exit 1, nothing written), "
+                                                          "the other three present, in order, with and without the optional fourth" % _k)
+        def _():
+            rest = [_hl(k) for k in RDG_HEADING_KEYS[:3] if k != _k]
+            got = [_hrun(_ht(*rest)), _hrun(_ht(*(rest + [HD])))]
+            return _eq(got, [(1, [hd("missing " + _k)], False)] * 2)
+    for _k in RDG_HEADING_KEYS[:3]:
+        _missing(_k)
+
+    @case("RDH-MISSING-NONE", "a text with no heading line at all, and one with only the optional heading, is `missing decl_reading_uses` (the first required key in order)")
+    def _():
+        return _eq([_hrun("Just a paragraph."), _hrun(_ht(HD)), _hrun("Text.\n\n- item")], [(1, [hd("missing " + KU)], False)] * 3)
+
+    @case("RDH-ORDER", "the headings present but not in the order uses, target, argument, adds are `order`: a swapped pair, a rotation, and the optional heading before a required one (first, second, third place)")
+    def _():
+        bad = [_ht(HT, HU, HA), _ht(HU, HA, HT), _ht(HA, HT, HU), _ht(HT, HA, HU), _ht(HD, HU, HT, HA), _ht(HU, HD, HT, HA), _ht(HU, HT, HD, HA), _ht(HT, HU, HA, HD)]
+        return _eq([_hrun(t) for t in bad], [(1, [hd("order")], False)] * len(bad))
+
+    def _dup(_k):
+        @case("RDH-DUPLICATE-" + _k.split("_")[-1].upper(), "the heading of `%s` twice (next to each other, the rest in order) is `duplicate %s`" % (_k, _k))
+        def _():
+            lines = []
+            for k in RDG_HEADING_KEYS:
+                lines += [_hl(k)] * (2 if k == _k else 1)
+            return _eq(_hrun(_ht(*lines)), (1, [hd("duplicate " + _k)], False))
+    for _k in RDG_HEADING_KEYS:
+        _dup(_k)
+
+    @case("RDH-EXTRA", "any other heading line is `extra line <n>`, n the 1-based line of the text: a `# Title`, a `### Sub`, a `#### Deep`, a `## Other words` between two, a misspelt heading (that heading is then also missing: the extra line is "
+                       "reported first); with two extra lines the FIRST is printed; a `#` run of one to six counts, a preface line can carry it")
+    def _():
+        e = lambda n: (1, [hd("extra line %d" % n)], False)
+        got = [_hrun(_ht("# Title", HU, HT, HA)), _hrun(_ht(HU, HT, HA, "### Sub")), _hrun(_ht(HU, HT, HA, HD, "#### Deep")), _hrun(_ht(HU, HT, "## Other words", HA)),
+               _hrun(_ht(HU, "## What it state", HA)), _hrun(_ht(HU, "## X", HT, "## Y", HA)), _hrun(_ht("###### Six", HU, HT, HA)), _hrun("Preface line.\n# Title on line 2\n\n" + _ht(HU, HT, HA))]
+        return _eq(got, [e(1), e(13), e(17), e(9), e(5), e(5), e(1), e(2)])
+
+    @case("RDH-EXACT", "the comparison is exact after the trailing spaces: a double space inside, another case, a full stop or a question mark at the end, a different word and two spaces after the `##` are `extra line 5`; a space BEFORE the "
+                       "`##` makes the line no heading line at all, so the heading is `missing`")
+    def _():
+        near = ["## What  it states", "## what it states", "## What it states.", "## What it states?", "## What it stated", "##  What it states"]
+        got = [_hrun(_ht(HU, x, HA)) for x in near] + [_hrun(_ht(HU, " " + HT, HA))]
+        return _eq(got, [(1, [hd("extra line 5")], False)] * len(near) + [(1, [hd("missing " + KT)], False)])
+
+    @case("RDH-NOSPACE", "`##What it states` (no space after the `#` run) is not a heading line, so it is neither extra nor the heading: the text is `missing decl_reading_target`")
+    def _():
+        return _eq(_hrun(_ht(HU, "##" + RDG_WORDS[KT], HA)), (1, [hd("missing " + KT)], False))
+
+    @case("RDH-LEVEL", "the right words at another level are `level <key>`, never `extra`: `# `, `### `, `#### ` and `###### ` before the words of a required and of the optional heading")
+    def _():
+        got = [_hrun(_ht(_hl(KU, 1), HT, HA)), _hrun(_ht(HU, _hl(KT, 3), HA)), _hrun(_ht(HU, HT, _hl(KA, 4))), _hrun(_ht(HU, HT, HA, _hl(KD, 6))), _hrun(_ht(HU, HT, HA, _hl(KD, 3)))]
+        want = [(1, [hd("level " + k)], False) for k in (KU, KT, KA, KD, KD)]
+        return _eq(got, want)
+
+    @case("RDH-PRIORITY", "when one reading has several defects the refusal printed is the first of: the first offending LINE (`extra line n` or `level <key>`, by line number), then `duplicate`, then `missing` (the first key in order), then `order`: "
+                          "one line per reading")
+    def _():
+        got = [_hrun(_ht(_hl(KU, 3), "## Other", HT, HA)), _hrun(_ht("## Other", _hl(KU, 3), HT, HA)), _hrun(_ht(HU, HU, "## Other", HT, HA)), _hrun(_ht(HU, HU, HT)), _hrun(_ht(HT, HU)),
+               _hrun(_ht(HT, HU, HA, HT)), _hrun(_ht(HA, HU)), _hrun(_ht(HU, HT, HA, HU, HD, HD))]
+        want = [(1, [hd("level " + KU)], False), (1, [hd("extra line 1")], False), (1, [hd("extra line 9")], False), (1, [hd("duplicate " + KU)], False), (1, [hd("missing " + KA)], False),
+                (1, [hd("duplicate " + KT)], False), (1, [hd("missing " + KT)], False), (1, [hd("duplicate " + KU)], False)]
+        return _eq(got, want)
+
+    @case("RDH-QUOTE-INSIDE", "a `## ` that is NOT at the start of a line is no heading line, also inside a quote paragraph (a paragraph that opens `In the repository's words (`): a reading whose good one-line quote of a doc-string holds `## ` "
+                              "inside the quotation marks passes and is written unchanged; a `## ` line of a paragraph that is not a quote paragraph is an extra heading line")
+    def _():
+        lib = _lean(decl="/-- Lib first. ## Not a heading here. -/\ntheorem t : True := trivial")
+        ll = _rdg_ln(lib, "/-- Lib")
+
+        def prep(g, d):
+            with open(os.path.join(g, "src", "Lib", "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+        quote = _rdg_q("src/Lib/Other/File.lean, line %d" % ll, "Lib first. ## Not a heading here.")
+        text = HU + "\n\n" + quote + "\n\n" + HT + "\n\nBody.\n\n" + HA + "\n\nBody."
+        ok = _rdg_one(text, heads=False, prep=prep)
+        plain = _rdg_one(HU + "\n\nLib first.\n## Not a heading here.\n\n" + HT + "\n\nBody.\n\n" + HA + "\n\nBody.", heads=False, prep=prep)
+        return _eq((ok[:2], bool(ok[2]) and ok[2]["text"] == text, plain[:2]), ((0, []), True, (1, [hd("extra line 4")])))
+
+    @case("RDH-QUOTE-LINE", "a quote paragraph is NOT exempt: a line of it that is a heading line (the page draws it as one) is `extra line <n>`: a good quote of a two-line doc-string whose second line is `## ...`, after the first heading "
+                            "(line 1) and a blank line, with the quote on line 3: the heading line is line 4")
+    def _():
+        lib = _lean(decl="/-- Lib first.\n## Not a heading here. -/\ntheorem t : True := trivial")
+        ll = _rdg_ln(lib, "/-- Lib")
+
+        def prep(g, d):
+            with open(os.path.join(g, "src", "Lib", "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+        quote = _rdg_q("src/Lib/Other/File.lean, lines %d-%d" % (ll, ll + 1), "Lib first.\n## Not a heading here.")
+        text = HU + "\n\n" + quote + "\n\n" + HT + "\n\nBody.\n\n" + HA + "\n\nBody."
+        return _eq(_rdg_one(text, heads=False, prep=prep)[:2], (1, [hd("extra line 4")]))
+
+    def _ws(_name, _line, _n=5):
+        @case("RDH-WS-" + _name, "a heading line is `#` x1-6 and then ONE character of the page's white space (not only a space): `%s` on line %d is an extra heading line, `extra line %d`" % (_name, _n, _n))
+        def _():
+            return _eq(_hrun(_ht(HU, _line, HT, HA)), (1, [hd("extra line %d" % _n)], False))
+    for _name, _line in (("NBSP", "## Other"), ("U3000", "##　Other"), ("FEFF", "##﻿Other"), ("U2009", "## Other"), ("U2003", "## Other"), ("HASH1-NBSP", "# Other"),
+                         ("ASCII", "## Other"), ("NAMEWORDS-NBSP", "## " + RDG_WORDS[KT])):
+        _ws(_name, _line)
+
+    @case("RDH-WS-TAB", "a tab is white space for the page but a control character for the text check: `##<TAB>Other` and `#<TAB>Other` never reach the heading check, the text is refused `-TEXT control-character` (the control for the cases above)")
+    def _():
+        got = [_hrun(_ht(HU, "##\tOther", HT, HA)), _hrun(_ht(HU, "#\tOther", HT, HA)), _hrun(_ht(HU, "##\t" + RDG_WORDS[KT], HA))]
+        return _eq(got, [(1, ["SKEL-STATEMENT-READING-TEXT alpha control-character"], False)] * 3)
+
+    @case("RDH-SEVEN", "seven `#` and then a space (or a no-break space) is NOT a heading line (the page's `#{1,6}` then white space fails): such lines, on their own line and in a quote-free text, do not refuse; six do")
+    def _():
+        ok = _hrun(_ht(HU, HT, HA) + "\n\n" + "#" * 7 + " seven\n" + "#" * 7 + " seven")
+        six = _hrun(_ht(HU, HT, HA) + "\n\n" + "#" * 6 + " six")
+        return _eq((ok, six), ((0, [], True), (1, [hd("extra line 13")], False)))
+
+    @case("RDH-WS-CLASS", "the white space of the heading predicate is the page's: the class JS_WHITESPACE equals node's `/\\s/` over EVERY code unit 0..0xFFFF, and the predicate `_HEADING_LINE` equals the page's own `HEADING` regex "
+                          "(read from viewer/graph/page/note.js) on a line of 0 to 8 `#`, one code unit, `x`, for every code unit; Python's `\\s` is NOT that class (it lacks U+FEFF); SKIPPED, with the reason printed, without node. Run: "
+                          "`node -e <script>` with the script on the command line")
+    def _():
+        node = shutil.which("node")
+        if node is None:
+            raise _SkipCase("SKIPPED: node is not on the PATH")
+        with open(os.path.join(_HERE, os.pardir, "viewer", "graph", "page", "note.js"), encoding="utf-8") as f:
+            m = re.search(r"^const HEADING = (/.*/);$", f.read(), re.M)
+        if m is None:
+            return False, "the page's HEADING line was not found in viewer/graph/page/note.js"
+        script = ("const HEADING = %s; const ws = [], hd = [];"
+                  "for (let i = 0; i < 65536; i++) { const c = String.fromCharCode(i); if (/\\s/.test(c)) ws.push(i);"
+                  "for (let k = 0; k <= 8; k++) if (HEADING.test('#'.repeat(k) + c + 'x')) hd.push(k * 65536 + i); }"
+                  "console.log(JSON.stringify([ws, hd]));") % m.group(1)
+        r = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return False, "node failed: " + r.stderr[:200]
+        ws, hd_ = json.loads(r.stdout)
+        mine_ws = [i for i in range(65536) if re.fullmatch("[" + JS_WHITESPACE + "]", chr(i))]
+        mine_hd = [k * 65536 + i for k in range(9) for i in range(65536) if _HEADING_LINE.match("#" * k + chr(i) + "x")]
+        return _eq((mine_ws == ws, mine_hd == sorted(hd_), len(ws), re.fullmatch(r"\s", "﻿") is None), (True, True, 25, True))
+
+    @case("RDH-OVERLAY-WORDS", "the words come from the overlay file, not from the code: with the four words changed (`Uses`, `Targets`, `Argument`, `Adds`) a reading with the new words passes and one with the old words is refused "
+                               "`extra line 1`; with only `decl_reading_uses` changed the old other words still pass and the old first word is refused")
+    def _():
+        new = dict(RDG_WORDS, decl_reading_uses="Uses", decl_reading_target="Targets", decl_reading_argument="Argument", decl_reading_adds="Adds")
+        one = dict(RDG_WORDS, decl_reading_uses="Uses")
+        got = [_hrun(_ht("## Uses", "## Targets", "## Argument", "## Adds"), words=new), _hrun(_ht(HU, HT, HA, HD), words=new),
+               _hrun(_ht("## Uses", HT, HA, HD), words=one), _hrun(_ht(HU, HT, HA, HD), words=one)]
+        return _eq(got, [(0, [], True), (1, [hd("extra line 1")], False), (0, [], True), (1, [hd("extra line 1")], False)])
+
+    @case("RDH-ORDER-OF-REFUSALS", "if several refusals apply the first class is printed, and ONLY that class: the text, name and date checks (`-TEXT`, `-NAME`, `-DATE`), then `-HEADINGS`, then the quote check (and the target, and the rest of the "
+                                   "build as today); the order holds across entries: a TEXT refusal of the first entry hides a bad heading of the second, a bad heading of the second hides a bad quote of the first")
+    def _():
+        bad_quote = _rdg_q("line %d" % RDG_L2, "Let `p` be prime. It is odd!")
+        good_heads = _ht(HU, HT, HA)
+        over = _hrun("a" * 20001)
+        tab = _hrun("# Title\tx")
+        name = _rdg_one("Text.", _rdg_entry(by=""), heads=False)
+        date = _rdg_one("Text.", _rdg_entry(date="bad"), heads=False)
+        quote = _hrun(good_heads + "\n\n" + bad_quote)
+        both = _hrun("Text.\n\n" + bad_quote)
+        target = _hrun(good_heads, _rdg_entry("nope"))
+        target_bad = _hrun("Text.", _rdg_entry("nope"))
+        two = [_rdg_entry("alpha", text_path="a.md"), _rdg_entry("beta", text_path="b.md")]
+        many = _rdg_many(two, {"a.md": "a" * 20001, "b.md": "Text."}, heads=False)
+        cross = _rdg_many(two, {"a.md": good_heads + "\n\n" + bad_quote, "b.md": "Text."}, heads=False)
+        q = lambda n, w: "SKEL-STATEMENT-READING-QUOTE alpha paragraph %d %s" % (n, w)
+        return _eq((over, tab, name[:2], date[:2], quote, both, target, target_bad, many[:2], cross[:2]),
+                   ((1, ["SKEL-STATEMENT-READING-TEXT alpha size 20001 bytes, at most 20000"], False), (1, ["SKEL-STATEMENT-READING-TEXT alpha control-character"], False),
+                    (1, ["SKEL-STATEMENT-READING-NAME alpha by"]), (1, ["SKEL-STATEMENT-READING-DATE alpha"]),
+                    (1, [q(1, "text")], False), (1, [hd("missing " + KU)], False), (1, ["SKEL-STATEMENT-READING-TARGET nope"], False), (1, [hd("missing " + KU, "nope")], False),
+                    (1, ["SKEL-STATEMENT-READING-TEXT alpha size 20001 bytes, at most 20000"]), (1, [hd("missing " + KU, "beta")])))
+
+    @case("RDH-ENTRIES", "every entry of the list is checked, in the order of the list: a bad second entry is refused (the first alone being good), two bad entries are two lines, a good entry between two bad ones is not named")
+    def _():
+        good, bad1, bad2 = _ht(HU, HT, HA), "Text.", _ht(HT, HU, HA)
+        a = _rdg_many([_rdg_entry("alpha", text_path="g.md"), _rdg_entry("beta", text_path="b.md")], {"g.md": good, "b.md": bad1}, heads=False)
+        b = _rdg_many([_rdg_entry("alpha", text_path="g.md"), _rdg_entry("beta", text_path="b.md"), _rdg_entry("gamma", text_path="c.md")], {"g.md": good, "b.md": bad1, "c.md": bad2}, heads=False)
+        c = _rdg_many([_rdg_entry("alpha", text_path="b.md"), _rdg_entry("beta", text_path="g.md"), _rdg_entry("gamma", text_path="c.md")], {"g.md": good, "b.md": bad1, "c.md": bad2}, heads=False)
+        d = _rdg_many([_rdg_entry("alpha", text_path="g.md"), _rdg_entry("beta", text_path="g.md")], {"g.md": good}, heads=False)
+        return _eq((a[:2], a[3], b[:2], c[:2], (d[0], d[1], sorted(n for n, v in d[2].items() if v), d[2]["beta"]["text"] == good)),
+                   ((1, [hd("missing " + KU, "beta")]), False, (1, [hd("missing " + KU, "beta"), hd("order", "gamma")]), (1, [hd("missing " + KU, "alpha"), hd("order", "gamma")]),
+                    (0, [], ["alpha", "beta"], True)))
+
+    @case("RDH-ABSENT", "without `--readings` the heading words are not read and nothing changes: a build with `--statements-for` and the 28 words (no heading word in the overlay file) builds, prints no HEADINGS line, and writes no `reading`")
+    def _():
+        with _tmp() as d:
+            r, g = _rdg_run(d, [], words=STM_WORDS, readings=False)
+            files = _tree_files(os.path.join(d, "out"))
+        return _eq((r[0], [x for x in r[1] if "HEADINGS" in x], [k for k, v in files.items() if k.startswith("graph/step/") and b'"reading"' in v], r[3]), (0, [], [], True))
+
+    @case("RDH-ESCAPES", "the statement name of a `-HEADINGS` refusal goes through `_safe`: ESC and a bidi mark are printed as JSON text, and the output holds no raw control or bidi character")
+    def _():
+        names = ["x\x1b[31m-h", "y‮-h"]
+        with _tmp() as d:
+            r, g = _rdg_run(d, [_rdg_entry(names[0], text_path="a.md"), _rdg_entry(names[1], text_path="a.md")], {"a.md": "Text."}, heads=False)
+        bad = any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 or c in "‮​" for c in "\n".join(r[1]) if c != "\n")
+        return _eq((r[0], _rdg_skel(r[1]), bad, r[3]), (1, [hd("missing " + KU, json.dumps(n)) for n in names], False, False))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
