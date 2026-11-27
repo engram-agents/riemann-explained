@@ -5822,6 +5822,27 @@ def _selftest_cases():
                    ([], 3, 1, 2, True, ["g1"], ["statements lean-s-a: 3 declarations, 1 written, 2 reported", "statements lean-s-a: 0 library names left out of uses_elsewhere",
                                           f"statements lean-s-a reported axiom line {la} name ax", f"statements lean-s-a reported theorem line {lg} name g2"]))
 
+    @case("STM-REPORT-ESCAPES", "the name of a REPORTED declaration (the index lists it, the reader did not find it) is printed escaped, like the name of a refusal: an `axiom` whose name holds ESC is "
+                                "printed `statements <id> reported axiom line <n> name \"evil\\u001b[0mname\"` (JSON text, equal to the escaped form), and neither the report lines of the build nor the "
+                                "stdout of the command line holds the raw ESC byte or any other control character of the name")
+    def _():
+        name = "evil\x1b[0mname"
+        src = _stm_src(f"axiom {name} : True\n\ntheorem t : True := trivial\n")
+        lines = src.split("\n")
+        i = next(k for k, ln in enumerate(lines) if ln.startswith("axiom "))
+        col = lines[i].index(name)
+        decls = {"t": [i + 2, 0, i + 2, 0, i + 2, 8, i + 2, 9], name: [i, 0, i, len(lines[i]), i, col, i, col + len(name)]}
+        with _tmp() as d:
+            g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": src}, {"New/S/A": _stm_ilean("New/S/A", decls)}, statements_for=["lean-s-a"])
+        printed = [x for x in report_lines(rep) if x.startswith("statements lean-s-a reported")]
+        with _tmp() as d:
+            g = _tree(d, _flat(["A"]), {"New/S/A": src}, ileans={"New/S/A": _stm_ilean("New/S/A", decls)})
+            r = _stm_cli(d, g, ["--statements-for", "lean-s-a"])
+        want = f"statements lean-s-a reported axiom line {i + 1} name " + json.dumps(name)
+        bad = lambda text: any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 or c in "\u202e\u200b" for c in text if c != "\n")
+        return _eq((errs, printed, want in r[1], r[0], bad("\n".join(r[1])), bad("\n".join(printed)), want == "statements lean-s-a reported axiom line %d name \"evil\\u001b[0mname\"" % (i + 1)),
+                   ([], [want], True, 0, False, False, True))
+
     @case("STM-KIND-REFUSAL", "a keyword the reader yields for which the builder has no kind word is refused by name `SKEL-STATEMENT-KIND <keyword> <name>` and nothing is built, never a fallback word: "
                               "the word table is patched to lack `instance` for the case (no real source is edited); the other kinds of the same file do not hide it, and with the word back it builds")
     def _():
