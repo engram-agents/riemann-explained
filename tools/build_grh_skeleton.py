@@ -5843,6 +5843,20 @@ def _selftest_cases():
         return _eq((errs, printed, want in r[1], r[0], bad("\n".join(r[1])), bad("\n".join(printed)), want == "statements lean-s-a reported axiom line %d name \"evil\\u001b[0mname\"" % (i + 1)),
                    ([], [want], True, 0, False, False, True))
 
+    @case("RDG-ESCAPE-ID", "the name of a statement that slugs to nothing (no ASCII letter or digit: ESC and U+202E) is printed escaped in `SKEL-STATEMENT-ID`, like the name of every other refusal "
+                           "(JSON text `\"\\u001b\\u202e\"`), by the build and through the command line, which prints no raw control or bidi character")
+    def _():
+        name = "\x1b‮"
+        src = _stm_src(f"theorem {name} : True := trivial\n")
+        ils = {"New/S/A": _stm_ilean("New/S/A", [name])}
+        built = _stm_one({"New/S/A": src}, ils)
+        with _tmp() as d:
+            g = _tree(d, _flat(["A"]), {"New/S/A": src}, ileans=ils)
+            r = _stm_cli(d, g, ["--statements-for", "lean-s-a"])
+        want = 'SKEL-STATEMENT-ID "\\u001b\\u202e"'
+        bad = lambda text: any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 or c in "‮​" for c in text if c != "\n")
+        return _eq((built, r[0], r[1], bad("\n".join(r[1])), r[3]), ([("SKEL-STATEMENT-ID", json.dumps(name), "")], 1, [want], False, False))
+
     @case("STM-KIND-REFUSAL", "a keyword the reader yields for which the builder has no kind word is refused by name `SKEL-STATEMENT-KIND <keyword> <name>` and nothing is built, never a fallback word: "
                               "the word table is patched to lack `instance` for the case (no real source is edited); the other kinds of the same file do not hide it, and with the word back it builds")
     def _():
