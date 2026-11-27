@@ -204,7 +204,7 @@ export async function start(doc, deps) {
         currentListed: cardWord === undefined,
         ...(step === undefined ? {} : {
           note: step.note ? { label: decl ? strings.spine_content_label : strings.note_label, text: step.note.text, typeset: decl ? docstringTypeset(strings, typesetWords) : typesetWords,
-            sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null }),
+            sourceParts: templateParts(decl ? strings.decl_note_source : strings.note_source,{ source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null }),
         crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
       });
       if (ok) { hush(); handle.select(id); }

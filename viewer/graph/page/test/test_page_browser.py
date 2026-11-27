@@ -4504,6 +4504,55 @@ def c_stmt_group_off_refused(b, S0, engine):
         S.stop()
 
 
+def c_stmt_note_source_words(b, S0, engine):
+    """F1: a statement card's doc-string source line is decl_note_source ('Comment on this statement in ...'); a FILE card's note keeps note_source ('Opening note of ...')."""
+    def edit(steps):
+        steps["fx-stmt-file"]["note"] = {"source": "grh/src/New/Fx/File.lean", "text": "The file's own opening note."}
+    root = tempfile.mkdtemp(prefix="pg-stmt-")
+    assemble.assemble(root, engine, fix="statements", step_edit=edit)
+    S = Served(root)
+    pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+    try:
+        open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+        src = pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent")
+        assert src.startswith("Comment on this statement in grh/src/New/Fx/File.lean"), src
+        assert "Opening note of" not in src, src
+        at_hash(pg, "")
+        at_hash(pg, "fx-stmt-file")
+        pg.wait("(document.querySelector('#graph-sheet-body .note-source')?.textContent || '').startsWith('Opening note of')", 6000)
+        src = pg.ev("document.querySelector('#graph-sheet-body .note-source').textContent")
+        assert src.startswith("Opening note of grh/src/New/Fx/File.lean"), src
+    finally:
+        pg.close()
+        S.stop()
+
+
+def c_stmt_long_title_wraps(b, S0, engine):
+    """A statement whose short name is a long unbroken identifier (>= 40 characters, drawn as code in the card's title) WRAPS inside the sheet at 390 x 844 and
+    360 x 640: the title's scrollWidth fits its clientWidth and its right edge is inside the sheet body's."""
+    long_name = "LFunction_ne_zero_of_primeRemainder_le_and_more"
+    assert len(long_name) >= 40
+
+    def edit(steps):
+        steps["fx-lem-b"]["card"]["title"] = "`%s`" % long_name
+        for c in steps["fx-stmt-file"]["children"]:
+            if c.get("id") == "fx-lem-b":
+                c["title"] = "`%s`" % long_name
+    for w, h in ((390, 844), (360, 640)):
+        root = tempfile.mkdtemp(prefix="pg-stmt-")
+        assemble.assemble(root, engine, fix="statements", step_edit=edit)
+        S = Served(root)
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=True).settled()
+        try:
+            open_card_by_hash(pg, "fx-lem-b", long_name)
+            m = pg.ev("(() => { const t = document.querySelector('#graph-sheet-body .claim'), s = document.getElementById('graph-sheet-body');"
+                      " return [t.scrollWidth, t.clientWidth, t.getBoundingClientRect().right, s.getBoundingClientRect().right]; })()")
+            assert m[0] <= m[1] + 1 and m[2] <= m[3] + 1, (w, h, m)
+        finally:
+            pg.close()
+            S.stop()
+
+
 STMT_CASES = [
     ("stmt (a): the file's sheet says 'Open its statements', its button opens three boxes in source order with code titles; the foot reads '3 statements'", c_stmt_path_down),
     ("stmt (b): a statement card shows name, heading, doc-string, Lean button, uses, prompt in order; show/hide and aria-expanded; the variables note only where true", c_stmt_card_order),
@@ -4513,6 +4562,8 @@ STMT_CASES = [
     ("stmt (f): the key ends with the statements section", c_stmt_key),
     ("stmt (A3): without decl_reading_none the copy button stands alone in its block", c_stmt_reading_none_absent),
     ("stmt: a map with part of the statement words missing is the fallback", c_stmt_group_off_refused),
+    ("stmt (F1): a statement card's doc-string source line reads 'Comment on this statement in ...', a file card's note keeps 'Opening note of ...'", c_stmt_note_source_words),
+    ("stmt: a long unbroken short name in the card's title wraps inside the sheet at 390 x 844 and 360 x 640", c_stmt_long_title_wraps),
 ]
 
 

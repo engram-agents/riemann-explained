@@ -146,7 +146,8 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; bottom: 0;
 .crumb-here { color: var(--fg); display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
 .crumb-role { margin-right: 6px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
 .sheet-status { margin: 4px 0 10px; font-family: var(--sans); font-size: 14px; font-weight: 500; }
-.graph-sheet-body .claim { font-size: 18px; line-height: 1.4; margin: 0 0 6px; }
+/* overflow-wrap: anywhere: a statement's title is a code span holding one long unbroken Lean name; it breaks inside the name, like .decl-name below it */
+.graph-sheet-body .claim { font-size: 18px; line-height: 1.4; margin: 0 0 6px; overflow-wrap: anywhere; }
 .graph-sheet-body.claim-clamped .claim { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 10; line-clamp: 10; overflow: hidden; }
 /* The sheet shows the page's own one status line, so the list page's lines inside the moved card are hidden HERE ONLY (the fallback
    page and a page with scripts off keep all of them): the statement line and the roots-only line always; the proof line unless

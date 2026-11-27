@@ -23,6 +23,7 @@
  "decl_prompt_copied": "Copied. Paste it into your AI assistant.",
  "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant.",
  "decl_no_note": "No note in the repository.",
+ "decl_note_source": "Comment on this statement in {source} · version {commit} of lsernau/grh-lean",
  "decl_reading_none": "No AI agent's reading of this statement yet. You can ask your own AI assistant for one:",
  "decl_uses_library_one": "It also uses 1 name from Lean's libraries (Mathlib or Lean itself), not listed here.",
  "decl_uses_library_many": "It also uses {n} names from Lean's libraries (Mathlib or Lean itself), not listed here."

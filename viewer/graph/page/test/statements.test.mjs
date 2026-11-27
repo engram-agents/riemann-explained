@@ -1,5 +1,5 @@
 /* The statement-level sample page (spec SPEC-sample-page.md, A-I plus amendments 1 and 2). Written BEFORE the implementation.
-   Part 1: the data layer (index keys, strings group, the step's seven keys), part 2: the face foot and the parts label, part 3: statement.js. */
+   Part 1: the data layer (index keys, strings group, the step's eight keys), part 2: the face foot and the parts label, part 3: statement.js. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
@@ -24,7 +24,7 @@ const refuses = (fn, code, mention) => assert.throws(fn, (e) => {
   return true;
 });
 const GROUP = ["decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading",
-  "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label"];
+  "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_note_source"];
 const STMT = ["name", "source_path", "statement", "variables", "uses_here", "uses_elsewhere", "prompt", "uses_library_count"];
 const KIND_WORDS = ["decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_instance", "decl_kind_class", "decl_kind_inductive"];
 /* the group off: none of the group's keys, the label, the reading line, and the five kind words no row names */
@@ -90,7 +90,7 @@ test("B: a kinds row may carry only these keys beside class, text, words, card_w
 });
 
 /* ------------------------------------------------------------------------------------------------ D: the strings group */
-test("D: with the group on, every one of its keys is known (no extra-string) and all twelve are present", () => {
+test("D: with the group on, every one of its keys is known (no extra-string) and all thirteen are present", () => {
   const i = idx();
   for (const k of GROUP) assert.ok(typeof i.strings[k] === "string" && i.strings[k] !== "", k);
   assert.doesNotThrow(() => validateIndex(i));
@@ -104,6 +104,15 @@ test("D: the group partly present is bad-statement-strings naming the first miss
   }
   const i = idx(); delete i.strings.decl_show_lean; delete i.strings.decl_prompt_note;
   refuses(() => validateIndex(i), "bad-statement-strings", "decl_show_lean");   // the first in the group's order
+});
+test("D: decl_note_source is one of the group: absent or empty with the rest present is bad-statement-strings naming it; alone it turns the group on", () => {
+  assert.ok(GROUP.includes("decl_note_source") && GROUP.length === 13);
+  let i = idx(); delete i.strings.decl_note_source;
+  refuses(() => validateIndex(i), "bad-statement-strings", "decl_note_source");
+  i = idx(); i.strings.decl_note_source = "";
+  refuses(() => validateIndex(i), "bad-statement-strings", "decl_note_source");
+  i = groupOff(idx()); i.strings.decl_note_source = "Comment {source} {commit}";
+  refuses(() => validateIndex(i), "bad-statement-strings", "decl_show_lean");   // any one key turns the group on, so the rest are then missing
 });
 test("D: a map with none of the group's keys and no statement is the live shape (no refusal), and spine_content_label is then an extra-string", () => {
   const i = groupOff(idx());
@@ -135,7 +144,7 @@ test("fold 2 (b): with the group on, each of the eight decl_kind words is known 
 });
 test("fold 2 (d): the REAL words file as the strings' statement words of an index whose kinds table has only part, group, file, theorem, lemma, def validates", () => {
   const words = JSON.parse(readFileSync(SITE_WORDS, "utf8"));
-  assert.equal(Object.keys(words).length, 27);   // the 25 keys of Ariadne's section plus decl_uses_library_one and _many
+  assert.equal(Object.keys(words).length, 28);   // the 26 keys of Ariadne's section (with decl_note_source) plus decl_uses_library_one and _many
   const i = idx();
   for (const k of Object.keys(words)) delete i.strings[k];
   Object.assign(i.strings, words);
@@ -191,18 +200,18 @@ const stmtRefusal = (edit, mention) => {
   const s = stp("fx-thm-a"); edit(s);
   refuses(() => validateStep(s, ctxOf()), "bad-statement", mention || "fx-thm-a");
 };
-test("C: each of the seven keys missing is bad-statement naming the step and that key", () => {
+test("C: each of the eight keys missing is bad-statement naming the step and that key", () => {
   for (const k of STMT) {
     const s = stp("fx-thm-a"); delete s[k];
     refuses(() => validateStep(s, ctxOf()), "bad-statement", "fx-thm-a");
     refuses(() => validateStep(s, ctxOf()), "bad-statement", k);
   }
 });
-test("C: a missing key is named first in the seven's order when several are missing", () => {
+test("C: a missing key is named first in the eight's order when several are missing", () => {
   const s = stp("fx-thm-a"); delete s.prompt; delete s.variables;
   refuses(() => validateStep(s, ctxOf()), "bad-statement", "variables");
 });
-test("C: a key beyond the seven and the heading, on a statement step, is bad-statement naming it", () => {
+test("C: a key beyond the eight and the heading, on a statement step, is bad-statement naming it", () => {
   stmtRefusal((s) => { s.extra_field = 1; }, "extra_field");
 });
 test("C: name: empty, not a string, or over 300 characters", () => {
@@ -211,10 +220,12 @@ test("C: name: empty, not a string, or over 300 characters", () => {
   assert.doesNotThrow(() => validateStep(s, ctxOf()));
 });
 test("C: source_path: '..', a leading '/', not .lean, a bad character, empty are refused", () => {
-  for (const bad of ["src/../x.lean", "../x.lean", "/src/x.lean", "src/x.txt", "src/x", "x.lean", "src//x.lean", "src/x y.lean", "src/x.lean\n", "", 5, "src/a.b.lean", "src/.lean"])
+  for (const bad of ["src/../x.lean", "../x.lean", "/src/x.lean", "src/x.txt", "src/x", "x.lean", "src//x.lean", "src/x y.lean", "src/x.lean\n", "", 5, "src/.lean", "src/./a.lean", "src/a.lean.txt"])
     stmtRefusal((s) => { s.source_path = bad; });
-  const s = stp("fx-thm-a"); s.source_path = "src/New_1/A-b.lean";
-  assert.doesNotThrow(() => validateStep(s, ctxOf()));
+  for (const good of ["src/New_1/A-b.lean", "src/New/a.b.lean"]) {   // the builder's rule: a dot may sit inside a segment
+    const s = stp("fx-thm-a"); s.source_path = good;
+    assert.doesNotThrow(() => validateStep(s, ctxOf()), good);
+  }
 });
 test("C: statement must be exactly {keyword, text}; keyword one of the eight; text 1 to 65536 characters", () => {
   for (const bad of [null, "theorem x", [], {}, { keyword: "theorem" }, { text: "x" }, { keyword: "theorem", text: "x", extra: 1 }])

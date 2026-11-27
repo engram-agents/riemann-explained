@@ -66,7 +66,7 @@ export const GRAPH_VIEW_STRINGS = Object.freeze(["view_cards", "view_graph", "gr
 /* THE STATEMENT LEVEL's words (all-or-none): with ANY of them present ALL must be (non-empty), `bad-statement-strings` naming the first missing; with none the
    group is off and a step carrying a statement is refused. With the group on, `spine_content_label` (which labels the doc-string) is required too. */
 export const STATEMENT_STRINGS = Object.freeze(["decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note",
-  "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label"]);
+  "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_note_source"]);
 /* One OPTIONAL statement word, outside the all-or-none group: `decl_reading_none`, the line above the prompt button. Allowed only with the group on (else it is an
    extra-string like any key the page does not read); present, it is non-empty (`empty-string`). */
 export const READING_NONE = "decl_reading_none";
@@ -387,14 +387,14 @@ function noteOf(v, ctx, stepId) {
    `bad-statement-strings`. A statement step is a leaf (child_count 0, no children). Carried as step.decl. */
 const STMT_KEYS = ["name", "source_path", "statement", "variables", "uses_here", "uses_elsewhere", "prompt", "uses_library_count"];
 const STMT_KEYWORDS = ["theorem", "lemma", "def", "abbrev", "structure", "class", "inductive", "instance"];
-const SOURCE_PATH = /^([A-Za-z0-9_-]+\/)+[A-Za-z0-9_-]+\.lean$/;
+const SOURCE_PATH = /^([A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.lean$/;   /* the builder's rule: a `.` may sit inside a segment; a segment that IS `.` or `..` is refused below */
 const NAME_MAX = 300;
 function declOf(raw, ctx, id) {
   const bad = (why) => new DataError("bad-statement", "step " + id + " " + why);
   const missing = STMT_KEYS.find((k) => !has(raw, k));
   if (missing) throw bad("lacks the statement key " + missing);
   if (!isStr(raw.name) || raw.name === "" || raw.name.length > NAME_MAX) throw bad("has a name that is not a non-empty string of at most " + NAME_MAX + " characters");
-  if (!isStr(raw.source_path) || !SOURCE_PATH.test(raw.source_path) || raw.source_path.split("/").includes("..")) throw bad("has a source_path that is not a relative .lean path");
+  if (!isStr(raw.source_path) || !SOURCE_PATH.test(raw.source_path) || raw.source_path.split("/").some((g) => g === "." || g === "..")) throw bad("has a source_path that is not a relative .lean path");
   const st = raw.statement;
   if (!isObj(st) || Object.keys(st).length !== 2 || !has(st, "keyword") || !has(st, "text")) throw bad("has a statement that is not exactly {keyword, text}");
   if (!isStr(st.keyword) || !STMT_KEYWORDS.includes(st.keyword)) throw bad("has a statement keyword that is not one of the eight");

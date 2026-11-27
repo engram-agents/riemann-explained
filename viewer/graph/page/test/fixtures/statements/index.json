@@ -34,6 +34,7 @@
   "decl_kind_theorem": "Theorem",
   "decl_lean_note": "As written in the file, up to the start of its proof. The file's variable lines apply to it.",
   "decl_no_note": "No note in the repository.",
+  "decl_note_source": "Comment on this statement in {source} · version {commit} of lsernau/grh-lean",
   "decl_prompt_button": "Copy a prompt for your own AI assistant",
   "decl_prompt_copied": "Copied. Paste it into your AI assistant.",
   "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant.",

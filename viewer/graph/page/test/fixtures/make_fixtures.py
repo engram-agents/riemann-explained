@@ -489,10 +489,10 @@ def statements_words():
 
 def statements_build():
     """(index, steps): the statement sample in the shape of the builder's real output (data contract section 31, built state). fx-part (kind part) holds fx-group
-    (kind group), which holds fx-stmt-file and fx-file-2 (kind file); fx-stmt-file holds three statements (theorem, lemma, def) in source order. `strings` carries ALL 27
+    (kind group), which holds fx-stmt-file and fx-file-2 (kind file); fx-stmt-file holds three statements (theorem, lemma, def) in source order. `strings` carries ALL 28
     words of the statement level (the words file), though only theorem, lemma and def occur."""
     W = statements_words()
-    assert len(W) == 27, len(W)      # Ariadne's 25 words plus decl_uses_library_one and decl_uses_library_many
+    assert len(W) == 28, len(W)      # Ariadne's 26 words plus decl_uses_library_one and decl_uses_library_many
     fixed = ["parts_n", "part_one", "open_parts", "close_parts", "claim_more", "claim_less", "crumb_label", "link_refused", "parts_failed_notice",
              "key_kinds_heading", "key_states_heading", "sheet_statement_read", "sheet_statement_census", "sheet_statement_not_read",
              "sheet_proof_read", "sheet_proof_not_read", "sheet_proof_none"]

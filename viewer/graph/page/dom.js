@@ -20,7 +20,7 @@ export function assertId(v) {
   if (!isId(v)) throw new TypeError("not a valid step id");
   return v;
 }
-/* R4: the only file address the page builds, and the only link it creates besides the fixed list address. */
+/* R4: the only file address the page builds; hashFor is the only href it writes (an in-page '#id', on the <a> of a statement card's uses lists). */
 export function stepPath(id) { return "step/" + assertId(id) + ".json"; }
 export function hashFor(id) { return "#" + assertId(id); }
 
