@@ -8,8 +8,8 @@ The tool writes, from the data of `build_grh_skeleton.py` (index.json, spine.jso
 and a page made by `build_site._graph_page`, the tree below, FLAT (the page loads its data and scripts relative to its own address):
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
-build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A27 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
-mutation controls M-a to M-t and M-v, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
+build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A28 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
+mutation controls M-a to M-v, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
@@ -64,7 +64,7 @@ sk = _load("build_grh_skeleton")
 
 _FROM_BUILD_SITE = ("_graph_assets", "_graph_sink_errors", "_graph_asset_errors", "_graph_page", "GRAPH_SHELL_KEYS", "_graph_bytes", "_dump", "_sha",
                     "graph_element_problems", "static_problems", "head_meta_problems", "surface_scan",
-                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems", "element_problems", "link_problems")
+                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems", "element_problems", "link_problems", "_GRAPH_TOKEN")
 _FROM_SKELETON = ("_read_in", "_contained")
 _UNRESOLVED = [f"build_site.{n}" for n in _FROM_BUILD_SITE if not hasattr(bs, n)] + [f"build_grh_skeleton.{n}" for n in _FROM_SKELETON if not hasattr(sk, n)]
 if _UNRESOLVED:   # something the contract imports cannot be imported as it stands: stop, never copy it
@@ -89,6 +89,7 @@ _publish = bs._publish
 _graph_static_problems = bs._graph_static_problems
 element_problems = bs.element_problems
 link_problems = bs.link_problems
+_GRAPH_TOKEN = bs._GRAPH_TOKEN
 _read_in, _contained = sk._read_in, sk._contained
 
 TOP_READ_LIMIT = 4 * 1024 * 1024    # index.json, spine.json, uses.json, the strings file, the shell: the most bytes of each read (A1)
@@ -335,6 +336,15 @@ def _stage_page(shell_bytes, assets, strings, index, names, credits=None, pin=No
             lines.append(f"ASM-STRINGS {key} not-a-string")
         elif key in ABOUT_CREDITS_KEYS and not strings[key]:
             lines.append(f"ASM-STRINGS {key} missing")
+    seen = set()   # A28: every other key a shell token names, in the order the tokens first appear (the builder's own token pattern); readings_front is A18's, below
+    for mt in _GRAPH_TOKEN.finditer(shell_bytes.decode("utf-8")):
+        key = mt.group(1)
+        if key in SHELL_KEYS and key != READINGS_FRONT_KEY and key in strings and key not in seen:
+            seen.add(key)
+            if not isinstance(strings[key], str):
+                lines.append(f"ASM-STRINGS {key} not-a-string")
+            elif not strings[key]:
+                lines.append(f"ASM-STRINGS {key} empty")
     if "{{S:" + READINGS_FRONT_KEY + "}}" in shell_bytes.decode("utf-8"):   # A18: the key is used only when the shell holds the token
         template, rows = strings.get(READINGS_FRONT_KEY), index.get(READINGS_KEY)
         bad_template = not (isinstance(template, str) and template.count("{n}") == 1)
@@ -764,7 +774,7 @@ def _limit_writes(n):
 
 # ---------------------------------------------------------------- the mutation controls: exact specifications, for phase 2 to turn into live checks
 
-CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 28))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
+CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 29))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
 MUTATIONS = {
     "M-a": ("A3", "in the pin stage, skip the comparison of `commit` with --pin for every step/<id>.json (index.json, spine.json and uses.json are still compared)", ("A3",)),
     "M-b": ("A1", "in the data stage, read a step/<id>.json that is a symlink as if it were a regular file (follow it; no `symlink` refusal for it). Every other symlink refusal "
@@ -800,6 +810,8 @@ MUTATIONS = {
                    "allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
     "M-t": ("A27", "loosen the repository constant of the credits page's outbound-link check to `https://github.com/` (the repository is no longer the one `lsernau/grh-lean`): the allowed set is no longer the "
                    "one repository's, so A27 is red; no other case builds a page with an outbound link, so every other A-case stays green", ("A27",)),
+    "M-u": ("A28", "drop the check of the strings keys a shell token names (the loop over the shell's tokens never tests a key, so a value that is not a str or is empty is written as text as before): "
+                   "A28 is red; no other case puts a bad value under a shell key, so every other A-case stays green", ("A28",)),
     "M-v": ("A27", "drop the dot-segment check of the credits page's outbound-link check (A27b: a tail with a `.` or `..` segment is accepted again; the other tail checks stay): a link such as "
                    "`.../tree/<PIN>/../x` is then allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
 }
@@ -833,6 +845,7 @@ MUTATION_EDITS = {
     "M-r": ('static_problems(cpage, "") + element_problems(cpage) + head_meta_problems(cpage)', 'static_problems(cpage, "") + [] + head_meta_problems(cpage)'),
     "M-s": ('if not (commit == pin and (sep == "/" or kind == "tree/")):', 'if not (bool(_PIN.fullmatch(commit)) and (sep == "/" or kind == "tree/")):'),   # (A27b moved the `return` of this test into an `if`; the same wrong implementation)
     "M-t": ('CREDITS_REPO = "https://github.com/lsernau/grh-lean/"', 'CREDITS_REPO = "https://github.com/"'),
+    "M-u": ('        if key in SHELL_KEYS and key != READINGS_FRONT_KEY and key in strings and key not in seen:\n', '        if False:\n'),
     "M-v": ('return not any(g in (".", "..") for g in segs) and "" not in segs[:-1]', 'return "" not in segs[:-1]'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
@@ -2196,6 +2209,76 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
                               ("dots inside a segment", repo + "blob/" + PIN + "/a.b/c..d/e")):
                 note("in-process allowed: " + what, _eq(refs(f'<p><a href="{ref}">x</a></p>'), []))
         return (not fails, "; ".join(fails))
+
+    @case("A28", "every strings key a shell token names is a non-empty string: for each `{{S:key}}` token the shell holds (the builder's own token pattern) whose key is one of SHELL_KEYS and is PRESENT in the "
+                 "strings file, a value that is not a str (an int, a bool, null, a list, an object, a float) is `ASM-STRINGS <key> not-a-string` and the empty string is `ASM-STRINGS <key> empty`, one line "
+                 "per key, after the about_text lines and in the order the tokens first appear in the shell, exit 1, nothing written; a key the shell does not hold is not checked (any value); a missing "
+                 "key stays the builder's refusal; `readings_front` keeps A18's rule and is not reported twice; with --page the three credits keys keep A24's lines; a non-empty str passes unchanged")
+    def _():
+        _need_pr_c()
+
+        def put_strings(w, **over):   # written as JSON directly: `_asm_strings` drops a None, and a null is one of the cases
+            _put(w["strings"], json.dumps(dict(_asm_strings(), **over)))
+
+        for what, val in (("an int", 7), ("a bool", True), ("null", None), ("a list", ["x"]), ("an object", {"a": 1}), ("a float", 1.5)):   # (a) every non-str type, one shell key
+            with _tmp() as d:
+                w = _world(d)
+                put_strings(w, title=val)
+                good, why = _refused(w, _argv(w), ["ASM-STRINGS title not-a-string"], f"title is {what}")
+                if not good:
+                    return good, why
+        with _tmp() as d:   # (b) the empty string
+            w = _world(d)
+            put_strings(w, title="")
+            good, why = _refused(w, _argv(w), ["ASM-STRINGS title empty"], "title is the empty string")
+            if not good:
+                return good, why
+        with _tmp() as d:   # (c) two bad keys and a bad about_text: all the lines, the about_text line first, then the keys in the order of the tokens in the shell (not the strings file's order, which here puts close first)
+            w = _world(d)
+            rest = _asm_strings()
+            rest.pop("close"), rest.pop("title")
+            _put(w["strings"], json.dumps({"close": ["x"], **rest, "title": "", ABOUT_KEY: 7}))   # the file puts close first and title last; the shell holds title before close
+            rc, lines, err = _cli(_argv(w))
+            ok, why = _eq((rc, lines, "Traceback" in err, os.path.exists(w["out"])),
+                          (1, [f"ASM-STRINGS {ABOUT_KEY} not-a-string", "ASM-STRINGS title empty", "ASM-STRINGS close not-a-string"], False, False))
+            if not ok:
+                return ok, "two bad keys and a bad about_text, in order: " + why
+        with _tmp() as d:   # (d) a bad value under a key the shell does NOT hold (SHELL has no scope line and no readings line) is not looked at; a padded str is passed unchanged
+            w = _world(d)
+            put_strings(w, **{SCOPE_KEY: 7, READINGS_FRONT_KEY: ["x"], "unused_key": None, "sentence": "  padded & <b>x</b>  "})
+            tree = _ok_run(w)[0]
+            ok, why = _eq(_no_feedback(tree["index.html"].decode("utf-8")), _no_feedback(_expected_page(w, SHELL, _asm_strings(sentence="  padded & <b>x</b>  "))))   # the section attribute is A7's and A8's (M-h)
+            if not ok:
+                return ok, "a bad value under a key the shell does not hold: " + why
+        with _tmp() as d:   # (d2) a whitespace-only title is a non-empty str: it builds
+            w = _world(d)
+            put_strings(w, title="   ")
+            tree = _ok_run(w)[0]
+            ok, why = _eq(_no_feedback(tree["index.html"].decode("utf-8")), _no_feedback(_expected_page(w, SHELL, _asm_strings(title="   "))))
+            if not ok:
+                return ok, "a whitespace-only title: " + why
+        with _tmp() as d:   # (e) a clean world builds the same tree as before: the page is the builder's, the files are the closed set
+            w = _world(d, scope=True)
+            tree, empty = _ok_run(w)
+            ok, why = _eq((sorted(tree), empty, _no_feedback(tree["index.html"].decode("utf-8"))), (tree_names(w), [], _no_feedback(_expected_page(w, SHELL_SCOPE, _asm_strings()))))   # the section attribute is A7's and A8's (M-h)
+            if not ok:
+                return ok, "a clean world: " + why
+        for what, val in (("an int", 7), ("the empty string", ""), ("a template with no {n}", "no braces")):   # (f) readings_front: A18's line alone (the fixture index has no list, so A18's shape line follows), never an A28 line
+            with _tmp() as d:
+                w = _world(d, shell=SHELL_READINGS)
+                put_strings(w, **{READINGS_FRONT_KEY: val})
+                good, why = _refused(w, _argv(w), [f"ASM-READINGS {READINGS_FRONT_KEY} template", f"ASM-READINGS {READINGS_KEY} shape"], f"readings_front is {what}")
+                if not good:
+                    return good, why
+        with _tmp() as d:   # (g) with --page: A24's lines for the three credits keys are unchanged and appear once; a bad shell key adds its own line after them
+            w = _page_world(d)
+            _put(w["strings"], json.dumps(dict(_page_strings(), **{CREDITS_KEYS[0]: 7, CREDITS_KEYS[1]: "", CREDITS_KEYS[2]: None, "title": 7})))
+            rc, lines, err = _cli(_argv(w))
+            ok, why = _eq((rc, lines, os.path.exists(w["out"])),
+                          (1, [f"ASM-STRINGS {CREDITS_KEYS[0]} not-a-string", f"ASM-STRINGS {CREDITS_KEYS[1]} missing", f"ASM-STRINGS {CREDITS_KEYS[2]} not-a-string", "ASM-STRINGS title not-a-string"], False))
+            if not ok:
+                return ok, "with --page, the three credits keys and a bad title: " + why
+        return True, ""
 
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(

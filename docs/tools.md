@@ -433,7 +433,8 @@ from the one, and the bounded, non-following reader `_read_in` from the other.
   `index.json` `steps` the number of step files (`ASM-PIN <file> <found>`).
 - **The page** is `_graph_page` over the shell with `cards` empty, the About block `<p>` + the escaped strings key `about_text`, and `data-page-feedback="off"` on `<section id="graph-about">`
   (the page has no card articles and no page-level comment thread). The shell may hold the `{{S:front_scope_line}}` and `{{S:readings_front}}` tokens besides the builder's own; the
-  strings value of `readings_front` is a template with one `{n}`, filled with the length of the `readings` list of `index.json` (`ASM-READINGS`). The assembled page then passes the builder's
+  strings value of `readings_front` is a template with one `{n}`, filled with the length of the `readings` list of `index.json` (`ASM-READINGS`). Every other strings key a shell token names must be a non-empty string when the strings file has it:
+  a value that is not a string is `ASM-STRINGS <key> not-a-string`, an empty one is `ASM-STRINGS <key> empty`; a key the shell does not hold is not checked. The assembled page then passes the builder's
   element, static, head and code-on-surface checks (`ASM-PAGE`), and every ref of the written page resolves inside the tree: an absolute, `..` or missing ref is `ASM-PAGE <ref> absolute|escapes|missing`. The refs of the written page must be files of the tree, exactly as named (`./graph.css` is `missing`, a link to `list/` is `missing`), so the shell given to the tool must not be the repository's shared `viewer/graph/shell.html`, which links `list/` twice. Every JSON file about to be written passes the static check as `build_site.py` runs it (`ASM-STATIC`).
 - **The credits page (`--page credits/index.html=PATH`, at most once; REL is exactly `credits/index.html`).** The tool takes the finished page, it does not build it. PATH is read like `--strings` and
   `--shell` (`ASM-DATA <path> <reason>`, 4 MiB). The page passes `static_problems`, `element_problems` (the document table, not the graph page's: no script, inline handler, `base` or `link`),
@@ -450,7 +451,7 @@ from the one, and the bounded, non-following reader `_read_in` from the other.
 - **Nothing is written on a refusal.** Every check runs first; `OUT_DIR` must be absent or empty (`ASM-OUT`); the tree is written into a temporary sibling and renamed into place, so a
   failure leaves `OUT_DIR` as it was. Two runs give byte-identical trees.
 Exit: 0 built; 1 refused (one `ASM-<CODE> <what> <reason>` line per refusal of the first stage that fails); 2 usage. `python3 tools/assemble_grh_site.py --selftest [--only ID,ID]` runs the
-cases (about 10 to 20 minutes depending on the machine: twenty-one of them run the other cases against a deliberately wrong copy of the tool and compare the red cases both ways). It never executes anything it reads. The tool holds all step files in memory at once (at most 2000 files of at most 1 MiB each).
+cases (about 10 to 20 minutes depending on the machine: twenty-two of them run the other cases against a deliberately wrong copy of the tool and compare the red cases both ways). It never executes anything it reads. The tool holds all step files in memory at once (at most 2000 files of at most 1 MiB each).
 `python3 tools/assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR`
 
 **`tools/in_closure.py EDGES_TSV START_MODULE SITES_FILE --control MODULE`** answers, per site: is this
