@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The skeleton of the map for a Lean repository that keeps its own index (CONTENTS.md) and its own folders.
 
-usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json]
-       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR]
+usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--notes-lean-dir DIR]
+       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]
 
 DIR is the folder that holds CONTENTS.md and src/. The tool reads the `## New` section of CONTENTS.md and the .lean files under src/New and writes
 OUT_DIR/graph/index.json, OUT_DIR/graph/step/<id>.json and OUT_DIR/graph/uses.json, and nothing else: no page, no assets (`assets` is {}). It builds ROWS (id,
@@ -15,7 +15,9 @@ holds the Graph view's words) adds the words only the Graph view reads: without 
 a key in both overlays, or in it and the strings file, is refused `SKEL-OVERLAY-CLASH <key>`; a key of either overlay that the page does not read (not copied into `strings`) is refused `SKEL-OVERLAY-KEY <overlay file name> <key> is not a key the page reads`. A Graph-view build passes --strings-overlay-graph; one that passes only --strings-overlay is Cards-only.
 The Graph overlay is read by the same reader as the Cards overlay and its keys meet the same `{n}` placeholder rule at build time; the value rules (no `[proposal]`, no `[placeholder]`, no
 word `edge`) are not checked by the build: case OVL1 holds them on the checked-in file of each overlay. Every .ilean the tool loads must have `version` exactly 5 (ILEAN_VERSIONS), else
-`SKEL-ILEAN-VERSION <path under --ilean-dir> <value as JSON text, or missing>`. Exit 0 built; 1 refused, OUT_DIR not
+`SKEL-ILEAN-VERSION <path under --ilean-dir> <value as JSON text, or missing>`. --notes-lean-dir (no default; absent, the output is today's) reads the contributed notes
+(readings) of a folder of `*.md` files and writes them as `readings` into the file steps they attach to and as the list `readings` of index.json: the grammar, the checks and every
+`SKEL-READING-<kind>` refusal are in docs/tools.md. Exit 0 built; 1 refused, OUT_DIR not
 written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
 self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 and U5 read the real source and run only when --grh and --ilean-dir are given to
 the self-test; otherwise they are skipped.
@@ -45,6 +47,7 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
  8 STRINGS. The strings file is read and checked as build_site does and overlaid; `_graph_files` checks the exact key set (27 keys: the kind words, the card words and the count words come from the overlay).
 """
 import contextlib
+import datetime
 import errno
 import hashlib
 import importlib.util
@@ -954,9 +957,249 @@ def _readme_quote(grh):
     return [], lines[14][:-1]
 
 
-def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None):
+READINGS_READ_LIMIT = 65536   # the most bytes of one note file the tool reads (64 KiB; the body has its own, smaller bound)
+READINGS_BODY_LIMIT = 20000   # the most bytes of a note's body (the text after the closing `---` line)
+READINGS_MAX = 200            # the most notes in the folder
+READINGS_ENTRIES = 1000       # the most directory entries of the folder the tool examines (more: one line `SKEL-READING-COUNT DIR entries`, nothing else)
+READINGS_TITLE_MAX = 200      # the most characters of a title
+READINGS_BY_MAX = 100         # the most characters of `by` and of `second_read_by`
+READINGS_ABOUT_MAX = 200      # the most characters of one `about` name
+READINGS_KEYS = ("id", "title", "attaches", "about", "by", "second_read_by", "source_commit", "date")   # the front-matter keys (each once, in any order)
+READINGS_LISTS = ("attaches", "about")   # the keys whose value is a one-line list; every other key is text
+_READING_LINE = re.compile(r"([a-z_]+):(?: (.*))?")
+_READING_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")   # the page makes an id an element's data-id (`^[a-z0-9][a-z0-9._-]*$`): the first character is a-z or 0-9; no dot, no underscore
+_READING_DATE = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})")
+
+
+def _esc(text):
+    """`text` with every character that is not printable (str.isprintable() False: a newline, ESC, NUL, U+2028, a bidi control, ...) written as \\xNN (below U+0080), \\uNNNN or \\UNNNNNNNN (lower-case
+    hex), a backslash doubled, and a lone surrogate U+DC80..U+DCFF (a byte of a file name that is not UTF-8, kept by `os.fsdecode`) written as \\xNN of that byte. The map is injective (a real newline is
+    `\\x0a`, the four characters backslash x 0 a are `\\\\x0a`; the byte 0x85 is `\\x85`, the character U+0085 is `\\u0085`), so it is applied EXACTLY ONCE, by `_readings`, over every refusal."""
+    out = []
+    for c in text:
+        o = ord(c)
+        if c == "\\":
+            out.append("\\\\")
+        elif 0xDC80 <= o <= 0xDCFF:
+            out.append(f"\\x{o - 0xDC00:02x}")
+        elif c.isprintable():
+            out.append(c)
+        elif o < 0x80:
+            out.append(f"\\x{o:02x}")
+        elif o < 0x10000:
+            out.append(f"\\u{o:04x}")
+        else:
+            out.append(f"\\U{o:08x}")
+    return "".join(out)
+
+
+def _shown(name):
+    """A file name as text, NOT escaped (`_readings` escapes every refusal once): a byte that is not UTF-8 stays a lone surrogate."""
+    return os.fsencode(name).decode("utf-8", "surrogateescape")
+
+
+def _reading_value(key, value):
+    """(reason, parsed) of the text after `key: `: a list `[a, b]` for the keys of READINGS_LISTS (no commas or brackets in an item, no empty item; a `#` tail is part of the value, so it makes the list
+    malformed), plain text (trimmed) for the others; a list where text is expected and the reverse are refused."""
+    if value.startswith("["):
+        if key not in READINGS_LISTS:
+            return f"{key} is a list, not text", None
+        inner = value[1:-1]
+        if not value.endswith("]") or "[" in inner or "]" in inner:
+            return f"{key} is a malformed list", None
+        if inner.strip() == "":
+            return None, []
+        items = [x.strip() for x in inner.split(",")]
+        if "" in items:
+            return f"{key} is a malformed list", None
+        return None, items
+    if key in READINGS_LISTS:
+        return f"{key} is text, not a list", None
+    return None, value
+
+
+def _reading_front(text):
+    """(reason, fields, body) of one note's text: the front matter between the first line `---` and the next line `---`, then the body (every byte after that line's newline). `reason` is None when the
+    front matter is taken. Lines are `key: value` or blank; the keys are those of READINGS_KEYS, each once, in any order."""
+    if text.startswith("---\r"):
+        return "carriage return", None, None
+    if not text.startswith("---\n"):
+        return "no opening ---", None, None
+    pos, n, fields = 4, 1, {}
+    while True:
+        nl = text.find("\n", pos)
+        line = text[pos:] if nl == -1 else text[pos:nl]
+        n += 1
+        if line == "---":
+            return None, fields, "" if nl == -1 else text[nl + 1:]
+        if nl == -1:
+            return "no closing ---", None, None
+        pos = nl + 1
+        if "\r" in line:
+            return "carriage return", None, None
+        if line.strip() == "":
+            continue
+        m = _READING_LINE.fullmatch(line)
+        if m is None:
+            return f"line {n} is not key: value", None, None
+        key = m.group(1)
+        if key in fields:
+            return f"duplicate key {key}", None, None
+        if key not in READINGS_KEYS:
+            return f"unknown key {key}", None, None
+        reason, value = _reading_value(key, (m.group(2) or "").strip())
+        if reason:
+            return reason, None, None
+        if key == "about" and value == []:
+            return "about is an empty list", None, None
+        fields[key] = value
+
+
+def _readings_invariant(step_readings, index_rows):
+    """[(SKEL-READING-INVARIANT, id, detail)]: every row of the index list names a step that carries a reading with that id, and every reading of a step is a row of the list (same id, same step)."""
+    rows = {(r["id"], r["step"]) for r in index_rows}
+    have = {(r["id"], s) for s, rs in step_readings.items() for r in rs}
+    return ([("SKEL-READING-INVARIANT", i, f"index step {s} has no such reading") for i, s in sorted(rows - have)]
+            + [("SKEL-READING-INVARIANT", i, f"reading on {s} is not in the index list") for i, s in sorted(have - rows)])
+
+
+def _readings(notes_dir, pin, rows, ilean_dir):
+    """`_readings_checked` with every file name and every detail of its refusals escaped by `_esc` (so no refusal line can carry a raw control character, whatever the printer)."""
+    errors, step_readings, index_rows = _readings_checked(notes_dir, pin, rows, ilean_dir)
+    return [(c, _esc(w), _esc(d)) for c, w, d in errors], step_readings, index_rows
+
+
+def _readings_checked(notes_dir, pin, rows, ilean_dir):
+    """([(SKEL-READING-<kind>, file, detail)], {file step id: [reading]}, [index row]) from the folder `notes_dir`: the regular files `*.md` directly in it, in name order, each read through the bounded,
+    contained reader; anything else in it is refused by name. Every fault of every note is reported together (the faults of the folder first and alone: FILE, COUNT)."""
+    errors = []
+    try:
+        names = []
+        with os.scandir(notes_dir) as it:
+            for entry in it:   # at most READINGS_ENTRIES + 1 entries are looked at
+                names.append(entry.name)
+                if len(names) > READINGS_ENTRIES:
+                    return [("SKEL-READING-COUNT", "DIR", "entries")], {}, []
+    except OSError:
+        return [("SKEL-READING-FILE", "DIR", "unreadable")], {}, []
+    names.sort()
+    errors += [("SKEL-READING-FILE", _shown(n), "not-a-note") for n in names if not n.endswith(".md")]
+    names = [n for n in names if n.endswith(".md")]
+    if len(names) > READINGS_MAX:
+        return errors + [("SKEL-READING-COUNT", "DIR", f"{len(names)} notes, at most {READINGS_MAX}")], {}, []
+    raws = {}
+    for n in names:
+        try:
+            raws[n] = _read_in(notes_dir, os.path.join(notes_dir, n), READINGS_READ_LIMIT)
+        except SourceError as e:
+            errors.append(("SKEL-READING-FILE", _shown(n), e.reason))
+    errors.sort(key=lambda e: e[1])
+    if errors:
+        return errors, {}, []
+    kinds = {r["id"]: r["kind"] for r in rows}
+    declared = []   # the full declared names of the compiled index, read once and only if a note has `about`
+
+    def known(name):
+        if not declared:
+            ie, where, _uses, _pos = _ilean_index(ilean_dir, set())
+            declared.append((ie, set(where)))
+        return name in declared[0][1]
+    notes, seen = [], {}
+    for n in names:
+        raw, shown = raws[n], _shown(n)
+        if raw.startswith(b"\xef\xbb\xbf"):
+            errors.append(("SKEL-READING-ENCODING", shown, "bom"))
+            continue
+        if b"\x00" in raw:
+            errors.append(("SKEL-READING-ENCODING", shown, "nul"))
+            continue
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            errors.append(("SKEL-READING-ENCODING", shown, "not-utf-8"))
+            continue
+        reason, f, body = _reading_front(text)
+        if reason:
+            errors.append(("SKEL-READING-FRONT", shown, reason))
+            continue
+        size = len(body.encode("utf-8"))
+        if size > READINGS_BODY_LIMIT:
+            errors.append(("SKEL-READING-SIZE", shown, f"body {size} bytes, at most {READINGS_BODY_LIMIT}"))
+        if body == "":
+            errors.append(("SKEL-READING-BODY", shown, "empty"))
+        errors += [("SKEL-READING-MISSING", shown, k) for k in READINGS_KEYS if k != "about" and k not in f]
+        if "id" in f and not _READING_ID.fullmatch(f["id"]):
+            errors.append(("SKEL-READING-ID", shown, f["id"]))
+        if "title" in f and "`" in f["title"]:
+            errors.append(("SKEL-READING-TITLE", shown, "backtick"))
+        elif "title" in f and f["title"] == "":
+            errors.append(("SKEL-READING-TITLE", shown, "empty"))
+        elif "title" in f and not f["title"].isprintable():
+            errors.append(("SKEL-READING-TITLE", shown, "not-printable"))
+        if len(f.get("title", "")) > READINGS_TITLE_MAX:
+            errors.append(("SKEL-READING-SIZE", shown, "title too-long"))
+        if "date" in f:
+            m = _READING_DATE.fullmatch(f["date"])
+            try:
+                if m is None:
+                    raise ValueError
+                datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            except ValueError:
+                errors.append(("SKEL-READING-DATE", shown, f["date"]))
+        for k in ("by", "second_read_by"):
+            if k in f and f[k] == "":
+                errors.append(("SKEL-READING-BY", shown, f"{k} is empty"))
+            elif k in f and not f[k].isprintable():
+                errors.append(("SKEL-READING-BY", shown, f"{k} not-printable"))
+        errors += [("SKEL-READING-SIZE", shown, f"{k} too-long") for k in ("by", "second_read_by") if len(f.get(k, "")) > READINGS_BY_MAX]
+        if f.get("by") and f.get("by") == f.get("second_read_by"):
+            errors.append(("SKEL-READING-BY", shown, "by and second_read_by are the same"))
+        if "source_commit" in f and f["source_commit"] != pin:
+            errors.append(("SKEL-READING-SOURCE", shown, f["source_commit"]))
+        step = None
+        if "attaches" in f:
+            a = f["attaches"]
+            if not a:
+                errors.append(("SKEL-READING-ATTACHES", shown, "none"))
+            elif len(a) > 1:
+                errors.append(("SKEL-READING-ATTACHES", shown, "many"))
+            elif a[0] not in kinds:
+                errors.append(("SKEL-READING-ATTACHES", shown, f"unknown {a[0]}"))
+            elif kinds[a[0]] != "file":
+                errors.append(("SKEL-READING-ATTACHES", shown, f"not-a-file {a[0]}"))
+            else:
+                step = a[0]
+        if any(len(name) > READINGS_ABOUT_MAX for name in f.get("about", [])):
+            errors.append(("SKEL-READING-SIZE", shown, "about too-long"))
+        bad = []
+        for name in f.get("about", []):
+            if name not in bad and not known(name):
+                bad.append(name)
+        if declared and declared[0][0]:   # an .ilean that cannot be read was already refused (SKEL-USES) when the index was built; it is never an `about` verdict
+            return declared[0][0], {}, []
+        errors += [("SKEL-READING-ABOUT", shown, name) for name in bad]
+        if "id" in f:
+            if f["id"] in seen:
+                errors.append(("SKEL-READING-DUP", shown, f"id {f['id']} also in {seen[f['id']]}"))
+            else:
+                seen[f["id"]] = shown
+        notes.append((f, body, step))
+    if errors:
+        return errors, {}, []
+    step_readings, index_rows = {}, []
+    for f, body, step in sorted(notes, key=lambda x: x[0]["id"]):
+        obj = {"id": f["id"], "title": f["title"], "text": body, "by": f["by"], "second_read_by": f["second_read_by"], "date": f["date"]}
+        if "about" in f:
+            obj["about"] = f["about"]
+        step_readings.setdefault(step, []).append(obj)
+        index_rows.append({"id": f["id"], "title": f["title"], "step": step})
+    errors = _readings_invariant(step_readings, index_rows)
+    return errors, ({} if errors else step_readings), ([] if errors else index_rows)
+
+
+def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
-    the folder of the .ilean files of the build."""
+    the folder of the .ilean files of the build; `notes_lean_dir` (optional) is the folder of the contributed notes (readings)."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
     if open_scale_floor is not None:
@@ -987,9 +1230,18 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         if found:   # the written value holds none: the quote (or the template) must not bring a placeholder of another key into it
             return [("SKEL-README", "key_scope_text", "placeholder " + n) for n in found], {}, rows, rep
         strings = dict(strings, key_scope_text=filled)
+    step_extra, index_rows = rep["step_extra"], []
+    if notes_lean_dir is not None:
+        errors, step_readings, index_rows = _readings(notes_lean_dir, pin, rows, ilean_dir)
+        if errors:
+            return errors, {}, rows, rep
+        step_extra = {k: dict(v) for k, v in rep["step_extra"].items()}   # a copy: the report is not changed
+        for sid, readings in step_readings.items():
+            step_extra.setdefault(sid, {})["readings"] = readings
     errors, objs = bs._graph_files(rows, pin, strings, symbols=SYMBOLS, orders=MAP_ORDERS, layout="column", link_info=rep["link_info"], notes=rep["notes"], child_kinds=True,
-                                    step_extra=rep["step_extra"], index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
-                                                     **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {})) or None)
+                                    step_extra=step_extra, index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
+                                                     **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {}),
+                                                     **({"readings": index_rows} if index_rows else {})) or None)
     if errors:
         return errors, {}, rows, rep
     objs["graph/uses.json"] = {"commit": pin, "format": USES_FORMAT, "imports": rep["imports"], "lib_index_rows": rep["lib_index_rows"], "titles": rep["titles"], "used_by": rep["used_by"],
@@ -1003,15 +1255,15 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N]\n"
-         "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR]")
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR]\n"
+         "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]")
 
 
 def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay][, strings-overlay-graph]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -1034,6 +1286,8 @@ def _run(opts):
         raise Unreadable(f"--grh is not a directory: {opts['grh']}")
     if not os.path.isdir(opts["ilean-dir"]):
         raise Unreadable(f"--ilean-dir is not a directory: {opts['ilean-dir']}")
+    if "notes-lean-dir" in opts and not os.path.isdir(opts["notes-lean-dir"]):
+        raise Unreadable(f"--notes-lean-dir is not a directory: {opts['notes-lean-dir']}")
     if os.path.exists(opts["out"]) and not os.path.isdir(opts["out"]):
         raise Unreadable(f"OUT_DIR is not a directory: {opts['out']}")
     try:
@@ -1068,7 +1322,7 @@ def _run(opts):
     if problems:
         return refuse(problems)
     errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
-                                       _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None)
+                                       _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None, opts.get("notes-lean-dir"))
     if errors:
         return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
     try:
@@ -1102,6 +1356,7 @@ class _SkipCase(Exception):
 
 _GRH_FOR_SK13 = None   # the folder given to `--selftest --grh`; SK13 reads it
 _ILEAN_FOR_SK13 = None   # the folder given to `--selftest --ilean-dir`; SK13 reads it with the one above
+_NOTES_FOR_RD = None   # the folder given to `--selftest --notes-lean-dir` (the eleven notes); RDR reads it with the two above
 
 
 def _eq(actual, expected):
@@ -3580,6 +3835,470 @@ def _selftest_cases():
             resource.setrlimit = real
         return _eq((got, calls), (True, [(resource.RLIMIT_AS, (2 * 1024 ** 3, 2 * 1024 ** 3))]))
 
+    # ---------------------------------------------------------------- contributed notes ("readings"): --notes-lean-dir (contract section 28, rulings 17:19Z and 17:22Z)
+    RD_BODY = "### S part\n\n**G**\n\n- `New/S/A` (1): a\n- `New/S/B` (1): b\n"   # ids: lean-s (part), lean-s-g (group), lean-s-a and lean-s-b (files)
+    RD_SRCS = {"New/S/A": _lean(), "New/S/B": _lean()}
+    RD_ILEANS = {"New/S/A": _ilean("New/S/A", {}, decls=("New.S.alpha", "New.S.beta")), "New/S/B": _ilean("New/S/B", {}, decls=("New.S.gamma",)),
+                 "Lib/Other/File": _ilean("Lib/Other/File", {}, decls=("Lib.thing",))}
+    RD_KEYS = ("id", "title", "attaches", "about", "by", "second_read_by", "source_commit", "date")
+    RD_PIN2 = "f" * 40
+
+    def rd_note(**kw):
+        """One note file (bytes): the front matter in the fixed key order (a value is the text after `key: `), then the body."""
+        f = {"id": "n-one", "title": "A title", "attaches": "[lean-s-a]", "about": "[New.S.alpha]", "by": "Halley", "second_read_by": "Kepler", "source_commit": PIN, "date": "2026-11-26"}
+        body, drop = kw.pop("body", "Body line.\n"), kw.pop("drop", ())
+        f.update(kw)
+        return ("---\n" + "".join(f"{k}: {f[k]}\n" for k in RD_KEYS if k not in drop) + "---\n" + body).encode("utf-8")
+
+    def rd_build(files, special=None, pin=PIN, ileans=None, want_rep=False):
+        """([(code, where, detail)], {name: bytes}) of a build of the fixture whose notes folder holds `files` {name: bytes}; `special(folder)` may add other entries; `ileans` replaces RD_ILEANS;
+        with `want_rep` the report of the build is a third value."""
+        with _tmp() as d:
+            g = _tree(d, RD_BODY, RD_SRCS, ileans or RD_ILEANS)
+            nd = os.path.join(d, "notes")
+            os.makedirs(nd)
+            for n, b in files.items():
+                with open(os.path.join(nd, n), "wb") as fh:
+                    fh.write(b)
+            if special:
+                special(nd)
+            errs, out, _rows, _rep = build(g, pin, _strings(), (), _ildir(g), notes_lean_dir=nd)
+        return ([tuple(e) for e in errs], out) + ((_rep,) if want_rep else ())
+
+    def rd_errs(**kw):
+        return rd_build({"n.md": rd_note(**kw)})[0]
+
+    @case("RD1", "contributed notes, a good folder (3 notes, in two file steps; the file names do not sort like the ids): each attached file step has `readings`, the notes in plain string order of `id`, "
+                 "each object with exactly the six keys id, title, text, by, second_read_by, date and the seventh `about` (a list as written) only on a note that has it; `text` is the body "
+                 "bytes after the closing `---` line, unchanged (leading and trailing blank lines, a line `---`, CR, non-ASCII kept; a `#` tail and a colon in a title are part of the title); "
+                 "the step that has no note, the groups and the parts have no `readings`; index.json `readings` is [{id, title, step}], one row per note in id order; there is no "
+                 "`readings_count` and no `readings_files`; nothing else of the step files and index.json changes; the static check passes; a blank line in the front matter is fine")
+    def _():
+        body_b = "\n  leading blank line and spaces kept\n\ntrailing blank lines\n\n\n"
+        body_a = "line one\n---\nkey: value\nx\r\ny √x ≤ ψ\n"
+        files = {"01-first.md": rd_note(id="b-note", title="Hash tail # kept: and a colon", drop=("about",), body=body_b),
+                 "02-second.md": rd_note(id="a-note", title="Second", about="[New.S.alpha, New.S.beta]", body=body_a).replace(b"id: a-note\n", b"id: a-note\n\n"),
+                 "10-late.md": rd_note(id="zz-note", title="Late", attaches="[lean-s-b]", about="[New.S.gamma, Lib.thing]", body="Z\n")}
+        errs, on = rd_build(files)
+        with _tmp() as d:
+            g = _tree(d, RD_BODY, RD_SRCS, RD_ILEANS)
+            off = build(g, PIN, _strings(), (), _ildir(g))[1]
+        a, b = _j(on, "graph/step/lean-s-a.json"), _j(on, "graph/step/lean-s-b.json")
+        ix = _j(on, "graph/index.json")
+        keys6 = ["by", "date", "id", "second_read_by", "text", "title"]
+        strip = lambda f: {k: v for k, v in f.items() if k != "readings"}
+        same = [k for k in off if k not in ("graph/index.json", "graph/step/lean-s-a.json", "graph/step/lean-s-b.json")]
+        return _eq((errs, [r["id"] for r in a["readings"]], [sorted(r) for r in a["readings"]], [r["text"] for r in a["readings"]], a["readings"][0]["about"],
+                    [r["title"] for r in a["readings"]], [r["by"] for r in a["readings"]], [r["second_read_by"] for r in a["readings"]], [r["date"] for r in a["readings"]],
+                    [sorted(r) for r in b["readings"]], b["readings"][0]["about"],
+                    ix["readings"], "readings_count" in ix or "readings_files" in ix,
+                    [k for k in on if k.startswith("graph/step/") and "readings" in _j(on, k)],
+                    all(on[k] == off[k] for k in same), sorted(on) == sorted(off), strip(a) == _j(off, "graph/step/lean-s-a.json"), strip(b) == _j(off, "graph/step/lean-s-b.json"),
+                    {k: v for k, v in ix.items() if k != "readings"} == _j(off, "graph/index.json"), bs._graph_static_problems(on)),
+                   ([], ["a-note", "b-note"], [sorted(keys6 + ["about"]), keys6], [body_a, body_b], ["New.S.alpha", "New.S.beta"],
+                    ["Second", "Hash tail # kept: and a colon"], ["Halley", "Halley"], ["Kepler", "Kepler"], ["2026-11-26", "2026-11-26"],
+                    [sorted(keys6 + ["about"])], ["New.S.gamma", "Lib.thing"],
+                    [{"id": "a-note", "step": "lean-s-a", "title": "Second"}, {"id": "b-note", "step": "lean-s-a", "title": "Hash tail # kept: and a colon"},
+                     {"id": "zz-note", "step": "lean-s-b", "title": "Late"}], False,
+                    ["graph/step/lean-s-a.json", "graph/step/lean-s-b.json"], True, True, True, True, True, []))
+
+    @case("RD2", "without `--notes-lean-dir` the output is today's: no `readings` in index.json or any step file, and the bytes equal a build given an empty folder; a folder `notes-lean` in the working "
+                 "folder or inside the repository folder is NOT read by default (the build from that working folder carries no `readings`); the option has no default")
+    def _():
+        import subprocess as sp
+        with _tmp() as d:
+            g = _tree(d, RD_BODY, RD_SRCS, RD_ILEANS)
+            none = build(g, PIN, _strings(), (), _ildir(g))
+            nd = os.path.join(d, "empty")
+            os.makedirs(nd)
+            empty = build(g, PIN, _strings(), (), _ildir(g), notes_lean_dir=nd)
+            for where in (d, g):   # a folder of good notes where a default might be looked for
+                os.makedirs(os.path.join(where, "notes-lean"))
+                with open(os.path.join(where, "notes-lean", "n.md"), "wb") as fh:
+                    fh.write(rd_note())
+            out = os.path.join(d, "o")
+            r = sp.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, _strings_file(d), _outline_file(d)), cwd=d, capture_output=True, text=True)
+            cli = _tree_files(out)
+        return _eq((none[0], empty[0], none[1] == empty[1], any(b"readings" in v for v in none[1].values()), r.returncode, any(b"readings" in v for v in cli.values()), len(cli)), ([], [], True, False, 0, False, len(none[1])))
+
+    @case("RD3", "contributed notes, refusals by name `SKEL-READING-<kind> <file> <detail>`, one minimal fixture each, nothing written: a missing required key (each of the seven, `MISSING <file> <key>`); an id "
+                 "outside [a-z0-9][a-z0-9-]{0,63} (`ID`, the id as written); a date that is not YYYY-MM-DD or not a real day (`DATE`, as written); `by` or `second_read_by` empty, or the two equal (`BY`); a title "
+                 "with a backtick (`TITLE backtick`) or empty (`TITLE empty`); a `source_commit` that is not --pin (`SOURCE`, as written); `attaches` with none (`ATTACHES none`), two (`ATTACHES many`; the "
+                 "same id twice is two), an unknown id (`ATTACHES unknown <id>`) or the id of a part or a group (`ATTACHES not-a-file <id>`); an `about` name that is not a full declared name of the "
+                 "compiled index (`ABOUT <file> <name>`, the NAME printed, each bad name once: a short name like `S.alpha` is refused like a typo); a duplicate id across files (`DUP <later file> id <id> also in "
+                 "<earlier file>`); several faults of one note and of several notes are all reported, file by file in name order")
+    def _():
+        miss = [rd_errs(drop=(k,)) for k in RD_KEYS if k != "about"]
+        ids = [rd_errs(id=v) for v in ("Bad_Id", "a" * 65, "", "UP")]
+        dates = [rd_errs(date=v) for v in ("2026-13-01", "2026-02-30", "26-11-26", "2026-1-5", "", "2026-11-26x", "٢026-11-26")]
+        by = [rd_errs(by=""), rd_errs(second_read_by=""), rd_errs(by="", second_read_by=""), rd_errs(by="Kepler", second_read_by="Kepler")]
+        title = [rd_errs(title="has `tick`"), rd_errs(title="")]
+        src = [rd_errs(source_commit=PIN[:-1] + "8"), rd_errs(source_commit=PIN.upper()), rd_build({"n.md": rd_note()}, pin=RD_PIN2)[0]]
+        att = [rd_errs(attaches=v) for v in ("[]", "[lean-s-a, lean-s-b]", "[lean-s-a, lean-s-a]", "[lean-s-zz]", "[lean-s]", "[lean-s-g]")]
+        about = [rd_errs(about=v) for v in ("[S.alpha]", "[New.S.nope]", "[New.S.alpha, S.beta, New.S.zz]", "[Lib.thing, New.S.gamma]", "[New.S.zz, New.S.zz]")]
+        dup = rd_build({"a.md": rd_note(), "b.md": rd_note(title="Other")})[0]
+        many = rd_build({"a.md": rd_note(id="Bad", date="2026-99-99", by="X", second_read_by="X"), "b.md": rd_note(drop=("date",)), "c.md": rd_note(id="ok-one")})[0]
+        return _eq((miss, ids, dates, by, title, src, att, about, dup, many),
+                   ([[("SKEL-READING-MISSING", "n.md", k)] for k in RD_KEYS if k != "about"],
+                    [[("SKEL-READING-ID", "n.md", v)] for v in ("Bad_Id", "a" * 65, "", "UP")],
+                    [[("SKEL-READING-DATE", "n.md", v)] for v in ("2026-13-01", "2026-02-30", "26-11-26", "2026-1-5", "", "2026-11-26x", "٢026-11-26")],
+                    [[("SKEL-READING-BY", "n.md", "by is empty")], [("SKEL-READING-BY", "n.md", "second_read_by is empty")],
+                     [("SKEL-READING-BY", "n.md", "by is empty"), ("SKEL-READING-BY", "n.md", "second_read_by is empty")], [("SKEL-READING-BY", "n.md", "by and second_read_by are the same")]],
+                    [[("SKEL-READING-TITLE", "n.md", "backtick")], [("SKEL-READING-TITLE", "n.md", "empty")]],
+                    [[("SKEL-READING-SOURCE", "n.md", PIN[:-1] + "8")], [("SKEL-READING-SOURCE", "n.md", PIN.upper())], [("SKEL-READING-SOURCE", "n.md", PIN)]],
+                    [[("SKEL-READING-ATTACHES", "n.md", "none")], [("SKEL-READING-ATTACHES", "n.md", "many")], [("SKEL-READING-ATTACHES", "n.md", "many")],
+                     [("SKEL-READING-ATTACHES", "n.md", "unknown lean-s-zz")], [("SKEL-READING-ATTACHES", "n.md", "not-a-file lean-s")], [("SKEL-READING-ATTACHES", "n.md", "not-a-file lean-s-g")]],
+                    [[("SKEL-READING-ABOUT", "n.md", "S.alpha")], [("SKEL-READING-ABOUT", "n.md", "New.S.nope")],
+                     [("SKEL-READING-ABOUT", "n.md", "S.beta"), ("SKEL-READING-ABOUT", "n.md", "New.S.zz")], [], [("SKEL-READING-ABOUT", "n.md", "New.S.zz")]],
+                    [("SKEL-READING-DUP", "b.md", "id n-one also in a.md")],
+                    [("SKEL-READING-ID", "a.md", "Bad"), ("SKEL-READING-DATE", "a.md", "2026-99-99"), ("SKEL-READING-BY", "a.md", "by and second_read_by are the same"),
+                     ("SKEL-READING-MISSING", "b.md", "date")]))
+
+    @case("RD4", "contributed notes, the front-matter grammar, each refusal `SKEL-READING-FRONT <file> <reason>`: no opening `---`; no closing `---`; CRLF line ends (a carriage return in the front matter; each of the opening line, a later key line and the closing line is its own cell in RD13); a "
+                 "line that is neither `key: value` nor blank (`line <n> is not key: value`, n counted from the opening `---` as line 1; `key:value`, an upper-case key and plain words are such lines); a key "
+                 "twice; an unknown key; a list where text is expected and text where a list is expected (each of title, by, attaches, about); a malformed list "
+                 "(unclosed, an empty item, brackets inside, a `# ...` tail after the list); an empty `about` list. A `#` tail on a TEXT value is part of the value (no comment). Strict bytes, "
+                 "`SKEL-READING-ENCODING <file> bom|nul|not-utf-8`: a BOM, a NUL (in the front matter or the body), bytes that are not UTF-8")
+    def _():
+        good = rd_note().decode("utf-8")
+        fm = lambda r: [("SKEL-READING-FRONT", "n.md", r)]
+        front = [rd_build({"n.md": t.encode("utf-8") if isinstance(t, str) else t})[0] for t in (
+            "no front matter\n", "---\nid: x\n", good.replace("\n", "\r\n"), good.replace("title: A title", "title:A title"), good.replace("title: A title", "Title: A title"),
+            good.replace("title: A title", "just words"), good.replace("title: A title", "title: A title\nid: other"), good.replace("date: 2026-11-26", "date: 2026-11-26\ntags: x"), good.replace("by: Halley", "by: Halley\nby: Halley"),
+            good.replace("by: Halley", "by: [Halley]"), good.replace("title: A title", "title: [A, B]"), good.replace("attaches: [lean-s-a]", "attaches: lean-s-a"),
+            good.replace("about: [New.S.alpha]", "about: New.S.alpha"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a,]"),
+            good.replace("attaches: [lean-s-a]", "attaches: [[lean-s-a]]"), good.replace("attaches: [lean-s-a]", "attaches: [lean-s-a] # the first file"),
+            good.replace("about: [New.S.alpha]", "about: []"), "---\nid: x\n---\nb\n", good.replace("id: n-one\n", "id: n-one\r\n"))]
+        hashtail = rd_build({"n.md": rd_note(title="Plain # not a comment")})
+        enc = [rd_build({"n.md": b})[0] for b in (b"\xef\xbb\xbf" + rd_note(), rd_note(body="a\x00b\n"), rd_note().replace(b"A title", b"A\x00title"), rd_note(body="x\n").replace(b"x\n", b"\xff\xfe\n"),
+                                                  rd_note().replace(b"A title", b"A \xc3 title"))]
+        return _eq((front[:17], front[17], front[18][0][:2], front[19], hashtail[0], hashtail[1]["graph/step/lean-s-a.json"].count(b"Plain # not a comment"), enc),
+                   ([fm("no opening ---"), fm("no closing ---"), fm("carriage return"), fm("line 3 is not key: value"), fm("line 3 is not key: value"), fm("line 3 is not key: value"),
+                     fm("duplicate key id"), fm("unknown key tags"), fm("duplicate key by"), fm("by is a list, not text"), fm("title is a list, not text"), fm("attaches is text, not a list"),
+                     fm("about is text, not a list"), fm("attaches is a malformed list"), fm("attaches is a malformed list"), fm("attaches is a malformed list"), fm("attaches is a malformed list")],
+                    fm("about is an empty list"), ("SKEL-READING-MISSING", "n.md"), fm("carriage return"), [], 1,
+                    [[("SKEL-READING-ENCODING", "n.md", "bom")], [("SKEL-READING-ENCODING", "n.md", "nul")], [("SKEL-READING-ENCODING", "n.md", "nul")], [("SKEL-READING-ENCODING", "n.md", "not-utf-8")],
+                     [("SKEL-READING-ENCODING", "n.md", "not-utf-8")]]))
+
+    @case("RD5", "contributed notes, the folder and the bounds: a body of exactly 20000 bytes is taken and 20001 is `SIZE <file> body 20001 bytes, at most 20000` (bytes, not characters); 200 notes are taken and 201 "
+                 "are `COUNT DIR 201 notes, at most 200`; ids of 1 and of 64 characters are taken; anything in the folder that is not a regular file `*.md` is refused by name and never skipped "
+                 "(`FILE <name> not-a-note` for a subfolder, a `.txt`, a file with no extension and `X.MD`; a subfolder, a FIFO called `*.md`: `not-a-regular-file`; a symlink called `*.md`, to a note in the "
+                 "folder, to a file outside it or dangling: `symlink`; a file over 65536 bytes: `too-large`), all reported in name order and nothing else reported with them; "
+                 "the FIFO is refused without blocking (the cell has a time limit)")
+    def _():
+        import signal
+        if not hasattr(os, "mkfifo") or not hasattr(signal, "SIGALRM"):
+            raise _SkipCase("SKIPPED: no mkfifo or SIGALRM here")
+
+        def on_alarm(*_):
+            raise TimeoutError("a read of the notes folder did not return in 20 seconds (a FIFO that blocks the open?)")
+        signal.signal(signal.SIGALRM, on_alarm)
+        signal.alarm(20)
+        try:
+            edge = rd_build({"a.md": rd_note(body="x" * 20000), "b.md": rd_note(id="n-two", body="y" * 20000, title="Two"), "c.md": rd_note(id="a", title="C"), "d.md": rd_note(id="a" * 64, title="D")})
+            over = rd_build({"a.md": rd_note(body="x" * 20001)})[0], rd_build({"a.md": rd_note(body="é" * 10001)})[0]
+            n200 = rd_build({f"n{i:03d}.md": rd_note(id=f"n-{i:03d}", title=f"T{i}") for i in range(200)})
+            n201 = rd_build({f"n{i:03d}.md": rd_note(id=f"n-{i:03d}", title=f"T{i}") for i in range(201)})[0]
+
+            def mixed(nd):
+                os.makedirs(os.path.join(nd, "sub"))
+                os.makedirs(os.path.join(nd, "dir.md"))
+                os.mkfifo(os.path.join(nd, "p.md"))
+                os.symlink(os.path.join(nd, "good.md"), os.path.join(nd, "l1.md"))
+                os.symlink(os.path.join(os.path.dirname(nd), "grh", "README.md"), os.path.join(nd, "l2.md"))
+                os.symlink(os.path.join(nd, "nowhere"), os.path.join(nd, "l3.md"))
+                for n, b in (("notes.txt", b"x"), ("NOEXT", b"x"), ("X.MD", rd_note()), ("big.md", b"x" * 70000)):
+                    with open(os.path.join(nd, n), "wb") as fh:
+                        fh.write(b)
+            m = rd_build({"good.md": rd_note()}, special=mixed)[0]
+        finally:
+            signal.alarm(0)
+        want = [("SKEL-READING-FILE", n, r) for n, r in (("NOEXT", "not-a-note"), ("X.MD", "not-a-note"), ("big.md", "too-large"), ("dir.md", "not-a-regular-file"), ("l1.md", "symlink"),
+                                                          ("l2.md", "symlink"), ("l3.md", "symlink"), ("notes.txt", "not-a-note"), ("p.md", "not-a-regular-file"), ("sub", "not-a-note"))]
+        return _eq((edge[0], len(_j(edge[1], "graph/step/lean-s-a.json")["readings"]), over, n200[0], len(_j(n200[1], "graph/index.json")["readings"]), n201, m),
+                   ([], 4, ([("SKEL-READING-SIZE", "a.md", "body 20001 bytes, at most 20000")], [("SKEL-READING-SIZE", "a.md", "body 20002 bytes, at most 20000")]), [], 200,
+                    [("SKEL-READING-COUNT", "DIR", "201 notes, at most 200")], want))
+
+    @case("RD6", "contributed notes on the command line (`--notes-lean-dir DIR`, once, with a value, in the usage text): a good folder builds (exit 0, `readings` written); a refused one is exit 1 with the "
+                 "`SKEL-READING-...` lines on stdout and OUT_DIR not written; a DIR that is not a directory is exit 2; the option twice or with no value is exit 2; the output is byte-identical under "
+                 "hash seeds 0 and 1 and equals a build of this process (the folder is read in name order, whatever order the file system lists it)")
+    def _():
+        import subprocess as sp
+        with _tmp() as d:
+            g = _tree(d, RD_BODY, RD_SRCS, RD_ILEANS)
+            sps, ol = _strings_file(d), _outline_file(d)
+            good, bad = os.path.join(d, "good"), os.path.join(d, "bad")
+            os.makedirs(good)
+            os.makedirs(bad)
+            for name, text in (("b.md", rd_note(id="b-note", title="B")), ("a.md", rd_note(id="a-note", title="A", attaches="[lean-s-b]", drop=("about",)))):
+                with open(os.path.join(good, name), "wb") as fh:
+                    fh.write(text)
+            with open(os.path.join(bad, "n.md"), "wb") as fh:
+                fh.write(rd_note(drop=("date",)))
+            base = _args(g, os.path.join(d, "o1"), sps, ol)
+            r1 = _cli(base + ["--notes-lean-dir", good])
+            r2 = _cli(_args(g, os.path.join(d, "o2"), sps, ol) + ["--notes-lean-dir", bad])
+            r3 = _cli(_args(g, os.path.join(d, "o3"), sps, ol) + ["--notes-lean-dir", os.path.join(d, "nowhere")])
+            r4 = _cli(_args(g, os.path.join(d, "o4"), sps, ol) + ["--notes-lean-dir", good, "--notes-lean-dir", good])
+            r5 = _cli(_args(g, os.path.join(d, "o5"), sps, ol) + ["--notes-lean-dir"])
+            usage = _cli([])[2]
+            runs = []
+            for seed in ("0", "1"):
+                out = os.path.join(d, "s" + seed)
+                r = sp.run([sys.executable, "-I", os.path.abspath(__file__)] + _args(g, out, sps, ol) + ["--notes-lean-dir", good], env=dict(os.environ, PYTHONHASHSEED=seed), capture_output=True, text=True)
+                runs.append((r.returncode, _tree_files(out)))
+            first = _tree_files(os.path.join(d, "o1"))   # the same build in this process
+            ix = _j(_tree_files(os.path.join(d, "o1")), "graph/index.json")
+            return _eq((r1[0], [r["id"] for r in ix["readings"]], [r["step"] for r in ix["readings"]], r2[0], r2[1].splitlines(), os.path.exists(os.path.join(d, "o2")), r3[0], r4[0], r5[0],
+                        "--notes-lean-dir" in usage, runs[0][0], runs[1][0], runs[0][1] == runs[1][1], runs[0][1] == first),
+                       (0, ["a-note", "b-note"], ["lean-s-b", "lean-s-a"], 1, ["SKEL-READING-MISSING n.md date"], False, 2, 2, 2, True, 0, 0, True, True))
+
+    @case("RD7", "contributed notes, the invariant between the two lists (`_readings_invariant(step_readings, index_rows)`, `SKEL-READING-INVARIANT <id> <detail>`): every index row's step carries a reading "
+                 "with that id (`index step <step> has no such reading`) and every reading is a row of the list (`reading on <step> is not in the index list`); agreeing lists give no refusal; "
+                 "a row naming the wrong step gives both refusals")
+    def _():
+        rd = lambda i: {"id": i, "title": "t", "text": "x", "by": "A", "second_read_by": "B", "date": "2026-11-26"}
+        row = lambda i, s: {"id": i, "title": "t", "step": s}
+        ok = _readings_invariant({"s1": [rd("a"), rd("b")], "s2": [rd("c")]}, [row("a", "s1"), row("b", "s1"), row("c", "s2")])
+        wrong = _readings_invariant({"s1": [rd("a")]}, [row("a", "s2")])
+        short = _readings_invariant({"s1": [rd("a"), rd("b")]}, [row("a", "s1")])
+        extra = _readings_invariant({"s1": [rd("a")]}, [row("a", "s1"), row("z", "s1")])
+        return _eq((ok, wrong, short, extra),
+                   ([], [("SKEL-READING-INVARIANT", "a", "index step s2 has no such reading"), ("SKEL-READING-INVARIANT", "a", "reading on s1 is not in the index list")],
+                    [("SKEL-READING-INVARIANT", "b", "reading on s1 is not in the index list")], [("SKEL-READING-INVARIANT", "z", "index step s1 has no such reading")]))
+
+    @case("RD8", "contributed notes, key order: the front-matter keys may come in ANY order; a note whose keys are scrambled builds to exactly the bytes of the same note in the usual order (a key twice, an "
+                 "unknown key and a missing key are still refused, by RD3 and RD4)")
+    def _():
+        scrambled = ("---\ndate: 2026-11-26\nabout: [New.S.alpha]\nby: Halley\nid: n-one\nsource_commit: " + PIN + "\nsecond_read_by: Kepler\ntitle: A title\nattaches: [lean-s-a]\n---\nBody line.\n").encode("utf-8")
+        a, b = rd_build({"n.md": rd_note()}), rd_build({"n.md": scrambled})
+        return _eq((a[0], b[0], a[1] == b[1], len(_j(b[1], "graph/index.json")["readings"])), ([], [], True, 1))
+
+    def rd_esc_fixture(nd):
+        for name, text in (("n1\nforged.md", rd_note(drop=("date",))), ("esc\x1b[2J.md", rd_note(drop=("date",), id="n-esc")), ("idesc.md", rd_note(id="a\x1bb")),
+                           ("dateesc.md", rd_note(id="n-d", date="2026\x1b[0m")), ("srcesc.md", rd_note(id="n-s", source_commit="x‮y")),
+                           ("aboutesc.md", rd_note(id="n-a", about="[New.S.\x1b]")), ("attesc.md", rd_note(id="n-t", attaches="[lean-s- x]"))):
+            with open(os.path.join(nd, name), "wb") as fh:
+                fh.write(text)
+
+    @case("RD9", "contributed notes, control characters in refusal lines: every file name and every detail printed in a `SKEL-READING-<kind>` line is escaped (a character that is not printable becomes \\xNN, "
+                 "\\uNNNN or \\UNNNNNNNN, lower-case hex; a backslash is doubled and every printable character stays), one function for the file name, the detail and the bytes-that-are-not-UTF-8 path, so each refusal is "
+                 "exactly ONE stdout line with no raw control character: a file name holding a newline and a forged `SKEL-READING-...` line, a name with ESC, an `id`, a `date`, a `source_commit` "
+                 "(with U+202E), an `about` name (ESC) and an `attaches` id (U+2028) each with a control character; a folder fault (`FILE`) on a name with a newline, U+2028 and a byte that is not UTF-8 (that one name is skipped where the file system refuses to create it, errno EILSEQ or EINVAL, as APFS does; RD16 tests the escape of it with no file)")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RD_BODY, RD_SRCS, RD_ILEANS)
+            nd, bad = os.path.join(d, "notes"), os.path.join(d, "folder")
+            os.makedirs(nd)
+            os.makedirs(bad)
+            rd_esc_fixture(nd)
+            planted = []
+            for name in (b"bad\xff.txt", "x y.txt".encode("utf-8"), b"a\nb.txt"):
+                try:
+                    with open(os.path.join(os.fsencode(bad), name), "wb") as fh:
+                        fh.write(b"x")
+                    planted.append(name)
+                except OSError as e:   # a name that is not UTF-8 cannot be created on every file system (APFS: EILSEQ): that one name is skipped; RD16 covers it with no file
+                    if e.errno not in (errno.EILSEQ, errno.EINVAL) or name != b"bad\xff.txt":
+                        raise
+            sps, ol = _strings_file(d), _outline_file(d)
+            r = _cli(_args(g, os.path.join(d, "o"), sps, ol) + ["--notes-lean-dir", nd])
+            r2 = _cli(_args(g, os.path.join(d, "o2"), sps, ol) + ["--notes-lean-dir", bad])
+            errs = build(g, PIN, _strings(), (), _ildir(g), notes_lean_dir=nd)[0]
+        printable = lambda t: all(c.isprintable() for c in t.replace("\n", ""))
+        return _eq((r[0], r[1].splitlines(), printable(r[1]), r2[0], sorted(r2[1].splitlines()), printable(r2[1]), ("SKEL-READING-DATE", "dateesc.md", "2026\\x1b[0m") in [tuple(e) for e in errs]),
+                   (1, ["SKEL-READING-ABOUT aboutesc.md New.S.\\x1b", "SKEL-READING-ATTACHES attesc.md unknown lean-s-\\u2028x", "SKEL-READING-DATE dateesc.md 2026\\x1b[0m",
+                        "SKEL-READING-MISSING esc\\x1b[2J.md date", "SKEL-READING-ID idesc.md a\\x1bb", "SKEL-READING-MISSING n1\\x0aforged.md date", "SKEL-READING-SOURCE srcesc.md x\\u202ey"],
+                    True, 1, sorted(["SKEL-READING-FILE a\\x0ab.txt not-a-note", "SKEL-READING-FILE x\\u2028y.txt not-a-note"] + (["SKEL-READING-FILE bad\\xff.txt not-a-note"] if b"bad\xff.txt" in planted else [])), True, True))
+
+    @case("RD10", "contributed notes, length caps (`SKEL-READING-SIZE <file> <field> too-long`, counted in CHARACTERS after trimming): a title of 200 characters is taken and 201 is refused (`title`; 200 two-byte "
+                  "characters are taken, so it is not a byte count); `by` and `second_read_by` 100 taken and 101 refused (`by`, `second_read_by`); an `about` name of 200 characters taken and of 201 refused "
+                  "(`about`, once for the note); the refusal of one field does not hide the others")
+    def _():
+        q200, q201 = "New." + "q" * 196, "New." + "q" * 197
+        il = dict(RD_ILEANS, **{"New/S/B": _ilean("New/S/B", {}, decls=("New.S.gamma", q200, q201))})
+        e = lambda **kw: rd_build({"n.md": rd_note(**kw)}, ileans=il)[0]
+        toolong = lambda f: [("SKEL-READING-SIZE", "n.md", f + " too-long")]
+        return _eq((e(title="é" * 200), e(title="x" * 201), e(by="b" * 100), e(by="b" * 101), e(second_read_by="b" * 100), e(second_read_by="b" * 101), e(about=f"[{q200}]"), e(about=f"[{q201}]"),
+                    e(about=f"[{q201}, {q201}, New.S.alpha]"), e(title="x" * 201, by="b" * 101)),
+                   ([], toolong("title"), [], toolong("by"), [], toolong("second_read_by"), [], toolong("about"), toolong("about"),
+                    [("SKEL-READING-SIZE", "n.md", "title too-long"), ("SKEL-READING-SIZE", "n.md", "by too-long")]))
+
+    @case("RD11", "contributed notes, the body: an empty body (nothing after the closing `---` line, with or without its newline) is `SKEL-READING-BODY <file> empty`; a body of one newline or of spaces only is NOT "
+                  "refused by the builder (the page decides) and is written unchanged")
+    def _():
+        head = rd_note(body="")
+        ok = [rd_build({"n.md": head + body}) for body in (b"\n", b"   ")]
+        return _eq((rd_build({"n.md": head})[0], rd_build({"n.md": head[:-1]})[0], [o[0] for o in ok], [_j(o[1], "graph/step/lean-s-a.json")["readings"][0]["text"] for o in ok]),
+                   ([("SKEL-READING-BODY", "n.md", "empty")], [("SKEL-READING-BODY", "n.md", "empty")], [[], []], ["\n", "   "]))
+
+    @case("RD12", "contributed notes, the folder entry bound: at most 1000 directory entries are examined; 1000 entries (here non-`.md`) are each refused by name, 1001 are ONE line `COUNT DIR entries` and nothing "
+                  "else is reported, not even the faults of a bad note in the folder")
+    def _():
+        def fill(n):
+            def f(nd):
+                for i in range(n):
+                    with open(os.path.join(nd, f"e{i:04d}.txt"), "wb") as fh:
+                        fh.write(b"x")
+            return f
+        at = rd_build({}, special=fill(1000))[0]
+        over = rd_build({"bad.md": rd_note(drop=("date",))}, special=fill(1000))[0]
+        return _eq((len(at), set(e[2] for e in at), over, rd_build({"bad.md": rd_note(drop=("date",))}, special=fill(999))[0][:1]),
+                   (1000, {"not-a-note"}, [("SKEL-READING-COUNT", "DIR", "entries")], [("SKEL-READING-FILE", "e0000.txt", "not-a-note")]))
+
+    @case("RD13", "contributed notes, the plausible-wrong neighbours, each pair an error path and a success path: dates (`20261126`, `2026-W48-4`, `2026-11-26T00:00`, `2026-1-5`, `2026-02-30`, `2023-02-29` refused; "
+                  "`2026-11-26`, `2024-02-29` taken); an id with `_` refused; `source_commit` as a 39-character prefix of the pin, and the pin plus one character, refused; `about` a namespace (`New.S`) or a declared "
+                  "name plus a suffix refused; ONE backtick in a title refused; two missing keys both reported (in key order); a bad note and a stray non-`.md` file: ONLY the folder fault; a body that starts with a "
+                  "blank line keeps it byte for byte; a value is trimmed (`title:   a  b  ` is `a  b`, the inner double space kept); a file of exactly 65536 bytes is read (and refused by the size of its "
+                  "body, 20000 bytes) and one of 65537 bytes is `FILE too-large`; `by` and `second_read_by` that differ only in case (`Halley`, `halley`) are different and taken; a carriage return on the opening "
+                  "`---` line, on a later key line and on the closing `---` line is each refused")
+    def _():
+        e = lambda **kw: rd_errs(**kw)
+        dates = [e(date=v) for v in ("20261126", "2026-W48-4", "2026-11-26T00:00", "2026-1-5", "2026-02-30", "2023-02-29", "2026-11-26", "2024-02-29")]
+        ident = [e(id="a_b"), e(id="a-b")]
+        src = [e(source_commit=PIN[:39]), e(source_commit=PIN + "0"), e(source_commit=PIN)]
+        about = [e(about="[New.S]"), e(about="[New.S.alphaX]"), e(about="[New.S.alpha]")]
+        tick = [e(title="one`tick"), e(title="no tick")]
+        miss = e(drop=("by", "date"))
+        stray = rd_build({"bad.md": rd_note(drop=("date",)), "stray.txt": b"x"})[0]
+        blank = rd_build({"n.md": rd_note(body="\n\nstarts blank\n")})
+        trim = rd_build({"n.md": rd_note().replace(b"title: A title", b"title:   a  b  ")})
+        head = rd_note(body="")
+        n_exact = 65536 - len(head)
+        exact, over = rd_build({"n.md": head + b"x" * n_exact})[0], rd_build({"n.md": head + b"x" * (n_exact + 1)})[0]
+        case = e(by="Halley", second_read_by="halley")
+        good = rd_note().decode("utf-8")
+        cr = [rd_build({"n.md": t.encode("utf-8")})[0] for t in (good.replace("---\nid", "---\r\nid", 1), good.replace("attaches: [lean-s-a]\n", "attaches: [lean-s-a]\r\n"),
+                                                                 good.replace("\n---\nBody", "\n---\r\nBody"))]
+        fm = lambda r: [("SKEL-READING-FRONT", "n.md", r)]
+        return _eq((dates, ident, src, about, tick, miss, stray, _j(blank[1], "graph/step/lean-s-a.json")["readings"][0]["text"], _j(trim[1], "graph/step/lean-s-a.json")["readings"][0]["title"],
+                    exact, over, case, cr),
+                   ([[("SKEL-READING-DATE", "n.md", v)] for v in ("20261126", "2026-W48-4", "2026-11-26T00:00", "2026-1-5", "2026-02-30", "2023-02-29")] + [[], []],
+                    [[("SKEL-READING-ID", "n.md", "a_b")], []],
+                    [[("SKEL-READING-SOURCE", "n.md", PIN[:39])], [("SKEL-READING-SOURCE", "n.md", PIN + "0")], []],
+                    [[("SKEL-READING-ABOUT", "n.md", "New.S")], [("SKEL-READING-ABOUT", "n.md", "New.S.alphaX")], []],
+                    [[("SKEL-READING-TITLE", "n.md", "backtick")], []],
+                    [("SKEL-READING-MISSING", "n.md", "by"), ("SKEL-READING-MISSING", "n.md", "date")],
+                    [("SKEL-READING-FILE", "stray.txt", "not-a-note")], "\n\nstarts blank\n", "a  b",
+                    [("SKEL-READING-SIZE", "n.md", f"body {n_exact} bytes, at most 20000")], [("SKEL-READING-FILE", "n.md", "too-large")], [],
+                    [fm("carriage return")] * 3))
+
+    @case("RD14", "contributed notes, the wiring of the invariant and the report: the build calls `_readings_invariant` ONCE with exactly the lists it then writes (the readings of each step file and the `readings` of "
+                  "index.json) and refuses (`SKEL-READING-INVARIANT`, nothing written) when it returns a refusal; the two lists are made from one pass over the same notes, so no input can make a real build "
+                  "disagree and the case forces the refusal with a stand-in for the checker; the build leaves the report's `step_extra` as the build without notes has it (no `readings` in it)")
+    def _():
+        files = {"a.md": rd_note(id="a-note"), "b.md": rd_note(id="b-note", attaches="[lean-s-b]")}
+        calls, real = [], globals()["_readings_invariant"]
+
+        def stub(step_readings, index_rows):
+            calls.append((step_readings, index_rows))
+            return [("SKEL-READING-INVARIANT", "forced", "forced")]
+        globals()["_readings_invariant"] = stub
+        try:
+            forced = rd_build(files)
+        finally:
+            globals()["_readings_invariant"] = real
+        errs, on, rep_on = rd_build(files, want_rep=True)
+        with _tmp() as d:
+            g = _tree(d, RD_BODY, RD_SRCS, RD_ILEANS)
+            rep_off = build(g, PIN, _strings(), (), _ildir(g))[3]
+        written = {k: _j(on, k)["readings"] for k in on if k.startswith("graph/step/") and "readings" in _j(on, k)}
+        return _eq((forced, len(calls), calls[0][0] == {k[len("graph/step/"):-len(".json")]: v for k, v in written.items()}, calls[0][1] == _j(on, "graph/index.json")["readings"],
+                    errs, rep_on["step_extra"] == rep_off["step_extra"], any("readings" in v for v in rep_on["step_extra"].values())),
+                   (([("SKEL-READING-INVARIANT", "forced", "forced")], {}), 1, True, True, [], True, False))
+
+    @case("RD15", "contributed notes, printable text fields: a value of `title`, `by` or `second_read_by` that is not `str.isprintable()` AFTER trimming is refused (`SKEL-READING-TITLE <file> not-printable`, "
+                  "`SKEL-READING-BY <file> by|second_read_by not-printable`): ESC, U+202E, U+2028, a tab and BEL inside the value, each in each of the three fields; the value is trimmed first, so a tab or a U+2028 at "
+                  "either end is trimmed away and taken, while a U+202E at the end is refused (it is not whitespace); a NUL anywhere is `ENCODING nul` (the byte check comes first); non-ASCII printable text (psi, "
+                  "less-or-equal, e-acute, CJK) is taken in all three; the BODY is text and keeps ESC, U+202E, a tab and BEL, written unchanged")
+    def _():
+        bad = {"title": ("SKEL-READING-TITLE", "n.md", "not-printable"), "by": ("SKEL-READING-BY", "n.md", "by not-printable"), "second_read_by": ("SKEL-READING-BY", "n.md", "second_read_by not-printable")}
+        inside = {f: [rd_errs(**{f: "a" + c + "b"}) for c in ("\x1b", "‮", " ", "\t", "\x07")] for f in bad}
+        ends = [rd_errs(title="\tx\t"), rd_errs(title="x "), rd_errs(by="\tHalley\t"), rd_errs(title="x‮"), rd_errs(by="Halley‮")]
+        nul = [rd_errs(**{f: "a\x00b"}) for f in bad]
+        uni = rd_build({"n.md": rd_note(title="ψ ≤ é 漢字", by="Élodie 山田", second_read_by="ψ≤")})
+        body = "esc\x1b rlo‮ tab\t bel\x07\n"
+        kept = rd_build({"n.md": rd_note(body=body)})
+        return _eq(({f: v for f, v in inside.items() if v != [[bad[f]]] * 5}, ends, nul, uni[0], _j(uni[1], "graph/step/lean-s-a.json")["readings"][0]["title"], kept[0],
+                    _j(kept[1], "graph/step/lean-s-a.json")["readings"][0]["text"]),
+                   ({}, [[], [], [], [bad["title"]], [bad["by"]]], [[("SKEL-READING-ENCODING", "n.md", "nul")]] * 3, [], "ψ ≤ é 漢字", [], body))
+
+    @case("RD16", "contributed notes, the escape with no file on disk (it is applied ONCE, by the wrapper `_readings`, over every refusal; `_shown` only turns a name into text, a byte that is not UTF-8 kept as a "
+                  "lone surrogate): `_esc` of a str with a newline, ESC, NUL, U+2028 and U+202E gives the exact text with \\x0a, \\x1b, \\x00, \\u2028 and \\u202e; a backslash is doubled; the bytes name "
+                  "b'bad\\xff.txt' through `_shown` and `_esc` is `bad\\xff.txt`, the same as the `os.fsdecode` str of it; the map is injective: a bad byte 0x85 is `\\x85` and the real character U+0085 is "
+                  "`\\u0085`, a real newline is `\\x0a` and the four characters backslash x 0 a are `\\\\x0a`; the wrapper escapes the file name AND the detail of every refusal of the checker under it "
+                  "(a stand-in returns raw ones) exactly once (a detail with one backslash comes out with two) and nothing that is not printable is left")
+    def _():
+        raw = "a\nb\x1b\x00 ‮"
+        want = "a\\x0ab\\x1b\\x00\\u2028\\u202e"
+        real = globals()["_readings_checked"]
+        globals()["_readings_checked"] = lambda *a: ([("SKEL-READING-DATE", raw, raw), ("SKEL-READING-ID", "ok.md", "plain \\ text")], {}, [])
+        try:
+            wrapped = _readings("unused", PIN, [], "unused")[0]
+        finally:
+            globals()["_readings_checked"] = real
+        outs = [_esc(_shown(b"bad\xff.txt")), _esc(_shown(os.fsdecode(b"bad\xff.txt"))), _esc(raw), _esc("\x85"), _esc(os.fsdecode(b"\x85")), _esc("a\nb"), _esc("a\\x0ab"), _esc("a\\b")] + [x for t in wrapped for x in t[1:]]
+        return _eq((_shown(b"bad\xff.txt"), outs[:8], wrapped, all(c.isprintable() for o in outs for c in o)),
+                   ("bad\udcff.txt", ["bad\\xff.txt", "bad\\xff.txt", want, "\\u0085", "\\x85", "a\\x0ab", "a\\\\x0ab", "a\\\\b"],
+                    [("SKEL-READING-DATE", want, want), ("SKEL-READING-ID", "ok.md", "plain \\\\ text")], True))
+
+    @case("RD17", "contributed notes, the escape is injective and applied once, on the command line: a file named with a real newline and one named with the characters backslash, x, 0, a give two DIFFERENT "
+                  "refusal lines; a name with ONE backslash prints with two, and so does a detail with one (never four); each refusal is one line")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RD_BODY, RD_SRCS, RD_ILEANS)
+            nd = os.path.join(d, "notes")
+            os.makedirs(nd)
+            for name, text in (("a\nb.md", rd_note(id="n-1", drop=("date",))), ("a\\x0ab.md", rd_note(id="n-2", drop=("date",))), ("b\\s.md", rd_note(id="n-3", drop=("date",))),
+                               ("dbs.md", rd_note(id="n-4", date="a\\b"))):
+                with open(os.path.join(nd, name), "wb") as fh:
+                    fh.write(text)
+            r = _cli(_args(g, os.path.join(d, "o"), _strings_file(d), _outline_file(d)) + ["--notes-lean-dir", nd])
+        lines = r[1].splitlines()
+        return _eq((r[0], lines, len(set(lines))),
+                   (1, ["SKEL-READING-MISSING a\\x0ab.md date", "SKEL-READING-MISSING a\\\\x0ab.md date", "SKEL-READING-MISSING b\\\\s.md date", "SKEL-READING-DATE dbs.md a\\\\b"], 4))
+
+    @case("RD18", "contributed notes, the id (the page's element rule is `^[a-z0-9][a-z0-9._-]*$`, the builder's is narrower: `[a-z0-9][a-z0-9-]{0,63}`, the first character a-z or 0-9, at most 64 characters, no dot or "
+                  "underscore): `-x`, `-`, `--a`, `aB`, `a.b`, `a_b`, `.a` and 65 characters are refused (`SKEL-READING-ID <file> <id>`); `x-`, `a-b`, `0a`, `a`, `0` and 64 characters are taken; the id of a note "
+                  "after the first is checked too")
+    def _():
+        bad = ("-x", "-", "--a", "aB", "a.b", "a_b", ".a", "a" * 65, "a-" + "b" * 63)
+        ok = ("x-", "a-b", "0a", "a", "0", "a" * 64, "0" + "-" * 63)
+        second = rd_build({"a.md": rd_note(id="good-one"), "b.md": rd_note(id="-x")})[0]
+        return _eq(([rd_errs(id=v) for v in bad], [rd_errs(id=v) for v in ok], second),
+                   ([[("SKEL-READING-ID", "n.md", v)] for v in bad], [[] for v in ok], [("SKEL-READING-ID", "b.md", "-x")]))
+
+    @case("RDR", "the real source and the eleven notes (give `--selftest --grh DIR --ilean-dir DIR --notes-lean-dir DIR`; otherwise SKIPPED; the folder holds exactly the eleven numbered notes): the build is accepted with the "
+                 "pin 72fead10..., 11 readings on 7 distinct file steps: one-sided-bound 07, 09, 10; zeros-criterion 01, 03; main-inequality 04, 11 (note-id order); bad-types 02; short-and-enough 05; "
+                 "twist-long-forms 06; prime-sums 08; index.json `readings` has 11 rows (every row's "
+                 "step carries the reading), every text equals the body bytes of its file after the closing `---` line (read here by a separate cut), 356 files as without notes, and exactly "
+                 "the 7 attached step files and index.json differ from the build without notes, each only by the key `readings`")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None or _NOTES_FOR_RD is None:
+            raise _SkipCase("SKIPPED: no --grh, --ilean-dir and --notes-lean-dir given to the self-test")
+        pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
+        off = build(_GRH_FOR_SK13, pin, _strings(), ilean_dir=_ILEAN_FOR_SK13)
+        on = build(_GRH_FOR_SK13, pin, _strings(), ilean_dir=_ILEAN_FOR_SK13, notes_lean_dir=_NOTES_FOR_RD)
+        steps = {k: _j(on[1], k)["readings"] for k in on[1] if k.startswith("graph/step/") and "readings" in _j(on[1], k)}
+        ix = _j(on[1], "graph/index.json")
+        want = {}
+        for n in sorted(os.listdir(_NOTES_FOR_RD)):
+            with open(os.path.join(_NOTES_FOR_RD, n), "rb") as fh:
+                raw = fh.read()
+            cut = raw.index(b"\n---\n", 4) + 5
+            want[re.search(rb"^id: (.*)$", raw[:cut], re.M).group(1).decode("utf-8")] = raw[cut:].decode("utf-8")
+        got = {r["id"]: r["text"] for rs in steps.values() for r in rs}
+        changed = sorted(k for k in on[1] if on[1][k] != off[1].get(k))
+        strip = lambda o: {k: v for k, v in o.items() if k != "readings"}
+        return _eq((on[0], off[0], len(on[1]), len(off[1]), sum(len(v) for v in steps.values()), len(steps),
+                    {k[len("graph/step/"):-len(".json")]: [r["id"] for r in v] for k, v in steps.items()}, len(ix["readings"]), all(r["id"] in {x["id"] for x in steps[f"graph/step/{r['step']}.json"]} for r in ix["readings"]),
+                    got == want, len(want), [r["id"] for r in ix["readings"]] == sorted(want), changed == sorted(["graph/index.json"] + list(steps)),
+                    all(strip(_j(on[1], k)) == _j(off[1], k) for k in changed), bs._graph_static_problems(on[1])),
+                   ([], [], 356, 356, 11, 7,
+                    {"lean-reduction-one-sided-bound": ["lean-note-07", "lean-note-09", "lean-note-10"], "lean-reduction-zeros-criterion": ["lean-note-01", "lean-note-03"],
+                     "lean-reduction-main-inequality": ["lean-note-04", "lean-note-11"], "lean-spanning-main-term-bad-types": ["lean-note-02"], "lean-reduction-short-and-enough": ["lean-note-05"],
+                     "lean-determinant-twist-long-forms": ["lean-note-06"], "lean-reduction-prime-sums": ["lean-note-08"]},
+                    11, True, True, 11, True, True, True, []))
     @case("RB1", "structure of the tool above the self-test section (read with `ast` from this file's own text, everything before the self-test header): exactly ONE call of `os.open` and it is in `_read_bounded` "
                  "(no allow-list of other sites), no call of the builtin `open` (the tool's own writes go through build_site's `_publish`, which is another module; the writes of this file's fixtures are "
                  "below the header and are not counted), and no other way to open a file for reading (`io.open`, `Path.open`, `read_text`, `read_bytes`, `os.fdopen`)")
@@ -3803,9 +4522,9 @@ def _selftest_cases():
     return cases
 
 
-def selftest(verbose=True, only=None, grh=None, ilean=None):
+def selftest(verbose=True, only=None, grh=None, ilean=None, notes=None):
     """Run the cases: 0 all pass (a skipped case does not fail), 4 one fails, 2 an unknown id in `only`. `grh` and `ilean` are the folders SK13 reads."""
-    global _GRH_FOR_SK13, _ILEAN_FOR_SK13
+    global _GRH_FOR_SK13, _ILEAN_FOR_SK13, _NOTES_FOR_RD
     cases = _selftest_cases()
     if only is not None:
         bad = [i for i in only if i not in {c[0] for c in cases}]
@@ -3813,8 +4532,8 @@ def selftest(verbose=True, only=None, grh=None, ilean=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
-    ok, skipped, before = True, 0, (_GRH_FOR_SK13, _ILEAN_FOR_SK13)
-    _GRH_FOR_SK13, _ILEAN_FOR_SK13 = grh, ilean
+    ok, skipped, before = True, 0, (_GRH_FOR_SK13, _ILEAN_FOR_SK13, _NOTES_FOR_RD)
+    _GRH_FOR_SK13, _ILEAN_FOR_SK13, _NOTES_FOR_RD = grh, ilean, notes
     try:
         for cid, desc, fn in cases:
             try:
@@ -3832,15 +4551,15 @@ def selftest(verbose=True, only=None, grh=None, ilean=None):
                 if not good:
                     print(f"  detail: {detail}")
     finally:
-        _GRH_FOR_SK13, _ILEAN_FOR_SK13 = before
+        _GRH_FOR_SK13, _ILEAN_FOR_SK13, _NOTES_FOR_RD = before
     if verbose:
         print("SELFTEST " + ("PASS" if ok else "FAIL") + (f" ({skipped} skipped)" if ok and skipped else ""))
     return 0 if ok else 4
 
 
 def _selftest_main(rest):
-    """`--selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR]`, in any order, each once."""
-    only = grh = ilean = None
+    """`--selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]`, in any order, each once."""
+    only = grh = ilean = notes = None
     i = 0
     while i < len(rest):
         if rest[i] == "--only" and only is None and i + 1 < len(rest):
@@ -3849,10 +4568,12 @@ def _selftest_main(rest):
             grh = rest[i + 1]
         elif rest[i] == "--ilean-dir" and ilean is None and i + 1 < len(rest):
             ilean = rest[i + 1]
+        elif rest[i] == "--notes-lean-dir" and notes is None and i + 1 < len(rest):
+            notes = rest[i + 1]
         else:
             return 2
         i += 2
-    return selftest(only=only, grh=grh, ilean=ilean)
+    return selftest(only=only, grh=grh, ilean=ilean, notes=notes)
 
 
 if __name__ == "__main__":
