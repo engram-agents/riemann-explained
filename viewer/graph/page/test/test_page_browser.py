@@ -4755,6 +4755,56 @@ def c_cue_card_and_key(b, S0, engine):
         S2.stop()
 
 
+def c_maths_looks_as_today(b, S0, engine, mutate=None):
+    """Maths-first part 1 (Kepler 40464): a tree WITH number, math, human and notation (fixtures/maths) loads and LOOKS exactly as the same tree without them (fixtures/statements): at 390 x 844 every
+    box's face (part, group, file, the three statements) and the sheet of each of the five cards the reader opens are byte-equal, the Key too, and the console has no error. The page accepts the keys and draws nothing from them."""
+    def collect(fix):
+        root = tempfile.mkdtemp(prefix="pg-maths-")
+        assemble.assemble(root, engine, fix=fix, mutate=mutate)
+        S = Served(root)
+        pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+        try:
+            at_hash(pg, "fx-stmt-file")
+            pg.wait("document.querySelector('#graph-sheet-body .claim') !== null && document.querySelector('[data-node=\"fx-group\"]') !== null", 8000)
+            pg.page.wait_for_timeout(500)
+            pg.page.click("#graph-sheet-tools .sheet-tool")
+            pg.wait("['fx-thm-a', 'fx-lem-b', 'fx-def-c'].every(i => document.querySelector('[data-node=\"' + i + '\"]'))", 8000)
+            pg.page.wait_for_timeout(500)
+            faces = pg.ev("""(() => { const o = {}; for (const i of ['fx-part', 'fx-group', 'fx-stmt-file', 'fx-thm-a', 'fx-lem-b', 'fx-def-c']) o[i] = document.querySelector('[data-node="' + i + '"] .face').outerHTML; return o; })()""")
+            sheets = {}
+            for i, title in (("fx-thm-a", "foo_bar"), ("fx-lem-b", "baz"), ("fx-def-c", "Fx.qux")):
+                open_card_by_hash(pg, i, title)
+                sheets[i] = pg.ev("document.getElementById('graph-sheet-body').innerHTML")
+            at_hash(pg, "fx-stmt-file")
+            pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === 'Lean file Fx.File'", 6000)
+            sheets["fx-stmt-file"] = pg.ev("document.getElementById('graph-sheet-body').innerHTML")
+            pg.page.click("#graph-key")
+            pg.wait("document.querySelector('#graph-sheet-body .key-content') !== null", 6000)
+            sheets["key"] = pg.ev("document.getElementById('graph-sheet-body').innerHTML")
+            no_console_errors_but_favicon(pg)
+            return faces, sheets
+        finally:
+            pg.close()
+            S.stop()
+    mf, ms = collect("maths")
+    sf, ss = collect("statements")
+    assert mf == sf, [i for i in mf if mf[i] != sf[i]]
+    assert ms == ss, [i for i in ms if ms[i] != ss[i]]
+
+
+def c_maths_mutants(b, S0, engine):
+    """Maths part 1 mutants: the number drawn in the face, the human text drawn on the card: each turns the equality case red (the unmutated case is green first)."""
+    muts = (("number drawn in the face", {"page/data.js": lambda t: t.replace("if (has(c, \"reading_count\")) d.readingCount = c.reading_count;", "if (has(c, \"reading_count\")) d.readingCount = c.reading_count;\n  if (has(c, \"number\")) d.number = c.number;"),
+                                          "page/face.js": lambda t: t.replace("kids.push(el(\"div\", { class: \"face-title\" }, titleChildren(d.title)));", "kids.push(el(\"div\", { class: \"face-title\" }, titleChildren(d.title)));\n    if (d.number) kids.push(el(\"div\", { class: \"face-num\" }, [d.number]));")}),
+            ("math text drawn on the card", {"page/statement.js": lambda t: t.replace("const lead = [el(\"p\", { class: \"decl-name\" }, [el(\"code\", {}, [decl.name])])];", "const lead = [el(\"p\", { class: \"decl-name\" }, [el(\"code\", {}, [decl.name])])];\n  if (decl.math) lead.push(el(\"p\", { class: \"decl-math\" }, [decl.math.text]));")}))
+    for name, mut in muts:
+        try:
+            c_maths_looks_as_today(b, S0, engine, mutate=mut)
+        except AssertionError:
+            continue
+        raise AssertionError("MUTANT SURVIVED: " + name)
+
+
 STMT_CASES = [
     ("stmt (a): the file's sheet says 'Open its statements', its button opens three boxes in source order with code titles; the foot reads '3 statements'", c_stmt_path_down),
     ("stmt (b): a statement card shows name, heading, doc-string, Lean button, uses, prompt in order; show/hide and aria-expanded; the variables note only where true", c_stmt_card_order),
@@ -4764,6 +4814,8 @@ STMT_CASES = [
     ("stmt (f): the key ends with the statements section", c_stmt_key),
     ("stmt (A3): without decl_reading_none the copy button stands alone in its block", c_stmt_reading_none_absent),
     ("reading: the block sits between the Lean statement and the uses lists, closed at the card's opening, label, headings and byline inside; none on a card without one", c_rd_block),
+    ("maths part 1: a tree with number, math, human and notation loads and looks exactly as the same tree without them (faces, cards, Key)", c_maths_looks_as_today),
+    ("maths part 1 mutants: the number drawn in the face, the math text drawn on the card: each turns the equality case red", c_maths_mutants),
     ("cue: the tag on a box with a reading and the count line above it, at 390 x 844 and 360 x 640, nothing clipped, the title not pushed out, none without a reading", c_cue_faces),
     ("cue: the reading button of an open card is the filled main style, the Key ends with the cue sentence, a map without the cue words has none", c_cue_card_and_key),
     ("cue mutants: no tag, the tag before the foot, out of the flow, the tag word above too: each turns the cue case red", c_cue_mutants),

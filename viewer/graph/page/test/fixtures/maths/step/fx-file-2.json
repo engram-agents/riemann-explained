@@ -1,0 +1,23 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "fx-file-2",
+  "kind": "file",
+  "path": [
+   "fx-part",
+   "fx-group"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "Lean file `Fx.Other`"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "fx-file-2",
+ "path": [
+  "fx-part",
+  "fx-group"
+ ],
+ "rests_on": []
+}

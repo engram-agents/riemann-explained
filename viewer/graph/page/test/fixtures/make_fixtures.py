@@ -19,6 +19,7 @@ skeleton/    the map of a Lean repository's parts, groups and files (data v3: si
 statements/  the statement-level sample (PR statements): one group, two files, the first file with three statements (theorem, lemma, def) in source order.
              Field names exactly as the data contract's section 31 amended; the words are read from site/strings-lean-statements.json (the one source).
 
+maths/       the statements fixture plus number, math, human and notation (maths-first part 1), titles unchanged (made-up).
 cues/        the readings fixture plus the four cue words and the reading_count on the cards above the reading (made-up; the shape of Sol's contract section 33).
 readings/    the statements sample plus the reading words and a `reading` on fx-thm-a (made-up text): the reading block of a statement card.
 
@@ -590,6 +591,32 @@ def readings_build():
     return index, steps
 
 
+# ---------------------------------------------------------------------------------------------------------- maths/
+# Maths-first part 1 (Sol's contract section 34 B1 to B3; Kepler 40464): the statements sample plus the new keys, with the TITLES UNCHANGED, so the page that only accepts them must draw it exactly as the
+# statements sample (the browser case compares the two). Made-up text only.
+MATHS_ROWS = {"fx-thm-a": ("1.1", {"status": "read", "text": "For every natural number `n` the made-up bound holds."}, {"rule": "classical", "status": "read"}),
+              "fx-lem-b": ("1.2", {"status": "draft", "text": "A made-up lemma about `n`, written by us."}, None),
+              "fx-def-c": ("1.3", None, None)}
+MATHS_NOTATION = [{"lean": ["Fx.foo_bar", "Fx.qux"], "status": "read", "symbol": "E_q(t)", "text": "the made-up error term of size `t`"},
+                  {"lean": [], "status": "draft", "symbol": "R_q", "text": "a made-up remainder"}]
+
+
+def maths_build():
+    """(index, steps): statements_build plus `number` on every statement card and on its closed entry in the file step, `math` and `human` on the statements that have a row, and `notation` on the file step."""
+    index, steps = statements_build()
+    for sid, (num, math, human) in MATHS_ROWS.items():
+        steps[sid]["card"]["number"] = num
+        for c in steps["fx-stmt-file"]["children"]:
+            if c["id"] == sid:
+                c["number"] = num
+        if math:
+            steps[sid]["math"] = dict(math)
+        if human:
+            steps[sid]["human"] = dict(human)
+    steps["fx-stmt-file"]["notation"] = [dict(r, lean=list(r["lean"])) for r in MATHS_NOTATION]
+    return index, steps
+
+
 def cues_build():
     """(index, steps): readings_build plus the four cue words and the reading_count the builder writes (Sol's contract section 33): 1 on the statement with a reading (its own card
     and its entry in the file step), and the sum above it on the file, the group and the part (each card and each parent's entry); fx-file-2 and the other statements have none."""
@@ -634,7 +661,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 def main():
     check_inputs()
-    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements", "readings", "cues"):
+    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements", "readings", "cues", "maths"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -688,6 +715,13 @@ def main():
     for i, st in rsteps.items():
         write_json(os.path.join(HERE, "readings", "step", i + ".json"), st)
     open(os.path.join(HERE, "readings", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
+
+    mindex, msteps = maths_build()
+    write_json(os.path.join(HERE, "maths", "index.json"), mindex)
+    for i, st in msteps.items():
+        write_json(os.path.join(HERE, "maths", "step", i + ".json"), st)
+    open(os.path.join(HERE, "maths", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
 
     cindex, csteps = cues_build()
