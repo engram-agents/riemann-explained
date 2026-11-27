@@ -3231,6 +3231,8 @@ def c_fold_mutants(b, S0, engine):
         "toolbar in the flow": ({"graph.css": lambda t: t.replace("position: absolute; top: 6px", "position: static; top: 6px")}, c_fold_short_window_starts_folded),
         "media query widened": ({"graph.css": lambda t: t.replace("(max-width: 600px)", "(max-width: 1400px)")}, c_fold_desktop_unchanged),
     }
+    if engine == "double":
+        del muts["no refit after a press"]      # the double has no camera: a refit cannot be seen (the real engine run holds it)
     for name, (mut, fn) in muts.items():
         orig = fold_served
         def served(engine_, bar=True, mutate=None, live=False, fix=None, _m=mut):
