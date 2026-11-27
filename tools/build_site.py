@@ -14512,8 +14512,8 @@ class _SkipCase(Exception):
     """Raised by a case that cannot set up its plant on this system; the case is reported SKIP."""
 
 
-def selftest(verbose=True, only=None):
-    """A case returns (True|False, detail). `only` is a list of case ids: exactly those cases run (an unknown id returns 2)."""
+def selftest(verbose=True, only=None, skip=()):
+    """A case returns (True|False, detail). `only` is a list of case ids: exactly those cases run (an unknown id returns 2). `skip`: ids of cases left out (the gate leaves out TMP1)."""
     ok, skipped = True, 0
     cases = _selftest_cases()
     if only is not None:
@@ -14523,6 +14523,7 @@ def selftest(verbose=True, only=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
+    cases = [c for c in cases if c[0] not in skip]
     global _CODE_FLAG_AT_START, _GRAPH_SRC_AT_START, _SELFTEST_RUNNING
     was_running = _SELFTEST_RUNNING
     if not _SELFTEST_RUNNING:   # a case that calls selftest() (SEL1) must not overwrite the value read by the outermost run
@@ -14556,8 +14557,9 @@ def selftest(verbose=True, only=None):
 
 
 def selftest_quiet():
+    """The self-test as the gate of a normal build: TMP1 (three child runs, about 20 s) is left out; `--selftest` runs it."""
     with contextlib.redirect_stdout(io.StringIO()):
-        return selftest(verbose=False)
+        return selftest(verbose=False, skip=("TMP1",))
 
 
 _VALUE_OPTIONS = {"--source-check": "source_check", "--release-archive-sha": "archive_sha", "--notes-commit": "notes_commit",

@@ -459,7 +459,12 @@ def _leak_check():
             print("TMPDIR skipped: the node leg did not run (no node on PATH, or no *.test.mjs under viewer/graph)")
         if tests and shutil.which("node"):
             try:
-                subprocess.run(["node", "--test"] + sorted(tests), env=dict(os.environ, TMPDIR=node_tmp), capture_output=True, text=True, timeout=600)
+                nr = subprocess.run(["node", "--test"] + sorted(tests), env=dict(os.environ, TMPDIR=node_tmp), capture_output=True, text=True, timeout=600)
+                if nr.returncode != 0:   # a node run that died early leaves nothing: an empty TMPDIR after it proves nothing
+                    bad.append("the node tests exited %d" % nr.returncode)
+                ran = re.search(r"^(?:ℹ |# )tests (\d+)\s*$", nr.stdout + "\n" + nr.stderr, re.M)
+                if ran is not None and int(ran.group(1)) == 0:
+                    bad.append("the node tests ran 0 tests")
             except subprocess.TimeoutExpired:
                 bad.append("the node tests timed out")
             left = sorted(os.listdir(node_tmp))

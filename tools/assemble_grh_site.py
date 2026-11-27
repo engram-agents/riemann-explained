@@ -1867,6 +1867,19 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             r = kid(code, limit=120)
         return _eq((r.returncode, "CASE TMP1 FAIL" in r.stdout, "planted-leak-" in r.stdout), (4, True, True))
 
+    @case("TMP1g", "a REAL kill: the first mutation control run with its limit set to 3 s is killed at it (its mutated copy is mid-run, with folders already made under the run's TMPDIR): the control "
+                   "returns False naming `killed at its limit`, the kill is recorded, the PARENT removed what the copy had made (the run's folder is empty) and the leak report is empty")
+    def _():
+        first = next(m for m in MUTATIONS if m in MUTATION_EDITS)
+        saved = globals()["MUTATION_TIMEOUT"]
+        with _scratch_run() as t:
+            globals()["MUTATION_TIMEOUT"] = 3
+            try:
+                good, detail = _mutation_case(first)
+            finally:
+                globals()["MUTATION_TIMEOUT"] = saved
+            return _eq((good, "killed at its limit" in detail, len(_KILLED), sorted(os.listdir(t)), _run_report()), (False, True, 1, [], []))
+
     return cases
 
 
