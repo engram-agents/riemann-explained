@@ -1787,54 +1787,54 @@ def _reading_text_error(raw):
 def _reading_entries(raw_file, base):
     """([(code, where, message)], [entry]) of the bytes of the readings file `raw_file`, whose `text_path` are relative to the folder `base`: the file is a JSON list of objects with EXACTLY the six string keys
     of READING_ENTRY_KEYS; each entry's text is read (`_reading_text_error`) and its `by`, `second_read_by` and `date` are checked; an entry that passes becomes {statement, file, text, by, second_read_by, date}.
-    Every refusal is reported (SKEL-READING-FILE / -TEXT / -NAME / -DATE), the names of statements through `_safe`, and nothing of the file's own text is ever echoed."""
+    Every refusal is reported (SKEL-STATEMENT-READING-FILE / -TEXT / -NAME / -DATE), the names of statements through `_safe`, and nothing of the file's own text is ever echoed."""
     try:
         obj = json.loads(raw_file.decode("utf-8"))
     except (ValueError, RecursionError):
-        return [("SKEL-READING-FILE", "not-json", "")], []
+        return [("SKEL-STATEMENT-READING-FILE", "not-json", "")], []
     if not isinstance(obj, list):
-        return [("SKEL-READING-FILE", "not-a-list", "")], []
+        return [("SKEL-STATEMENT-READING-FILE", "not-a-list", "")], []
     errors, entries = [], []
     for i, e in enumerate(obj, 1):
         where = f"entry {i}"
         if not isinstance(e, dict):
-            errors.append(("SKEL-READING-FILE", where, "not-an-object"))
+            errors.append(("SKEL-STATEMENT-READING-FILE", where, "not-an-object"))
             continue
         if set(e) != set(READING_ENTRY_KEYS):
-            errors.append(("SKEL-READING-FILE", where, "keys"))
+            errors.append(("SKEL-STATEMENT-READING-FILE", where, "keys"))
             continue
         loose = [k for k in READING_ENTRY_KEYS if not isinstance(e[k], str)]
         if loose:
-            errors += [("SKEL-READING-FILE", where, f"{k} not-a-string") for k in loose]
+            errors += [("SKEL-STATEMENT-READING-FILE", where, f"{k} not-a-string") for k in loose]
             continue
         name = _safe(e["statement"])
         why = _reading_path_error(base, e["text_path"])
         if why:
-            errors.append(("SKEL-READING-FILE", where, f"text_path {why}"))
+            errors.append(("SKEL-STATEMENT-READING-FILE", where, f"text_path {why}"))
             continue
         try:
             data = _read_bounded(os.path.join(base, *e["text_path"].split("/")), READING_TEXT_READ_LIMIT)
         except SourceError as x:
             if x.reason == "too-large":
-                errors.append(("SKEL-READING-TEXT", name, f"size over {READING_TEXT_READ_LIMIT} bytes, at most {READING_TEXT_MAX}"))
+                errors.append(("SKEL-STATEMENT-READING-TEXT", name, f"size over {READING_TEXT_READ_LIMIT} bytes, at most {READING_TEXT_MAX}"))
             else:
-                errors.append(("SKEL-READING-FILE", where, f"text_path {x.reason}"))
+                errors.append(("SKEL-STATEMENT-READING-FILE", where, f"text_path {x.reason}"))
             continue
         why, text = _reading_text_error(data)
         bad = False
         if why:
-            errors.append(("SKEL-READING-TEXT", name, why))
+            errors.append(("SKEL-STATEMENT-READING-TEXT", name, why))
             bad = True
         for k in ("by", "second_read_by"):
             if _reading_name_bad(e[k]):
-                errors.append(("SKEL-READING-NAME", name, k))
+                errors.append(("SKEL-STATEMENT-READING-NAME", name, k))
                 bad = True
         try:
             if not _READING_DATE_SHAPE.fullmatch(e["date"]):
                 raise ValueError(e["date"])
             datetime.date(int(e["date"][:4]), int(e["date"][5:7]), int(e["date"][8:]))
         except ValueError:
-            errors.append(("SKEL-READING-DATE", name, ""))
+            errors.append(("SKEL-STATEMENT-READING-DATE", name, ""))
             bad = True
         if not bad:
             entries.append({"statement": e["statement"], "file": e["file"], "text": text, "by": e["by"], "second_read_by": e["second_read_by"], "date": e["date"]})
@@ -1925,17 +1925,17 @@ def _quote_errors(grh, own_path, text, cache):
 
 def _readings_attach(grh, entries, stm, ids):
     """(errors, {step id: reading}, {file id: n}) for the validated `entries` of the readings file: each must name (`statement` by its full name, `file` by its step id) a statement step the build WROTE, once
-    (`SKEL-READING-TARGET <statement>` otherwise), and each quote paragraph of its text must pass `_quote_errors` against the statement's own source file (`SKEL-READING-QUOTE <statement> <what>`)."""
+    (`SKEL-STATEMENT-READING-TARGET <statement>` otherwise), and each quote paragraph of its text must pass `_quote_errors` against the statement's own source file (`SKEL-STATEMENT-READING-QUOTE <statement> <what>`)."""
     wrote = {(r["parent"], stm["step_extra"][r["id"]]["name"]): r["id"] for r in stm["rows"]}
     errors, done, counts, seen, cache = [], {}, {fid: 0 for fid in ids}, set(), {}
     for e in entries:
         key = (e["file"], e["statement"])
         if key not in wrote or key in seen:
-            errors.append(("SKEL-READING-TARGET", _safe(e["statement"]), ""))
+            errors.append(("SKEL-STATEMENT-READING-TARGET", _safe(e["statement"]), ""))
             continue
         seen.add(key)
         sid = wrote[key]
-        errors += [("SKEL-READING-QUOTE", _safe(e["statement"]), why) for why in _quote_errors(grh, stm["step_extra"][sid]["source_path"], e["text"], cache)]
+        errors += [("SKEL-STATEMENT-READING-QUOTE", _safe(e["statement"]), why) for why in _quote_errors(grh, stm["step_extra"][sid]["source_path"], e["text"], cache)]
         done[sid] = {"text": e["text"], "by": e["by"], "second_read_by": e["second_read_by"], "date": e["date"]}
         counts[e["file"]] += 1
     return errors, done, counts
@@ -1968,7 +1968,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         return errors, {}, rows, rep
     if readings is not None:   # the readings: each names a statement the build wrote; its quotes are checked against the repository's doc-strings
         if stm is None:
-            return [("SKEL-READING-OPTIONS", "readings", "needs --statements-for")], {}, rows, rep
+            return [("SKEL-STATEMENT-READING-OPTIONS", "readings", "needs --statements-for")], {}, rows, rep
         errors, attached, counts = _readings_attach(grh, readings, stm, statements_for)
         if errors:
             return errors, {}, rows, rep
@@ -2111,7 +2111,7 @@ def _run(opts):
         print("REFUSED: nothing written", file=sys.stderr)
         return 1
     if "readings" in opts and "statements-for" not in opts:   # a reading is of a statement: nothing is read
-        return refuse([("SKEL-READING-OPTIONS", "readings", "needs --statements-for")])
+        return refuse([("SKEL-STATEMENT-READING-OPTIONS", "readings", "needs --statements-for")])
     if ("statements-for" in opts) != ("strings-overlay-statements" in opts):   # checked before any file is read: a build without statements never reads or ships the statement words
         return refuse([("SKEL-STATEMENT-WORDS", "strings-overlay-statements", "is required with --statements-for" if "statements-for" in opts else "needs --statements-for")])
     try:
@@ -2153,7 +2153,7 @@ def _run(opts):
             raw_readings = _read_bounded(opts["readings"], READING_FILE_LIMIT)
         except SourceError as e:
             if e.reason == "too-large":
-                return refuse([("SKEL-READING-FILE", "too-large", "")])
+                return refuse([("SKEL-STATEMENT-READING-FILE", "too-large", "")])
             raise Unreadable(f"--readings: cannot read {opts['readings']}: {e.reason}")
         errors, entries = _reading_entries(raw_readings, os.path.dirname(os.path.abspath(opts["readings"])))
         if errors:
