@@ -136,6 +136,7 @@ export async function start(doc, deps) {
     const notice = q["graph-notice"];
     function say(text) { if (dead) return; notice.replaceChildren(doc.createTextNode(text)); notice.hidden = false; }
     function hush() { notice.hidden = true; }
+    notice.addEventListener("click", () => hush(), { signal });      // N1: a tap on the notice puts it away
 
     /* A MAP CARRIES NOTES iff its index strings hold BOTH note_label and note_source (data the page has at start; the live map has neither).
        On a map that carries notes, the step's own file is loaded (it is cached when the card's parents or a deep link already loaded it) BEFORE
