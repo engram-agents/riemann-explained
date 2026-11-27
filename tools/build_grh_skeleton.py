@@ -1715,7 +1715,8 @@ def _statement_symbols(kinds):
 
 # ---------------------------------------------------------------- the reading of a statement (`--readings FILE`): our own words about one statement, from a file, checked here so the page never meets a shape it refuses
 
-READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card); with the option the file of --strings-overlay-statements holds the 28 words and these (36), without it the 28
+READING_CUE_KEYS = ("face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text")   # the 4 words of the reading cue (contract section 33, Ariadne's strings file, section 'Reading cues'): page keys, written to index.json `strings`
+READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline") + READING_CUE_KEYS   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card) and the 4 of the cue; with the option the file of --strings-overlay-statements holds the 28 words and these (40), without it the 28
 READING_BUILDER_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")   # the four heading words of a reading: required in the overlay file with --readings, never written to index.json `strings` (the page reads four of the eight and refuses an index that holds these; the builder does not read the headings of a text today)
 READING_ENTRY_KEYS = ("statement", "file", "text_path", "by", "second_read_by", "date")   # the six string keys of an entry of the readings file, and no other
 READING_TEXT_MAX = 20000   # the most BYTES (UTF-8) of a reading's `text`, counted on the text as written (after the one trailing newline is dropped)
@@ -1961,6 +1962,19 @@ def _readings_attach(grh, entries, stm, ids):
     return errors, done, counts
 
 
+def _reading_counts(all_rows, attached):
+    """{step id: n} for every step with at least one statement that GOT a reading (`attached`: {statement step id: reading}, the readings that passed every check) on or under it: the statement itself (1) and,
+    walking the parent chain of the rows (statement, file, group, part), every step above it, each by the number of its statements with a reading. A step with none beneath is not a key (the card writes nothing for it)."""
+    parent = {r["id"]: r["parent"] for r in all_rows}
+    counts = {}
+    for sid in attached:
+        i = sid
+        while i != "root":
+            counts[i] = counts.get(i, 0) + 1
+            i = parent[i]
+    return counts
+
+
 def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None, statements_for=None, page_url=None, page_title=None, readings=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build; `notes_lean_dir` (optional) is the folder of the contributed notes (readings); `statements_for` (optional, a list of FILE step ids) opens those files
@@ -1986,6 +2000,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         errors, stm = _statements(grh, pin, ilean_dir, rows, rep, statements_for, page_url, page_title, source_prefix)
     if errors:
         return errors, {}, rows, rep
+    reading_counts = {}   # {step id: n}: the readings on or under a step (contract section 33), set on the rows below; empty without readings
     if readings is not None:   # the readings: each names a statement the build wrote; its quotes are checked against the repository's doc-strings
         if stm is None:
             return [("SKEL-STATEMENT-READING-OPTIONS", "readings", "needs --statements-for")], {}, rows, rep
@@ -1996,6 +2011,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
             stm["step_extra"][sid]["reading"] = reading
         for fid, n in counts.items():
             rep["statements"][fid]["readings"] = n
+        reading_counts = _reading_counts(rows + stm["rows"], attached)
     syms, orders, hidden = _statement_symbols(stm["kinds"]) if stm and stm["rows"] else (SYMBOLS, MAP_ORDERS, bs.GRAPH_STATUS_HIDDEN)
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(syms) if k in strings}, syms)   # only the missing ones: it holds a subset
     if missing:
@@ -2032,6 +2048,8 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         for fid in stm["with_children"]:
             step_extra.setdefault(fid, {})["note"] = json.loads(json.dumps(rep["notes"][fid]))
         step_extra.update(stm["step_extra"])
+    if reading_counts:   # the one writer of a card (`closed` of _graph_files) writes `reading_count` from the row: the step's own card, its entry in its parent's `children` and the top-level cards all come from it
+        all_rows = [dict(r, reading_count=reading_counts[r["id"]]) if r["id"] in reading_counts else r for r in all_rows]
     errors, objs = bs._graph_files(all_rows, pin, strings, symbols=syms, orders=orders, layout="column", link_info=link_info, notes=notes, child_kinds=True, status_hidden=hidden, child_kind_off=stm["with_children"] if stm else (),
                                     step_extra=step_extra, index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
                                                      **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {}),
@@ -2156,7 +2174,7 @@ def _run(opts):
     if unknown:
         return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
     if "strings-overlay-statements" in opts:   # exactly the statement words: a missing key and a page key that is not one of them are refused by name
-        expected = set(STATEMENT_WORD_KEYS) | (set(READING_WORD_KEYS) if "readings" in opts else set())   # all-or-none: the 8 words of the reading come with --readings and only then
+        expected = set(STATEMENT_WORD_KEYS) | (set(READING_WORD_KEYS) if "readings" in opts else set())   # all-or-none: the 12 words of the reading (8) and of its cue (4) come with --readings and only then
         wrong = [("SKEL-STATEMENT-WORDS", k, "missing") for k in sorted(expected - set(words))] + [("SKEL-STATEMENT-WORDS", k, "is not a statement word") for k in sorted(set(words) - expected)]
         if wrong:
             return refuse(wrong)
