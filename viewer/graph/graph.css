@@ -61,14 +61,14 @@ a { color: var(--theorem); text-underline-offset: 0.15em; }
   /* FULL: the bar's button opened the header again: everything, scrollable, never more than 60 percent of the window */
   body:has(#graph-intro-bar) .intro[data-full] { max-height: 60vh; max-height: 60dvh; overflow-y: auto; }
   body:has(#graph-intro-bar) .intro[data-full] .front-line { display: block; }
-  /* folded: one bar, the title on one line, the way back */
-  .intro-bar { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; background: var(--card); border-bottom: 1px solid var(--rule); }
+  /* folded: one bar, the title on one line, the way back; and the toolbar a compact row under it, in the flow (nothing floats over the map, so no box can be under a control):
+     36 + 36 px, so the map area is at least 85 percent of a 390 x 500 window */
+  .intro-bar { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; background: var(--card); border-bottom: 1px solid var(--rule); }
   .intro-bar[hidden] { display: none; }
   .intro-bar .bar-title { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; line-height: 1.2; font-weight: 600; }
-  .intro-bar .linkbtn { flex: none; min-height: 40px; font-size: 13px; white-space: nowrap; }
-  /* while folded the toolbar floats over the stage's top edge as a small pill, so the map area is the window less the bar (at least 85 percent in a 390x500 frame) */
-  body:has(#graph-intro-bar:not([hidden])) .toolbar { position: absolute; top: 6px; left: 6px; z-index: 6; padding: 2px; gap: 3px; border: 1px solid var(--rule); }
-  body:has(#graph-intro-bar:not([hidden])) .toolbar :is(.tool, .view-btn, .seg-here, .seg-link) { min-width: 0; min-height: 38px; padding: 0 7px; font-size: 12px; }
+  .intro-bar .linkbtn { flex: none; min-height: 36px; font-size: 13px; white-space: nowrap; }
+  body:has(#graph-intro-bar:not([hidden])) .toolbar { height: 36px; padding: 2px 6px; gap: 4px; }
+  body:has(#graph-intro-bar:not([hidden])) .toolbar :is(.tool, .view-btn, .seg-here, .seg-link) { min-width: 0; min-height: 32px; padding: 0 8px; font-size: 12px; }
 }
 /* FOLD END */
 

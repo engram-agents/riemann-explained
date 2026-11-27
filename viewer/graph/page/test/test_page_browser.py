@@ -3096,20 +3096,22 @@ def c_fold_start_compact(b, S0, engine):
 
 
 def c_fold_short_window_starts_folded(b, S0, engine):
-    """FD2: under 520 px of window height (390x500 stands for the viewer's frame; 800x420 is a phone turned) the page starts FOLDED: the bar (at most 48 px, the title on
-    one line, an ellipsis when it does not fit), the header out of the flow, the map area at least 85 percent of the window, the toolbar a pill over the stage's top
-    edge that is still the topmost thing at the centre of each of its buttons."""
-    for w, h in ((390, 500), (800, 420)):
-        S, pg = fold_open(b, engine, w, h)
+    """FD2: under 520 px of window height the page starts FOLDED: the bar (at most 48 px, the title on one line, an ellipsis when it does not fit), the header out of the flow,
+    the toolbar a compact row under it IN THE FLOW (nothing floats over the map), the map area at least 85 percent of a 390x500 window (the viewer's frame; a phone turned,
+    800x420, has 82.9 percent: at least 80), every control the topmost thing at its centre, and no box under the toolbar: the first box is at or below its bottom edge."""
+    for w, h, floor in ((390, 500, 0.85), (800, 420, 0.80)):
+        S, pg = fold_open(b, engine, w, h, fix="graphview")
         try:
             r = pg.ev(FOLD_RECTS_JS)
             assert fold_is_bar(pg), (w, h, r)
             assert r["bar"]["h"] <= 48, r["bar"]
             assert r["barTitle"]["h"] <= 1.4 * float(r["barTitle"]["fs"][:-2]) + 1, ("the bar title is not one line", r["barTitle"])
-            assert r["stage"]["h"] >= 0.85 * h, (w, h, r["stage"], 0.85 * h)
-            assert r["toolbar"]["pos"] == "absolute", r["toolbar"]
+            assert r["stage"]["h"] >= floor * h, (w, h, r["stage"], floor * h)
+            assert r["toolbar"]["pos"] != "absolute" and r["toolbar"]["top"] + r["toolbar"]["h"] <= r["stage"]["top"] + 0.5, ("the toolbar floats over the map", r["toolbar"], r["stage"])
             assert pg.ev("""[...document.querySelectorAll('.toolbar button, .toolbar a')].every((x) => { const b = x.getBoundingClientRect();
               const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return top === x || x.contains(top); })"""), "a toolbar control is covered"
+            assert pg.ev("""(() => { const t = document.querySelector('.toolbar').getBoundingClientRect().bottom;
+              return [...document.querySelectorAll('#graph .ge-node')].every((n) => n.getBoundingClientRect().top >= t - 0.5); })()"""), "a box is under the toolbar"
             pg.csp_clean(); pg.close()
         finally:
             S.stop()
@@ -3221,14 +3223,13 @@ def c_fold_resize_to_desktop(b, S0, engine):
 
 
 def c_fold_mutants(b, S0, engine):
-    """FD8: four mutants, each turns a case red: the fold on pointerdown removed (FD3), the bar's height raised to 120 px (FD2), the toolbar kept in the flow while
-    folded (FD2), the phone media query widened to 1400 px (FD5)."""
+    """FD8: four mutants, each turns a case red: the fold on pointerdown removed (FD3), the bar's height raised to 120 px (FD2), the toolbar floated over the map while folded (FD2), the phone media query widened to 1400 px (FD5)."""
     muts = {
         "no fold on a pan": ({"page/viewfold.js": lambda t: t.replace("> PAN_PX", "> 100000")}, c_fold_triggers),
         "fold on pointerdown": ({"page/viewfold.js": lambda t: t.replace("down = { x: e.clientX, y: e.clientY }; }", "down = { x: e.clientX, y: e.clientY }; fold(null); }")}, c_fold_tap_holds),
         "no refit after a press": ({"page/app.js": lambda t: t.replace('t.closest("#graph-show-all, .view-switch")', 't.closest("#nothing")')}, c_fold_after),
-        "bar 120 px": ({"graph.css": lambda t: t.replace("height: 40px; padding: 0 12px; background", "height: 120px; padding: 0 12px; background")}, c_fold_short_window_starts_folded),
-        "toolbar in the flow": ({"graph.css": lambda t: t.replace("position: absolute; top: 6px", "position: static; top: 6px")}, c_fold_short_window_starts_folded),
+        "bar 120 px": ({"graph.css": lambda t: t.replace("height: 36px; padding: 0 12px; background", "height: 120px; padding: 0 12px; background")}, c_fold_short_window_starts_folded),
+        "toolbar floats over the map": ({"graph.css": lambda t: t.replace("/* FOLD END */", "body:has(#graph-intro-bar:not([hidden])) .toolbar { position: absolute; top: 6px; left: 6px; z-index: 6; }\n/* FOLD END */")}, c_fold_short_window_starts_folded),
         "media query widened": ({"graph.css": lambda t: t.replace("(max-width: 600px)", "(max-width: 1400px)")}, c_fold_desktop_unchanged),
     }
     if engine == "double":
@@ -3310,8 +3311,10 @@ def c_fold_after(b, S0, engine):
             pg.page.mouse.move(w / 2, h * 0.75); pg.page.mouse.down(); pg.page.mouse.move(w / 2 + 25, h * 0.75 + 10, steps=4); pg.page.mouse.up(); pg.page.wait_for_timeout(150)
             assert fold_is_bar(pg)
             r = pg.ev(FOLD_RECTS_JS)
-            assert abs(r["stage"]["top"] - r["bar"]["h"]) < 1.5 and r["stage"]["h"] >= 0.85 * h, (r["bar"], r["stage"])
-            below = pg.ev("Math.ceil(document.querySelector('.toolbar').getBoundingClientRect().bottom) + 6")
+            assert abs(r["stage"]["top"] - (r["bar"]["h"] + r["toolbar"]["h"])) < 1.5 and r["stage"]["h"] >= 0.85 * h, (r["bar"], r["toolbar"], r["stage"])
+            assert pg.ev("""(() => { const t = document.querySelector('.toolbar').getBoundingClientRect().bottom;
+              return [...document.querySelectorAll('#graph .ge-node')].filter((n) => n.getBoundingClientRect().top < t - 0.5).length === 0; })()"""), "a box stands under the toolbar after the fold"
+            below = r["bar"]["h"] + r["toolbar"]["h"] + 10
             assert r["bar"]["h"] < below < 0.25 * h, below
             assert pg.ev("(() => { const e = document.elementFromPoint(%d, %d); return !!e && (e.closest('#graph') !== null); })()" % (w / 2, below)), "the freed band is not the stage"
             boxes = [n for n in pg.ev(FOLD_TAP_JS) if n["visible"]]
@@ -3344,6 +3347,8 @@ def c_fold_after(b, S0, engine):
               return { h: s.height, inside: [...document.querySelectorAll('.graph-spine .ge-node')].map((n) => { const q = n.getBoundingClientRect();
                 return q.left >= s.left - 1 && q.right <= s.right + 1 && q.top >= s.top - 1 && q.bottom <= s.bottom + 1; }) }; })()""")
             assert sp["h"] >= 0.85 * h and all(sp["inside"]), (w, h, sp)
+            assert pg.ev("""(() => { const t = document.querySelector('.toolbar').getBoundingClientRect().bottom;
+              return [...document.querySelectorAll('.graph-spine .ge-node')].every((n) => n.getBoundingClientRect().top >= t - 0.5); })()"""), "a spine box is under the toolbar"
             pg.page.click(".graph-spine .ge-node")
             pg.wait("document.querySelector('#graph-sheet-body .spine-panel')", 6000)
             pg.csp_clean(); pg.close()
@@ -3381,7 +3386,7 @@ def c_fold_about_copies(b, S0, engine):
 
 FOLD_CASES = [
     ("FD1: on a phone the header starts compact: a quarter of the window at most, the sentence whole, no scope line", c_fold_start_compact),
-    ("FD2: under 520 px of window height the page starts folded: a bar of 48 px at most, the map area 85 percent, the toolbar a pill over it", c_fold_short_window_starts_folded),
+    ("FD2: under 520 px of window height the page starts folded: a bar of 48 px at most, the toolbar in the flow under it, the map area 85 percent, no box under the toolbar", c_fold_short_window_starts_folded),
     ("FD3: a pan, a wheel, a key, a tap on a box, Show all and Key each fold the header at once; a press in the header does not", c_fold_triggers),
     ("FD4: the bar's button opens the whole header again (scope line too), at most 60 percent of the window; the next pan folds it", c_fold_reopen),
     ("FD5: desktop is unchanged: no bar, no fold, the type and the toolbar as they were", c_fold_desktop_unchanged),
