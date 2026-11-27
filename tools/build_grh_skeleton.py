@@ -1724,6 +1724,10 @@ MATHS_FILE_LIMIT = 1048576   # the most bytes of one table file the tool reads (
 MATHS_RULES = ("repository-bold", "classical", "lean-name", "ours")   # A3, Ariadne's four rules in order
 MATHS_NAME_MAX = 60   # the most CODE POINTS of a name (Kepler 40378)
 MATHS_TEXT_MAX = 600   # the most characters of a statement's text
+MATHS_NOTATION_TEXT_MAX, MATHS_SYMBOL_MAX = 600, 200   # the most CODE POINTS of a notation row's `text` and `symbol` (the page's own limits, contract A5 LIMITS: a legal value is never refused by the page)
+MATHS_NOTATION_ROWS_MAX = 200   # the most notation rows of ONE file
+MATHS_LEAN_MAX, MATHS_LEAN_NAME_MAX = 50, 300   # the most names in the `lean` list of a notation row, and the most characters of one name
+MATHS_NUMBER_MAX = 999999   # each counter of a number `<file>.<n>` has 1 to 6 digits and no leading zero: a place beyond it is SKEL-MATHS-NUMBERS
 MATHS_STATUSES = ("draft", "read")
 _MATHS_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _MATHS_TOKEN = re.compile(r"[\w.']+")   # predicate P: a token is a maximal run of Unicode word characters (letters, digits, `_`), dots and apostrophes
@@ -1887,8 +1891,9 @@ def _maths_name_whys(row, doc, file_id, known, taken):
     return why
 
 
-def _maths_numbers(stm_rows, rows, ids):
-    """{statement step id: `<file>.<n>`} (contract section 34, B2): `<file>` is the 1-based place of the statement's FILE step among the FILE children of its group, in the group's children order (`order`, the key `_graph_files` sorts the
+def _maths_numbers(stm_rows, rows, ids, limit=None):
+    """(errors, {statement step id: `<file>.<n>`}) (contract section 34, B2; `limit`, default MATHS_NUMBER_MAX, is the most a counter may reach: a file place or a statement place beyond it is `SKEL-MATHS-NUMBERS <file id> file-place` or
+    `statement-place`, one line each per file, and the numbers are then {}): `<file>` is the 1-based place of the statement's FILE step among the FILE children of its group, in the group's children order (`order`, the key `_graph_files` sorts the
     children of a step by), `<n>` the 1-based place among the statements of its file in source order, one counter for every kind. `stm_rows` are the statement rows, `rows` the rows of the map, `ids` the file steps opened."""
     by_parent = {}
     for r in stm_rows:
@@ -1898,7 +1903,12 @@ def _maths_numbers(stm_rows, rows, ids):
     for g in {r["parent"] for r in rows if r["id"] in idset}:
         for i, f in enumerate(sorted((r for r in rows if r["parent"] == g and r["kind"] == "file"), key=lambda r: r["order"]), 1):
             place[f["id"]] = i
-    return {r["id"]: "%d.%d" % (place[fid], n) for fid, kids in by_parent.items() for n, r in enumerate(sorted(kids, key=lambda r: r["order"]), 1)}
+    limit = MATHS_NUMBER_MAX if limit is None else limit
+    errors, numbers = [], {}
+    for fid, kids in by_parent.items():
+        errors += [("SKEL-MATHS-NUMBERS", fid, what) for what, n in (("file-place", place[fid]), ("statement-place", len(kids))) if n > limit]
+        numbers.update({r["id"]: "%d.%d" % (place[fid], n) for n, r in enumerate(sorted(kids, key=lambda r: r["order"]), 1)})
+    return errors, ({} if errors else numbers)
 
 
 def _maths_check(maths, ilean_dir, stm, rows, ids):
@@ -1922,9 +1932,13 @@ def _maths_check(maths, ilean_dir, stm, rows, ids):
         text = row["text"]
         why = ["shape"] if text == "" or "\n" in text or "\r" in text or len(text) > MATHS_TEXT_MAX else []
         errors += [("SKEL-MATHS-STATEMENTS", _safe(row["statement"]), w) for w in why + (["chars"] if _maths_chars_bad(text) else []) + _maths_visible(text, known, True)]
+    per_file = {}
     for k, row in good["notation"]:
         why = [] if row["file"] in ids else ["file"]
-        if any(x == "" or "\n" in x or "\r" in x for x in (row["symbol"], row["text"])) or not (isinstance(row["lean"], list) and all(isinstance(x, str) for x in row["lean"])):
+        per_file[row["file"]] = per_file.get(row["file"], 0) + 1
+        lean_ok = isinstance(row["lean"], list) and all(isinstance(x, str) for x in row["lean"])
+        if (any(x == "" or "\n" in x or "\r" in x for x in (row["symbol"], row["text"])) or not lean_ok or len(row["text"]) > MATHS_NOTATION_TEXT_MAX or len(row["symbol"]) > MATHS_SYMBOL_MAX
+                or per_file[row["file"]] > MATHS_NOTATION_ROWS_MAX or len(row["lean"]) > MATHS_LEAN_MAX or any(len(x) > MATHS_LEAN_NAME_MAX for x in row["lean"])):   # the limits are the page's own (A5 LIMITS)
             why.append("shape")
         else:
             why += ["lean " + _safe(n) for n in row["lean"] if n not in where]
@@ -1936,7 +1950,10 @@ def _maths_check(maths, ilean_dir, stm, rows, ids):
         return errors, None
     names = {row["statement"]: row for _k, row in good["names"]}
     stms = {row["statement"]: row for _k, row in good["statements"]}
-    new_rows, step_extra, numbers = [], {}, _maths_numbers(stm["rows"], rows, ids)
+    number_errors, numbers = _maths_numbers(stm["rows"], rows, ids)
+    if number_errors:
+        return number_errors, None
+    new_rows, step_extra = [], {}
     for r in stm["rows"]:
         number = numbers[r["id"]]
         full = stm["step_extra"][r["id"]]["name"]
