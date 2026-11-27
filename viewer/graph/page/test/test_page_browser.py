@@ -3514,7 +3514,7 @@ def c_gv_view_routes_close(b, S0, engine):
     box, pressing 'Show its file' and pressing Graph each leave the panel and the view exactly as they were. The route names are the module's own VIEW_ROUTES."""
     S, pg = gv(b, engine)
     try:
-        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["spine-open", "spine-show-file", "view-cards", "view-graph"]
+        assert sorted(pg.ev("import('./page/app.js').then(m => [...m.VIEW_ROUTES])")) == ["nb-more", "nb-move", "nb-spine", "spine-open", "spine-show-file", "view-cards", "view-graph"]
         gv_press(pg, "graph")
         pg.wait("document.querySelectorAll('.graph-spine .ge-node').length === 4", 6000)
         tap(pg, "spine-made-a")
@@ -3573,12 +3573,13 @@ GV_CASES = [
 
 # ---- the file neighbourhood (neighbourhood.js, graphview.js neighbourhood(), the routes nb-move, nb-more, nb-spine): the nbview fixture, made-up text ----
 NB_USES = "/graph/uses.json"
+NB_MUTATE = None      # set by the mutants case only: {relative path: function(text) -> text} applied to the served copy
 
 
 def nbp(b, engine, uses_edit=None, width=390, height=844, index_edit=None):
     """The nbview fixture served (14 files, a four-box spine, uses.json, the nb_ words), the failure-event listener registered before the page loads."""
     root = tempfile.mkdtemp(prefix="pg-nb-")
-    assemble.assemble(root, engine, fix="nbview", uses_edit=uses_edit, index_edit=index_edit)
+    assemble.assemble(root, engine, fix="nbview", uses_edit=uses_edit, index_edit=index_edit, mutate=NB_MUTATE)
     Handler.seen.clear()
     S = Served(root)
     pg = Pg(b, S.base + "graph/index.html", width, height, init=GV_INIT).settled()
@@ -3787,6 +3788,30 @@ def c_nb_addresses(b, S0, engine):
         S.stop(); gv_clean()
 
 
+def c_nb_mutants(b, S0, engine):
+    """NB8: six mutants of the neighbourhood, each turns a case red: rows ordered by title only (NB2), no history entry for a move (NB3), uses.json read when Graph is pressed (NB1),
+    the title put in as one plain string (NB5), every row shown with no '+ n more' (NB2), the back line not asking for the browser's Back (NB3)."""
+    global NB_MUTATE
+    muts = {
+        "order by title only": ({"page/neighbourhood.js": lambda t: t.replace("(b.names - a.names) || ", "")}, c_nb_order_and_count),
+        "no history entry": ({"page/app.js": lambda t: t.replace('doc.defaultView.history.pushState({ nbFrom: from }, "", "#" + id);', "")}, c_nb_history),
+        "uses.json at the press of Graph": ({"page/graphview.js": lambda t: t.replace("spine = validateSpine(raw, index);", "spine = validateSpine(raw, index); await loadUses();")}, c_nb_lazy_and_open),
+        "title as a plain string": ({"page/neighbourhood.js": lambda t: t.replace("titleChildren(info ? info.title : row.id)", "[info ? info.title : row.id]")}, c_nb_hostile_title),
+        "no more row": ({"page/neighbourhood.js": lambda t: t.replace("return total <= fit ? total : Math.max(MIN_ROWS, fit - 1);", "return total;")}, c_nb_order_and_count),
+        "back line does not go back": ({"page/app.js": lambda t: t.replace("onBack: () => doc.defaultView.history.back(),", "onBack: () => {},")}, c_nb_history),
+    }
+    for name, (mut, fn) in muts.items():
+        NB_MUTATE = mut
+        try:
+            try:
+                fn(b, S0, engine)
+            except AssertionError:
+                continue
+            raise AssertionError("MUTANT SURVIVED: " + name)
+        finally:
+            NB_MUTATE = None
+
+
 NB_CASES = [
     ("NB1: uses.json is read lazily, once; a spine box's button opens the file's neighbourhood (one history entry)", c_nb_lazy_and_open),
     ("NB2: rows heaviest by names first, ties by title then id; the totals in the headings; as many as fit, at least two, then '+ n more'", c_nb_order_and_count),
@@ -3795,6 +3820,7 @@ NB_CASES = [
     ("NB5: a title with markup stays text in the rows and the full list", c_nb_hostile_title),
     ("NB6: a refused uses.json fails the neighbourhood only: notice, event with its code, the spine stays", c_nb_refusal),
     ("NB7: an address of a group shows the main results; an unknown id is the refused-link notice", c_nb_addresses),
+    ("NB8: six mutants of the neighbourhood each turn a case red", c_nb_mutants),
 ]
 
 
