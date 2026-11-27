@@ -15,6 +15,9 @@ import { el, titleChildren } from "./dom.js";
 import { DataError, fetchJson, isTransportCode } from "./data.js";
 import { validateSpine, spineRoots } from "./spine.js";
 
+/* How long the page waits for a sidecar (spine.json) before it counts the request as failed (`fetch-failed`, with the notice and the event as for any other refusal). */
+export const SIDECAR_TIMEOUT_MS = 20000;
+
 /* THE EVENT. One name for the whole page ('graphpage-failure', namespaced so a bare generic name on document cannot be fired or clobbered by another script),
    detail {stage: 'graph', code}; the start failure's {stage: 'start', code} is the smoke test's own stacked change. `code` is a member of FAILURE_CODES or null. */
 export const FAILURE_EVENT = "graphpage-failure";
@@ -132,7 +135,7 @@ export function createGraphView(deps) {
     if (view === "graph") return true;
     try {
       if (!spine) {
-        const raw = await fetchJson(deps.fetch, "spine.json");
+        const raw = await fetchJson(deps.fetch, "spine.json", SIDECAR_TIMEOUT_MS);
         if (!current(t)) return false;
         spine = validateSpine(raw, index);
       }
@@ -145,7 +148,7 @@ export function createGraphView(deps) {
       if (!current(t)) { if (view !== "graph") rollback(); return false; }
       rollback();
       say(strings.graph_failed_notice);
-      failure.graph = String(e && e.message ? e.message : "graph failed");
+      failure.graph = failureCode(e);      // the code only, as the comment above says: no text of the data or of an exception is kept
       refused = true;
       report(failureCode(e));
       return false;
