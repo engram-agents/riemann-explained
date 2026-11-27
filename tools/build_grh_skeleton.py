@@ -3067,6 +3067,86 @@ def _rdc_invariants(files):
     return bad
 
 
+# ---- the maths tables (contract section 34, A and B1 to B3): fixtures and helpers of the MTH cases; every file, name, row and sentence here is made up.
+MTH_SRCS = {"New/P/A": _stm_src("/-- **Alpha result.** One. -/\ntheorem alpha : True := trivial\n\n/-- Beta one. -/\nlemma beta : True := trivial\n\ndef primeRemainder : Nat := 0\n\ntheorem countError : True := trivial\n"),
+            "New/P/B": _stm_src("theorem bdef : True := trivial\n\nlemma ne_of_lt : True := trivial\n"), "New/P/C": RDC_SRCS["New/P/C"], "New/Q/D": RDC_SRCS["New/Q/D"]}   # the fixture of RDC (two parts, three groups, four files) with more statements in A (three kinds) and B
+MTH_ILEANS = {"New/P/A": _stm_ilean("New/P/A", ("alpha", "beta", "primeRemainder", "countError")), "New/P/B": _stm_ilean("New/P/B", ("bdef", "ne_of_lt")),
+              "New/P/C": RDC_ILEANS["New/P/C"], "New/Q/D": RDC_ILEANS["New/Q/D"],
+              "Lib/Other/Names": _stm_ilean("Lib/Other/Names", ("Nat.le", "Nat.mul", "Nat.sum", "Nat.Prime", "Nat.succ", "Foo.fullName", "Foo.integral_primeRemainder", "Foo.my_name", "Foo.R_q"))}   # declarations outside the three files: the compiled index knows them all
+MTH_IDS = {"alpha": "lean-p-a-alpha", "beta": "lean-p-a-beta", "primeRemainder": "lean-p-a-primeremainder", "countError": "lean-p-a-counterror", "bdef": "lean-p-b-bdef", "ne_of_lt": "lean-p-b-ne-of-lt",
+           "cdef": "lean-p-c-cdef", "ddef": "lean-q-d-ddef"}
+MTH_NUMBERS = {"alpha": "1.1", "beta": "1.2", "primeRemainder": "1.3", "countError": "1.4", "bdef": "2.1", "ne_of_lt": "2.2", "cdef": "1.1", "ddef": "1.1"}   # file place in its group . place among the statements of the file, one counter for every kind
+MTH_ROLES = {"alpha": "Theorem", "beta": "Lemma", "primeRemainder": "Definition", "countError": "Theorem", "bdef": "Theorem", "ne_of_lt": "Lemma", "cdef": "Theorem", "ddef": "Theorem"}
+
+
+def _mth_stamp(status):
+    r = {"by": "Agent One", "date": "2026-11-27", "status": status}
+    if status == "read":
+        r.update(read_by="Agent Two", read_date="2026-11-28")
+    return r
+
+
+def _mth_n(statement, name, rule="classical", status="draft"):
+    """A row of the names table."""
+    return dict({"statement": statement, "name": name, "rule": rule}, **_mth_stamp(status))
+
+
+def _mth_s(statement, text="`x` is a number.", status="draft"):
+    """A row of the statements table."""
+    return dict({"statement": statement, "text": text}, **_mth_stamp(status))
+
+
+def _mth_t(file, symbol="x", text="`x` is a number.", lean=(), status="draft"):
+    """A row of the notation table."""
+    return dict({"file": file, "symbol": symbol, "text": text, "lean": list(lean)}, **_mth_stamp(status))
+
+
+def _mth_tables(names=(), statements=(), notation=()):
+    return {"names": {"rows": list(names)}, "statements": {"rows": list(statements)}, "notation": {"rows": list(notation)}}
+
+
+def _mth_run(names=(), statements=(), notation=(), ids=RDC_FILES, tables=None, maths=True, **kw):
+    """(errors, files, rows, report) of a build of the MTH fixture with --statements-for `ids` and the three tables (`tables` gives them whole; `maths` False: no maths option at all)."""
+    with _tmp() as d:
+        g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+        extra = {"maths": tables if tables is not None else _mth_tables(names, statements, notation)} if maths else {}
+        return build(g, PIN, dict(_strings(), **STM_WORDS), (), _ildir(g), statements_for=list(ids), **extra, **kw)
+
+
+def _mth_lines(errs):
+    """The refusal lines as the command line prints them."""
+    return [f"{c} {w}" + (f" {m}" if m else "") for c, w, m in errs]
+
+
+def _mth_why(errs):
+    """The refusal lines of a build, or None when it built."""
+    return _mth_lines(errs) if errs else None
+
+
+def _mth_cards(files):
+    """{statement full name: (card number, card title, entry number, entry title)} of every statement step of a build: the card is the step's own, the entry is the one in its file step's `children`."""
+    out = {}
+    for k, v in files.items():
+        if k.startswith("graph/step/"):
+            o = json.loads(v.decode("utf-8"))
+            if "name" in o:
+                entry = next(c for c in _j(files, "graph/step/%s.json" % o["path"][-1])["children"] if c["id"] == o["id"])
+                out[o["name"]] = (o["card"].get("number"), o["card"]["title"], entry.get("number"), entry["title"])
+    return out
+
+
+def _mth_cli(d, g, names=None, statements=None, notation=None, extra=(), ids=",".join(RDC_FILES), out="out"):
+    """`_stm_cli` of the fixture folder `g` with --statements-for `ids` (none when `ids` is None) and one `--maths-*` option for each table given (a table is a Python object written as JSON, or bytes written as they are)."""
+    more = []
+    for opt, table in (("names", names), ("statements", statements), ("notation", notation)):
+        if table is not None:
+            p = os.path.join(d, "maths-%s.json" % opt)
+            with open(p, "wb") as f:
+                f.write(table if isinstance(table, bytes) else json.dumps(table).encode("utf-8"))
+            more += ["--maths-" + opt, p]
+    return _stm_cli(d, g, (["--statements-for", ids] if ids is not None else []) + more + list(extra), out=out)
+
+
 def _selftest_cases():
     cases = []
 
@@ -7756,6 +7836,432 @@ def _selftest_cases():
             r, g = _rdg_run(d, [_rdg_entry(names[0], text_path="a.md"), _rdg_entry(names[1], text_path="a.md")], {"a.md": "Text."}, heads=False)
         bad = any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 or c in "‮​" for c in "\n".join(r[1]) if c != "\n")
         return _eq((r[0], _rdg_skel(r[1]), bad, r[3]), (1, [hd("missing " + KU, json.dumps(n)) for n in names], False, False))
+
+    # ---------------------------------------------------------------- the maths tables (MTH cases; contract section 34, A and B1 to B3): three tables of ours, one decision, all or none
+
+    @case("MTH-OPTIONS", "`--maths-names`, `--maths-statements` and `--maths-notation` come ALL THREE or none: one or two alone are refused `SKEL-MATHS-OPTIONS <option> is missing` (one line for each missing one, in the order names, statements, "
+                         "notation; exit 1; OUT_DIR not written); the three without `--statements-for` are refused `SKEL-MATHS-OPTIONS maths needs --statements-for` (and one alone without it names the missing ones first, then that line); "
+                         "all three with it build (exit 0), the tables may be empty; an option given twice or with no value is a usage error (exit 2)")
+    def _():
+        T = {"rows": []}
+        out = {}
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            for label, kw in (("names", dict(names=T)), ("statements", dict(statements=T)), ("notation", dict(notation=T)), ("names+notation", dict(names=T, notation=T)),
+                              ("all", dict(names=T, statements=T, notation=T)), ("all-no-for", dict(names=T, statements=T, notation=T, ids=None)), ("names-no-for", dict(names=T, ids=None))):
+                r = _mth_cli(d, g, out="o-" + label, **kw)
+                out[label] = (r[0], [x for x in r[1] if x.startswith("SKEL-")], r[3])
+            twice = _mth_cli(d, g, names=T, statements=T, notation=T, extra=["--maths-names", os.path.join(d, "maths-names.json")], out="o-twice")
+            novalue = _stm_cli(d, g, ["--statements-for", "lean-p-a", "--maths-names"], out="o-novalue")
+        miss = lambda *o: ["SKEL-MATHS-OPTIONS maths-%s is missing" % x for x in o]
+        return _eq((out, twice[0], twice[3], novalue[0], novalue[3]),
+                   ({"names": (1, miss("statements", "notation"), False), "statements": (1, miss("names", "notation"), False), "notation": (1, miss("names", "statements"), False),
+                     "names+notation": (1, miss("statements"), False), "all": (0, [], True),
+                     "all-no-for": (1, ["SKEL-MATHS-OPTIONS maths needs --statements-for"], False),
+                     "names-no-for": (1, miss("statements", "notation") + ["SKEL-MATHS-OPTIONS maths needs --statements-for"], False)}, 2, False, 2, False))
+
+    @case("MTH-ABSENT", "WITHOUT the three options nothing of the maths surface is written: no step file holds `number`, `math`, `human` or `notation`, a statement's title is still its short Lean name in backticks (card and entry), "
+                        "no `role`-and-number title, the report has no `maths` line and the command line prints none; the build with all three tables EMPTY differs from it (number and title), so the absence is the option, not the tables")
+    def _():
+        errs, files, rows, rep = _mth_run(maths=False)
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            r = _stm_cli(d, g, ["--statements-for", ",".join(RDC_FILES)])
+        e2, f2, r2, p2 = _mth_run()
+        keys = sorted(k for k, v in files.items() if any(w in v for w in (b'"number"', b'"math"', b'"human"', b'"notation"')))
+        cards = _mth_cards(files)
+        return _eq((errs, keys, {n: c for n, c in cards.items()}, [x for x in report_lines(rep) if x.startswith("maths")], r[0], [x for x in r[1] if x.startswith("maths")], e2, files == f2),
+                   ([], [], {n: (None, "`" + n + "`", None, "`" + n + "`") for n in MTH_IDS}, [], 0, [], [], False))
+
+    @case("MTH-EMPTY-TABLES", "with the three options and EMPTY tables (`{\"rows\": []}`) the build adds `number` and the role-and-number title (`Lemma 1.2`) to every statement, on its card AND on its entry in the file step, and no `math`, `human` or "
+                              "`notation` anywhere; the step ids and the file set are those of a build without the options; the report prints the three `maths` lines with 0 rows")
+    def _():
+        e0, f0, r0, p0 = _mth_run(maths=False)
+        e1, f1, r1, p1 = _mth_run()
+        want = {n: (MTH_NUMBERS[n], MTH_ROLES[n] + " " + MTH_NUMBERS[n], MTH_NUMBERS[n], MTH_ROLES[n] + " " + MTH_NUMBERS[n]) for n in MTH_IDS}
+        none = sorted(k for k, v in f1.items() if any(w in v for w in (b'"math"', b'"human"', b'"notation"')))
+        return _eq((e0, e1, _mth_cards(f1), none, sorted(f0) == sorted(f1), [r["id"] for r in r0] == [r["id"] for r in r1], [x for x in report_lines(p1) if x.startswith("maths")]),
+                   ([], [], want, [], True, True, ["maths names: 0 rows, 0 used, 0 not in this build", "maths statements: 0 rows, 0 used, 0 not in this build", "maths notation: 0 rows, 0 used, 0 not in this build"]))
+
+    # ---- the rows (A2): ONE row shape for the three tables
+
+    @case("MTH-ROWS-KEYS", "a row's keys (A2): a MISSING key and an UNKNOWN key are each `SKEL-MATHS-ROWS <table> <statement> key <name>`; a value that is not text where text is stated is `shape`; a row with no `statement` (or `file`/`symbol`) is named "
+                           "`row#<k>` (1-based place in the file); a row that is not an object is `row#<k> shape`; the same checks hold for the three tables (the neighbour of each, a whole row, passes)")
+    def _():
+        ok_s, ok_n, ok_t = _mth_s("alpha"), _mth_n("alpha", "Alpha"), _mth_t("lean-p-a")
+        drop = lambda r, k: {a: b for a, b in r.items() if a != k}
+        run = lambda t, row: _mth_why(_mth_run(**{t: [row]})[0])
+        L = lambda t, who, why: ["SKEL-MATHS-ROWS %s %s %s" % (t, who, why)]
+        return _eq({"ok": (run("statements", ok_s), run("names", ok_n), run("notation", ok_t)),
+                    "no-text": run("statements", drop(ok_s, "text")), "extra": run("statements", dict(ok_s, extra=1)), "text-int": run("statements", dict(ok_s, text=5)),
+                    "no-statement": run("statements", drop(ok_s, "statement")), "not-object": run("statements", "alpha"),
+                    "names-no-rule": run("names", drop(ok_n, "rule")), "names-no-name": run("names", drop(ok_n, "name")), "names-name-int": run("names", dict(ok_n, name=5)), "names-rule-list": run("names", dict(ok_n, rule=["x"])),
+                    "no-by": run("statements", drop(ok_s, "by")), "no-date": run("statements", drop(ok_s, "date")), "no-status": run("statements", drop(ok_s, "status")),
+                    "notation-no-symbol": run("notation", drop(ok_t, "symbol")), "notation-no-lean": run("notation", drop(ok_t, "lean")), "notation-extra": run("notation", dict(ok_t, statement="alpha")),
+                    "notation-symbol-int": run("notation", dict(ok_t, symbol=3))},
+                   {"ok": (None, None, None), "no-text": L("statements", "alpha", "key text"), "extra": L("statements", "alpha", "key extra"), "text-int": L("statements", "alpha", "shape"),
+                    "no-statement": L("statements", "row#1", "key statement"), "not-object": L("statements", "row#1", "shape"),
+                    "names-no-rule": L("names", "alpha", "key rule"), "names-no-name": L("names", "alpha", "key name"), "names-name-int": L("names", "alpha", "shape"), "names-rule-list": L("names", "alpha", "shape"),
+                    "no-by": L("statements", "alpha", "key by"), "no-date": L("statements", "alpha", "key date"), "no-status": L("statements", "alpha", "key status"),
+                    "notation-no-symbol": L("notation", "row#1", "key symbol"), "notation-no-lean": L("notation", "lean-p-a x", "key lean"), "notation-extra": L("notation", "lean-p-a x", "key statement"),
+                    "notation-symbol-int": L("notation", "row#1", "shape")})
+
+    @case("MTH-ROWS-STATUS", "`status` is `draft` or `read` (anything else, a non-string included: `SKEL-MATHS-ROWS <table> <statement> status`); `read_by` and `read_date` are present EXACTLY when the status is `read`: a read row without either, a draft "
+                             "row with either, and a `read_by` equal to `by` are each `read-fields`; a draft and a read row with a different reader pass")
+    def _():
+        run = lambda row, t="statements": _mth_why(_mth_run(**{t: [row]})[0])
+        base = _mth_s("alpha")
+        rd = _mth_s("alpha", status="read")
+        drop = lambda r, k: {a: b for a, b in r.items() if a != k}
+        L = lambda why: ["SKEL-MATHS-ROWS statements alpha " + why]
+        return _eq({"draft": run(base), "read": run(rd), "maybe": run(dict(base, status="maybe")), "status-int": run(dict(base, status=1)), "read-no-by": run(drop(rd, "read_by")), "read-no-date": run(drop(rd, "read_date")),
+                    "draft-read-by": run(dict(base, read_by="Agent Two")), "draft-read-date": run(dict(base, read_date="2026-11-28")), "same-reader": run(dict(rd, read_by="Agent One")),
+                    "names-same-reader": run(dict(_mth_n("alpha", "Alpha", status="read"), read_by="Agent One"), "names"), "names-read": run(_mth_n("alpha", "Alpha", status="read"), "names"),
+                    "notation-read": run(_mth_t("lean-p-a", status="read"), "notation"), "notation-draft-read-by": run(dict(_mth_t("lean-p-a"), read_by="Agent Two"), "notation")},
+                   {"draft": None, "read": None, "maybe": L("status"), "status-int": L("status"), "read-no-by": L("read-fields"), "read-no-date": L("read-fields"), "draft-read-by": L("read-fields"),
+                    "draft-read-date": L("read-fields"), "same-reader": L("read-fields"), "names-same-reader": ["SKEL-MATHS-ROWS names alpha read-fields"], "names-read": None, "notation-read": None,
+                    "notation-draft-read-by": ["SKEL-MATHS-ROWS notation lean-p-a x read-fields"]})
+
+    @case("MTH-ROWS-BY-DATE", "`by` and `read_by` are not empty and at most 80 UTF-16 units (80 letters pass, 81 are `by`; 40 characters outside the BMP are 80 units and pass, 41 are 82 and are `by`, though 41 is under 80 characters); a date is "
+                              "`YYYY-MM-DD` and a REAL day (`2026-02-30`, `2026-2-3` and `26-11-27` are `date`; `2026-02-28` passes), for `date` and for `read_date`")
+    def _():
+        run = lambda **kw: _mth_why(_mth_run(statements=[dict(_mth_s("alpha", status="read"), **kw)])[0])
+        L = lambda why: ["SKEL-MATHS-ROWS statements alpha " + why]
+        astral = "\U0001D538"
+        return _eq({"by-ok": run(), "by-empty": run(by=""), "by-80": run(by="a" * 80), "by-81": run(by="a" * 81), "by-80-units": run(by=astral * 40), "by-82-units": run(by=astral * 41),
+                    "read-by-80": run(read_by="b" * 80), "read-by-81": run(read_by="b" * 81), "read-by-82-units": run(read_by=astral * 41), "read-by-empty": run(read_by=""),
+                    "date-ok": run(date="2026-02-28"), "date-feb30": run(date="2026-02-30"), "date-short": run(date="2026-2-3"), "date-two-digit-year": run(date="26-11-27"), "date-int": run(date=20261127),
+                    "read-date-bad": run(read_date="2026-13-01"), "read-date-ok": run(read_date="2026-12-31")},
+                   {"by-ok": None, "by-empty": L("by"), "by-80": None, "by-81": L("by"), "by-80-units": None, "by-82-units": L("by"), "read-by-80": None, "read-by-81": L("by"), "read-by-82-units": L("by"), "read-by-empty": L("by"),
+                    "date-ok": None, "date-feb30": L("date"), "date-short": L("date"), "date-two-digit-year": L("date"), "date-int": L("date"), "read-date-bad": L("date"), "read-date-ok": None})
+
+    @case("MTH-ROWS-DUP-UNKNOWN", "two rows for one statement in one table are `SKEL-MATHS-ROWS <table> <statement> duplicate` (the second; the same statement in two TABLES is fine); two rows with one (file, symbol) are `<file> <symbol> duplicate` (the "
+                                  "same symbol in two files is fine); a statement the compiled index does not know at all is `unknown`; a row for a declaration the index knows that is NOT a statement of this build (`Nat.le`, which lives in a library file) is "
+                                  "legal and only counted: `maths names: 2 rows, 1 used, 1 not in this build`")
+    def _():
+        run = lambda **kw: _mth_why(_mth_run(**kw)[0])
+        e, f, r, rep = _mth_run(names=[_mth_n("alpha", "Alpha"), _mth_n("Nat.le", "Less or equal")], statements=[_mth_s("Nat.le"), _mth_s("Nat.mul"), _mth_s("alpha")])
+        return _eq((run(statements=[_mth_s("alpha"), _mth_s("alpha")]), run(names=[_mth_n("alpha", "One"), _mth_n("beta", "Two"), _mth_n("alpha", "Three")]),
+                    run(names=[_mth_n("alpha", "Alpha")], statements=[_mth_s("alpha")]),
+                    run(notation=[_mth_t("lean-p-a", "x"), _mth_t("lean-p-a", "x")]), run(notation=[_mth_t("lean-p-a", "x"), _mth_t("lean-p-b", "x"), _mth_t("lean-p-a", "y")]),
+                    run(names=[_mth_n("nope", "Nope")]), run(statements=[_mth_s("Alpha")]), e, [x for x in report_lines(rep) if x.startswith("maths")]),
+                   (["SKEL-MATHS-ROWS statements alpha duplicate"], ["SKEL-MATHS-ROWS names alpha duplicate"], None,
+                    ["SKEL-MATHS-ROWS notation lean-p-a x duplicate"], None,
+                    ["SKEL-MATHS-ROWS names nope unknown"], ["SKEL-MATHS-ROWS statements Alpha unknown"], [],
+                    ["maths names: 2 rows, 1 used, 1 not in this build", "maths statements: 3 rows, 1 used, 2 not in this build", "maths notation: 0 rows, 0 used, 0 not in this build"]))
+
+    @case("MTH-ROWS-FILE", "through the command line, a table file that is not JSON, is not an object, has a key besides `rows`, or whose `rows` is not a list is `SKEL-MATHS-ROWS <table> - shape` (exit 1, nothing written; the three tables each); "
+                           "a file that is missing is exit 2 (the way of --readings); the neighbour, `{\"rows\": []}`, builds")
+    def _():
+        out = {}
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            good = {"rows": []}
+            for label, bad in (("not-json", b"{"), ("array", b"[]"), ("extra-key", b'{"rows": [], "x": 1}'), ("rows-object", b'{"rows": {}}'), ("no-rows", b"{}")):
+                for t in ("names", "statements", "notation"):
+                    r = _mth_cli(d, g, **dict({"names": good, "statements": good, "notation": good}, **{t: bad}), out="o-%s-%s" % (label, t))
+                    out[(label, t)] = (r[0], [x for x in r[1] if x.startswith("SKEL-")], r[3])
+            miss = _stm_cli(d, g, ["--statements-for", "lean-p-a", "--maths-names", os.path.join(d, "nope.json"), "--maths-statements", os.path.join(d, "nope.json"), "--maths-notation", os.path.join(d, "nope.json")], out="o-miss")
+            fine = _mth_cli(d, g, names=good, statements=good, notation=good, out="o-fine")
+        want = {(label, t): (1, ["SKEL-MATHS-ROWS %s - shape" % t], False) for label in ("not-json", "array", "extra-key", "rows-object", "no-rows") for t in ("names", "statements", "notation")}
+        return _eq((out, miss[0], miss[3], fine[0]), (want, 2, False, 0))
+
+    # ---- the names (A3)
+
+    @case("MTH-NAMES-CHARS", "a name is not empty, has no leading or trailing space, no control character, no backtick and no underscore: each `SKEL-MATHS-NAMES <statement> chars` (the neighbour `Alpha result` and a name with an inner space, a digit, a "
+                             "hyphen and a Greek letter pass)")
+    def _():
+        run = lambda name: _mth_why(_mth_run(names=[_mth_n("alpha", name)])[0])
+        L = ["SKEL-MATHS-NAMES alpha chars"]
+        return _eq({n: run(n) for n in ("Alpha result", "The weights λ(n) of 2-step", "", " Alpha", "Alpha ", "Al\x07pha", "Al\tpha", "Al`pha", "Al_pha")},
+                   {"Alpha result": None, "The weights λ(n) of 2-step": None, "": L, " Alpha": L, "Alpha ": L, "Al\x07pha": L, "Al\tpha": L, "Al`pha": L, "Al_pha": L})
+
+    @case("MTH-NAMES-LENGTH", "a name has at most 60 CODE POINTS (not UTF-16 units, not bytes): 60 letters pass and 61 are `length`; 60 characters outside the BMP (120 UTF-16 units) pass and 61 are `length`")
+    def _():
+        run = lambda name: _mth_why(_mth_run(names=[_mth_n("alpha", name)])[0])
+        astral = "\U0001D538"
+        L = ["SKEL-MATHS-NAMES alpha length"]
+        return _eq((run("a" * 60), run("a" * 61), run(astral * 60), run(astral * 61), run("é" * 60)), (None, L, None, L, None))
+
+    @case("MTH-NAMES-P", "a name holds no declaration name the index knows (predicate P, underscore NOT allowed): `The primeRemainder bound` (a full name of the build), `Uses Foo.fullName` (a full name of a library file, so the index is the whole compiled "
+                         "index, with a full stop after it too) and `Uses fullName` (its short name, a lower-case letter directly followed by an upper-case one) are `P <token>`; `my_name` is both `chars` (underscore) and `P my_name`; the "
+                         "neighbours `The prime remainder bound`, `Prime`, `Less or equal` and `Le sum mul succ` pass")
+    def _():
+        run = lambda name: _mth_why(_mth_run(names=[_mth_n("alpha", name)])[0])
+        L = lambda *x: ["SKEL-MATHS-NAMES alpha " + y for y in x]
+        return _eq({n: run(n) for n in ("The primeRemainder bound", "Uses Foo.fullName", "Uses Foo.fullName.", "Uses fullName", "The my_name", "The prime remainder bound", "Prime", "Less or equal", "Le sum mul succ")},
+                   {"The primeRemainder bound": L("P primeRemainder"), "Uses Foo.fullName": L("P Foo.fullName"), "Uses Foo.fullName.": L("P Foo.fullName"), "Uses fullName": L("P fullName"),
+                    "The my_name": L("chars", "P my_name"), "The prime remainder bound": None, "Prime": None, "Less or equal": None, "Le sum mul succ": None})
+
+    @case("MTH-NAMES-DUPLICATE", "names are unique WITHIN THEIR FILE among the rows present: a second row of a file with the same name is `SKEL-MATHS-NAMES <statement> duplicate-in-file <the first statement>`; the same name in two FILES passes; "
+                                 "a name differing in case passes")
+    def _():
+        run = lambda *rows: _mth_why(_mth_run(names=list(rows))[0])
+        return _eq((run(_mth_n("alpha", "Same name"), _mth_n("beta", "Same name")), run(_mth_n("alpha", "Same name"), _mth_n("bdef", "Same name")),
+                    run(_mth_n("alpha", "Same name"), _mth_n("beta", "same name")), run(_mth_n("alpha", "Same name"), _mth_n("beta", "Other"), _mth_n("primeRemainder", "Same name"))),
+                   (["SKEL-MATHS-NAMES beta duplicate-in-file alpha"], None, None, ["SKEL-MATHS-NAMES primeRemainder duplicate-in-file alpha"]))
+
+    @case("MTH-NAMES-RULE", "`rule` is one of repository-bold, classical, lean-name, ours: anything else (and the empty string) is `SKEL-MATHS-NAMES <statement> rule`; `classical` and `ours` have no check beyond the common ones")
+    def _():
+        run = lambda rule, name="Alpha result": _mth_why(_mth_run(names=[_mth_n("alpha", name, rule)])[0])
+        return _eq({r: run(r) for r in ("repository-bold", "classical", "lean-name", "ours", "oops", "", "Ours", "classical ")},
+                   {"repository-bold": None, "classical": None, "lean-name": ["SKEL-MATHS-NAMES alpha lean-name"], "ours": None, "oops": ["SKEL-MATHS-NAMES alpha rule"], "": ["SKEL-MATHS-NAMES alpha rule"],
+                    "Ours": ["SKEL-MATHS-NAMES alpha rule"], "classical ": ["SKEL-MATHS-NAMES alpha rule"]})
+
+    @case("MTH-NAMES-BOLD", "rule `repository-bold`: the name equals the bold opening `**X.**` of the doc-string with its final full stop dropped (`Alpha result` for `**Alpha result.**` passes; `Alpha result.` and `Alpha` and `alpha result` are "
+                            "`SKEL-MATHS-NAMES alpha bold`); a doc-string with no bold opening (`beta`: `Beta one.`) and a statement with no doc-string (`primeRemainder`) refuse `bold` for any name")
+    def _():
+        run = lambda stm, name: _mth_why(_mth_run(names=[_mth_n(stm, name, "repository-bold")])[0])
+        b = lambda s: ["SKEL-MATHS-NAMES %s bold" % s]
+        return _eq((run("alpha", "Alpha result"), run("alpha", "Alpha result."), run("alpha", "Alpha"), run("alpha", "alpha result"), run("beta", "Beta one"), run("primeRemainder", "Prime remainder")),
+                   (None, b("alpha"), b("alpha"), b("alpha"), b("beta"), b("primeRemainder")))
+
+    @case("MTH-NAMES-LEAN", "rule `lean-name`: the name's letters and digits, lower-cased and joined, equal the Lean SHORT name split at underscores and camel-case boundaries, lower-cased and joined: `Prime remainder` for `primeRemainder`, `Count error` "
+                            "for `countError`, `Ne of lt` for `ne_of_lt` and `PRIME remainder` pass; `Prime remainders` and `Ne lt` are `SKEL-MATHS-NAMES <statement> lean-name`; the same wrong names pass under `ours`")
+    def _():
+        run = lambda stm, name, rule="lean-name": _mth_why(_mth_run(names=[_mth_n(stm, name, rule)])[0])
+        b = lambda s: ["SKEL-MATHS-NAMES %s lean-name" % s]
+        return _eq((run("primeRemainder", "Prime remainder"), run("countError", "Count error"), run("ne_of_lt", "Ne of lt"), run("primeRemainder", "PRIME remainder"), run("primeRemainder", "Prime remainders"),
+                    run("ne_of_lt", "Ne lt"), run("primeRemainder", "Prime remainders", "ours"), run("alpha", "Alpha")),
+                   (None, None, None, None, b("primeRemainder"), b("ne_of_lt"), None, None))
+
+    # ---- the statements (A4) and the visible-text checks they share with the notation
+
+    @case("MTH-STM-SHAPE", "a statement text is not empty, has no newline and at most 600 characters: `SKEL-MATHS-STATEMENTS <statement> shape` for the empty text, `a\\nb` and 601 characters; 600 pass; code spans are allowed")
+    def _():
+        run = lambda text: _mth_why(_mth_run(statements=[_mth_s("alpha", text)])[0])
+        L = ["SKEL-MATHS-STATEMENTS alpha shape"]
+        return _eq((run("x" * 600), run("x" * 601), run(""), run("a\nb"), run("`n ≤ x` and `1/2`"), run("é" * 600)), (None, L, L, L, None, None))
+
+    @case("MTH-STM-P", "a statement text holds no declaration name the index knows (P, underscore ALLOWED): `primeRemainder`, `Foo.fullName`, `fullName` and `integral_primeRemainder` are `P <token>` (in code spans too); `my_name` and `R_q` pass here "
+                       "(underscore is notation), and so do `le`, `succ`, `Prime` and a plain sentence")
+    def _():
+        run = lambda text: _mth_why(_mth_run(statements=[_mth_s("alpha", text)])[0])
+        L = lambda t: ["SKEL-MATHS-STATEMENTS alpha P " + t]
+        return _eq({t: run("`%s` is small" % t) for t in ("primeRemainder", "Foo.fullName", "fullName", "integral_primeRemainder", "my_name", "R_q", "le", "succ", "Prime", "mul")},
+                   {"primeRemainder": L("primeRemainder"), "Foo.fullName": L("Foo.fullName"), "fullName": L("fullName"), "integral_primeRemainder": L("integral_primeRemainder"), "my_name": None, "R_q": None,
+                    "le": None, "succ": None, "Prime": None, "mul": None})
+
+    @case("MTH-STM-VISIBLE", "a statement text has no `.lean` (`lean-file`), no `line` or `lines` followed by white space and a digit, any case (`line-number`: `lines 3-4`, `line 12`, `LINE 7` refused; `the line of`, `outline 3`, `a line.` pass) and no `[[` "
+                             "(`link`: `[[x]]` refused, `[x]` passes)")
+    def _():
+        run = lambda text: _mth_why(_mth_run(statements=[_mth_s("alpha", text)])[0])
+        L = lambda t: ["SKEL-MATHS-STATEMENTS alpha " + t]
+        return _eq({t: run(t) for t in ("see Foo.lean here", "the lean file", "see lines 3-4", "see line 12", "see LINE 7", "the line of it", "outline 3", "a line.", "a [[x]] b", "a [x] b")},
+                   {"see Foo.lean here": L("lean-file"), "the lean file": None, "see lines 3-4": L("line-number"), "see line 12": L("line-number"), "see LINE 7": L("line-number"), "the line of it": None,
+                    "outline 3": None, "a line.": None, "a [[x]] b": L("link"), "a [x] b": None})
+
+    # ---- the notation (A5)
+
+    @case("MTH-NOT-FILE", "a notation row's `file` is one of `--statements-for`: `SKEL-MATHS-NOTATION <file> <symbol> file` for a file that is not (a file of the fixture left out of the list, an id that is no step); the same file listed passes")
+    def _():
+        run = lambda f, ids: _mth_why(_mth_run(notation=[_mth_t(f)], ids=ids)[0])
+        return _eq((run("lean-p-c", ("lean-p-a", "lean-p-b")), run("lean-p-c", ("lean-p-a", "lean-p-c")), run("lean-nope", RDC_FILES), run("lean-p", RDC_FILES)),
+                   (["SKEL-MATHS-NOTATION lean-p-c x file"], None, ["SKEL-MATHS-NOTATION lean-nope x file"], ["SKEL-MATHS-NOTATION lean-p x file"]))
+
+    @case("MTH-NOT-SHAPE", "a notation row's `symbol` and `text` are not empty and have no newline, and `lean` is a list of strings: `SKEL-MATHS-NOTATION <file> <symbol> shape` (an empty symbol is shown as \"\", a symbol with a newline as JSON text); "
+                           "an empty `lean` list is fine; each name of `lean` the compiled index does not know is `lean <name>` (one line each, in order); known names, including a library one, pass")
+    def _():
+        run = lambda **kw: _mth_why(_mth_run(notation=[dict(_mth_t("lean-p-a"), **kw)])[0])
+        S = ["SKEL-MATHS-NOTATION lean-p-a x shape"]
+        return _eq({"ok": run(), "empty-lean": run(lean=[]), "known": run(lean=["alpha", "Nat.le"]), "empty-symbol": run(symbol=""), "newline-symbol": run(symbol="a\nb"), "empty-text": run(text=""), "newline-text": run(text="a\nb"),
+                    "lean-string": run(lean="alpha"), "lean-int": run(lean=[1]), "lean-null": run(lean=None), "unknown": run(lean=["alpha", "nope.x", "also.no"])},
+                   {"ok": None, "empty-lean": None, "known": None, "empty-symbol": ['SKEL-MATHS-NOTATION lean-p-a "" shape'], "newline-symbol": ['SKEL-MATHS-NOTATION lean-p-a "a\\nb" shape'], "empty-text": S,
+                    "newline-text": S, "lean-string": S, "lean-int": S, "lean-null": S,
+                    "unknown": ["SKEL-MATHS-NOTATION lean-p-a x lean nope.x", "SKEL-MATHS-NOTATION lean-p-a x lean also.no"]})
+
+    @case("MTH-NOT-VISIBLE", "the visible-text check of A4 runs on a notation row's `text` AND on its `symbol` (underscore allowed): `P <token>`, `lean-file`, `line-number`, `link` each refuse (`SKEL-MATHS-NOTATION <file> <symbol> <why>`); `R_q` as a symbol and "
+                             "`my_name` in a text pass")
+    def _():
+        run = lambda **kw: _mth_why(_mth_run(notation=[dict(_mth_t("lean-p-a"), **kw)])[0])
+        L = lambda who, why: ["SKEL-MATHS-NOTATION lean-p-a %s %s" % (who, why)]
+        return _eq({"text-p": run(text="is primeRemainder"), "text-file": run(text="see a.lean"), "text-line": run(text="at line 4"), "text-link": run(text="see [[a]]"),
+                    "symbol-p": run(symbol="primeRemainder"), "symbol-file": run(symbol="a.lean"), "symbol-line": run(symbol="line 4"), "symbol-link": run(symbol="[[a]]"),
+                    "ok-symbol": run(symbol="R_q"), "ok-text": run(text="my_name is a thing"), "plain": run(text="the line of x", symbol="outline 3")},
+                   {"text-p": L("x", "P primeRemainder"), "text-file": L("x", "lean-file"), "text-line": L("x", "line-number"), "text-link": L("x", "link"),
+                    "symbol-p": L("primeRemainder", "P primeRemainder"), "symbol-file": L("a.lean", "lean-file"), "symbol-line": L("line 4", "line-number"), "symbol-link": L("[[a]]", "link"),
+                    "ok-symbol": None, "ok-text": None, "plain": None})
+
+    # ---- predicate P (contract section P): one function, one set of names built once from the whole compiled index
+
+    @case("MTH-P", "predicate P over the statements table (underscore allowed) and the names table (underscore NOT allowed): flagged are a token equal to a known FULL name (`Foo.fullName`, `Nat.le`, `primeRemainder`, a name of a statement of the build) and "
+                   "a known SHORT name of 4 or more characters that has an underscore (names only), a dot, or a lower-case letter directly followed by an upper-case one (`fullName`, `integral_primeRemainder` in both tables, `my_name` in names only); "
+                   "NOT flagged: `le`, `sum`, `mul`, `succ`, `Prime` (plain short names), and `R_q`")
+    def _():
+        toks = ("Foo.fullName", "Nat.le", "primeRemainder", "fullName", "integral_primeRemainder", "my_name", "R_q", "le", "sum", "mul", "succ", "Prime")
+        pick = lambda errs: [l.split(" P ", 1)[1] for l in _mth_lines(errs) if " P " in l]
+        stm = {t: pick(_mth_run(statements=[_mth_s("alpha", "`%s` holds" % t)])[0]) for t in toks}
+        nam = {t: pick(_mth_run(names=[_mth_n("alpha", "A %s" % t)])[0]) for t in toks}
+        return _eq((stm, nam),
+                   ({"Foo.fullName": ["Foo.fullName"], "Nat.le": ["Nat.le"], "primeRemainder": ["primeRemainder"], "fullName": ["fullName"], "integral_primeRemainder": ["integral_primeRemainder"], "my_name": [], "R_q": [],
+                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": []},
+                    {"Foo.fullName": ["Foo.fullName"], "Nat.le": ["Nat.le"], "primeRemainder": ["primeRemainder"], "fullName": ["fullName"], "integral_primeRemainder": ["integral_primeRemainder"], "my_name": ["my_name"], "R_q": [],
+                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": []}))
+
+    # ---- what is written (B1 to B3): the number, the title, `math`, `human`, `notation`
+
+    @case("MTH-NUMBERS", "every statement step gets `number` `<file>.<n>` (a string) on its OWN card and on its entry in the file step's `children`: `<file>` is the 1-based place of its FILE among its GROUP's file children (so it restarts in each "
+                         "group: the file of the second group is 1 again, and so is the file of the third), `<n>` the 1-based place among the statements of the file in SOURCE order, ONE counter for every kind (theorem, lemma and def count "
+                         "together), whatever the order of the names table; no other step and no other file holds `number`; the numbers equal an independent reading of the built tree (the group step's `children`, then each file step's)")
+    def _():
+        names = [_mth_n("countError", "Count name"), _mth_n("beta", "Beta name"), _mth_n("alpha", "Alpha name")]   # table order is not source order
+        e, f, r, p = _mth_run(names=names)
+        got = {n: (v[0], v[2]) for n, v in _mth_cards(f).items()}
+        has = sorted(k for k, v in f.items() if b'"number"' in v)
+        want_files = sorted("graph/step/%s.json" % i for i in list(MTH_IDS.values()) + ["lean-p-a", "lean-p-b", "lean-p-c", "lean-q-d"])
+        indep = {}
+        for g in ("lean-p-g-one", "lean-p-g-two", "lean-q-g-three"):
+            files = [c["id"] for c in _j(f, "graph/step/%s.json" % g)["children"] if c["kind"] == "file"]
+            for place, fid in enumerate(files, 1):
+                for j, c in enumerate(_j(f, "graph/step/%s.json" % fid)["children"], 1):
+                    indep[c["id"]] = "%d.%d" % (place, j)
+        by_id = {MTH_IDS[n]: v[0] for n, v in got.items()}
+        return _eq((e, got, has == want_files, by_id == indep, len(indep), all(isinstance(v[0], str) for v in got.values())),
+                   ([], {n: (MTH_NUMBERS[n], MTH_NUMBERS[n]) for n in MTH_IDS}, True, True, 8, True))
+
+    @case("MTH-TITLE", "the `title` of a statement card and of its closed entry is the NAME of its names row, plain; without a names row it is `<role word> <number>` (`Lemma 1.2`, `Definition 1.3`), never a Lean identifier and never in backticks; "
+                       "the ids do NOT move: the step ids, the rows' ids, parents and orders and the set of files equal a build without the options")
+    def _():
+        names = [_mth_n("alpha", "Alpha name"), _mth_n("primeRemainder", "Prime remainder", "lean-name", "read")]
+        e0, f0, r0, p0 = _mth_run(maths=False)
+        e1, f1, r1, p1 = _mth_run(names=names)
+        c = _mth_cards(f1)
+        want = {n: (MTH_ROLES[n] + " " + MTH_NUMBERS[n]) for n in MTH_IDS}
+        want.update(alpha="Alpha name", primeRemainder="Prime remainder")
+        titles = {n: (v[1], v[3]) for n, v in c.items()}
+        ident = lambda t: any(x in t for x in ("`", "_", "primeRemainder", "countError", "ne_of_lt"))
+        return _eq((e1, titles, [n for n, (a, b) in titles.items() if ident(a) or ident(b)], sorted(f0) == sorted(f1), [(x["id"], x["parent"], x["order"], x["premises"]) for x in r0] == [(x["id"], x["parent"], x["order"], x["premises"]) for x in r1]),
+                   ([], {n: (t, t) for n, t in want.items()}, [], True, True))
+
+    @case("MTH-WRITTEN", "`math` = {status, text} on the statement step only when the statements table has a row for it; `human` = {rule, status} only when the names table has one; `notation` on a FILE step = the list of its rows as {lean, status, symbol, "
+                         "text} (the `file`, `by`, `date` keys dropped, a read row carries status `read`), in the table's order, absent when the file has none; the keys are sorted on disk; the closed entries and cards hold `number` and `title` and nothing "
+                         "more of these; a statement without a row has neither key (never an empty one)")
+    def _():
+        names = [_mth_n("alpha", "Alpha name", "ours"), _mth_n("beta", "Beta name", "classical", "read")]
+        stms = [_mth_s("alpha", "`a` holds"), _mth_s("bdef", "`b` holds", "read")]
+        notn = [_mth_t("lean-p-a", "y", "`y` is a number.", ["alpha"]), _mth_t("lean-p-c", "z", "`z` is a set.", status="read"), _mth_t("lean-p-a", "x", "`x` is a number.")]
+        e, f, r, p = _mth_run(names=names, statements=stms, notation=notn)
+        e0, f0, r0, p0 = _mth_run(maths=False)
+        step = lambda n: _j(f, "graph/step/%s.json" % MTH_IDS[n])
+        extra = lambda n: sorted(set(step(n)) - set(_j(f0, "graph/step/%s.json" % MTH_IDS[n])))
+        entry = next(c for c in _j(f, "graph/step/lean-p-a.json")["children"] if c["id"] == MTH_IDS["alpha"])
+        return _eq((e, step("alpha")["math"], step("alpha")["human"], step("beta")["human"], "math" in step("beta"), step("bdef")["math"], "human" in step("bdef"), [extra(n) for n in ("alpha", "beta", "bdef", "cdef", "ddef")],
+                    _j(f, "graph/step/lean-p-a.json")["notation"], _j(f, "graph/step/lean-p-c.json")["notation"], [k for k in ("lean-p-b", "lean-q-d") if "notation" in _j(f, "graph/step/%s.json" % k)],
+                    list(step("alpha")["math"]), list(_j(f, "graph/step/lean-p-a.json")["notation"][0]), sorted(entry), sorted(step("alpha")["card"]), b'"notation"' in f["graph/step/lean-p-b.json"], "math" in step("cdef")),
+                   ([], {"status": "draft", "text": "`a` holds"}, {"rule": "ours", "status": "draft"}, {"rule": "classical", "status": "read"}, False, {"status": "read", "text": "`b` holds"}, False,
+                    [["human", "math"], ["human"], ["math"], [], []],
+                    [{"lean": ["alpha"], "status": "draft", "symbol": "y", "text": "`y` is a number."}, {"lean": [], "status": "draft", "symbol": "x", "text": "`x` is a number."}],
+                    [{"lean": [], "status": "read", "symbol": "z", "text": "`z` is a set."}], [], ["status", "text"], ["lean", "status", "symbol", "text"],
+                    ["child_count", "id", "kind", "number", "parent_rests_on", "path", "proof", "role", "state", "title"], ["child_count", "id", "kind", "number", "path", "proof", "role", "state", "title"], False, False))
+
+    @case("MTH-NOTHING-ELSE", "nothing else changes (B1 to B3): between a build without the options and one with three tables of rows, every file that is not a step file is byte-identical, every step file equals its twin once the statement cards' and entries' "
+                              "`number` and `title` and the `math`, `human` and `notation` keys are taken away; with a reading on one statement, `reading` and `reading_count` are the same in both")
+    def _():
+        names, stms, notn = [_mth_n("alpha", "Alpha name"), _mth_n("beta", "Beta name")], [_mth_s("alpha"), _mth_s("bdef")], [_mth_t("lean-p-a")]
+
+        def norm(raw):
+            o = json.loads(raw.decode("utf-8"))
+            for x in [o["card"]] + o["children"]:
+                if "role" in x:
+                    x.pop("number", None)
+                    x["title"] = ""
+            for k in ("math", "human", "notation"):
+                o.pop(k, None)
+            return o
+        out = []
+        for readings in (None, [_rdc_entry("alpha")]):
+            e0, f0, r0, p0 = _mth_run(maths=False, readings=readings)
+            e1, f1, r1, p1 = _mth_run(names=names, statements=stms, notation=notn, readings=readings)
+            steps = sorted(k for k in f0 if k.startswith("graph/step/"))
+            out.append((e0, e1, sorted(f0) == sorted(f1), [k for k in f0 if not k.startswith("graph/step/") and f0[k] != f1[k]], [k for k in steps if norm(f0[k]) != norm(f1[k])],
+                        [k for k in steps if f0[k] != f1[k]] != [], b'"reading_count"' in f1["graph/step/lean-p-a-alpha.json"] and b'"reading"' in f1["graph/step/lean-p-a-alpha.json"] if readings else None))
+        return _eq(out, [([], [], True, [], [], True, None), ([], [], True, [], [], True, True)])
+
+    @case("MTH-REPORT", "the build prints, AFTER its `statements` lines, one line per table in the order names, statements, notation: `maths <table>: <n> rows, <m> used, <k> not in this build` (used = a statement of this build, or for notation "
+                        "a file of `--statements-for`; a row of a declaration the index knows that is no statement of the build is counted as not in this build), through the command line")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            r = _mth_cli(d, g, names={"rows": [_mth_n("alpha", "Alpha"), _mth_n("Nat.le", "Less or equal")]}, statements={"rows": [_mth_s("alpha"), _mth_s("beta"), _mth_s("bdef")]},
+                         notation={"rows": [_mth_t("lean-p-a"), _mth_t("lean-p-c", "y")]})
+        lines = r[1]
+        last_stm = max(i for i, x in enumerate(lines) if x.startswith("statements "))
+        first_maths = min(i for i, x in enumerate(lines) if x.startswith("maths "))
+        return _eq((r[0], lines[first_maths:], first_maths > last_stm, r[3]),
+                   (0, ["maths names: 2 rows, 1 used, 1 not in this build", "maths statements: 3 rows, 3 used, 0 not in this build", "maths notation: 2 rows, 2 used, 0 not in this build"], True, True))
+
+    @case("MTH-ORDER", "the order of refusals (item 8), through the command line, ALL printed, exit 1, nothing written: first each table's file and ROWS problems (names, statements, notation), then the NAMES, STATEMENTS and NOTATION problems, each in row "
+                       "order; a table that fails its rows does not hide the other tables' content checks (a `statements` text of the wrong shape is printed beside a `names` duplicate), and a table file that is not JSON is printed first")
+    def _():
+        dropped = {k: v for k, v in _mth_s("beta").items() if k != "text"}
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            a = _mth_cli(d, g, names={"rows": [_mth_n("alpha", "Alpha"), _mth_n("alpha", "Alpha again"), _mth_n("bdef", "Bad_name")]}, statements={"rows": [dropped, _mth_s("cdef", "")]},
+                         notation={"rows": [_mth_t("lean-p-a"), _mth_t("lean-p-a"), _mth_t("lean-nope", "z")]}, out="o-a")
+            b = _mth_cli(d, g, names=b"{", statements={"rows": [_mth_s("cdef", "")]}, notation={"rows": []}, out="o-b")
+        sk = lambda r: [x for x in r[1] if x.startswith("SKEL-")]
+        return _eq((a[0], sk(a), a[3], b[0], sk(b), b[3]),
+                   (1, ["SKEL-MATHS-ROWS names alpha duplicate", "SKEL-MATHS-ROWS statements beta key text", "SKEL-MATHS-ROWS notation lean-p-a x duplicate",
+                        "SKEL-MATHS-NAMES bdef chars", "SKEL-MATHS-STATEMENTS cdef shape", "SKEL-MATHS-NOTATION lean-nope z file"], False,
+                    1, ["SKEL-MATHS-ROWS names - shape", "SKEL-MATHS-STATEMENTS cdef shape"], False))
+
+    # ---- the real source with Ariadne's draft tables (read only where they are readable; never copied into the repository)
+
+    MTH_REAL_DIR = "/home/agents-shared/ariadne/rh-viewer/sample-data-d1"
+
+    @case("MTH-REAL", "the real source and the draft tables (give `--selftest --grh DIR --ilean-dir DIR`; the tables are read from " + MTH_REAL_DIR + ", otherwise SKIPPED with the reason): the build through the command line refuses nothing and "
+                      "prints `maths names: 37 rows, 37 used, 0 not in this build` (and the statements 37/37/0, the notation 18/18/0); the numbers read off the BUILT tree (the group step's `children`, then each file step's) are 1.1 to 1.24 for "
+                      "`lean-reduction-zeros-prime-error` (file 1), 2.1 for `-criterion` and 3.1 to 3.12 for `-prime-number-theorem`, equal to the numbers on every card and entry; every statement has `number` and a title that holds no backtick; "
+                      "every notation row is on its own file step in the table's order; the step ids and the file set equal a build without the options, which holds no `number`, `math`, `human` or `notation`")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        tables = {}
+        try:
+            for t in ("names", "statements", "notation"):
+                with open(os.path.join(MTH_REAL_DIR, t + ".json"), encoding="utf-8") as fh:
+                    tables[t] = json.load(fh)
+        except (OSError, ValueError):
+            raise _SkipCase("SKIPPED: %s is not readable here" % MTH_REAL_DIR)
+        real_pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
+        ids = ["lean-reduction-zeros-criterion", "lean-reduction-zeros-prime-error", "lean-reduction-zeros-prime-number-theorem"]
+        group = "lean-reduction-from-a-one-sided-bound-to-the-zeros"
+        with _tmp() as d:
+            wp = os.path.join(d, "strings-lean-statements.json")
+            with open(wp, "w", encoding="utf-8") as fh:
+                json.dump(STM_WORDS, fh)
+            base = ["--grh", _GRH_FOR_SK13, "--pin", real_pin, "--strings", os.path.join(_HERE, os.pardir, "site", "strings.json"), "--ilean-dir", _ILEAN_FOR_SK13, "--strings-overlay-statements", wp, "--statements-for", ",".join(ids)]
+            r0 = _cli(base + ["--out", os.path.join(d, "o0")])
+            r1 = _cli(base + ["--out", os.path.join(d, "o1")] + sum([["--maths-" + t, os.path.join(MTH_REAL_DIR, t + ".json")] for t in ("names", "statements", "notation")], []))
+            f0 = _tree_files(os.path.join(d, "o0")) if r0[0] == 0 else {}
+            f1 = _tree_files(os.path.join(d, "o1")) if r1[0] == 0 else {}
+        if r0[0] or r1[0]:
+            return False, (r0[0], r0[2], r1[0], r1[1][:20], r1[2])
+        maths_lines = [x for x in r1[1].splitlines() if x.startswith("maths ")]
+        got = {}
+        files = [c["id"] for c in _j(f1, "graph/step/%s.json" % group)["children"] if c["kind"] == "file"]
+        indep = {}
+        for place, fid in enumerate(files, 1):
+            for j, c in enumerate(_j(f1, "graph/step/%s.json" % fid)["children"], 1):
+                indep[c["id"]] = "%d.%d" % (place, j)
+        cards = {}
+        for fid in ids:
+            for c in _j(f1, "graph/step/%s.json" % fid)["children"]:
+                card = _j(f1, "graph/step/%s.json" % c["id"])["card"]
+                cards[c["id"]] = (card.get("number"), c.get("number"), card["title"], c["title"], fid)
+        per_file = {fid: [cards[i][0] for i in cards if cards[i][4] == fid] for fid in ids}
+        source_order = {fid: ["%d.%d" % (files.index(fid) + 1, j) for j in range(1, len(per_file[fid]) + 1)] for fid in ids}
+        notation_ok = True
+        for fid in ids:
+            want = [(x["symbol"], x["text"], x["status"], x["lean"]) for x in tables["notation"]["rows"] if x["file"] == fid]
+            have = [(x["symbol"], x["text"], x["status"], x["lean"]) for x in _j(f1, "graph/step/%s.json" % fid).get("notation", [])]
+            notation_ok = notation_ok and want == have
+        absent = [k for k, v in f0.items() if any(w in v for w in (b'"number"', b'"math"', b'"human"', b'"notation"'))]
+        return _eq((r1[2].strip(), maths_lines, files, {fid: len(v) for fid, v in per_file.items()}, per_file[ids[1]][0], per_file[ids[1]][-1], per_file[ids[0]], per_file[ids[2]][0], per_file[ids[2]][-1],
+                    all(v[0] == v[1] == indep[i] for i, v in cards.items()), len(cards), [i for i, v in cards.items() if "`" in v[2] or "`" in v[3] or not v[2] or v[2] != v[3]], per_file == source_order, notation_ok,
+                    sorted(f0) == sorted(f1), absent),
+                   ("", ["maths names: 37 rows, 37 used, 0 not in this build", "maths statements: 37 rows, 37 used, 0 not in this build", "maths notation: 18 rows, 18 used, 0 not in this build"],
+                    [ids[1], ids[0], ids[2]], {ids[0]: 1, ids[1]: 24, ids[2]: 12}, "1.1", "1.24", ["2.1"], "3.1", "3.12", True, 37, [], True, True, True, []))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
