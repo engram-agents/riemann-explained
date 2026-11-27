@@ -8776,15 +8776,15 @@ def _selftest_cases():
                     "absent": _mtf_why([_mtf_f("lean-p-a")])},
                    {"200": None, "201": S, "200-astral": None, "201-astral": S, "200-e": None, "empty": S, "newline": S + ["SKEL-MATHS-FILES lean-p-a chars"], "int": S, "none": S, "absent": None})
 
-    @case("MTF-TITLE-CHECKS", "the other checks of a `title`: a backtick is `SKEL-MATHS-FILES <file> backtick` (a summary may hold code spans: that passes); the CHARACTERS rule (`chars`), P with underscore allowed (`The prime number theorem for the remainders R_q` passes, "
+    @case("MTF-TITLE-CHECKS", "the other checks of a `title`: a backtick is `SKEL-MATHS-FILES <file> backtick` (a summary may hold code spans: that passes); the CHARACTERS rule (`chars`), P with underscore allowed (`The prime number theorem for the remainders R_q` passes, and so does `About my_name`, a declared short name with an underscore: `R_q` has 3 characters and is never flagged, so it cannot tell the rule apart;"
                               "`Foo.fullName` is `P Foo.fullName`), `.lean`, `line 12` and `[[` as for the summary; one line for a problem found in both the summary and the title, in the order shape, chars, P, lean-file, line-number, link, backtick")
     def _():
         run = lambda t, s="Made up.": _mtf_why([_mtf_f("lean-p-a", s, title=t)])
         W = lambda why: ["SKEL-MATHS-FILES lean-p-a " + why]
-        return _eq({"backtick": run("The `R` number"), "summary-code": run("A title", "The `R` number is small."), "chars": run("a\x07b"), "surrogate": run("a\ud800b"), "nbsp": run("a b"), "real": run("The prime number theorem for the remainders R_q"),
+        return _eq({"backtick": run("The `R` number"), "summary-code": run("A title", "The `R` number is small."), "chars": run("a\x07b"), "surrogate": run("a\ud800b"), "nbsp": run("a b"), "real": run("The prime number theorem for the remainders R_q"), "underscore": run("About my_name"),
                     "P": run("About Foo.fullName"), "lean": run("About A.lean"), "line": run("At line 12"), "link": run("About [[x]]", ), "both-link": run("About [[x]]", "Also [[y]]."), "both-P": run("About primeRemainder", "Also primeRemainder."),
                     "mixed": run("`x` [[y]] A.lean", "Foo.fullName and line 3")},
-                   {"backtick": W("backtick"), "summary-code": None, "chars": W("chars"), "surrogate": W("chars"), "nbsp": None, "real": None, "P": W("P Foo.fullName"), "lean": W("lean-file"), "line": W("line-number"), "link": W("link"),
+                   {"backtick": W("backtick"), "summary-code": None, "chars": W("chars"), "surrogate": W("chars"), "nbsp": None, "real": None, "underscore": None, "P": W("P Foo.fullName"), "lean": W("lean-file"), "line": W("line-number"), "link": W("link"),
                     "both-link": W("link"), "both-P": W("P primeRemainder"), "mixed": W("P Foo.fullName") + W("lean-file") + W("line-number") + W("link") + W("backtick")})
 
     # ---- what is written (A7 WRITTEN): `summary` on the FILE step; the card title and the group's entry title when a row has a `title`
