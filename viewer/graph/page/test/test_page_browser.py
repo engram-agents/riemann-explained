@@ -2953,6 +2953,244 @@ def c_mutant(b):
     c_mutant.fails = fails
 
 
+# ---------------------------------------------------------------------------------------------------------- made cards
+# The assembler writes an EMPTY card block (its clause A7: the page has no card articles): the cards block of the page is the
+# graph-about section and nothing else. A card the markup lacks is MADE from the data (app.js madeCard); a card the markup has is
+# used as it is. The tree is the skeleton map with notes (fixtures/notes), its titles and its one note made SYNTHETIC at assembly time.
+MADE_VIEWS = [(390, 844, True), (1280, 900, False)]
+MADE_ABOUT_BLOCK = ('<section id="graph-about" data-page-feedback="off">\n<p>Synthetic about words for the made-card cases.</p>\n'
+                    '<p class="roots-only">Synthetic roots-only sentence.</p>\n</section>\n')
+MADE_TITLES = {"sk-file-1": "Synthetic file one with a `code span` in it", "sk-file-4": "Synthetic file four with `two words`",
+               "sk-file-5": "Synthetic file five", "sk-group-b": "Synthetic group b"}
+MADE_FILE1_PLAIN = "Synthetic file one with a code span in it"
+MADE_NOTE = {"text": "# Synthetic note heading\n\nA synthetic paragraph of the note.\n", "source": "synthetic/FileOne.lean"}
+
+
+def made_steps(steps):
+    for sid, title in MADE_TITLES.items():
+        steps[sid]["card"]["title"] = title
+        for s in steps.values():
+            for c in s["children"]:
+                if c["id"] == sid:
+                    c["title"] = title
+    steps["sk-file-1"]["note"] = dict(MADE_NOTE)
+
+
+def made_served(engine, cards):
+    root = tempfile.mkdtemp(prefix="pg-made-")
+    assemble.assemble(root, engine, fix="notes", cards_edit=lambda c: cards, step_edit=made_steps)
+    return Served(root)
+
+
+MADE_STATE_JS = """(() => { const b = document.getElementById('graph-sheet-body'), c = b.firstElementChild;
+  if (!c) return null;
+  const cl = c.querySelector('.claim'), nl = c.querySelector('.note-label'), ns = c.querySelector('.note-source'), nb = c.querySelector('.note-body');
+  return { n: b.childElementCount, tag: c.tagName, cls: c.className, id: c.getAttribute('id'), dataId: c.getAttribute('data-id'),
+    claim: cl && cl.textContent, codes: cl ? cl.querySelectorAll('code').length : -1, visible: !!cl && cl.offsetHeight > 0 && !document.getElementById('graph-sheet').hidden,
+    kids: [...c.children].map(e => e.tagName + '.' + e.className), status: cl && cl.nextElementSibling && cl.nextElementSibling.textContent,
+    note: nb ? { label: nl.textContent, source: ns.textContent, body: nb.textContent } : null }; })()"""
+
+
+def made_wait_claim(pg, text):
+    pg.wait("document.querySelector('#graph-sheet-body .claim')?.textContent === %s" % json.dumps(text), 6000)
+
+
+def made_healthy(pg):
+    assert pg.ev("document.getElementById('graph-fallback').hidden === true && !document.getElementById('graph-layer').hidden"), "the page fell back"
+    pg.csp_clean()
+
+
+def made_expect(pg, sid, tag, claim, word, with_note=False, codes=0, markup_id=None):
+    made_wait_claim(pg, claim)
+    st = pg.ev(MADE_STATE_JS)
+    assert st["n"] == 1 and st["tag"] == tag and st["id"] == markup_id and st["dataId"] is None, (sid, st)
+    assert st["cls"] == "card" and st["claim"] == claim and st["codes"] == codes and st["visible"], (sid, st)
+    if tag == "DIV":      # a made card holds nothing but what the sheet puts in it
+        assert st["kids"][:2] == ["H3.claim", "P.sheet-status"] and st["status"] == word, (sid, st)
+        want = ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "DIV.note-body"] if with_note else ["H3.claim", "P.sheet-status"]
+        assert st["kids"] == want, (sid, st["kids"])
+    if with_note:
+        assert st["note"]["label"] == "From the repository, unchanged" and "A synthetic paragraph of the note." in st["note"]["body"], (sid, st["note"])
+        assert st["note"]["source"].startswith("Source file: synthetic/FileOne.lean"), st["note"]
+    else:
+        assert st["note"] is None, (sid, st["note"])
+
+
+def c_made_deep_link(b, S0, engine, w, h, mobile):
+    """B1: on a tree whose card block is the assembler's (no articles), a deep link to a part, a group and a file opens the sheet, the title is the
+    .claim (a backtick span a code element), the status line follows it, the note section shows for a file with a note and not for one without."""
+    S = made_served(engine, MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html#sk-part", w, h, mobile=mobile).settled()
+        made_expect(pg, "sk-part", "DIV", "Part sk-part", "Part")
+        for sid, claim, word, note, codes in (("sk-group-a", "Group sk-group-a", "Group", False, 0), ("sk-file-1", MADE_FILE1_PLAIN, "File", True, 1),
+                                              ("sk-file-3", "File sk-file-3", "File", False, 0)):
+            at_hash(pg, sid)
+            made_expect(pg, sid, "DIV", claim, word, note, codes)
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_made_tap(b, S0, engine, w, h, mobile):
+    """B2: a tap on a drawn box opens the same card; the parts button on a part with children opens its parts."""
+    S = made_served(engine, MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=mobile).settled()
+        tap(pg, "sk-part-2")
+        made_expect(pg, "sk-part-2", "DIV", "Part sk-part-2", "Part")
+        tap(pg, "sk-part")
+        made_expect(pg, "sk-part", "DIV", "Part sk-part", "Part")
+        assert pg.ev("document.querySelector('#graph-sheet-tools .sheet-tool').textContent") == "Open its parts"
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        pg.wait("document.querySelector('[data-node=\"sk-group-a\"]')")
+        tap(pg, "sk-group-a")
+        made_expect(pg, "sk-group-a", "DIV", "Group sk-group-a", "Group")
+        pg.page.click("#graph-sheet-tools .sheet-tool")
+        wait_sheet(pg, False)
+        pg.wait("document.querySelector('[data-node=\"sk-file-1\"]')")
+        tap(pg, "sk-file-1")
+        made_expect(pg, "sk-file-1", "DIV", MADE_FILE1_PLAIN, "File", True, 1)
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+MADE_TRACE_JS = ("document.querySelectorAll('.card, .claim, .sheet-status, .note-label, .note-source, .note-body').length === 0 && "
+                 "document.getElementById('graph-sheet-body').childNodes.length === 0 && document.getElementById('graph-sheet').hidden === true")
+
+
+def c_made_close_reopen(b, S0, engine, w, h, mobile):
+    """B3 (M3): closing a made card leaves no trace (no placeholder, nothing in #graph-cards or the sheet, the card is out of the page); a reopen shows
+    the SAME card again (the same element, made once and kept), identical, twice over."""
+    S = made_served(engine, MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=mobile).settled()
+        cards = pg.ev("document.getElementById('graph-cards').outerHTML")
+        assert pg.ev(MADE_TRACE_JS), "a clean start"
+        at_hash(pg, "sk-file-1")
+        pg.wait("document.querySelector('#graph-sheet-body .claim')", 6000)
+        pg.ev("(() => { const c = document.getElementById('graph-sheet-body').firstElementChild; window.__c = c; window.__html = c.outerHTML; })()")
+        assert pg.ev("window.__c.querySelectorAll('.note-body').length") == 1
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev(MADE_TRACE_JS), "close leaves a trace"
+        assert pg.ev("window.__c.parentNode === null && !window.__c.isConnected"), "the made card is out of the page"
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == cards, "#graph-cards changed"
+        assert pg.ev("window.__c.querySelectorAll('.sheet-status, .note-label, .note-source, .note-body').length") == 0, "what the sheet added went with it"
+        for how in ("tap", "escape"):
+            tap(pg, "sk-file-1")
+            pg.wait("document.getElementById('graph-sheet-body').firstElementChild", 6000)
+            assert pg.ev("document.getElementById('graph-sheet-body').firstElementChild === window.__c"), "a reopen made a new card"
+            assert pg.ev("document.getElementById('graph-sheet-body').firstElementChild.outerHTML === window.__html"), "a reopen is not identical"
+            assert pg.ev("document.getElementById('graph-sheet-body').childElementCount") == 1
+            if how == "tap":
+                pg.page.click("#graph-sheet-close")
+            else:
+                pg.page.keyboard.press("Escape")
+            wait_sheet(pg, False)
+            assert pg.ev(MADE_TRACE_JS), "close leaves a trace (" + how + ")"
+            assert pg.ev("document.getElementById('graph-cards').outerHTML") == cards
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+def c_made_unknown(b, S0, engine, w, h, mobile):
+    """B4: an id the data does not know is still link_refused and opens nothing; a card that was open stays open; a known id still opens made."""
+    S = made_served(engine, MADE_ABOUT_BLOCK)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=mobile).settled()
+        refused = "That address does not name a step on this map."
+        at_hash(pg, "no-such-step")
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert pg.ev("document.getElementById('graph-notice').textContent") == refused
+        assert pg.ev("document.getElementById('graph-sheet').hidden") and pg.ev(MADE_TRACE_JS)
+        at_hash(pg, "Bad Id")
+        pg.page.wait_for_timeout(300)
+        assert pg.ev("document.getElementById('graph-sheet').hidden") and pg.ev("!document.getElementById('graph-notice').hidden")
+        at_hash(pg, "sk-part-2")
+        made_expect(pg, "sk-part-2", "DIV", "Part sk-part-2", "Part")
+        assert pg.ev("document.getElementById('graph-notice').hidden"), "a card that opens hushes the notice"
+        at_hash(pg, "sk-nope")
+        pg.wait("!document.getElementById('graph-notice').hidden", 6000)
+        assert pg.ev("document.getElementById('graph-notice').textContent") == refused
+        made_expect(pg, "sk-part-2", "DIV", "Part sk-part-2", "Part")      # the open card stays open
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
+MADE_LOOK_JS = """(() => { const b = document.getElementById('graph-sheet-body'), c = b.firstElementChild, cl = c.querySelector('.claim'), st = c.querySelector('.sheet-status'),
+  nl = c.querySelector('.note-label'), ns = c.querySelector('.note-source'), nb = c.querySelector('.note-body'), B = b.getBoundingClientRect(), cs = getComputedStyle(cl);
+  const at = (e) => { const r = e.getBoundingClientRect(); return [Math.round(r.left - B.left), Math.round(r.top - B.top), Math.round(r.width), Math.round(r.height)]; };
+  const card = c.getBoundingClientRect();
+  return { tag: c.tagName, id: c.getAttribute('id'), kids: [...c.children].map(e => e.tagName + '.' + e.className).filter(k => k !== 'P.note'),
+    claimStyle: [cs.fontSize, cs.fontWeight, cs.lineHeight, cs.display, cs.color, cs.marginTop, cs.marginBottom], claimHTML: cl.innerHTML,
+    claim: at(cl), status: [st.textContent, at(st)], label: [nl.textContent, at(nl)], source: [ns.textContent, at(ns)], noteBody: [nb.textContent, at(nb)],
+    card: [Math.round(card.left - B.left), Math.round(card.width)] }; })()"""
+
+MADE_MARKUP_FILE1 = ('<article class="card" id="sk-file-1"><h3 class="claim">Synthetic file one with a <code>code span</code> in it</h3>'
+                     '<p class="note">Synthetic markup note.</p></article>\n')
+
+
+def c_made_looks_like_markup(b, S0, engine, w, h, mobile):
+    """B5: a made card's sheet looks the same as a markup card's for the same step: the .claim (its style and box), the status line directly under
+    it, the note section in the same place. (The markup tree is a precondition: its card is the article with its id.)"""
+    sig = {}
+    for name, cards in (("made", MADE_ABOUT_BLOCK), ("markup", MADE_ABOUT_BLOCK + MADE_MARKUP_FILE1)):
+        S = made_served(engine, cards)
+        try:
+            pg = Pg(b, S.base + "graph/index.html#sk-file-1", w, h, mobile=mobile).settled()
+            made_wait_claim(pg, MADE_FILE1_PLAIN)
+            pg.wait("document.querySelector('#graph-sheet-body .note-body')", 6000)
+            sig[name] = pg.ev(MADE_LOOK_JS)
+            made_healthy(pg)
+            pg.close()
+        finally:
+            S.stop()
+    assert (sig["markup"]["tag"], sig["markup"]["id"]) == ("ARTICLE", "sk-file-1"), ("the markup tree must show the markup's article", sig["markup"])
+    assert (sig["made"]["tag"], sig["made"]["id"]) == ("DIV", None), sig["made"]
+    for k in ("kids", "claimStyle", "claimHTML", "claim", "status", "label", "source", "noteBody", "card"):
+        assert sig["made"][k] == sig["markup"][k], (k, sig["made"][k], sig["markup"][k])
+    assert sig["made"]["kids"] == ["H3.claim", "P.sheet-status", "P.note-label", "P.note-source", "DIV.note-body"], sig["made"]["kids"]
+
+
+def c_made_markup_wins(b, S0, engine, w, h, mobile):
+    """B6 (M2): a page WITH an article for an id shows that article (as today: moved in, and home again byte for byte); the made card is for the ids it
+    has none for, in the same page."""
+    marked = '<article class="card" id="sk-part"><h3 class="claim">Synthetic marked claim</h3></article>\n'
+    S = made_served(engine, MADE_ABOUT_BLOCK + marked)
+    try:
+        pg = Pg(b, S.base + "graph/index.html", w, h, mobile=mobile).settled()
+        cards = pg.ev("document.getElementById('graph-cards').outerHTML")
+        at_hash(pg, "sk-part")
+        made_expect(pg, "sk-part", "ARTICLE", "Synthetic marked claim", "Part", markup_id="sk-part")
+        assert pg.ev("document.getElementById('sk-part').parentElement === document.getElementById('graph-sheet-body')"), "the markup's article is moved in"
+        pg.ev("window.__m = document.getElementById('sk-part')")
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == cards, "the markup is not back byte for byte"
+        at_hash(pg, "sk-group-a")
+        made_expect(pg, "sk-group-a", "DIV", "Group sk-group-a", "Group")
+        pg.page.click("#graph-sheet-close")
+        wait_sheet(pg, False)
+        assert pg.ev("document.getElementById('graph-cards').outerHTML") == cards
+        assert pg.ev("document.getElementById('graph-sheet-body').childNodes.length === 0 && document.getElementById('graph-sheet').hidden === true "
+                     "&& document.querySelectorAll('.card').length === 1"), "a made card left a trace (the markup's one card is the only .card)"
+        tap(pg, "sk-part")
+        pg.wait("document.getElementById('graph-sheet-body').firstElementChild === window.__m", 6000)
+        made_healthy(pg)
+        pg.close()
+    finally:
+        S.stop()
+
+
 def main():
     only = None
     engines = ["double", "real"]
@@ -3073,6 +3311,14 @@ def main():
                 run("round 6 C2: on the live map a tap whose step fetch never settles (held) has the sheet open before it settles", c_live_open_fetch_held, eng)
                 run("round 6 C3: the 26 live sheet snapshots (23 by address, 3 by tap) equal what main's page drew", c_live_sheets_match_main, eng)
                 run("round 7: a map with only ONE of note_label and note_source is refused at start: the fallback, bad-note-strings recorded, no card opens", c_note_one_key_refused, eng)
+                for mw, mh, mm in MADE_VIEWS:
+                    vw = " @%dx%d" % (mw, mh)
+                    run("made B1: an empty card block: a deep link to a part, a group and a file opens the sheet, the title is the .claim, the note section shows for a file with a note" + vw, c_made_deep_link, eng, mw, mh, mm)
+                    run("made B2: an empty card block: a tap on a drawn box opens the same card; the parts button on a part with children works" + vw, c_made_tap, eng, mw, mh, mm)
+                    run("made B3: a made card's close leaves no trace; a reopen shows the same card, identical" + vw, c_made_close_reopen, eng, mw, mh, mm)
+                    run("made B4: an unknown id is still link_refused and opens nothing" + vw, c_made_unknown, eng, mw, mh, mm)
+                    run("made B5: a made card's sheet looks the same as a markup card's (claim, status and note placement)" + vw, c_made_looks_like_markup, eng, mw, mh, mm)
+                    run("made B6: a page with an article shows it, byte for byte as today; a made card only for an id it has none for" + vw, c_made_markup_wins, eng, mw, mh, mm)
                 if eng == "real":
                     run("REAL: a drag opens no sheet, a short click does", c_real_drag)
                     run("REAL: first frame at 390: the top steps only, inside the stage, text >= 15 px", c_real_first_frame_390)
