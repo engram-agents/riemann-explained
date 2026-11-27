@@ -2806,10 +2806,10 @@ RDG_A = _stm_src(
     "/-- Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three\ncontinues on a second line. Alpha four ends. -/\ntheorem alpha : True := trivial\n\n"
     "/-- **Bold title.** Let `p` be prime. It is odd. -/\nlemma beta : True := trivial\n\n"
     "/-- The constant is 3.14 here. See e.g.x for more. -/\nlemma gamma : True := trivial\n\n"
-    "/-- He said \"hi\" to me. Then left. -/\nlemma delta : True := trivial\n\n"
+    "/-- Delta said \"hi\" to me. Then left. -/\nlemma delta : True := trivial\n\n"
     "/-- Eps one. -/ /-- Eps two. -/\nlemma eps : True := trivial\n\n"
     "lemma zeta : True := trivial\n\n"
-    "/-- She wrote \"go.\" Then stayed (really!) Now stop. -/\nlemma eta : True := trivial\n")   # seven statements; the doc-strings are the sources of the quotes
+    "/-- Eta wrote \"go.\" Then stayed (really!) Now stop. -/\nlemma eta : True := trivial\n")   # seven statements; the doc-strings are the sources of the quotes
 RDG_B = _stm_src("/-- Bee one. Bee two. -/\ntheorem bdef : True := trivial\n")
 RDG_NAMES = ("alpha", "beta", "gamma", "delta", "eps", "zeta", "eta")
 RDG_ILEANS = {"New/S/A": _stm_ilean("New/S/A", RDG_NAMES), "New/S/B": _stm_ilean("New/S/B", ("bdef",))}
@@ -2820,7 +2820,7 @@ def _rdg_ln(src, start):
     return next(i + 1 for i, x in enumerate(src.split("\n")) if x.startswith(start))
 
 
-RDG_L1, RDG_L2, RDG_L3, RDG_L4, RDG_L5, RDG_L6, RDG_L7 = (_rdg_ln(RDG_A, s) for s in ("/-- Alpha one.", "/-- **Bold", "/-- The constant", "/-- He said", "/-- Eps one.", "lemma zeta", "/-- She wrote"))   # alpha's doc-string takes two lines
+RDG_L1, RDG_L2, RDG_L3, RDG_L4, RDG_L5, RDG_L6, RDG_L7 = (_rdg_ln(RDG_A, s) for s in ("/-- Alpha one.", "/-- **Bold", "/-- The constant", "/-- Delta said", "/-- Eps one.", "lemma zeta", "/-- Eta wrote"))   # alpha's doc-string takes two lines
 RDG_LB = _rdg_ln(RDG_B, "/-- Bee")
 RDG_ALPHA = "Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three continues on a second line. Alpha four ends."   # the body of alpha's doc-string, white space collapsed
 
@@ -6764,7 +6764,7 @@ def _selftest_cases():
                              "starts at the next character after the space passes: after a bold title `**Bold title.**`, and around `(really!)` and `\"go.\"`")
     def _():
         beta = [("line %d" % RDG_L2, q) for q in ("Let `p` be prime. It is odd.", "It is odd.", "Let `p` be prime.")]
-        eta = [("line %d" % RDG_L7, q) for q in ("She wrote \"go.\"", "Then stayed (really!)", "Now stop.", "Then stayed (really!) Now stop.", "She wrote \"go.\" Then stayed (really!) Now stop.")]
+        eta = [("line %d" % RDG_L7, q) for q in ("Eta wrote \"go.\"", "Then stayed (really!)", "Now stop.", "Then stayed (really!) Now stop.", "Eta wrote \"go.\" Then stayed (really!) Now stop.")]
         ok = _rdg_one("\n\n".join(_rdg_q(h, q) for h, q in beta) + "\n", entry=_rdg_entry("beta"))
         ok2 = _rdg_one("\n\n".join(_rdg_q(h, q) for h, q in eta) + "\n", entry=_rdg_entry("eta"))
         return _eq((ok[:2], ok2[:2]), ((0, []), (0, [])))
@@ -6781,11 +6781,11 @@ def _selftest_cases():
     @case("RDG-QUOTE-OTHER", "only a paragraph that STARTS `In the repository's words (` is checked: a paragraph that holds it later, one that starts `In the repository's words` without ` (` (a colon, or none), and one in "
                              "lower case are not quote paragraphs and pass unchecked; a quote whose QUOTED text holds `\"` characters passes (it ends at the LAST `\"` of the paragraph)")
     def _():
-        quoted = 'He said "hi" to me.'
+        quoted = 'Delta said "hi" to me.'
         text = "\n\n".join(["As noted, In the repository's words (lines 9-9): \"zzz\" is odd.", "In the repository's words: \"fake\"", "In the repository's words(lines 1-1): \"fake\"",
                             "in the repository's words (lines 1-1): \"fake\"", _rdg_q("line %d" % RDG_L4, quoted), _rdg_q("line %d" % RDG_L4, quoted + ' Then left.')]) + "\n"
         ok = _rdg_one(text)
-        bad = _rdg_one(_rdg_q("line %d" % RDG_L4, 'He said "hi" to you.') + "\n")
+        bad = _rdg_one(_rdg_q("line %d" % RDG_L4, 'Delta said "hi" to you.') + "\n")
         return _eq((ok[:2], ok[2] and ok[2]["text"] == text[:-1], bad[:2]), ((0, []), True, (1, ["SKEL-READING-QUOTE alpha paragraph 1 text"])))
 
     @case("RDG-REAL-QUOTE-SHAPE", "a made-up reading with the line shape of a real one (a preface paragraph, four `##` headings, `-` and `1.` lists, a `**bold**` mark, `code` spans, a quote in each HEAD form) is "
