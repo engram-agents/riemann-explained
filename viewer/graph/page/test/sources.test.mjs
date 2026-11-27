@@ -372,3 +372,10 @@ test("A6: face.js and sheet.js draw a title only through titleChildren; no raw t
     assert.ok(!raw.test(src), f + " still draws the raw title");
   }
 });
+
+/* E2: what the Graph view keeps of a failure is its CODE (a member of the fixed set), never text of an exception or of the data (Zephyr's read of PR 117). */
+test("E2: graphview.js keeps failure.graph as failureCode(e) only: no message of an exception or of the data is stored", () => {
+  const src = read(path.join(GRAPH, "page", "graphview.js")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const stores = [...src.matchAll(/failure\.graph\s*=\s*([^;]+);/g)].map((m) => m[1].trim());
+  assert.deepEqual(stores, ["failureCode(e)", "null"]);
+});
