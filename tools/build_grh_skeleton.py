@@ -2400,7 +2400,7 @@ def _sources_quote_bytes(grh, items, chunks, cache):
 
 def _rests_bullets(text, uses_word):
     """([(head, gives)], bad) from the BULLETS (lines that start `- `) of the section of the uses heading of the written `text` (C5): the section runs to the next heading line; a bullet is `- <head>: <gives>`, the head ending at the FIRST `: `; a bullet with no `: `,
-    an empty head or an empty rest makes `bad` True. Every other line of the section (a paragraph, a quotation) is ignored."""
+    an empty head, an empty rest or a head with white space before or after it makes `bad` True. Every other line of the section (a paragraph, a quotation) is ignored."""
     lines = text.split("\n")
     i = next(k for k, ln in enumerate(lines) if ln.rstrip(" \t") == "## " + uses_word)
     out, bad = [], False
@@ -2409,7 +2409,7 @@ def _rests_bullets(text, uses_word):
             break
         if ln.startswith("- "):
             j = ln[2:].find(": ")
-            if j <= 0 or ln[2 + j + 2:].strip() == "":
+            if j <= 0 or ln[2 + j + 2:].strip() == "" or ln[2:2 + j] != ln[2:2 + j].strip():   # an empty head or rest, or a head with white space round it (it would silently stop being an on-map head)
                 bad = True
             else:
                 out.append((ln[2:2 + j], ln[2 + j + 2:]))
@@ -2441,11 +2441,31 @@ def _names_folded(masked, names):
     return sorted(hit)
 
 
+def _rests_entries(name, bullets, items, human, step_of):
+    """([rests_on entry], [refusal]) for the bullets `[(head, gives)]` of one reading (C5): a head equal to the human name of a statement of the build (`human` {name: [full names]}) gives `{gives, name, step, words}`, any other head `{gives, words}`; a head that
+    names two statements is resolved by a `result` source with those words, else it is `<head> ambiguous`."""
+    rests, errors = [], []
+    for head, gives in bullets:
+        cand = human.get(head, [])
+        if len(cand) > 1:
+            cand = [it["full"] for it in items if it["kind"] == "result" and it["words"] == head and it["full"] in cand][:1] or cand
+        if len(cand) > 1:
+            errors.append(("SKEL-MATHS-READING-RESTS", name, f"{head} ambiguous"))
+        elif cand:
+            rests.append({"gives": gives, "name": cand[0], "step": step_of[cand[0]], "words": head})
+        else:
+            rests.append({"gives": gives, "words": head})
+    return rests, errors
+
+
 def _readings_maths(grh, ilean_dir, entries, words, stm, ids):
     """(errors, {step id: reading}, {file id: n}, {file id: [advisory line]}) for the validated `entries` in the MATHS SURFACE (`--readings` with the three maths options, contract section 34, B4 and C): the stages of C7 in this order, and ONLY the first
-    stage that has a refusal is returned, with all its lines, every reading: the target (`SKEL-STATEMENT-READING-TARGET`), the heading lines (`_reading_heading_errors` with the Sources heading), the Sources shapes, the results (the line check), the quote
+    stage that has a refusal is returned, with all its lines, every reading: the heading lines (`_reading_heading_errors` with the Sources heading), the target (`SKEL-STATEMENT-READING-TARGET`), the Sources shapes, the results (the line check), the quote
     pairing, the visible text (`SKEL-MATHS-READING-VISIBLE`), `rests_on` and its checks (`SKEL-MATHS-READING-RESTS`), the bytes of the quotes (`SKEL-STATEMENT-READING-QUOTE`). `stm` is the statement level after the maths tables (the rows carry the human title,
     the step extras `human`). A reading is written as {by, date, rests_on, second_read_by, sources, text}."""
+    errors = _reading_heading_errors(entries, words, True)   # PR 140's place: before the target, the heading check needs only the texts
+    if errors:
+        return errors, {}, {}, {}
     wrote = {(r["parent"], stm["step_extra"][r["id"]]["name"]): r["id"] for r in stm["rows"]}
     errors, seen = [], set()
     for e in entries:
@@ -2453,9 +2473,6 @@ def _readings_maths(grh, ilean_dir, entries, words, stm, ids):
         if key not in wrote or key in seen:
             errors.append(("SKEL-STATEMENT-READING-TARGET", _safe(e["statement"]), ""))
         seen.add(key)
-    if errors:
-        return errors, {}, {}, {}
-    errors = _reading_heading_errors(entries, words, True)
     if errors:
         return errors, {}, {}, {}
     title = {r["id"]: r["title"] for r in stm["rows"]}
@@ -2496,17 +2513,8 @@ def _readings_maths(grh, ilean_dir, entries, words, stm, ids):
         found, masked = _names_in(r["text"], human)
         missing = sorted(n for n in found if n != own and n not in sourced)
         bullets, bad = _rests_bullets(r["text"], words["decl_reading_uses"])
-        rests = []
-        for head, gives in bullets:
-            cand = human.get(head, [])
-            if len(cand) > 1:
-                cand = [it["full"] for it in items if it["kind"] == "result" and it["words"] == head and it["full"] in cand][:1] or cand
-            if len(cand) > 1:
-                errors.append(("SKEL-MATHS-READING-RESTS", r["name"], f"{head} ambiguous"))
-            elif cand:
-                rests.append({"gives": gives, "name": cand[0], "step": step_of[cand[0]], "words": head})
-            else:
-                rests.append({"gives": gives, "words": head})
+        rests, ambiguous = _rests_entries(r["name"], bullets, items, human, step_of)
+        errors += ambiguous
         if bad:
             errors.append(("SKEL-MATHS-READING-RESTS", r["name"], "bullet"))
         errors += [("SKEL-MATHS-READING-RESTS", r["name"], f"{n} no-source") for n in missing]
@@ -2576,7 +2584,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     if errors:
         return errors, {}, rows, rep
     maths_out = None
-    if maths is not None:   # the three tables of ours (contract section 34): checked after the statements and before the readings the build attaches (the reading file, text, name, date and heading refusals are made earlier, in `_run`, before the tables are read); the statement rows then carry `number` and `title`
+    if maths is not None:   # the three tables of ours (contract section 34): checked after the statements and before the readings the build attaches; with the maths options AND `--readings` (the maths surface) the reading file, text, name, date and heading refusals are held back by `_run` and made AFTER the tables (`reading_errors`, `_readings_maths`), without the maths options they are made in `_run` before the tables are read; the statement rows then carry `number` and `title`
         if stm is None:
             return [("SKEL-MATHS-OPTIONS", "maths", "needs --statements-for")], {}, rows, rep
         errors, maths_out = _maths_check(maths, ilean_dir, stm, rows, statements_for)
