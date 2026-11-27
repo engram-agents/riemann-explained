@@ -8,8 +8,8 @@ The tool writes, from the data of `build_grh_skeleton.py` (index.json, spine.jso
 and a page made by `build_site._graph_page`, the tree below, FLAT (the page loads its data and scripts relative to its own address):
     index.html  index.json  spine.json  uses.json  step/<id>.json  engine/...  page/...  graph.css  manifest.json
 It never opens OUT_DIR unless every check has passed, writes nothing on a refusal (exit 1, one `ASM-<CODE> <what> <reason>` line per refusal), and imports every function it needs from
-build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A19 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
-mutation controls M-a to M-n, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
+build_site.py and build_grh_skeleton.py: it has no second implementation of any of them. Its contract is the set of clauses A1 to A27 (A7b and A11b included), one self-test case each (A7b is four, A11b and A19 two), and the
+mutation controls M-a to M-t and M-v, each of which runs the cases on a wrong copy of the tool and compares the red cases both ways; docs/tools.md says what the tool does.
 
 PATH CONVENTION of the refusal lines (the contract writes `<path>` and does not say which; the cases pin this reading): a file or folder INSIDE DATA is named relative to DATA with
 `/` (`index.json`, `step/lean-main.json`); `--strings` and `--shell` are named as given on the command line; `ASM-OUT` names OUT_DIR as given; `ASM-ASSET` and `ASM-PAGE` carry the
@@ -64,7 +64,7 @@ sk = _load("build_grh_skeleton")
 
 _FROM_BUILD_SITE = ("_graph_assets", "_graph_sink_errors", "_graph_asset_errors", "_graph_page", "GRAPH_SHELL_KEYS", "_graph_bytes", "_dump", "_sha",
                     "graph_element_problems", "static_problems", "head_meta_problems", "surface_scan",
-                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems")
+                    "_manifest_bytes", "_e", "code_spans", "GRAPH_ID", "_publish", "_graph_static_problems", "element_problems", "link_problems")
 _FROM_SKELETON = ("_read_in", "_contained")
 _UNRESOLVED = [f"build_site.{n}" for n in _FROM_BUILD_SITE if not hasattr(bs, n)] + [f"build_grh_skeleton.{n}" for n in _FROM_SKELETON if not hasattr(sk, n)]
 if _UNRESOLVED:   # something the contract imports cannot be imported as it stands: stop, never copy it
@@ -87,6 +87,8 @@ code_spans = bs.code_spans
 GRAPH_ID = bs.GRAPH_ID
 _publish = bs._publish
 _graph_static_problems = bs._graph_static_problems
+element_problems = bs.element_problems
+link_problems = bs.link_problems
 _read_in, _contained = sk._read_in, sk._contained
 
 TOP_READ_LIMIT = 4 * 1024 * 1024    # index.json, spine.json, uses.json, the strings file, the shell: the most bytes of each read (A1)
@@ -94,6 +96,11 @@ STEP_READ_LIMIT = 1024 * 1024       # one step file (A1)
 MAX_STEP_FILES = 2000               # the most step files (A1)
 DATA_FIXED = ("index.json", "spine.json", "uses.json")   # DATA holds these, step/<id>.json, and nothing else (A2)
 ABOUT_KEY = "about_text"            # the strings key whose text fills #graph-about (contract, Open 3: the default; `ASM-STRINGS about_text missing` when absent)
+CREDITS_REL = "credits/index.html"  # the one path `--page` may name: the page the website's place.mjs requires beside the map (A20)
+CREDITS_DIR = "credits/"            # its folder: the href of the About link (A24) and the base its refs resolve against (A23)
+CREDITS_REPO = "https://github.com/lsernau/grh-lean/"   # the one repository the credits page may link to (A27), at the run's own --pin
+ABOUT_CREDITS_KEYS = ("about_credits_before", "about_credits_link", "about_credits_after")   # the three strings keys of the About link, required when --page is given (A24)
+NO_PAGE_NOTE = "note: no credits page (--page credits/index.html=PATH); place.mjs refuses a tree without it"   # the second line of the success report of a run without --page (A20)
 SCOPE_KEY = "front_scope_line"      # the shell key PR C lets the page carry besides GRAPH_SHELL_KEYS (A7)
 READINGS_FRONT_KEY = "readings_front"   # the shell key whose strings value is the template of the readings front line (A18)
 READINGS_KEY = "readings"           # the key of index.json that holds the list of reading notes, one row per note (A18; the real name is still being asked: ONE constant, used everywhere)
@@ -102,18 +109,24 @@ PAGE_SECTION_ATTRS = (("data-page-feedback", "off"),)   # A7, A8
 CODES = ("ASM-DATA", "ASM-PIN", "ASM-OUT", "ASM-ASSET", "ASM-SINK", "ASM-PAGE", "ASM-STRINGS", "ASM-READINGS", "ASM-STATIC")   # the codes of a refusal line: `<CODE> <what> <reason>`
 DATA_REASONS = ("symlink", "not-regular", "too-large", "encoding", "unexpected", "missing")   # the reasons of ASM-DATA
 
-_OPTIONS = ("--data", "--pin", "--strings", "--shell", "--out", "--graph-src")
+_OPTIONS = ("--data", "--pin", "--strings", "--shell", "--out", "--graph-src", "--page")
 _PIN = re.compile(r"[0-9a-f]{40}")
-USAGE = ("usage: assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR]\n"
+USAGE = ("usage: assemble_grh_site.py --data DIR --pin COMMIT --strings strings.json --shell shell.html --out OUT_DIR [--graph-src DIR] [--page credits/index.html=PATH]\n"
          "       assemble_grh_site.py --selftest [--only ID,ID]")
 
 
 def _parse(a):
-    """{data, pin, strings, shell, out, graph-src} or None: each option once, with a value; --pin a 40-hex string (lower case); nothing else; --graph-src defaults to build_site.GRAPH_SRC."""
+    """{data, pin, strings, shell, out, graph-src[, page]} or None: each option once, with a value; --pin a 40-hex string (lower case); --page `credits/index.html=PATH` with a non-empty PATH
+    (`page` is the PATH); nothing else; --graph-src defaults to build_site.GRAPH_SRC."""
     opts, i = {}, 0
     while i < len(a):
         if a[i] in _OPTIONS and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
+            if a[i] == "--page":   # REL=PATH: REL exactly CREDITS_REL, PATH not empty (split at the first `=`)
+                rel, eq, path = a[i + 1].partition("=")
+                if rel != CREDITS_REL or not eq or not path:
+                    return None
+                opts["page"] = path
             i += 2
         else:
             return None
@@ -191,12 +204,12 @@ def _stage_data(opts):
             _data_steps(data, path, raws, lines)
         else:
             lines.append(f"ASM-DATA {name} {_other(path)}")
-    for key in ("strings", "shell"):   # named as given on the command line
+    for key in ("strings", "shell") + (("page",) if "page" in opts else ()):   # named as given on the command line
         p = opts[key]
         raws[key] = _data_read(os.path.dirname(os.path.abspath(p)), p, TOP_READ_LIMIT, p, lines)
     objs = {}
     for name, raw in raws.items():
-        if raw is None or name == "shell":
+        if raw is None or name in ("shell", "page"):
             continue
         try:
             obj = json.loads(raw.decode("utf-8"))
@@ -233,15 +246,31 @@ def _stage_pin(pin, objs):
 REF_ATTRS = ("href", "src", "action", "srcset", "poster", "data")   # the attributes of the written page whose value is an address (A11b)
 
 
-def _ref_reason(ref, names):
+def _ref_reason(ref, names, base=""):
     """None when `ref` resolves inside the tree whose file names are `names`, else `absolute`, `escapes` or `missing` (A11b). The part from the first `?` or `#` is dropped; an empty path
     (a bare #fragment or ?query) passes; a leading `/` or `//`, or a scheme (a `:` in the first segment), is `absolute`; a `..` segment is `escapes`; a path that is not a name of the tree
-    (a trailing-slash folder holds one when some name lies under it) is `missing`. A backslash counts as `/`, as a browser reads it."""
+    (a trailing-slash folder holds one when some name lies under it) is `missing`. A backslash counts as `/`, as a browser reads it.
+    `base` is the folder of the page the ref is on (A23): "" for index.html (the rules above, unchanged); for credits/index.html it is `credits/`, and the ref is resolved from there: a `..` that stays
+    inside the tree resolves, one that leaves it is `escapes`, `.` and an empty segment stay in the folder, and a ref that names a folder (a trailing `/`, or a last segment `.` or `..`) passes when
+    some name lies under that folder (the tree's root holds names)."""
     path = re.split(r"[?#]", "".join(ch for ch in ref if ch not in "\t\n\r").strip().replace("\\", "/"), maxsplit=1)[0]
     if not path:
         return None
     if path.startswith("/") or ":" in path.split("/")[0]:
         return "absolute"
+    if base:
+        stack = [seg for seg in base.split("/") if seg]
+        for seg in path.split("/"):
+            if seg == "..":
+                if not stack:
+                    return "escapes"
+                stack.pop()
+            elif seg not in ("", "."):
+                stack.append(seg)
+        target = "/".join(stack)
+        if path.endswith("/") or path.split("/")[-1] in (".", ".."):
+            return None if any(n.startswith(target + "/") for n in names) or (not target and names) else "missing"
+        return None if target in names else "missing"
     if ".." in path.split("/"):
         return "escapes"
     if path in names or (path.endswith("/") and any(n.startswith(path) for n in names)):
@@ -249,9 +278,30 @@ def _ref_reason(ref, names):
     return "missing"
 
 
-def _ref_problems(page, names):
-    """[`ASM-PAGE <ref> absolute|escapes|missing`] for every ref of the written page (the values of REF_ATTRS; each candidate of a srcset), a repeated (ref, reason) once, ordered by the
-    place of its first occurrence in the page, then by ref. The ref is shown as the page holds it (control whitespace dropped)."""
+def _credits_link_ok(ref, pin):
+    """A27: True when `ref` (as shown: control whitespace dropped) is exactly `CREDITS_REPO` + `tree/<pin>`, or begins with `CREDITS_REPO` + `tree/<pin>/` or `blob/<pin>/`. An exact string compare, no
+    URL parsing: `<pin>x`, `<pin>?x`, `<pin>#x`, another commit, another letter case and a missing commit are all not it. A27b: a tail with a `.` or `..` segment, an empty segment, a backslash, a control
+    character or an encoded dot, slash or backslash is not it either (the path would leave the pinned repository)."""
+    for kind in ("tree/", "blob/"):
+        head = CREDITS_REPO + kind
+        if ref.startswith(head):
+            commit, sep, rest = ref[len(head):].partition("/")
+            if not (commit == pin and (sep == "/" or kind == "tree/")):
+                return False
+            if not sep:
+                return True
+            # A27b: the tail may not climb out of the pinned repository: no backslash, encoded dot, slash or backslash, control character, `.`/`..` or empty segment in the path (before `?`/`#`)
+            if "\\" in rest or any(ord(c) < 32 or ord(c) == 127 for c in rest) or any(e in rest.lower() for e in ("%2e", "%2f", "%5c")):
+                return False
+            segs = rest.split("?", 1)[0].split("#", 1)[0].split("/")
+            return not any(g in (".", "..") for g in segs) and "" not in segs[:-1]
+    return False
+
+
+def _ref_problems(page, names, base="", label=None, link_pin=None):
+    """[`ASM-PAGE <ref> absolute|escapes|missing`] (with `label`, the page's name: `ASM-PAGE <label>: <ref> <reason>`) for every ref of the written page (the values of REF_ATTRS; each candidate of a srcset), a repeated (ref, reason) once, ordered by the
+    place of its first occurrence in the page, then by ref. The ref is shown as the page holds it (control whitespace dropped). With `link_pin` (the run's --pin; only the credits page passes it, A27) the
+    `href` of an `<a>` that `_credits_link_ok` accepts is not a ref of the tree and is skipped; any other attribute or element is read as before."""
     seen = {}
 
     class P(HTMLParser):
@@ -261,25 +311,30 @@ def _ref_problems(page, names):
                     continue
                 for ref in ([c.split()[0] for c in v.split(",") if c.split()] if k == "srcset" else [v]):
                     shown = "".join(ch for ch in ref if ch not in "\t\n\r").strip()
-                    reason = _ref_reason(shown, names)
+                    if link_pin is not None and tag == "a" and k == "href" and _credits_link_ok(shown, link_pin):
+                        continue
+                    reason = _ref_reason(shown, names, base)
                     if reason:
                         seen.setdefault((shown, reason), (self.getpos(), shown))
 
     parser = P()
     parser.feed(page)
     parser.close()
-    return [f"ASM-PAGE {ref} {reason}" for (ref, reason), _where in sorted(seen.items(), key=lambda kv: kv[1])]
+    return [f"ASM-PAGE {label + ': ' if label else ''}{ref} {reason}" for (ref, reason), _where in sorted(seen.items(), key=lambda kv: kv[1])]
 
 
-def _stage_page(shell_bytes, assets, strings, index, names):
+def _stage_page(shell_bytes, assets, strings, index, names, credits=None, pin=None):
     """(lines, page): A7 and A18. The page is the builder's `_graph_page` over the Lean shell, `cards` empty, `about` the escaped about_text in one paragraph, the section carrying
-    `data-page-feedback="off"`; then the builder's own element, static, head and surface checks over the assembled page."""
+    `data-page-feedback="off"`; then the builder's own element, static, head and surface checks over the assembled page. With `credits` (the bytes of the credits page, A21) the About block holds a
+    second paragraph, the link to it (A24), and the credits page is checked (A22, A23) in the same stage: its lines come after the index.html lines."""
     lines = []
-    for key in (ABOUT_KEY, "root_only_note_single"):
+    for key in (ABOUT_KEY, "root_only_note_single") + (ABOUT_CREDITS_KEYS if credits is not None else ()):
         if key not in strings:
             lines.append(f"ASM-STRINGS {key} missing")
         elif not isinstance(strings[key], str):
             lines.append(f"ASM-STRINGS {key} not-a-string")
+        elif key in ABOUT_CREDITS_KEYS and not strings[key]:
+            lines.append(f"ASM-STRINGS {key} missing")
     if "{{S:" + READINGS_FRONT_KEY + "}}" in shell_bytes.decode("utf-8"):   # A18: the key is used only when the shell holds the token
         template, rows = strings.get(READINGS_FRONT_KEY), index.get(READINGS_KEY)
         bad_template = not (isinstance(template, str) and template.count("{n}") == 1)
@@ -292,7 +347,11 @@ def _stage_page(shell_bytes, assets, strings, index, names):
             strings = dict(strings, **{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows)))})
     if lines:
         return lines, None
-    errors, page = _graph_page(shell_bytes, set(assets), strings, "<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
+    about = "<p>" + _e(strings[ABOUT_KEY]) + "</p>"
+    if credits is not None:   # A24: the href is the folder of REL, never a strings value
+        before, link, after = (strings[k] for k in ABOUT_CREDITS_KEYS)
+        about += "<p>" + _e(before) + '<a href="' + CREDITS_DIR + '">' + _e(link) + "</a>" + _e(after) + "</p>"
+    errors, page = _graph_page(shell_bytes, set(assets), strings, about, "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)
     if errors:
         return ["ASM-PAGE " + " ".join(e[1:]) for e in errors], None
     found = static_problems(page, "") + graph_element_problems(page) + head_meta_problems(page)
@@ -300,6 +359,10 @@ def _stage_page(shell_bytes, assets, strings, index, names):
     if bs.CODE_ON_SURFACE_REFUSES:   # read at the call, as `_run` does
         lines += [f"ASM-PAGE CODE-ON-SURFACE index.html:{card} {text[:60]} x{k}" for card, text, k in code_spans(surface_scan(page)[1])]
     lines += _ref_problems(page, names)   # A11b: after the builder's checks, which do not look at `..` or at a ref to a file that is not in the tree
+    if credits is not None:   # A22, A23: the credits page is a plain document (the DOCUMENT table, not the graph page's), its refs resolve from its own folder
+        cpage = credits.decode("utf-8")
+        lines += [f"ASM-PAGE {pb} found in {CREDITS_REL}" for pb in static_problems(cpage, "") + element_problems(cpage) + head_meta_problems(cpage) + link_problems(cpage)]
+        lines += _ref_problems(cpage, names, CREDITS_DIR, CREDITS_REL, link_pin=pin)   # A27: the run's own pin, for the one repository the page may link to
     return lines, (None if lines else page)
 
 
@@ -332,13 +395,13 @@ def run(opts):
     if errors:
         print("\n".join("ASM-SINK " + e[2] for e in errors))
         return 1
-    names = set(DATA_FIXED) | set(steps) | set(assets) | {"index.html", "manifest.json"}   # the names the tree will hold (manifest.json is written after the page, and is a file of the tree)
-    lines, page = _stage_page(shell_bytes, assets, objs["strings"], objs["index.json"], names)
+    names = set(DATA_FIXED) | set(steps) | set(assets) | {"index.html", "manifest.json"} | ({CREDITS_REL} if "page" in raws else set())   # the names the tree will hold (manifest.json is written after the page, and is a file of the tree)
+    lines, page = _stage_page(shell_bytes, assets, objs["strings"], objs["index.json"], names, raws.get("page"), pin=pin)
     if lines:
         print("\n".join(lines))
         return 1
     pairs = ([("index.json", index_bytes), ("spine.json", raws["spine.json"]), ("uses.json", raws["uses.json"])] + [(rel, raws[rel]) for rel in steps]
-             + sorted(assets.items()) + [("index.html", page.encode("utf-8"))])
+             + ([(CREDITS_REL, raws["page"])] if "page" in raws else []) + sorted(assets.items()) + [("index.html", page.encode("utf-8"))])
     names = [rel for rel, _data in pairs]
     lines = ["ASM-ASSET " + " ".join(e[1:]) for e in _graph_asset_errors(index["assets"], {"graph/" + rel: data for rel, data in pairs})]   # empty by construction
     lines += [f"ASM-OUT {rel} twice" for rel in sorted(set(r for r in names if names.count(r) > 1))]
@@ -362,6 +425,8 @@ def run(opts):
         print(f"ASM-OUT {out} {e.strerror or type(e).__name__}")
         return 1
     print(f"assembled {len(steps)} steps, {len(files)} files, into {out}")
+    if "page" not in raws:   # A20
+        print(NO_PAGE_NOTE)
     return 0
 
 
@@ -556,7 +621,7 @@ def _world(d, big=False, scope=False, strings=None, shell=None, pin=PIN):
 
 def _argv(w, pin=PIN, drop=(), **over):
     pairs = [("--data", w["data"]), ("--pin", pin), ("--strings", w["strings"]), ("--shell", w["shell"]), ("--out", w["out"]), ("--graph-src", w["gsrc"])]
-    return [x for k, v in pairs if k not in drop for x in (k, over.get(k[2:], v))]
+    return [x for k, v in pairs if k not in drop for x in (k, over.get(k[2:], v))] + list(w.get("page_argv", ()))   # a world made by `_page_world` also passes --page (A20 on)
 
 
 def _cli(argv, env=None, cwd=None, preexec=None):
@@ -606,8 +671,9 @@ def _need_pr_c():
 
 def _ok_run(w, argv=None, **kw):
     """Run the tool on a world that must build; returns the tree it wrote ({rel: bytes}, no empty folders asserted here)."""
-    rc, lines, err = _cli(_argv(w) if argv is None else argv, **kw)
-    if rc != 0 or len(lines) != 1 or err:
+    argv = _argv(w) if argv is None else argv
+    rc, lines, err = _cli(argv, **kw)
+    if rc != 0 or err or len(lines) != (1 if "--page" in argv else 2) or (len(lines) == 2 and lines[1] != NO_PAGE_LINE):   # A20: no --page, the second line is the note; --page, the one line
         raise AssertionError(f"a clean world must build: exit {rc}, stdout {lines!r}, stderr {err[-300:]!r}")
     return _read_tree(w["out"])
 
@@ -619,6 +685,71 @@ def _expected_page(w, shell_text, strings):
     if errs:
         raise _FixtureError(f"the builder refuses the fixture page: {errs}")
     return page
+
+
+NO_PAGE_LINE = "note: no credits page (--page credits/index.html=PATH); place.mjs refuses a tree without it"   # the second line of a run without --page (A20), pinned as a literal
+TEST_REL = "credits/index.html"
+CREDITS_KEYS = ("about_credits_before", "about_credits_link", "about_credits_after")
+CREDITS_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Synthetic credits page</title>
+<style>body { margin: 2em; }</style>
+</head>
+<body>
+<main>
+<h1>Synthetic credits page</h1>
+<p>Invented words only: zorble, quenta, plimmish.</p>
+</main>
+</body>
+</html>
+"""   # SYNTHETIC (invented words), scanner-clean, no ref at all (a page with a `..` ref would go red under M-q in every case that builds)
+VIEWPORT_LINE = '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+
+
+def _page_strings(**over):
+    """The `--strings` file of a run with --page: the skeleton strings, about_text, and the three keys of the About link (A24)."""
+    return _asm_strings(**dict({"about_credits_before": "Licence and credits: ", "about_credits_link": "the credits page", "about_credits_after": " (synthetic)."}, **over))
+
+
+def _page_world(d, text=CREDITS_PAGE, rel=TEST_REL, strings_over=None, **kw):
+    """`_world` plus a credits page file `credits.html` in the case's folder and the three About-link keys in the strings; `_argv(w)` then passes `--page REL=PATH`."""
+    w = _world(d, strings=_page_strings(**(strings_over or {})), **kw)
+    w["page"] = os.path.join(d, "credits.html")
+    _put(w["page"], text)
+    w["page_argv"] = ["--page", rel + "=" + w["page"]]
+    return w
+
+
+def _put(path, text):
+    with open(path, "wb") as f:
+        f.write(text if isinstance(text, bytes) else text.encode("utf-8"))
+
+
+def _unlink(path):
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    elif os.path.lexists(path):
+        os.remove(path)
+
+
+def _expected_credits_page(w, strings, with_link=True):
+    """The index.html the contract (A24) makes, from the builder's own function: about_text in one paragraph, then (with a page) a second paragraph with the escaped BEFORE, `<a href="credits/">`, the
+    escaped LINK, `</a>` and the escaped AFTER. Built with `section_attrs=()` (compare through `_no_feedback`), so it does not depend on the A7/A8 attribute."""
+    about = "<p>" + _e(strings[ABOUT_KEY]) + "</p>"
+    if with_link:
+        about += "<p>" + _e(strings[CREDITS_KEYS[0]]) + '<a href="credits/">' + _e(strings[CREDITS_KEYS[1]]) + "</a>" + _e(strings[CREDITS_KEYS[2]]) + "</p>"
+    errs, page = _graph_page(SHELL.encode("utf-8"), set(w["assets"]), strings, about, "", shell_keys=SHELL_KEYS, section_attrs=())
+    if errs:
+        raise _FixtureError(f"the builder refuses the fixture page: {errs}")
+    return page
+
+
+def _no_feedback(page):
+    return page.replace(' data-page-feedback="off"', "")
 
 
 def _limit_writes(n):
@@ -633,7 +764,7 @@ def _limit_writes(n):
 
 # ---------------------------------------------------------------- the mutation controls: exact specifications, for phase 2 to turn into live checks
 
-CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call")   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
+CLAUSES = tuple(f"A{i}" for i in range(1, 19)) + ("A7b-element", "A7b-static", "A7b-head", "A7b-surface", "A11b", "A11b-attrs", "A19", "A19-call") + tuple(f"A{i}" for i in range(20, 28))   # A7b is four cases, one per check the builder's `_run` applies; A11b and A19 are two
 MUTATIONS = {
     "M-a": ("A3", "in the pin stage, skip the comparison of `commit` with --pin for every step/<id>.json (index.json, spine.json and uses.json are still compared)", ("A3",)),
     "M-b": ("A1", "in the data stage, read a step/<id>.json that is a symlink as if it were a regular file (follow it; no `symlink` refusal for it). Every other symlink refusal "
@@ -657,6 +788,20 @@ MUTATIONS = {
     "M-n": ("A11b-attrs", "cut `src` from REF_ATTRS (the one-token edit: `REF_ATTRS = (\"href\", \"action\", \"srcset\", \"poster\", \"data\")`): a script whose src is `../x.js`, `nothere.js` or `/x.js` "
                           "is no longer refused by the ref check, so the A11b-attrs case is red; A11b (a shell with `href` refs) and every other A-case stay green, A11b-attrs being the only case that reads `src`",
            ("A11b-attrs",)),
+    "M-o": ("A24", "take the href of the About link from the strings (`strings.get(\"about_credits_href\", \"credits/\")`) instead of deriving it from the folder of REL: a strings file that carries an extra "
+                   "`about_credits_href` key changes the written link, so A24 is red; every other A-case (their strings carry no such key) stays green", ("A24",)),
+    "M-p": ("A25", "leave credits/index.html out of the manifest `files` map (the page is still written to the tree and still counted in the report): A25 is red (the manifest has no entry for it); A12 "
+                   "(a run without --page) and every other A-case stay green", ("A25",)),
+    "M-q": ("A23", "resolve the credits page's refs with base \"\" (the index.html rules) instead of its own folder: `../graph.css`, `../index.html`, `../` are then `escapes` and `./` is `missing`, so A23 is red; "
+                   "no other case builds with a page that holds a `..` ref, so every other A-case stays green", ("A23",)),
+    "M-r": ("A22", "do not apply `element_problems` to the credits page (the call is dropped from its checks; static, head and link checks stay): a page with a `<script>`, an inline handler or a `<base>` builds, "
+                   "so A22 is red; every other A-case stays green", ("A22",)),
+    "M-s": ("A27", "ignore the pin in the credits page's outbound-link check (the commit after `tree/` or `blob/` is accepted when it is any 40-hex commit, not the run's --pin): a link at another commit is then "
+                   "allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
+    "M-t": ("A27", "loosen the repository constant of the credits page's outbound-link check to `https://github.com/` (the repository is no longer the one `lsernau/grh-lean`): the allowed set is no longer the "
+                   "one repository's, so A27 is red; no other case builds a page with an outbound link, so every other A-case stays green", ("A27",)),
+    "M-v": ("A27", "drop the dot-segment check of the credits page's outbound-link check (A27b: a tail with a `.` or `..` segment is accepted again; the other tail checks stay): a link such as "
+                   "`.../tree/<PIN>/../x` is then allowed, so A27 is red; no other case builds a page with such a link, so every other A-case stays green", ("A27",)),
 }
 
 
@@ -674,13 +819,21 @@ MUTATION_EDITS = {
             '    manifest = (_dump(dict(json.loads(_manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)), release_id=None)) + "\\n").encode("utf-8")\n'),
     "M-f": ('names = sorted(os.listdir(path))', 'names = sorted(os.listdir(path), reverse=True)'),   # the step files are read in REVERSE name order
     "M-g": ('    elif os.path.isdir(out) and os.listdir(out):\n', '    elif False:\n'),
-    "M-h": ('"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)', '"<p>" + _e(strings[ABOUT_KEY]) + "</p>", "", shell_keys=SHELL_KEYS, section_attrs=())'),
+    "M-h": ('shell_keys=SHELL_KEYS, section_attrs=PAGE_SECTION_ATTRS)', 'shell_keys=SHELL_KEYS, section_attrs=())'),   # (A24 builds `about` on its own line before this call, so the edit no longer includes the about text)
     "M-i": ('    shell_bytes = raws["shell"]\n', '    shell_bytes = _graph_src_shell if _graph_src_shell is not None else raws["shell"]\n'),
     "M-j": ('**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows)))}', '**{READINGS_FRONT_KEY: template.replace("{n}", str(len(rows) + 1))}'),
     "M-k": ('static_problems(page, "") + graph_element_problems(page) + head_meta_problems(page)', 'static_problems(page, "") + [] + head_meta_problems(page)'),
     "M-l": ('    lines = ["ASM-STATIC " + " ".join(e[1:]) for e in _graph_static_problems(json_files)]', '    lines = []'),
     "M-m": ('    lines += _ref_problems(page, names)', '    lines += []'),
     "M-n": ('REF_ATTRS = ("href", "src", "action", "srcset", "poster", "data")', 'REF_ATTRS = ("href", "action", "srcset", "poster", "data")'),
+    "M-o": ("""'<a href="' + CREDITS_DIR + '">'""", """'<a href="' + strings.get("about_credits_href", CREDITS_DIR) + '">'"""),
+    "M-p": ('    manifest = _manifest_bytes(files, {"notes": pin}, {"steps": len(steps)}, None, None)\n',
+            '    manifest = _manifest_bytes({k: v for k, v in files.items() if k != "credits/index.html"}, {"notes": pin}, {"steps": len(steps)}, None, None)\n'),
+    "M-q": ('_ref_problems(cpage, names, CREDITS_DIR, CREDITS_REL, link_pin=pin)', '_ref_problems(cpage, names, "", CREDITS_REL, link_pin=pin)'),   # (A27 added the keyword; the same wrong implementation)
+    "M-r": ('static_problems(cpage, "") + element_problems(cpage) + head_meta_problems(cpage)', 'static_problems(cpage, "") + [] + head_meta_problems(cpage)'),
+    "M-s": ('if not (commit == pin and (sep == "/" or kind == "tree/")):', 'if not (bool(_PIN.fullmatch(commit)) and (sep == "/" or kind == "tree/")):'),   # (A27b moved the `return` of this test into an `if`; the same wrong implementation)
+    "M-t": ('CREDITS_REPO = "https://github.com/lsernau/grh-lean/"', 'CREDITS_REPO = "https://github.com/"'),
+    "M-v": ('return not any(g in (".", "..") for g in segs) and "" not in segs[:-1]', 'return "" not in segs[:-1]'),
 }
 MUTATION_TIMEOUT = 120   # seconds, for the self-test of one mutated copy
 
@@ -1729,6 +1882,320 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             tree = _read_tree(w["out"])[0]
             want = {"graph/" + rel: data for rel, data in tree.items() if rel.endswith(".json") and rel != "manifest.json"}
             return _eq((seen == [want], len(want), b'"assets"' in want["graph/index.json"]), (True, 3 + len(_step_names(w["files"])), True))
+
+    # ---- phase 4: --page (A20 to A26): the credits page of the map. ALL page bytes below are SYNTHETIC (invented words); nothing is read from any real page.
+    def page_of(add_body="", add_head="", drop_viewport=False):
+        t = CREDITS_PAGE.replace("</main>", add_body + "</main>").replace("</head>", add_head + "</head>")
+        return t.replace(VIEWPORT_LINE, "") if drop_viewport else t
+
+    def tree_names(w, extra=()):
+        return sorted({"index.html", "index.json", "spine.json", "uses.json", "manifest.json"} | set(GRAPH_SRC_FILES) | set(_step_names(w["files"])) | set(extra))
+
+    @case("A20", "the option: `--page REL=PATH`, at most once; REL exactly `credits/index.html` (anything else, no `=`, an empty PATH, a repeat, a bare `--page`: usage on stderr, exit 2, nothing written); the usage "
+                 "text shows it; with it the success line is `assembled N steps, M files, into OUT` (M counts the page) and nothing else; WITHOUT it the same line, byte for byte, and then a SECOND line "
+                 "`note: no credits page (--page credits/index.html=PATH); place.mjs refuses a tree without it`")
+    def _():
+        _need_pr_c()
+        with _tmp() as d:
+            w = _page_world(d)
+            rc, lines, err = _cli(_argv(w))
+            tree = _read_tree(w["out"])[0] if os.path.isdir(w["out"]) else {}
+            n = len(_step_names(w["files"]))
+            ok, why = _eq((rc, lines, err, "credits/index.html" in tree), (0, [f"assembled {n} steps, {len(tree)} files, into {w['out']}"], "", True))
+            if not ok:
+                return ok, "with --page: " + why
+        with _tmp() as d:
+            w = _world(d)
+            rc, lines, err = _cli(_argv(w))
+            tree = _read_tree(w["out"])[0] if os.path.isdir(w["out"]) else {}
+            ok, why = _eq((rc, lines, err, "credits/index.html" in tree), (0, [f"assembled {len(_step_names(w['files']))} steps, {len(tree)} files, into {w['out']}", NO_PAGE_LINE], "", False))
+            if not ok:
+                return ok, "without --page: " + why
+        with _tmp() as d:
+            w = _page_world(d)
+            P, good = w["page"], TEST_REL + "=" + w["page"]
+            base = _argv(dict(w, page_argv=()))
+            bad = {"no `=`": [TEST_REL], "empty PATH": [TEST_REL + "="], "empty REL": ["=" + P], "other REL": ["credits/other.html=" + P], "index.html": ["index.html=" + P],
+                   "a folder deeper": ["x/credits/index.html=" + P], "doubled slash": ["credits//index.html=" + P], "leading slash": ["/credits/index.html=" + P],
+                   "case": ["Credits/index.html=" + P]}
+            for what, val in bad.items():
+                rc, lines, err = _cli(base + ["--page"] + val)
+                ok, why = _eq((rc, lines, err.startswith("usage:"), os.path.exists(w["out"])), (2, [], True, False))
+                if not ok:
+                    return ok, f"--page with {what}: " + why
+            for what, extra in {"a repeat": ["--page", good, "--page", good], "bare --page at the end": ["--page"]}.items():
+                rc, lines, err = _cli(base + extra)
+                ok, why = _eq((rc, lines, err.startswith("usage:"), os.path.exists(w["out"])), (2, [], True, False))
+                if not ok:
+                    return ok, f"{what}: " + why
+            rc, lines, err = _cli([])
+            ok, why = _eq((rc, lines, "[--page credits/index.html=PATH]" in err), (2, [], True))
+            if not ok:
+                return ok, "the usage text shows the option: " + why
+        return True, ""
+
+    @case("A21", "the page file is read like --strings and --shell: bounded 4 MiB (a file of exactly the limit is read), a symlink, a directory, a FIFO, a file over the bound, bytes that are not UTF-8, a "
+                 "missing file are `ASM-DATA <path as given> symlink|not-regular|too-large|encoding|missing`, reported with the other data refusals, exit 1, OUT_DIR not created; a FIFO never hangs")
+    def _():
+        _need_pr_c()
+        with _tmp() as d:
+            w = _page_world(d)
+            p, argv = w["page"], _argv(w)
+            outside = os.path.join(d, "outside.html")
+            _put(outside, CREDITS_PAGE)
+            kinds = []
+            kinds.append(("a symlink", "symlink", lambda: os.symlink(outside, p)))
+            kinds.append(("a directory", "not-regular", lambda: os.mkdir(p)))
+            kinds.append(("a FIFO", "not-regular", lambda: os.mkfifo(p)))
+            kinds.append(("over the bound", "too-large", lambda: _put(p, CREDITS_PAGE.encode("utf-8") + b" " * (TOP_READ_LIMIT + 1 - len(CREDITS_PAGE)))))
+            kinds.append(("not UTF-8", "encoding", lambda: _put(p, b"\xff\xfe<p>x</p>")))
+            kinds.append(("missing", "missing", lambda: None))
+            for what, reason, make in kinds:
+                _unlink(p)
+                make()
+                good, why = _refused(w, argv, [f"ASM-DATA {p} {reason}"], f"the page {what}")
+                if not good:
+                    return good, why
+            _unlink(p)   # reported WITH the other data refusals
+            os.remove(os.path.join(w["data"], "spine.json"))
+            good, why = _refused(w, argv, [f"ASM-DATA {p} missing", "ASM-DATA spine.json missing"], "a missing page and a missing spine.json together")
+            if not good:
+                return good, why
+        with _tmp() as d:   # exactly the limit is read
+            pad = CREDITS_PAGE.encode("utf-8")
+            w = _page_world(d, text=pad + b" " * (TOP_READ_LIMIT - len(pad)))
+            if os.path.getsize(w["page"]) != TOP_READ_LIMIT:
+                raise _FixtureError("the padded page is not exactly the limit")
+            tree = _ok_run(w)[0]
+            ok, why = _eq(tree.get("credits/index.html") == open(w["page"], "rb").read(), True)
+            if not ok:
+                return ok, "a page of exactly 4 MiB: " + why
+        return True, ""
+
+    @case("A22", "the page checks, as the builder applies them to a document page: `static_problems(page, \"\")`, `element_problems(page)` (the DOCUMENT table: no script, no inline handler, no base, no link), "
+                 "`head_meta_problems(page)` and `link_problems(page)` (a `#link` with no id, a duplicate id: it fits a standalone page); each problem is one `ASM-PAGE <problem> found in credits/index.html` "
+                 "line, every one reported, exit 1, nothing written; a page that carries `<script>`, an inline handler or `<base>` is refused (the element check bites)")
+    def _():
+        _need_pr_c()
+        runs = (("a script", page_of(add_body="<script>var a = 1;</script>\n"), ["element script"]),
+                ("an inline handler", page_of(add_body='<p onclick="a()">x</p>\n'), ["attribute onclick on p"]),
+                ("a base element", page_of(add_head='<base target="_top">\n'), ["element base"]),
+                ("no viewport meta", page_of(drop_viewport=True), ["viewport missing"]),
+                ("a static token", page_of(add_body="<p>call fetch(x) here</p>\n"), ["fetch("]),
+                ("a #link with no id", page_of(add_body='<p><a href="#nowhere">x</a></p>\n'), ["#nowhere"]),
+                ("a duplicate id", page_of(add_body='<article id="a"></article><article id="a"></article>\n'), ["duplicate id a"]),
+                ("four problems together", page_of(add_body='<script></script><p>call fetch(x) here</p><a href="#nowhere">x</a>', drop_viewport=True),
+                 ["element script", "fetch(", "#nowhere", "viewport missing"]))
+        with _tmp() as d:
+            w = _page_world(d)
+            for what, text, probs in runs:
+                _put(w["page"], text)
+                good, why = _refused(w, _argv(w), [f"ASM-PAGE {pb} found in credits/index.html" for pb in probs], what)
+                if not good:
+                    return good, why
+        return True, ""
+
+    @case("A23", "the page's refs (`href`, `src`, `action`, `srcset` candidates, `poster`, `data`) are checked by the index.html logic but resolved against the page's OWN folder: from credits/index.html a "
+                 "`..` that stays inside the tree resolves (`../graph.css`, `../index.html`, `../`, `../step/<id>.json`; `./` and `index.html` are the folder and the page itself); `../../x` escapes, a "
+                 "leading `/` or `//` or a scheme is absolute, a name not in the tree (`nothere.html` is credits/nothere.html) is missing; the line is `ASM-PAGE credits/index.html: <ref> "
+                 "absolute|escapes|missing`, a repeated ref once, every violation reported, exit 1, nothing written")
+    def _():
+        _need_pr_c()
+        step = _step_names(_data_files())[0]
+        anchors = lambda *refs: page_of(add_body="".join(f'<p><a href="{r}">x</a></p>\n' for r in refs))
+        fine = ["../graph.css", "../index.html", "../", "./", "./index.html", "index.html", "../" + step, "../engine/index.js?v=1", "../page/app.js#x", "../manifest.json", "../credits/index.html",
+                "../credits/", "../step/../graph.css", "?v=2", "../engine/"]
+        with _tmp() as d:
+            w = _page_world(d, text=anchors(*fine))
+            tree = _ok_run(w)[0]
+            ok, why = _eq(tree.get("credits/index.html") == anchors(*fine).encode("utf-8"), True)
+            if not ok:
+                return ok, "refs that resolve inside the tree: " + why
+            _unlink(w["out"])   # the clean build above wrote OUT_DIR; the refusals below need it absent
+            refused = [("../../x.html", "escapes"), ("../../", "escapes"), ("../../../x", "escapes"), ("../x/../../y", "escapes"), ("/x.html", "absolute"), ("mailto:a@b.c", "absolute"),
+                       ("nothere.html", "missing"), ("../nothere.css", "missing"), ("../list/", "missing"), ("credits/index.html", "missing"), ("../" + step.replace("lean", "zzzz"), "missing")]
+            _put(w["page"], anchors(*(r for r, _why in refused), "nothere.html", "../graph.css"))
+            good, why = _refused(w, _argv(w), [f"ASM-PAGE credits/index.html: {r} {reason}" for r, reason in refused], "every refused ref of the page, a repeated one once")
+            if not good:
+                return good, why
+            _put(w["page"], anchors("//host/x"))   # the static check refuses `//host` too (its own line)
+            good, why = _refused(w, _argv(w), ["ASM-PAGE href=http found in credits/index.html", "ASM-PAGE credits/index.html: //host/x absolute"], "a protocol-relative ref")
+            if not good:
+                return good, why
+        return True, ""
+
+    @case("A24", "the About link: with --page the three strings keys about_credits_before, about_credits_link, about_credits_after are ALL required, each a non-empty string (`ASM-STRINGS <key> missing|not-a-string`, an "
+                 "empty one is `missing`); the About block of index.html is the existing `<p>` + escaped about_text + `</p>` followed by `<p>` + escaped BEFORE + `<a href=\"credits/\">` + escaped LINK + `</a>` + "
+                 "escaped AFTER + `</p>`; the href is DERIVED from the folder of REL, never from the strings; without --page the three keys are ignored (any value) and the page is byte-identical to the "
+                 "page of a run that never heard of them; the link resolves (the credits file is a name of the tree)")
+    def _():
+        _need_pr_c()
+        special = _page_strings(**{CREDITS_KEYS[0]: 'Licence & <b>credits</b>: "', CREDITS_KEYS[1]: "a <i>link</i>", CREDITS_KEYS[2]: " & \"done\".", "about_credits_href": "elsewhere/"})
+        with _tmp() as d:
+            w = _page_world(d, strings_over={k: special[k] for k in (*CREDITS_KEYS, "about_credits_href")})
+            tree = _ok_run(w)[0]
+            page = tree["index.html"].decode("utf-8")
+            ok, why = _eq((_no_feedback(page), page.count('<a href="credits/">'), "<b>credits</b>" in page, "elsewhere/" in page), (_expected_credits_page(w, special), 1, False, False))
+            if not ok:
+                return ok, "with --page: " + why
+        with _tmp() as d:   # without --page the keys are ignored, whatever they hold
+            odd = _page_strings(**{CREDITS_KEYS[0]: 7, CREDITS_KEYS[1]: "", CREDITS_KEYS[2]: "x<y"})
+            w = _world(d, strings=odd)
+            page = _ok_run(w)[0]["index.html"].decode("utf-8")
+            ok, why = _eq((_no_feedback(page), "credits/" in page), (_expected_credits_page(w, _page_strings(), with_link=False), False))
+            if not ok:
+                return ok, "without --page: " + why
+        with _tmp() as d:   # each fault alone, then all three
+            w = _page_world(d)
+            argv = _argv(w)
+            good_vals = {k: _page_strings()[k] for k in CREDITS_KEYS}
+            faults = ((CREDITS_KEYS[0], None, "missing"), (CREDITS_KEYS[1], 7, "not-a-string"), (CREDITS_KEYS[2], "", "missing"), (CREDITS_KEYS[1], "", "missing"), (CREDITS_KEYS[0], ["x"], "not-a-string"))
+            for key, val, reason in faults:
+                _put(w["strings"], json.dumps({k: v for k, v in _page_strings(**dict(good_vals, **{key: val})).items()}))
+                good, why = _refused(w, argv, [f"ASM-STRINGS {key} {reason}"], f"{key} {reason}")
+                if not good:
+                    return good, why
+            _put(w["strings"], json.dumps({k: v for k, v in _page_strings(**{CREDITS_KEYS[0]: None, CREDITS_KEYS[1]: 7, CREDITS_KEYS[2]: ""}).items()}))
+            return _refused(w, argv, [f"ASM-STRINGS {CREDITS_KEYS[0]} missing", f"ASM-STRINGS {CREDITS_KEYS[1]} not-a-string", f"ASM-STRINGS {CREDITS_KEYS[2]} missing"], "all three keys faulty")
+
+    @case("A25", "the tree: credits/index.html is copied BYTE FOR BYTE (CRLF and non-ASCII kept) to that path (a file under a `credits/` folder that `_publish` creates), listed in manifest.json `files` with the "
+                 "sha256 of its bytes, `counts.steps` unchanged, nothing else new (the write set is closed), no empty folder; the name set of the ref check includes it (a shell link to `credits/index.html` "
+                 "resolves); a collision of `credits/index.html` with a data or asset name is `ASM-OUT credits/index.html twice` (in-process, a stand-in `_graph_assets`)")
+    def _():
+        _need_pr_c()
+        odd = CREDITS_PAGE.replace("\n", "\r\n").replace("plimmish", "plimmish é").encode("utf-8")
+        with _tmp() as d:
+            w = _page_world(d, text=odd, big=True)
+            tree, empty = _ok_run(w)
+            m = json.loads(tree["manifest.json"])
+            others = {rel: hashlib.sha256(data).hexdigest() for rel, data in tree.items() if rel not in ("manifest.json", "index.html")}   # index.html in the manifest is A12's business
+            ok, why = _eq((sorted(tree), empty, tree.get("credits/index.html") == odd, os.path.isdir(os.path.join(w["out"], "credits")), sorted(os.listdir(d)),
+                           m["files"].get("credits/index.html"), {k: v for k, v in m["files"].items() if k != "index.html"}, m["counts"], m["commits"]),
+                          (tree_names(w, ["credits/index.html"]), [], True, True, sorted(["data", "gsrc", "shell.html", "strings.json", "credits.html", "out"]),
+                           hashlib.sha256(odd).hexdigest(), others, {"steps": len(_step_names(w["files"]))}, {"notes": PIN}))
+            if not ok:
+                return ok, why
+        with _tmp() as d:   # a shell link to the credits file resolves because the name set includes it
+            shell = SHELL.replace('<p class="sentence">{{S:sentence}}</p>\n', '<p class="sentence">{{S:sentence}}</p>\n<p class="sentence"><a href="credits/index.html">x</a></p>\n')
+            w = _page_world(d, shell=shell)
+            if "credits/index.html" not in _ok_run(w)[0]:
+                return False, "a run whose shell links credits/index.html did not write the file"
+        with _tmp() as d:
+            w = _page_world(d)
+            before = sorted(os.listdir(d))
+            real = tool_module()._graph_assets
+
+            def fake(src):
+                errs, assets, shell = real(src)
+                return errs, dict(assets, **{TEST_REL: b"export const extra = 1;\n"}), shell
+            rc, lines = inproc(w, {"_graph_assets": fake, "_graph_sink_errors": lambda assets, shell: []})
+            return _eq((rc, lines, os.path.exists(w["out"]), sorted(os.listdir(d))), (1, ["ASM-OUT credits/index.html twice"], False, before))
+
+    @case("A26", "refusal order and atomicity: the page stage (A21 data, A22, A23, and the three keys of A24, which join the strings checks of the page stage) runs after the existing stages and before the first write: an "
+                 "earlier stage that fails (pin, sink) is reported ALONE, the page problems not shown; a strings fault is reported alone (the page checks do not run); a fault of index.html and a fault of "
+                 "the credits page are reported together; a refusal leaves OUT_DIR as it was (absent, or an existing empty folder) and nothing beside it. (A16, the lint of the tool's own text, and "
+                 "A11b-attrs are their own cases and stay green)")
+    def _():
+        _need_pr_c()
+        bad = page_of(add_body="<p>call fetch(x) here</p>", drop_viewport=True)   # no element problem: M-r (element check skipped) must not redden A26
+        with _tmp() as d:
+            w = _page_world(d, text=bad)
+            _put(os.path.join(w["data"], "index.json"), _recommit(w["files"]["index.json"], BAD_PIN))
+            good, why = _refused(w, _argv(w), [f"ASM-PIN index.json {BAD_PIN}"], "a pin fault and a bad page: the pin fault alone")
+            if not good:
+                return good, why
+        with _tmp() as d:
+            w = _page_world(d, text=bad)
+            _write_tree(w["gsrc"], {"page/app.js": b"x.innerHTML = s;\n"})
+            _errs, assets, _sh = _graph_assets(w["gsrc"])
+            want = ["ASM-SINK " + e[2] for e in _graph_sink_errors(assets, SHELL.encode("utf-8"))]
+            if not want:
+                raise _FixtureError("the builder's own sink gate accepts a file that holds innerHTML")
+            good, why = _refused(w, _argv(w), want, "a sink fault and a bad page: the sink lines alone")
+            if not good:
+                return good, why
+        with _tmp() as d:
+            w = _page_world(d, text=bad, strings_over={CREDITS_KEYS[1]: None})
+            good, why = _refused(w, _argv(w), [f"ASM-STRINGS {CREDITS_KEYS[1]} missing"], "a missing key and a bad page: the strings fault alone")
+            if not good:
+                return good, why
+        with _tmp() as d:
+            w = _page_world(d, text=page_of(drop_viewport=True), strings_over={ABOUT_KEY: "call fetch(x) here"})
+            good, why = _refused(w, _argv(w), ["ASM-PAGE fetch( found in index.html", "ASM-PAGE viewport missing found in credits/index.html"], "a fault of index.html and of the credits page, together")
+            if not good:
+                return good, why
+        with _tmp() as d:   # atomic: an existing EMPTY OUT_DIR stays empty, nothing is left beside it
+            w = _page_world(d, text=bad)
+            os.mkdir(w["out"])
+            before = sorted(os.listdir(d))
+            good, why = _refused(w, _argv(w), ["ASM-PAGE fetch( found in credits/index.html", "ASM-PAGE viewport missing found in credits/index.html"], "a refusal into an existing empty OUT_DIR", out_state=[])
+            if not good:
+                return good, why
+            return _eq(sorted(os.listdir(d)), before)
+
+    @case("A27", "outbound links of the credits page: on credits/index.html ONLY, an `<a href>` whose value is exactly `https://github.com/lsernau/grh-lean/tree/<PIN>`, or begins with `.../tree/<PIN>/` or "
+                 "`.../blob/<PIN>/` (PIN the run's own --pin, compared as a string after the control whitespace is dropped) is not an `absolute` refusal and the tree is built; everything else is still "
+                 "`ASM-PAGE credits/index.html: <ref> absolute`, exit 1, nothing written: another host, `http:`, another repository, the same repository at another commit or with none (`tree/main`, the bare "
+                 "repository, `<PIN>x`, `<PIN>#frag`), a scheme-relative value, another letter case, the allowed URL in any attribute but `href` of an `a` (driven in-process through `_ref_problems`, the "
+                 "A7b pattern: `data`, `poster`, `action`, `srcset`, and `a data`/`a action`; `src` is A11b-attrs' pin and stays out of this case) or in the `href` of another element; and the same "
+                 "URL in index.html stays `absolute` (in-process, the page string of `_ref_problems` with its default)")
+    def _():
+        _need_pr_c()
+        fails = []
+        repo, other = "https://github.com/lsernau/grh-lean/", "a" * 40   # the repository is a literal here, not read from the tool: a loosened constant must redden this case
+        anchors = lambda *refs: page_of(add_body="".join(f'<p><a class="note-link" href="{r}">x</a></p>\n' for r in refs))   # class note-link: the builder's static check lets an https `a` with it through, so only the ref check is under test
+
+        def note(name, ok_why):
+            if not ok_why[0]:
+                fails.append(f"[{name}] {ok_why[1]}")
+
+        allowed = [repo + "tree/" + PIN, repo + "tree/" + PIN + "/grh", repo + "blob/" + PIN + "/grh/ATTRIBUTION.md"]
+        with _tmp() as d:
+            w = _page_world(d, text=anchors(*allowed))
+            rc, lines, err = _cli(_argv(w))
+            tree = _read_tree(w["out"])[0] if os.path.isdir(w["out"]) else {}
+            note("allowed links build", _eq((rc, lines, err, tree.get(TEST_REL) == anchors(*allowed).encode("utf-8")),
+                                            (0, [f"assembled {len(_step_names(w['files']))} steps, {len(tree)} files, into {w['out']}"], "", True)))
+        static = "ASM-PAGE href=http found in credits/index.html"   # the builder's own line for an `http:`, `//` or upper-case `HTTPS://` value, which its static check refuses first
+        refused = [("another host", "https://example.org/lsernau/grh-lean/tree/" + PIN, False), ("http:", "http://github.com/lsernau/grh-lean/tree/" + PIN, True),
+                   ("another repository", "https://github.com/lsernau/other/tree/" + PIN, False), ("another commit", repo + "tree/" + other, False), ("a branch", repo + "tree/main", False),
+                   ("the bare repository", repo, False), ("the commit and one more character", repo + "tree/" + PIN + "x", False), ("the commit and a fragment", repo + "tree/" + PIN + "#frag", False),
+                   ("the commit and a query", repo + "tree/" + PIN + "?x", False), ("blob with no path", repo + "blob/" + PIN, False), ("blob at another commit", repo + "blob/" + other + "/x", False),
+                   ("scheme-relative", "//github.com/lsernau/grh-lean/tree/" + PIN, True), ("upper-case scheme and host", "HTTPS://GITHUB.COM/lsernau/grh-lean/tree/" + PIN, True),
+                   ("upper-case owner", "https://github.com/LSERNAU/grh-lean/tree/" + PIN, False)]
+        with _tmp() as d:
+            w = _page_world(d)
+            for what, ref, flagged in refused:
+                _put(w["page"], anchors(ref))
+                note("refused: " + what, _refused(w, _argv(w), ([static] if flagged else []) + [f"ASM-PAGE credits/index.html: {ref} absolute"], what))
+        m = tool_module()
+        url, names = repo + "tree/" + PIN, {"index.html", "graph.css"}
+        note("index.html: the allowed URL stays absolute", _eq(m._ref_problems(f'<p><a href="{url}">x</a></p>', names), [f"ASM-PAGE {url} absolute"]))   # the page of the shell: the call without the allowance
+        if "link_pin" not in inspect.signature(m._ref_problems).parameters:
+            fails.append("[in-process] behaviour absent: `_ref_problems` has no `link_pin` keyword")
+        else:
+            refs = lambda page, pin=PIN: m._ref_problems(page, names, "credits/", TEST_REL, link_pin=pin)
+            want = [f"ASM-PAGE credits/index.html: {url} absolute"]
+            note("a link allowed with the pin", _eq(refs(f'<p><a href="{url}">x</a></p>'), []))
+            note("the same link with no pin given is absolute", _eq(m._ref_problems(f'<p><a href="{url}">x</a></p>', names, "credits/", TEST_REL), want))
+            note("the same link with another pin is absolute", _eq(refs(f'<p><a href="{url}">x</a></p>', other), want))
+            for what, tag in (("a: data", f'<a data="{url}">x</a>'), ("a: action", f'<a action="{url}">x</a>'), ("a: poster", f'<a poster="{url}">x</a>'), ("form action", f'<form action="{url}"></form>'),
+                              ("object data", f'<object data="{url}"></object>'), ("video poster", f'<video poster="{url}"></video>'), ("img srcset", f'<img srcset="{url} 1x">'),
+                              ("link href", f'<link rel="x" href="{url}">'), ("p href", f'<p href="{url}">x</p>')):
+                note("in-process refused: " + what, _eq(refs("<p>" + tag + "</p>"), want))
+            # A27b: the tail of an allowed link cannot climb out of the pinned repository (in-process through the same call)
+            for what, ref in (("tail: dot-dot", repo + "tree/" + PIN + "/.."), ("tail: dot-dot then a name", repo + "tree/" + PIN + "/../x"),
+                              ("tail: blob climbing out", repo + "blob/" + PIN + "/a/../../../other/x"), ("tail: dot segment", repo + "tree/" + PIN + "/./x"),
+                              ("tail: encoded dots", repo + "tree/" + PIN + "/%2e%2e/x"), ("tail: encoded dots, upper case", repo + "tree/" + PIN + "/%2E%2E/x"),
+                              ("tail: encoded slash", repo + "tree/" + PIN + "/a%2fb"), ("tail: encoded backslash", repo + "tree/" + PIN + "/a%5cb"),
+                              ("tail: backslash dots", repo + "tree/" + PIN + "/..\\..\\x"), ("tail: empty segment", repo + "tree/" + PIN + "//x"),
+                              ("tail: dot-dot then a query", repo + "tree/" + PIN + "/..?q=1"), ("tail: dot-dot then a fragment", repo + "tree/" + PIN + "/..#f")):
+                note("in-process refused: " + what, _eq(refs(f'<p><a href="{ref}">x</a></p>'), [f"ASM-PAGE credits/index.html: {ref} absolute"]))
+            for what, ref in (("blob file", repo + "blob/" + PIN + "/grh/ATTRIBUTION.md"), ("blob file and a fragment", repo + "blob/" + PIN + "/grh/ATTRIBUTION.md#L10"),
+                              ("tree path and a query", repo + "tree/" + PIN + "/grh?x=1"), ("the exact tree URL", repo + "tree/" + PIN),
+                              ("dots inside a segment", repo + "blob/" + PIN + "/a.b/c..d/e")):
+                note("in-process allowed: " + what, _eq(refs(f'<p><a href="{ref}">x</a></p>'), []))
+        return (not fails, "; ".join(fails))
 
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(

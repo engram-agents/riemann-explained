@@ -32,6 +32,7 @@ a { color: var(--theorem); text-underline-offset: 0.15em; }
 .intro { padding: 6px 14px 0; background: var(--card); border-bottom: 1px solid var(--rule); }
 .intro h1 { font-size: 20px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
 .intro .sentence { margin: 0; font-size: 16px; line-height: 1.4; }
+.intro .front-line { margin: 2px 0 0; font-family: var(--sans); font-size: 14px; line-height: 1.35; color: var(--muted); }   /* the Lean map's front lines (site/shell-lean.html): a line of its own each, the smaller muted style (strings v2) */
 .intro .links { margin: 0; display: flex; align-items: center; gap: 0; font-family: var(--sans); font-size: 14px; }
 .linkbtn { border: 0; background: none; padding: 0 2px; min-height: 44px; color: var(--theorem); text-decoration: underline; cursor: pointer; font-family: var(--sans); }
 .hint::before { content: "\00b7"; margin: 0 8px; }
