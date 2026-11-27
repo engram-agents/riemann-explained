@@ -21,6 +21,16 @@ CONTRACT (cases, prefix PYF-)
  PYF-ORDER  The guard runs before anything else: with the faked old version and arguments that would otherwise fail
             (an input path that does not exist, an output path that must not appear), the stderr is the version line
             alone, not the tool's own error, and nothing is written.
+ PYF-FEATURE-STATIC  build_site.py carries a SECOND guard, right after the version guard: `import html.parser` and an `if not
+            hasattr(html.parser.HTMLParser, "RCDATA_CONTENT_ELEMENTS")` that raises SystemExit with the line below; no other tool carries
+            such an `if` (only the tool that needs the parser feature says so, so the claim stays exact).
+ PYF-FEATURE  build_site.py and the tools that load it by path (build_grh_skeleton, build_grh_credits, assemble_grh_site,
+            check_lean_shell, formula_oracle), run with the attribute deleted from html.parser.HTMLParser: exit status 1, stdout
+            empty, stderr exactly ONE line, `build_site.py: needs an html.parser with RCDATA_CONTENT_ELEMENTS (CPython 3.12.13 or
+            newer has it; 3.12.10 does not); this is X.Y.Z at <sys.executable>`, and nothing written. A loader stops with the
+            same line because SystemExit is not an Exception: the importer is refused, not given a stack trace.
+ PYF-FEATURE-PASS  The same tools with the attribute present, argv [tool, '--help']: neither line is printed.
+ PYF-FEATURE-ORDER  Both apply (version faked to 3.9.6 AND the attribute deleted): the VERSION line is printed, never the feature line.
  A library (a tool that others load by file path: decl_table.py, lean_decls.py, rh_anchor.py) carries the guard too;
  when it is imported on an old interpreter the guard raises SystemExit(1) carrying the line, so the importer stops
  with that line instead of a stack trace (an importer that catches Exception does not catch SystemExit, which is
@@ -55,6 +65,18 @@ GUARD = (
     "    raise SystemExit(\"NAME: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s\" % "
     "(sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))\n"
 )
+FEATURE_GUARD = (
+    "import html.parser\n"
+    "if not hasattr(html.parser.HTMLParser, \"RCDATA_CONTENT_ELEMENTS\"):\n"
+    "    raise SystemExit(\"build_site.py: needs an html.parser with RCDATA_CONTENT_ELEMENTS (CPython 3.12.13 or newer has it; "
+    "3.12.10 does not); this is %d.%d.%d at %s\" % "
+    "(sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))\n"
+)
+FEATURE = {
+    "holder": "build_site.py",
+    "tools": ["build_site.py", "build_grh_skeleton.py", "build_grh_credits.py", "assemble_grh_site.py", "check_lean_shell.py", "formula_oracle.py"],
+}
+NO_ATTR = "import html.parser; del html.parser.HTMLParser.RCDATA_CONTENT_ELEMENTS; "
 OLD = (3, 9, 6, "final", 0)
 OLDS = [OLD, (3, 11, 9, "final", 0)]
 NEW_OK = [(3, 12, 0, "final", 0), (3, 13, 1, "final", 0)]
@@ -99,10 +121,11 @@ def case_all(tools_dir):
     return out
 
 
-def run_faked(tool, ver, args, work):
-    """Run `tool` as __main__ with sys.version_info faked; returns (rc, stdout, stderr). `work` is cwd and TMPDIR."""
-    code = ("import sys, runpy; sys.version_info = %r; tool = sys.argv[1]; sys.argv = [tool] + sys.argv[2:]; "
-            "runpy.run_path(tool, run_name='__main__')" % (ver,))
+def run_faked(tool, ver, args, work, pre=""):
+    """Run `tool` as __main__ with sys.version_info faked (None: not faked) and `pre` (code) run first; returns (rc, stdout, stderr).
+    `work` is cwd and TMPDIR."""
+    code = ("import sys, runpy; " + ("sys.version_info = %r; " % (ver,) if ver else "") + pre + "tool = sys.argv[1]; sys.argv = [tool] + sys.argv[2:]; "
+            "runpy.run_path(tool, run_name='__main__')")
     env = dict(os.environ)
     env["TMPDIR"] = work
     pr = subprocess.Popen([sys.executable, "-I", "-c", code, tool] + list(args), cwd=work, env=env, stdin=subprocess.DEVNULL,
@@ -179,6 +202,95 @@ def case_pass(tools_dir, base):
     return out
 
 
+def _top_feature_ifs(tree):
+    return [st for st in tree.body if isinstance(st, ast.If) and "RCDATA_CONTENT_ELEMENTS" in ast.unparse(st.test)]
+
+
+def case_feature_static(tools_dir, base, feat):
+    out = []
+    for n in tool_files(tools_dir):
+        src = open(os.path.join(tools_dir, n), encoding="utf-8").read()
+        try:
+            tree = ast.parse(src)
+        except SyntaxError as e:
+            out.append("%s: does not parse (%s)" % (n, e))
+            continue
+        if n != feat["holder"]:
+            if _top_feature_ifs(tree):
+                out.append("%s: carries the feature guard, which only %s may" % (n, feat["holder"]))
+            continue
+        body = tree.body
+        i = 1
+        while i < len(body) and isinstance(body[i], ast.ImportFrom) and body[i].module == "__future__":
+            i += 1
+        i += 2   # the version guard
+        if i + 1 >= len(body) or not isinstance(body[i], ast.Import) or not isinstance(body[i + 1], ast.If):
+            out.append("%s: the feature guard is not the second guard" % n)
+            continue
+        text = "\n".join(src.split("\n")[body[i].lineno - 1:body[i + 1].end_lineno]) + "\n"
+        if text != FEATURE_GUARD.replace("build_site.py", n):
+            out.append("%s: the feature guard text differs from the standard one" % n)
+    if feat["holder"] not in tool_files(tools_dir):
+        out.append("%s: the holder is missing" % feat["holder"])
+    return out
+
+
+def feature_line(name, ver3):
+    return ("%s: needs an html.parser with RCDATA_CONTENT_ELEMENTS (CPython 3.12.13 or newer has it; 3.12.10 does not); "
+            "this is %d.%d.%d at %s\n" % (name, ver3[0], ver3[1], ver3[2], sys.executable))
+
+
+def _feat_tools(tools_dir, feat):
+    return [n for n in feat["tools"] if n in tool_files(tools_dir)]
+
+
+def case_feature(tools_dir, base, feat):
+    out = []
+    for n in _feat_tools(tools_dir, feat):
+        work = fresh(base)
+        rc, o, e = run_faked(os.path.join(tools_dir, n), None, ["--selftest"], work, NO_ATTR)
+        want = feature_line(feat["holder"], sys.version_info)
+        if rc is None:
+            out.append("%s: feature: no refusal within %d s" % (n, TIMEOUT))
+        elif e != want:
+            out.append("%s: feature: stderr is %r, wanted %r" % (n, e[:200], want))
+        elif rc != 1 or o != "":
+            out.append("%s: feature: exit status %r, stdout %r" % (n, rc, o[:100]))
+        elif os.listdir(work):
+            out.append("%s: feature: wrote %r" % (n, sorted(os.listdir(work))))
+    return out
+
+
+def case_feature_pass(tools_dir, base, feat):
+    out = []
+    for n in _feat_tools(tools_dir, feat):
+        work = fresh(base)
+        rc, o, e = run_faked(os.path.join(tools_dir, n), None, ["--help"], work)
+        if rc is None:
+            out.append("%s: feature-pass: --help did not finish in %d s" % (n, TIMEOUT))
+        elif "needs an html.parser" in o + e or "needs Python 3.12" in o + e:
+            out.append("%s: feature-pass: a refusal line is printed with the attribute present" % n)
+        elif os.listdir(work):
+            out.append("%s: feature-pass: wrote %r" % (n, sorted(os.listdir(work))))
+    return out
+
+
+def case_feature_order(tools_dir, base, feat):
+    out = []
+    for n in _feat_tools(tools_dir, feat):
+        work = fresh(base)
+        rc, o, e = run_faked(os.path.join(tools_dir, n), OLD, ["--selftest"], work, NO_ATTR)
+        if rc is None:
+            out.append("%s: feature-order: no refusal within %d s" % (n, TIMEOUT))
+        elif e != refusal_line(n, OLD) or rc != 1 or o != "":
+            out.append("%s: feature-order: stderr is %r (exit %r), wanted the version line alone" % (n, e[:200], rc))
+        elif os.listdir(work):
+            out.append("%s: feature-order: wrote %r" % (n, sorted(os.listdir(work))))
+    return out
+
+
+FEATURE_CASES = [("PYF-FEATURE-STATIC", case_feature_static), ("PYF-FEATURE", case_feature), ("PYF-FEATURE-PASS", case_feature_pass),
+                 ("PYF-FEATURE-ORDER", case_feature_order)]
 CASES = [("PYF-ALL", lambda d, b: case_all(d)), ("PYF-REFUSE", case_refuse), ("PYF-ORDER", case_order), ("PYF-PASS", case_pass)]
 
 
@@ -193,7 +305,16 @@ def run_cases(tools_dir, base):
                 print("  " + p)
         else:
             print("ok   %s" % cid)
-    print("%d cases, %d failed" % (len(CASES), bad))
+    for cid, fn in FEATURE_CASES:
+        problems = fn(tools_dir, base, FEATURE)
+        if problems:
+            bad += 1
+            print("FAIL %s" % cid)
+            for p in problems:
+                print("  " + p)
+        else:
+            print("ok   %s" % cid)
+    print("%d cases, %d failed" % (len(CASES) + len(FEATURE_CASES), bad))
     return 1 if bad else 0
 
 
@@ -219,6 +340,47 @@ PLANTED_WANT = {
 }
 
 
+_VG = _G   # the version guard of a planted file, name filled in
+_FG = "import html.parser\nif not hasattr(html.parser.HTMLParser, \"RCDATA_CONTENT_ELEMENTS\"):\n    raise SystemExit(\"h.py: needs an html.parser with RCDATA_CONTENT_ELEMENTS (CPython 3.12.13 or newer has it; 3.12.10 does not); this is %d.%d.%d at %s\" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))\n"
+_LOADER = '"""doc"""\n' + _G % "l.py" + 'import os, runpy\nrunpy.run_path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "h.py"))\n'
+# variant -> (holder text, {case: names it must name})
+PLANTED_FEAT = {
+    "good": ('"""doc"""\n' + _G % "h.py" + _FG + 'print("ran")\n',
+             {"PYF-FEATURE-STATIC": [], "PYF-FEATURE": [], "PYF-FEATURE-PASS": [], "PYF-FEATURE-ORDER": []}),
+    "inverted": ('"""doc"""\n' + _G % "h.py" + _FG.replace("if not hasattr", "if hasattr") + 'print("ran")\n',
+                 {"PYF-FEATURE-STATIC": ["h.py"], "PYF-FEATURE": ["h.py", "l.py"], "PYF-FEATURE-PASS": ["h.py", "l.py"], "PYF-FEATURE-ORDER": []}),
+    "removed": ('"""doc"""\n' + _G % "h.py" + 'print("ran")\n',
+                {"PYF-FEATURE-STATIC": ["h.py"], "PYF-FEATURE": ["h.py", "l.py"], "PYF-FEATURE-PASS": [], "PYF-FEATURE-ORDER": []}),
+    "other_attr": ('"""doc"""\n' + _G % "h.py" + _FG.replace("RCDATA_CONTENT_ELEMENTS\"):", "CDATA_CONTENT_ELEMENTS\"):") + 'print("ran")\n',
+                   {"PYF-FEATURE-STATIC": ["h.py"], "PYF-FEATURE": ["h.py", "l.py"], "PYF-FEATURE-PASS": [], "PYF-FEATURE-ORDER": []}),
+    "first": ('"""doc"""\nimport sys\n' + _FG + _G % "h.py" + 'print("ran")\n',
+              {"PYF-FEATURE-STATIC": ["h.py"], "PYF-FEATURE": [], "PYF-FEATURE-PASS": [], "PYF-FEATURE-ORDER": ["h.py"]}),
+    "elsewhere": ('"""doc"""\n' + _G % "h.py" + 'print("ran")\n',
+                  {"PYF-FEATURE-STATIC": ["h.py", "l.py"], "PYF-FEATURE": ["h.py"], "PYF-FEATURE-PASS": [], "PYF-FEATURE-ORDER": []}),
+}
+
+
+def selftest_feature(base):
+    ok = True
+    feat = {"holder": "h.py", "tools": ["h.py", "l.py"]}
+    for variant, (htext, want) in PLANTED_FEAT.items():
+        d = os.path.join(base, "f-" + variant)
+        os.mkdir(d)
+        loader = _LOADER
+        if variant == "elsewhere":   # the guard sits in the loader instead of the holder
+            loader = loader.replace("import os, runpy", _FG.replace("h.py", "h.py") + "import os, runpy", 1)
+        with open(os.path.join(d, "h.py"), "w", encoding="utf-8") as f:
+            f.write(htext)
+        with open(os.path.join(d, "l.py"), "w", encoding="utf-8") as f:
+            f.write(loader)
+        for cid, fn in FEATURE_CASES:
+            got = sorted(set(p.split(":")[0] for p in fn(d, base, feat)))
+            if got != want[cid]:
+                ok = False
+                print("SELFTEST FAIL %s (%s): named %r, wanted %r" % (cid, variant, got, want[cid]))
+    return ok
+
+
 def selftest():
     base = tempfile.mkdtemp(prefix="pyf-self-")
     try:
@@ -233,6 +395,7 @@ def selftest():
             if got != PLANTED_WANT[cid]:
                 ok = False
                 print("SELFTEST FAIL %s: named %r, wanted %r" % (cid, got, PLANTED_WANT[cid]))
+        ok = selftest_feature(base) and ok
         print("SELFTEST PASS" if ok else "SELFTEST FAIL")
         return 0 if ok else 4
     finally:
