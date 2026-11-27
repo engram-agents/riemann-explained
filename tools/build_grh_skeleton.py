@@ -5580,7 +5580,7 @@ def _selftest_cases():
                     [False, False, False], None, None))
 
     @case("STM-NO-CHILD-KIND", "a file that has statements carries NO `child_kind` at all, whether its statements have one kind or several: not on its own card (its step file) and not on its closed entry in "
-                              "the group's `children`; the statements themselves (leaves) have none; the count words come from the FILE row (STM-FILE-COUNT-WORDS); a file that is not named is as before")
+                              "the group's `children`; the statements themselves (leaves) have none; the part and the group keep theirs (`group`, `file`); the count words come from the FILE row (STM-FILE-COUNT-WORDS); a file that is not named is as before")
     def _():
         one = _stm_src("theorem u1 : True := trivial\ntheorem u2 : True := trivial\n")
         two = _stm_src("theorem t1 : True := trivial\nlemma t2 : True := trivial\n")
@@ -5592,8 +5592,8 @@ def _selftest_cases():
         card = lambda i: json.loads(files[f"graph/step/{i}.json"].decode("utf-8"))["card"]
         grp = json.loads(files["graph/step/lean-s-g.json"].decode("utf-8"))["children"]
         return _eq((errs, [card(i).get("child_kind", "<absent>") for i in ("lean-s-a", "lean-s-b", "lean-s-r", "lean-s-a-u1", "lean-s-b-t2")],
-                    {c["id"]: c.get("child_kind", "<absent>") for c in grp}),
-                   ([], ["<absent>"] * 5, {"lean-s-a": "<absent>", "lean-s-b": "<absent>", "lean-s-r": "<absent>"}))
+                    {c["id"]: c.get("child_kind", "<absent>") for c in grp}, [card(i).get("child_kind", "<absent>") for i in ("lean-s", "lean-s-g")]),
+                   ([], ["<absent>"] * 5, {"lean-s-a": "<absent>", "lean-s-b": "<absent>", "lean-s-r": "<absent>"}, ["group", "file"]))
 
     @case("STM-USES-ELSEWHERE-LIBRARY", "`USES_ELSEWHERE_LIBRARY` (default True) is the one switch for the names of modules that are not files of the map: True lists them with `step` absent (the contract), False drops "
                                         "them and keeps the names of other FILES of the map; the constant is True as shipped, so a later ruling is one edit")
