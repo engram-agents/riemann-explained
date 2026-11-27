@@ -988,6 +988,8 @@ def _scan_source(src, loader="_load"):
             base = n.value
             if n.attr == "exec_module" and id(n) in inside:   # the one place a module of this folder is executed: `_load`, which loads the two builders
                 continue
+            if n.attr == "executable" and isinstance(base, ast.Name) and base.id == "sys":   # the Python-floor guard names the interpreter's path with it: a string, it runs nothing
+                continue
             if A16_ATTRS.fullmatch(n.attr):
                 found.append(f"line {n.lineno}: attribute .{n.attr}")
             elif n.attr in A16_DUNDER:
