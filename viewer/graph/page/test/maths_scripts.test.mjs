@@ -323,6 +323,45 @@ test("F3: the shapes the rule does not name stay set", () => {
   }
 });
 
+/* ---------------------------------------------------------------- fold 2 (reviewer round 2). Synthetic spans only. */
+/* G1: the two F3 arms the round-2 mutants showed untested. A closing bracket, a space, then the base word; and more than one space between the words. */
+for (const span of ["(a) b ^ 2", "f (x) y ^ 2"]) {
+  test("G1 closing-bracket arm: refused " + JSON.stringify(span), () => {
+    assert.equal(NOTE.scriptParts(span), null);
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")");
+  });
+}
+for (const span of ["a  b ^ 2", "g   k ^ d"]) {
+  test("G1 more than one space: refused " + JSON.stringify(span), () => {
+    assert.equal(NOTE.scriptParts(span), null);
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")");
+  });
+}
+
+/* G2: a combining mark directly after the opening { or ( of an operand group would attach to the wrong glyph (the F2a class, on the opening side). */
+for (const span of ["a_{" + "́" + "e}", "x ^ (" + "́" + "b)"]) {
+  test("G2 mark after an opening operand bracket: refused " + JSON.stringify(span), () => {
+    assert.equal(NOTE.scriptParts(span), null);
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")");
+  });
+}
+
+/* G3: a base that carries a subscript run is the base word of a following ^: in Lean the whole `k_1` is one identifier, so `g k_1 ^ d` means (g k_1)^d. */
+for (const span of ["g k_1 ^ d", "g k_{ij}^d"]) {
+  test("G3 subscripted base: refused " + JSON.stringify(span), () => {
+    assert.equal(NOTE.scriptParts(span), null);
+    assert.equal(ser(spanOf(span)), "code(" + JSON.stringify(span) + ")");
+  });
+}
+test("G3: a subscripted base after an operator, or at the span's start, stays set", () => {
+  for (const [span, want] of [["y = k_1 ^ d", '"y = k"|sub("1")|sup("d")'], ["k_1^d", '"k"|sub("1")|sup("d")']]) {
+    const parts = NOTE.scriptParts(span);
+    assert.ok(parts !== null, "scriptParts " + span);
+    assert.equal(pp(parts), want, span);
+    assert.equal(flatParts(parts), expectedFlatten(span), "C5 " + span);
+  }
+});
+
 /* ---------------------------------------------------------------- the population: every real span, from the committed class file, read only */
 const SPANS = JSON.parse(readFileSync(path.join(HERE, "fixtures", "note-spans-classes.json"), "utf8")).spans;
 
