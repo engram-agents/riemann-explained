@@ -3350,9 +3350,10 @@ def _rdc_invariants(files):
 # ---- the maths tables (contract section 34, A and B1 to B3): fixtures and helpers of the MTH cases; every file, name, row and sentence here is made up.
 MTH_SRCS = {"New/P/A": _stm_src("/-- **Alpha result.** One. -/\ntheorem alpha : True := trivial\n\n/-- Beta one. -/\nlemma beta : True := trivial\n\ndef primeRemainder : Nat := 0\n\ntheorem countError : True := trivial\n"),
             "New/P/B": _stm_src("theorem bdef : True := trivial\n\nlemma ne_of_lt : True := trivial\n"), "New/P/C": RDC_SRCS["New/P/C"], "New/Q/D": RDC_SRCS["New/Q/D"]}   # the fixture of RDC (two parts, three groups, four files) with more statements in A (three kinds) and B
+MTH_LONG300 = "Q" + "a" * 299   # a declaration name of exactly 300 characters, known to the index of the fixture (the limit of a `lean` name)
 MTH_ILEANS = {"New/P/A": _stm_ilean("New/P/A", ("alpha", "beta", "primeRemainder", "countError")), "New/P/B": _stm_ilean("New/P/B", ("bdef", "ne_of_lt")),
               "New/P/C": RDC_ILEANS["New/P/C"], "New/Q/D": RDC_ILEANS["New/Q/D"],
-              "Lib/Other/Names": _stm_ilean("Lib/Other/Names", ("Nat.le", "Nat.mul", "Nat.sum", "Nat.Prime", "Nat.succ", "Foo.fullName", "Foo.integral_primeRemainder", "Foo.my_name", "Foo.R_q", "Foo.CMType", "Foo.BPlus", "Foo.épsilonBound", "Foo.g₃_eq", "Foo.smul_natCast'", "Foo.primeBound"))}   # declarations outside the three files: the compiled index knows them all
+              "Lib/Other/Names": _stm_ilean("Lib/Other/Names", ("Nat.le", "Nat.mul", "Nat.sum", "Nat.Prime", "Nat.succ", "Foo.fullName", "Foo.integral_primeRemainder", "Foo.my_name", "Foo.R_q", "Foo.CMType", "Foo.BPlus", "Foo.épsilonBound", "Foo.g₃_eq", "Foo.smul_natCast'", "Foo.primeBound", MTH_LONG300))}   # declarations outside the three files: the compiled index knows them all
 MTH_IDS = {"alpha": "lean-p-a-alpha", "beta": "lean-p-a-beta", "primeRemainder": "lean-p-a-primeremainder", "countError": "lean-p-a-counterror", "bdef": "lean-p-b-bdef", "ne_of_lt": "lean-p-b-ne-of-lt",
            "cdef": "lean-p-c-cdef", "ddef": "lean-q-d-ddef"}
 MTH_NUMBERS = {"alpha": "1.1", "beta": "1.2", "primeRemainder": "1.3", "countError": "1.4", "bdef": "2.1", "ne_of_lt": "2.2", "cdef": "1.1", "ddef": "1.1"}   # file place in its group . place among the statements of the file, one counter for every kind
@@ -8391,6 +8392,50 @@ def _selftest_cases():
                    {"text-p": L("x", "P primeRemainder"), "text-file": L("x", "lean-file"), "text-line": L("x", "line-number"), "text-link": L("x", "link"),
                     "symbol-p": L("primeRemainder", "P primeRemainder"), "symbol-file": L("a.lean", "lean-file"), "symbol-line": L("line 4", "line-number"), "symbol-link": L("[[a]]", "link"),
                     "ok-symbol": None, "ok-text": None, "plain": None})
+
+    # ---- the page's limits on a notation row (contract A5, LIMITS; Clio 40481): the builder refuses beyond them as `shape`, so a legal value is never refused by the page
+
+    @case("MTH-NOT-LIMITS", "a notation row's `text` has 1 to 600 CODE POINTS (600 pass, 601 are `SKEL-MATHS-NOTATION <file> <symbol> shape`; 600 characters outside the BMP pass, 601 do not), its `symbol` 1 to 200 (200 pass, 201 do not, the symbol "
+                            "printed as it is), its `lean` at most 50 names (50 pass, 51 do not) and each name of `lean` at most 300 characters (a known name of 300 passes, one of 301 is `shape` and no `lean <name>` line)")
+    def _():
+        run = lambda **kw: _mth_why(_mth_run(notation=[dict(_mth_t("lean-p-a"), **kw)])[0])
+        S = ["SKEL-MATHS-NOTATION lean-p-a x shape"]
+        astral = "\U0001D538"
+        return _eq({"text-600": run(text="x" * 600), "text-601": run(text="x" * 601), "text-600-astral": run(text=astral * 600), "text-601-astral": run(text=astral * 601),
+                    "symbol-200": run(symbol="x" * 200), "symbol-201": run(symbol="x" * 201),
+                    "lean-50": run(lean=["alpha"] * 50), "lean-51": run(lean=["alpha"] * 51), "name-300": run(lean=[MTH_LONG300]), "name-301": run(lean=["Q" + "a" * 300])},
+                   {"text-600": None, "text-601": S, "text-600-astral": None, "text-601-astral": S, "symbol-200": None, "symbol-201": ["SKEL-MATHS-NOTATION lean-p-a %s shape" % ("x" * 201)],
+                    "lean-50": None, "lean-51": S, "name-300": None, "name-301": S})
+
+    @case("MTH-NOT-ROWS", "at most 200 notation rows PER FILE: the 201st row of one file is `SKEL-MATHS-NOTATION <file> <symbol> shape` (one line for each row beyond the 200th, in table order); 200 rows pass; 200 rows in each of two files "
+                          "(400 in the table) pass, and so do 101 and 100 in two files")
+    def _():
+        rows = lambda f, n, start=0: [_mth_t(f, "s%d" % (start + i)) for i in range(n)]
+        run = lambda notation: _mth_why(_mth_run(notation=notation)[0])
+        return _eq((run(rows("lean-p-a", 200)), run(rows("lean-p-a", 201)), run(rows("lean-p-a", 203)), run(rows("lean-p-a", 200) + rows("lean-p-b", 200)), run(rows("lean-p-a", 101) + rows("lean-p-b", 100))),
+                   (None, ["SKEL-MATHS-NOTATION lean-p-a s200 shape"], ["SKEL-MATHS-NOTATION lean-p-a s%d shape" % i for i in (200, 201, 202)], None, None))
+
+    @case("MTH-NUMBERS-LIMIT", "a number is two counters of 1 to 6 digits (contract A5): the limit is the constant `MATHS_NUMBER_MAX` = 999999; a file place or a statement place beyond it is `SKEL-MATHS-NUMBERS <file id> file-place` or `statement-place` "
+                               "(one line each, per file, in the order of the statements' files; a file with 1,000,000 statements cannot be built cheaply, so the function takes the limit and a case sets the constant): the place AT the limit passes, "
+                               "the next is refused, with made-up rows and through a build of the fixture (the first file has 4 statements: limit 4 builds, limit 3 refuses it)")
+    def _():
+        group = {"id": "g", "parent": "root", "order": 0, "kind": "group"}
+        files = [{"id": "f%d" % i, "parent": "g", "order": i - 1, "kind": "file"} for i in (1, 2, 3)]
+        stm = [{"id": "s%d" % i, "parent": "f1", "order": i - 1} for i in (1, 2, 3)] + [{"id": "t1", "parent": "f3", "order": 0}]
+        rows = [group] + files
+        at = _maths_numbers(stm, rows, ["f1", "f2", "f3"], limit=3)
+        over = _maths_numbers(stm, rows, ["f1", "f2", "f3"], limit=2)
+        saved = MATHS_NUMBER_MAX
+        out = {}
+        try:
+            for limit in (4, 3):
+                globals()["MATHS_NUMBER_MAX"] = limit
+                out[limit] = _mth_why(_mth_run()[0])
+        finally:
+            globals()["MATHS_NUMBER_MAX"] = saved
+        return _eq((saved, at, over, out), (999999, ([], {"s1": "1.1", "s2": "1.2", "s3": "1.3", "t1": "3.1"}),
+                                             ([("SKEL-MATHS-NUMBERS", "f1", "statement-place"), ("SKEL-MATHS-NUMBERS", "f3", "file-place")], {}),
+                                             {4: None, 3: ["SKEL-MATHS-NUMBERS lean-p-a statement-place"]}))
 
     # ---- predicate P (contract section P): one function, one set of names built once from the whole compiled index
 
