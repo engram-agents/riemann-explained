@@ -672,7 +672,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -1857,7 +1857,11 @@ GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 # the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
 GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text",
                        "spine_lines_text", "key_scope_text",
-                       "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice")   # the Graph view's words (G1)
+                       "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice",   # the Graph view's words (G1)
+                       "open_statements", "close_statements", "count_statement_one", "count_statement_many",   # the statement level of a Lean map (contract section 31): the words only a map with statements carries
+                       "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
+                       "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
+                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note")
 
 
 def _graph_strings_keys(symbols=None):
@@ -1866,6 +1870,7 @@ def _graph_strings_keys(symbols=None):
     rows = [v for table in (GRAPH_SYMBOLS if symbols is None else symbols).values() for v in table.values()]
     return ([v["words"] for v in rows] + [v["card_words"] for v in rows if "card_words" in v]
             + [k for v in rows if "count_words" in v and isinstance(v["count_words"], dict) for k in (v["count_words"].get("many"), v["count_words"].get("one")) if isinstance(k, str)]
+            + [k for v in rows if "open_words" in v and isinstance(v["open_words"], dict) for k in (v["open_words"].get("open"), v["open_words"].get("close")) if isinstance(k, str)]
             + list(GRAPH_RUNTIME_KEYS))
 
 
@@ -2139,10 +2144,10 @@ def _graph_count_errors(objs, symbols=None):
 GRAPH_STATUS_HIDDEN = ("part", "group", "file")   # a card of one of these (skeleton) kinds draws no state frame and no status line, so its state and proof do not occur on the map
 
 
-def _graph_order_errors(rows, symbols, orders):
+def _graph_order_errors(rows, symbols, orders, status_hidden=GRAPH_STATUS_HIDDEN):
     """[(GRAPH-ORDER, where, what)] for the order lists `orders` ({kinds, states, proofs}: lists of names of the tables of `symbols`). A list must hold no name twice,
     only names of its table, in the table's own key order, and kinds may not be empty; when the lists are in that shape, every kind of a card, and every state and proof
-    of a card whose kind is not in GRAPH_STATUS_HIDDEN, must be in its list (the key must never be silent about something drawn): `GRAPH-ORDER <kind|state|proof> <value>`."""
+    of a card whose kind is not in `status_hidden` (default GRAPH_STATUS_HIDDEN), must be in its list (the key must never be silent about something drawn): `GRAPH-ORDER <kind|state|proof> <value>`."""
     out = []
     for name in ("kinds", "states", "proofs"):
         lst, table = list(orders[name]), list(symbols[name])
@@ -2160,7 +2165,7 @@ def _graph_order_errors(rows, symbols, orders):
     seen = set()
     for r in rows:
         for field, name in (("kind", "kinds"), ("state", "states"), ("proof", "proofs")):
-            if field != "kind" and r["kind"] in GRAPH_STATUS_HIDDEN:
+            if field != "kind" and r["kind"] in status_hidden:
                 continue
             if r[field] in symbols[name] and r[field] not in orders[name] and (field, r[field]) not in seen:
                 seen.add((field, r[field]))
@@ -2242,7 +2247,8 @@ def _graph_extra_errors(step_extra, index_extra, by, notes, layout):
     return out
 
 
-def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None, child_kinds=False, step_extra=None, index_extra=None):
+def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, layout=None, link_info=None, notes=None, child_kinds=False, step_extra=None, index_extra=None,
+                 status_hidden=GRAPH_STATUS_HIDDEN):
     """(errors, {relative name: object}) for the graph data of `rows` (dicts with id, parent, order, premises, kind, state, proof, title; the parent of a
     top step is `root`); `assets` is {path under graph/: sha256 hex} for index.json (none by default); `symbols` is the symbol table (default GRAPH_SYMBOLS: a caller may
     hand one with more rows, whose `words` keys are then also keys of index.json `strings`); `orders` ({kinds, states, proofs}) are the lists written as symbols.order
@@ -2269,6 +2275,11 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             elif "count_words" in v and not (isinstance(v["count_words"], dict) and set(v["count_words"]) == {"many", "one"}
                                              and all(isinstance(x, str) for x in v["count_words"].values())):
                 errors.append(("GRAPH-STRINGS", f"{name}.{k}.count_words", "must be an object with exactly the keys many and one, both strings"))
+            if "open_words" in v and name != "kinds":   # `open_words` ({open, close}: two keys of `strings`) is for a kinds row only: the words of its open and close control
+                errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has open_words (only a kinds row may)"))
+            elif "open_words" in v and not (isinstance(v["open_words"], dict) and set(v["open_words"]) == {"open", "close"}
+                                            and all(isinstance(x, str) for x in v["open_words"].values())):
+                errors.append(("GRAPH-STRINGS", f"{name}.{k}.open_words", "must be an object with exactly the keys open and close, both strings"))
     if errors:
         return errors, {}
     seen, refused = set(), set()
@@ -2331,7 +2342,7 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             if r[field] not in table:
                 errors.append(("GRAPH-SYMBOL", r["id"], f"{field} {r[field]}" + (f" {graph_kind_words()}" if field == "kind" else "")))
     if not errors:   # an order list is judged against cards whose symbols are all in the tables
-        errors += _graph_order_errors(rows, symbols, orders)
+        errors += _graph_order_errors(rows, symbols, orders, status_hidden)
     edges = {}   # sibling links, from -> [to]: the premises of a step that name a sibling
     for r in rows:
         for p in dict.fromkeys(r["premises"]):
@@ -2389,7 +2400,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
         "strings": {k: strings[k] for k in _graph_strings_keys(symbols) + list(GRAPH_OPTIONAL_KEYS) if k in strings},   # a key the file lacks is GRAPH-STRINGS below, never a crash here
         "symbols": dict({name: {k: dict({"class": v["class"], "text": strings[v["words"]], "words": v["words"]},
                                         **({"card_words": v["card_words"]} if "card_words" in v else {}),
-                                        **({"count_words": {"many": v["count_words"]["many"], "one": v["count_words"]["one"]}} if "count_words" in v else {})) for k, v in table.items()}
+                                        **({"count_words": {"many": v["count_words"]["many"], "one": v["count_words"]["one"]}} if "count_words" in v else {}),
+                                        **({"open_words": {"open": v["open_words"]["open"], "close": v["open_words"]["close"]}} if "open_words" in v else {})) for k, v in table.items()}
                          for name, table in symbols.items()},
                         order={name: list(orders[name]) for name in symbols}),
         "top": [r["id"] for r in kids.get("root", [])]}}
@@ -14090,7 +14102,10 @@ def _selftest_cases():
                     _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
                     _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", note_source="S", bogus="x"))),
                    (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
-                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"),
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice",
+                    "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
+                    "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
+                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note"),
                     20, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
@@ -14581,7 +14596,10 @@ def _selftest_cases():
                     [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H"), edge_basis=eb),
                     _graph_strings_errors(dict(req, bogus="x"))),
                    (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
-                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice"), [], eb, 23,
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice",
+                    "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
+                    "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
+                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note"), [], eb, 23,
                     ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_heading", "missing"), ("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
     @case("GRG1", "the Graph view's words (G1): view_cards, view_graph, graph_nodes_text, spine_content_label, spine_lives_in, spine_show_file and graph_failed_notice are on "
