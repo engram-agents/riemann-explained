@@ -2116,8 +2116,7 @@ STM_WORDS = {"open_statements": "Open its statements", "close_statements": "Clos
 STM_URL = "https://engram-agents.org/review/files/"
 STM_TITLE = "A map of the Lean files of the Riemann Hypothesis proof"   # the demo value of --statement-page-title: the map's own title
 STM_KIND_TEXT = {"theorem": "Theorem", "lemma": "Lemma", "def": "Definition", "abbrev": "Abbreviation", "structure": "Structure", "class": "Class", "inductive": "Inductive type", "instance": "Instance"}
-STM_ROW = lambda k: {"class": "kind-" + k, "text": STM_KIND_TEXT[k], "words": "decl_kind_" + k, "card_words": "decl_kind_" + k,
-                     "count_words": {"many": "count_statement_many", "one": "count_statement_one"}}
+STM_ROW = lambda k: {"class": "kind-" + k, "text": STM_KIND_TEXT[k], "words": "decl_kind_" + k, "card_words": "decl_kind_" + k}   # a statement row has no count_words (amendment H1)
 
 
 def _stm_ilean(path, decls=(), uses=()):
@@ -5289,7 +5288,7 @@ def _selftest_cases():
 
     # ---------------------------------------------------------------- the statement level (STM cases; contract section 31 of the data contract)
 
-    @case("STM-ABSENT", "the option absent (or None): every file of a fixture build is byte-identical to the build without it, no `open_words` is in any symbols row, no step file has a "
+    @case("STM-ABSENT", "the option absent (or None): every file of a fixture build is byte-identical to the build without it, no `open_words` and no `child_count_words` is in any symbols row, no step file has a "
                         "`statement`, `name` or `prompt`, and `symbols.order.kinds` is part, group, file; the file step of a named file is the only thing the option changes")
     def _():
         srcs, ils = {"New/S/A": STM_A, "New/S/B": STM_B}, {"New/S/A": STM_A_ILEAN, "New/S/B": STM_B_ILEAN}
@@ -5300,13 +5299,13 @@ def _selftest_cases():
         ix = json.loads(plain["graph/index.json"].decode("utf-8"))
         steps = [json.loads(v.decode("utf-8")) for k, v in plain.items() if k.startswith("graph/step/")]
         differ = sorted(k for k in plain if k in named and plain[k] != named[k])
-        return _eq((e0, e1, e2, plain == none, ["open_words" in r for r in ix["symbols"]["kinds"].values()], ix["symbols"]["order"]["kinds"],
+        return _eq((e0, e1, e2, plain == none, ["open_words" in r or "child_count_words" in r for r in ix["symbols"]["kinds"].values()], ix["symbols"]["order"]["kinds"],
                     [s["id"] for s in steps if {"statement", "name", "prompt", "heading", "variables"} & set(s)], len(named) - len(plain), differ),
                    ([], [], [], True, [False, False, False], ["part", "group", "file"], [], 3,
                     ["graph/index.json", "graph/step/lean-s-a.json", "graph/step/lean-s-g.json"]))
 
     @case("STM-FIELDS", "a file of 3 declarations (a theorem with a doc-string, a lemma, a noncomputable def) named in --statements-for gives 3 statement steps in SOURCE order: ids `<file id>-<slug of the "
-                        "name>`, card kind (the keyword; a noncomputable def is `def`), card title (the name), state and proof none, child_count 0, children and rests_on empty, `name`, `source_path`, `statement` "
+                        "name>`, card kind (the keyword; a noncomputable def is `def`), card title (the SHORT name in backticks, also in the closed child of the file step; `name` stays the plain full name), state and proof none, child_count 0, children and rests_on empty, `name`, `source_path`, `statement` "
                         "(keyword and text up to `:=`, modifiers included, trailing whitespace trimmed; a `:=` in a bracket, a string and a comment does not cut), `note` only where there is a doc-string "
                         "(the file note's `review`, the file's `source`, the body without the /-- and -/ marks), `prompt`; the file step lists the 3 as children in source order with child_count 3 and keeps "
                         "its own note")
@@ -5319,12 +5318,12 @@ def _selftest_cases():
         path = ["lean-s", "lean-s-g", "lean-s-a"]
         card = lambda i, k, t: {"child_count": 0, "id": i, "kind": k, "path": path, "proof": "none", "state": "none", "title": t}
         got = {n: {k: v for k, v in o.items() if k not in ("prompt", "uses_here", "uses_elsewhere", "heading", "variables", "commit", "format")} for n, o in st.items()}
-        want = {"one": {"card": card("lean-s-a-one", "theorem", "one"), "children": [], "id": "lean-s-a-one", "path": path, "rests_on": [], "name": "one", "source_path": "src/New/S/A.lean",
+        want = {"one": {"card": card("lean-s-a-one", "theorem", "`one`"), "children": [], "id": "lean-s-a-one", "path": path, "rests_on": [], "name": "one", "source_path": "src/New/S/A.lean",
                         "statement": {"keyword": "theorem", "text": "theorem one : True"},
                         "note": {"review": {"state": "converter"}, "source": "grh/src/New/S/A.lean", "text": " Doc one: `x`. "}},
-                "two": {"card": card("lean-s-a-two", "lemma", "two"), "children": [], "id": "lean-s-a-two", "path": path, "rests_on": [], "name": "two", "source_path": "src/New/S/A.lean",
+                "two": {"card": card("lean-s-a-two", "lemma", "`two`"), "children": [], "id": "lean-s-a-two", "path": path, "rests_on": [], "name": "two", "source_path": "src/New/S/A.lean",
                         "statement": {"keyword": "lemma", "text": "lemma two (h : f (x := 1) = \":= no\" /- := no -/) :\n    True"}},
-                "three": {"card": card("lean-s-a-three", "def", "three"), "children": [], "id": "lean-s-a-three", "path": path, "rests_on": [], "name": "three", "source_path": "src/New/S/A.lean",
+                "three": {"card": card("lean-s-a-three", "def", "`three`"), "children": [], "id": "lean-s-a-three", "path": path, "rests_on": [], "name": "three", "source_path": "src/New/S/A.lean",
                           "statement": {"keyword": "def", "text": "noncomputable def three (a : Nat) : Nat"}}}
         fa = json.loads(files["graph/step/lean-s-a.json"].decode("utf-8"))
         kid = lambda i, k, t: dict(card(i, k, t), parent_rests_on=False)
@@ -5332,7 +5331,7 @@ def _selftest_cases():
         return _eq((got, [c for c in fa["children"]], fa["card"]["child_count"], "child_kind" in fa["card"], links, fa["note"]["review"], fa["note"]["source"],
                     [r["id"] for r in rows if r["parent"] == "lean-s-a"], [r["order"] for r in rows if r["parent"] == "lean-s-a"],
                     all(o["prompt"].startswith("You are helping me read one statement of a Lean proof.") for o in st.values())),
-                   (want, [kid("lean-s-a-one", "theorem", "one"), kid("lean-s-a-two", "lemma", "two"), kid("lean-s-a-three", "def", "three")], 3, False,
+                   (want, [kid("lean-s-a-one", "theorem", "`one`"), kid("lean-s-a-two", "lemma", "`two`"), kid("lean-s-a-three", "def", "`three`")], 3, False,
                     [("lean-s-a-two", "lean-s-a-one", True, 1), ("lean-s-a-three", "lean-s-a-two", True, 1)], {"state": "converter"}, "grh/src/New/S/A.lean",
                     ["lean-s-a-one", "lean-s-a-two", "lean-s-a-three"], [0, 1, 2], True))
 
@@ -5476,6 +5475,26 @@ def _selftest_cases():
                          ([], sorted(["part", "group", "file", "theorem", "lemma"]), ["part", "group", "file", "theorem", "lemma"], {k: STM_ROW(k) for k in ("theorem", "lemma")},
                           dict(opens, theorem=None, lemma=None), [], [], True, [])])
 
+    @case("STM-FILE-COUNT-WORDS", "amendment H1: the statement rows carry NO `count_words`; the FILE row of `symbols.kinds` carries `child_count_words` {many: count_statement_many, one: count_statement_one} on a map "
+                                 "that has statements and on no other row (not part, not group, not a statement row), and the words are in index.json `strings`; a map built without the option has the key "
+                                 "on no row; a file with mixed kinds has no `child_kind` on its card, a file whose statements share one kind has it (the page's precedence is its own)")
+    def _():
+        two = _stm_src("theorem t1 : True := trivial\nlemma t2 : True := trivial\n")
+        one = _stm_src("theorem u1 : True := trivial\ntheorem u2 : True := trivial\n")
+        with _tmp() as d:
+            g, (errs, files, rows, rep) = _stm_build(d, {"New/S/A": two, "New/S/B": one}, {"New/S/A": _stm_ilean("New/S/A", ["t1", "t2"]), "New/S/B": _stm_ilean("New/S/B", ["u1", "u2"])},
+                                                      statements_for=["lean-s-a", "lean-s-b"])
+            e0, plain = build(g, PIN, dict(_strings(), **STM_WORDS), (), _ildir(g))[:2]
+        ix = json.loads(files["graph/index.json"].decode("utf-8"))
+        cw = {k: v.get("child_count_words") for k, v in ix["symbols"]["kinds"].items()}
+        ixp = json.loads(plain["graph/index.json"].decode("utf-8"))
+        ck = lambda i: json.loads(files[f"graph/step/{i}.json"].decode("utf-8"))["card"].get("child_kind")
+        return _eq((errs, e0, cw, ["count_words" in v for k, v in ix["symbols"]["kinds"].items()], ix["strings"]["count_statement_one"], ix["strings"]["count_statement_many"],
+                    [("child_count_words" in v) for v in ixp["symbols"]["kinds"].values()], ck("lean-s-a"), ck("lean-s-b")),
+                   ([], [], {"part": None, "group": None, "file": {"many": "count_statement_many", "one": "count_statement_one"}, "theorem": None, "lemma": None},
+                    [False] * 5, "{n} statement", "{n} statements",
+                    [False, False, False], None, "theorem"))
+
     @case("STM-KIND-REFUSAL", "a keyword the reader yields for which the builder has no kind word is refused by name `SKEL-STATEMENT-KIND <keyword> <name>` and nothing is built, never a fallback word: "
                               "the word table is patched to lack `instance` for the case (no real source is edited); the other kinds of the same file do not hide it, and with the word back it builds")
     def _():
@@ -5517,7 +5536,7 @@ def _selftest_cases():
                     "id": (1, ["SKEL-STATEMENT-ID _"], False), "index": (1, ["SKEL-STATEMENT-INDEX lost"], False)})
 
     @case("STM-ID", "the step id of a statement is `<file step id>-<slug of the full name>` under the one-hyphen id rule: an id longer than 64 characters is cut to 57, a trailing hyphen removed, then `-` "
-                    "and 6 hex digits of the sha256 of the whole id (and is listed in the report's cut ids); a name in a namespace is slugged with its namespace and its card title is the SHORT name (`Ns.s` is `s`); two names that slug alike "
+                    "and 6 hex digits of the sha256 of the whole id (and is listed in the report's cut ids); a name in a namespace is slugged with its namespace and its card title is the SHORT name in backticks (`Ns.s` is `` `s` ``); two names that slug alike "
                     "(`a_b` and `a.b`) are refused GRAPH-DUP by name and nothing is built")
     def _():
         long_name = "this_is_a_really_long_declaration_name_for_the_id_rule_ok"
@@ -5531,7 +5550,7 @@ def _selftest_cases():
         return _eq((len(full) > 64, e1, [r["id"] for r in r1 if r["parent"] == "lean-s-l"], len(want_id), [(x, y) for x, y in p1["cut"] if x == full], dup,
                     [(n, o["card"]["title"]) for n, o in sorted(names.items())]),
                    (True, [], [want_id, "lean-s-l-ns-s"], 64, [(full, want_id)], [("GRAPH-DUP", "lean-s-m-a-b", "is the id of more than one step")],
-                    [("Ns.s", "s"), (long_name, long_name)]))
+                    [("Ns.s", "`s`"), (long_name, "`" + long_name + "`")]))
 
     @case("STM-COUNT", "NOTHING DROPPED SILENTLY: per named file the builder reports `statements <file id>: <found> declarations, <written> written, <reported> reported` with found = written + reported, "
                        "and a nameless `instance` and an `example` (also with an attribute) are `reported` by kind and line, never absent: a fixture with 2 named declarations, 1 nameless instance and "
@@ -5698,13 +5717,13 @@ def _selftest_cases():
                               "'A map of the Lean files of the Riemann Hypothesis proof' builds")
     def _():
         out = {}
-        for label, t in (("part", "S part"), ("group", "G"), ("file", "A"), ("statement", "one"), ("contents", "Intro."), ("padded", " G "), ("demo", STM_TITLE)):
+        for label, t in (("part", "S part"), ("group", "G"), ("file", "A"), ("statement", "one"), ("backticked", "`one`"), ("contents", "Intro."), ("padded", " G "), ("demo", STM_TITLE)):
             with _tmp() as d:
                 g = _tree(d, _flat(["A"]), {"New/S/A": _stm_src("theorem one : True := trivial\n")}, ileans={"New/S/A": _stm_ilean("New/S/A", ["one"])})
                 r = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--statement-page-url", STM_URL, "--statement-page-title", t])
             out[label] = (r[0], r[1][:1], r[3])
         refused = lambda t: (1, ["SKEL-STATEMENT-PROMPT page_title " + json.dumps(t)], False)
-        return _eq(out, {"part": refused("S part"), "group": refused("G"), "file": refused("A"), "statement": refused("one"), "contents": refused("Intro."), "padded": refused(" G "),
+        return _eq(out, {"part": refused("S part"), "group": refused("G"), "file": refused("A"), "statement": refused("one"), "backticked": refused("`one`"), "contents": refused("Intro."), "padded": refused(" G "),
                          "demo": (0, ["steps: 3"], True)})
 
     @case("STM-STRINGS", "the statement words are optional strings keys of the page (GRAPH_OPTIONAL_KEYS, 23 keys, each with its placeholder `{n}` where it has one: count_statement_one, count_statement_many, "

@@ -14448,6 +14448,29 @@ def _selftest_cases():
                     [("GRAPH-STRINGS", "kinds.group.open_words", want)], [("GRAPH-STRINGS", "kinds.group.open_words", want)], [("GRAPH-STRINGS", "kinds.group.open_words", want)],
                     [("GRAPH-SYMBOL", "states.read", "has open_words (only a kinds row may)")], False))
 
+    @case("GRCC1", "a kinds row of a caller's table may carry `child_count_words` {many, one} (two keys of `strings`; the count words of the children of a card of that kind): the row in symbols.kinds then has "
+                   "the key with exactly those two keys, index.json `strings` holds them, a key that `strings` lacks is `GRAPH-STRINGS <key> missing`, one that is not exactly {many, one} of strings is "
+                   "refused `GRAPH-STRINGS kinds.<row>.child_count_words must be an object with exactly the keys many and one, both strings`, one on a states or proofs row is `GRAPH-SYMBOL`; a row without "
+                   "it is written without the key")
+    def _():
+        cw = {"many": "count_item_many", "one": "count_item_one"}
+        rows3 = {"part": {"class": "kind-part", "words": "symbol_kind_part"}, "group": {"class": "kind-group", "words": "symbol_kind_group", "child_count_words": cw}}
+        own = dict(GRAPH_SYMBOLS, kinds=rows3)
+        st = dict(_strings(), symbol_kind_part="P", symbol_kind_group="G", count_item_many="{n} items", count_item_one="{n} item")
+        rows = [gr_row("a", kind="part", state="none", proof="none")]
+        errs, objs = _graph_files(rows, "c0", st, symbols=own)
+        ix = objs["graph/index.json"]
+        dangling = {k: v for k, v in st.items() if k != "count_item_one"}
+        bad = lambda row: [tuple(e) for e in _graph_files(rows, "c0", st, symbols=dict(own, kinds=dict(rows3, group=dict(rows3["group"], child_count_words=row))))[0]]
+        on_state = dict(own, states=dict(own["states"], read=dict(own["states"]["read"], child_count_words=cw)))
+        want = "must be an object with exactly the keys many and one, both strings"
+        return _eq((errs, ix["symbols"]["kinds"]["group"]["child_count_words"], "child_count_words" in ix["symbols"]["kinds"]["part"], ix["strings"]["count_item_many"],
+                    [tuple(e) for e in _graph_files(rows, "c0", dangling, symbols=own)[0]], bad({"many": "count_item_many"}), bad(dict(cw, extra="x")), bad({"many": "count_item_many", "one": 5}),
+                    [tuple(e) for e in _graph_files(rows, "c0", st, symbols=on_state)[0]]),
+                   ([], cw, False, "{n} items", [("GRAPH-STRINGS", "count_item_one", "missing")], [("GRAPH-STRINGS", "kinds.group.child_count_words", want)],
+                    [("GRAPH-STRINGS", "kinds.group.child_count_words", want)], [("GRAPH-STRINGS", "kinds.group.child_count_words", want)],
+                    [("GRAPH-SYMBOL", "states.read", "has child_count_words (only a kinds row may)")]))
+
     @case("GRSH1", "`_graph_files(status_hidden=)`: the kinds whose cards draw no state and no proof, default GRAPH_STATUS_HIDDEN (part, group, file; the bytes with the argument equal to the default "
                    "are the bytes without it): a step of a kind outside it whose state is `none` while the order list `states` is empty is `GRAPH-ORDER state none`; the same step builds when "
                    "its kind is named in `status_hidden`, and a kind that is not named is still judged")
