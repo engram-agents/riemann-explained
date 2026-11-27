@@ -34,5 +34,9 @@
  "decl_reading_target": "What it states",
  "decl_reading_argument": "How the Lean proof goes",
  "decl_reading_adds": "What the Lean text adds to the comment",
- "readings_byline": "Written by {by}, checked by {second_read_by}, {date}"
+ "readings_byline": "Written by {by}, checked by {second_read_by}, {date}",
+ "face_reading_cue": "AI reading",
+ "count_reading_one": "1 AI reading",
+ "count_reading_many": "{n} AI readings",
+ "key_reading_cue_text": "A box tagged \"AI reading\" has an AI agent's reading of the statement and its proof, marked as ours. A box above it counts the readings inside, so you can follow the tags down."
 }

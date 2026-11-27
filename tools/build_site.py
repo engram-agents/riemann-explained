@@ -672,7 +672,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_uses_library_many": {"n"}, "decl_note_source": {"source", "commit"}, "readings_byline": {"by", "second_read_by", "date"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_uses_library_many": {"n"}, "decl_note_source": {"source", "commit"}, "readings_byline": {"by", "second_read_by", "date"}, "count_reading_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -699,7 +699,7 @@ PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}
                 "sketch_frame": {"basis"},
                 "reactions.href": {"card"}}
 # the keys whose value must hold EVERY placeholder it declares (the notes' hrefs and the reaction hrefs may omit theirs)
-REQUIRED_PLACEHOLDERS = {"readings_byline": ("by", "second_read_by", "date"), "evidence_statement_read_line": ("reader", "date"), "evidence_statement_census_line": ("reader", "date"),
+REQUIRED_PLACEHOLDERS = {"readings_byline": ("by", "second_read_by", "date"), "count_reading_many": ("n",), "evidence_statement_read_line": ("reader", "date"), "evidence_statement_census_line": ("reader", "date"),
                          "evidence_proof_read_line": ("reader", "date"), "evidence_second_reader_line": ("reader", "date"),
                          "evidence_recognition_line": ("reader", "date"), "evidence_citation_line": ("source", "opened_by", "opened_on"),
                          "evidence_established_line": ("name", "reader", "date"), "evidence_sketch_build_line": ("build",),
@@ -721,6 +721,8 @@ REQUIRED_PLACEHOLDERS = {"readings_byline": ("by", "second_read_by", "date"), "e
                          "sketch_frame": ("basis",),
                          "edition_note_first_screen": ("date", "link"), "edition_note_card": ("date", "link"), "edition_note_card_note": ("date", "link"),
                          "edition_href_blob": ("file",)}
+# the keys whose value must hold a placeholder it declares EXACTLY ONCE (more than once is refused; none is refused by REQUIRED_PLACEHOLDERS): the count of the reading cue, which the page fills with one number
+EXACTLY_ONCE_PLACEHOLDERS = {"count_reading_many": ("n",)}
 PROOF_KINDS = frozenset(nm.RESULT_KINDS)   # the table kinds that HAVE a proof; any other kind has none (F22): the checker's list, not a copy
 KNOWN_KINDS = frozenset(["theorem", "lemma", "def", "structure", "instance", "abbrev", "class", "inductive"])   # the eight the table holds
 # F47: while False a card that needs a title and has none is listed (`TITLE-MISSING <card id>`); when True the same cards refuse the build.
@@ -1364,6 +1366,9 @@ def _strings_problems(s):
         for t in REQUIRED_PLACEHOLDERS.get(path, ()):
             if "{" + t + "}" not in v:
                 bad(path, "is missing the placeholder {" + t + "}")
+        for t in EXACTLY_ONCE_PLACEHOLDERS.get(path, ()):
+            if v.count("{" + t + "}") > 1:
+                bad(path, "holds the placeholder {" + t + "} " + str(v.count("{" + t + "}")) + " times")
     for path, v in _walk_strings(s, ""):
         if path == "note_href" or path in EDITION_HREFS or re.fullmatch(r"reactions\[\d+\]\.href", path):
             continue   # an address, not a sentence of the page
@@ -1862,7 +1867,8 @@ GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_labe
                        "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
                        "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
                        "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source",
-                       "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline")   # the last four: the reading of a statement (`--readings` of the Lean map builder), the four the page reads (its READING_STRINGS); `readings_byline` has {by}, {second_read_by} and {date}. The four heading words of a reading are the builder's own and are not page keys
+                       "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline",   # the reading of a statement (`--readings` of the Lean map builder), the four the page reads (its READING_STRINGS); `readings_byline` has {by}, {second_read_by} and {date}. The four heading words of a reading are the builder's own and are not page keys
+                       "face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text")   # the last four: the reading cue (contract section 33), the words of the tag a box with a reading, or readings inside it, carries; `count_reading_many` has {n}, once
 
 
 def _graph_strings_keys(symbols=None):
@@ -2396,6 +2402,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             d["child_kind"] = kids[r["id"]][0]["kind"]
         if r.get("role"):   # optional: absent, never null and never empty
             d["role"] = r["role"]
+        if r.get("reading_count"):   # optional (contract section 33): the number of statements with a reading on or under the card, an integer >= 1; absent when none (never 0, false or null)
+            d["reading_count"] = r["reading_count"]
         return d
 
     def links(step):   # the premises of the children of `step` that name another child of it: `from` rests on `to`
@@ -6422,17 +6430,17 @@ def _selftest_cases():
                          ("`x Foo.bar y`", True, False)])
 
     @case("PHR4", "the keys that must hold their placeholders (the counts and the open-items lines, the recognition lines, the citation lines, "
-                  "established_by_line, sketch_frame, the eight Evidence keys of F37, the four edition keys of F44 and parts_n of G2a) are exactly the 33 listed, each declares exactly the "
+                  "established_by_line, sketch_frame, the eight Evidence keys of F37, the four edition keys of F44 and parts_n of G2a) are exactly the 34 listed (count_reading_many of the reading cue, contract section 33, among them), each declares exactly the "
                   "placeholders it must hold; the card keys of F37 (the read lines, the frames, the label line, the compiled basis) and the "
                   "retired second_reader_frame declare none and require none")
     def _():
         keys = ["statement_count_line", "proof_count_line", "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
-        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_note_card_note", "edition_href_blob", "parts_n", "readings_byline"]
+        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_note_card_note", "edition_href_blob", "parts_n", "readings_byline", "count_reading_many"]
         none_keys = ["statement_read_line", "statement_census_line", "proof_read_line", "argument_frame", "argument_frame_no_proof",
                      "interpretation_frame", "recognition_label_line", "sketch_basis_compiled", "second_reader_frame", "frames.argument"]
         return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys + new],
                     [PLACEHOLDERS.get(k, set()) for k in none_keys], [k in REQUIRED_PLACEHOLDERS for k in none_keys]),
-                   (sorted(keys + new), [True] * 33, [set()] * 10, [False] * 10))
+                   (sorted(keys + new), [True] * 34, [set()] * 10, [False] * 10))
 
     _REQ = (("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
@@ -14169,7 +14177,8 @@ def _selftest_cases():
                     "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                     "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
                     "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source",
-                    "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline"),
+                    "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline",
+                    "face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text"),
                     20, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
@@ -14462,6 +14471,20 @@ def _selftest_cases():
                     ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}), ([("GRAPH-NOTE", "b", msg)], {}),
                     [("GRAPH-NOTE", "b", "must have exactly the keys source and text")]))
 
+    @case("RDC-PH", "the reading cue words (contract section 33, C5) are optional page keys: `count_reading_many` declares exactly `{n}` and must hold it EXACTLY ONCE (without it: `STRINGS-KEY count_reading_many is missing the "
+                    "placeholder {n}`; twice: `... holds the placeholder {n} 2 times`; another name: unknown placeholder); `count_reading_one`, `face_reading_cue` and `key_reading_cue_text` declare none; "
+                    "the good words pass; no other key is held to once")
+    def _():
+        base = _strings()
+        pr = lambda **kw: _strings_problems(dict(base, **kw))
+        return _eq((pr(count_reading_many="{n} AI readings"), pr(count_reading_many="AI readings"), pr(count_reading_many="{n} of {n}"), pr(count_reading_many="{m} AI readings"), pr(count_reading_one="{n} AI reading"),
+                    pr(face_reading_cue="{n}"), pr(key_reading_cue_text="{n}"), pr(count_statement_many="{n} of {n}"), PLACEHOLDERS.get("count_reading_many"),
+                    [k in GRAPH_OPTIONAL_KEYS for k in ("face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text")], REQUIRED_PLACEHOLDERS.get("count_reading_many")),
+                   ([], [("STRINGS-KEY", "count_reading_many", "is missing the placeholder {n}")], [("STRINGS-KEY", "count_reading_many", "holds the placeholder {n} 2 times")],
+                    [("STRINGS-KEY", "count_reading_many", "has an unknown placeholder {m}"), ("STRINGS-KEY", "count_reading_many", "is missing the placeholder {n}")],
+                    [("STRINGS-KEY", "count_reading_one", "has an unknown placeholder {n}")], [("STRINGS-KEY", "face_reading_cue", "has an unknown placeholder {n}")],
+                    [("STRINGS-KEY", "key_reading_cue_text", "has an unknown placeholder {n}")], [], {"n"}, [True] * 4, ("n",)))
+
     @case("GRM5", "`{readme_quote}` is a declared placeholder of exactly key_scope_text (the builder fills it from the repository's README before the text is written to index.json): the strings "
                   "check passes a value of that key holding it and refuses it in any other key (`STRINGS-KEY <key> has an unknown placeholder {readme_quote}`), and in key_scope_text it "
                   "refuses another name; key_scope_text is an optional page key")
@@ -14704,7 +14727,8 @@ def _selftest_cases():
                     "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                     "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
                     "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source",
-                    "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline"), [], eb, 23,
+                    "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline",
+                    "face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text"), [], eb, 23,
                     ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_heading", "missing"), ("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
     @case("GRG1", "the Graph view's words (G1): view_cards, view_graph, graph_nodes_text, spine_content_label, spine_lives_in, spine_show_file and graph_failed_notice are on "
