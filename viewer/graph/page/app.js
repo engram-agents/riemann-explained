@@ -10,10 +10,11 @@
    lines of this module call it with the real ones; a test calls it with a stand-in engine. Nothing else is injected. */
 import { createGraph, checkOptions } from "../engine/index.js";
 import { el, isId, titleChildren } from "./dom.js";
-import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING, TYPESET_STRINGS } from "./data.js";
+import { createData, DataError, checkedOptions, isTransportCode, KIND_CLASS, STATE_CLASS, SHEET_PROOF_CLASS, EDGE_BASIS_HEADING, TYPESET_STRINGS, statementsOn } from "./data.js";
 import { makeRenderFace } from "./face.js";
 import { templateParts } from "./note.js";
-import { createSheet } from "./sheet.js";
+import { createSheet, partsWords } from "./sheet.js";
+import { buildStatement } from "./statement.js";
 import { createGraphView, buildSpinePanel } from "./graphview.js";
 import { createFold } from "./viewfold.js";
 
@@ -68,6 +69,8 @@ function buildKey(index) {
   if (typeof s.key_kinds_note === "string") parts.push(el("p", { class: "key-note" }, [s.key_kinds_note]));   // optional: one plain line under the kind rows
   if (stateRows.length > 0) parts.push(el("h2", {}, [s.key_states_heading]), el("ul", {}, stateRows));
   if (index.edgeBasis) parts.push(el("h2", {}, [s[EDGE_BASIS_HEADING]]), el("p", { class: "key-lines" }, [s[index.edgeBasis.words]]));
+  /* When the statement words are on, the key ENDS with their section: an h2 (key_statements_heading) and one paragraph (key_statements_text). */
+  if (statementsOn(s)) parts.push(el("h2", {}, [s.key_statements_heading]), el("p", { class: "key-statements" }, [s.key_statements_text]));
   return el("div", { class: "key-content" }, parts);
 }
 
@@ -179,6 +182,9 @@ export async function start(doc, deps) {
       : null;
     const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
     const carriesNotes = hasOwn(strings, "note_label") && hasOwn(strings, "note_source");
+    /* THE STATEMENT LEVEL is on iff the strings hold its words (validateIndex says all or none). A step's own file is then loaded before the sheet is touched,
+       for its `decl` as well as its note, exactly as on a map that carries notes. */
+    const carriesStatements = statementsOn(strings);
     /* The sheet's one open. `step` is the loaded step on a map that carries notes; on one that does not it is undefined and no `note` key is passed. */
     function showOpenCard(id, art, m, anc, step) {
       const w = index.symbols.words;
@@ -187,11 +193,16 @@ export async function start(doc, deps) {
          condition ends the breadcrumb at the PARENT (the open card is not listed; the sheet heading carries its title). */
       const cardWord = index.symbols.cardWords[m.kind];
       const status = cardWord !== undefined ? strings[cardWord] : [strings[w.states[m.state]], strings[w.proofs[m.proof]]].join(" · ");
+      /* A statement card (the step carries `decl`): the doc-string's label is spine_content_label, and statement.js builds the pieces round the note. */
+      const decl = step !== undefined && carriesStatements && step.decl ? step.decl : null;
+      const pieces = decl ? buildStatement({ strings, decl, hasNote: !!step.note, titleOf: (x) => { const t = data.meta(x); return t ? t.title : undefined; }, el, doc, signal, typeset: !!typesetWords }) : null;
       const ok = sheet.showCard(art, {
         id, status, canParts: m.childCount > 0, partsOpen: openIds.has(id), sheetClass: SHEET_PROOF_CLASS[m.proof],
+        partsWords: partsWords(strings, index.symbols.openWords, m.kind),
+        ...(pieces ? { lead: pieces.lead, tail: pieces.tail } : {}),
         currentListed: cardWord === undefined,
         ...(step === undefined ? {} : {
-          note: step.note ? { label: strings.note_label, text: step.note.text, typeset: typesetWords,
+          note: step.note ? { label: decl ? strings.spine_content_label : strings.note_label, text: step.note.text, typeset: typesetWords,
             sourceParts: templateParts(strings.note_source, { source: step.note.source, commit: step.note.commit.slice(0, 8) }) } : null }),
         crumbs: (cardWord !== undefined ? anc : anc.concat(m)).map((x) => ({ id: x.id, title: x.title, role: x.role })),
       });
@@ -206,7 +217,7 @@ export async function start(doc, deps) {
       if (!m || anc.some((a) => !a)) { say(strings.link_refused); return false; }
       let art = articles.get(id);       // the markup's own card wins; only an id it has none for gets a made one
       if (!art) { art = madeCard(m.title); articles.set(id, art); }
-      if (!carriesNotes) return showOpenCard(id, art, m, anc, undefined);
+      if (!carriesNotes && !carriesStatements) return showOpenCard(id, art, m, anc, undefined);
       return openCardWithNote(t, id, art, m, anc);
     }
     async function openCardWithNote(t, id, art, m, anc) {
@@ -361,7 +372,7 @@ export async function start(doc, deps) {
       // the map's sibling_layout (data v3; absent on the live map, and then there is no `layout` key at all): "column"
       ...(index.siblingLayout !== undefined ? { layout: { siblings: index.siblingLayout } } : {}),
       loadChildren: (id) => data.loadChildren(id).catch((e) => { loadFailures.set(id, e instanceof DataError ? e.code : null); throw e; }),
-      renderFace: makeRenderFace(strings, index.symbols.countWords),
+      renderFace: makeRenderFace(strings, index.symbols.countWords, index.symbols.childCountWords),
     };
     /* The engine's own rule, asked BEFORE createGraph on the exact options it will get: a floor outside the engine's range is this page's
        bad-scale-floor (the fallback, through the setup catch), any other refusal is the engine's TypeError as before (data.js checkedOptions). */
