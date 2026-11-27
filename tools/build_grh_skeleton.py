@@ -7330,8 +7330,23 @@ def _selftest_cases():
                 (1, [hd("duplicate " + KT)], False), (1, [hd("missing " + KT)], False), (1, [hd("duplicate " + KU)], False)]
         return _eq(got, want)
 
-    @case("RDH-QUOTE-INSIDE", "a line that starts `## ` INSIDE a quote paragraph (a paragraph that opens `In the repository's words (`) is quoted text, never a heading line: a reading whose good quote of a doc-string holds such a line "
-                              "passes and is written unchanged; the same line in a paragraph that is not a quote paragraph is an extra heading line")
+    @case("RDH-QUOTE-INSIDE", "a `## ` that is NOT at the start of a line is no heading line, also inside a quote paragraph (a paragraph that opens `In the repository's words (`): a reading whose good one-line quote of a doc-string holds `## ` "
+                              "inside the quotation marks passes and is written unchanged; a `## ` line of a paragraph that is not a quote paragraph is an extra heading line")
+    def _():
+        lib = _lean(decl="/-- Lib first. ## Not a heading here. -/\ntheorem t : True := trivial")
+        ll = _rdg_ln(lib, "/-- Lib")
+
+        def prep(g, d):
+            with open(os.path.join(g, "src", "Lib", "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+        quote = _rdg_q("src/Lib/Other/File.lean, line %d" % ll, "Lib first. ## Not a heading here.")
+        text = HU + "\n\n" + quote + "\n\n" + HT + "\n\nBody.\n\n" + HA + "\n\nBody."
+        ok = _rdg_one(text, heads=False, prep=prep)
+        plain = _rdg_one(HU + "\n\nLib first.\n## Not a heading here.\n\n" + HT + "\n\nBody.\n\n" + HA + "\n\nBody.", heads=False, prep=prep)
+        return _eq((ok[:2], bool(ok[2]) and ok[2]["text"] == text, plain[:2]), ((0, []), True, (1, [hd("extra line 4")])))
+
+    @case("RDH-QUOTE-LINE", "a quote paragraph is NOT exempt: a line of it that is a heading line (the page draws it as one) is `extra line <n>`: a good quote of a two-line doc-string whose second line is `## ...`, after the first heading "
+                            "(line 1) and a blank line, with the quote on line 3: the heading line is line 4")
     def _():
         lib = _lean(decl="/-- Lib first.\n## Not a heading here. -/\ntheorem t : True := trivial")
         ll = _rdg_ln(lib, "/-- Lib")
@@ -7341,9 +7356,49 @@ def _selftest_cases():
                 f.write(lib)
         quote = _rdg_q("src/Lib/Other/File.lean, lines %d-%d" % (ll, ll + 1), "Lib first.\n## Not a heading here.")
         text = HU + "\n\n" + quote + "\n\n" + HT + "\n\nBody.\n\n" + HA + "\n\nBody."
-        ok = _rdg_one(text, heads=False, prep=prep)
-        plain = _rdg_one(HU + "\n\nLib first.\n## Not a heading here.\n\n" + HT + "\n\nBody.\n\n" + HA + "\n\nBody.", heads=False, prep=prep)
-        return _eq((ok[:2], bool(ok[2]) and ok[2]["text"] == text, plain[:2]), ((0, []), True, (1, [hd("extra line 4")])))
+        return _eq(_rdg_one(text, heads=False, prep=prep)[:2], (1, [hd("extra line 4")]))
+
+    def _ws(_name, _line, _n=5):
+        @case("RDH-WS-" + _name, "a heading line is `#` x1-6 and then ONE character of the page's white space (not only a space): `%s` on line %d is an extra heading line, `extra line %d`" % (_name, _n, _n))
+        def _():
+            return _eq(_hrun(_ht(HU, _line, HT, HA)), (1, [hd("extra line %d" % _n)], False))
+    for _name, _line in (("NBSP", "## Other"), ("U3000", "##　Other"), ("FEFF", "##﻿Other"), ("U2009", "## Other"), ("U2003", "## Other"), ("HASH1-NBSP", "# Other"),
+                         ("ASCII", "## Other"), ("NAMEWORDS-NBSP", "## " + RDG_WORDS[KT])):
+        _ws(_name, _line)
+
+    @case("RDH-WS-TAB", "a tab is white space for the page but a control character for the text check: `##<TAB>Other` and `#<TAB>Other` never reach the heading check, the text is refused `-TEXT control-character` (the control for the cases above)")
+    def _():
+        got = [_hrun(_ht(HU, "##\tOther", HT, HA)), _hrun(_ht(HU, "#\tOther", HT, HA)), _hrun(_ht(HU, "##\t" + RDG_WORDS[KT], HA))]
+        return _eq(got, [(1, ["SKEL-STATEMENT-READING-TEXT alpha control-character"], False)] * 3)
+
+    @case("RDH-SEVEN", "seven `#` and then a space (or a no-break space) is NOT a heading line (the page's `#{1,6}` then white space fails): such lines, on their own line and in a quote-free text, do not refuse; six do")
+    def _():
+        ok = _hrun(_ht(HU, HT, HA) + "\n\n" + "#" * 7 + " seven\n" + "#" * 7 + " seven")
+        six = _hrun(_ht(HU, HT, HA) + "\n\n" + "#" * 6 + " six")
+        return _eq((ok, six), ((0, [], True), (1, [hd("extra line 13")], False)))
+
+    @case("RDH-WS-CLASS", "the white space of the heading predicate is the page's: the class JS_WHITESPACE equals node's `/\\s/` over EVERY code unit 0..0xFFFF, and the predicate `_HEADING_LINE` equals the page's own `HEADING` regex "
+                          "(read from viewer/graph/page/note.js) on a line of 0 to 8 `#`, one code unit, `x`, for every code unit; Python's `\\s` is NOT that class (it lacks U+FEFF); SKIPPED, with the reason printed, without node. Run: "
+                          "`node -e <script>` with the script on the command line")
+    def _():
+        node = shutil.which("node")
+        if node is None:
+            raise _SkipCase("SKIPPED: node is not on the PATH")
+        with open(os.path.join(_HERE, os.pardir, "viewer", "graph", "page", "note.js"), encoding="utf-8") as f:
+            m = re.search(r"^const HEADING = (/.*/);$", f.read(), re.M)
+        if m is None:
+            return False, "the page's HEADING line was not found in viewer/graph/page/note.js"
+        script = ("const HEADING = %s; const ws = [], hd = [];"
+                  "for (let i = 0; i < 65536; i++) { const c = String.fromCharCode(i); if (/\\s/.test(c)) ws.push(i);"
+                  "for (let k = 0; k <= 8; k++) if (HEADING.test('#'.repeat(k) + c + 'x')) hd.push(k * 65536 + i); }"
+                  "console.log(JSON.stringify([ws, hd]));") % m.group(1)
+        r = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return False, "node failed: " + r.stderr[:200]
+        ws, hd_ = json.loads(r.stdout)
+        mine_ws = [i for i in range(65536) if re.fullmatch("[" + JS_WHITESPACE + "]", chr(i))]
+        mine_hd = [k * 65536 + i for k in range(9) for i in range(65536) if _HEADING_LINE.match("#" * k + chr(i) + "x")]
+        return _eq((mine_ws == ws, mine_hd == hd_, len(ws), re.fullmatch(r"\s", "﻿") is None), (True, True, 25, True))
 
     @case("RDH-OVERLAY-WORDS", "the words come from the overlay file, not from the code: with the four words changed (`Uses`, `Targets`, `Argument`, `Adds`) a reading with the new words passes and one with the old words is refused "
                                "`extra line 1`; with only `decl_reading_uses` changed the old other words still pass and the old first word is refused")
