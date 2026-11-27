@@ -1713,10 +1713,239 @@ def _statement_symbols(kinds):
     return dict(SYMBOLS, kinds=rows), {"kinds": list(rows), "states": [], "proofs": []}, bs.GRAPH_STATUS_HIDDEN + tuple(kinds)
 
 
-def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None, statements_for=None, page_url=None, page_title=None):
+# ---------------------------------------------------------------- the reading of a statement (`--readings FILE`): our own words about one statement, from a file, checked here so the page never meets a shape it refuses
+
+READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card); with the option the file of --strings-overlay-statements holds the 27 words and these, without it the 27
+READING_ENTRY_KEYS = ("statement", "file", "text_path", "by", "second_read_by", "date")   # the six string keys of an entry of the readings file, and no other
+READING_TEXT_MAX = 20000   # the most BYTES (UTF-8) of a reading's `text`, counted on the text as written (after the one trailing newline is dropped)
+READING_NAME_MAX = 80   # the most CHARACTERS of `by` and of `second_read_by`
+READING_FILE_LIMIT = 1048576   # the most bytes of the readings file itself the tool reads (1 MiB)
+READING_TEXT_READ_LIMIT = 65536   # the most bytes of one text file the tool reads (64 KiB; the text has its own, smaller bound)
+_READING_DATE_SHAPE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+QUOTE_OPEN = "In the repository's words ("   # a paragraph that STARTS with these characters is a quote paragraph and is checked; one that starts `In the repository's words` without ` (` is not (the limit of the rule)
+_QUOTE_FORM = re.compile(r"In the repository's words \((?:(?P<path>[^\s,()]+), )?(?:lines (?P<a>[1-9][0-9]*)-(?P<b>[1-9][0-9]*)|line (?P<c>[1-9][0-9]*))\): \"(?P<q>.*)\"\s*", re.S)
+_QUOTE_PATH = re.compile(r"src/[A-Za-z0-9_./-]+\.lean")
+SENTENCE_END_MARKS = "*_)]\""   # the closing marks a sentence end may carry between its `.`, `?` or `!` and the space: a bold title `**Title.**` ends with `.**`, `(really!)`, `"go."`
+
+
+def _reading_name_bad(value):
+    """True when `by` or `second_read_by` may not be written: empty, over READING_NAME_MAX characters, or not printable (a control character, a bidi mark, a zero-width character: the predicate of the prompt path)."""
+    return value == "" or len(value) > READING_NAME_MAX or not value.isprintable()
+
+
+def _reading_path_error(base, rel):
+    """None when `rel` is a path of a regular file under the folder `base` that names no `..`, empty or `.` segment, is not absolute and passes through no symlink, else why not: empty, absolute, dotdot,
+    segment, symlink, missing, not-a-regular-file."""
+    if rel == "":
+        return "empty"
+    if rel.startswith("/") or os.path.isabs(rel):
+        return "absolute"
+    parts = rel.split("/")
+    if ".." in parts:
+        return "dotdot"
+    if "" in parts or "." in parts:
+        return "segment"
+    cur = base
+    for i, part in enumerate(parts):
+        cur = os.path.join(cur, part)
+        try:
+            mode = os.lstat(cur).st_mode
+        except (OSError, ValueError):
+            return "missing"
+        if stat.S_ISLNK(mode):
+            return "symlink"
+        if i < len(parts) - 1 and not stat.S_ISDIR(mode):
+            return "missing"
+        if i == len(parts) - 1 and not stat.S_ISREG(mode):
+            return "not-a-regular-file"
+    return None
+
+
+def _reading_text_error(raw):
+    """(why, text): `text` is the bytes `raw` as strict UTF-8 with ONE trailing newline dropped; `why` is None or the refusal: not-utf-8, empty, `size N bytes, at most 20000` (UTF-8 bytes of the text as
+    written), nul, carriage-return, control-character (any control character, category Cc, other than the newline)."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return "not-utf-8", None
+    if text.endswith("\n"):
+        text = text[:-1]
+    if text == "":
+        return "empty", None
+    size = len(text.encode("utf-8"))
+    if size > READING_TEXT_MAX:
+        return f"size {size} bytes, at most {READING_TEXT_MAX}", None
+    if "\x00" in text:
+        return "nul", None
+    if "\r" in text:
+        return "carriage-return", None
+    if any(c != "\n" and unicodedata.category(c) == "Cc" for c in text):
+        return "control-character", None
+    return None, text
+
+
+def _reading_entries(raw_file, base):
+    """([(code, where, message)], [entry]) of the bytes of the readings file `raw_file`, whose `text_path` are relative to the folder `base`: the file is a JSON list of objects with EXACTLY the six string keys
+    of READING_ENTRY_KEYS; each entry's text is read (`_reading_text_error`) and its `by`, `second_read_by` and `date` are checked; an entry that passes becomes {statement, file, text, by, second_read_by, date}.
+    Every refusal is reported (SKEL-READING-FILE / -TEXT / -NAME / -DATE), the names of statements through `_safe`, and nothing of the file's own text is ever echoed."""
+    try:
+        obj = json.loads(raw_file.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return [("SKEL-READING-FILE", "not-json", "")], []
+    if not isinstance(obj, list):
+        return [("SKEL-READING-FILE", "not-a-list", "")], []
+    errors, entries = [], []
+    for i, e in enumerate(obj, 1):
+        where = f"entry {i}"
+        if not isinstance(e, dict):
+            errors.append(("SKEL-READING-FILE", where, "not-an-object"))
+            continue
+        if set(e) != set(READING_ENTRY_KEYS):
+            errors.append(("SKEL-READING-FILE", where, "keys"))
+            continue
+        loose = [k for k in READING_ENTRY_KEYS if not isinstance(e[k], str)]
+        if loose:
+            errors += [("SKEL-READING-FILE", where, f"{k} not-a-string") for k in loose]
+            continue
+        name = _safe(e["statement"])
+        why = _reading_path_error(base, e["text_path"])
+        if why:
+            errors.append(("SKEL-READING-FILE", where, f"text_path {why}"))
+            continue
+        try:
+            data = _read_bounded(os.path.join(base, *e["text_path"].split("/")), READING_TEXT_READ_LIMIT)
+        except SourceError as x:
+            if x.reason == "too-large":
+                errors.append(("SKEL-READING-TEXT", name, f"size over {READING_TEXT_READ_LIMIT} bytes, at most {READING_TEXT_MAX}"))
+            else:
+                errors.append(("SKEL-READING-FILE", where, f"text_path {x.reason}"))
+            continue
+        why, text = _reading_text_error(data)
+        bad = False
+        if why:
+            errors.append(("SKEL-READING-TEXT", name, why))
+            bad = True
+        for k in ("by", "second_read_by"):
+            if _reading_name_bad(e[k]):
+                errors.append(("SKEL-READING-NAME", name, k))
+                bad = True
+        try:
+            if not _READING_DATE_SHAPE.fullmatch(e["date"]):
+                raise ValueError(e["date"])
+            datetime.date(int(e["date"][:4]), int(e["date"][5:7]), int(e["date"][8:]))
+        except ValueError:
+            errors.append(("SKEL-READING-DATE", name, ""))
+            bad = True
+        if not bad:
+            entries.append({"statement": e["statement"], "file": e["file"], "text": text, "by": e["by"], "second_read_by": e["second_read_by"], "date": e["date"]})
+    return errors, ([] if errors else entries)
+
+
+def _sentence_bounds(body):
+    """(starts, ends) of the sentences of `body` (white space already collapsed, stripped): a SENTENCE END is a `.`, `?` or `!` outside backtick spans followed by any run (possibly empty) of SENTENCE_END_MARKS and
+    then a space or the end of the text. `ends` holds the index just past that run and the end of the text; `starts` holds 0 and the index just past each such space."""
+    n = len(body)
+    starts, ends, code, i = {0}, {n}, False, 0
+    while i < n:
+        c = body[i]
+        if c == "`":
+            code = not code
+            i += 1
+        elif not code and c in ".?!":
+            j = i + 1
+            while j < n and body[j] in SENTENCE_END_MARKS:
+                j += 1
+            if j == n or body[j] == " ":
+                ends.add(j)
+                if j < n:
+                    starts.add(j + 1)
+            i = j
+        else:
+            i += 1
+    return starts, ends
+
+
+def _is_whole_sentences(quoted, body):
+    """True when `quoted` is a non-empty RUN OF WHOLE SENTENCES of `body`, both with every run of white space collapsed to one space and stripped: it occurs at a start of a sentence and ends at a sentence end."""
+    q, b = re.sub(r"\s+", " ", quoted).strip(), re.sub(r"\s+", " ", body).strip()
+    if q == "":
+        return False
+    starts, ends = _sentence_bounds(b)
+    i = b.find(q)
+    while i != -1:
+        if i in starts and i + len(q) in ends:
+            return True
+        i = b.find(q, i + 1)
+    return False
+
+
+def _quote_source(grh, path, cache):
+    """(raw text, [(start, end, text) of the doc comments]) of the repository file `path` (`src/...lean`) read as the builder reads a source file, or None when it cannot be read (missing, a symlink, outside the
+    checkout, too large, not UTF-8). The answer is cached by path."""
+    if path not in cache:
+        try:
+            raw = _read_in(grh, os.path.join(grh, *path.split("/")), SOURCE_READ_LIMIT).decode("utf-8")
+            cache[path] = (raw, _lex_blocks(raw)[0])
+        except (SourceError, UnicodeDecodeError):
+            cache[path] = None
+    return cache[path]
+
+
+def _quote_errors(grh, own_path, text, cache):
+    """[`paragraph <n> <form|path|lines|text>`] for the quote paragraphs of `text` (the paragraphs, split on blank lines, that start with QUOTE_OPEN; n counts them from 1) that are not exactly
+    `In the repository's words (` HEAD `): "` QUOTED `"` with HEAD `lines A-B` or `line A` (A >= 1, A <= B, no leading zero) after an optional `PATH, `, whose PATH is a `src/...lean` file of the checkout
+    (`path`), whose doc-comment covering the lines A..B completely is exactly one (`lines`), and whose QUOTED text is a run of whole sentences of that doc-comment (`text`)."""
+    out, n = [], 0
+    for para in re.split(r"\n(?:[ \t]*\n)+", text):
+        if not para.startswith(QUOTE_OPEN):
+            continue
+        n += 1
+        m = _QUOTE_FORM.fullmatch(para)
+        if m is None or (m["b"] is not None and int(m["a"]) > int(m["b"])):
+            out.append(f"paragraph {n} form")
+            continue
+        path = m["path"] or own_path
+        if m["path"] and (not _QUOTE_PATH.fullmatch(path) or any(seg in (".", "..") for seg in path.split("/"))):
+            out.append(f"paragraph {n} path")
+            continue
+        src = _quote_source(grh, path, cache)
+        if src is None:
+            out.append(f"paragraph {n} path")
+            continue
+        raw, docs = src
+        a = int(m["a"] or m["c"])
+        b = int(m["b"] or m["c"])
+        cover = [d for d in docs if raw.count("\n", 0, d[0]) + 1 <= a and b <= raw.count("\n", 0, d[1] - 1) + 1]
+        if len(cover) != 1:
+            out.append(f"paragraph {n} lines")
+        elif not _is_whole_sentences(m["q"], cover[0][2]):
+            out.append(f"paragraph {n} text")
+    return out
+
+
+def _readings_attach(grh, entries, stm, ids):
+    """(errors, {step id: reading}, {file id: n}) for the validated `entries` of the readings file: each must name (`statement` by its full name, `file` by its step id) a statement step the build WROTE, once
+    (`SKEL-READING-TARGET <statement>` otherwise), and each quote paragraph of its text must pass `_quote_errors` against the statement's own source file (`SKEL-READING-QUOTE <statement> <what>`)."""
+    wrote = {(r["parent"], stm["step_extra"][r["id"]]["name"]): r["id"] for r in stm["rows"]}
+    errors, done, counts, seen, cache = [], {}, {fid: 0 for fid in ids}, set(), {}
+    for e in entries:
+        key = (e["file"], e["statement"])
+        if key not in wrote or key in seen:
+            errors.append(("SKEL-READING-TARGET", _safe(e["statement"]), ""))
+            continue
+        seen.add(key)
+        sid = wrote[key]
+        errors += [("SKEL-READING-QUOTE", _safe(e["statement"]), why) for why in _quote_errors(grh, stm["step_extra"][sid]["source_path"], e["text"], cache)]
+        done[sid] = {"text": e["text"], "by": e["by"], "second_read_by": e["second_read_by"], "date": e["date"]}
+        counts[e["file"]] += 1
+    return errors, done, counts
+
+
+def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None, statements_for=None, page_url=None, page_title=None, readings=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build; `notes_lean_dir` (optional) is the folder of the contributed notes (readings); `statements_for` (optional, a list of FILE step ids) opens those files
-    to their statements (one step per declaration, contract section 31), with the options `page_url` and `page_title` of the prompt; absent, every file is today's."""
+    to their statements (one step per declaration, contract section 31), with the options `page_url` and `page_title` of the prompt; `readings` (optional, the entries `_reading_entries` returns, needs
+    `statements_for`) puts a `reading` on the statement steps they name; absent, every file is today's."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
     if open_scale_floor is not None:
@@ -1737,6 +1966,16 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         errors, stm = _statements(grh, pin, ilean_dir, rows, rep, statements_for, page_url, page_title, source_prefix)
     if errors:
         return errors, {}, rows, rep
+    if readings is not None:   # the readings: each names a statement the build wrote; its quotes are checked against the repository's doc-strings
+        if stm is None:
+            return [("SKEL-READING-OPTIONS", "readings", "needs --statements-for")], {}, rows, rep
+        errors, attached, counts = _readings_attach(grh, readings, stm, statements_for)
+        if errors:
+            return errors, {}, rows, rep
+        for sid, reading in attached.items():
+            stm["step_extra"][sid]["reading"] = reading
+        for fid, n in counts.items():
+            rep["statements"][fid]["readings"] = n
     syms, orders, hidden = _statement_symbols(stm["kinds"]) if stm and stm["rows"] else (SYMBOLS, MAP_ORDERS, bs.GRAPH_STATUS_HIDDEN)
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(syms) if k in strings}, syms)   # only the missing ones: it holds a subset
     if missing:
@@ -1790,7 +2029,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), all_rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR] [--statements-for ID[,ID...] --strings-overlay-statements FILE [--statement-page-url URL --statement-page-title TEXT]]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR] [--statements-for ID[,ID...] --strings-overlay-statements FILE [--statement-page-url URL --statement-page-title TEXT] [--readings FILE]]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]")
 
 
@@ -1798,7 +2037,7 @@ def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay][, strings-overlay-graph]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir", "--statements-for", "--statement-page-url", "--statement-page-title", "--strings-overlay-statements") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir", "--statements-for", "--statement-page-url", "--statement-page-title", "--strings-overlay-statements", "--readings") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -1842,6 +2081,8 @@ def _statement_lines(rep):
         out.append(f"statements {fid}: {s['found']} declarations, {s['written']} written, {len(s['reported'])} reported")
         out.append(f"statements {fid}: {s.get('library_left_out', 0)} library names left out of uses_elsewhere")
         out += [f"statements {fid} reported {r[0]} line {r[1]}" + (f" name {_safe(r[2])}" if len(r) > 2 else "") for r in s["reported"]]
+        if "readings" in s:   # only with --readings: the readings written on the statements of this file (0 when none)
+            out.append(f"readings {fid}: {s['readings']} readings written")
     return out
 
 
@@ -1869,6 +2110,8 @@ def _run(opts):
             print(f"{code} {where}" + (f" {msg}" if msg else ""))
         print("REFUSED: nothing written", file=sys.stderr)
         return 1
+    if "readings" in opts and "statements-for" not in opts:   # a reading is of a statement: nothing is read
+        return refuse([("SKEL-READING-OPTIONS", "readings", "needs --statements-for")])
     if ("statements-for" in opts) != ("strings-overlay-statements" in opts):   # checked before any file is read: a build without statements never reads or ships the statement words
         return refuse([("SKEL-STATEMENT-WORDS", "strings-overlay-statements", "is required with --statements-for" if "statements-for" in opts else "needs --statements-for")])
     try:
@@ -1893,7 +2136,8 @@ def _run(opts):
     if unknown:
         return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
     if "strings-overlay-statements" in opts:   # exactly the statement words: a missing key and a page key that is not one of them are refused by name
-        wrong = [("SKEL-STATEMENT-WORDS", k, "missing") for k in sorted(set(STATEMENT_WORD_KEYS) - set(words))] + [("SKEL-STATEMENT-WORDS", k, "is not a statement word") for k in sorted(set(words) - set(STATEMENT_WORD_KEYS))]
+        expected = set(STATEMENT_WORD_KEYS) | (set(READING_WORD_KEYS) if "readings" in opts else set())   # all-or-none: the 8 words of the reading come with --readings and only then
+        wrong = [("SKEL-STATEMENT-WORDS", k, "missing") for k in sorted(expected - set(words))] + [("SKEL-STATEMENT-WORDS", k, "is not a statement word") for k in sorted(set(words) - expected)]
         if wrong:
             return refuse(wrong)
     strings.update(graph)
@@ -1903,9 +2147,20 @@ def _run(opts):
     problems = bs._strings_problems(strings)
     if problems:
         return refuse(problems)
+    entries = None
+    if "readings" in opts:   # the readings file: its shape, its texts, names and dates are checked here; its targets and quotes are checked by the build, which has the statements and the source
+        try:
+            raw_readings = _read_bounded(opts["readings"], READING_FILE_LIMIT)
+        except SourceError as e:
+            if e.reason == "too-large":
+                return refuse([("SKEL-READING-FILE", "too-large", "")])
+            raise Unreadable(f"--readings: cannot read {opts['readings']}: {e.reason}")
+        errors, entries = _reading_entries(raw_readings, os.path.dirname(os.path.abspath(opts["readings"])))
+        if errors:
+            return refuse(errors)
     errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
                                        _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None, opts.get("notes-lean-dir"),
-                                       opts["statements-for"].split(",") if "statements-for" in opts else None, opts.get("statement-page-url"), opts.get("statement-page-title"))
+                                       opts["statements-for"].split(",") if "statements-for" in opts else None, opts.get("statement-page-url"), opts.get("statement-page-title"), entries)
     if errors:
         return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
     try:
@@ -6570,7 +6825,7 @@ def _selftest_cases():
         differ = sorted(k for k in f0 if f0[k] != f1[k])
         return _eq((r0[0], r1[0], sorted(reading or {}), reading, a0 == a1, differ, [k for k in f1 if k.startswith("graph/step/") and b'"reading"' in f1[k]]),
                    (0, 0, ["by", "date", "second_read_by", "text"], {"text": text[:-1], "by": "B1", "second_read_by": "B2", "date": "2026-01-02"}, True,
-                    ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"], ["graph/step/lean-s-a-gamma.json"]))
+                    ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"], ["graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"]))
 
     @case("RDG-WORDS", "the words are all-or-none with the statement words: with `--readings` the file of --strings-overlay-statements holds EXACTLY the 27 words and the 8 of the reading (`decl_reading_show`, "
                        "`decl_reading_hide`, `decl_reading_about`, `decl_reading_uses`, `decl_reading_target`, `decl_reading_argument`, `decl_reading_adds`, `readings_byline`): the 27 alone are refused "

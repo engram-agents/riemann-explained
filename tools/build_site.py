@@ -672,7 +672,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_uses_library_many": {"n"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_uses_library_many": {"n"}, "readings_byline": {"by", "second_read_by", "date"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -699,7 +699,7 @@ PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}
                 "sketch_frame": {"basis"},
                 "reactions.href": {"card"}}
 # the keys whose value must hold EVERY placeholder it declares (the notes' hrefs and the reaction hrefs may omit theirs)
-REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "evidence_statement_census_line": ("reader", "date"),
+REQUIRED_PLACEHOLDERS = {"readings_byline": ("by", "second_read_by", "date"), "evidence_statement_read_line": ("reader", "date"), "evidence_statement_census_line": ("reader", "date"),
                          "evidence_proof_read_line": ("reader", "date"), "evidence_second_reader_line": ("reader", "date"),
                          "evidence_recognition_line": ("reader", "date"), "evidence_citation_line": ("source", "opened_by", "opened_on"),
                          "evidence_established_line": ("name", "reader", "date"), "evidence_sketch_build_line": ("build",),
@@ -1861,7 +1861,8 @@ GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_labe
                        "open_statements", "close_statements", "count_statement_one", "count_statement_many",   # the statement level of a Lean map (contract section 31): the words only a map with statements carries
                        "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
                        "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
-                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many")
+                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many",
+                       "decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the last eight: the reading of a statement (`--readings` of the Lean map builder); `readings_byline` has {by}, {second_read_by} and {date}
 
 
 def _graph_strings_keys(symbols=None):
