@@ -416,6 +416,42 @@ def _tmp():
     return tempfile.TemporaryDirectory(prefix="grh-asm-")
 
 
+# ---------------------------------------------------------------- the temporary folder of one self-test run (TMP1)
+# One folder for the whole run (`_RUN_TMP`), a private sub-folder of it for every child process the self-test starts (`_spawn`). A child that finishes must leave its
+# sub-folder empty (else a LEAK, named); a child killed at its limit cannot clean up, so the PARENT removes what it left and records the kill in `_KILLED`: the kill is the
+# failure of the control that started the child, never a leak. `_run_report()` is the list of leaks of the run (empty = clean).
+_RUN_TMP = None
+_KILLED = []
+_LEAKS = []
+
+
+def _spawn(argv, timeout, **kw):
+    """RED STUB: the old behaviour (the child inherits the process's TMPDIR, nothing is routed, removed or recorded)."""
+    return subprocess.run(argv, timeout=timeout, **kw)
+
+
+def _run_report():
+    """RED STUB: the leaks of the run."""
+    return []
+
+
+class _scratch_run:
+    """The test scaffolding of TMP1: a fresh run folder and empty records for the body of the `with`, the previous ones restored after."""
+    def __enter__(self):
+        global _RUN_TMP
+        self.saved = (_RUN_TMP, list(_KILLED), list(_LEAKS))
+        self.t = tempfile.mkdtemp(prefix="rh-tmp1-")
+        _RUN_TMP = self.t
+        del _KILLED[:], _LEAKS[:]
+        return self.t
+
+    def __exit__(self, *exc):
+        global _RUN_TMP
+        shutil.rmtree(self.t, ignore_errors=True)
+        _RUN_TMP = self.saved[0]
+        _KILLED[:], _LEAKS[:] = self.saved[1], self.saved[2]
+
+
 # ---------------------------------------------------------------- fixtures: every one is built in a temp folder from literals and from the skeleton builder's own machinery
 
 SMALL_BODY = "### The last file\n\n- `New/Main` (1): Plum breadcrumbs with Ox q > 3/4 for ducks at a bright doorway\n"   # a synthetic step file of the same size as the smallest real one
@@ -1733,31 +1769,68 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
     for mid in MUTATIONS:
         case(mid, f"mutation control for {MUTATIONS[mid][0]}: {MUTATIONS[mid][1]}; red set {', '.join(MUTATIONS[mid][2])}; every other A-case stays green (live: the A-cases run on a mutated copy of tools/)")(
             (lambda m: lambda: _mutation_case(m))(mid))
-    @case("TMP1", "the tool leaves nothing in its temporary folder: one child process of this file per other case (`--selftest --only <id>`, run 12 at a time, so the "
-                  "whole self-test fits in the time of its slowest cases), each under its OWN fresh TMPDIR (a folder made here, named `rh-tmp1-...`) and a timeout; each TMPDIR "
-                  "must be empty afterwards (the leftovers are listed, at most 20, with the case id). A run whose TMPDIR starts `rh-tmp1-` runs no TMP1: the recursion guard")
-    def _():
-        if os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-"):
-            return True, "nested: not run again"
-        from concurrent.futures import ThreadPoolExecutor
+    # ---- TMP1: the temporary folder of a run. Children are small programs of the standard library (the tool itself is not needed to show what the parent does).
+    MAKE = "import os, sys, tempfile, time\nd = tempfile.mkdtemp(prefix='grh-asm-')\nprint(os.environ.get('TMPDIR'), os.path.basename(d), flush=True)\n"
+    CLEAN = MAKE + "os.rmdir(d)\n"
+    LEAK = MAKE
+    HANG = MAKE + "time.sleep(60)\n"
 
-        def one(cid):
-            t = tempfile.mkdtemp(prefix="rh-tmp1-")
+    def kid(code, limit=30):
+        return _spawn([sys.executable, "-I", "-c", code], limit, capture_output=True, text=True)
+
+    @case("TMP1a", "a child that cleans up after itself: its TMPDIR was a sub-folder of the run's folder (it prints it), the run's folder is empty afterwards, no kill and no leak is recorded")
+    def _():
+        with _scratch_run() as t:
+            r = kid(CLEAN)
+            seen = r.stdout.split()[0] if r.stdout.split() else ""
+            return _eq((r.returncode, os.path.dirname(seen) == t, sorted(os.listdir(t)), _run_report(), list(_KILLED)), (0, True, [], [], []))
+
+    @case("TMP1b", "a child killed at its limit (made a `grh-asm-` folder, then sleeps past a 2 s limit): TimeoutExpired reaches the caller, the PARENT removed the leftover (the run's folder is "
+                   "empty), the kill is recorded with the name of the folder it removed, and the leak report is EMPTY: a kill is the control's own failure, not a leak")
+    def _():
+        with _scratch_run() as t:
             try:
-                r = subprocess.run([sys.executable, "-I", TOOL, "--selftest", "--only", cid], env=dict(os.environ, TMPDIR=t),
-                                   capture_output=True, text=True, timeout=900)
-                left = sorted(os.listdir(t))
-                out = [f"{cid}: {len(left)} left in its TMPDIR: " + ", ".join(left[:20])] if left else []
-                if r.returncode != 0:   # a child that died before it ran the case leaves nothing: that is not a pass
-                    out.append(f"{cid}: the child exited {r.returncode}")
-                return out
+                kid(HANG, limit=2)
+                raised = False
             except subprocess.TimeoutExpired:
-                return [f"{cid}: timed out"]
-            finally:
-                shutil.rmtree(t, ignore_errors=True)
-        with ThreadPoolExecutor(max_workers=12) as ex:
-            bad = [b for res in ex.map(one, [c[0] for c in cases if c[0] != "TMP1"]) for b in res]
-        return (not bad), "; ".join(bad)
+                raised = True
+            return _eq((raised, sorted(os.listdir(t)), _run_report(), len(_KILLED), "grh-asm-" in repr(_KILLED)), (True, [], [], 1, True))
+
+    @case("TMP1c", "five children that each leave one `grh-asm-` folder and exit: the leak report names every one of the five (not the first only), and the parent removed them (the run's folder is empty)")
+    def _():
+        with _scratch_run() as t:
+            names = [kid(LEAK).stdout.split()[1] for _i in range(5)]
+            rep = " ".join(_run_report())
+            return _eq((len(set(names)), [n for n in names if n not in rep], sorted(os.listdir(t)), list(_KILLED)), (5, [], [], []))
+
+    @case("TMP1d", "under load and alone: 12 clean children at once leave nothing and record nothing; 12 children killed at their limit at once record 12 kills and no leak and leave nothing; "
+                   "one clean child alone the same as the first")
+    def _():
+        from concurrent.futures import ThreadPoolExecutor
+        out = []
+        with _scratch_run() as t:
+            with ThreadPoolExecutor(max_workers=12) as ex:
+                rcs = list(ex.map(lambda _i: kid(CLEAN).returncode, range(12)))
+            out.append((rcs, sorted(os.listdir(t)), _run_report(), len(_KILLED)))
+        with _scratch_run() as t:
+            def hung(_i):
+                try:
+                    kid(HANG, limit=3)
+                except subprocess.TimeoutExpired:
+                    return "killed"
+                return "finished"
+            with ThreadPoolExecutor(max_workers=12) as ex:
+                res = list(ex.map(hung, range(12)))
+            out.append((sorted(set(res)), sorted(os.listdir(t)), _run_report(), len(_KILLED)))
+        with _scratch_run() as t:
+            out.append(([kid(CLEAN).returncode], sorted(os.listdir(t)), _run_report(), len(_KILLED)))
+        return _eq(out, [([0] * 12, [], [], 0), (["killed"], [], [], 12), ([0], [], [], 0)])
+
+    @case("TMP1e", "a whole self-test run (`--selftest --only A17`, as a child) ends with its own CASE TMP1 line, PASS, and exits 0: the run's folder is asserted empty at the end of every run")
+    def _():
+        with _scratch_run():
+            r = kid("import sys; sys.argv = ['x', '--selftest', '--only', 'A17']; import runpy; runpy.run_path(%r, run_name='__main__')" % TOOL, limit=300)
+            return _eq((r.returncode, "CASE TMP1 PASS" in r.stdout), (0, True))
 
     return cases
 
