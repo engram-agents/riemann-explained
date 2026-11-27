@@ -1225,11 +1225,13 @@ _VARIABLE = re.compile(r"variable(?![\w'.])")
 _IN_END = re.compile(r"(?:^|[ \t])in[ \t]*$")
 _CHAR_LITERAL = re.compile(r"'(?:\\x[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|\\.|[^'\\\n])'")
 _IDENT_CHAR = re.compile(r"[\w'.!?]")
+_RAW_STRING = re.compile(r'r#*"')
 _OPEN, _CLOSE = "([{⟨⦃", ")]}⟩⦄"   # the brackets whose depth the cut counts: ( [ { and the angle and white-curly pairs
 STATEMENT_NAME_EXTRA = "_.'«»"   # besides a letter or a number (Unicode general category L* or N*), the only characters of {full_name}
 _STATEMENT_PATH = re.compile(r"src(?:/[A-Za-z0-9_.-]+)+\.lean")
 _PROMPT_PLACEHOLDER = re.compile(r"\{([A-Za-z_]+)\}")
 _PIN = re.compile(r"[0-9a-f]{40}")
+STATEMENT_NAME_MAX, STATEMENT_TITLE_MAX, STATEMENT_URL_MAX = 200, 200, 300   # the most characters of {full_name}, {page_title} and {page_url}: a field that comes from outside is bounded
 STATEMENT_PAGE_TITLE_NOTE = "A map of the Lean files of the Riemann Hypothesis proof"   # the demo value of --statement-page-title: the map's own words, never a step title or a CONTENTS line
 
 # The two prompt templates (Ariadne, graph-view-strings-v2.md, section 'Statement level, one group', '### Prompt templates'), copied byte for byte: ONE constant each, so a later change is one edit.
@@ -1360,6 +1362,11 @@ def _url_ok(url):
     return rest != "" and all(0x21 <= ord(c) <= 0x7e and c not in "\"'`{}\\<>|^" for c in url)
 
 
+def _safe(value):
+    """A name as a refusal line prints it: as it is when every character is printable, else as JSON text (ESC, a bidi mark, a line break can never reach the terminal of the reader of the log)."""
+    return value if isinstance(value, str) and value.isprintable() else json.dumps(value)
+
+
 def _escaped(value):
     """A value as it is printed in a refusal: JSON text, every control and non-ASCII character escaped."""
     return json.dumps(value)
@@ -1375,9 +1382,13 @@ def _prompt_option_errors(statements, page_url, page_title, pin):
     errors = []
     if not _PIN.fullmatch(pin):
         errors.append(("SKEL-STATEMENT-PROMPT", "pin " + _escaped(pin), ""))
-    if page_url is not None and not _url_ok(page_url):
+    if page_url is not None and len(page_url) > STATEMENT_URL_MAX:
+        errors.append(("SKEL-STATEMENT-PROMPT", "page_url too long", ""))
+    elif page_url is not None and not _url_ok(page_url):
         errors.append(("SKEL-STATEMENT-PROMPT", "page_url " + _escaped(page_url), ""))
-    if page_title is not None and (page_title.strip() == "" or not page_title.isprintable() or any(c in page_title for c in "`'\"{}\\")):
+    if page_title is not None and len(page_title) > STATEMENT_TITLE_MAX:
+        errors.append(("SKEL-STATEMENT-PROMPT", "page_title too long", ""))
+    elif page_title is not None and (page_title.strip() == "" or not page_title.isprintable() or any(c in page_title for c in "`'\"{}\\")):
         errors.append(("SKEL-STATEMENT-PROMPT", "page_title " + _escaped(page_title), ""))
     return errors
 
@@ -1418,7 +1429,7 @@ def _lex_blocks(raw):
                 body = raw[i + 3:j - 2].lstrip()
                 m = STATEMENT_HEADING.match(body)
                 if m:
-                    heads.append((j, body[m.end():].strip()))
+                    heads.append((j, body[m.end():].split("\n", 1)[0].strip()))   # the heading LINE: the text after the marker up to the end of that line (or the closing `-/`)
             i = j
         elif c == '"':
             i = _string_end(raw, i)
@@ -1427,6 +1438,11 @@ def _lex_blocks(raw):
         else:
             i += 1
     return docs, heads
+
+
+def _word_at(raw, i, word):
+    """True when `word` stands at raw[i] as a whole word (no identifier character before or after it)."""
+    return raw.startswith(word, i) and not (i > 0 and _IDENT_CHAR.match(raw[i - 1])) and not (i + len(word) < len(raw) and _IDENT_CHAR.match(raw[i + len(word)]))
 
 
 def _cut_index(raw, i, limit):
@@ -1440,6 +1456,8 @@ def _cut_index(raw, i, limit):
             i = limit if j < 0 else j
         elif raw.startswith("/-", i):
             i = _skip_block(raw, i)
+        elif c == "r" and not (i > 0 and _IDENT_CHAR.match(raw[i - 1])) and _RAW_STRING.match(raw, i):
+            return None   # a raw string: the string rule above does not read it, so no `:=` after it is trusted
         elif c == '"':
             i = _string_end(raw, i)
         elif c == "'" and not (i > 0 and _IDENT_CHAR.match(raw[i - 1])) and _CHAR_LITERAL.match(raw, i):
@@ -1454,6 +1472,8 @@ def _cut_index(raw, i, limit):
             return i
         elif depth == 0 and c == "|" and raw[raw.rfind("\n", 0, i) + 1:i].strip() == "" and "=>" in raw[i:(raw.find("\n", i) if raw.find("\n", i) >= 0 else limit)]:   # an arm of a pattern-matching definition (`| 0 => 1`); a line that starts with an absolute value `|x| ≤ y` is a statement
             return None
+        elif depth == 0 and (_word_at(raw, i, "let") or _word_at(raw, i, "have")):
+            return None   # a `let x := v; ...` or `have h := p; ...` at depth 0 holds a `:=` that is not the statement's cut
         elif depth == 0 and raw.startswith("where", i) and not (i > 0 and _IDENT_CHAR.match(raw[i - 1])) and not (i + 5 < len(raw) and _IDENT_CHAR.match(raw[i + 5])):
             return None
         else:
@@ -1538,7 +1558,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
     seen = set()
     for i in ids:
         if i not in file_paths or i in seen:
-            errors.append(("SKEL-STATEMENT-FILE", i, ""))
+            errors.append(("SKEL-STATEMENT-FILE", _safe(i), ""))
         seen.add(i)
     if errors:
         return errors, None
@@ -1555,7 +1575,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
             known, uses_in = obj["decls"], _ilean_enclosing(obj)
             module = obj["module"]
         except (SourceError, UnicodeDecodeError, KeyError, TypeError) as e:
-            errors.append(("SKEL-STATEMENT-INDEX", p, getattr(e, "reason", "bad-ilean")))
+            errors.append(("SKEL-STATEMENT-INDEX", _safe(p), getattr(e, "reason", "bad-ilean")))
             continue
         source_path = "src/" + p + ".lean"
         if statement_path_error(source_path):
@@ -1573,11 +1593,13 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
         flags = _variable_flags(masked)
         reported = sorted([(k + 1, "instance") for k, ln in enumerate(masked_lines) if (lambda m: bool(m) and m.group(1) == "instance" and not m.group(2).rstrip("."))(ld.DECL.match(ln))]
                           + [(masked.count("\n", 0, m.start()) + 1, "example") for m in _EXAMPLE.finditer(masked)])
+        found_names = {f[2] for f in found}
+        reported = sorted(reported + [(e[4] + 1, _missed_kind(raw_lines, n, e), n) for n, e in known.items() if n not in found_names and _missed_kind(raw_lines, n, e) is not None])   # the index lists it, the reader did not: reported, never absent
         decls, bad = [], False
         for line_no, kw, name, end_idx, _ns in found:
             k = line_no - 1
             if kw not in STATEMENT_KIND_WORDS:
-                errors.append(("SKEL-STATEMENT-KIND", f"{kw} {name}", ""))
+                errors.append(("SKEL-STATEMENT-KIND", f"{kw} {_safe(name)}", ""))
                 bad = True
                 continue
             j = k
@@ -1587,15 +1609,19 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
             limit = starts[end_idx] if end_idx < len(starts) else len(raw)
             cut = _cut_index(raw, start, limit)
             if cut is None:
-                errors.append(("SKEL-STATEMENT-NOCUT", name, ""))
+                errors.append(("SKEL-STATEMENT-NOCUT", _safe(name), ""))
                 bad = True
                 continue
             if not slug(name):
-                errors.append(("SKEL-STATEMENT-ID", name, ""))
+                errors.append(("SKEL-STATEMENT-ID", _safe(name), ""))
                 bad = True
                 continue
             if name not in known:
-                errors.append(("SKEL-STATEMENT-INDEX", name, ""))
+                errors.append(("SKEL-STATEMENT-INDEX", _safe(name), ""))
+                bad = True
+                continue
+            if len(name) > STATEMENT_NAME_MAX:
+                errors.append(("SKEL-STATEMENT-PROMPT", "full_name too long", ""))
                 bad = True
                 continue
             why = statement_name_error(name)
@@ -1612,7 +1638,7 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
                 a -= 1
             decls.append({"kw": kw, "name": name, "short": name.rsplit(".", 1)[-1] or name, "text": "\n".join(prefix + [raw[start:cut].rstrip()]), "doc": doc[2] if doc else None,
                           "heading": head[-1][1] if head else None, "variables": flags.get(line_no, False)})
-        rep["statements"][fid] = {"found": len(found) + len(reported), "written": 0 if bad else len(decls), "reported": [(kind, line) for line, kind in reported]}
+        rep["statements"][fid] = {"found": len(found) + len(reported), "written": 0 if bad else len(decls), "reported": [(r[1], r[0]) + tuple(r[2:]) for r in reported]}
         if bad:
             continue
         for d in decls:
@@ -1791,6 +1817,22 @@ def _repo_module(grh, module, cache):
     return cache[module]
 
 
+def _missed_kind(lines, name, entry):
+    """The keyword of a declaration the compiled index lists and the reader did not find, or None when the index entry is no top-level source declaration. The rule is the one `_kind_and_doc` already
+    uses for a mention: the range entry `entry` ([start line, col, end line, col, name line, name col, ...], 0-based) places the name in the source, and the text before it on that line holds a declaration
+    keyword; and the source at that place must BE the name (its last component): an equation lemma, a `proof_1` or a `match_1` is placed at its parent and is not a source declaration, a field or a projection
+    has no keyword before it, so none of them is reported."""
+    try:
+        nl, nc = entry[4], entry[5]
+        if not (isinstance(nl, int) and isinstance(nc, int) and 0 <= nl < len(lines)) or isinstance(nl, bool) or isinstance(nc, bool):
+            return None
+        if not lines[nl].startswith(name.rsplit(".", 1)[-1], nc):
+            return None
+        return _kind_and_doc(lines, entry)[0]
+    except (ValueError, IndexError, TypeError, AttributeError):
+        return None
+
+
 def _statement_lines(rep):
     """The lines of the statement level (none without `--statements-for`): per file `statements <file id>: <found> declarations, <written> written, <reported> reported`, then one line per
     reported declaration (the reader's skipped kinds: a nameless `instance`, an `example`) by kind and line; found = written + reported always. After the counts line, `statements <file id>: <n> library names
@@ -1799,7 +1841,7 @@ def _statement_lines(rep):
     for fid, s in rep.get("statements", {}).items():
         out.append(f"statements {fid}: {s['found']} declarations, {s['written']} written, {len(s['reported'])} reported")
         out.append(f"statements {fid}: {s.get('library_left_out', 0)} library names left out of uses_elsewhere")
-        out += [f"statements {fid} reported {kind} line {line}" for kind, line in s["reported"]]
+        out += [f"statements {fid} reported {r[0]} line {r[1]}" + (f" name {_safe(r[2])}" if len(r) > 2 else "") for r in s["reported"]]
     return out
 
 
