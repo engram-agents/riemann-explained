@@ -5339,6 +5339,61 @@ def _selftest_cases():
         ran = [ln.split(" ")[1] for ln in ok_out.getvalue().splitlines() if ln.startswith("CASE ")]
         return _eq((ran, rc, "NOPE" in bad_err.getvalue(), bad_out.getvalue()), (["X2a", "B7d"], 2, True, ""))
 
+    @case("TMP1", "the tool leaves nothing in its temporary folder: three child processes of this very file, each with its OWN fresh TMPDIR (a folder made here, "
+                  "named `rh-tmp1-...`), are run in parallel under a timeout: `--selftest --only <every case id but TMP1>` (so a leak from ANY case shows), a normal "
+                  "CLI build of a planted tree (the self-test it runs first as its gate included) and a CLI call refused after the gate (SRC_ROOT that is not a folder); "
+                  "each TMPDIR must be empty afterwards (the leftover names are listed, at most 20). A child whose TMPDIR starts `rh-tmp1-` runs no TMP1 itself: that is "
+                  "the recursion guard, and it cannot be left out without leaving out the fresh TMPDIR the case is about")
+    def _():
+        if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):   # the guard: this run is the child of a TMP1
+            return True, "nested: not run again"
+        me = os.path.abspath(__file__)
+        all_but = ",".join(c[0] for c in cases if c[0] != "TMP1")
+        with tempfile.TemporaryDirectory() as d:
+            p = _plant(d)
+            five = [p["notes"], p["outline"], p["decls"], p["strings"], p["out"]]
+            refused_args = [os.path.join(d, "no-such-folder"), p["outline"], p["decls"], p["strings"], os.path.join(d, "out-refused")]
+            runs = {"selftest": ["--selftest", "--only", all_but], "build": five, "refused": refused_args}
+            procs = {}
+            for name, argv in runs.items():
+                t = tempfile.mkdtemp(prefix="rh-tmp1-")
+                procs[name] = (t, subprocess.Popen([sys.executable, "-I", me] + argv, env=dict(os.environ, TMPDIR=t, RH_TMP1_NESTED="1"),
+                                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+            got, bad = {}, []
+            try:
+                for name, (t, pr) in procs.items():
+                    try:
+                        so, se = pr.communicate(timeout=600)
+                    except subprocess.TimeoutExpired:
+                        pr.kill()
+                        pr.communicate()
+                        bad.append(f"{name}: timed out")
+                        continue
+                    left = sorted(os.listdir(t))
+                    got[name] = pr.returncode
+                    if left:
+                        bad.append(f"{name}: {len(left)} left in its TMPDIR: " + ", ".join(left[:20]))
+            finally:
+                for t, pr in procs.values():
+                    if pr.poll() is None:
+                        pr.kill()
+                        pr.communicate()
+                    shutil.rmtree(t, ignore_errors=True)
+            want = {"selftest": 0, "build": 0, "refused": 2}
+            if got != want and not bad:
+                bad.append(f"exit codes {got}, wanted {want}")
+        return (not bad), "; ".join(bad)
+
+    @case("TMP2", "the self-test as the GATE of a normal build (`selftest_quiet`) skips TMP1 (its three child runs would double the time of every real build, and the leak it checks is already "
+                  "closed at its source); the self-test run directly (`selftest`) runs it: with stand-in cases [TMP1 (fails), X (passes)], the gate returns 0 and runs only X, the direct run returns 4")
+    def _():
+        ran = []
+        stand_in = lambda: [("TMP1", "t", lambda: (ran.append("TMP1") or False, "ran")), ("X", "x", lambda: (ran.append("X") or True, ""))]
+        with _patched("_selftest_cases", stand_in):
+            gate = selftest_quiet()
+            direct = selftest(verbose=False)
+        return _eq((gate, direct, ran), (0, 4, ["X", "TMP1", "X"]))
+
     # ---- data
     @case("L0", "level0.json: the level-1 steps g1 g3 g2 in `order` (the outline lists g3 first, and `order` is not the id order), each with its "
                 "facts (statement_read and proof_read when EVERY root has them, unread) and counts; `facts` counts the steps per fact "
@@ -14673,8 +14728,8 @@ class _SkipCase(Exception):
     """Raised by a case that cannot set up its plant on this system; the case is reported SKIP."""
 
 
-def selftest(verbose=True, only=None):
-    """A case returns (True|False, detail). `only` is a list of case ids: exactly those cases run (an unknown id returns 2)."""
+def selftest(verbose=True, only=None, skip=()):
+    """A case returns (True|False, detail). `only` is a list of case ids: exactly those cases run (an unknown id returns 2). `skip`: ids of cases left out (the gate leaves out TMP1)."""
     ok, skipped = True, 0
     cases = _selftest_cases()
     if only is not None:
@@ -14684,6 +14739,7 @@ def selftest(verbose=True, only=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
+    cases = [c for c in cases if c[0] not in skip]
     global _CODE_FLAG_AT_START, _GRAPH_SRC_AT_START, _SELFTEST_RUNNING
     was_running = _SELFTEST_RUNNING
     if not _SELFTEST_RUNNING:   # a case that calls selftest() (SEL1) must not overwrite the value read by the outermost run
@@ -14717,8 +14773,9 @@ def selftest(verbose=True, only=None):
 
 
 def selftest_quiet():
+    """The self-test as the gate of a normal build: TMP1 (three child runs, about 20 s) is left out; `--selftest` runs it."""
     with contextlib.redirect_stdout(io.StringIO()):
-        return selftest(verbose=False)
+        return selftest(verbose=False, skip=("TMP1",))
 
 
 _VALUE_OPTIONS = {"--source-check": "source_check", "--release-archive-sha": "archive_sha", "--notes-commit": "notes_commit",

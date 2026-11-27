@@ -26,6 +26,7 @@ import html.parser
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -369,6 +370,19 @@ def selftest():
     case("CR14 build_site's placeholder table is restored after the check, pass or refusal", c14)
     case("CR15 a Python older than MIN_PYTHON is refused by name", lambda: refused(
         lambda: build("/nonexistent", PIN, base, words, version=(3, 9)), "CREDITS-PYTHON 3.9"))
+
+    def c18():
+        if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):   # the recursion guard: this run is the child of a CR18
+            return
+        t = tempfile.mkdtemp(prefix="rh-tmp1-")
+        try:
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=t, RH_TMP1_NESTED="1"),
+                               capture_output=True, text=True, timeout=300)
+            left = sorted(os.listdir(t))
+        finally:
+            shutil.rmtree(t, ignore_errors=True)
+        assert not left and r.returncode == 0, "exit %d, %d left in its TMPDIR: %s" % (r.returncode, len(left), ", ".join(left[:20]))
+    case("CR18 the self-test leaves nothing in its temporary folder (a child run under its own fresh TMPDIR; a run whose TMPDIR starts rh-tmp1- runs no CR18)", c18)
 
     def c11():
         page = render({"LICENSE": "L", "grh/NOTICE": "N", "grh/ATTRIBUTION.md": "A", "grh/README.md": "", "README.md": ""}, [("f", ["q"])], words)
