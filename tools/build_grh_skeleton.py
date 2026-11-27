@@ -6688,7 +6688,7 @@ def _selftest_cases():
 
     # ---------------------------------------------------------------- the reading of a statement (RDG cases; `--readings FILE`)
 
-    @case("RDG-OPTION", "`--readings FILE` REQUIRES `--statements-for`: alone it is refused `SKEL-READING-OPTIONS readings needs --statements-for` (exit 1, nothing written); the option twice or with no value is a "
+    @case("RDG-OPTION", "`--readings FILE` REQUIRES `--statements-for`: alone it is refused `SKEL-STATEMENT-READING-OPTIONS readings needs --statements-for` (exit 1, nothing written); the option twice or with no value is a "
                         "usage error (exit 2); with `--statements-for`, the statement words (36) and an empty list it builds")
     def _():
         with _tmp() as d:
@@ -6701,7 +6701,7 @@ def _selftest_cases():
             novalue = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--readings"], words=RDG_WORDS, out="o-nov")
             good = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--readings", rp], words=RDG_WORDS, out="o-good")
         return _eq(((alone[0], alone[1], alone[3]), twice[0], twice[3], novalue[0], good[0], good[3]),
-                   ((1, ["SKEL-READING-OPTIONS readings needs --statements-for"], False), 2, False, 2, 0, True))
+                   ((1, ["SKEL-STATEMENT-READING-OPTIONS readings needs --statements-for"], False), 2, False, 2, 0, True))
 
     @case("RDG-ABSENT", "the option absent leaves every output as it is: with `--statements-for` alone (the 28 words) no step file has a `reading`, the report has no `readings` line and index.json `strings` holds none "
                         "of the 8 words of the reading; with `--readings` and an empty list (the 36 words) every file is byte-identical to that build except index.json, which differs by exactly the 8 words in `strings`, "
@@ -6719,7 +6719,7 @@ def _selftest_cases():
                     s0 == {k: s1[k] for k in s0}, has(f0), has(f1), [x for x in r0[1] if x.startswith("readings ")], [x for x in r1[1] if x.startswith("readings ")]),
                    (0, 0, True, True, True, True, sorted(RDG_WORDS_NEW), [], True, [], [], [], ["readings lean-s-a: 0 readings written"]))
 
-    @case("RDG-FILE", "the readings file is a JSON LIST of objects with EXACTLY the six string keys: anything else is `SKEL-READING-FILE <what>` (exit 1, nothing written) and the file's text is never echoed: not "
+    @case("RDG-FILE", "the readings file is a JSON LIST of objects with EXACTLY the six string keys: anything else is `SKEL-STATEMENT-READING-FILE <what>` (exit 1, nothing written) and the file's text is never echoed: not "
                       "JSON or not UTF-8 `not-json`; an object or a string at the top `not-a-list`; an entry that is no object `entry N not-an-object`; another key set (an extra key, a missing key, `{}`) `entry N keys`; "
                       "a value that is no string `entry N <key> not-a-string`; the entries are reported together, by position; an EMPTY list is a good file (no reading, `n` is 0); a file that does not exist is exit 2")
     def _():
@@ -6736,13 +6736,13 @@ def _selftest_cases():
         with _tmp() as d:
             g = _tree(d, _flat(["A", "B"]), {"New/S/A": RDG_A, "New/S/B": RDG_B}, ileans=RDG_ILEANS)
             gone = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--readings", os.path.join(d, "nope.json")], words=RDG_WORDS)
-        f = lambda w: (1, ["SKEL-READING-FILE " + w], False)
+        f = lambda w: (1, ["SKEL-STATEMENT-READING-FILE " + w], False)
         return _eq((out, (gone[0], gone[3])),
                    ({"not-json": f("not-json"), "not-utf8": f("not-json"), "object": f("not-a-list"), "string": f("not-a-list"), "extra": f("entry 1 keys"), "missing": f("entry 1 keys"),
                      "int": f("entry 1 by not-a-string"), "null": f("entry 1 date not-a-string"), "empty-entry": f("entry 1 keys"), "not-object": f("entry 1 not-an-object"), "second": f("entry 2 file not-a-string"),
-                     "two": (1, ["SKEL-READING-FILE entry 1 keys", "SKEL-READING-FILE entry 2 not-an-object"], False), "empty-list": (0, [], True)}, (2, False)))
+                     "two": (1, ["SKEL-STATEMENT-READING-FILE entry 1 keys", "SKEL-STATEMENT-READING-FILE entry 2 not-an-object"], False), "empty-list": (0, [], True)}, (2, False)))
 
-    @case("RDG-TEXT", "the text is the bytes of `text_path` as strict UTF-8, refused `SKEL-READING-TEXT <statement> <why>` (all reported, in order, nothing written): `not-utf-8`; `empty` (an empty file, or a file of one "
+    @case("RDG-TEXT", "the text is the bytes of `text_path` as strict UTF-8, refused `SKEL-STATEMENT-READING-TEXT <statement> <why>` (all reported, in order, nothing written): `not-utf-8`; `empty` (an empty file, or a file of one "
                       "newline: ONE trailing newline is dropped first); `nul`; `carriage-return` (a file with CRLF is refused, never rewritten); `control-character` (a tab, ESC: any control character other than the newline); "
                       "`size N bytes, at most 20000`: the count is of UTF-8 BYTES of the text as written, so 20001 `a` is refused, 19999 `a` and one `é` (20000 characters, 20001 bytes) is refused and 10001 `é` "
                       "(20002 bytes) is refused")
@@ -6752,7 +6752,7 @@ def _selftest_cases():
         entries = [_rdg_entry(n, text_path="t%d.md" % i) for i, (n, _t) in enumerate(bad)]
         with _tmp() as d:
             r, g = _rdg_run(d, entries, {"t%d.md" % i: t for i, (_n, t) in enumerate(bad)})
-        t = lambda n, w: "SKEL-READING-TEXT %s %s" % (n, w)
+        t = lambda n, w: "SKEL-STATEMENT-READING-TEXT %s %s" % (n, w)
         return _eq((r[0], _rdg_skel(r[1]), r[3]),
                    (1, [t("nutf", "not-utf-8"), t("nempty", "empty"), t("nnl", "empty"), t("nnul", "nul"), t("ncr", "carriage-return"), t("ntab", "control-character"), t("nesc", "control-character"),
                         t("nbig", "size 20001 bytes, at most 20000"), t("nmb", "size 20001 bytes, at most 20000"), t("nmb2", "size 20002 bytes, at most 20000")], False))
@@ -6766,7 +6766,7 @@ def _selftest_cases():
         return _eq((rc, lines, exists, {n: g["text"] for n, g in got.items()}),
                    (0, [], True, {"alpha": "a" * 20000, "beta": "é" * 10000, "gamma": "abc", "delta": "abc\n", "eps": "abc", "zeta": "\n\n  abc  ", "eta": "A **bold** word and `code`."}))
 
-    @case("RDG-NAME", "`by` and `second_read_by`: `SKEL-READING-NAME <statement> <field>` when empty, over 80 CHARACTERS (81 refused, 80 taken, and 80 two-byte characters are taken: characters, not bytes), or holding a "
+    @case("RDG-NAME", "`by` and `second_read_by`: `SKEL-STATEMENT-READING-NAME <statement> <field>` when empty, over 80 CHARACTERS (81 refused, 80 taken, and 80 two-byte characters are taken: characters, not bytes), or holding a "
                       "control character, a bidi mark or a zero-width character (the predicate of the prompt path, `str.isprintable`); both fields bad give two lines, `by` first")
     def _():
         bad = [("n81", dict(by="a" * 81)), ("n81b", dict(second_read_by="a" * 81)), ("nempty", dict(by="")), ("nesc", dict(by="A\x1bB")), ("nbidi", dict(second_read_by="A‮B")), ("nzw", dict(by="A​B")),
@@ -6774,13 +6774,13 @@ def _selftest_cases():
         entries = [_rdg_entry(n, **kw) for n, kw in bad]
         with _tmp() as d:
             r, g = _rdg_run(d, entries, {"r.md": "Text."})
-        w = lambda n, f: "SKEL-READING-NAME %s %s" % (n, f)
+        w = lambda n, f: "SKEL-STATEMENT-READING-NAME %s %s" % (n, f)
         ok = _rdg_one("Text.", _rdg_entry(by="a" * 80, second_read_by="é" * 80))
         return _eq(((r[0], _rdg_skel(r[1]), r[3]), ok[0], ok[1], ok[2] and (ok[2]["by"] == "a" * 80, ok[2]["second_read_by"] == "é" * 80)),
                    ((1, [w("n81", "by"), w("n81b", "second_read_by"), w("nempty", "by"), w("nesc", "by"), w("nbidi", "second_read_by"), w("nzw", "by"), w("nboth", "by"), w("nboth", "second_read_by"), w("nnl", "by")], False),
                     0, [], (True, True)))
 
-    @case("RDG-DATE", "`date`: `SKEL-READING-DATE <statement>` unless it is exactly four digits, a hyphen, two digits, a hyphen, two digits (ASCII; no other digit, no trailing newline or space) AND a real calendar "
+    @case("RDG-DATE", "`date`: `SKEL-STATEMENT-READING-DATE <statement>` unless it is exactly four digits, a hyphen, two digits, a hyphen, two digits (ASCII; no other digit, no trailing newline or space) AND a real calendar "
                       "date (`2026-02-30`, `2026-02-29`, `2026-11-31`, `2026-13-01`, `0000-01-01` are refused; the leap day `2024-02-29` is taken)")
     def _():
         bad = ["2026-1-5", "20261127", "2026-11-27x", "2026-11-27\n", "٢٠٢٦-١١-٢٧", "", "2026-02-30", "2026-02-29", "2026-11-31", "2026-13-01", "0000-01-01", "2026-11-27 "]
@@ -6789,9 +6789,9 @@ def _selftest_cases():
             r, g = _rdg_run(d, entries, {"r.md": "Text."})
         ok = _rdg_many([_rdg_entry("alpha", date="2024-02-29"), _rdg_entry("beta", date="2026-12-31")], {"r.md": "Text."})
         return _eq(((r[0], _rdg_skel(r[1]), r[3]), ok[0], ok[1], ok[2]["alpha"]["date"], ok[2]["beta"]["date"]),
-                   ((1, ["SKEL-READING-DATE d%d" % i for i in range(len(bad))], False), 0, [], "2024-02-29", "2026-12-31"))
+                   ((1, ["SKEL-STATEMENT-READING-DATE d%d" % i for i in range(len(bad))], False), 0, [], "2024-02-29", "2026-12-31"))
 
-    @case("RDG-TARGET", "each entry must name a statement the build WROTE, matched by its full name in the named `file`: `SKEL-READING-TARGET <statement>` for a name that is not one, for a statement of a file that is not "
+    @case("RDG-TARGET", "each entry must name a statement the build WROTE, matched by its full name in the named `file`: `SKEL-STATEMENT-READING-TARGET <statement>` for a name that is not one, for a statement of a file that is not "
                         "in `--statements-for`, for a statement named under another file's id, and for two entries naming one statement (once); with both files named the same entry for the other file's statement builds")
     def _():
         def run(entries, ids="lean-s-a"):
@@ -6799,14 +6799,14 @@ def _selftest_cases():
                 r, g = _rdg_run(d, entries, {"r.md": "Text."}, ids=ids)
                 bread = _rdg_step(d, "lean-s-b-bdef").get("reading") if r[0] == 0 and "lean-s-b" in ids else None
             return r[0], _rdg_skel(r[1]), r[3], bread
-        t = lambda n: "SKEL-READING-TARGET " + n
+        t = lambda n: "SKEL-STATEMENT-READING-TARGET " + n
         return _eq((run([_rdg_entry("nope")]), run([_rdg_entry("bdef", file="lean-s-b")]), run([_rdg_entry("bdef", file="lean-s-b")], ids="lean-s-a,lean-s-b")[0::3], run([_rdg_entry("alpha"), _rdg_entry("alpha")]),
                     run([_rdg_entry("alpha", file="lean-s-b")], ids="lean-s-a,lean-s-b")[:3], run([_rdg_entry("beta", file="zzz")]), run([_rdg_entry("alpha"), _rdg_entry("nope"), _rdg_entry("beta", file="zzz")])),
                    ((1, [t("nope")], False, None), (1, [t("bdef")], False, None), (0, {"text": "Text.", "by": "Agent One", "second_read_by": "Agent Two", "date": "2026-11-27"}), (1, [t("alpha")], False, None),
                     (1, [t("alpha")], False), (1, [t("beta")], False, None), (1, [t("nope"), t("beta")], False, None)))
 
     @case("RDG-PATHS", "`text_path` is relative to the directory of the readings file, no `..` or empty or `.` segment, no absolute path, no symlink anywhere in it (also a folder of it), a regular file: each other "
-                       "shape is `SKEL-READING-FILE entry N text_path <why>` (`dotdot`, `absolute`, `empty`, `symlink`, `not-a-regular-file`, `missing`, `segment`), together, nothing written; a file outside "
+                       "shape is `SKEL-STATEMENT-READING-FILE entry N text_path <why>` (`dotdot`, `absolute`, `empty`, `symlink`, `not-a-regular-file`, `missing`, `segment`), together, nothing written; a file outside "
                        "the directory of the readings file that EXISTS (`../r.md`) is refused for its path; a plain `real/r.md` builds")
     def _():
         with _tmp() as d:
@@ -6825,11 +6825,11 @@ def _selftest_cases():
         with _tmp() as d:
             outside, _g = _rdg_run(d, [_rdg_entry(text_path="../r.md")], {"../r.md": "Text."}, sub="sub")
         return _eq(((r[0], _rdg_skel(r[1]), r[3]), good[0], gstep.get("reading", {}).get("text"), (outside[0], _rdg_skel(outside[1]), outside[3])),
-                   ((1, ["SKEL-READING-FILE entry %d text_path %s" % (i + 1, w) for i, (_p, w) in enumerate(paths)], False), 0, "Text.", (1, ["SKEL-READING-FILE entry 1 text_path dotdot"], False)))
+                   ((1, ["SKEL-STATEMENT-READING-FILE entry %d text_path %s" % (i + 1, w) for i, (_p, w) in enumerate(paths)], False), 0, "Text.", (1, ["SKEL-STATEMENT-READING-FILE entry 1 text_path dotdot"], False)))
 
     @case("RDG-QUOTE-FORM", "a QUOTE PARAGRAPH (a paragraph, split on blank lines, that starts `In the repository's words (`) has exactly the form `In the repository's words (` HEAD `): \"` QUOTED `\"` and nothing "
                             "after the closing mark but white space; HEAD is `lines A-B` or `line A` (decimal, A at least 1, A <= B, no leading zero), optionally preceded by `PATH, `. The good forms pass (and the text is "
-                            "written unchanged); each other shape is `SKEL-READING-QUOTE <statement> paragraph <n> form`, n counting the QUOTE paragraphs from 1")
+                            "written unchanged); each other shape is `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> form`, n counting the QUOTE paragraphs from 1")
     def _():
         good = [_rdg_q("lines %d-%d" % (RDG_L1, RDG_L1 + 1), RDG_ALPHA), _rdg_q("line %d" % RDG_L2, "Let `p` be prime. It is odd."), _rdg_q("lines %d-%d" % (RDG_L3, RDG_L3), "The constant is 3.14 here."),
                 _rdg_q("line %d" % (RDG_L1 + 1), "Alpha three continues on a second line.") + "   "]
@@ -6841,10 +6841,10 @@ def _selftest_cases():
         text2 = "\n\n".join("Plain paragraph %d.\n\n%s" % (i, p) for i, p in enumerate(bad)) + "\n"
         refused = _rdg_one(text2)
         return _eq((ok[:2], ok[2] and ok[2]["text"] == text[:-1], refused[:2], refused[3]),
-                   ((0, []), True, (1, ["SKEL-READING-QUOTE alpha paragraph %d form" % (i + 1) for i in range(len(bad))]), False))
+                   ((0, []), True, (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d form" % (i + 1) for i in range(len(bad))]), False))
 
     @case("RDG-QUOTE-PATH", "the SOURCE of a quote is its PATH when given, else the statement's own file; PATH must fullmatch `src/[A-Za-z0-9_./-]+\\.lean`, have no `.` or `..` segment and resolve (real path) inside "
-                            "the checkout, and be a file: else `SKEL-READING-QUOTE <statement> paragraph <n> path`; a file of the other statement file and a library file are allowed; the text of a quote of a PATH "
+                            "the checkout, and be a file: else `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> path`; a file of the other statement file and a library file are allowed; the text of a quote of a PATH "
                             "is checked too (`text`)")
     def _():
         lib = _lean(decl="/-- Lib one. Lib two. -/\ntheorem t : True := trivial")
@@ -6866,22 +6866,22 @@ def _selftest_cases():
         ok = _rdg_one("\n\n".join(good) + "\n", prep=prep)
         refused = _rdg_one("\n\n".join(bad) + "\n", prep=prep)
         return _eq((ok[:2], refused[:2], refused[3]),
-                   ((0, []), (1, ["SKEL-READING-QUOTE alpha paragraph %d path" % (i + 1) for i in range(len(bads))] + ["SKEL-READING-QUOTE alpha paragraph %d text" % (len(bads) + 1)]), False))
+                   ((0, []), (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d path" % (i + 1) for i in range(len(bads))] + ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d text" % (len(bads) + 1)]), False))
 
     @case("RDG-QUOTE-LINES", "THE DOC-STRING is the doc-comment of the source whose physical lines cover [A, B] completely (first line the one holding `/--`, last the one holding `-/`): none, or more than one "
-                             "(two doc-comments on one line), is `SKEL-READING-QUOTE <statement> paragraph <n> lines`; lines that stick out of the doc-string, that lie on the module note, on a statement with no doc-string "
+                             "(two doc-comments on one line), is `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> lines`; lines that stick out of the doc-string, that lie on the module note, on a statement with no doc-string "
                              "or past the end of the file are refused; lines inside a longer doc-string are taken")
     def _():
         bad = [_rdg_q("lines 1-2", "x"), _rdg_q("line %d" % RDG_L6, "x"), _rdg_q("line %d" % RDG_L5, "Eps one."), _rdg_q("lines %d-%d" % (RDG_L1 + 1, RDG_L1 + 2), "Alpha four ends."),
                _rdg_q("lines %d-%d" % (RDG_L2, RDG_L2 + 1), "x"), _rdg_q("line 9999", "x"), _rdg_q("lines %d-%d" % (RDG_L1 - 1, RDG_L1), "Alpha one.")]
         refused = _rdg_one("\n\n".join(bad) + "\n")
         ok = _rdg_one(_rdg_q("lines %d-%d" % (RDG_L1, RDG_L1 + 1), RDG_ALPHA) + "\n\n" + _rdg_q("line %d" % (RDG_L1 + 1), "Alpha four ends.") + "\n")
-        return _eq((refused[:2], refused[3], ok[:2]), ((1, ["SKEL-READING-QUOTE alpha paragraph %d lines" % (i + 1) for i in range(len(bad))]), False, (0, [])))
+        return _eq((refused[:2], refused[3], ok[:2]), ((1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d lines" % (i + 1) for i in range(len(bad))]), False, (0, [])))
 
     @case("RDG-QUOTE-TEXT", "THE COMPARISON: white space collapsed in BOTH, the QUOTED text must be a RUN OF WHOLE SENTENCES of the doc-string (it starts at the start or after a sentence end, ends at a sentence end or "
                             "at the end); the whole doc-string, the first sentence, a middle run, the last sentence and a quote with its own line break or double space pass; a plain substring, a changed word or "
                             "mark, a cut in the middle of a sentence, a reordered run, a middle sentence with its final period dropped, an empty quote, the text of another doc-string, and a cut at a period or after one "
-                            "INSIDE a backtick span (`` `y. z` ``) are `SKEL-READING-QUOTE <statement> paragraph <n> text`; the refusal lines hold no text of the reading")
+                            "INSIDE a backtick span (`` `y. z` ``) are `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> text`; the refusal lines hold no text of the reading")
     def _():
         head = "lines %d-%d" % (RDG_L1, RDG_L1 + 1)
         good = [RDG_ALPHA, "Alpha one.", "Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three continues on a second line.", "Alpha four ends.", "Alpha three\ncontinues on a second line.", "Alpha  one.", " Alpha one. "]
@@ -6890,7 +6890,7 @@ def _selftest_cases():
         ok = _rdg_one("\n\n".join(_rdg_q(head, q) for q in good) + "\n")
         refused = _rdg_one("\n\n".join(_rdg_q(head, q) for q in bad) + "\n")
         return _eq((ok[:2], refused[:2], refused[3], any("SECRET" in x or "Alpha" in x for x in refused[1])),
-                   ((0, []), (1, ["SKEL-READING-QUOTE alpha paragraph %d text" % (i + 1) for i in range(len(bad))]), False, False))
+                   ((0, []), (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d text" % (i + 1) for i in range(len(bad))]), False, False))
 
     @case("RDG-QUOTE-MARKS", "a SENTENCE END is a `.`, `?` or `!` outside backtick spans followed by any run (possibly empty) of the closing marks `*`, `_`, `)`, `]`, `\"` and then a space or the end of the text; a quote that "
                              "starts at the next character after the space passes: after a bold title `**Bold title.**`, and around `(really!)` and `\"go.\"`")
@@ -6908,7 +6908,7 @@ def _selftest_cases():
         bad = ["14 here. See e.g.x for more.", "x for more.", "The constant is 3.", "The constant is 3.14", "The constant is 3.14 here. See e.g."]
         ok = _rdg_one("\n\n".join(_rdg_q(head, q) for q in good) + "\n", entry=_rdg_entry("gamma"))
         refused = _rdg_one("\n\n".join(_rdg_q(head, q) for q in bad) + "\n", entry=_rdg_entry("gamma"))
-        return _eq((ok[:2], refused[:2]), ((0, []), (1, ["SKEL-READING-QUOTE gamma paragraph %d text" % (i + 1) for i in range(len(bad))])))
+        return _eq((ok[:2], refused[:2]), ((0, []), (1, ["SKEL-STATEMENT-READING-QUOTE gamma paragraph %d text" % (i + 1) for i in range(len(bad))])))
 
     @case("RDG-QUOTE-OTHER", "only a paragraph that STARTS `In the repository's words (` is checked: a paragraph that holds it later, one that starts `In the repository's words` without ` (` (a colon, or none), and one in "
                              "lower case are not quote paragraphs and pass unchecked; a quote whose QUOTED text holds `\"` characters passes (it ends at the LAST `\"` of the paragraph)")
@@ -6918,10 +6918,10 @@ def _selftest_cases():
                             "in the repository's words (lines 1-1): \"fake\"", _rdg_q("line %d" % RDG_L4, quoted), _rdg_q("line %d" % RDG_L4, quoted + ' Then left.')]) + "\n"
         ok = _rdg_one(text)
         bad = _rdg_one(_rdg_q("line %d" % RDG_L4, 'Delta said "hi" to you.') + "\n")
-        return _eq((ok[:2], ok[2] and ok[2]["text"] == text[:-1], bad[:2]), ((0, []), True, (1, ["SKEL-READING-QUOTE alpha paragraph 1 text"])))
+        return _eq((ok[:2], ok[2] and ok[2]["text"] == text[:-1], bad[:2]), ((0, []), True, (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 1 text"])))
 
     @case("RDG-REAL-QUOTE-SHAPE", "a made-up reading with the line shape of a real one (a preface paragraph, four `##` headings, `-` and `1.` lists, a `**bold**` mark, `code` spans, a quote in each HEAD form) is "
-                                  "written unchanged; the same text with one character of the second quote changed is refused `SKEL-READING-QUOTE alpha paragraph 2 text`")
+                                  "written unchanged; the same text with one character of the second quote changed is refused `SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 text`")
     def _():
         def make(bee):
             return ("This reading was written for a test; it names nobody.\n\n## What it rests on\n\n- `alpha` and the lemma below it.\n- Nothing else.\n\n"
@@ -6929,7 +6929,7 @@ def _selftest_cases():
                     + _rdg_q("src/New/S/B.lean, line %d" % RDG_LB, bee) + "\n\n## How the Lean proof goes\n\nThe proof is `trivial`.\n\n## What the Lean text adds to the comment\n\nNothing.\n")
         ok = _rdg_one(make("Bee one."))
         bad = _rdg_one(make("Bee onf."))
-        return _eq((ok[:2], ok[2] and ok[2]["text"] == make("Bee one.")[:-1], bad[:2]), ((0, []), True, (1, ["SKEL-READING-QUOTE alpha paragraph 2 text"])))
+        return _eq((ok[:2], ok[2] and ok[2]["text"] == make("Bee one.")[:-1], bad[:2]), ((0, []), True, (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 text"])))
 
     @case("RDG-PRINT", "the build prints, per named file and after that file's statements lines, `readings <file id>: <n> readings written` (n may be 0); without the option the line is absent")
     def _():
@@ -6994,7 +6994,7 @@ def _selftest_cases():
         found = {k: re.findall(r"^- " + k + r"[^\n]*?: `([^`\n]*)`", t, re.M) for k in RDG_WORDS_NEW}
         return _eq({k: v[0] for k, v in found.items() if len(v) == 1}, RDG_WORDS_NEW)
 
-    @case("RDG-ESCAPES", "every value of a refusal of the reading is printed through `_safe`: a statement name of the readings file that holds ESC or a bidi mark is printed as JSON text in `SKEL-READING-TEXT`, `-NAME`, "
+    @case("RDG-ESCAPES", "every value of a refusal of the reading is printed through `_safe`: a statement name of the readings file that holds ESC or a bidi mark is printed as JSON text in `SKEL-STATEMENT-READING-TEXT`, `-NAME`, "
                          "`-DATE` and `-TARGET`, and the output holds no raw control or bidi character")
     def _():
         names = ["x\x1b[31m-t", "y‮-n", "z\x1b-d"]
@@ -7005,8 +7005,8 @@ def _selftest_cases():
             r2, g = _rdg_run(d, [_rdg_entry("w\x1b[0m")], {"r.md": "Text."})
         bad = lambda text: any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 or c in "‮​" for c in text if c != "\n")
         return _eq((r[0], r[1], r2[0], r2[1], bad("\n".join(r[1] + r2[1]))),
-                   (1, ["SKEL-READING-TEXT " + json.dumps(names[0]) + " empty", "SKEL-READING-NAME " + json.dumps(names[1]) + " by", "SKEL-READING-DATE " + json.dumps(names[2])], 1,
-                    ["SKEL-READING-TARGET " + json.dumps("w\x1b[0m")], False))
+                   (1, ["SKEL-STATEMENT-READING-TEXT " + json.dumps(names[0]) + " empty", "SKEL-STATEMENT-READING-NAME " + json.dumps(names[1]) + " by", "SKEL-STATEMENT-READING-DATE " + json.dumps(names[2])], 1,
+                    ["SKEL-STATEMENT-READING-TARGET " + json.dumps("w\x1b[0m")], False))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
