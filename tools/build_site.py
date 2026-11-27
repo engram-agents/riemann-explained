@@ -2402,6 +2402,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             d["child_kind"] = kids[r["id"]][0]["kind"]
         if r.get("role"):   # optional: absent, never null and never empty
             d["role"] = r["role"]
+        if r.get("number"):   # optional (contract section 34): the statement's number `<file>.<n>`, a string; absent, never null and never empty
+            d["number"] = r["number"]
         if r.get("reading_count"):   # optional (contract section 33): the number of statements with a reading on or under the card, an integer >= 1; absent when none (never 0, false or null)
             d["reading_count"] = r["reading_count"]
         return d
