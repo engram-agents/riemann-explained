@@ -1716,6 +1716,7 @@ def _statement_symbols(kinds):
 # ---------------------------------------------------------------- the reading of a statement (`--readings FILE`): our own words about one statement, from a file, checked here so the page never meets a shape it refuses
 
 READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card); with the option the file of --strings-overlay-statements holds the 28 words and these (36), without it the 28
+READING_BUILDER_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")   # the four heading words of a reading: required in the overlay file with --readings, never written to index.json `strings` (the page reads four of the eight and refuses an index that holds these; the builder does not read the headings of a text today)
 READING_ENTRY_KEYS = ("statement", "file", "text_path", "by", "second_read_by", "date")   # the six string keys of an entry of the readings file, and no other
 READING_TEXT_MAX = 20000   # the most BYTES (UTF-8) of a reading's `text`, counted on the text as written (after the one trailing newline is dropped)
 READING_NAME_MAX = 80   # the most CHARACTERS of `by` and of `second_read_by`
@@ -2151,7 +2152,7 @@ def _run(opts):
     if clash:
         return refuse([("SKEL-OVERLAY-CLASH", k, "") for k in clash])
     page_keys = set(bs._graph_strings_keys(SYMBOLS)) | set(bs.GRAPH_OPTIONAL_KEYS)   # what _graph_files copies into index.json `strings`: anything else of an overlay would be dropped without a word
-    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph), ("strings-overlay-statements", words)) for k in obj if k not in page_keys)
+    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph), ("strings-overlay-statements", words)) for k in obj if k not in page_keys and not (opt == "strings-overlay-statements" and k in READING_BUILDER_KEYS))
     if unknown:
         return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
     if "strings-overlay-statements" in opts:   # exactly the statement words: a missing key and a page key that is not one of them are refused by name
@@ -2166,6 +2167,9 @@ def _run(opts):
     problems = bs._strings_problems(strings)
     if problems:
         return refuse(problems)
+    for k in READING_BUILDER_KEYS:   # checked above with the others, and not written: the page does not read them
+        if k in words:
+            strings.pop(k, None)
     entries = None
     if "readings" in opts:   # the readings file: its shape, its texts, names and dates are checked here; its targets and quotes are checked by the build, which has the statements and the source
         try:

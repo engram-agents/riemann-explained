@@ -1862,7 +1862,7 @@ GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_labe
                        "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
                        "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
                        "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source",
-                       "decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the last eight: the reading of a statement (`--readings` of the Lean map builder); `readings_byline` has {by}, {second_read_by} and {date}
+                       "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline")   # the last four: the reading of a statement (`--readings` of the Lean map builder), the four the page reads (its READING_STRINGS); `readings_byline` has {by}, {second_read_by} and {date}. The four heading words of a reading are the builder's own and are not page keys
 
 
 def _graph_strings_keys(symbols=None):
