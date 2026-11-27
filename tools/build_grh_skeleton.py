@@ -1724,9 +1724,13 @@ MATHS_FILE_LIMIT = 1048576   # the most bytes of one table file the tool reads (
 MATHS_RULES = ("repository-bold", "classical", "lean-name", "ours")   # A3, Ariadne's four rules in order
 MATHS_NAME_MAX = 60   # the most CODE POINTS of a name (Kepler 40378)
 MATHS_TEXT_MAX = 600   # the most characters of a statement's text
+MATHS_NOTATION_TEXT_MAX, MATHS_SYMBOL_MAX = 600, 200   # the most CODE POINTS of a notation row's `text` and `symbol` (the page's own limits, contract A5 LIMITS: a legal value is never refused by the page)
+MATHS_NOTATION_ROWS_MAX = 200   # the most notation rows of ONE file
+MATHS_LEAN_MAX, MATHS_LEAN_NAME_MAX = 50, 300   # the most names in the `lean` list of a notation row, and the most characters of one name
+MATHS_NUMBER_MAX = 999999   # each counter of a number `<file>.<n>` has 1 to 6 digits and no leading zero: a place beyond it is SKEL-MATHS-NUMBERS
 MATHS_STATUSES = ("draft", "read")
 _MATHS_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
-_MATHS_TOKEN = re.compile(r"[A-Za-z0-9_.']+")   # predicate P: a token is a maximal run of these characters, then stripped of leading and trailing `.` and `'`
+_MATHS_TOKEN = re.compile(r"[\w.']+")   # predicate P: a token is a maximal run of Unicode word characters (letters, digits, `_`), dots and apostrophes
 _MATHS_LINE_NUMBER = re.compile(r"\blines?\s+\d", re.I)
 _MATHS_BOLD = re.compile(r"\s*\*\*([^\n]+?)\*\*")
 
@@ -1809,15 +1813,15 @@ def _maths_rows(table, obj, known):
 
 
 def _maths_known(names):
-    """(full, core, under): the names of the compiled index for predicate P: `full` every declared name; `core` the SHORT names (the last dotted component) of 4 or more characters that hold a dot or a lower-case
-    letter directly followed by an upper-case one; `under` the other short names of 4 or more characters that hold an underscore. Built once per build, from every declaration of the index."""
+    """(full, core, under): the names of the compiled index for predicate P: `full` every declared name; `core` the SHORT names (the last dotted component) of 4 or more characters that hold a dot or a
+    letter after the first character that is upper case (`CMType`, `BPlus`); `under` the other short names of 4 or more characters that hold an underscore. Built once per build, from every declaration of the index."""
     full = frozenset(names)
     core, under = set(), set()
     for n in full:
         s = n.rsplit(".", 1)[-1]
         if len(s) < 4:
             continue
-        if "." in s or any(a.islower() and b.isupper() for a, b in zip(s, s[1:])):
+        if "." in s or any(c.isupper() for c in s[1:]):
             core.add(s)
         elif "_" in s:
             under.add(s)
@@ -1825,15 +1829,28 @@ def _maths_known(names):
 
 
 def _maths_p_tokens(text, known, underscore):
-    """[token] of `text` flagged by predicate P (contract section P), in order, each once: a token (a maximal run of letters, digits, `_`, `.` and `'`, stripped of leading and trailing `.` and `'`) that equals a known
-    FULL name, or a known SHORT name of 4 or more characters that holds a dot or an inner capital, or (when `underscore` is False) an underscore. A short name that is a plain word (`le`, `mul`, `Prime`) is not flagged."""
+    """[token] of `text` flagged by predicate P (contract section P), in order, each once: a token (a maximal run of Unicode word characters, dots and apostrophes, with its leading dots and apostrophes and its trailing dots cut) that,
+    looked up as written and, when it ends in an apostrophe, also without it (the form that matched is the one reported), equals a known FULL name, or a known SHORT name of 4 or more characters that holds a dot or an inner capital
+    (any upper-case letter after the first), or (when `underscore` is False) an underscore. A short name that is a plain word (`le`, `mul`, `Prime`) is not flagged."""
     full, core, under = known
     out = []
     for t in _MATHS_TOKEN.findall(text):
-        t = t.strip(".'")
-        if t and (t in full or t in core or (not underscore and t in under)) and t not in out:
-            out.append(t)
+        t = t.lstrip(".'").rstrip(".")
+        for form in [t] + ([t[:-1].rstrip(".")] if t.endswith("'") else []):
+            if form and (form in full or form in core or (not underscore and form in under)):
+                if form not in out:
+                    out.append(form)
+                break
     return out
+
+
+def _maths_chars_bad(text):
+    """True when a text holds a control character (Unicode category Cc, a newline and a tab too) or a lone surrogate (it cannot be encoded as UTF-8): the CHARACTERS rule of A4 and A5. A no-break space, a zero-width or a bidi mark is allowed."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return True
+    return any(unicodedata.category(c) == "Cc" for c in text)
 
 
 def _maths_visible(text, known, underscore):
@@ -1874,6 +1891,26 @@ def _maths_name_whys(row, doc, file_id, known, taken):
     return why
 
 
+def _maths_numbers(stm_rows, rows, ids, limit=None):
+    """(errors, {statement step id: `<file>.<n>`}) (contract section 34, B2; `limit`, default MATHS_NUMBER_MAX, is the most a counter may reach: a file place or a statement place beyond it is `SKEL-MATHS-NUMBERS <file id> file-place` or
+    `statement-place`, one line each per file, and the numbers are then {}): `<file>` is the 1-based place of the statement's FILE step among the FILE children of its group, in the group's children order (`order`, the key `_graph_files` sorts the
+    children of a step by), `<n>` the 1-based place among the statements of its file in source order, one counter for every kind. `stm_rows` are the statement rows, `rows` the rows of the map, `ids` the file steps opened."""
+    by_parent = {}
+    for r in stm_rows:
+        by_parent.setdefault(r["parent"], []).append(r)
+    place = {}   # file step id -> its place among the file children of its group
+    idset = set(ids)
+    for g in {r["parent"] for r in rows if r["id"] in idset}:
+        for i, f in enumerate(sorted((r for r in rows if r["parent"] == g and r["kind"] == "file"), key=lambda r: r["order"]), 1):
+            place[f["id"]] = i
+    limit = MATHS_NUMBER_MAX if limit is None else limit
+    errors, numbers = [], {}
+    for fid, kids in by_parent.items():
+        errors += [("SKEL-MATHS-NUMBERS", fid, what) for what, n in (("file-place", place[fid]), ("statement-place", len(kids))) if n > limit]
+        numbers.update({r["id"]: "%d.%d" % (place[fid], n) for n, r in enumerate(sorted(kids, key=lambda r: r["order"]), 1)})
+    return errors, ({} if errors else numbers)
+
+
 def _maths_check(maths, ilean_dir, stm, rows, ids):
     """(errors, written) for the three tables `maths` ({table: parsed JSON}) of a build with the statements `stm` (contract section 34): the rows of each table (A2), then the names, the statements and the notation (A3 to A5),
     each in row order, every refusal printed. `written` is None with errors, else {"rows": the statement rows with `number` and `title`, "step_extra": the statements' extras with `math` and `human`, "notation": {file id: [row]},
@@ -1894,39 +1931,39 @@ def _maths_check(maths, ilean_dir, stm, rows, ids):
     for _k, row in good["statements"]:
         text = row["text"]
         why = ["shape"] if text == "" or "\n" in text or "\r" in text or len(text) > MATHS_TEXT_MAX else []
-        errors += [("SKEL-MATHS-STATEMENTS", _safe(row["statement"]), w) for w in why + _maths_visible(text, known, True)]
+        errors += [("SKEL-MATHS-STATEMENTS", _safe(row["statement"]), w) for w in why + (["chars"] if _maths_chars_bad(text) else []) + _maths_visible(text, known, True)]
+    per_file = {}
     for k, row in good["notation"]:
         why = [] if row["file"] in ids else ["file"]
-        if any(x == "" or "\n" in x or "\r" in x for x in (row["symbol"], row["text"])) or not (isinstance(row["lean"], list) and all(isinstance(x, str) for x in row["lean"])):
+        per_file[row["file"]] = per_file.get(row["file"], 0) + 1
+        lean_ok = isinstance(row["lean"], list) and all(isinstance(x, str) for x in row["lean"])
+        if (any(x == "" or "\n" in x or "\r" in x for x in (row["symbol"], row["text"])) or not lean_ok or len(row["text"]) > MATHS_NOTATION_TEXT_MAX or len(row["symbol"]) > MATHS_SYMBOL_MAX
+                or per_file[row["file"]] > MATHS_NOTATION_ROWS_MAX or len(row["lean"]) > MATHS_LEAN_MAX or any(len(x) > MATHS_LEAN_NAME_MAX for x in row["lean"])):   # the limits are the page's own (A5 LIMITS)
             why.append("shape")
         else:
             why += ["lean " + _safe(n) for n in row["lean"] if n not in where]
+        if _maths_chars_bad(row["text"]) or _maths_chars_bad(row["symbol"]):
+            why.append("chars")
         why += list(dict.fromkeys(_maths_visible(row["text"], known, True) + _maths_visible(row["symbol"], known, True)))
         errors += [("SKEL-MATHS-NOTATION", _maths_row_where("notation", row, k), w) for w in why]
     if errors:
         return errors, None
     names = {row["statement"]: row for _k, row in good["names"]}
     stms = {row["statement"]: row for _k, row in good["statements"]}
-    by_parent, new_rows = {}, []
+    number_errors, numbers = _maths_numbers(stm["rows"], rows, ids)
+    if number_errors:
+        return number_errors, None
+    new_rows, step_extra = [], {}
     for r in stm["rows"]:
-        by_parent.setdefault(r["parent"], []).append(r)
-    place = {}   # file step id -> its 1-based place among the FILE children of its group, in the group's children order (`order`, the key `_graph_files` sorts the children of a step by)
-    idset = set(ids)
-    for g in {r["parent"] for r in rows if r["id"] in idset}:
-        for i, f in enumerate(sorted((r for r in rows if r["parent"] == g and r["kind"] == "file"), key=lambda r: r["order"]), 1):
-            place[f["id"]] = i
-    step_extra = {}
-    for fid, kids in by_parent.items():
-        for n, r in enumerate(sorted(kids, key=lambda r: r["order"]), 1):
-            number = "%d.%d" % (place[fid], n)
-            full = stm["step_extra"][r["id"]]["name"]
-            new_rows.append(dict(r, number=number, title=names[full]["name"] if full in names else r["role"] + " " + number))
-            extra = dict(stm["step_extra"][r["id"]])
-            if full in stms:
-                extra["math"] = {"status": stms[full]["status"], "text": stms[full]["text"]}
-            if full in names:
-                extra["human"] = {"rule": names[full]["rule"], "status": names[full]["status"]}
-            step_extra[r["id"]] = extra
+        number = numbers[r["id"]]
+        full = stm["step_extra"][r["id"]]["name"]
+        new_rows.append(dict(r, number=number, title=names[full]["name"] if full in names else r["role"] + " " + number))
+        extra = dict(stm["step_extra"][r["id"]])
+        if full in stms:
+            extra["math"] = {"status": stms[full]["status"], "text": stms[full]["text"]}
+        if full in names:
+            extra["human"] = {"rule": names[full]["rule"], "status": names[full]["status"]}
+        step_extra[r["id"]] = extra
     order = {r["id"]: i for i, r in enumerate(stm["rows"])}
     notation = {}
     for _k, row in good["notation"]:
@@ -2539,7 +2576,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     if errors:
         return errors, {}, rows, rep
     maths_out = None
-    if maths is not None:   # the three tables of ours (contract section 34): checked after the statements, before the readings (their errors come first); the statement rows then carry `number` and `title`
+    if maths is not None:   # the three tables of ours (contract section 34): checked after the statements and before the readings the build attaches (the reading file, text, name, date and heading refusals are made earlier, in `_run`, before the tables are read); the statement rows then carry `number` and `title`
         if stm is None:
             return [("SKEL-MATHS-OPTIONS", "maths", "needs --statements-for")], {}, rows, rep
         errors, maths_out = _maths_check(maths, ilean_dir, stm, rows, statements_for)
@@ -3613,9 +3650,10 @@ def _rdc_invariants(files):
 # ---- the maths tables (contract section 34, A and B1 to B3): fixtures and helpers of the MTH cases; every file, name, row and sentence here is made up.
 MTH_SRCS = {"New/P/A": _stm_src("/-- **Alpha result.** One. -/\ntheorem alpha : True := trivial\n\n/-- Beta one. -/\nlemma beta : True := trivial\n\ndef primeRemainder : Nat := 0\n\ntheorem countError : True := trivial\n"),
             "New/P/B": _stm_src("theorem bdef : True := trivial\n\nlemma ne_of_lt : True := trivial\n"), "New/P/C": RDC_SRCS["New/P/C"], "New/Q/D": RDC_SRCS["New/Q/D"]}   # the fixture of RDC (two parts, three groups, four files) with more statements in A (three kinds) and B
+MTH_LONG300 = "Q" + "a" * 299   # a declaration name of exactly 300 characters, known to the index of the fixture (the limit of a `lean` name)
 MTH_ILEANS = {"New/P/A": _stm_ilean("New/P/A", ("alpha", "beta", "primeRemainder", "countError")), "New/P/B": _stm_ilean("New/P/B", ("bdef", "ne_of_lt")),
               "New/P/C": RDC_ILEANS["New/P/C"], "New/Q/D": RDC_ILEANS["New/Q/D"],
-              "Lib/Other/Names": _stm_ilean("Lib/Other/Names", ("Nat.le", "Nat.mul", "Nat.sum", "Nat.Prime", "Nat.succ", "Foo.fullName", "Foo.integral_primeRemainder", "Foo.my_name", "Foo.R_q"))}   # declarations outside the three files: the compiled index knows them all
+              "Lib/Other/Names": _stm_ilean("Lib/Other/Names", ("Nat.le", "Nat.mul", "Nat.sum", "Nat.Prime", "Nat.succ", "Foo.fullName", "Foo.integral_primeRemainder", "Foo.my_name", "Foo.R_q", "Foo.CMType", "Foo.BPlus", "Foo.épsilonBound", "Foo.g₃_eq", "Foo.smul_natCast'", "Foo.primeBound", MTH_LONG300))}   # declarations outside the three files: the compiled index knows them all
 MTH_IDS = {"alpha": "lean-p-a-alpha", "beta": "lean-p-a-beta", "primeRemainder": "lean-p-a-primeremainder", "countError": "lean-p-a-counterror", "bdef": "lean-p-b-bdef", "ne_of_lt": "lean-p-b-ne-of-lt",
            "cdef": "lean-p-c-cdef", "ddef": "lean-q-d-ddef"}
 MTH_NUMBERS = {"alpha": "1.1", "beta": "1.2", "primeRemainder": "1.3", "countError": "1.4", "bdef": "2.1", "ne_of_lt": "2.2", "cdef": "1.1", "ddef": "1.1"}   # file place in its group . place among the statements of the file, one counter for every kind
@@ -8634,13 +8672,13 @@ def _selftest_cases():
 
     # ---- the names (A3)
 
-    @case("MTH-NAMES-CHARS", "a name is not empty, has no leading or trailing space, no control character, no backtick and no underscore: each `SKEL-MATHS-NAMES <statement> chars` (the neighbour `Alpha result` and a name with an inner space, a digit, a "
+    @case("MTH-NAMES-CHARS", "a name is not empty, has no leading or trailing space, no control character, no backtick and no underscore, and nothing that is not printable (`str.isprintable`: a no-break space, a zero-width mark and a lone surrogate are `chars` here): each `SKEL-MATHS-NAMES <statement> chars` (the neighbour `Alpha result` and a name with an inner space, a digit, a "
                              "hyphen and a Greek letter pass)")
     def _():
         run = lambda name: _mth_why(_mth_run(names=[_mth_n("alpha", name)])[0])
         L = ["SKEL-MATHS-NAMES alpha chars"]
-        return _eq({n: run(n) for n in ("Alpha result", "The weights λ(n) of 2-step", "", " Alpha", "Alpha ", "Al\x07pha", "Al\tpha", "Al`pha", "Al_pha")},
-                   {"Alpha result": None, "The weights λ(n) of 2-step": None, "": L, " Alpha": L, "Alpha ": L, "Al\x07pha": L, "Al\tpha": L, "Al`pha": L, "Al_pha": L})
+        return _eq({n: run(n) for n in ("Alpha result", "The weights λ(n) of 2-step", "", " Alpha", "Alpha ", "Al\x07pha", "Al\tpha", "Al`pha", "Al_pha", "Al\u00a0pha", "Al\u200bpha", "Al\ud800pha")},
+                   {"Alpha result": None, "The weights λ(n) of 2-step": None, "": L, " Alpha": L, "Alpha ": L, "Al\x07pha": L, "Al\tpha": L, "Al`pha": L, "Al_pha": L, "Al\u00a0pha": L, "Al\u200bpha": L, "Al\ud800pha": L})
 
     @case("MTH-NAMES-LENGTH", "a name has at most 60 CODE POINTS (not UTF-16 units, not bytes): 60 letters pass and 61 are `length`; 60 characters outside the BMP (120 UTF-16 units) pass and 61 are `length`")
     def _():
@@ -8693,11 +8731,11 @@ def _selftest_cases():
 
     # ---- the statements (A4) and the visible-text checks they share with the notation
 
-    @case("MTH-STM-SHAPE", "a statement text is not empty, has no newline and at most 600 characters: `SKEL-MATHS-STATEMENTS <statement> shape` for the empty text, `a\\nb` and 601 characters; 600 pass; code spans are allowed")
+    @case("MTH-STM-SHAPE", "a statement text is not empty, has no newline and at most 600 characters: `SKEL-MATHS-STATEMENTS <statement> shape` for the empty text, `a\\nb` (which is also `chars`, a newline being a control character) and 601 characters; 600 pass; code spans are allowed")
     def _():
         run = lambda text: _mth_why(_mth_run(statements=[_mth_s("alpha", text)])[0])
         L = ["SKEL-MATHS-STATEMENTS alpha shape"]
-        return _eq((run("x" * 600), run("x" * 601), run(""), run("a\nb"), run("`n ≤ x` and `1/2`"), run("é" * 600)), (None, L, L, L, None, None))
+        return _eq((run("x" * 600), run("x" * 601), run(""), run("a\nb"), run("`n ≤ x` and `1/2`"), run("é" * 600)), (None, L, L, L + ["SKEL-MATHS-STATEMENTS alpha chars"], None, None))
 
     @case("MTH-STM-P", "a statement text holds no declaration name the index knows (P, underscore ALLOWED): `primeRemainder`, `Foo.fullName`, `fullName` and `integral_primeRemainder` are `P <token>` (in code spans too); `my_name` and `R_q` pass here "
                        "(underscore is notation), and so do `le`, `succ`, `Prime` and a plain sentence")
@@ -8717,6 +8755,36 @@ def _selftest_cases():
                    {"see Foo.lean here": L("lean-file"), "the lean file": None, "see lines 3-4": L("line-number"), "see line 12": L("line-number"), "see LINE 7": L("line-number"), "the line of it": None,
                     "outline 3": None, "a line.": None, "a [[x]] b": L("link"), "a [x] b": None})
 
+    # ---- the CHARACTERS rule (contract A4 and A5, round 2): a control character or a lone surrogate in a statement's text or a notation row's text or symbol is `chars`, never a traceback
+
+    @case("MTH-STM-CHARS", "a statement's `text` with a control character (category Cc: BEL, tab, NUL, and a newline, which is also `shape`) or a lone surrogate (not encodable as UTF-8) is `SKEL-MATHS-STATEMENTS <statement> chars`, never an uncaught exception; "
+                           "a no-break space, a zero-width space and a bidi override stay ALLOWED in a statement's text (names refuse them: MTH-NAMES-CHARS)")
+    def _():
+        run = lambda text: _mth_why(_mth_run(statements=[_mth_s("alpha", text)])[0])
+        C = ["SKEL-MATHS-STATEMENTS alpha chars"]
+        return _eq({t: run(t) for t in ("a\x07b", "a\tb", "a\x00b", "a\ud800b", "a\nb", "a\u00a0b", "a\u200bb", "a\u202eb", "`x \u2264 y`")},
+                   {"a\x07b": C, "a\tb": C, "a\x00b": C, "a\ud800b": C, "a\nb": ["SKEL-MATHS-STATEMENTS alpha shape"] + C, "a\u00a0b": None, "a\u200bb": None, "a\u202eb": None, "`x \u2264 y`": None})
+
+    @case("MTH-NOT-CHARS", "the same CHARACTERS rule on a notation row's `text` and on its `symbol`: a control character or a lone surrogate is `SKEL-MATHS-NOTATION <file> <symbol> chars` (the symbol is printed as JSON text when it is not printable), one line when both fields hold one; "
+                           "a no-break space, a zero-width space and a bidi override stay allowed in both")
+    def _():
+        run = lambda **kw: _mth_why(_mth_run(notation=[dict(_mth_t("lean-p-a"), **kw)])[0])
+        L = lambda who: ["SKEL-MATHS-NOTATION lean-p-a %s chars" % who]
+        return _eq({"text-bel": run(text="a\x07b"), "text-tab": run(text="a\tb"), "text-surrogate": run(text="a\ud800b"), "symbol-bel": run(symbol="x\x07"), "symbol-surrogate": run(symbol="x\ud800"),
+                    "both": run(symbol="x\x07", text="a\x07b"), "text-nbsp": run(text="a\u00a0b"), "text-zwsp": run(text="a\u200bb"), "text-bidi": run(text="a\u202eb"), "symbol-nbsp": run(symbol="x\u00a0"), "symbol-zwsp": run(symbol="x\u200b")},
+                   {"text-bel": L("x"), "text-tab": L("x"), "text-surrogate": L("x"), "symbol-bel": L(json.dumps("x\x07")), "symbol-surrogate": L(json.dumps("x\ud800")), "both": L(json.dumps("x\x07")),
+                    "text-nbsp": None, "text-zwsp": None, "text-bidi": None, "symbol-nbsp": None, "symbol-zwsp": None})
+
+    @case("MTH-CHARS-CLI", "through the command line a lone surrogate (JSON `\"\\ud800\"`) in a statement's text, a notation row's text and symbol and a name is refused with its named lines (exit 1, OUT_DIR not written, no traceback): the build used to end in "
+                           "UnicodeEncodeError on the statements text; the neighbour with a no-break space builds")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, RDC_BODY, MTH_SRCS, ileans=MTH_ILEANS)
+            bad = _mth_cli(d, g, names={"rows": [_mth_n("alpha", "Al\ud800pha")]}, statements={"rows": [_mth_s("alpha", "a\ud800b")]}, notation={"rows": [_mth_t("lean-p-a", "x\ud800", "a\ud800b")]}, out="o-bad")
+            ok = _mth_cli(d, g, names={"rows": []}, statements={"rows": [_mth_s("alpha", "a\u00a0b")]}, notation={"rows": [_mth_t("lean-p-a", "x", "a\u00a0b")]}, out="o-ok")
+        return _eq((bad[0], [x for x in bad[1] if x.startswith("SKEL-")], bad[2].count("Traceback"), bad[3], ok[0], ok[3]),
+                   (1, ["SKEL-MATHS-NAMES alpha chars", "SKEL-MATHS-STATEMENTS alpha chars", "SKEL-MATHS-NOTATION lean-p-a %s chars" % json.dumps("x\ud800")], 0, False, 0, True))
+
     # ---- the notation (A5)
 
     @case("MTH-NOT-FILE", "a notation row's `file` is one of `--statements-for`: `SKEL-MATHS-NOTATION <file> <symbol> file` for a file that is not (a file of the fixture left out of the list, an id that is no step); the same file listed passes")
@@ -8732,8 +8800,8 @@ def _selftest_cases():
         S = ["SKEL-MATHS-NOTATION lean-p-a x shape"]
         return _eq({"ok": run(), "empty-lean": run(lean=[]), "known": run(lean=["alpha", "Nat.le"]), "empty-symbol": run(symbol=""), "newline-symbol": run(symbol="a\nb"), "empty-text": run(text=""), "newline-text": run(text="a\nb"),
                     "lean-string": run(lean="alpha"), "lean-int": run(lean=[1]), "lean-null": run(lean=None), "unknown": run(lean=["alpha", "nope.x", "also.no"])},
-                   {"ok": None, "empty-lean": None, "known": None, "empty-symbol": ['SKEL-MATHS-NOTATION lean-p-a "" shape'], "newline-symbol": ['SKEL-MATHS-NOTATION lean-p-a "a\\nb" shape'], "empty-text": S,
-                    "newline-text": S, "lean-string": S, "lean-int": S, "lean-null": S,
+                   {"ok": None, "empty-lean": None, "known": None, "empty-symbol": ['SKEL-MATHS-NOTATION lean-p-a "" shape'], "newline-symbol": ['SKEL-MATHS-NOTATION lean-p-a "a\\nb" shape', 'SKEL-MATHS-NOTATION lean-p-a "a\\nb" chars'], "empty-text": S,
+                    "newline-text": S + ["SKEL-MATHS-NOTATION lean-p-a x chars"], "lean-string": S, "lean-int": S, "lean-null": S,
                     "unknown": ["SKEL-MATHS-NOTATION lean-p-a x lean nope.x", "SKEL-MATHS-NOTATION lean-p-a x lean also.no"]})
 
     @case("MTH-NOT-VISIBLE", "the visible-text check of A4 runs on a notation row's `text` AND on its `symbol` (underscore allowed): `P <token>`, `lean-file`, `line-number`, `link` each refuse (`SKEL-MATHS-NOTATION <file> <symbol> <why>`); `R_q` as a symbol and "
@@ -8748,21 +8816,67 @@ def _selftest_cases():
                     "symbol-p": L("primeRemainder", "P primeRemainder"), "symbol-file": L("a.lean", "lean-file"), "symbol-line": L("line 4", "line-number"), "symbol-link": L("[[a]]", "link"),
                     "ok-symbol": None, "ok-text": None, "plain": None})
 
+    # ---- the page's limits on a notation row (contract A5, LIMITS; Clio 40481): the builder refuses beyond them as `shape`, so a legal value is never refused by the page
+
+    @case("MTH-NOT-LIMITS", "a notation row's `text` has 1 to 600 CODE POINTS (600 pass, 601 are `SKEL-MATHS-NOTATION <file> <symbol> shape`; 600 characters outside the BMP pass, 601 do not), its `symbol` 1 to 200 (200 pass, 201 do not, the symbol "
+                            "printed as it is), its `lean` at most 50 names (50 pass, 51 do not) and each name of `lean` at most 300 characters (a known name of 300 passes, one of 301 is `shape` and no `lean <name>` line)")
+    def _():
+        run = lambda **kw: _mth_why(_mth_run(notation=[dict(_mth_t("lean-p-a"), **kw)])[0])
+        S = ["SKEL-MATHS-NOTATION lean-p-a x shape"]
+        astral = "\U0001D538"
+        return _eq({"text-600": run(text="x" * 600), "text-601": run(text="x" * 601), "text-600-astral": run(text=astral * 600), "text-601-astral": run(text=astral * 601),
+                    "symbol-200": run(symbol="x" * 200), "symbol-201": run(symbol="x" * 201),
+                    "lean-50": run(lean=["alpha"] * 50), "lean-51": run(lean=["alpha"] * 51), "name-300": run(lean=[MTH_LONG300]), "name-301": run(lean=["Q" + "a" * 300])},
+                   {"text-600": None, "text-601": S, "text-600-astral": None, "text-601-astral": S, "symbol-200": None, "symbol-201": ["SKEL-MATHS-NOTATION lean-p-a %s shape" % ("x" * 201)],
+                    "lean-50": None, "lean-51": S, "name-300": None, "name-301": S})
+
+    @case("MTH-NOT-ROWS", "at most 200 notation rows PER FILE: the 201st row of one file is `SKEL-MATHS-NOTATION <file> <symbol> shape` (one line for each row beyond the 200th, in table order); 200 rows pass; 200 rows in each of two files "
+                          "(400 in the table) pass, and so do 101 and 100 in two files")
+    def _():
+        rows = lambda f, n, start=0: [_mth_t(f, "s%d" % (start + i)) for i in range(n)]
+        run = lambda notation: _mth_why(_mth_run(notation=notation)[0])
+        return _eq((run(rows("lean-p-a", 200)), run(rows("lean-p-a", 201)), run(rows("lean-p-a", 203)), run(rows("lean-p-a", 200) + rows("lean-p-b", 200)), run(rows("lean-p-a", 101) + rows("lean-p-b", 100))),
+                   (None, ["SKEL-MATHS-NOTATION lean-p-a s200 shape"], ["SKEL-MATHS-NOTATION lean-p-a s%d shape" % i for i in (200, 201, 202)], None, None))
+
+    @case("MTH-NUMBERS-LIMIT", "a number is two counters of 1 to 6 digits (contract A5): the limit is the constant `MATHS_NUMBER_MAX` = 999999; a file place or a statement place beyond it is `SKEL-MATHS-NUMBERS <file id> file-place` or `statement-place` "
+                               "(one line each, per file, in the order of the statements' files; a file with 1,000,000 statements cannot be built cheaply, so the function takes the limit and a case sets the constant): the place AT the limit passes, "
+                               "the next is refused, with made-up rows and through a build of the fixture (the first file has 4 statements: limit 4 builds, limit 3 refuses it)")
+    def _():
+        group = {"id": "g", "parent": "root", "order": 0, "kind": "group"}
+        files = [{"id": "f%d" % i, "parent": "g", "order": i - 1, "kind": "file"} for i in (1, 2, 3)]
+        stm = [{"id": "s%d" % i, "parent": "f1", "order": i - 1} for i in (1, 2, 3)] + [{"id": "t1", "parent": "f3", "order": 0}]
+        rows = [group] + files
+        at = _maths_numbers(stm, rows, ["f1", "f2", "f3"], limit=3)
+        over = _maths_numbers(stm, rows, ["f1", "f2", "f3"], limit=2)
+        saved = MATHS_NUMBER_MAX
+        out = {}
+        try:
+            for limit in (4, 3):
+                globals()["MATHS_NUMBER_MAX"] = limit
+                out[limit] = _mth_why(_mth_run()[0])
+        finally:
+            globals()["MATHS_NUMBER_MAX"] = saved
+        return _eq((saved, at, over, out), (999999, ([], {"s1": "1.1", "s2": "1.2", "s3": "1.3", "t1": "3.1"}),
+                                             ([("SKEL-MATHS-NUMBERS", "f1", "statement-place"), ("SKEL-MATHS-NUMBERS", "f3", "file-place")], {}),
+                                             {4: None, 3: ["SKEL-MATHS-NUMBERS lean-p-a statement-place"]}))
+
     # ---- predicate P (contract section P): one function, one set of names built once from the whole compiled index
 
     @case("MTH-P", "predicate P over the statements table (underscore allowed) and the names table (underscore NOT allowed): flagged are a token equal to a known FULL name (`Foo.fullName`, `Nat.le`, `primeRemainder`, a name of a statement of the build) and "
-                   "a known SHORT name of 4 or more characters that has an underscore (names only), a dot, or a lower-case letter directly followed by an upper-case one (`fullName`, `integral_primeRemainder` in both tables, `my_name` in names only); "
-                   "NOT flagged: `le`, `sum`, `mul`, `succ`, `Prime` (plain short names), and `R_q`")
+                   "a known SHORT name of 4 or more characters that has an underscore (names only), a dot, or an inner capital, ANY upper-case letter after the first character (`fullName`, `CMType`, `BPlus`, `integral_primeRemainder` in both tables, `my_name` in names only); tokens are runs of Unicode word characters, dots and apostrophes "
+                   "(`épsilonBound`, `Foo.g₃_eq`), looked up as written and, with a final apostrophe, also without it (`smul_natCast'`, `'primeBound'`); NOT flagged: `le`, `sum`, `mul`, `succ`, `Prime` (plain short names), and `R_q`")
     def _():
-        toks = ("Foo.fullName", "Nat.le", "primeRemainder", "fullName", "integral_primeRemainder", "my_name", "R_q", "le", "sum", "mul", "succ", "Prime")
+        toks = ("Foo.fullName", "Nat.le", "primeRemainder", "fullName", "integral_primeRemainder", "my_name", "R_q", "le", "sum", "mul", "succ", "Prime", "CMType", "BPlus", "épsilonBound", "Foo.g₃_eq", "g₃_eq", "smul_natCast'", "'primeBound'", "Foo.smul_natCast'.")
         pick = lambda errs: [l.split(" P ", 1)[1] for l in _mth_lines(errs) if " P " in l]
         stm = {t: pick(_mth_run(statements=[_mth_s("alpha", "`%s` holds" % t)])[0]) for t in toks}
         nam = {t: pick(_mth_run(names=[_mth_n("alpha", "A %s" % t)])[0]) for t in toks}
         return _eq((stm, nam),
                    ({"Foo.fullName": ["Foo.fullName"], "Nat.le": ["Nat.le"], "primeRemainder": ["primeRemainder"], "fullName": ["fullName"], "integral_primeRemainder": ["integral_primeRemainder"], "my_name": [], "R_q": [],
-                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": []},
+                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": [], "CMType": ["CMType"], "BPlus": ["BPlus"], "épsilonBound": ["épsilonBound"], "Foo.g₃_eq": ["Foo.g₃_eq"], "g₃_eq": [],
+                     "smul_natCast'": ["smul_natCast'"], "'primeBound'": ["primeBound"], "Foo.smul_natCast'.": ["Foo.smul_natCast'"]},
                     {"Foo.fullName": ["Foo.fullName"], "Nat.le": ["Nat.le"], "primeRemainder": ["primeRemainder"], "fullName": ["fullName"], "integral_primeRemainder": ["integral_primeRemainder"], "my_name": ["my_name"], "R_q": [],
-                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": []}))
+                     "le": [], "sum": [], "mul": [], "succ": [], "Prime": [], "CMType": ["CMType"], "BPlus": ["BPlus"], "épsilonBound": ["épsilonBound"], "Foo.g₃_eq": ["Foo.g₃_eq"], "g₃_eq": ["g₃_eq"],
+                     "smul_natCast'": ["smul_natCast'"], "'primeBound'": ["primeBound"], "Foo.smul_natCast'.": ["Foo.smul_natCast'"]}))
 
     # ---- what is written (B1 to B3): the number, the title, `math`, `human`, `notation`
 
@@ -8873,22 +8987,24 @@ def _selftest_cases():
 
     # ---- the real source with Ariadne's draft tables (read only where they are readable; never copied into the repository)
 
-    MTH_REAL_DIR = "/home/agents-shared/ariadne/rh-viewer/sample-data-d1"
+    MTH_REAL_DIR = os.environ.get("MTH_SAMPLE_DIR")   # the folder of the draft tables (names.json, statements.json, notation.json); unset: MTH-REAL is skipped
 
-    @case("MTH-REAL", "the real source and the draft tables (give `--selftest --grh DIR --ilean-dir DIR`; the tables are read from " + MTH_REAL_DIR + ", otherwise SKIPPED with the reason): the build through the command line refuses nothing and "
+    @case("MTH-REAL", "the real source and the draft tables (give `--selftest --grh DIR --ilean-dir DIR`; the folder of the three draft tables is the environment variable MTH_SAMPLE_DIR, otherwise SKIPPED with the reason): the build through the command line refuses nothing and "
                       "prints `maths names: 37 rows, 37 used, 0 not in this build` (and the statements 37/37/0, the notation 18/18/0); the numbers read off the BUILT tree (the group step's `children`, then each file step's) are 1.1 to 1.24 for "
                       "`lean-reduction-zeros-prime-error` (file 1), 2.1 for `-criterion` and 3.1 to 3.12 for `-prime-number-theorem`, equal to the numbers on every card and entry; every statement has `number` and a title that holds no backtick; "
                       "every notation row is on its own file step in the table's order; the step ids and the file set equal a build without the options, which holds no `number`, `math`, `human` or `notation`")
     def _():
         if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
             raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        if not MTH_REAL_DIR:
+            raise _SkipCase("SKIPPED: MTH_SAMPLE_DIR is not set (the folder of the draft names.json, statements.json and notation.json)")
         tables = {}
         try:
             for t in ("names", "statements", "notation"):
                 with open(os.path.join(MTH_REAL_DIR, t + ".json"), encoding="utf-8") as fh:
                     tables[t] = json.load(fh)
         except (OSError, ValueError):
-            raise _SkipCase("SKIPPED: %s is not readable here" % MTH_REAL_DIR)
+            raise _SkipCase("SKIPPED: MTH_SAMPLE_DIR is not readable here")
         real_pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
         ids = ["lean-reduction-zeros-criterion", "lean-reduction-zeros-prime-error", "lean-reduction-zeros-prime-number-theorem"]
         group = "lean-reduction-from-a-one-sided-bound-to-the-zeros"
