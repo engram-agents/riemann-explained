@@ -56,6 +56,11 @@ still decodes, so nothing is reported and the exit code stays 0).
 usage: scan_graph.py SRC_ROOT OUT_DIR
        scan_graph.py --selftest
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("scan_graph.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import collections
 import contextlib
 import io

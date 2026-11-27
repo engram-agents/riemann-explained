@@ -587,6 +587,11 @@ usage: build_site.py NOTES_DIR OUTLINE DECLS_TSV STRINGS OUT_DIR [--source-check
                      [--notes-commit REV --repo DIR] [--graph-src DIR] [--force]
        build_site.py --selftest [--only ID,ID]
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("build_site.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import contextlib
 import copy
 import fnmatch

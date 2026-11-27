@@ -47,6 +47,11 @@ THE RULES (all mechanical; nothing is typed by hand; kind and face lines are the
    All of one kind are reported together.
  8 STRINGS. The strings file is read and checked as build_site does and overlaid; `_graph_files` checks the exact key set (27 keys: the kind words, the card words and the count words come from the overlay).
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("build_grh_skeleton.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import contextlib
 import datetime
 import errno

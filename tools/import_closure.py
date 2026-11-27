@@ -10,6 +10,11 @@ WHAT THE NUMBER MEANS. The closure is every file that must be compiled before th
 an UPPER BOUND on what the start module's proofs use: a file may import more than its proofs need.
 It says nothing about which declarations are used. With OUT, the closure is written one module per line.
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("import_closure.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import collections, os, sys
 
 

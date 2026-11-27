@@ -31,6 +31,11 @@ to another name by assignment; passing it is evidence about the routes it models
 Exit codes: 0 built, 1 refused (OUT_DIR not created and not touched), 2 usage. --selftest: 0 all pass (a skipped case does not fail), 4 one fails, 2 an unknown id after --only or a bad
 self-test command line.
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("assemble_grh_site.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import importlib.util
 import json
 import os

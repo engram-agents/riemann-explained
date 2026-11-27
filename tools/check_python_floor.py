@@ -33,6 +33,11 @@ CONTRACT (cases, prefix PYF-)
 usage: check_python_floor.py [TOOLS_DIR]     (default: the folder of this file)
        check_python_floor.py --selftest
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("check_python_floor.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import ast
 import os
 import re

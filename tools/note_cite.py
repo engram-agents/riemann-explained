@@ -69,6 +69,10 @@ folder only. A date is a non-empty string; its form is not checked (as in rh_anc
 """
 from __future__ import annotations
 
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("note_cite.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import argparse
 import glob
 import importlib.util

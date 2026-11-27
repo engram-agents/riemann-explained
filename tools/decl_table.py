@@ -83,6 +83,11 @@ two `private` declarations with one name in one module are listed as a duplicate
 usage: decl_table.py SRC_ROOT OUT_DIR
        decl_table.py --selftest
 """
+
+import sys
+if sys.version_info[:2] < (3, 12):
+    raise SystemExit("decl_table.py: needs Python 3.12 or newer (tested with 3.12); this is %d.%d.%d at %s" % (sys.version_info[0], sys.version_info[1], sys.version_info[2], sys.executable))
+
 import contextlib
 import io
 import os
