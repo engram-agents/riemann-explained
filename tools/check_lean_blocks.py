@@ -152,16 +152,17 @@ def _selftest(d):
 def _leak_check():
     """`--selftest` must leave its temporary folder EMPTY (a folder left behind by it was one more entry in /tmp per run). Two runs, each in a TMPDIR made here
     (`rh-tmp1-...`): the self-test as a child process of this file, and, in this process, the self-test with `check_note` made to raise (the failure path
-    must clean too). A run whose TMPDIR starts `rh-tmp1-` is itself the child of this check and does not run it again (the recursion guard). 0 clean, 4 a
+    must clean too). The recursion guard is the one path that could pass VACUOUSLY (a run that skips the check reports a pass): it is honoured only when BOTH the TMPDIR basename starts `rh-tmp1-` AND the parent set RH_TMP1_NESTED=1 in the child's environment, so a TMPDIR that merely looks like a child's does not skip the check, and an honoured guard says so aloud (`TMPDIR skipped: nested`). 0 clean, 4 a
     leftover (named, at most 20) or a child that did not finish."""
     import shutil, subprocess
-    if os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-"):
+    if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):
+        print("TMPDIR skipped: nested (a child of this check)")
         return 0
     bad = []
     child, inproc = tempfile.mkdtemp(prefix="rh-tmp1-"), tempfile.mkdtemp(prefix="rh-tmp1-")
     try:
         try:
-            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=child),
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=child, RH_TMP1_NESTED="1"),
                                capture_output=True, text=True, timeout=300)
             if r.returncode != 0:
                 bad.append("the child self-test exited %d" % r.returncode)
@@ -194,7 +195,9 @@ def _leak_check():
 
 def main(a):
     if a[1:] == ["--selftest"]:
-        return selftest() or _leak_check()
+        rc = selftest()
+        lk = _leak_check()   # runs whether or not the self-test passed: a red self-test is no reason to skip it
+        return rc or lk
     if len(a) < 3:
         print(__doc__.split("usage:")[1].strip(), file=sys.stderr)
         return 2

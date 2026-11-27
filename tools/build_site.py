@@ -5312,7 +5312,7 @@ def _selftest_cases():
                   "each TMPDIR must be empty afterwards (the leftover names are listed, at most 20). A child whose TMPDIR starts `rh-tmp1-` runs no TMP1 itself: that is "
                   "the recursion guard, and it cannot be left out without leaving out the fresh TMPDIR the case is about")
     def _():
-        if os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-"):   # the guard: this run is the child of a TMP1
+        if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):   # the guard: this run is the child of a TMP1
             return True, "nested: not run again"
         me = os.path.abspath(__file__)
         all_but = ",".join(c[0] for c in cases if c[0] != "TMP1")
@@ -5324,7 +5324,7 @@ def _selftest_cases():
             procs = {}
             for name, argv in runs.items():
                 t = tempfile.mkdtemp(prefix="rh-tmp1-")
-                procs[name] = (t, subprocess.Popen([sys.executable, "-I", me] + argv, env=dict(os.environ, TMPDIR=t),
+                procs[name] = (t, subprocess.Popen([sys.executable, "-I", me] + argv, env=dict(os.environ, TMPDIR=t, RH_TMP1_NESTED="1"),
                                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
             got, bad = {}, []
             try:

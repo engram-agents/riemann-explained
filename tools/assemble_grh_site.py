@@ -426,13 +426,36 @@ _LEAKS = []
 
 
 def _spawn(argv, timeout, **kw):
-    """RED STUB: the old behaviour (the child inherits the process's TMPDIR, nothing is routed, removed or recorded)."""
-    return subprocess.run(argv, timeout=timeout, **kw)
+    """`subprocess.run(argv, timeout=timeout, **kw)` for a child of the self-test. Inside a run (`_RUN_TMP` set) the child gets a private sub-folder of the run's folder as its TMPDIR
+    (whatever `env` it was given, TMPDIR replaced). A child that FINISHES must leave that sub-folder empty: what it left is a LEAK, recorded in `_LEAKS` by name and removed. A child killed at
+    its `timeout` (TimeoutExpired, re-raised: the control that started it reports it as its OWN failure) cannot clean up, so the PARENT removes what it left and records the kill, with the
+    names it removed, in `_KILLED`: a kill is never counted as a leak. Whatever else happens (an error of the call itself) the sub-folder is removed. Outside a run: a plain run."""
+    if _RUN_TMP is None:
+        return subprocess.run(argv, timeout=timeout, **kw)
+    sub = tempfile.mkdtemp(prefix="child-", dir=_RUN_TMP)
+    label = " ".join(str(a) for a in argv[2:])[:60]
+    kw = dict(kw, env=dict(os.environ if kw.get("env") is None else kw["env"], TMPDIR=sub))
+    try:
+        r = subprocess.run(argv, timeout=timeout, **kw)
+        left = sorted(os.listdir(sub))
+        if left:
+            _LEAKS.append(f"{label}: {len(left)} left in its TMPDIR: " + ", ".join(left[:20]))
+        return r
+    except subprocess.TimeoutExpired:
+        _KILLED.append((label, sorted(os.listdir(sub))))
+        raise
+    finally:
+        shutil.rmtree(sub, ignore_errors=True)
 
 
 def _run_report():
-    """RED STUB: the leaks of the run."""
-    return []
+    """The leaks of the run, as lines (empty: clean): what the children that finished left (`_LEAKS`), and whatever the run's own folder still holds (an in-process case that left something).
+    The kills of `_KILLED` are not in it."""
+    out = list(_LEAKS)
+    left = sorted(os.listdir(_RUN_TMP)) if _RUN_TMP and os.path.isdir(_RUN_TMP) else []
+    if left:
+        out.append(f"the run's folder holds {len(left)}: " + ", ".join(left[:20]))
+    return out
 
 
 class _scratch_run:
@@ -598,7 +621,7 @@ def _argv(w, pin=PIN, drop=(), **over):
 def _cli(argv, env=None, cwd=None, preexec=None):
     """(exit code, stdout lines, stderr) of the tool run in a SUBPROCESS (`-I`, 60 s timeout: a tool that blocks on a FIFO fails the case, it does not hang the self-test).
     The stub's NotImplementedError is `_Absent`: the case is red because the behaviour is absent."""
-    r = subprocess.run([sys.executable, "-I", TOOL] + argv, capture_output=True, text=True, timeout=60, env=env, cwd=cwd, preexec_fn=preexec)
+    r = _spawn([sys.executable, "-I", TOOL] + argv, 60, capture_output=True, text=True, env=env, cwd=cwd, preexec_fn=preexec)
     if "NotImplementedError: phase 2" in r.stderr:
         raise _Absent("behaviour absent: the stub raised NotImplementedError('phase 2')")
     return r.returncode, r.stdout.splitlines(), r.stderr
@@ -747,11 +770,11 @@ def _mutation_case(mid):
         with open(os.path.join(copy, os.path.basename(TOOL)), "w", encoding="utf-8") as f:
             f.write(head.replace(old, new) + tail)
         try:
-            r = subprocess.run([sys.executable, "-I", os.path.join(copy, os.path.basename(TOOL)), "--selftest", "--only", ",".join(CLAUSES)], capture_output=True, text=True,
-                               timeout=MUTATION_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            return False, f"{mid}: the self-test of the mutated copy did not finish in {MUTATION_TIMEOUT} s"
-    seen = {m.group(1): m.group(2) for m in re.finditer(r"^CASE (\S+) (PASS|FAIL|SKIP)", r.stdout, re.M)}
+            r = _spawn([sys.executable, "-I", os.path.join(copy, os.path.basename(TOOL)), "--selftest", "--only", ",".join(CLAUSES)], MUTATION_TIMEOUT,
+                       capture_output=True, text=True)
+        except subprocess.TimeoutExpired:   # the child could not clean up: _spawn removed what it left; this control fails, the run's leak check is not touched
+            return False, f"{mid}: killed at its limit: the self-test of the mutated copy did not finish in {MUTATION_TIMEOUT} s"
+    seen = {m.group(1): m.group(2) for m in re.finditer(r"^CASE (\S+) (PASS|FAIL|SKIP)", r.stdout, re.M) if m.group(1) in CLAUSES}   # the run's own CASE TMP1 line is not an A-case
     if sorted(seen) != sorted(CLAUSES):
         return False, f"{mid}: the mutated copy reported {sorted(seen)}, not every A-case; stderr {r.stderr[-300:]!r}"
     observed = sorted((c for c in CLAUSES if seen[c] != "PASS"), key=CLAUSES.index)
@@ -1406,7 +1429,7 @@ diffs = [k for k in before if before[k] != after[k]]
 bs_diff = sorted(k for k in set(vars_of(fresh)) | set(vars_of(mod.bs)) if vars_of(fresh).get(k) != vars_of(mod.bs).get(k))
 print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": bs_diff}))
 '''
-        r = subprocess.run([sys.executable, "-I", "-c", probe, TOOL, _HERE], capture_output=True, text=True, timeout=120)
+        r = _spawn([sys.executable, "-I", "-c", probe, TOOL, _HERE], 120, capture_output=True, text=True)
         if r.returncode != 0:
             return False, f"the probe failed: {r.stderr[-300:]}"
         got = json.loads(r.stdout)
@@ -1832,6 +1855,18 @@ print(json.dumps({"planted_seen": planted, "diffs": diffs, "build_site_diffs": b
             r = kid("import sys; sys.argv = ['x', '--selftest', '--only', 'A17']; import runpy; runpy.run_path(%r, run_name='__main__')" % TOOL, limit=300)
             return _eq((r.returncode, "CASE TMP1 PASS" in r.stdout), (0, True))
 
+    @case("TMP1f", "a run whose own case leaks a folder (a stand-in case that makes one in the process, run as a child through selftest()) ends with `CASE TMP1 FAIL`, names the leftover, and exits 4: "
+                   "the end-of-run assertion changes the exit code (found by the mutant that left it out, which TMP1e does not see)")
+    def _():
+        code = ("import importlib.util, sys\n"
+                "spec = importlib.util.spec_from_file_location('asm_under_test', %r)\n"
+                "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+                "m._selftest_cases = lambda: [('X', 'a case that leaks', lambda: (bool(m.tempfile.mkdtemp(prefix='planted-leak-')), ''))]\n"
+                "sys.exit(m.selftest())\n" % TOOL)
+        with _scratch_run():
+            r = kid(code, limit=120)
+        return _eq((r.returncode, "CASE TMP1 FAIL" in r.stdout, "planted-leak-" in r.stdout), (4, True, True))
+
     return cases
 
 
@@ -1844,26 +1879,44 @@ def selftest(verbose=True, only=None):
             print("unknown case id: " + ", ".join(bad) if bad else "no case id given", file=sys.stderr)
             return 2
         cases = [c for c in cases if c[0] in only]
+    global _RUN_TMP
     ok, skipped = True, 0
-    for cid, desc, fn in cases:
-        try:
-            good, detail = fn()
-        except _SkipCase as e:
-            skipped += 1
+    saved = (_RUN_TMP, tempfile.tempdir, os.environ.get("TMPDIR"))
+    run_tmp = tempfile.mkdtemp(prefix="grh-run-")   # ONE folder for the whole run: the cases' own temporary folders and the sub-folders of the children are made in it
+    _RUN_TMP, tempfile.tempdir, os.environ["TMPDIR"] = run_tmp, run_tmp, run_tmp
+    try:
+        for cid, desc, fn in cases:
+            try:
+                good, detail = fn()
+            except _SkipCase as e:
+                skipped += 1
+                if verbose:
+                    print(f"CASE {cid} SKIP {e}")
+                continue
+            except _Absent as e:   # the stub: red because the behaviour is absent
+                good, detail = False, str(e)
+            except _FixtureError as e:   # a bug of the case itself, named so it is never read as a finding about the tool
+                good, detail = False, f"FIXTURE INVALID: {e}"
+            except Exception as e:   # a crash is a failed case, not a skipped one
+                good, detail = False, f"{type(e).__name__}: {e}"
+            ok = ok and bool(good)
             if verbose:
-                print(f"CASE {cid} SKIP {e}")
-            continue
-        except _Absent as e:   # the stub: red because the behaviour is absent
-            good, detail = False, str(e)
-        except _FixtureError as e:   # a bug of the case itself, named so it is never read as a finding about the tool
-            good, detail = False, f"FIXTURE INVALID: {e}"
-        except Exception as e:   # a crash is a failed case, not a skipped one
-            good, detail = False, f"{type(e).__name__}: {e}"
-        ok = ok and bool(good)
+                print(f"CASE {cid} {'PASS' if good else 'FAIL'} {desc}")
+                if not good:
+                    print(f"  detail: {detail}")
+        leaks = _run_report()   # the end of EVERY run: the run's folder must be empty and no child may have left anything; the kills (`_KILLED`) are the controls' own failures, not leaks
+        ok = ok and not leaks
         if verbose:
-            print(f"CASE {cid} {'PASS' if good else 'FAIL'} {desc}")
-            if not good:
-                print(f"  detail: {detail}")
+            print("CASE TMP1 " + ("FAIL the run left temporary entries (a kill is not one)" if leaks else "PASS the run left nothing in its temporary folder"))
+            for ln in leaks:
+                print(f"  detail: {ln}")
+    finally:
+        _RUN_TMP, tempfile.tempdir = saved[0], saved[1]
+        if saved[2] is None:
+            os.environ.pop("TMPDIR", None)
+        else:
+            os.environ["TMPDIR"] = saved[2]
+        shutil.rmtree(run_tmp, ignore_errors=True)
     if verbose:
         print("SELFTEST " + ("PASS" if ok else "FAIL") + (f" ({skipped} skipped)" if ok and skipped else ""))
     return 0 if ok else 4

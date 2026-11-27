@@ -372,11 +372,11 @@ def selftest():
         lambda: build("/nonexistent", PIN, base, words, version=(3, 9)), "CREDITS-PYTHON 3.9"))
 
     def c18():
-        if os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-"):   # the recursion guard: this run is the child of a CR18
+        if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):   # the recursion guard: this run is the child of a CR18
             return
         t = tempfile.mkdtemp(prefix="rh-tmp1-")
         try:
-            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=t),
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=t, RH_TMP1_NESTED="1"),
                                capture_output=True, text=True, timeout=300)
             left = sorted(os.listdir(t))
         finally:
