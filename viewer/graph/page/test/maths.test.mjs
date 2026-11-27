@@ -132,6 +132,7 @@ test("notation: not a list, too many rows, a row with a missing or extra key, a 
   bad((s) => { s.notation[0].lean = [7]; });
   bad((s) => { s.notation[0].lean = ["x".repeat(301)]; });
   bad((s) => { s.notation[0].lean = Array.from({ length: 51 }, () => "Fx.x"); });
+  for (const v of ["a\nb", "a\tb", "a\u0000", "\ud800"]) bad((s) => { s.notation[0].lean = [v]; });
   bad((s) => { s.notation[0].status = "final"; });
   for (const v of ["", "a\nb", "x".repeat(201), "a\u0000", null]) bad((s) => { s.notation[0].symbol = v; });
   for (const v of ["", "a\nb", "x".repeat(601), "\ud800", null]) bad((s) => { s.notation[0].text = v; });
@@ -140,6 +141,13 @@ test("notation: not a list, too many rows, a row with a missing or extra key, a 
 test("notation: 200 rows pass; a lean list of 50 passes; an empty list of rows passes", () => {
   const s = stp("fx-stmt-file"); s.notation = Array.from({ length: 200 }, (_, i) => ({ lean: Array.from({ length: 50 }, () => "Fx.x"), status: "draft", symbol: "s" + i, text: "t" })); validateStep(s, ctxOf());
   const e = stp("fx-stmt-file"); e.notation = []; assert.deepEqual(validateStep(e, ctxOf()).notation, []);
+});
+
+test("notation: a lean name is counted in code points: 300 astral letters pass, 301 do not (not UTF-16 units)", () => {
+  const astral = "\u{1D4DD}";
+  const s = stp("fx-stmt-file"); s.notation[0].lean = [astral.repeat(300)]; validateStep(s, ctxOf());
+  const b = stp("fx-stmt-file"); b.notation[0].lean = [astral.repeat(301)];
+  refuses(() => validateStep(b, ctxOf()), "bad-maths", "fx-stmt-file");
 });
 
 test("notation on a statement step is bad-statement (the file's key only)", () => {

@@ -493,7 +493,7 @@ function notationOf(v, id) {
   if (!Array.isArray(v) || v.length > NOTATION_ROWS_MAX) throw mathsErr(id, "notation", "that is not a list of at most " + NOTATION_ROWS_MAX + " rows");
   return v.map((r) => {
     if (!isObj(r) || Object.keys(r).length !== 4 || !["lean", "status", "symbol", "text"].every((k) => has(r, k))) throw mathsErr(id, "notation", "with a row that is not exactly {lean, status, symbol, text}");
-    if (!Array.isArray(r.lean) || r.lean.length > NOTATION_LEAN_MAX || r.lean.some((n) => !isStr(n) || n === "" || n.length > NAME_MAX)) throw mathsErr(id, "notation", "with a lean that is not a list of at most " + NOTATION_LEAN_MAX + " names");
+    if (!Array.isArray(r.lean) || r.lean.length > NOTATION_LEAN_MAX || r.lean.some((n) => !visibleText(n, NAME_MAX))) throw mathsErr(id, "notation", "with a lean that is not a list of at most " + NOTATION_LEAN_MAX + " names of 1 to " + NAME_MAX + " characters of visible text");
     if (!isStr(r.status) || !MATHS_STATUS.includes(r.status)) throw mathsErr(id, "notation", "with a row whose status is not draft or read");
     if (!visibleText(r.symbol, NOTATION_SYMBOL_MAX)) throw mathsErr(id, "notation", "with a symbol that is not 1 to " + NOTATION_SYMBOL_MAX + " characters of visible text");
     if (!visibleText(r.text, MATHS_TEXT_MAX)) throw mathsErr(id, "notation", "with a text that is not 1 to " + MATHS_TEXT_MAX + " characters of visible text");
