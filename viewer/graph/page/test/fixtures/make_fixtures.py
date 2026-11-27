@@ -19,6 +19,8 @@ skeleton/    the map of a Lean repository's parts, groups and files (data v3: si
 statements/  the statement-level sample (PR statements): one group, two files, the first file with three statements (theorem, lemma, def) in source order.
              Field names exactly as the data contract's section 31 amended; the words are read from site/strings-lean-statements.json (the one source).
 
+readings/    the statements sample plus the reading words and a `reading` on fx-thm-a (made-up text): the reading block of a statement card.
+
 Test-only. Never shipped (lives under test/).
 """
 import copy, hashlib, importlib.util, json, os, shutil, html, sys
@@ -554,6 +556,33 @@ def statements_build():
     return index, steps
 
 
+# ---------------------------------------------------------------------------------------------------------- readings/
+# The reading block (Kepler 39806; Ariadne's note v2.1 section 9, final words 39814/39818): the statements sample plus the four reading words and, on fx-thm-a only, a `reading`.
+# The words are Ariadne's; the TEXT is made up (a preface, the three `##` parts and the optional fourth, a quoted doc-string paragraph in the agreed opening), not any reading of the repository.
+READING_WORDS = {
+    "decl_reading_show": "Show an AI agent's reading",
+    "decl_reading_hide": "Hide the AI agent's reading",
+    "decl_reading_about": "Our words, not the repository's: an AI agent's reading of this statement and its Lean proof, checked against the source by a second agent. No mathematician has checked it.",
+    "readings_byline": "Written by {by}, checked by {second_read_by}, {date}",
+}
+FX_READING = {
+    "text": ("A made-up preface paragraph, plain text, before the first heading. <b>x</b> and {by} stay literal.\n\n"
+             "## What it rests on\n\n- `Fx.helper`, a made-up result the statement uses.\n- `Fx.other`, another one.\n\n"
+             "## What it states\n\nFor every `n` the made-up bound holds.\n\n"
+             "## How the Lean proof goes\n\n1. Unfold the definition.\n2. Apply `Fx.helper` to `n`.\n3. Close the goal.\n\n"
+             "## What the Lean text adds to the comment\n\nIn the repository's words (lines 3-4): \"A made-up quoted comment.\"\n\nThe made-up comment says nothing of the type of `n`."),
+    "by": "Made-Up Writer", "second_read_by": "Made-Up Checker", "date": "2026-01-02",
+}
+
+
+def readings_build():
+    """(index, steps): statements_build plus the four reading words in `strings` and a `reading` on fx-thm-a (the theorem with a note); fx-lem-b and fx-def-c have none."""
+    index, steps = statements_build()
+    index["strings"].update(READING_WORDS)
+    steps["fx-thm-a"]["reading"] = dict(FX_READING)
+    return index, steps
+
+
 def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None):
     index, steps, _k, _p, _n = build()
     # a small build: one top step with its children
@@ -582,7 +611,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 def main():
     check_inputs()
-    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements"):
+    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements", "readings"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -629,6 +658,13 @@ def main():
     for i, st in xsteps.items():
         write_json(os.path.join(HERE, "statements", "step", i + ".json"), st)
     open(os.path.join(HERE, "statements", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
+
+    rindex, rsteps = readings_build()
+    write_json(os.path.join(HERE, "readings", "index.json"), rindex)
+    for i, st in rsteps.items():
+        write_json(os.path.join(HERE, "readings", "step", i + ".json"), st)
+    open(os.path.join(HERE, "readings", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
 
     def s_(k): return lambda st: st["goal-chain"].__setitem__(*k)

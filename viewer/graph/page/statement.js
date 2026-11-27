@@ -7,6 +7,7 @@
      [the sheet draws the doc-string here, as it draws a file's note, with the label swapped to spine_content_label]
      tail  div.decl-lean          button.sheet-tool (aria-expanded) + div.decl-lean-body (hidden): pre.decl-lean-code > code (the statement as ONE text node),
                                   and, only when `variables` is true, p.decl-lean-note
+           div.decl-reading             only when the step has a reading (decl.reading): button.sheet-tool (aria-expanded) + div.decl-reading-body (hidden): p.decl-reading-about, div.decl-reading-text (renderNote), p.decl-reading-byline
            div.decl-uses.decl-uses-here, div.decl-uses.decl-uses-elsewhere    a heading line with {n} (text) and, only when the list is not empty, a ul:
                                   here: li > a[href '#id'] (the title as the page knows it, else the bare id); elsewhere: li > code(name), in an a[href '#step'] with a step
            div.decl-prompt      [p.decl-reading-none, only when the optional string decl_reading_none is present,] button.sheet-tool (copy), p[role=status] (empty until a copy succeeds), pre.decl-prompt-text (hidden; shown with its text
@@ -18,6 +19,13 @@ import { hashFor, titleChildren } from "./dom.js";
 import { renderNote } from "./note.js";
 
 const fill = (template, n) => String(template).replace("{n}", () => String(n));
+
+/* The byline of a reading: the template (readings_byline) with {by}, {second_read_by} and {date} filled from the reading, every piece a TEXT node (a function-free split, so
+   no pattern in a name or a template is ever interpreted). A placeholder that is not one of the three stays as written. */
+export function bylineParts(template, reading) {
+  const vals = { "{by}": reading.by, "{second_read_by}": reading.secondReadBy, "{date}": reading.date };
+  return String(template).split(/(\{by\}|\{second_read_by\}|\{date\})/).map((p) => (Object.prototype.hasOwnProperty.call(vals, p) ? vals[p] : p)).filter((p) => p !== "");
+}
 
 /* The maths-face words of a STATEMENT card's doc-string: the same four words, but the label is spine_content_label in the maths view as in the exact one
    (design note section 4 item 2); note_label_typeset is never used on a statement card. null stays null (the maths face is off). */
@@ -91,8 +99,29 @@ export function buildStatement({ strings, decl, hasNote, titleOf, el, doc, signa
     fallback.hidden = false;
     try { win.getSelection().selectAllChildren(fallback); } catch (e) { /* the reader selects by hand */ }
   }, { signal });
-  const reading = typeof strings.decl_reading_none === "string" && strings.decl_reading_none !== "" ? [el("p", { class: "decl-reading-none" }, [strings.decl_reading_none])] : [];   // optional: ONE line directly above the button
-  const prompt = el("div", { class: "decl-prompt" }, [...reading, copyBtn, status, fallback, el("p", { class: "decl-prompt-note" }, [strings.decl_prompt_note])]);
+  /* On a card WITHOUT a reading, decl_reading_none is ONE line directly above the button (optional word); on a card WITH one it is not shown at all. */
+  const none = !decl.reading && typeof strings.decl_reading_none === "string" && strings.decl_reading_none !== "" ? [el("p", { class: "decl-reading-none" }, [strings.decl_reading_none])] : [];
+  const prompt = el("div", { class: "decl-prompt" }, [...none, copyBtn, status, fallback, el("p", { class: "decl-prompt-note" }, [strings.decl_prompt_note])]);
 
-  return { lead, tail: [lean, usesHere, usesElse, prompt] };
+  // 5b. an AI agent's reading (optional): behind its own button, CLOSED whenever the card opens, between the Lean statement and the uses lists. Inside: the label (ours, not the
+  // repository's), the reading through the note renderer (its `##` lines are its four headings), the byline last. Nothing of it is parsed; every piece is a text node.
+  const parts = [lean];
+  if (decl.reading) {
+    const r = decl.reading;
+    const btn = el("button", { type: "button", class: "sheet-tool", "aria-expanded": "false" }, [strings.decl_reading_show]);
+    const text = el("div", { class: "decl-reading-text" }, []);
+    text.appendChild(renderNote(r.text, el, !!typeset));
+    const body = el("div", { class: "decl-reading-body" }, [el("p", { class: "decl-reading-about" }, [strings.decl_reading_about]), text,
+      el("p", { class: "decl-reading-byline" }, bylineParts(strings.readings_byline, r))]);
+    body.hidden = true;
+    btn.addEventListener("click", () => {
+      const show = body.hidden;
+      body.hidden = !show;
+      btn.setAttribute("aria-expanded", show ? "true" : "false");
+      btn.replaceChildren(doc.createTextNode(show ? strings.decl_reading_hide : strings.decl_reading_show));
+    }, { signal });
+    parts.push(el("div", { class: "decl-reading" }, [btn, body]));
+  }
+
+  return { lead, tail: [...parts, usesHere, usesElse, prompt] };
 }
