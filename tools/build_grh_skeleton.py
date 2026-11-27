@@ -1713,10 +1713,259 @@ def _statement_symbols(kinds):
     return dict(SYMBOLS, kinds=rows), {"kinds": list(rows), "states": [], "proofs": []}, bs.GRAPH_STATUS_HIDDEN + tuple(kinds)
 
 
-def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None, statements_for=None, page_url=None, page_title=None):
+# ---------------------------------------------------------------- the reading of a statement (`--readings FILE`): our own words about one statement, from a file, checked here so the page never meets a shape it refuses
+
+READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card); with the option the file of --strings-overlay-statements holds the 28 words and these (36), without it the 28
+READING_BUILDER_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")   # the four heading words of a reading: required in the overlay file with --readings, never written to index.json `strings` (the page reads four of the eight and refuses an index that holds these; the builder does not read the headings of a text today)
+READING_ENTRY_KEYS = ("statement", "file", "text_path", "by", "second_read_by", "date")   # the six string keys of an entry of the readings file, and no other
+READING_TEXT_MAX = 20000   # the most BYTES (UTF-8) of a reading's `text`, counted on the text as written (after the one trailing newline is dropped)
+READING_NAME_MAX = 80   # the most CHARACTERS of `by` and of `second_read_by`
+READING_FILE_LIMIT = 1048576   # the most bytes of the readings file itself the tool reads (1 MiB)
+READING_TEXT_READ_LIMIT = 65536   # the most bytes of one text file the tool reads (64 KiB; the text has its own, smaller bound)
+_READING_DATE_SHAPE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+QUOTE_OPEN = "In the repository's words ("   # a paragraph that STARTS with these characters is a quote paragraph and is checked; one that starts `In the repository's words` without ` (` is not (the limit of the rule)
+_QUOTE_FORM = re.compile(   # every number has at most 9 digits: a longer one is a form refusal, never an int() of thousands of digits
+    r"In the repository's words \((?:(?P<path>[^\s,()]+), )?(?:lines (?P<a>[1-9][0-9]{0,8})-(?P<b>[1-9][0-9]{0,8})|line (?P<c>[1-9][0-9]{0,8}))\): \"(?P<q>.*)\"\s*", re.S)
+_QUOTE_PATH = re.compile(r"src/[A-Za-z0-9_./-]+\.lean")
+SENTENCE_END_MARKS = "*_)]\""   # the closing marks a sentence end may carry between its `.`, `?` or `!` and the space: a bold title `**Title.**` ends with `.**`, `(really!)`, `"go."`
+
+
+def _reading_name_bad(value):
+    """True when `by` or `second_read_by` may not be written: empty or only white space, not printable (a control character, a bidi mark, a zero-width character: the predicate of the prompt path), or over
+    READING_NAME_MAX characters counted in UTF-16 UNITS (what a page's `.length` counts, the stricter of the two ways: an astral character is two). The printable test comes first, so a lone surrogate never reaches the encoder."""
+    return value.strip() == "" or not value.isprintable() or len(value.encode("utf-16-le")) // 2 > READING_NAME_MAX
+
+
+def _reading_path_error(base, rel):
+    """None when `rel` is a path of a regular file under the folder `base` that names no `..`, empty or `.` segment, is not absolute and passes through no symlink, else why not: empty, absolute, dotdot,
+    segment, symlink, missing, not-a-regular-file."""
+    if rel == "":
+        return "empty"
+    if rel.startswith("/") or os.path.isabs(rel):
+        return "absolute"
+    parts = rel.split("/")
+    if ".." in parts:
+        return "dotdot"
+    if "" in parts or "." in parts:
+        return "segment"
+    cur = base
+    for i, part in enumerate(parts):
+        cur = os.path.join(cur, part)
+        try:
+            mode = os.lstat(cur).st_mode
+        except (OSError, ValueError):
+            return "missing"
+        if stat.S_ISLNK(mode):
+            return "symlink"
+        if i < len(parts) - 1 and not stat.S_ISDIR(mode):
+            return "missing"
+        if i == len(parts) - 1 and not stat.S_ISREG(mode):
+            return "not-a-regular-file"
+    return None
+
+
+def _reading_text_error(raw):
+    """(why, text): `text` is the bytes `raw` as strict UTF-8 with ONE trailing newline dropped; `why` is None or the refusal: not-utf-8, empty, `size N bytes, at most 20000` (UTF-8 bytes of the text as
+    written), nul, carriage-return, control-character (any control character, category Cc, other than the newline)."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return "not-utf-8", None
+    if text.endswith("\n"):
+        text = text[:-1]
+    if text == "":
+        return "empty", None
+    size = len(text.encode("utf-8"))
+    if size > READING_TEXT_MAX:
+        return f"size {size} bytes, at most {READING_TEXT_MAX}", None
+    if "\x00" in text:
+        return "nul", None
+    if "\r" in text:
+        return "carriage-return", None
+    if any(c != "\n" and unicodedata.category(c) == "Cc" for c in text):
+        return "control-character", None
+    return None, text
+
+
+def _reading_entries(raw_file, base):
+    """([(code, where, message)], [entry]) of the bytes of the readings file `raw_file`, whose `text_path` are relative to the folder `base`: the file is a JSON list of objects with EXACTLY the six string keys
+    of READING_ENTRY_KEYS; each entry's text is read (`_reading_text_error`) and its `by`, `second_read_by` and `date` are checked; an entry that passes becomes {statement, file, text, by, second_read_by, date}.
+    Every refusal is reported (SKEL-STATEMENT-READING-FILE / -TEXT / -NAME / -DATE), the names of statements through `_safe`, and nothing of the file's own text is ever echoed."""
+    try:
+        obj = json.loads(raw_file.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return [("SKEL-STATEMENT-READING-FILE", "not-json", "")], []
+    if not isinstance(obj, list):
+        return [("SKEL-STATEMENT-READING-FILE", "not-a-list", "")], []
+    errors, entries = [], []
+    for i, e in enumerate(obj, 1):
+        where = f"entry {i}"
+        if not isinstance(e, dict):
+            errors.append(("SKEL-STATEMENT-READING-FILE", where, "not-an-object"))
+            continue
+        if set(e) != set(READING_ENTRY_KEYS):
+            errors.append(("SKEL-STATEMENT-READING-FILE", where, "keys"))
+            continue
+        loose = [k for k in READING_ENTRY_KEYS if not isinstance(e[k], str)]
+        if loose:
+            errors += [("SKEL-STATEMENT-READING-FILE", where, f"{k} not-a-string") for k in loose]
+            continue
+        name = _safe(e["statement"])
+        why = _reading_path_error(base, e["text_path"])
+        if why:
+            errors.append(("SKEL-STATEMENT-READING-FILE", where, f"text_path {why}"))
+            continue
+        try:
+            data = _read_bounded(os.path.join(base, *e["text_path"].split("/")), READING_TEXT_READ_LIMIT)
+        except SourceError as x:
+            if x.reason == "too-large":
+                errors.append(("SKEL-STATEMENT-READING-TEXT", name, f"size over {READING_TEXT_READ_LIMIT} bytes, at most {READING_TEXT_MAX}"))
+            else:
+                errors.append(("SKEL-STATEMENT-READING-FILE", where, f"text_path {x.reason}"))
+            continue
+        why, text = _reading_text_error(data)
+        bad = False
+        if why:
+            errors.append(("SKEL-STATEMENT-READING-TEXT", name, why))
+            bad = True
+        for k in ("by", "second_read_by"):
+            if _reading_name_bad(e[k]):
+                errors.append(("SKEL-STATEMENT-READING-NAME", name, k))
+                bad = True
+        try:
+            if not _READING_DATE_SHAPE.fullmatch(e["date"]):
+                raise ValueError(e["date"])
+            datetime.date(int(e["date"][:4]), int(e["date"][5:7]), int(e["date"][8:]))
+        except ValueError:
+            errors.append(("SKEL-STATEMENT-READING-DATE", name, ""))
+            bad = True
+        if not bad:
+            entries.append({"statement": e["statement"], "file": e["file"], "text": text, "by": e["by"], "second_read_by": e["second_read_by"], "date": e["date"]})
+    return errors, ([] if errors else entries)
+
+
+def _sentence_bounds(body):
+    """(starts, ends) of the sentences of `body` (white space already collapsed, stripped): a SENTENCE END is a `.`, `?` or `!` outside backtick spans followed by any run (possibly empty) of SENTENCE_END_MARKS and
+    then a space or the end of the text. `ends` holds the index just past that run and the end of the text; `starts` holds 0 and the index just past each such space."""
+    n = len(body)
+    starts, ends, code, i = {0}, {n}, False, 0
+    while i < n:
+        c = body[i]
+        if c == "`":
+            code = not code
+            i += 1
+        elif not code and c in ".?!":
+            j = i + 1
+            while j < n and body[j] in SENTENCE_END_MARKS:
+                j += 1
+            if j == n or body[j] == " ":
+                ends.add(j)
+                if j < n:
+                    starts.add(j + 1)
+            i = j
+        else:
+            i += 1
+    return starts, ends
+
+
+def _doc_sentences(doc):
+    """(body with white space collapsed and stripped, starts, ends) of the doc-comment `doc` = [first line, last line, body, cached or None]: computed ONCE per doc-comment, however many quotes it has."""
+    if doc[3] is None:
+        b = re.sub(r"\s+", " ", doc[2]).strip()
+        doc[3] = (b,) + _sentence_bounds(b)
+    return doc[3]
+
+
+def _is_whole_sentences(quoted, sentences):
+    """True when `quoted` is a non-empty RUN OF WHOLE SENTENCES of a doc-comment (`sentences` = `_doc_sentences` of it), `quoted` with every run of white space collapsed to one space and stripped: it occurs at a start of a sentence
+    and ends at a sentence end."""
+    q = re.sub(r"\s+", " ", quoted).strip()
+    b, starts, ends = sentences
+    if q == "":
+        return False
+    i = b.find(q)
+    while i != -1:
+        if i in starts and i + len(q) in ends:
+            return True
+        i = b.find(q, i + 1)
+    return False
+
+
+def _quote_source(grh, path, cache):
+    """[[first line, last line, body, None] of each doc comment] of the repository file `path` (`src/...lean`) read as the builder reads a source file, or None when it cannot be read (missing, a symlink at ANY
+    component below the grh root (the root itself may be reached through a link), outside the checkout, too large, not UTF-8). The answer is cached by path; a doc-comment's lines are counted once here."""
+    if path not in cache:
+        cache[path] = None
+        cur = grh
+        for seg in path.split("/"):
+            cur = os.path.join(cur, seg)
+            if os.path.islink(cur):
+                return None
+        try:
+            raw = _read_in(grh, os.path.join(grh, *path.split("/")), SOURCE_READ_LIMIT).decode("utf-8")
+            cache[path] = [[raw.count("\n", 0, d[0]) + 1, raw.count("\n", 0, d[1] - 1) + 1, d[2], None] for d in _lex_blocks(raw)[0]]
+        except (SourceError, UnicodeDecodeError):
+            pass
+    return cache[path]
+
+
+def _quote_errors(grh, own_path, text, cache):
+    """[`paragraph <n> <form|path|lines|text>`] for the quote paragraphs of `text` (the paragraphs, split on blank lines, that start with QUOTE_OPEN; n counts them from 1) that are not exactly
+    `In the repository's words (` HEAD `): "` QUOTED `"` with HEAD `lines A-B` or `line A` (A >= 1, A <= B, no leading zero) after an optional `PATH, `, whose PATH is a `src/...lean` file of the checkout
+    (`path`), whose doc-comment covering the lines A..B completely is exactly one (`lines`), and whose QUOTED text is a run of whole sentences of that doc-comment (`text`). A paragraph that does NOT start with
+    QUOTE_OPEN but holds it later is `paragraph <k> form` with k counting ALL paragraphs from 1 (such a paragraph is never skipped unchecked)."""
+    out, n = [], 0
+    for k, para in enumerate(re.split(r"\n(?:[ \t]*\n)+", text), 1):
+        if not para.startswith(QUOTE_OPEN):
+            if QUOTE_OPEN in para:
+                out.append(f"paragraph {k} form")
+            continue
+        n += 1
+        m = _QUOTE_FORM.fullmatch(para)
+        if m is None or (m["b"] is not None and int(m["a"]) > int(m["b"])):
+            out.append(f"paragraph {n} form")
+            continue
+        path = m["path"] or own_path
+        if m["path"] and (not _QUOTE_PATH.fullmatch(path) or any(seg in ("", ".", "..") for seg in path.split("/"))):
+            out.append(f"paragraph {n} path")
+            continue
+        src = _quote_source(grh, path, cache)
+        if src is None:
+            out.append(f"paragraph {n} path")
+            continue
+        a = int(m["a"] or m["c"])
+        b = int(m["b"] or m["c"])
+        cover = [d for d in src if d[0] <= a and b <= d[1]]
+        if len(cover) != 1:
+            out.append(f"paragraph {n} lines")
+        elif not _is_whole_sentences(m["q"], _doc_sentences(cover[0])):
+            out.append(f"paragraph {n} text")
+    return out
+
+
+def _readings_attach(grh, entries, stm, ids):
+    """(errors, {step id: reading}, {file id: n}) for the validated `entries` of the readings file: each must name (`statement` by its full name, `file` by its step id) a statement step the build WROTE, once
+    (`SKEL-STATEMENT-READING-TARGET <statement>` otherwise), and each quote paragraph of its text must pass `_quote_errors` against the statement's own source file (`SKEL-STATEMENT-READING-QUOTE <statement> <what>`)."""
+    wrote = {(r["parent"], stm["step_extra"][r["id"]]["name"]): r["id"] for r in stm["rows"]}
+    errors, done, counts, seen, cache = [], {}, {fid: 0 for fid in ids}, set(), {}
+    for e in entries:
+        key = (e["file"], e["statement"])
+        if key not in wrote or key in seen:
+            errors.append(("SKEL-STATEMENT-READING-TARGET", _safe(e["statement"]), ""))
+            continue
+        seen.add(key)
+        sid = wrote[key]
+        errors += [("SKEL-STATEMENT-READING-QUOTE", _safe(e["statement"]), why) for why in _quote_errors(grh, stm["step_extra"][sid]["source_path"], e["text"], cache)]
+        done[sid] = {"text": e["text"], "by": e["by"], "second_read_by": e["second_read_by"], "date": e["date"]}
+        counts[e["file"]] += 1
+    return errors, done, counts
+
+
+def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None, statements_for=None, page_url=None, page_title=None, readings=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build; `notes_lean_dir` (optional) is the folder of the contributed notes (readings); `statements_for` (optional, a list of FILE step ids) opens those files
-    to their statements (one step per declaration, contract section 31), with the options `page_url` and `page_title` of the prompt; absent, every file is today's."""
+    to their statements (one step per declaration, contract section 31), with the options `page_url` and `page_title` of the prompt; `readings` (optional, the entries `_reading_entries` returns, needs
+    `statements_for`) puts a `reading` on the statement steps they name; absent, every file is today's."""
     if ilean_dir is None:
         raise TypeError("ilean_dir is required")
     if open_scale_floor is not None:
@@ -1737,6 +1986,16 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         errors, stm = _statements(grh, pin, ilean_dir, rows, rep, statements_for, page_url, page_title, source_prefix)
     if errors:
         return errors, {}, rows, rep
+    if readings is not None:   # the readings: each names a statement the build wrote; its quotes are checked against the repository's doc-strings
+        if stm is None:
+            return [("SKEL-STATEMENT-READING-OPTIONS", "readings", "needs --statements-for")], {}, rows, rep
+        errors, attached, counts = _readings_attach(grh, readings, stm, statements_for)
+        if errors:
+            return errors, {}, rows, rep
+        for sid, reading in attached.items():
+            stm["step_extra"][sid]["reading"] = reading
+        for fid, n in counts.items():
+            rep["statements"][fid]["readings"] = n
     syms, orders, hidden = _statement_symbols(stm["kinds"]) if stm and stm["rows"] else (SYMBOLS, MAP_ORDERS, bs.GRAPH_STATUS_HIDDEN)
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(syms) if k in strings}, syms)   # only the missing ones: it holds a subset
     if missing:
@@ -1790,7 +2049,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), all_rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR] [--statements-for ID[,ID...] --strings-overlay-statements FILE [--statement-page-url URL --statement-page-title TEXT]]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR] [--statements-for ID[,ID...] --strings-overlay-statements FILE [--statement-page-url URL --statement-page-title TEXT] [--readings FILE]]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]")
 
 
@@ -1798,7 +2057,7 @@ def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay][, strings-overlay-graph]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir", "--statements-for", "--statement-page-url", "--statement-page-title", "--strings-overlay-statements") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir", "--statements-for", "--statement-page-url", "--statement-page-title", "--strings-overlay-statements", "--readings") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -1842,6 +2101,8 @@ def _statement_lines(rep):
         out.append(f"statements {fid}: {s['found']} declarations, {s['written']} written, {len(s['reported'])} reported")
         out.append(f"statements {fid}: {s.get('library_left_out', 0)} library names left out of uses_elsewhere")
         out += [f"statements {fid} reported {r[0]} line {r[1]}" + (f" name {_safe(r[2])}" if len(r) > 2 else "") for r in s["reported"]]
+        if "readings" in s:   # only with --readings: the readings written on the statements of this file (0 when none)
+            out.append(f"readings {fid}: {s['readings']} readings written")
     return out
 
 
@@ -1869,6 +2130,8 @@ def _run(opts):
             print(f"{code} {where}" + (f" {msg}" if msg else ""))
         print("REFUSED: nothing written", file=sys.stderr)
         return 1
+    if "readings" in opts and "statements-for" not in opts:   # a reading is of a statement: nothing is read
+        return refuse([("SKEL-STATEMENT-READING-OPTIONS", "readings", "needs --statements-for")])
     if ("statements-for" in opts) != ("strings-overlay-statements" in opts):   # checked before any file is read: a build without statements never reads or ships the statement words
         return refuse([("SKEL-STATEMENT-WORDS", "strings-overlay-statements", "is required with --statements-for" if "statements-for" in opts else "needs --statements-for")])
     try:
@@ -1889,11 +2152,12 @@ def _run(opts):
     if clash:
         return refuse([("SKEL-OVERLAY-CLASH", k, "") for k in clash])
     page_keys = set(bs._graph_strings_keys(SYMBOLS)) | set(bs.GRAPH_OPTIONAL_KEYS)   # what _graph_files copies into index.json `strings`: anything else of an overlay would be dropped without a word
-    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph), ("strings-overlay-statements", words)) for k in obj if k not in page_keys)
+    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph), ("strings-overlay-statements", words)) for k in obj if k not in page_keys and not (opt == "strings-overlay-statements" and k in READING_BUILDER_KEYS))
     if unknown:
         return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
     if "strings-overlay-statements" in opts:   # exactly the statement words: a missing key and a page key that is not one of them are refused by name
-        wrong = [("SKEL-STATEMENT-WORDS", k, "missing") for k in sorted(set(STATEMENT_WORD_KEYS) - set(words))] + [("SKEL-STATEMENT-WORDS", k, "is not a statement word") for k in sorted(set(words) - set(STATEMENT_WORD_KEYS))]
+        expected = set(STATEMENT_WORD_KEYS) | (set(READING_WORD_KEYS) if "readings" in opts else set())   # all-or-none: the 8 words of the reading come with --readings and only then
+        wrong = [("SKEL-STATEMENT-WORDS", k, "missing") for k in sorted(expected - set(words))] + [("SKEL-STATEMENT-WORDS", k, "is not a statement word") for k in sorted(set(words) - expected)]
         if wrong:
             return refuse(wrong)
     strings.update(graph)
@@ -1903,9 +2167,23 @@ def _run(opts):
     problems = bs._strings_problems(strings)
     if problems:
         return refuse(problems)
+    for k in READING_BUILDER_KEYS:   # checked above with the others, and not written: the page does not read them
+        if k in words:
+            strings.pop(k, None)
+    entries = None
+    if "readings" in opts:   # the readings file: its shape, its texts, names and dates are checked here; its targets and quotes are checked by the build, which has the statements and the source
+        try:
+            raw_readings = _read_bounded(opts["readings"], READING_FILE_LIMIT)
+        except SourceError as e:
+            if e.reason == "too-large":
+                return refuse([("SKEL-STATEMENT-READING-FILE", "too-large", "")])
+            raise Unreadable(f"--readings: cannot read {opts['readings']}: {e.reason}")
+        errors, entries = _reading_entries(raw_readings, os.path.dirname(os.path.abspath(opts["readings"])))
+        if errors:
+            return refuse(errors)
     errors, files, rows, rep = build(opts["grh"], opts["pin"], strings, [g["id"] for g in outline["groups"]], opts["ilean-dir"], opts.get("source-prefix", SOURCE_PREFIX),
                                        _scale_from_text(opts["open-scale-floor"]) if "open-scale-floor" in opts else None, opts.get("notes-lean-dir"),
-                                       opts["statements-for"].split(",") if "statements-for" in opts else None, opts.get("statement-page-url"), opts.get("statement-page-title"))
+                                       opts["statements-for"].split(",") if "statements-for" in opts else None, opts.get("statement-page-url"), opts.get("statement-page-title"), entries)
     if errors:
         return refuse([(c, opts["open-scale-floor"], r) if c == "GRAPH-SCALE-FLOOR" else (c, k, r) for c, k, r in errors])   # the floor is named as it was typed (`1e400`, not `inf`)
     try:
@@ -2545,6 +2823,99 @@ STM_EXPECT_REAL_NOADDR = (
     '- Lean writes some things in ways that mislead a quick reader: division by zero is zero, subtraction on natural\n'
     '  numbers stops at zero, and a number may be silently cast between types. Mention each one you meet in the statement\n'
     '  or its proof. If you meet sorry or admit, that part is not proved there: say so, with the line.\n')
+
+# ---- the READING of a statement (--readings): fixtures and helpers of the RDG cases. Every file and every reading here is made up; no text of a real reading and no doc-string of the repository is in this file.
+RDG_WORDS_SHARED_PATH = "/home/agents-shared/ariadne/rh-viewer/graph-view-strings-v2.md"   # Ariadne's strings file: the case RDG-WORDS-COPY compares the test copy below with it when it is readable, and is SKIPPED otherwise
+RDG_WORDS_NEW = {
+    "decl_reading_show": "Show an AI agent's reading",
+    "decl_reading_hide": "Hide the AI agent's reading",
+    "decl_reading_about": "Our words, not the repository's: an AI agent's reading of this statement and its Lean proof, checked against the source by a second agent. No mathematician has checked it.",
+    "decl_reading_uses": "What it rests on",
+    "decl_reading_target": "What it states",
+    "decl_reading_argument": "How the Lean proof goes",
+    "decl_reading_adds": "What the Lean text adds to the comment",
+    "readings_byline": "Written by {by}, checked by {second_read_by}, {date}",
+}   # the 8 words of the reading, taken from the shared file by a script (byte for byte), not typed
+RDG_PAGE_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline")   # the four the page reads (its READING_STRINGS); the other four are the builder's own, never written
+RDG_HEADING_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")
+RDG_LAST_SENTENCE = "Proofs are not opened, except in an AI agent's reading, marked as ours, which a few statements carry; on the others you can ask your own AI assistant for one."   # the new end of key_statements_text, Ariadne's file (the line of key_statements_text)
+RDG_WORDS = dict(STM_WORDS, **RDG_WORDS_NEW)   # the 28 words and the 8 of the reading: the file of --strings-overlay-statements when --readings is given
+RDG_A = _stm_src(
+    "/-- Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three\ncontinues on a second line. Alpha four ends. -/\ntheorem alpha : True := trivial\n\n"
+    "/-- **Bold title.** Let `p` be prime. It is odd. -/\nlemma beta : True := trivial\n\n"
+    "/-- The constant is 3.14 here. See e.g.x for more. -/\nlemma gamma : True := trivial\n\n"
+    "/-- Delta said \"hi\" to me. Then left. -/\nlemma delta : True := trivial\n\n"
+    "/-- Eps one. -/ /-- Eps two. -/\nlemma eps : True := trivial\n\n"
+    "lemma zeta : True := trivial\n\n"
+    "/-- Eta wrote \"go.\" Then stayed (really!) Now stop. -/\nlemma eta : True := trivial\n")   # seven statements; the doc-strings are the sources of the quotes
+RDG_B = _stm_src("/-- Bee one. Bee two. -/\ntheorem bdef : True := trivial\n")
+RDG_NAMES = ("alpha", "beta", "gamma", "delta", "eps", "zeta", "eta")
+RDG_ILEANS = {"New/S/A": _stm_ilean("New/S/A", RDG_NAMES), "New/S/B": _stm_ilean("New/S/B", ("bdef",))}
+
+
+def _rdg_ln(src, start):
+    """The 1-based physical line of `src` that starts with `start`."""
+    return next(i + 1 for i, x in enumerate(src.split("\n")) if x.startswith(start))
+
+
+RDG_L1, RDG_L2, RDG_L3, RDG_L4, RDG_L5, RDG_L6, RDG_L7 = (_rdg_ln(RDG_A, s) for s in ("/-- Alpha one.", "/-- **Bold", "/-- The constant", "/-- Delta said", "/-- Eps one.", "lemma zeta", "/-- Eta wrote"))   # alpha's doc-string takes two lines
+RDG_LB = _rdg_ln(RDG_B, "/-- Bee")
+RDG_ALPHA = "Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three continues on a second line. Alpha four ends."   # the body of alpha's doc-string, white space collapsed
+
+
+def _rdg_entry(statement="alpha", file="lean-s-a", text_path="r.md", by="Agent One", second_read_by="Agent Two", date="2026-11-27"):
+    return {"statement": statement, "file": file, "text_path": text_path, "by": by, "second_read_by": second_read_by, "date": date}
+
+
+def _rdg_q(head, quoted):
+    """A quote paragraph in the form of the rule."""
+    return "In the repository's words (%s): \"%s\"" % (head, quoted)
+
+
+def _rdg_run(d, entries, texts=None, words=RDG_WORDS, ids="lean-s-a", raw=None, sub="", extra=(), prep=None, name="readings.json", out="out", readings=True, g=None):
+    """(the `_stm_cli` result, the fixture folder) of a build of the fixture with --statements-for `ids` and --readings (unless `readings` is False): the readings file `d/rd/<sub>/<name>` holds `entries` as JSON
+    (or the bytes `raw`), `texts` ({relative path: text or bytes}) are planted beside it, `prep(g, d)` may change the fixture before the run, `g` reuses a fixture folder."""
+    if g is None:
+        g = _tree(d, _flat(["A", "B"]), {"New/S/A": RDG_A, "New/S/B": RDG_B}, ileans=RDG_ILEANS)
+        if prep:
+            prep(g, d)
+    base = os.path.join(d, "rd", sub)
+    os.makedirs(base, exist_ok=True)
+    for rel, data in (texts or {}).items():
+        p = os.path.join(base, *rel.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "wb") as f:
+            f.write(data if isinstance(data, bytes) else data.encode("utf-8"))
+    rp = os.path.join(base, name)
+    with open(rp, "wb") as f:
+        f.write(raw if raw is not None else json.dumps(entries).encode("utf-8"))
+    return _stm_cli(d, g, ["--statements-for", ids] + (["--readings", rp] if readings else []) + list(extra), words=words, out=out), g
+
+
+def _rdg_step(d, sid, out="out"):
+    """The step file `sid` of the build in `d/out`, parsed."""
+    return json.loads(_tree_files(os.path.join(d, out))["graph/step/%s.json" % sid].decode("utf-8"))
+
+
+def _rdg_skel(lines):
+    return [x for x in lines if x.startswith("SKEL-") or x.startswith("STRINGS-")]
+
+
+def _rdg_one(text, entry=None, **kw):
+    """(exit code, the refusal lines, the written `reading` of alpha or None, whether OUT_DIR exists) for ONE reading of alpha whose file `r.md` holds `text`."""
+    with _tmp() as d:
+        r, g = _rdg_run(d, [entry or _rdg_entry()], {"r.md": text}, **kw)
+        step = _rdg_step(d, "lean-s-a-alpha") if r[0] == 0 else {}
+    return r[0], _rdg_skel(r[1]), step.get("reading"), r[3]
+
+
+def _rdg_many(entries, texts, **kw):
+    """(exit code, the refusal lines, {statement: reading} of the build or None, whether OUT_DIR exists) for several readings."""
+    with _tmp() as d:
+        r, g = _rdg_run(d, entries, texts, **kw)
+        got = {n: _rdg_step(d, "lean-s-a-" + n).get("reading") for n in RDG_NAMES} if r[0] == 0 else None
+    return r[0], _rdg_skel(r[1]), got, r[3]
+
 
 def _selftest_cases():
     cases = []
@@ -5855,6 +6226,20 @@ def _selftest_cases():
         return _eq((errs, printed, want in r[1], r[0], bad("\n".join(r[1])), bad("\n".join(printed)), want == "statements lean-s-a reported axiom line %d name \"evil\\u001b[0mname\"" % (i + 1)),
                    ([], [want], True, 0, False, False, True))
 
+    @case("RDG-ESCAPE-ID", "the name of a statement that slugs to nothing (no ASCII letter or digit: ESC and U+202E) is printed escaped in `SKEL-STATEMENT-ID`, like the name of every other refusal "
+                           "(JSON text `\"\\u001b\\u202e\"`), by the build and through the command line, which prints no raw control or bidi character")
+    def _():
+        name = "\x1b‮"
+        src = _stm_src(f"theorem {name} : True := trivial\n")
+        ils = {"New/S/A": _stm_ilean("New/S/A", [name])}
+        built = _stm_one({"New/S/A": src}, ils)
+        with _tmp() as d:
+            g = _tree(d, _flat(["A"]), {"New/S/A": src}, ileans=ils)
+            r = _stm_cli(d, g, ["--statements-for", "lean-s-a"])
+        want = 'SKEL-STATEMENT-ID "\\u001b\\u202e"'
+        bad = lambda text: any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 or c in "‮​" for c in text if c != "\n")
+        return _eq((built, r[0], r[1], bad("\n".join(r[1])), r[3]), ([("SKEL-STATEMENT-ID", json.dumps(name), "")], 1, [want], False, False))
+
     @case("STM-KIND-REFUSAL", "a keyword the reader yields for which the builder has no kind word is refused by name `SKEL-STATEMENT-KIND <keyword> <name>` and nothing is built, never a fallback word: "
                               "the word table is patched to lack `instance` for the case (no real source is edited); the other kinds of the same file do not hide it, and with the word back it builds")
     def _():
@@ -6326,6 +6711,464 @@ def _selftest_cases():
                    ((0, 393, True, [], True), ([None] * 3, [None] * 3), ["omit [NeZero q] in", "omit [NeZero q] in", "variable (d q) in", "variable {d q} in"], True, True, [], True, 356, 393, 393, ["graph/index.json", "graph/step/lean-reduction-from-a-one-sided-bound-to-the-zeros.json"] + [f"graph/step/{i}.json" for i in ids], dict(zip(ids, [(1, 1, 0), (24, 24, 0), (12, 12, 0)])),
                     37, 34, 24, {"The weights, their partial sums and the error term": 17, "The Dirichlet series and the Laplace transform": 4, "The poles of the Laplace transform": 3},
                     ["src/New/Reduction/Zeros/PrimeError.lean"], True, True, True, [False, False, False], []))
+
+    # ---------------------------------------------------------------- the reading of a statement (RDG cases; `--readings FILE`)
+
+    @case("RDG-OPTION", "`--readings FILE` REQUIRES `--statements-for`: alone it is refused `SKEL-STATEMENT-READING-OPTIONS readings needs --statements-for` (exit 1, nothing written); the option twice or with no value is a "
+                        "usage error (exit 2); with `--statements-for`, the statement words (36) and an empty list it builds")
+    def _():
+        with _tmp() as d:
+            g = _tree(d, _flat(["A", "B"]), {"New/S/A": RDG_A, "New/S/B": RDG_B}, ileans=RDG_ILEANS)
+            rp = os.path.join(d, "readings.json")
+            with open(rp, "w", encoding="utf-8") as f:
+                f.write("[]")
+            alone = _stm_cli(d, g, ["--readings", rp], out="o-alone")
+            twice = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--readings", rp, "--readings", rp], words=RDG_WORDS, out="o-twice")
+            novalue = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--readings"], words=RDG_WORDS, out="o-nov")
+            good = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--readings", rp], words=RDG_WORDS, out="o-good")
+        return _eq(((alone[0], alone[1], alone[3]), twice[0], twice[3], novalue[0], good[0], good[3]),
+                   ((1, ["SKEL-STATEMENT-READING-OPTIONS readings needs --statements-for"], False), 2, False, 2, 0, True))
+
+    @case("RDG-ABSENT", "the option absent leaves every output as it is: with `--statements-for` alone (the 28 words) no step file has a `reading`, the report has no `readings` line and index.json `strings` holds none "
+                        "of the 8 words of the reading; with `--readings` and an empty list (the 36 words) every file is byte-identical to that build except index.json, which differs by exactly the 8 words in `strings`, "
+                        "and the report adds `readings lean-s-a: 0 readings written`")
+    def _():
+        with _tmp() as d:
+            r0, g = _rdg_run(d, [], words=STM_WORDS, readings=False, out="o0")
+            r1, _g = _rdg_run(d, [], words=RDG_WORDS, out="o1", g=g)
+            f0, f1 = _tree_files(os.path.join(d, "o0")), _tree_files(os.path.join(d, "o1"))
+        i0, i1 = (json.loads(f["graph/index.json"].decode("utf-8")) for f in (f0, f1))
+        s0, s1 = i0.pop("strings"), i1.pop("strings")
+        rest = sorted(k for k in f0 if k != "graph/index.json")
+        has = lambda f: [k for k in f if k.startswith("graph/step/") and b'"reading"' in f[k]]
+        return _eq((r0[0], r1[0], sorted(f0) == sorted(f1), rest == sorted(k for k in rest if f0[k] == f1.get(k)), len(rest) > 7, i0 == i1, sorted(set(s1) - set(s0)), sorted(set(s0) - set(s1)),
+                    s0 == {k: s1[k] for k in s0}, has(f0), has(f1), [x for x in r0[1] if x.startswith("readings ")], [x for x in r1[1] if x.startswith("readings ")]),
+                   (0, 0, True, True, True, True, sorted(RDG_PAGE_KEYS), [], True, [], [], [], ["readings lean-s-a: 0 readings written"]))
+
+    @case("RDG-FILE", "the readings file is a JSON LIST of objects with EXACTLY the six string keys: anything else is `SKEL-STATEMENT-READING-FILE <what>` (exit 1, nothing written) and the file's text is never echoed: not "
+                      "JSON or not UTF-8 `not-json`; an object or a string at the top `not-a-list`; an entry that is no object `entry N not-an-object`; another key set (an extra key, a missing key, `{}`) `entry N keys`; "
+                      "a value that is no string `entry N <key> not-a-string`; the entries are reported together, by position; an EMPTY list is a good file (no reading, `n` is 0); a file that does not exist is exit 2")
+    def _():
+        e = _rdg_entry()
+
+        def run(raw):
+            with _tmp() as d:
+                r, g = _rdg_run(d, None, {"r.md": "Text."}, raw=raw)
+            return r[0], _rdg_skel(r[1]), r[3]
+        j = lambda x: json.dumps(x).encode("utf-8")
+        out = {"not-json": run(b"{not json"), "not-utf8": run(b"\xff\xfe[]"), "object": run(b"{}"), "string": run(b'"x"'), "extra": run(j([dict(e, more="x")])), "missing": run(j([{k: v for k, v in e.items() if k != "date"}])),
+               "int": run(j([dict(e, by=5)])), "null": run(j([dict(e, date=None)])), "empty-entry": run(b"[{}]"), "not-object": run(b'["x"]'), "second": run(j([e, dict(e, file=3)])),
+               "two": run(b'[{}, "x"]'), "empty-list": run(b"[]")}
+        with _tmp() as d:
+            g = _tree(d, _flat(["A", "B"]), {"New/S/A": RDG_A, "New/S/B": RDG_B}, ileans=RDG_ILEANS)
+            gone = _stm_cli(d, g, ["--statements-for", "lean-s-a", "--readings", os.path.join(d, "nope.json")], words=RDG_WORDS)
+        f = lambda w: (1, ["SKEL-STATEMENT-READING-FILE " + w], False)
+        return _eq((out, (gone[0], gone[3])),
+                   ({"not-json": f("not-json"), "not-utf8": f("not-json"), "object": f("not-a-list"), "string": f("not-a-list"), "extra": f("entry 1 keys"), "missing": f("entry 1 keys"),
+                     "int": f("entry 1 by not-a-string"), "null": f("entry 1 date not-a-string"), "empty-entry": f("entry 1 keys"), "not-object": f("entry 1 not-an-object"), "second": f("entry 2 file not-a-string"),
+                     "two": (1, ["SKEL-STATEMENT-READING-FILE entry 1 keys", "SKEL-STATEMENT-READING-FILE entry 2 not-an-object"], False), "empty-list": (0, [], True)}, (2, False)))
+
+    @case("RDG-TEXT", "the text is the bytes of `text_path` as strict UTF-8, refused `SKEL-STATEMENT-READING-TEXT <statement> <why>` (all reported, in order, nothing written): `not-utf-8`; `empty` (an empty file, or a file of one "
+                      "newline: ONE trailing newline is dropped first); `nul`; `carriage-return` (a file with CRLF is refused, never rewritten); `control-character` (a tab, ESC: any control character other than the newline); "
+                      "`size N bytes, at most 20000`: the count is of UTF-8 BYTES of the text as written, so 20001 `a` is refused, 19999 `a` and one `é` (20000 characters, 20001 bytes) is refused and 10001 `é` "
+                      "(20002 bytes) is refused")
+    def _():
+        bad = [("nutf", b"\xff\xfe"), ("nempty", b""), ("nnl", b"\n"), ("nnul", b"a\x00b"), ("ncr", b"a\r\nb\r\n"), ("ntab", b"a\tb"), ("nesc", b"a\x1bb"), ("nbig", b"a" * 20001),
+               ("nmb", "a" * 19999 + "é"), ("nmb2", "é" * 10001)]
+        entries = [_rdg_entry(n, text_path="t%d.md" % i) for i, (n, _t) in enumerate(bad)]
+        with _tmp() as d:
+            r, g = _rdg_run(d, entries, {"t%d.md" % i: t for i, (_n, t) in enumerate(bad)})
+        t = lambda n, w: "SKEL-STATEMENT-READING-TEXT %s %s" % (n, w)
+        return _eq((r[0], _rdg_skel(r[1]), r[3]),
+                   (1, [t("nutf", "not-utf-8"), t("nempty", "empty"), t("nnl", "empty"), t("nnul", "nul"), t("ncr", "carriage-return"), t("ntab", "control-character"), t("nesc", "control-character"),
+                        t("nbig", "size 20001 bytes, at most 20000"), t("nmb", "size 20001 bytes, at most 20000"), t("nmb2", "size 20002 bytes, at most 20000")], False))
+
+    @case("RDG-TEXT-OK", "the text is written UNCHANGED except for the one trailing-newline rule: 20000 `a` with the file's newline after it (20001 file bytes) is taken, and so is 10000 `é` (20000 bytes, 10000 "
+                         "characters); `abc` + newline is `abc`; `abc` + two newlines is `abc` + newline; `abc` is `abc`; leading newlines and the white space before the last newline are kept; the `**marks**` stay")
+    def _():
+        texts = {"alpha": "a" * 20000 + "\n", "beta": "é" * 10000, "gamma": "abc\n", "delta": "abc\n\n", "eps": "abc", "zeta": "\n\n  abc  \n", "eta": "A **bold** word and `code`.\n"}
+        entries = [_rdg_entry(n, text_path=n + ".md") for n in texts]
+        rc, lines, got, exists = _rdg_many(entries, {n + ".md": t for n, t in texts.items()})
+        return _eq((rc, lines, exists, {n: g["text"] for n, g in got.items()}),
+                   (0, [], True, {"alpha": "a" * 20000, "beta": "é" * 10000, "gamma": "abc", "delta": "abc\n", "eps": "abc", "zeta": "\n\n  abc  ", "eta": "A **bold** word and `code`."}))
+
+    @case("RDG-NAME", "`by` and `second_read_by`: `SKEL-STATEMENT-READING-NAME <statement> <field>` when empty, over 80 CHARACTERS (81 refused, 80 taken, and 80 two-byte characters are taken: characters, not bytes), or holding a "
+                      "control character, a bidi mark or a zero-width character (the predicate of the prompt path, `str.isprintable`); both fields bad give two lines, `by` first")
+    def _():
+        bad = [("n81", dict(by="a" * 81)), ("n81b", dict(second_read_by="a" * 81)), ("nempty", dict(by="")), ("nesc", dict(by="A\x1bB")), ("nbidi", dict(second_read_by="A‮B")), ("nzw", dict(by="A​B")),
+               ("nboth", dict(by="", second_read_by="")), ("nnl", dict(by="A\nB"))]
+        entries = [_rdg_entry(n, **kw) for n, kw in bad]
+        with _tmp() as d:
+            r, g = _rdg_run(d, entries, {"r.md": "Text."})
+        w = lambda n, f: "SKEL-STATEMENT-READING-NAME %s %s" % (n, f)
+        ok = _rdg_one("Text.", _rdg_entry(by="a" * 80, second_read_by="é" * 80))
+        return _eq(((r[0], _rdg_skel(r[1]), r[3]), ok[0], ok[1], ok[2] and (ok[2]["by"] == "a" * 80, ok[2]["second_read_by"] == "é" * 80)),
+                   ((1, [w("n81", "by"), w("n81b", "second_read_by"), w("nempty", "by"), w("nesc", "by"), w("nbidi", "second_read_by"), w("nzw", "by"), w("nboth", "by"), w("nboth", "second_read_by"), w("nnl", "by")], False),
+                    0, [], (True, True)))
+
+    @case("RDG-DATE", "`date`: `SKEL-STATEMENT-READING-DATE <statement>` unless it is exactly four digits, a hyphen, two digits, a hyphen, two digits (ASCII; no other digit, no trailing newline or space) AND a real calendar "
+                      "date (`2026-02-30`, `2026-02-29`, `2026-11-31`, `2026-13-01`, `0000-01-01` are refused; the leap day `2024-02-29` is taken)")
+    def _():
+        bad = ["2026-1-5", "20261127", "2026-11-27x", "2026-11-27\n", "٢٠٢٦-١١-٢٧", "", "2026-02-30", "2026-02-29", "2026-11-31", "2026-13-01", "0000-01-01", "2026-11-27 "]
+        entries = [_rdg_entry("d%d" % i, date=v) for i, v in enumerate(bad)]
+        with _tmp() as d:
+            r, g = _rdg_run(d, entries, {"r.md": "Text."})
+        ok = _rdg_many([_rdg_entry("alpha", date="2024-02-29"), _rdg_entry("beta", date="2026-12-31")], {"r.md": "Text."})
+        return _eq(((r[0], _rdg_skel(r[1]), r[3]), ok[0], ok[1], ok[2]["alpha"]["date"], ok[2]["beta"]["date"]),
+                   ((1, ["SKEL-STATEMENT-READING-DATE d%d" % i for i in range(len(bad))], False), 0, [], "2024-02-29", "2026-12-31"))
+
+    @case("RDG-TARGET", "each entry must name a statement the build WROTE, matched by its full name in the named `file`: `SKEL-STATEMENT-READING-TARGET <statement>` for a name that is not one, for a statement of a file that is not "
+                        "in `--statements-for`, for a statement named under another file's id, and for two entries naming one statement (once); with both files named the same entry for the other file's statement builds")
+    def _():
+        def run(entries, ids="lean-s-a"):
+            with _tmp() as d:
+                r, g = _rdg_run(d, entries, {"r.md": "Text."}, ids=ids)
+                bread = _rdg_step(d, "lean-s-b-bdef").get("reading") if r[0] == 0 and "lean-s-b" in ids else None
+            return r[0], _rdg_skel(r[1]), r[3], bread
+        t = lambda n: "SKEL-STATEMENT-READING-TARGET " + n
+        return _eq((run([_rdg_entry("nope")]), run([_rdg_entry("bdef", file="lean-s-b")]), run([_rdg_entry("bdef", file="lean-s-b")], ids="lean-s-a,lean-s-b")[0::3], run([_rdg_entry("alpha"), _rdg_entry("alpha")]),
+                    run([_rdg_entry("alpha", file="lean-s-b")], ids="lean-s-a,lean-s-b")[:3], run([_rdg_entry("beta", file="zzz")]), run([_rdg_entry("alpha"), _rdg_entry("nope"), _rdg_entry("beta", file="zzz")])),
+                   ((1, [t("nope")], False, None), (1, [t("bdef")], False, None), (0, {"text": "Text.", "by": "Agent One", "second_read_by": "Agent Two", "date": "2026-11-27"}), (1, [t("alpha")], False, None),
+                    (1, [t("alpha")], False), (1, [t("beta")], False, None), (1, [t("nope"), t("beta")], False, None)))
+
+    @case("RDG-PATHS", "`text_path` is relative to the directory of the readings file, no `..` or empty or `.` segment, no absolute path, no symlink anywhere in it (also a folder of it), a regular file: each other "
+                       "shape is `SKEL-STATEMENT-READING-FILE entry N text_path <why>` (`dotdot`, `absolute`, `empty`, `symlink`, `not-a-regular-file`, `missing`, `segment`), together, nothing written; a file outside "
+                       "the directory of the readings file that EXISTS (`../r.md`) is refused for its path; a plain `real/r.md` builds")
+    def _():
+        with _tmp() as d:
+            base = os.path.join(d, "rd")
+            os.makedirs(os.path.join(base, "real"))
+            os.makedirs(os.path.join(base, "adir"))
+            with open(os.path.join(base, "real", "r.md"), "w", encoding="utf-8") as f:
+                f.write("Text.")
+            os.symlink("real/r.md", os.path.join(base, "ln.md"))
+            os.symlink("real", os.path.join(base, "sdir"))
+            paths = [("../r.md", "dotdot"), (os.path.join(base, "real", "r.md"), "absolute"), ("real/../real/r.md", "dotdot"), ("", "empty"), ("ln.md", "symlink"), ("sdir/r.md", "symlink"),
+                     ("adir", "not-a-regular-file"), ("nope.md", "missing"), ("real//r.md", "segment"), ("./real/r.md", "segment")]
+            r, g = _rdg_run(d, [_rdg_entry(text_path=p) for p, _w in paths], {"r.md": "Text."})
+            good = _rdg_run(d, [_rdg_entry(text_path="real/r.md")], out="o-good", g=g)[0]
+            gstep = _rdg_step(d, "lean-s-a-alpha", out="o-good") if good[0] == 0 else {}
+        with _tmp() as d:
+            outside, _g = _rdg_run(d, [_rdg_entry(text_path="../r.md")], {"../r.md": "Text."}, sub="sub")
+        return _eq(((r[0], _rdg_skel(r[1]), r[3]), good[0], gstep.get("reading", {}).get("text"), (outside[0], _rdg_skel(outside[1]), outside[3])),
+                   ((1, ["SKEL-STATEMENT-READING-FILE entry %d text_path %s" % (i + 1, w) for i, (_p, w) in enumerate(paths)], False), 0, "Text.", (1, ["SKEL-STATEMENT-READING-FILE entry 1 text_path dotdot"], False)))
+
+    @case("RDG-QUOTE-FORM", "a QUOTE PARAGRAPH (a paragraph, split on blank lines, that starts `In the repository's words (`) has exactly the form `In the repository's words (` HEAD `): \"` QUOTED `\"` and nothing "
+                            "after the closing mark but white space; HEAD is `lines A-B` or `line A` (decimal, A at least 1, A <= B, no leading zero), optionally preceded by `PATH, `. The good forms pass (and the text is "
+                            "written unchanged); each other shape is `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> form`, n counting the QUOTE paragraphs from 1")
+    def _():
+        good = [_rdg_q("lines %d-%d" % (RDG_L1, RDG_L1 + 1), RDG_ALPHA), _rdg_q("line %d" % RDG_L2, "Let `p` be prime. It is odd."), _rdg_q("lines %d-%d" % (RDG_L3, RDG_L3), "The constant is 3.14 here."),
+                _rdg_q("line %d" % (RDG_L1 + 1), "Alpha three continues on a second line.") + "   "]
+        text = "Preface.\n\n" + "\n\n".join(good) + "\n"
+        ok = _rdg_one(text)
+        h = lambda head, tail='"x"': "In the repository's words (%s): %s" % (head, tail)
+        bad = [h("lines 3-2"), h("lines 03-4"), h("lines 0-1"), h("line 0"), h("lines 1-"), h("line %d" % RDG_L2, "x"), "In the repository's words (line %d) \"x\"" % RDG_L2, h("line %d" % RDG_L2, '"x" tail'),
+               h("line %d" % RDG_L2, '"x'), h("Line %d" % RDG_L2), h("src/New/S/B lean.lean, line 3"), h(", line 3"), h("line 1.5"), h("lines 1 - 2"), h("")]
+        text2 = "\n\n".join("Plain paragraph %d.\n\n%s" % (i, p) for i, p in enumerate(bad)) + "\n"
+        refused = _rdg_one(text2)
+        return _eq((ok[:2], ok[2] and ok[2]["text"] == text[:-1], refused[:2], refused[3]),
+                   ((0, []), True, (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d form" % (i + 1) for i in range(len(bad))]), False))
+
+    @case("RDG-QUOTE-PATH", "the SOURCE of a quote is its PATH when given, else the statement's own file; PATH must fullmatch `src/[A-Za-z0-9_./-]+\\.lean`, have no `.` or `..` segment and resolve (real path) inside "
+                            "the checkout, and be a file: else `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> path`; a file of the other statement file and a library file are allowed; the text of a quote of a PATH "
+                            "is checked too (`text`)")
+    def _():
+        lib = _lean(decl="/-- Lib one. Lib two. -/\ntheorem t : True := trivial")
+        ll = _rdg_ln(lib, "/-- Lib")
+
+        def prep(g, d):
+            with open(os.path.join(g, "src", "Lib", "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+            out = os.path.join(d, "outside")
+            os.makedirs(out)
+            with open(os.path.join(out, "X.lean"), "w", encoding="utf-8") as f:
+                f.write("/-- Out one. -/\ntheorem x : True := trivial\n")
+            os.symlink(out, os.path.join(g, "src", "Lib", "OutDir"))
+            os.symlink(os.path.join(out, "X.lean"), os.path.join(g, "src", "Lib", "Link.lean"))
+        good = [_rdg_q("src/New/S/B.lean, lines %d-%d" % (RDG_LB, RDG_LB), "Bee one. Bee two."), _rdg_q("src/New/S/B.lean, line %d" % RDG_LB, "Bee two."), _rdg_q("src/Lib/Other/File.lean, line %d" % ll, "Lib one."),
+                _rdg_q("src/New/S/A.lean, line %d" % RDG_L2, "It is odd.")]
+        bads = ["src/New/S/Nope.lean", "../x.lean", "/abs.lean", "src/New/S/B.txt", "src/New/./S/B.lean", "src/New/S/../S/B.lean", "New/S/B.lean", "src/Lib/OutDir/X.lean", "src/Lib/Link.lean"]
+        bad = [_rdg_q("%s, line 1" % p, "Out one.") for p in bads] + [_rdg_q("src/New/S/B.lean, line %d" % RDG_LB, "Bee onX.")]
+        ok = _rdg_one("\n\n".join(good) + "\n", prep=prep)
+        refused = _rdg_one("\n\n".join(bad) + "\n", prep=prep)
+        return _eq((ok[:2], refused[:2], refused[3]),
+                   ((0, []), (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d path" % (i + 1) for i in range(len(bads))] + ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d text" % (len(bads) + 1)]), False))
+
+    @case("RDG-QUOTE-LINES", "THE DOC-STRING is the doc-comment of the source whose physical lines cover [A, B] completely (first line the one holding `/--`, last the one holding `-/`): none, or more than one "
+                             "(two doc-comments on one line), is `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> lines`; lines that stick out of the doc-string, that lie on the module note, on a statement with no doc-string "
+                             "or past the end of the file are refused; lines inside a longer doc-string are taken")
+    def _():
+        bad = [_rdg_q("lines 1-2", "x"), _rdg_q("line %d" % RDG_L6, "x"), _rdg_q("line %d" % RDG_L5, "Eps one."), _rdg_q("lines %d-%d" % (RDG_L1 + 1, RDG_L1 + 2), "Alpha four ends."),
+               _rdg_q("lines %d-%d" % (RDG_L2, RDG_L2 + 1), "x"), _rdg_q("line 9999", "x"), _rdg_q("lines %d-%d" % (RDG_L1 - 1, RDG_L1), "Alpha one.")]
+        refused = _rdg_one("\n\n".join(bad) + "\n")
+        ok = _rdg_one(_rdg_q("lines %d-%d" % (RDG_L1, RDG_L1 + 1), RDG_ALPHA) + "\n\n" + _rdg_q("line %d" % (RDG_L1 + 1), "Alpha four ends.") + "\n")
+        return _eq((refused[:2], refused[3], ok[:2]), ((1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d lines" % (i + 1) for i in range(len(bad))]), False, (0, [])))
+
+    @case("RDG-QUOTE-TEXT", "THE COMPARISON: white space collapsed in BOTH, the QUOTED text must be a RUN OF WHOLE SENTENCES of the doc-string (it starts at the start or after a sentence end, ends at a sentence end or "
+                            "at the end); the whole doc-string, the first sentence, a middle run, the last sentence and a quote with its own line break or double space pass; a plain substring, a changed word or "
+                            "mark, a cut in the middle of a sentence, a reordered run, a middle sentence with its final period dropped, an empty quote, the text of another doc-string, and a cut at a period or after one "
+                            "INSIDE a backtick span (`` `y. z` ``) are `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> text`; the refusal lines hold no text of the reading")
+    def _():
+        head = "lines %d-%d" % (RDG_L1, RDG_L1 + 1)
+        good = [RDG_ALPHA, "Alpha one.", "Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three continues on a second line.", "Alpha four ends.", "Alpha three\ncontinues on a second line.", "Alpha  one.", " Alpha one. "]
+        bad = ["lpha one.", "Alpha one. Alpha two", "Alpha won.", "Alpha four ends. Alpha one.", "Alpha two uses `x ≥ 1.` and `y. z` as a bound Alpha three continues on a second line.",
+               "Alpha two uses `x ≥ 1.` and `y.", "z` as a bound. Alpha three continues on a second line.", "", RDG_ALPHA + " Alpha five.", RDG_ALPHA[:-1] + "!", "Let `p` be prime.", "SECRET-MARKER one."]
+        ok = _rdg_one("\n\n".join(_rdg_q(head, q) for q in good) + "\n")
+        refused = _rdg_one("\n\n".join(_rdg_q(head, q) for q in bad) + "\n")
+        return _eq((ok[:2], refused[:2], refused[3], any("SECRET" in x or "Alpha" in x for x in refused[1])),
+                   ((0, []), (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph %d text" % (i + 1) for i in range(len(bad))]), False, False))
+
+    @case("RDG-QUOTE-MARKS", "a SENTENCE END is a `.`, `?` or `!` outside backtick spans followed by any run (possibly empty) of the closing marks `*`, `_`, `)`, `]`, `\"` and then a space or the end of the text; a quote that "
+                             "starts at the next character after the space passes: after a bold title `**Bold title.**`, and around `(really!)` and `\"go.\"`")
+    def _():
+        beta = [("line %d" % RDG_L2, q) for q in ("Let `p` be prime. It is odd.", "It is odd.", "Let `p` be prime.")]
+        eta = [("line %d" % RDG_L7, q) for q in ("Eta wrote \"go.\"", "Then stayed (really!)", "Now stop.", "Then stayed (really!) Now stop.", "Eta wrote \"go.\" Then stayed (really!) Now stop.")]
+        ok = _rdg_one("\n\n".join(_rdg_q(h, q) for h, q in beta) + "\n", entry=_rdg_entry("beta"))
+        ok2 = _rdg_one("\n\n".join(_rdg_q(h, q) for h, q in eta) + "\n", entry=_rdg_entry("eta"))
+        return _eq((ok[:2], ok2[:2]), ((0, []), (0, [])))
+
+    @case("RDG-QUOTE-DOT", "a `.` followed by a letter or a digit is NOT a sentence end (`3.14`, `e.g.x`): a quote that starts after it or ends at it is refused `text`, a quote of whole sentences around it passes")
+    def _():
+        head = "line %d" % RDG_L3
+        good = ["The constant is 3.14 here.", "See e.g.x for more.", "The constant is 3.14 here. See e.g.x for more."]
+        bad = ["14 here. See e.g.x for more.", "x for more.", "The constant is 3.", "The constant is 3.14", "The constant is 3.14 here. See e.g."]
+        ok = _rdg_one("\n\n".join(_rdg_q(head, q) for q in good) + "\n", entry=_rdg_entry("gamma"))
+        refused = _rdg_one("\n\n".join(_rdg_q(head, q) for q in bad) + "\n", entry=_rdg_entry("gamma"))
+        return _eq((ok[:2], refused[:2]), ((0, []), (1, ["SKEL-STATEMENT-READING-QUOTE gamma paragraph %d text" % (i + 1) for i in range(len(bad))])))
+
+    @case("RDG-QUOTE-OTHER", "a paragraph that starts `In the repository's words` without ` (` (a colon, or none) and one in lower case are not quote paragraphs and pass unchecked (the limit of the rule); a quote whose "
+                             "QUOTED text holds `\"` characters passes (it ends at the LAST `\"` of the paragraph)")
+    def _():
+        quoted = 'Delta said "hi" to me.'
+        text = "\n\n".join(["In the repository's words: \"fake\"", "In the repository's words(lines 1-1): \"fake\"",
+                            "in the repository's words (lines 1-1): \"fake\"", _rdg_q("line %d" % RDG_L4, quoted), _rdg_q("line %d" % RDG_L4, quoted + ' Then left.')]) + "\n"
+        ok = _rdg_one(text)
+        bad = _rdg_one(_rdg_q("line %d" % RDG_L4, 'Delta said "hi" to you.') + "\n")
+        return _eq((ok[:2], ok[2] and ok[2]["text"] == text[:-1], bad[:2]), ((0, []), True, (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 1 text"])))
+
+    @case("RDG-REAL-QUOTE-SHAPE", "a made-up reading with the line shape of a real one (a preface paragraph, four `##` headings, `-` and `1.` lists, a `**bold**` mark, `code` spans, a quote in each HEAD form) is "
+                                  "written unchanged; the same text with one character of the second quote changed is refused `SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 text`")
+    def _():
+        def make(bee):
+            return ("This reading was written for a test; it names nobody.\n\n## What it rests on\n\n- `alpha` and the lemma below it.\n- Nothing else.\n\n"
+                    + _rdg_q("lines %d-%d" % (RDG_L1, RDG_L1 + 1), "Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound.") + "\n\n## What it states\n\n1. The first point, with a **bold mark** kept as written.\n2. The second point.\n\n"
+                    + _rdg_q("src/New/S/B.lean, line %d" % RDG_LB, bee) + "\n\n## How the Lean proof goes\n\nThe proof is `trivial`.\n\n## What the Lean text adds to the comment\n\nNothing.\n")
+        ok = _rdg_one(make("Bee one."))
+        bad = _rdg_one(make("Bee onf."))
+        return _eq((ok[:2], ok[2] and ok[2]["text"] == make("Bee one.")[:-1], bad[:2]), ((0, []), True, (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 text"])))
+
+    @case("RDG-PRINT", "the build prints, per named file and after that file's statements lines, `readings <file id>: <n> readings written` (n may be 0); without the option the line is absent")
+    def _():
+        with _tmp() as d:
+            r, g = _rdg_run(d, [_rdg_entry("alpha"), _rdg_entry("beta")], {"r.md": "Text."}, ids="lean-s-a,lean-s-b")
+            r2, _g = _rdg_run(d, [], ids="lean-s-a,lean-s-b", readings=False, words=STM_WORDS, out="o2", g=g)
+        mine = lambda lines: [x for x in lines if x.startswith("statements lean-s-") or x.startswith("readings ")]
+        n = len(RDG_NAMES)
+        return _eq((r[0], mine(r[1]), mine(r2[1])),
+                   (0, ["statements lean-s-a: %d declarations, %d written, 0 reported" % (n, n), "statements lean-s-a: 0 library names left out of uses_elsewhere", "readings lean-s-a: 2 readings written",
+                        "statements lean-s-b: 1 declarations, 1 written, 0 reported", "statements lean-s-b: 0 library names left out of uses_elsewhere", "readings lean-s-b: 0 readings written"],
+                    ["statements lean-s-a: %d declarations, %d written, 0 reported" % (n, n), "statements lean-s-a: 0 library names left out of uses_elsewhere",
+                     "statements lean-s-b: 1 declarations, 1 written, 0 reported", "statements lean-s-b: 0 library names left out of uses_elsewhere"]))
+
+    @case("RDG-STEP", "the written `reading` has exactly the four keys text, by, second_read_by and date (the file is written with sorted keys), the values as given; a statement with no reading has no `reading` key; the "
+                      "file step (its closed children) and every other step file are byte-identical to a build without the option, and so is alpha's step but for the one key")
+    def _():
+        text = "  Leading space kept.\n\nA **bold** mark.\n"
+        with _tmp() as d:
+            r0, g = _rdg_run(d, [], words=STM_WORDS, readings=False, out="o0")
+            r1, _g = _rdg_run(d, [_rdg_entry("alpha", text_path="r.md", by="B1", second_read_by="B2", date="2026-01-02"), _rdg_entry("gamma", text_path="r.md")], {"r.md": text}, out="o1", g=g)
+            f0, f1 = _tree_files(os.path.join(d, "o0")), _tree_files(os.path.join(d, "o1"))
+        a0, a1 = (json.loads(f["graph/step/lean-s-a-alpha.json"].decode("utf-8")) for f in (f0, f1))
+        reading = a1.pop("reading", None)
+        differ = sorted(k for k in f0 if f0[k] != f1[k])
+        return _eq((r0[0], r1[0], sorted(reading or {}), reading, a0 == a1, differ, [k for k in f1 if k.startswith("graph/step/") and b'"reading"' in f1[k]]),
+                   (0, 0, ["by", "date", "second_read_by", "text"], {"text": text[:-1], "by": "B1", "second_read_by": "B2", "date": "2026-01-02"}, True,
+                    ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"], ["graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"]))
+
+    @case("RDG-WORDS", "the words are all-or-none with the statement words: with `--readings` the file of --strings-overlay-statements holds EXACTLY the 28 words and the 8 of the reading (`decl_reading_show`, "
+                       "`decl_reading_hide`, `decl_reading_about`, `decl_reading_uses`, `decl_reading_target`, `decl_reading_argument`, `decl_reading_adds`, `readings_byline`): the 28 alone are refused "
+                       "`SKEL-STATEMENT-WORDS <key> missing` (the eight, sorted); without the option the 36 are refused `... <key> is not a statement word`; one missing is named; `readings_byline` must hold "
+                       "`{by}`, `{second_read_by}` and `{date}` and no other placeholder, no other new key has one; the 8 are optional page keys; the good file builds and index.json `strings` holds the 8 verbatim")
+    def _():
+        out = {}
+        for label, words, opt in (("28+opt", STM_WORDS, True), ("36", RDG_WORDS, False), ("minus1", {k: v for k, v in RDG_WORDS.items() if k != "decl_reading_uses"}, True),
+                                  ("no-date", dict(RDG_WORDS, readings_byline="Written by {by}, checked by {second_read_by}"), True), ("n", dict(RDG_WORDS, readings_byline=RDG_WORDS["readings_byline"] + " {n}"), True),
+                                  ("by-in-show", dict(RDG_WORDS, decl_reading_show="Show {by}"), True), ("extra", dict(RDG_WORDS, view_cards="Cards"), True)):
+            with _tmp() as d:
+                r, g = _rdg_run(d, [], words=words, readings=opt)
+            out[label] = (r[0], r[1], r[3])
+        with _tmp() as d:
+            r, g = _rdg_run(d, [])
+            strings = json.loads(_tree_files(os.path.join(d, "out"))["graph/index.json"].decode("utf-8"))["strings"]
+        w = lambda k, what: "SKEL-STATEMENT-WORDS %s %s" % (k, what)
+        new = sorted(RDG_WORDS_NEW)
+        return _eq((out, {k: strings.get(k) for k in new}, [k in bs.GRAPH_OPTIONAL_KEYS for k in new], {k: bs.PLACEHOLDERS.get(k) for k in new if bs.PLACEHOLDERS.get(k)}, bs.REQUIRED_PLACEHOLDERS.get("readings_byline"),
+                    len(STATEMENT_WORD_KEYS), sorted(READING_WORD_KEYS) == new),
+                   ({"28+opt": (1, [w(k, "missing") for k in new], False), "36": (1, [w(k, "is not a statement word") for k in new], False), "minus1": (1, [w("decl_reading_uses", "missing")], False),
+                     "no-date": (1, ["STRINGS-KEY readings_byline is missing the placeholder {date}"], False), "n": (1, ["STRINGS-KEY readings_byline has an unknown placeholder {n}"], False),
+                     "by-in-show": (1, ["STRINGS-KEY decl_reading_show has an unknown placeholder {by}"], False), "extra": (1, [w("view_cards", "is not a statement word")], False)},
+                    {k: (RDG_WORDS_NEW[k] if k in RDG_PAGE_KEYS else None) for k in new}, [k in RDG_PAGE_KEYS for k in new], {"readings_byline": {"by", "second_read_by", "date"}}, ("by", "second_read_by", "date"), 28, True))
+
+    @case("RDG-WORDS-COPY", "the test copy of the 8 words of the reading equals the values in Ariadne's strings file when that file is readable at its shared path (SKIPPED when it is not: the path is "
+                            "in RDG_WORDS_SHARED_PATH)")
+    def _():
+        try:
+            with open(RDG_WORDS_SHARED_PATH, encoding="utf-8") as f:
+                t = f.read()
+        except OSError:
+            raise _SkipCase("SKIPPED: %s is not readable here" % RDG_WORDS_SHARED_PATH)
+        found = {k: re.findall(r"^- " + k + r"[^\n]*?: `([^`\n]*)`", t, re.M) for k in RDG_WORDS_NEW}
+        return _eq({k: v[0] for k, v in found.items() if len(v) == 1}, RDG_WORDS_NEW)
+
+    @case("RDG-ESCAPES", "every value of a refusal of the reading is printed through `_safe`: a statement name of the readings file that holds ESC or a bidi mark is printed as JSON text in `SKEL-STATEMENT-READING-TEXT`, `-NAME`, "
+                         "`-DATE` and `-TARGET`, and the output holds no raw control or bidi character")
+    def _():
+        names = ["x\x1b[31m-t", "y‮-n", "z\x1b-d"]
+        entries = [_rdg_entry(names[0], text_path="empty.md"), _rdg_entry(names[1], by=""), _rdg_entry(names[2], date="bad")]
+        with _tmp() as d:
+            r, g = _rdg_run(d, entries, {"empty.md": "", "r.md": "Text."})
+        with _tmp() as d:
+            r2, g = _rdg_run(d, [_rdg_entry("w\x1b[0m")], {"r.md": "Text."})
+        bad = lambda text: any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 or c in "‮​" for c in text if c != "\n")
+        return _eq((r[0], r[1], r2[0], r2[1], bad("\n".join(r[1] + r2[1]))),
+                   (1, ["SKEL-STATEMENT-READING-TEXT " + json.dumps(names[0]) + " empty", "SKEL-STATEMENT-READING-NAME " + json.dumps(names[1]) + " by", "SKEL-STATEMENT-READING-DATE " + json.dumps(names[2])], 1,
+                    ["SKEL-STATEMENT-READING-TARGET " + json.dumps("w\x1b[0m")], False))
+
+    # ---------------------------------------------------------------- round 3 of the reading cases: huge numbers, the opener anywhere, blank and astral names, symlinked and empty path segments
+
+    @case("RDG-QUOTE-HUGE", "a number of a quote HEAD has at most 9 digits (`[1-9][0-9]{0,8}`): a longer one (`line 1` and 5000 zeros, either number of `lines`, the number after a PATH) is refused `SKEL-STATEMENT-READING-QUOTE "
+                            "<statement> paragraph <n> form`, exit 1, one SKEL line, no traceback; a number of 9 digits is a good form (and has no doc-string: `lines`)")
+    def _():
+        big, mid = "1" + "0" * 5000, "1" + "0" * 4400   # both over the 4300 digits Python's int() takes; the text stays under 20000 bytes
+        paras = [_rdg_q("line %s" % big, "x"), _rdg_q("lines 1-%s" % mid, "x"), _rdg_q("lines %s-%s" % (mid, 1), "x"), _rdg_q("src/New/S/B.lean, line %s" % mid, "x"), _rdg_q("line 999999999", "x"),
+                 _rdg_q("line 1000000000", "x")]
+        res = _rdg_one("\n\n".join(paras) + "\n")
+        q = lambda n, w: "SKEL-STATEMENT-READING-QUOTE alpha paragraph %d %s" % (n, w)
+        return _eq((res[0], res[1], res[3]), (1, [q(1, "form"), q(2, "form"), q(3, "form"), q(4, "form"), q(5, "lines"), q(6, "form")], False))
+
+    for _name, _prefix in (("SPACE", " "), ("GT", "> "), ("DASH", "- "), ("STARS", "**"), ("BOM", "﻿"), ("ZWSP", "​"), ("NEWLINE", "intro\n"), ("NBSP-LINE", "intro\n \n"), ("LS", "intro ")):
+        @case("RDG-OPENER-" + _name, "the opener `In the repository's words (` anywhere in a paragraph EXCEPT at its very start is refused `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> form` (n counts ALL paragraphs of this "
+                                     "refusal): here it follows %r in the second paragraph; the same quote with nothing before it passes" % _prefix)
+        def _(_prefix=_prefix):
+            quote = _rdg_q("line %d" % RDG_L2, "Let `p` be prime. It is odd.")
+            bad = _rdg_one("Plain paragraph.\n\n" + _prefix + quote + "\n")
+            good = _rdg_one("Plain paragraph.\n\n" + quote + "\n")
+            return _eq((bad[0], bad[1], bad[3], good[:2]), (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 form"], False, (0, [])))
+
+    @case("RDG-OPENER-NUMBERS", "the paragraph number of the new refusal counts ALL paragraphs, the number of the other quote refusals counts the quote paragraphs only: paragraph 1 plain, 2 a good quote, 3 plain text with the "
+                                "opener later (`form`, number 3), 4 a quote whose text is wrong (`text`, quote number 2)")
+    def _():
+        text = "\n\n".join(["Plain.", _rdg_q("line %d" % RDG_L2, "It is odd."), "Words then " + _rdg_q("line %d" % RDG_L2, "It is odd."), _rdg_q("line %d" % RDG_L2, "It is even.")]) + "\n"
+        res = _rdg_one(text)
+        return _eq((res[0], res[1]), (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 3 form", "SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 text"]))
+
+    @case("RDG-NAME-BLANK", "`by` and `second_read_by` made only of white space are refused `SKEL-STATEMENT-READING-NAME <statement> <field>` (a space, three spaces, an ideographic space); a name with a letter and a space around it passes")
+    def _():
+        entries = [_rdg_entry("n1", by=" "), _rdg_entry("n2", second_read_by="   "), _rdg_entry("n3", by="　")]
+        with _tmp() as d:
+            r, g = _rdg_run(d, entries, {"r.md": "Text."})
+        ok = _rdg_one("Text.", _rdg_entry(by=" A ", second_read_by="B"))
+        w = lambda n, f: "SKEL-STATEMENT-READING-NAME %s %s" % (n, f)
+        return _eq(((r[0], _rdg_skel(r[1]), r[3]), ok[:2]), ((1, [w("n1", "by"), w("n2", "second_read_by"), w("n3", "by")], False), (0, [])))
+
+    @case("RDG-NAME-UTF16", "the 80 characters of `by` and `second_read_by` are counted in UTF-16 UNITS (what a page's `.length` counts): 80 astral characters (U+1D49C, 160 units) are refused, 41 (82 units) are refused, 40 (80 "
+                            "units) pass, 80 ASCII pass, 81 ASCII are refused")
+    def _():
+        astral = "\U0001d49c"
+        bad = [_rdg_entry("a80", by=astral * 80), _rdg_entry("a41", second_read_by=astral * 41), _rdg_entry("s81", by="a" * 81)]
+        with _tmp() as d:
+            r, g = _rdg_run(d, bad, {"r.md": "Text."})
+        ok = _rdg_one("Text.", _rdg_entry(by=astral * 40, second_read_by="a" * 80))
+        w = lambda n, f: "SKEL-STATEMENT-READING-NAME %s %s" % (n, f)
+        return _eq(((r[0], _rdg_skel(r[1]), r[3]), ok[:2], ok[2] and (ok[2]["by"] == astral * 40, ok[2]["second_read_by"] == "a" * 80)),
+                   ((1, [w("a80", "by"), w("a41", "second_read_by"), w("s81", "by")], False), (0, []), (True, True)))
+
+    @case("RDG-QUOTE-SYMLINK", "a quote PATH that passes through a SYMLINK at any component below the grh root is `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> path`, also a symlinked folder that points INSIDE the "
+                               "checkout (`src/Lib/InDir` to `src/Lib/Other`) and one that points outside; the same file by its real path passes, and the grh root itself may be reached through a link")
+    def _():
+        lib = _lean(decl="/-- Lib one. Lib two. -/\ntheorem t : True := trivial")
+        ll = _rdg_ln(lib, "/-- Lib")
+
+        def prep(g, d):
+            with open(os.path.join(g, "src", "Lib", "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+            os.symlink("Other", os.path.join(g, "src", "Lib", "InDir"))
+            out = os.path.join(d, "outside")
+            os.makedirs(os.path.join(out, "Other"))
+            with open(os.path.join(out, "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+            os.symlink(out, os.path.join(g, "src", "Lib", "OutDir"))
+        bad = [_rdg_q("src/Lib/InDir/File.lean, line %d" % ll, "Lib one."), _rdg_q("src/Lib/OutDir/Other/File.lean, line %d" % ll, "Lib one.")]
+        good = _rdg_q("src/Lib/Other/File.lean, line %d" % ll, "Lib one.")
+        refused = _rdg_one("\n\n".join(bad) + "\n", prep=prep)
+        ok = _rdg_one(good + "\n", prep=prep)
+        with _tmp() as d:
+            g = _tree(d, _flat(["A", "B"]), {"New/S/A": RDG_A, "New/S/B": RDG_B}, ileans=RDG_ILEANS)
+            prep(g, d)
+            via = os.path.join(d, "via")
+            os.makedirs(via)
+            os.symlink(g, os.path.join(via, "grh"))
+            os.symlink(_ildir(g), os.path.join(via, "ilean"))
+            r, _g = _rdg_run(d, [_rdg_entry()], {"r.md": good}, g=os.path.join(via, "grh"))
+        q = lambda n: "SKEL-STATEMENT-READING-QUOTE alpha paragraph %d path" % n
+        return _eq((refused[:2], ok[:2], (r[0], _rdg_skel(r[1]))), ((1, [q(1), q(2)]), (0, []), (0, [])))
+
+    @case("RDG-QUOTE-SEGMENT", "a quote PATH with an EMPTY segment (`src//x.lean`) is refused `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> path`; the same file with single slashes passes")
+    def _():
+        lib = _lean(decl="/-- Lib one. Lib two. -/\ntheorem t : True := trivial")
+        ll = _rdg_ln(lib, "/-- Lib")
+
+        def prep(g, d):
+            with open(os.path.join(g, "src", "Lib", "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+        bad = [_rdg_q("src//Lib/Other/File.lean, line %d" % ll, "Lib one."), _rdg_q("src/Lib//Other/File.lean, line %d" % ll, "Lib one.")]
+        refused = _rdg_one("\n\n".join(bad) + "\n", prep=prep)
+        ok = _rdg_one(_rdg_q("src/Lib/Other/File.lean, line %d" % ll, "Lib one.") + "\n", prep=prep)
+        return _eq((refused[:2], ok[:2]), ((1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 1 path", "SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 path"]), (0, [])))
+
+    # ---------------------------------------------------------------- round 4: the four heading words are the builder's, the page reads four of the eight
+
+    @case("RDG-STRINGS-WRITTEN", "with --readings the overlay file holds the 28 + 8 words, and the written index.json `strings` holds the 28 + ONLY the four page keys (decl_reading_show, decl_reading_hide, decl_reading_about, "
+                                 "readings_byline): the four heading words (decl_reading_uses, _target, _argument, _adds) are not written, with a reading written or with an empty list (32 keys both ways), and the `reading` of a step is "
+                                 "unaffected; without --readings nothing changes (28); a heading word in the Graph overlay is still `SKEL-OVERLAY-KEY`")
+    def _():
+        with _tmp() as d:
+            r0, g = _rdg_run(d, [], words=STM_WORDS, readings=False, out="o0")
+            r1, _g = _rdg_run(d, [_rdg_entry("alpha")], {"r.md": "Text."}, out="o1", g=g)
+            r2, _g = _rdg_run(d, [], out="o2", g=g)
+            r3 = _stm_cli(d, g, ["--statements-for", "lean-s-a"], words=STM_WORDS, graph_words={"decl_reading_uses": "x"}, out="o3")
+            ix = lambda o: json.loads(_tree_files(os.path.join(d, o))["graph/index.json"].decode("utf-8"))["strings"]
+            s0, s1, s2 = ix("o0"), ix("o1"), ix("o2")
+            step = _rdg_step(d, "lean-s-a-alpha", out="o1")
+        want = set(s0) | set(RDG_PAGE_KEYS)
+        return _eq((r0[0], r1[0], r2[0], len(s1) - len(s0), set(s1) == want, set(s2) == want, len(s1), len(s2), [k for k in RDG_HEADING_KEYS if k in s1 or k in s2], {k: s1[k] for k in RDG_PAGE_KEYS} == {k: RDG_WORDS_NEW[k] for k in RDG_PAGE_KEYS},
+                    step["reading"]["text"], (r3[0], r3[1])),
+                   (0, 0, 0, 4, True, True, len(s0) + 4, len(s0) + 4, [], True, "Text.", (1, ["SKEL-OVERLAY-KEY graph-words.json decl_reading_uses is not a key the page reads"])))
+
+    @case("RDG-WORDS-FILE", "site/strings-lean-statements-readings.json is the 36-word overlay: exactly 36 keys; its 27 other statement keys equal site/strings-lean-statements.json; key_statements_text differs only in its last sentence "
+                            "(`Proofs are not opened.` becomes Ariadne's sentence); its 8 reading values equal Ariadne's file when that is readable (SKIPPED, said, otherwise); a build over the fixture with --readings and THIS file as the overlay passes")
+    def _():
+        here = os.path.join(_HERE, os.pardir, "site")
+        with open(os.path.join(here, "strings-lean-statements.json"), encoding="utf-8") as f:
+            f28 = json.load(f)
+        with open(os.path.join(here, "strings-lean-statements-readings.json"), encoding="utf-8") as f:
+            f36 = json.load(f)
+        end = "Proofs are not opened."
+        old, new = f28["key_statements_text"], f36["key_statements_text"]
+        with _tmp() as d:
+            r, g = _rdg_run(d, [], words=f36)
+        got = (len(f36), set(f36) == set(f28) | set(RDG_WORDS_NEW), len(f28) - 1, {k for k in f28 if k != "key_statements_text" and f36[k] != f28[k]}, old.endswith(end) and new == old[:-len(end)] + RDG_LAST_SENTENCE,
+               {k: f36[k] for k in RDG_WORDS_NEW} == RDG_WORDS_NEW, r[0], _rdg_skel(r[1]))
+        ok, why = _eq(got, (36, True, 27 + 0 + 0 + 0 + 0, set(), True, True, 0, []))
+        if not ok:
+            return ok, why
+        try:
+            with open(RDG_WORDS_SHARED_PATH, encoding="utf-8") as f:
+                t = f.read()
+        except OSError:
+            raise _SkipCase("SKIPPED: %s is not readable here (the other checks of the file passed)" % RDG_WORDS_SHARED_PATH)
+        found = {k: re.findall(r"^- " + k + r"[^\n]*?: `([^`\n]*)`", t, re.M) for k in RDG_WORDS_NEW}
+        return _eq({k: f36[k] for k in RDG_WORDS_NEW}, {k: v[0] for k, v in found.items() if len(v) == 1})
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "

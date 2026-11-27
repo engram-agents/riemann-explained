@@ -672,7 +672,7 @@ EDITION_HREFS = ("edition_href_tree", "edition_href_blob")   # F44: addresses of
 EDITION_OUTLINE_FILE = "outline/outline.json"   # the file the card's link names in the first edition
 EDITION_NOTES_DIR = "docs/"   # F44B: where a note's file is in the repository (the link of a note's paragraph names docs/<file>)
 # F37: the sentences of the card name nobody (no reader, date, file, lines or build); the keys of the Evidence section carry them
-PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_uses_library_many": {"n"}, "decl_note_source": {"source", "commit"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
+PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}, "key_scope_text": {"readme_quote"}, "count_group_one": {"n"}, "count_group_many": {"n"}, "count_file_one": {"n"}, "count_file_many": {"n"}, "count_statement_one": {"n"}, "count_statement_many": {"n"}, "decl_uses_here": {"n"}, "decl_uses_elsewhere": {"n"}, "decl_uses_library_many": {"n"}, "decl_note_source": {"source", "commit"}, "readings_byline": {"by", "second_read_by", "date"}, "evidence_statement_read_line": {"reader", "date"}, "evidence_statement_census_line": {"reader", "date"},
                 "evidence_proof_read_line": {"reader", "date"}, "evidence_second_reader_line": {"reader", "date"},
                 "evidence_recognition_line": {"reader", "date"}, "evidence_citation_line": {"source", "opened_by", "opened_on"},
                 "evidence_established_line": {"name", "reader", "date"}, "evidence_sketch_build_line": {"build"},
@@ -699,7 +699,7 @@ PLACEHOLDERS = {"spine_lives_in": {"title"}, "note_source": {"source", "commit"}
                 "sketch_frame": {"basis"},
                 "reactions.href": {"card"}}
 # the keys whose value must hold EVERY placeholder it declares (the notes' hrefs and the reaction hrefs may omit theirs)
-REQUIRED_PLACEHOLDERS = {"evidence_statement_read_line": ("reader", "date"), "evidence_statement_census_line": ("reader", "date"),
+REQUIRED_PLACEHOLDERS = {"readings_byline": ("by", "second_read_by", "date"), "evidence_statement_read_line": ("reader", "date"), "evidence_statement_census_line": ("reader", "date"),
                          "evidence_proof_read_line": ("reader", "date"), "evidence_second_reader_line": ("reader", "date"),
                          "evidence_recognition_line": ("reader", "date"), "evidence_citation_line": ("source", "opened_by", "opened_on"),
                          "evidence_established_line": ("name", "reader", "date"), "evidence_sketch_build_line": ("build",),
@@ -1861,7 +1861,8 @@ GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_labe
                        "open_statements", "close_statements", "count_statement_one", "count_statement_many",   # the statement level of a Lean map (contract section 31): the words only a map with statements carries
                        "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
                        "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
-                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source")
+                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source",
+                       "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline")   # the last four: the reading of a statement (`--readings` of the Lean map builder), the four the page reads (its READING_STRINGS); `readings_byline` has {by}, {second_read_by} and {date}. The four heading words of a reading are the builder's own and are not page keys
 
 
 def _graph_strings_keys(symbols=None):
@@ -6421,17 +6422,17 @@ def _selftest_cases():
                          ("`x Foo.bar y`", True, False)])
 
     @case("PHR4", "the keys that must hold their placeholders (the counts and the open-items lines, the recognition lines, the citation lines, "
-                  "established_by_line, sketch_frame, the eight Evidence keys of F37, the four edition keys of F44 and parts_n of G2a) are exactly the 32 listed, each declares exactly the "
+                  "established_by_line, sketch_frame, the eight Evidence keys of F37, the four edition keys of F44 and parts_n of G2a) are exactly the 33 listed, each declares exactly the "
                   "placeholders it must hold; the card keys of F37 (the read lines, the frames, the label line, the compiled basis) and the "
                   "retired second_reader_frame declare none and require none")
     def _():
         keys = ["statement_count_line", "proof_count_line", "steps_statement_line", "steps_proof_line", "open_items_line", "steps_open_items_line"]
-        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_note_card_note", "edition_href_blob", "parts_n"]
+        new = [k for k, _n in _REQ2] + ["edition_note_first_screen", "edition_note_card", "edition_note_card_note", "edition_href_blob", "parts_n", "readings_byline"]
         none_keys = ["statement_read_line", "statement_census_line", "proof_read_line", "argument_frame", "argument_frame_no_proof",
                      "interpretation_frame", "recognition_label_line", "sketch_basis_compiled", "second_reader_frame", "frames.argument"]
         return _eq((sorted(REQUIRED_PLACEHOLDERS), [set(REQUIRED_PLACEHOLDERS[k]) == PLACEHOLDERS[k] for k in keys + new],
                     [PLACEHOLDERS.get(k, set()) for k in none_keys], [k in REQUIRED_PLACEHOLDERS for k in none_keys]),
-                   (sorted(keys + new), [True] * 32, [set()] * 10, [False] * 10))
+                   (sorted(keys + new), [True] * 33, [set()] * 10, [False] * 10))
 
     _REQ = (("statement_count_line", ("n", "m")), ("proof_count_line", ("n", "m")),
             ("steps_statement_line", ("n", "m")), ("steps_proof_line", ("n", "m")), ("open_items_line", ("n",)),
@@ -14167,7 +14168,8 @@ def _selftest_cases():
                     "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice", "spine_back_to_graph",
                     "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                     "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
-                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source"),
+                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source",
+                    "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline"),
                     20, 22, 23, opt, 20,
                     [], [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")], [("GRAPH-STRINGS", "parts_n", "missing")],
                     [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
@@ -14701,7 +14703,8 @@ def _selftest_cases():
                     "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice", "spine_back_to_graph",
                     "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                     "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
-                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source"), [], eb, 23,
+                    "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many", "decl_note_source",
+                    "decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline"), [], eb, 23,
                     ["key_lines_heading", "key_lines_text", "spine_lines_text"], [("GRAPH-STRINGS", "key_lines_heading", "missing"), ("GRAPH-STRINGS", "key_lines_text", "missing")], {}, [], [("GRAPH-STRINGS", "bogus", "is not a key the page reads")]))
 
     @case("GRG1", "the Graph view's words (G1): view_cards, view_graph, graph_nodes_text, spine_content_label, spine_lives_in, spine_show_file and graph_failed_notice are on "
