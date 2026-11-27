@@ -3066,6 +3066,70 @@ def c_made_deep_link(b, S0, engine, w, h, mobile):
         S.stop()
 
 
+def c_r1_parts_button_first(b, S0, engine):
+    """R1 (Lei, 11-26): 'Open its parts' was in a lower narrow bar, hard to notice. On a card that has parts the button is the sheet's FIRST row: full width of the sheet, at least 48 px
+    tall, filled (not the page's background), above the breadcrumb and Close; at phone and desktop sizes. A card without parts has no such row."""
+    for w, h in ((390, 844), (1280, 900)):
+        S = fold_served(engine, True, None, False, "skeleton")
+        try:
+            pg = Pg(b, S.base + "graph/index.html#sk-part", w, h, mobile=(w < 700)).settled()
+            pg.wait("document.getElementById('graph-sheet').hidden === false && document.querySelector('#graph-sheet .sheet-tool-main')", 8000)
+            got = pg.ev("""(() => { const r = (e) => e.getBoundingClientRect(), sh = r(document.getElementById('graph-sheet')), m = document.querySelector('#graph-sheet .sheet-tool-main'),
+              mr = r(m), cs = getComputedStyle(m), page = getComputedStyle(document.body);
+              const others = [...document.querySelectorAll('#graph-sheet button')].filter((x) => x !== m).map((x) => r(x).top);
+              return { h: mr.height, share: mr.width / sh.width, filled: cs.backgroundColor !== page.backgroundColor, firstTop: mr.top, others: Math.min(...others), text: m.textContent }; })()""")
+            assert got["h"] >= 48 and got["share"] >= 0.85 and got["filled"] and got["firstTop"] < got["others"], (w, h, got)
+            pg.page.click("#graph-sheet .sheet-tool-main")
+            pg.wait("document.getElementById('graph-sheet').hidden === true", 8000)      # the button opens the parts and hands the map back
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+
+
+def c_r4_buttons_look_like_buttons(b, S0, engine):
+    """R4 (Lei, 11-26): 'reserve links for real jumping around points'. A control that acts in place is a <button> and DRAWN as one: 'About this map' and the fold bar's button have a border
+    and no underline, at phone and desktop sizes; and every <a> of the page is a real jump (an address that is no '#', no javascript:), here the list page."""
+    for w, h in ((390, 500), (1280, 900)):
+        S = fold_served(engine, True, None, False, "skeleton")
+        try:
+            pg = Pg(b, S.base + "graph/index.html", w, h, mobile=(w < 700)).settled()
+            got = pg.ev("""(() => { const out = {}; for (const id of ['graph-about-open', 'graph-intro-show']) { const e = document.getElementById(id); if (!e || e.offsetParent === null) continue;
+              const c = getComputedStyle(e); out[id] = { tag: e.tagName, border: parseFloat(c.borderTopWidth), underline: c.textDecorationLine }; } return out; })()""")
+            assert got, got
+            for k, v in got.items():
+                assert v["tag"] == "BUTTON" and v["border"] >= 1 and v["underline"] == "none", (w, h, k, v)
+            links = pg.ev("[...document.querySelectorAll('a')].map((a) => a.getAttribute('href'))")
+            assert all(isinstance(x, str) and x != "" and not x.startswith("#") and not x.lower().startswith("javascript") for x in links), links
+            pg.csp_clean(); pg.close()
+        finally:
+            S.stop()
+
+
+def c_r1_r4_mutants(b, S0, engine):
+    """R1/R4 mutants: the parts button without its main class (R1), the link buttons drawn underlined again (R4): each turns its case red."""
+    orig = fold_served
+    for name, mut, fn in (("no main class", {"page/sheet.js": lambda t: t.replace("sheet-tool sheet-tool-main", "sheet-tool")}, c_r1_parts_button_first),
+                          ("underlined again", {"graph.css": lambda t: t.replace("/* R4 BEGIN", "/* R4 BEGIN").replace("text-decoration: none; /* R4 */", "text-decoration: underline;")}, c_r4_buttons_look_like_buttons)):
+        def served(engine_, bar=True, mutate=None, live=False, fix=None, _m=mut):
+            return orig(engine_, bar, _m, live, fix)
+        globals()["fold_served"] = served
+        try:
+            try:
+                fn(b, S0, engine)
+            except AssertionError:
+                continue
+            raise AssertionError("MUTANT SURVIVED: " + name)
+        finally:
+            globals()["fold_served"] = orig
+
+
+R14_CASES = [
+    ("R1: 'Open its parts' is the sheet's first row, full width, filled, at least 48 px", c_r1_parts_button_first),
+    ("R4: in-place controls are buttons drawn as buttons; every link is a real jump", c_r4_buttons_look_like_buttons),
+    ("R1/R4 mutants: no main class, underlined again: each turns its case red", c_r1_r4_mutants),
+]
+
+
 # ---- the header fold (viewfold.js, graph.css FOLD block): the Lean map's header is compact on a phone and folds into one bar when the reader works in the graph ----
 # Lei's phone requirement (Kepler 39323). The shell carries the marker: an element #graph-intro-bar after the header (the live map's shell has none, so nothing here applies to it).
 FOLD_TITLE = "A map of the made-up files of a proof that is not real"
@@ -4130,6 +4194,8 @@ def main():
                 run(GV_CASES[0][0], GV_CASES[0][1], eng)
                 for fname, ffn in FOLD_CASES:
                     run(fname, ffn, eng)
+                for rname, rfn in R14_CASES:
+                    run(rname, rfn, eng)
                 if eng == "real":
                     for gname, gfn in GV_CASES[1:]:
                         run(gname, gfn, eng)

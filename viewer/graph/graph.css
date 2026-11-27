@@ -204,3 +204,13 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
 .swatch.s-none { border-style: dashed; background: var(--card-unread); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* R1 BEGIN (Lei, 11-26): the card's main button ('Open its parts', later 'Open its statements') is the sheet's FIRST row, the width of the sheet, filled, 48 px: it was in a
+   lower narrow bar and hard to notice. The row goes above the breadcrumb and Close by `order` (the DOM order is unchanged). */
+.sheet-tools { order: -1; flex: 1 0 100%; }
+.sheet-tool-main { flex: 1 1 100%; min-height: 48px; background: var(--fg); color: var(--bg); border-color: var(--fg); font-size: 15px; font-weight: 600; }
+/* R1 END */
+
+/* R4 BEGIN (Lei, 11-26): 'reserve links for real jumping around points'. The controls that act in place are buttons and are DRAWN as buttons: a border, no underline. */
+.linkbtn { border: 1px solid var(--rule); background: var(--bg); color: var(--fg); text-decoration: none; /* R4 */ padding: 0 12px; }
+/* R4 END */

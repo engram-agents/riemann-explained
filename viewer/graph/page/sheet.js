@@ -153,7 +153,7 @@ export function createSheet(parts, strings, hooks, signal) {
     }
     clear(tools);
     if (info.canParts) {
-      const b = el("button", { type: "button", class: "sheet-tool" }, [info.partsOpen ? strings.close_parts : strings.open_parts]);
+      const b = el("button", { type: "button", class: "sheet-tool sheet-tool-main" }, [info.partsOpen ? strings.close_parts : strings.open_parts]);
       rec.partsOpen = !!info.partsOpen;
       b.addEventListener("click", () => (rec.partsOpen ? hooks.closeParts(info.id) : hooks.openParts(info.id)), { signal });
       rec.parts = b;
