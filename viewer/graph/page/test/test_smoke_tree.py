@@ -165,13 +165,25 @@ def t4b_symlink_read_by_tool(tmp):
 
 
 def t5_note_fixture_or_skip(tmp):
-    have = [f for f in glob.glob(os.path.join(HERE, "fixtures", "*", "step", "*.json")) if '"note"' in open(f, encoding="utf-8").read()]
-    if not have:
-        raise Skip("no committed fixture on this base carries a note (PR 97 adds them); the positive note PASS is not exercised")
-    names = sorted({f.split(os.sep)[-3] for f in have})
+    """The fixture is chosen by the tool's OWN pick (smoke_tree.pick_ids): one whose picked file step carries a note. A substring or sort-order
+    choice is wrong: a statement step's doc-string note also holds '"note"', so a fixture can have notes while the tool's file pick has none."""
+    import smoke_tree
+    names = []
+    for d in sorted(glob.glob(os.path.join(HERE, "fixtures", "*", "index.json"))):
+        fx = os.path.dirname(d)
+        try:
+            with contextlib.redirect_stdout(open(os.devnull, "w")):
+                picked = smoke_tree.pick_ids(fx, json.load(open(d, encoding="utf-8")), False)
+        except (ValueError, KeyError, OSError):      # a fixture the tool could not run on at all is not a candidate
+            continue
+        if isinstance(picked[2].get("note"), dict) and picked[2]["note"].get("text"):
+            names.append(os.path.basename(fx))
+    if not names:
+        raise Skip("no committed fixture on this base has a file step that carries a note (the tool's own pick); the positive note PASS is not exercised")
     out = build(tmp, fix=names[0], index_edit=no_floor)
     code, o = run_tool(out)
-    assert code == 0 and lines(o, "PASS", "note"), (code, o)
+    assert code == 0 and lines(o, "PASS", "note"), (names[0], code, o)
+    print("      (T5 chose fixture %r; candidates %s)" % (names[0], names))
 
 
 def t5b_no_notes_in_data_is_a_skip(tmp):
