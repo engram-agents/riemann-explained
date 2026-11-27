@@ -35,7 +35,7 @@
   "note_label_typeset": "The file's opening note, from the repository",
   "note_render_button": "Show the note with formulas set in maths type",
   "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
-  "note_typeset_line": "Formulas set in maths type by us; every symbol is the repository's.",
+  "note_typeset_line": "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.",
   "open_parts": "Open its parts",
   "part_one": "1 part",
   "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",

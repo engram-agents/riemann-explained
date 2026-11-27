@@ -19,7 +19,7 @@ test("T5 strings: the four maths-face keys are optional (in the one OPTIONAL set
   const full = validateIndex(idx());
   assert.equal(full.strings.note_label, "The file's opening note, from the repository, unchanged");
   assert.equal(full.strings.note_label_typeset, "The file's opening note, from the repository");
-  assert.equal(full.strings.note_typeset_line, "Formulas set in maths type by us; every symbol is the repository's.");
+  assert.equal(full.strings.note_typeset_line, "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.");
   assert.equal(full.strings.note_exact_button, "Show the exact text");
   assert.ok(full.strings.note_render_button.length > 0);
   for (const k of NEW) {

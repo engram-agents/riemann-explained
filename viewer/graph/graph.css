@@ -48,6 +48,31 @@ a { color: var(--theorem); text-underline-offset: 0.15em; }
 .view-switch .view-btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); font-weight: 600; }
 .tool { min-width: 44px; min-height: 44px; padding: 0 14px; border: 1px solid var(--rule); background: var(--bg); font-family: var(--sans); font-size: 14px; cursor: pointer; }
 
+/* FOLD BEGIN: the header fold (page/viewfold.js). Only where the shell carries the bar (#graph-intro-bar); the live map's shell has none, so none of this applies there.
+   Only on a phone: a window at most 600 px wide, or at most 519 px tall. Desktop is as it was. */
+.intro-bar { display: none; }
+@media (max-width: 600px), (max-height: 519px) {
+  /* open: compact, the sentence whole at a small type, at most a quarter of the window at 360x640 (measured by cases FD1) */
+  body:has(#graph-intro-bar) .intro { padding: 4px 12px 0; }
+  body:has(#graph-intro-bar) .intro h1 { font-size: 15px; line-height: 1.2; margin: 0 0 2px; }
+  body:has(#graph-intro-bar) .intro .sentence { font-size: 12px; line-height: 1.35; }
+  body:has(#graph-intro-bar) .intro .front-line { display: none; margin: 0; font-size: 12px; line-height: 1.35; }
+  body:has(#graph-intro-bar) .intro .links { font-size: 13px; }
+  body:has(#graph-intro-bar) .intro .linkbtn { min-height: 40px; }
+  /* FULL: the bar's button opened the header again: everything, scrollable, never more than 60 percent of the window */
+  body:has(#graph-intro-bar) .intro[data-full] { max-height: 60vh; max-height: 60dvh; overflow-y: auto; }
+  body:has(#graph-intro-bar) .intro[data-full] .front-line { display: block; }
+  /* folded: one bar, the title on one line, the way back; and the toolbar a compact row under it, in the flow (nothing floats over the map, so no box can be under a control):
+     36 + 36 px, so the map area is at least 85 percent of a 390 x 500 window */
+  .intro-bar { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; background: var(--card); border-bottom: 1px solid var(--rule); }
+  .intro-bar[hidden] { display: none; }
+  .intro-bar .bar-title { flex: 1 1 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; line-height: 1.2; font-weight: 600; }
+  .intro-bar .linkbtn { flex: none; min-height: 36px; font-size: 13px; white-space: nowrap; }
+  body:has(#graph-intro-bar:not([hidden])) .toolbar { height: 36px; padding: 2px 6px; gap: 4px; }
+  body:has(#graph-intro-bar:not([hidden])) .toolbar :is(.tool, .view-btn, .seg-here, .seg-link) { min-width: 0; min-height: 32px; padding: 0 8px; font-size: 12px; }
+}
+/* FOLD END */
+
 /* ---- the layer and the stage ----
    While the graph is showing, the page is exactly one viewport tall, so the stage has a DEFINITE size (the engine's
    root fills its container by percentage). If setup fails the layer is removed and this rule stops applying: the
@@ -146,6 +171,7 @@ body:has(#graph-layer:not([hidden])) #graph-notice { position: fixed; top: 0; le
    (font-style: italic). */
 .note-body .m { font-family: var(--serif); font-style: normal; font-size: 1em; background: none; border: 0; padding: 0; }
 .note-body .m1 { font-style: normal; }
+.note-body .m sup, .note-body .m sub { line-height: 0; }
 /* The exact text (the button's other view): the same pre, wrapped so it needs no sideways scrolling on a phone. */
 .note-body.note-exact pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .graph-sheet-body .note-typeset-line { margin: 0 0 6px; font-family: var(--sans); font-size: 13px; color: var(--muted); }

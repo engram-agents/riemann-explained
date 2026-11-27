@@ -15,6 +15,7 @@ import { makeRenderFace } from "./face.js";
 import { templateParts } from "./note.js";
 import { createSheet } from "./sheet.js";
 import { createGraphView, buildSpinePanel } from "./graphview.js";
+import { createFold } from "./viewfold.js";
 
 /* Every way the sheet can close. Each one is a function in `routes` below that begins with the sheet's one close
    function; a case drives each of these with a cancelling listener installed. */
@@ -72,7 +73,7 @@ function buildKey(index) {
 
 export async function start(doc, deps) {
   const failure = { reason: null };
-  let handle = null, sheet = null, layer = null, fallbackEl = null, cardsEl = null, view = null;
+  let handle = null, sheet = null, layer = null, fallbackEl = null, cardsEl = null, view = null, fold = null;
 
   /* THE ONE TEARDOWN. `signal` goes to EVERY addEventListener in page code (the sheet's too), `offs` holds the unsubscribe
      function of EVERY engine subscription, and `dead` is the mark each async continuation checks after an await. The
@@ -92,6 +93,7 @@ export async function start(doc, deps) {
     for (const off of offs.splice(0)) { try { off(); } catch (e) { /* the page is being put back; carry on */ } }
     try { if (handle) handle.destroy(); } catch (e) { /* the same */ }
     try { if (view) view.destroy(); } catch (e) { /* the same */ }
+    try { if (fold) fold.dispose(); } catch (e) { /* the same */ }
     try { if (sheet) sheet.dispose(); } catch (e) { /* the same */ }
     if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
     if (fallbackEl) fallbackEl.hidden = false;
@@ -264,7 +266,7 @@ export async function start(doc, deps) {
       const k = view && view.view() === "graph" ? view.key(EDGE_BASIS_HEADING) : keyEl;     // the Graph view's key says what its boxes and lines are
       if (sheet.shown() === k) sheet.close(); else sheet.showPanel(k, false);
     };
-    routes["toolbar-about"] = () => { if (sheet.shown() === aboutEl) sheet.close(); else sheet.showPanel(aboutEl, true); };
+    routes["toolbar-about"] = () => { if (sheet.shown() === aboutEl) sheet.close(); else { if (fold) fold.syncAbout(aboutEl); sheet.showPanel(aboutEl, true); } };
     routes["open-parts"] = async (t, id) => {
       try {
         if (!current(t) || !sheet.close()) return;
@@ -341,6 +343,12 @@ export async function start(doc, deps) {
     doc.addEventListener("keydown", (e) => { if (e.key === "Escape") routes["escape"](); }, { signal });
     doc.defaultView.addEventListener("hashchange", () => { const id = hashId(doc); if (id !== null) routes["deep-link"](id); }, { signal });
 
+    /* The fold (viewfold.js; null on a shell without the bar, the live map). The engine has no resize handling: a press on Show all or on the view switch that folded the
+       header has the map framed again on the larger stage; a pan, a wheel or a tap on a box keeps the camera the reader has. */
+    fold = createFold({ doc, layer, signal, afterFold: (t) => {
+      if (!(t && t.closest && t.closest("#graph-show-all, .view-switch"))) return;
+      if (view && view.view() === "graph") view.fit(); else if (handle) handle.fit();
+    } });
     layer.hidden = false;
     /* What the engine tells us about a failed load is a string; the class of the failure is decided here, from the exception itself:
        id -> the DataError code of the last failed load of that node's parts, or null for anything that was not a DataError. */

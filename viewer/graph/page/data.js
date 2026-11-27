@@ -384,11 +384,23 @@ export function isTransportCode(code) {
 }
 
 /* Response -> parsed JSON, with a named reason for each way it can fail. */
-export async function fetchJson(fetchLike, address) {
-  let r;
-  try { r = await fetchLike(address); } catch (e) { throw new DataError("fetch-failed", "the request for " + address + " failed"); }
-  if (!r || !r.ok) throw new DataError("http-" + (r && r.status), "the request for " + address + " was refused");
-  try { return await r.json(); } catch (e) { throw new DataError("not-json", address + " is not JSON"); }
+/* fetchJson(fetchLike, address, timeoutMs): the JSON of an address. With `timeoutMs` (a sidecar's fetch gives one; the page's own loads give none) a server that accepts the request
+   and never answers, or sends a body that never ends, is waited for that long and no longer: the failure is `fetch-failed`, like any request that fails, so the
+   notice and the event are the same as for every other refusal. The page stops waiting; the request itself is not aborted (a fetch-like takes only an address). */
+export async function fetchJson(fetchLike, address, timeoutMs) {
+  let timer = null;
+  const clock = timeoutMs === undefined ? null : new Promise((resolve, reject) => {
+    timer = setTimeout(() => reject(new DataError("fetch-failed", "the request for " + address + " did not answer in " + timeoutMs + " ms")), timeoutMs);
+  });
+  const within = (p) => (clock === null ? p : Promise.race([p, clock]));
+  try {
+    let r;
+    try { r = await within(fetchLike(address)); } catch (e) { throw new DataError("fetch-failed", "the request for " + address + " failed"); }
+    if (!r || !r.ok) throw new DataError("http-" + (r && r.status), "the request for " + address + " was refused");
+    try { return await within(r.json()); } catch (e) { throw (e instanceof DataError ? e : new DataError("not-json", address + " is not JSON")); }
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
 }
 
 const CACHE_MAX = 32;
