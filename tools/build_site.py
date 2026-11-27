@@ -1871,6 +1871,7 @@ def _graph_strings_keys(symbols=None):
     return ([v["words"] for v in rows] + [v["card_words"] for v in rows if "card_words" in v]
             + [k for v in rows if "count_words" in v and isinstance(v["count_words"], dict) for k in (v["count_words"].get("many"), v["count_words"].get("one")) if isinstance(k, str)]
             + [k for v in rows if "open_words" in v and isinstance(v["open_words"], dict) for k in (v["open_words"].get("open"), v["open_words"].get("close")) if isinstance(k, str)]
+            + [k for v in rows if "child_count_words" in v and isinstance(v["child_count_words"], dict) for k in (v["child_count_words"].get("many"), v["child_count_words"].get("one")) if isinstance(k, str)]
             + list(GRAPH_RUNTIME_KEYS))
 
 
@@ -2275,6 +2276,11 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
             elif "count_words" in v and not (isinstance(v["count_words"], dict) and set(v["count_words"]) == {"many", "one"}
                                              and all(isinstance(x, str) for x in v["count_words"].values())):
                 errors.append(("GRAPH-STRINGS", f"{name}.{k}.count_words", "must be an object with exactly the keys many and one, both strings"))
+            if "child_count_words" in v and name != "kinds":   # `child_count_words` ({many, one}: two keys of `strings`) is for a kinds row only: the count words of the children of a card of this kind when they do not share one kind
+                errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has child_count_words (only a kinds row may)"))
+            elif "child_count_words" in v and not (isinstance(v["child_count_words"], dict) and set(v["child_count_words"]) == {"many", "one"}
+                                                   and all(isinstance(x, str) for x in v["child_count_words"].values())):
+                errors.append(("GRAPH-STRINGS", f"{name}.{k}.child_count_words", "must be an object with exactly the keys many and one, both strings"))
             if "open_words" in v and name != "kinds":   # `open_words` ({open, close}: two keys of `strings`) is for a kinds row only: the words of its open and close control
                 errors.append(("GRAPH-SYMBOL", f"{name}.{k}", "has open_words (only a kinds row may)"))
             elif "open_words" in v and not (isinstance(v["open_words"], dict) and set(v["open_words"]) == {"open", "close"}
@@ -2401,7 +2407,8 @@ def _graph_files(rows, commit, strings, assets=None, symbols=None, orders=None, 
         "symbols": dict({name: {k: dict({"class": v["class"], "text": strings[v["words"]], "words": v["words"]},
                                         **({"card_words": v["card_words"]} if "card_words" in v else {}),
                                         **({"count_words": {"many": v["count_words"]["many"], "one": v["count_words"]["one"]}} if "count_words" in v else {}),
-                                        **({"open_words": {"open": v["open_words"]["open"], "close": v["open_words"]["close"]}} if "open_words" in v else {})) for k, v in table.items()}
+                                        **({"open_words": {"open": v["open_words"]["open"], "close": v["open_words"]["close"]}} if "open_words" in v else {}),
+                                        **({"child_count_words": {"many": v["child_count_words"]["many"], "one": v["child_count_words"]["one"]}} if "child_count_words" in v else {})) for k, v in table.items()}
                          for name, table in symbols.items()},
                         order={name: list(orders[name]) for name in symbols}),
         "top": [r["id"] for r in kids.get("root", [])]}}

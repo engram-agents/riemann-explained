@@ -1211,7 +1211,7 @@ sg = _load("scan_graph")      # mask_comments, the comment mask the reader works
 
 STATEMENT_KIND_WORDS = {"theorem": "Theorem", "lemma": "Lemma", "def": "Definition", "abbrev": "Abbreviation", "structure": "Structure", "class": "Class",
                         "inductive": "Inductive type", "instance": "Instance"}   # the eight keywords the reader yields, in table order, and their English words (the kind word of a prompt); a keyword that is not here is SKEL-STATEMENT-KIND
-STATEMENT_COUNT_WORDS = {"many": "count_statement_many", "one": "count_statement_one"}   # the same on every statement row
+STATEMENT_COUNT_WORDS = {"many": "count_statement_many", "one": "count_statement_one"}   # the count words of the statements of a file: `child_count_words` of the FILE row (a statement row has no count_words: the children of a file have mixed kinds)
 STATEMENT_HEADING = re.compile(r"###(?!#)")
 _STATEMENT_PREFIX = re.compile(r"(?:(?:@\[[^\]\n]*\]|private|protected|noncomputable|nonrec|unsafe|partial)[ \t]*)+")   # a line that holds only attributes and modifiers: the declaration starts on it
 _EXAMPLE = re.compile(r"^(?:@\[[^\]\n]*\][ \t]*)*(?:(?:private|protected|noncomputable|nonrec|unsafe|partial)[ \t]+)*example\b", re.M)   # decl_table.EXAMPLE: the reader's own rule for an `example` line
@@ -1617,8 +1617,9 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
             except PromptError as e:
                 errors.append(("SKEL-STATEMENT-PROMPT", f"{e.field} {_escaped(e.value)}", ""))
                 continue
-            new_rows.append({"id": d["id"], "parent": fid, "order": i, "premises": [decls[j]["id"] for j in kept[i]], "kind": d["kw"], "state": "none", "proof": "none", "title": d["short"]})
+            new_rows.append({"id": d["id"], "parent": fid, "order": i, "premises": [decls[j]["id"] for j in kept[i]], "kind": d["kw"], "state": "none", "proof": "none", "title": "`" + d["short"] + "`"})   # the short name in backticks: the page sets a title in code style by its span rule, naming no kind
             titles.append(d["short"])
+            titles.append("`" + d["short"] + "`")
             links.update({(d["id"], decls[j]["id"]): {"weight": 1, "in_reduction": True} for j in kept[i]})
             x = {"name": d["name"], "source_path": source_path, "statement": {"keyword": d["kw"], "text": d["text"]}, "variables": d["variables"],
                  "uses_here": [decls[j]["id"] for j in uses[i][0]], "uses_elsewhere": uses[i][1], "prompt": prompt}
@@ -1644,12 +1645,15 @@ def _statements(grh, pin, ilean_dir, rows, rep, ids, page_url, page_title, sourc
 
 def _statement_symbols(kinds):
     """(symbols, orders, status_hidden) of a map with statements of the keywords `kinds`: the three rows of this tool with `open_words` (part and group name the keys the page reads today,
-    the file row names open_statements and close_statements) and one row per keyword that occurs, after `file`, in table order; no state and no proof is drawn for a statement."""
+    the file row names open_statements and close_statements, and `child_count_words` for its statements) and one row per keyword that occurs, after `file`, in table order, with no count_words; no state and no
+    proof is drawn for a statement."""
     rows = {}
     for k, row in SYMBOLS["kinds"].items():
         rows[k] = dict(row, open_words={"open": "open_statements", "close": "close_statements"} if k == "file" else {"open": "open_parts", "close": "close_parts"})
+        if k == "file":
+            rows[k]["child_count_words"] = dict(STATEMENT_COUNT_WORDS)
     for k in kinds:
-        rows[k] = {"card_words": "decl_kind_" + k, "class": "kind-" + k, "count_words": dict(STATEMENT_COUNT_WORDS), "words": "decl_kind_" + k}
+        rows[k] = {"card_words": "decl_kind_" + k, "class": "kind-" + k, "words": "decl_kind_" + k}
     return dict(SYMBOLS, kinds=rows), {"kinds": list(rows), "states": [], "proofs": []}, bs.GRAPH_STATUS_HIDDEN + tuple(kinds)
 
 
@@ -5489,10 +5493,10 @@ def _selftest_cases():
         cw = {k: v.get("child_count_words") for k, v in ix["symbols"]["kinds"].items()}
         ixp = json.loads(plain["graph/index.json"].decode("utf-8"))
         ck = lambda i: json.loads(files[f"graph/step/{i}.json"].decode("utf-8"))["card"].get("child_kind")
-        return _eq((errs, e0, cw, ["count_words" in v for k, v in ix["symbols"]["kinds"].items()], ix["strings"]["count_statement_one"], ix["strings"]["count_statement_many"],
+        return _eq((errs, e0, cw, ["count_words" in v for k, v in ix["symbols"]["kinds"].items() if k in ("theorem", "lemma")], ix["strings"]["count_statement_one"], ix["strings"]["count_statement_many"],
                     [("child_count_words" in v) for v in ixp["symbols"]["kinds"].values()], ck("lean-s-a"), ck("lean-s-b")),
                    ([], [], {"part": None, "group": None, "file": {"many": "count_statement_many", "one": "count_statement_one"}, "theorem": None, "lemma": None},
-                    [False] * 5, "{n} statement", "{n} statements",
+                    [False] * 2, "{n} statement", "{n} statements",
                     [False, False, False], None, "theorem"))
 
     @case("STM-KIND-REFUSAL", "a keyword the reader yields for which the builder has no kind word is refused by name `SKEL-STATEMENT-KIND <keyword> <name>` and nothing is built, never a fallback word: "
