@@ -1190,7 +1190,7 @@ _CHILD_MEM = 2 * 1024 ** 3   # the cap on the address space of the child of GID2
 
 
 def _cap_child_memory(platform=None):
-    """The `preexec_fn` of the children the self-test starts for a build that may loop: on Linux the child may not use more than 2 GiB (a walk that grows a list then ends in
+    """(`preexec_fn` is documented as unsafe with threads: no threaded case may run under it.) The `preexec_fn` of the children the self-test starts for a build that may loop: on Linux the child may not use more than 2 GiB (a walk that grows a list then ends in
     MemoryError). Anywhere else nothing is set (macOS refuses the limit with ValueError). A cap that is refused never fails the case: True when it was set, False otherwise."""
     if not (sys.platform if platform is None else platform).startswith("linux"):
         return False
@@ -1203,7 +1203,7 @@ def _cap_child_memory(platform=None):
 
 
 def _child_timeout(platform=None):
-    """30 s for a child with the memory cap; 10 s for one without it, where an unbounded walk that grows a list would use the machine's memory until the timeout."""
+    """30 s on Linux, where `_cap_child_memory` sets the cap; 10 s elsewhere, where an unbounded walk that grows a list would use the machine's memory until the timeout. Keyed on the platform, not on whether the cap was set: a Linux child whose cap was refused still gets 30 s."""
     return 30 if (sys.platform if platform is None else platform).startswith("linux") else 10
 
 
