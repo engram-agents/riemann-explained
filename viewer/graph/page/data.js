@@ -424,7 +424,7 @@ function declOf(raw, ctx, id) {
 }
 
 /* THE READING of a statement (optional key `reading` on a statement step): exactly {text, by, second_read_by, date}, all non-empty strings; `text` at most 20000 BYTES (the
-   note renderer's subset, headings and all, is the reading's own); `by` and `second_read_by` at most 80 characters, no control character; `date` YYYY-MM-DD. Anything else is
+   note renderer's subset, headings and all, is the reading's own); `by` and `second_read_by` at most 80 characters (code points), no control or format character (Unicode Cc and Cf: a zero-width space, a bidi override); no field is white space only; `date` a real day, YYYY-MM-DD. Anything else is
    `bad-reading`, naming the step. The text is data: it reaches the page only through note.js. */
 /* A real calendar day (2026-02-30 and 2026-13-45 are not): the date's parts rebuilt through UTC must give the same parts back. */
 function realDay(d) {
