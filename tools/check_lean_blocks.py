@@ -98,7 +98,12 @@ def check_note(src_root, path):
 
 
 def selftest():
-    d = tempfile.mkdtemp()
+    """Its folder is removed when it returns, on every path (a pass, a failure, an exception)."""
+    with tempfile.TemporaryDirectory() as d:
+        return _selftest(d)
+
+
+def _selftest(d):
     os.makedirs(os.path.join(d, "src", "A"))
     src = "theorem foo (n : Nat) : n = n := by\n  rfl\n\ntheorem bar : True := trivial\n"
     open(os.path.join(d, "src", "A", "F.lean"), "w").write(src)
@@ -144,9 +149,55 @@ def selftest():
     return 0 if ok else 4
 
 
+def _leak_check():
+    """`--selftest` must leave its temporary folder EMPTY (a folder left behind by it was one more entry in /tmp per run). Two runs, each in a TMPDIR made here
+    (`rh-tmp1-...`): the self-test as a child process of this file, and, in this process, the self-test with `check_note` made to raise (the failure path
+    must clean too). The recursion guard is the one path that could pass VACUOUSLY (a run that skips the check reports a pass): it is honoured only when BOTH the TMPDIR basename starts `rh-tmp1-` AND the parent set RH_TMP1_NESTED=1 in the child's environment, so a TMPDIR that merely looks like a child's does not skip the check, and an honoured guard says so aloud (`TMPDIR skipped: nested`). 0 clean, 4 a
+    leftover (named, at most 20) or a child that did not finish."""
+    import shutil, subprocess
+    if (os.environ.get("RH_TMP1_NESTED") == "1" and os.path.basename(tempfile.gettempdir()).startswith("rh-tmp1-")):
+        print("TMPDIR skipped: nested (a child of this check)")
+        return 0
+    bad = []
+    child, inproc = tempfile.mkdtemp(prefix="rh-tmp1-"), tempfile.mkdtemp(prefix="rh-tmp1-")
+    try:
+        try:
+            r = subprocess.run([sys.executable, "-I", os.path.abspath(__file__), "--selftest"], env=dict(os.environ, TMPDIR=child, RH_TMP1_NESTED="1"),
+                               capture_output=True, text=True, timeout=300)
+            if r.returncode != 0:
+                bad.append("the child self-test exited %d" % r.returncode)
+        except subprocess.TimeoutExpired:
+            bad.append("the child self-test timed out")
+        left = sorted(os.listdir(child))
+        if left:
+            bad.append("self-test left %d in its TMPDIR: %s" % (len(left), ", ".join(left[:20])))
+        real_run, real_dir = globals()["check_note"], tempfile.tempdir
+        def boom(*args, **kw):
+            raise RuntimeError("planted")
+        globals()["check_note"], tempfile.tempdir = boom, inproc
+        try:
+            selftest()
+            bad.append("a `check_note` that raises did not make the self-test raise")
+        except RuntimeError:
+            pass
+        finally:
+            globals()["check_note"], tempfile.tempdir = real_run, real_dir
+        left = sorted(os.listdir(inproc))
+        if left:
+            bad.append("a failing self-test left %d in its TMPDIR: %s" % (len(left), ", ".join(left[:20])))
+    finally:
+        shutil.rmtree(child, ignore_errors=True)
+        shutil.rmtree(inproc, ignore_errors=True)
+    for b in bad:
+        print("TMPDIR " + b)
+    return 4 if bad else 0
+
+
 def main(a):
     if a[1:] == ["--selftest"]:
-        return selftest()
+        rc = selftest()
+        lk = _leak_check()   # runs whether or not the self-test passed: a red self-test is no reason to skip it
+        return rc or lk
     if len(a) < 3:
         print(__doc__.split("usage:")[1].strip(), file=sys.stderr)
         return 2
