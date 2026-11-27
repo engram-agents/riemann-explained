@@ -62,7 +62,7 @@ const mathsFace = (sp) => oneLetter(sp) || spanClass(sp) === "formula";
        directly after the opening { or ( of an operand group is refused too (the same reason). One _ and one ^ on one base is allowed, in either order.
        The exponent side too: a ^ with spaces before a WORD operand that is followed by spaces and a word or an opening bracket, or directly by a _, is refused
        (`a ^ b c` is a^(b c); `a ^ b_c` has the one name b_c as its exponent). An unspaced ^, an operator, comma or closing bracket after it, or the end: not covered.
-       A ^ whose operand is followed directly by a superscript glyph (¹ ² ³ ⁰ ⁱ ⁴-⁹ ⁺ ⁻ ⁼ ⁽ ⁾ ⁿ: U+00B9, U+00B2, U+00B3, U+2070, U+2071, U+2074-U+207F) is refused: the glyph is a raised character of its own that the operand cannot absorb (`x ^ 10⁶` is x ^ (10 ^ 6) in Lean; set, it would read x^10 and then a raised 6). Modifier letters, a space before the glyph, and a _ operand followed by a glyph are not covered.
+       A ^ whose operand is followed directly by a superscript glyph (¹ ² ³ ⁰ ⁱ ⁴-⁹ ⁺ ⁻ ⁼ ⁽ ⁾ ⁿ: U+00B9, U+00B2, U+00B3, U+2070, U+2071, U+2074-U+207F) is refused: the glyph is a raised character of its own that the operand does not take in (`x ^ 10⁶` is x ^ (10 ^ 6) in Lean; set, it would read x^10 and then a raised 6). ⁱ and ⁿ are letters, so a WORD operand takes them in (`a ^ bⁿ` has the exponent bⁿ) and the rule meets them only after a group. Modifier letters, a space before the glyph, and a _ operand followed by a glyph are not covered.
    G5  spaces after an operand stay as typed.
    Nothing but the script characters, the spaces round a ^, and the brackets of a {...} or ^(...) operand is ever dropped; every other character
    comes through in its place. */
