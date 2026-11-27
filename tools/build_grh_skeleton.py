@@ -1720,7 +1720,8 @@ def _statement_symbols(kinds):
 
 # ---------------------------------------------------------------- the reading of a statement (`--readings FILE`): our own words about one statement, from a file, checked here so the page never meets a shape it refuses
 
-READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline")   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card); with the option the file of --strings-overlay-statements holds the 28 words and these (36), without it the 28
+READING_CUE_KEYS = ("face_reading_cue", "count_reading_one", "count_reading_many", "key_reading_cue_text")   # the 4 words of the reading cue (contract section 33, Ariadne's strings file, section 'Reading cues'): page keys, written to index.json `strings`
+READING_WORD_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds", "readings_byline") + READING_CUE_KEYS   # the 8 words that come with `--readings` (Ariadne's strings file, `readings_byline` and the readings block of a statement card) and the 4 of the cue; with the option the file of --strings-overlay-statements holds the 28 words and these (40), without it the 28
 READING_BUILDER_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")   # the four heading words of a reading: required in the overlay file with --readings, never written to index.json `strings` (the page reads four of the eight and refuses an index that holds these; the builder does not read the headings of a text today)
 READING_ENTRY_KEYS = ("statement", "file", "text_path", "by", "second_read_by", "date")   # the six string keys of an entry of the readings file, and no other
 READING_TEXT_MAX = 20000   # the most BYTES (UTF-8) of a reading's `text`, counted on the text as written (after the one trailing newline is dropped)
@@ -1966,6 +1967,19 @@ def _readings_attach(grh, entries, stm, ids):
     return errors, done, counts
 
 
+def _reading_counts(all_rows, attached):
+    """{step id: n} for every step with at least one statement that GOT a reading (`attached`: {statement step id: reading}, the readings that passed every check) on or under it: the statement itself (1) and,
+    walking the parent chain of the rows (statement, file, group, part), every step above it, each by the number of its statements with a reading. A step with none beneath is not a key (the card writes nothing for it)."""
+    parent = {r["id"]: r["parent"] for r in all_rows}
+    counts = {}
+    for sid in attached:
+        i = sid
+        while i != "root":
+            counts[i] = counts.get(i, 0) + 1
+            i = parent[i]
+    return counts
+
+
 def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_PREFIX, open_scale_floor=None, notes_lean_dir=None, statements_for=None, page_url=None, page_title=None, readings=None):
     """(errors, {relative name: bytes}, rows, report): the files only when there are no errors. `live_ids` are the ids of the repository's outline; `ilean_dir` (required) is
     the folder of the .ilean files of the build; `notes_lean_dir` (optional) is the folder of the contributed notes (readings); `statements_for` (optional, a list of FILE step ids) opens those files
@@ -1991,6 +2005,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         errors, stm = _statements(grh, pin, ilean_dir, rows, rep, statements_for, page_url, page_title, source_prefix)
     if errors:
         return errors, {}, rows, rep
+    reading_counts = {}   # {step id: n}: the readings on or under a step (contract section 33), set on the rows below; empty without readings
     if readings is not None:   # the readings: each names a statement the build wrote; its quotes are checked against the repository's doc-strings
         if stm is None:
             return [("SKEL-STATEMENT-READING-OPTIONS", "readings", "needs --statements-for")], {}, rows, rep
@@ -2001,6 +2016,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
             stm["step_extra"][sid]["reading"] = reading
         for fid, n in counts.items():
             rep["statements"][fid]["readings"] = n
+        reading_counts = _reading_counts(rows + stm["rows"], attached)
     syms, orders, hidden = _statement_symbols(stm["kinds"]) if stm and stm["rows"] else (SYMBOLS, MAP_ORDERS, bs.GRAPH_STATUS_HIDDEN)
     missing = bs._graph_strings_errors({k: strings[k] for k in bs._graph_strings_keys(syms) if k in strings}, syms)   # only the missing ones: it holds a subset
     if missing:
@@ -2037,6 +2053,8 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
         for fid in stm["with_children"]:
             step_extra.setdefault(fid, {})["note"] = json.loads(json.dumps(rep["notes"][fid]))
         step_extra.update(stm["step_extra"])
+    if reading_counts:   # the one writer of a card (`closed` of _graph_files) writes `reading_count` from the row: the step's own card, its entry in its parent's `children` and the top-level cards all come from it
+        all_rows = [dict(r, reading_count=reading_counts[r["id"]]) if r["id"] in reading_counts else r for r in all_rows]
     errors, objs = bs._graph_files(all_rows, pin, strings, symbols=syms, orders=orders, layout="column", link_info=link_info, notes=notes, child_kinds=True, status_hidden=hidden, child_kind_off=stm["with_children"] if stm else (),
                                     step_extra=step_extra, index_extra=dict(({"edge_basis": {"basis": EDGE_BASIS_VALUE, "words": EDGE_BASIS_WORDS}} if EDGE_BASIS_WORDS in strings else {}),
                                                      **({"open_scale_floor": open_scale_floor} if open_scale_floor is not None else {}),
@@ -2161,7 +2179,7 @@ def _run(opts):
     if unknown:
         return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
     if "strings-overlay-statements" in opts:   # exactly the statement words: a missing key and a page key that is not one of them are refused by name
-        expected = set(STATEMENT_WORD_KEYS) | (set(READING_WORD_KEYS) if "readings" in opts else set())   # all-or-none: the 8 words of the reading come with --readings and only then
+        expected = set(STATEMENT_WORD_KEYS) | (set(READING_WORD_KEYS) if "readings" in opts else set())   # all-or-none: the 12 words of the reading (8) and of its cue (4) come with --readings and only then
         wrong = [("SKEL-STATEMENT-WORDS", k, "missing") for k in sorted(expected - set(words))] + [("SKEL-STATEMENT-WORDS", k, "is not a statement word") for k in sorted(set(words) - expected)]
         if wrong:
             return refuse(wrong)
@@ -2844,7 +2862,15 @@ RDG_WORDS_NEW = {
 RDG_PAGE_KEYS = ("decl_reading_show", "decl_reading_hide", "decl_reading_about", "readings_byline")   # the four the page reads (its READING_STRINGS); the other four are the builder's own, never written
 RDG_HEADING_KEYS = ("decl_reading_uses", "decl_reading_target", "decl_reading_argument", "decl_reading_adds")
 RDG_LAST_SENTENCE = "Proofs are not opened, except in an AI agent's reading, marked as ours, which a few statements carry; on the others you can ask your own AI assistant for one."   # the new end of key_statements_text, Ariadne's file (the line of key_statements_text)
-RDG_WORDS = dict(STM_WORDS, **RDG_WORDS_NEW)   # the 28 words and the 8 of the reading: the file of --strings-overlay-statements when --readings is given
+RDC_WORDS_NEW = {
+    "face_reading_cue": "AI reading",
+    "count_reading_one": "1 AI reading",
+    "count_reading_many": "{n} AI readings",
+    "key_reading_cue_text": "A box tagged \"AI reading\" has an AI agent's reading of the statement and its proof, marked as ours. A box above it counts the readings inside, so you can follow the tags down.",
+}   # the 4 cue words (contract section 33, C5), taken from Ariadne's strings file by a script (section 'Reading cues'), not typed
+RDC_KEYS = tuple(RDC_WORDS_NEW)   # the four cue words, page keys written to index.json `strings`
+RDG_ALL_NEW = dict(RDG_WORDS_NEW, **RDC_WORDS_NEW)   # the 12 words that come with --readings
+RDG_WORDS = dict(STM_WORDS, **RDG_ALL_NEW)   # the 28 words, the 8 of the reading and the 4 cue words: the file of --strings-overlay-statements when --readings is given (40)
 RDG_A = _stm_src(
     "/-- Alpha one. Alpha two uses `x ≥ 1.` and `y. z` as a bound. Alpha three\ncontinues on a second line. Alpha four ends. -/\ntheorem alpha : True := trivial\n\n"
     "/-- **Bold title.** Let `p` be prime. It is odd. -/\nlemma beta : True := trivial\n\n"
@@ -2920,6 +2946,71 @@ def _rdg_many(entries, texts, **kw):
         r, g = _rdg_run(d, entries, texts, **kw)
         got = {n: _rdg_step(d, "lean-s-a-" + n).get("reading") for n in RDG_NAMES} if r[0] == 0 else None
     return r[0], _rdg_skel(r[1]), got, r[3]
+
+
+# ---- the reading CUE (contract section 33): `reading_count` on the closed cards. Fixtures and helpers of the RDC cases; every file and every reading here is made up.
+RDC_BODY = "### P one\n\n**G one**\n\n- `New/P/A` (1): a\n- `New/P/B` (1): b\n\n**G two**\n\n- `New/P/C` (1): c\n\n### P two\n\n**G three**\n\n- `New/Q/D` (1): d\n"   # two parts; three groups; four files (A, B in the first group)
+RDC_SRCS = {"New/P/A": _stm_src("/-- Alpha one. -/\ntheorem alpha : True := trivial\n\n/-- Beta one. -/\nlemma beta : True := trivial\n"),
+            "New/P/B": _stm_src("/-- Bee one. -/\ntheorem bdef : True := trivial\n"), "New/P/C": _stm_src("/-- Cee one. -/\ntheorem cdef : True := trivial\n"),
+            "New/Q/D": _stm_src("/-- Dee one. -/\ntheorem ddef : True := trivial\n")}
+RDC_ILEANS = {"New/P/A": _stm_ilean("New/P/A", ("alpha", "beta")), "New/P/B": _stm_ilean("New/P/B", ("bdef",)), "New/P/C": _stm_ilean("New/P/C", ("cdef",)), "New/Q/D": _stm_ilean("New/Q/D", ("ddef",))}
+RDC_FILES = ("lean-p-a", "lean-p-b", "lean-p-c", "lean-q-d")
+RDC_FILE_OF = {"alpha": "lean-p-a", "beta": "lean-p-a", "bdef": "lean-p-b", "cdef": "lean-p-c", "ddef": "lean-q-d"}
+
+
+def _rdc_entry(name):
+    """An entry of the readings as `build` takes it (the validated form): a made-up text with no quote paragraph."""
+    return {"statement": name, "file": RDC_FILE_OF[name], "text": "Made up text of a reading.", "by": "Agent One", "second_read_by": "Agent Two", "date": "2026-11-27"}
+
+
+def _rdc_build(names, readings=True):
+    """{relative name: bytes} of the fixture of four files built with --statements-for all four files and a reading on each statement of `names` (none given: an empty list; `readings` False: no readings option at all)."""
+    with _tmp() as d:
+        g = _tree(d, RDC_BODY, RDC_SRCS, ileans=RDC_ILEANS)
+        errs, files, rows, rep = build(g, PIN, dict(_strings(), **STM_WORDS), (), _ildir(g), statements_for=list(RDC_FILES), readings=[_rdc_entry(n) for n in names] if readings else None)
+    if errs:
+        raise AssertionError(errs)
+    return files
+
+
+def _rdc_ids(files):
+    """(part one, group one, group two, part two, group three): the step ids of the fixture, read off the file steps' paths."""
+    p_a, p_c, p_d = (_j(files, "graph/step/%s.json" % f)["card"]["path"] for f in ("lean-p-a", "lean-p-c", "lean-q-d"))
+    return p_a[0], p_a[1], p_c[1], p_d[0], p_d[1]
+
+
+def _rdc_cards(files):
+    """{step id: (the card's reading_count or None, {child id: the entry's reading_count or None})} of every step file of a build."""
+    out = {}
+    for k, v in files.items():
+        if k.startswith("graph/step/"):
+            o = json.loads(v.decode("utf-8"))
+            out[o["id"]] = (o["card"].get("reading_count"), {c["id"]: c.get("reading_count") for c in o["children"]})
+    return out
+
+
+def _rdc_invariants(files):
+    """Clio's four page checks over a whole built tree (contract C2), and the form of the key (an integer >= 1, never a bool): [violations], empty when the tree is right."""
+    bad = []
+    for k, v in sorted(files.items()):
+        if not k.startswith("graph/step/"):
+            continue
+        o = json.loads(v.decode("utf-8"))
+        card, kids = o["card"], o["children"]
+        for x in [card] + kids:
+            if "reading_count" in x and not (isinstance(x["reading_count"], int) and not isinstance(x["reading_count"], bool) and x["reading_count"] >= 1):
+                bad.append((o["id"], x["id"], "form", x["reading_count"]))
+        if "reading" in o and card.get("reading_count") != 1:
+            bad.append((o["id"], "a step with a reading: its own count is not 1", card.get("reading_count")))
+        if "name" in o and "reading" not in o and "reading_count" in card:
+            bad.append((o["id"], "a statement without a reading has a count", card["reading_count"]))
+        if kids and card.get("reading_count", 0) != sum(c.get("reading_count", 0) for c in kids):
+            bad.append((o["id"], "the card is not the sum of its entries", card.get("reading_count", 0), sum(c.get("reading_count", 0) for c in kids)))
+        for c in kids:
+            own = json.loads(files["graph/step/%s.json" % c["id"]].decode("utf-8"))["card"]
+            if c.get("reading_count", 0) != own.get("reading_count", 0) or ("reading_count" in c) != ("reading_count" in own):
+                bad.append((o["id"], c["id"], "the entry is not the child's own card", c.get("reading_count"), own.get("reading_count")))
+    return bad
 
 
 def _selftest_cases():
@@ -6735,7 +6826,7 @@ def _selftest_cases():
                    ((1, ["SKEL-STATEMENT-READING-OPTIONS readings needs --statements-for"], False), 2, False, 2, 0, True))
 
     @case("RDG-ABSENT", "the option absent leaves every output as it is: with `--statements-for` alone (the 28 words) no step file has a `reading`, the report has no `readings` line and index.json `strings` holds none "
-                        "of the 8 words of the reading; with `--readings` and an empty list (the 36 words) every file is byte-identical to that build except index.json, which differs by exactly the 8 words in `strings`, "
+                        "of the 8 words of the reading; with `--readings` and an empty list (the 40 words) every file is byte-identical to that build except index.json, which differs by exactly the 8 words in `strings` (the four page words of the reading and the four cue words), "
                         "and the report adds `readings lean-s-a: 0 readings written`")
     def _():
         with _tmp() as d:
@@ -6748,7 +6839,7 @@ def _selftest_cases():
         has = lambda f: [k for k in f if k.startswith("graph/step/") and b'"reading"' in f[k]]
         return _eq((r0[0], r1[0], sorted(f0) == sorted(f1), rest == sorted(k for k in rest if f0[k] == f1.get(k)), len(rest) > 7, i0 == i1, sorted(set(s1) - set(s0)), sorted(set(s0) - set(s1)),
                     s0 == {k: s1[k] for k in s0}, has(f0), has(f1), [x for x in r0[1] if x.startswith("readings ")], [x for x in r1[1] if x.startswith("readings ")]),
-                   (0, 0, True, True, True, True, sorted(RDG_PAGE_KEYS), [], True, [], [], [], ["readings lean-s-a: 0 readings written"]))
+                   (0, 0, True, True, True, True, sorted(RDG_PAGE_KEYS + RDC_KEYS), [], True, [], [], [], ["readings lean-s-a: 0 readings written"]))
 
     @case("RDG-FILE", "the readings file is a JSON LIST of objects with EXACTLY the six string keys: anything else is `SKEL-STATEMENT-READING-FILE <what>` (exit 1, nothing written) and the file's text is never echoed: not "
                       "JSON or not UTF-8 `not-json`; an object or a string at the top `not-a-list`; an entry that is no object `entry N not-an-object`; another key set (an extra key, a missing key, `{}`) `entry N keys`; "
@@ -6976,7 +7067,8 @@ def _selftest_cases():
                      "statements lean-s-b: 1 declarations, 1 written, 0 reported", "statements lean-s-b: 0 library names left out of uses_elsewhere"]))
 
     @case("RDG-STEP", "the written `reading` has exactly the four keys text, by, second_read_by and date (the file is written with sorted keys), the values as given; a statement with no reading has no `reading` key; the "
-                      "file step (its closed children) and every other step file are byte-identical to a build without the option, and so is alpha's step but for the one key")
+                      "file step (its closed children) and every other step file are byte-identical to a build without the option, and so is alpha's step but for the one key and its card's `reading_count` (the file, group and part "
+                      "steps above the two statements with a reading are the only others that differ: the count of the reading cue, section 33)")
     def _():
         text = "  Leading space kept.\n\nA **bold** mark.\n"
         with _tmp() as d:
@@ -6985,18 +7077,20 @@ def _selftest_cases():
             f0, f1 = _tree_files(os.path.join(d, "o0")), _tree_files(os.path.join(d, "o1"))
         a0, a1 = (json.loads(f["graph/step/lean-s-a-alpha.json"].decode("utf-8")) for f in (f0, f1))
         reading = a1.pop("reading", None)
+        a1["card"].pop("reading_count", None)
         differ = sorted(k for k in f0 if f0[k] != f1[k])
         return _eq((r0[0], r1[0], sorted(reading or {}), reading, a0 == a1, differ, [k for k in f1 if k.startswith("graph/step/") and b'"reading"' in f1[k]]),
                    (0, 0, ["by", "date", "second_read_by", "text"], {"text": text[:-1], "by": "B1", "second_read_by": "B2", "date": "2026-01-02"}, True,
-                    ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"], ["graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"]))
+                    ["graph/index.json", "graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json", "graph/step/lean-s-a.json", "graph/step/lean-s-g.json", "graph/step/lean-s.json"],
+                    ["graph/step/lean-s-a-alpha.json", "graph/step/lean-s-a-gamma.json"]))
 
-    @case("RDG-WORDS", "the words are all-or-none with the statement words: with `--readings` the file of --strings-overlay-statements holds EXACTLY the 28 words and the 8 of the reading (`decl_reading_show`, "
-                       "`decl_reading_hide`, `decl_reading_about`, `decl_reading_uses`, `decl_reading_target`, `decl_reading_argument`, `decl_reading_adds`, `readings_byline`): the 28 alone are refused "
-                       "`SKEL-STATEMENT-WORDS <key> missing` (the eight, sorted); without the option the 36 are refused `... <key> is not a statement word`; one missing is named; `readings_byline` must hold "
+    @case("RDG-WORDS", "the words are all-or-none with the statement words: with `--readings` the file of --strings-overlay-statements holds EXACTLY the 28 words, the 8 of the reading (`decl_reading_show`, "
+                       "`decl_reading_hide`, `decl_reading_about`, `decl_reading_uses`, `decl_reading_target`, `decl_reading_argument`, `decl_reading_adds`, `readings_byline`) and the 4 cue words (`face_reading_cue`, `count_reading_one`, `count_reading_many`, `key_reading_cue_text`): the 28 alone are refused "
+                       "`SKEL-STATEMENT-WORDS <key> missing` (the twelve, sorted); without the option the 40 are refused `... <key> is not a statement word`; one missing is named; `readings_byline` must hold "
                        "`{by}`, `{second_read_by}` and `{date}` and no other placeholder, no other new key has one; the 8 are optional page keys; the good file builds and index.json `strings` holds the 8 verbatim")
     def _():
         out = {}
-        for label, words, opt in (("28+opt", STM_WORDS, True), ("36", RDG_WORDS, False), ("minus1", {k: v for k, v in RDG_WORDS.items() if k != "decl_reading_uses"}, True),
+        for label, words, opt in (("28+opt", STM_WORDS, True), ("40", RDG_WORDS, False), ("36+opt", {k: v for k, v in RDG_WORDS.items() if k not in RDC_WORDS_NEW}, True), ("minus1", {k: v for k, v in RDG_WORDS.items() if k != "decl_reading_uses"}, True),
                                   ("no-date", dict(RDG_WORDS, readings_byline="Written by {by}, checked by {second_read_by}"), True), ("n", dict(RDG_WORDS, readings_byline=RDG_WORDS["readings_byline"] + " {n}"), True),
                                   ("by-in-show", dict(RDG_WORDS, decl_reading_show="Show {by}"), True), ("extra", dict(RDG_WORDS, view_cards="Cards"), True)):
             with _tmp() as d:
@@ -7006,13 +7100,14 @@ def _selftest_cases():
             r, g = _rdg_run(d, [])
             strings = json.loads(_tree_files(os.path.join(d, "out"))["graph/index.json"].decode("utf-8"))["strings"]
         w = lambda k, what: "SKEL-STATEMENT-WORDS %s %s" % (k, what)
-        new = sorted(RDG_WORDS_NEW)
+        new = sorted(RDG_ALL_NEW)
+        written = RDG_PAGE_KEYS + RDC_KEYS
         return _eq((out, {k: strings.get(k) for k in new}, [k in bs.GRAPH_OPTIONAL_KEYS for k in new], {k: bs.PLACEHOLDERS.get(k) for k in new if bs.PLACEHOLDERS.get(k)}, bs.REQUIRED_PLACEHOLDERS.get("readings_byline"),
                     len(STATEMENT_WORD_KEYS), sorted(READING_WORD_KEYS) == new),
-                   ({"28+opt": (1, [w(k, "missing") for k in new], False), "36": (1, [w(k, "is not a statement word") for k in new], False), "minus1": (1, [w("decl_reading_uses", "missing")], False),
+                   ({"28+opt": (1, [w(k, "missing") for k in new], False), "40": (1, [w(k, "is not a statement word") for k in new], False), "36+opt": (1, [w(k, "missing") for k in sorted(RDC_WORDS_NEW)], False), "minus1": (1, [w("decl_reading_uses", "missing")], False),
                      "no-date": (1, ["STRINGS-KEY readings_byline is missing the placeholder {date}"], False), "n": (1, ["STRINGS-KEY readings_byline has an unknown placeholder {n}"], False),
                      "by-in-show": (1, ["STRINGS-KEY decl_reading_show has an unknown placeholder {by}"], False), "extra": (1, [w("view_cards", "is not a statement word")], False)},
-                    {k: (RDG_WORDS_NEW[k] if k in RDG_PAGE_KEYS else None) for k in new}, [k in RDG_PAGE_KEYS for k in new], {"readings_byline": {"by", "second_read_by", "date"}}, ("by", "second_read_by", "date"), 28, True))
+                    {k: (RDG_ALL_NEW[k] if k in written else None) for k in new}, [k in written for k in new], {"readings_byline": {"by", "second_read_by", "date"}, "count_reading_many": {"n"}}, ("by", "second_read_by", "date"), 28, True))
 
     @case("RDG-WORDS-COPY", "the test copy of the 8 words of the reading equals the values in Ariadne's strings file when that file is readable at its shared path (SKIPPED when it is not: the path is "
                             "in RDG_WORDS_SHARED_PATH)")
@@ -7133,8 +7228,8 @@ def _selftest_cases():
 
     # ---------------------------------------------------------------- round 4: the four heading words are the builder's, the page reads four of the eight
 
-    @case("RDG-STRINGS-WRITTEN", "with --readings the overlay file holds the 28 + 8 words, and the written index.json `strings` holds the 28 + ONLY the four page keys (decl_reading_show, decl_reading_hide, decl_reading_about, "
-                                 "readings_byline): the four heading words (decl_reading_uses, _target, _argument, _adds) are not written, with a reading written or with an empty list (32 keys both ways), and the `reading` of a step is "
+    @case("RDG-STRINGS-WRITTEN", "with --readings the overlay file holds the 28 + 8 + 4 words, and the written index.json `strings` holds the 28 + ONLY the four page keys (decl_reading_show, decl_reading_hide, decl_reading_about, "
+                                 "readings_byline) and the four cue words: the four heading words (decl_reading_uses, _target, _argument, _adds) are not written, with a reading written or with an empty list (the 28 + 8, both ways), and the `reading` of a step is "
                                  "unaffected; without --readings nothing changes (28); a heading word in the Graph overlay is still `SKEL-OVERLAY-KEY`")
     def _():
         with _tmp() as d:
@@ -7145,13 +7240,13 @@ def _selftest_cases():
             ix = lambda o: json.loads(_tree_files(os.path.join(d, o))["graph/index.json"].decode("utf-8"))["strings"]
             s0, s1, s2 = ix("o0"), ix("o1"), ix("o2")
             step = _rdg_step(d, "lean-s-a-alpha", out="o1")
-        want = set(s0) | set(RDG_PAGE_KEYS)
-        return _eq((r0[0], r1[0], r2[0], len(s1) - len(s0), set(s1) == want, set(s2) == want, len(s1), len(s2), [k for k in RDG_HEADING_KEYS if k in s1 or k in s2], {k: s1[k] for k in RDG_PAGE_KEYS} == {k: RDG_WORDS_NEW[k] for k in RDG_PAGE_KEYS},
+        want = set(s0) | set(RDG_PAGE_KEYS) | set(RDC_KEYS)
+        return _eq((r0[0], r1[0], r2[0], len(s1) - len(s0), set(s1) == want, set(s2) == want, len(s1), len(s2), [k for k in RDG_HEADING_KEYS if k in s1 or k in s2], {k: s1[k] for k in RDG_PAGE_KEYS + RDC_KEYS} == {k: RDG_ALL_NEW[k] for k in RDG_PAGE_KEYS + RDC_KEYS},
                     step["reading"]["text"], (r3[0], r3[1])),
-                   (0, 0, 0, 4, True, True, len(s0) + 4, len(s0) + 4, [], True, "Text.", (1, ["SKEL-OVERLAY-KEY graph-words.json decl_reading_uses is not a key the page reads"])))
+                   (0, 0, 0, 8, True, True, len(s0) + 8, len(s0) + 8, [], True, "Text.", (1, ["SKEL-OVERLAY-KEY graph-words.json decl_reading_uses is not a key the page reads"])))
 
-    @case("RDG-WORDS-FILE", "site/strings-lean-statements-readings.json is the 36-word overlay: exactly 36 keys; its 27 other statement keys equal site/strings-lean-statements.json; key_statements_text differs only in its last sentence "
-                            "(`Proofs are not opened.` becomes Ariadne's sentence); its 8 reading values equal Ariadne's file when that is readable (SKIPPED, said, otherwise); a build over the fixture with --readings and THIS file as the overlay passes")
+    @case("RDG-WORDS-FILE", "site/strings-lean-statements-readings.json is the 40-word overlay: exactly 40 keys; its 27 other statement keys equal site/strings-lean-statements.json; key_statements_text differs only in its last sentence "
+                            "(`Proofs are not opened.` becomes Ariadne's sentence); its 8 reading values and 4 cue values equal Ariadne's file when that is readable (SKIPPED, said, otherwise); a build over the fixture with --readings and THIS file as the overlay passes")
     def _():
         here = os.path.join(_HERE, os.pardir, "site")
         with open(os.path.join(here, "strings-lean-statements.json"), encoding="utf-8") as f:
@@ -7162,9 +7257,9 @@ def _selftest_cases():
         old, new = f28["key_statements_text"], f36["key_statements_text"]
         with _tmp() as d:
             r, g = _rdg_run(d, [], words=f36)
-        got = (len(f36), set(f36) == set(f28) | set(RDG_WORDS_NEW), len(f28) - 1, {k for k in f28 if k != "key_statements_text" and f36[k] != f28[k]}, old.endswith(end) and new == old[:-len(end)] + RDG_LAST_SENTENCE,
-               {k: f36[k] for k in RDG_WORDS_NEW} == RDG_WORDS_NEW, r[0], _rdg_skel(r[1]))
-        ok, why = _eq(got, (36, True, 27 + 0 + 0 + 0 + 0, set(), True, True, 0, []))
+        got = (len(f36), set(f36) == set(f28) | set(RDG_ALL_NEW), len(f28) - 1, {k for k in f28 if k != "key_statements_text" and f36[k] != f28[k]}, old.endswith(end) and new == old[:-len(end)] + RDG_LAST_SENTENCE,
+               {k: f36[k] for k in RDG_ALL_NEW} == RDG_ALL_NEW, r[0], _rdg_skel(r[1]))
+        ok, why = _eq(got, (40, True, 27 + 0 + 0 + 0 + 0, set(), True, True, 0, []))
         if not ok:
             return ok, why
         try:
@@ -7172,8 +7267,217 @@ def _selftest_cases():
                 t = f.read()
         except OSError:
             raise _SkipCase("SKIPPED: %s is not readable here (the other checks of the file passed)" % RDG_WORDS_SHARED_PATH)
-        found = {k: re.findall(r"^- " + k + r"[^\n]*?: `([^`\n]*)`", t, re.M) for k in RDG_WORDS_NEW}
-        return _eq({k: f36[k] for k in RDG_WORDS_NEW}, {k: v[0] for k, v in found.items() if len(v) == 1})
+        found = {k: re.findall(r"^- " + k + r"(?: \(.*?\))?:\s+`([^`\n]*)`", t, re.M) for k in RDG_ALL_NEW}
+        return _eq({k: f36[k] for k in RDG_ALL_NEW}, {k: v[0] for k, v in found.items() if len(v) == 1})
+
+    # ---------------------------------------------------------------- the reading cue (RDC cases; contract section 33: `reading_count` on the closed cards)
+
+    @case("RDC-STATEMENT", "a statement WITH a reading carries `reading_count` 1 on its own card and on its closed-child entry in its file step; a statement without one carries no such key, on either, "
+                           "and its step file holds no `reading_count` at all (the fixture: two parts, three groups, four files; a reading on `alpha`)")
+    def _():
+        c = _rdc_cards(_rdc_build(["alpha"]))
+        stm = ("lean-p-a-alpha", "lean-p-a-beta", "lean-p-b-bdef", "lean-p-c-cdef", "lean-q-d-ddef")
+        return _eq(([c[i][0] for i in stm], c["lean-p-a"][1], b'"reading_count"' in _rdc_build(["alpha"])["graph/step/lean-p-a-beta.json"]),
+                   ([1, None, None, None, None], {"lean-p-a-alpha": 1, "lean-p-a-beta": None}, False))
+
+    @case("RDC-FILE-SUM", "a FILE carries the sum of the readings of its statements, on its own card and on its entry in its group: two statements with a reading in one file give 2 (their own cards and entries 1 each); "
+                          "the other file of the group has none")
+    def _():
+        c = _rdc_cards(_rdc_build(["alpha", "beta"]))
+        return _eq((c["lean-p-a"][0], c["lean-p-g-one"][1], c["lean-p-a-alpha"][0], c["lean-p-a-beta"][0], c["lean-p-a"][1]),
+                   (2, {"lean-p-a": 2, "lean-p-b": None}, 1, 1, {"lean-p-a-alpha": 1, "lean-p-a-beta": 1}))
+
+    @case("RDC-GROUP-PART-SUM", "a GROUP and a PART carry the sum of the readings of the statements beneath, on their cards and on their entries one level up: readings in two files of one group (3 with the second reading of the first file), "
+                                "and in two groups of one part; a part with none beneath carries none")
+    def _():
+        g1, g2, g3 = "lean-p-g-one", "lean-p-g-two", "lean-q-g-three"
+        c = _rdc_cards(_rdc_build(["alpha", "beta", "bdef"]))
+        d = _rdc_cards(_rdc_build(["alpha", "bdef", "cdef"]))
+        return _eq(((c["lean-p-a"][0], c["lean-p-b"][0], c[g1][0], c[g1][1], c["lean-p"][0], c["lean-p"][1], c[g2][0], c["lean-q"][0]),
+                    (d[g1][0], d[g2][0], d["lean-p"][0], d["lean-p"][1], d["lean-p"][1], d[g3][0], d["lean-q"][0], d["lean-q"][1])),
+                   ((2, 1, 3, {"lean-p-a": 2, "lean-p-b": 1}, 3, {g1: 3, g2: None}, None, None),
+                    (2, 1, 3, {g1: 2, g2: 1}, {g1: 2, g2: 1}, None, None, {g3: None})))
+
+    @case("RDC-ZERO", "the key is ABSENT when the count is zero: never 0, false or null, on a card or an entry, with one reading and with none; a build with one reading has the key in exactly the steps on the way "
+                      "(the statement, its file, its group, its part) and in the entries that name them, and in no other step file")
+    def _():
+        one, none = _rdc_build(["alpha"]), _rdc_build([])
+        has = lambda f: sorted(k for k in f if b'"reading_count"' in f[k])
+        odd = lambda f: [k for k in f if re.search(rb'"reading_count": (0|false|null)', f[k])]
+        return _eq((has(one), odd(one), has(none), odd(none)),
+                   (["graph/step/lean-p-a-alpha.json", "graph/step/lean-p-a.json", "graph/step/lean-p-g-one.json", "graph/step/lean-p.json"], [], [], []))
+
+    @case("RDC-KEYS-ORDER", "the key sits in the sorted order of the other card keys, on every card and entry that carries it (a statement card: child_count, id, kind, path, proof, reading_count, role, state, title; its entry adds "
+                            "parent_rests_on; a file card has no role): the files are written with sorted keys and the order is read off the written bytes")
+    def _():
+        f = _rdc_build(["alpha"])
+        a = _j(f, "graph/step/lean-p-a-alpha.json")["card"]
+        e = next(x for x in _j(f, "graph/step/lean-p-a.json")["children"] if x["id"] == "lean-p-a-alpha")
+        file_card = _j(f, "graph/step/lean-p-a.json")["card"]
+        part_entry = _j(f, "graph/step/lean-p.json")["children"][0]
+        every = [x for k, v in f.items() if k.startswith("graph/step/") for x in [json.loads(v.decode("utf-8"))["card"]] + json.loads(v.decode("utf-8"))["children"] if "reading_count" in x]
+        return _eq((list(a), list(e), list(file_card), list(part_entry), [list(x) == sorted(x) for x in every], len(every)),
+                   (["child_count", "id", "kind", "path", "proof", "reading_count", "role", "state", "title"],
+                    ["child_count", "id", "kind", "parent_rests_on", "path", "proof", "reading_count", "role", "state", "title"],
+                    ["child_count", "id", "kind", "path", "proof", "reading_count", "state", "title"],
+                    ["child_count", "child_kind", "id", "kind", "parent_rests_on", "path", "proof", "reading_count", "state", "title"], [True] * 7, 7))
+
+    @case("RDC-TOP", "the top-level cards of index.json (`top` lists the part ids; the page loads each part's step file and draws its `card`) carry the part's count: a part with readings beneath it carries the sum, the other part none; "
+                     "index.json itself gains no key and holds no `reading_count` (contract C4)")
+    def _():
+        f = _rdc_build(["alpha", "cdef"])
+        ix = _j(f, "graph/index.json")
+        return _eq((ix["top"], [_j(f, "graph/step/%s.json" % i)["card"].get("reading_count") for i in ix["top"]], b"reading_count" in f["graph/index.json"],
+                    sorted(ix) == sorted(_j(_rdc_build([], readings=False), "graph/index.json"))),
+                   (["lean-p", "lean-q"], [2, None], False, True))
+
+    @case("RDC-INVARIANTS", "Clio's four page checks hold over a whole built tree (a step with `reading` has its own count 1; a statement without one has none; a step with children has a count equal to the SUM of its child entries, "
+                            "absent being 0; each child entry equals that child's own card), and the helper that asserts them finds each of the four (and a count of 0, false or 2.5) in a tree tampered with")
+    def _():
+        f = _rdc_build(["alpha", "bdef", "ddef"])   # `beta` has none, beside `alpha` in the same file: a statement without a reading in a file that has one
+
+        def tamper(step, fn):
+            g = dict(f)
+            o = json.loads(g["graph/step/%s.json" % step].decode("utf-8"))
+            fn(o)
+            g["graph/step/%s.json" % step] = json.dumps(o, sort_keys=True).encode("utf-8")
+            return _rdc_invariants(g)
+        drop = lambda o: o["card"].pop("reading_count", None)
+        add = lambda o: o["card"].__setitem__("reading_count", 1)
+        bump = lambda o: o["card"].__setitem__("reading_count", 2)
+        kid = lambda o: o["children"][0].pop("reading_count", None)
+        zero = lambda o: o["card"].__setitem__("reading_count", 0)
+        flo = lambda o: o["card"].__setitem__("reading_count", 2.5)
+        boo = lambda o: o["card"].__setitem__("reading_count", True)
+        found = [bool(tamper("lean-p-a-alpha", drop)), bool(tamper("lean-p-c-cdef", add)), bool(tamper("lean-p-a", bump)), bool(tamper("lean-p-a", kid)),
+                 bool(tamper("lean-p-a-alpha", zero)), bool(tamper("lean-p-a-alpha", flo)), bool(tamper("lean-p-b-bdef", boo))]
+        return _eq((_rdc_invariants(f), found, _rdc_invariants(_rdc_build([])), _rdc_invariants(_rdc_build(["alpha", "beta", "bdef", "cdef", "ddef"]))), ([], [True] * 7, [], []))
+
+    @case("RDC-REAL", "the real source (give `--selftest --grh DIR --ilean-dir DIR`; otherwise SKIPPED), the three files named, a made-up reading on `New.LFunction_ne_zero_of_primeRemainder_le` (in `lean-reduction-zeros-criterion`) "
+                      "and on `New.eventually_abs_primeRemainder_le` (in `lean-reduction-zeros-prime-number-theorem`): the criterion file 1, the prime-error file none, the prime-number-theorem file 1, the group "
+                      "`lean-reduction-from-a-one-sided-bound-to-the-zeros` 2, the part `lean-reduction` 2 and its top-level card 2, the two statements 1 each (card and entry), the other 35 statements none (card and entry), "
+                      "and the four page checks over the whole tree")
+    def _():
+        if _GRH_FOR_SK13 is None or _ILEAN_FOR_SK13 is None:
+            raise _SkipCase("SKIPPED: no --grh and --ilean-dir given to the self-test")
+        real_pin = "72fead102f663d5c7a407964a13dc0cf9d977207"
+        ids = ["lean-reduction-zeros-criterion", "lean-reduction-zeros-prime-error", "lean-reduction-zeros-prime-number-theorem"]
+        with open(os.path.join(_HERE, os.pardir, "outline", "outline.json"), encoding="utf-8") as f:
+            live = [g["id"] for g in json.load(f)["groups"]]
+        entry = lambda name, fid: {"statement": name, "file": fid, "text": "A made-up reading.", "by": "Agent One", "second_read_by": "Agent Two", "date": "2026-11-27"}
+        crit, pnt = "New.LFunction_ne_zero_of_primeRemainder_le", "New.eventually_abs_primeRemainder_le"
+        errs, files, rows, rep = build(_GRH_FOR_SK13, real_pin, dict(_strings(), **STM_WORDS), live_ids=live, ilean_dir=_ILEAN_FOR_SK13, statements_for=ids,
+                                       readings=[entry(crit, ids[0]), entry(pnt, ids[2])])
+        if errs:
+            return False, errs
+        st = _stm_names(files)
+        group, part = "lean-reduction-from-a-one-sided-bound-to-the-zeros", "lean-reduction"
+        cards = _rdc_cards(files)
+        two = (st[crit]["id"], st[pnt]["id"])
+        others = [o["id"] for n, o in st.items() if n not in (crit, pnt)]
+        entries = {c: v for i, (_n, ch) in cards.items() for c, v in ch.items() if c in {o["id"] for o in st.values()}}
+        ix = _j(files, "graph/index.json")
+        return _eq(([cards[i][0] for i in ids], cards[group][0], cards[part][0], [cards[i][0] for i in ix["top"] if i == part], part in ix["top"], [cards[i][0] for i in two], [entries[i] for i in two],
+                    len(others), [cards[i][0] for i in others if cards[i][0] is not None], [entries[i] for i in others if entries[i] is not None], cards[group][1], cards[part][1][group], sorted({v for k, v in cards[part][1].items() if k != group}, key=str), _rdc_invariants(files)),
+                   ([1, None, 1], 2, 2, [2], True, [1, 1], [1, 1], 35, [], [], {ids[0]: 1, ids[1]: None, ids[2]: 1}, 2, [None], []))
+
+    @case("RDC-ABSENT", "without `--readings` no step file holds `reading_count` and the build is byte-identical to one with `readings=[]` (the key follows the readings that passed their checks, never the option); "
+                        "with `--readings` and an EMPTY list through the command line no step file holds it either and the written strings hold the 28 words and 4 + 4 more (the 36 words of a 28-word build plus eight)")
+    def _():
+        plain, empty = _rdc_build([], readings=False), _rdc_build([])
+        with _tmp() as d:
+            r0, g = _rdg_run(d, [], words=STM_WORDS, readings=False, out="o0")
+            r1, _g = _rdg_run(d, [], out="o1", g=g)
+            f0, f1 = _tree_files(os.path.join(d, "o0")), _tree_files(os.path.join(d, "o1"))
+        if r0[0] or r1[0]:
+            return False, ("a build was refused", r0[:2], r1[:2])
+        s0, s1 = (json.loads(f["graph/index.json"].decode("utf-8"))["strings"] for f in (f0, f1))
+        anywhere = lambda f: [k for k in f if b"reading_count" in f[k]]
+        return _eq((anywhere(plain), plain == empty, r0[0], r1[0], anywhere(f0), anywhere(f1), len(s1) - len(s0), sorted(set(s1) - set(s0)) == sorted(RDG_PAGE_KEYS + RDC_KEYS)),
+                   ([], True, 0, 0, [], [], 8, True))
+
+    @case("RDC-REFUSED", "a reading that is refused writes nothing, so no count is written either: a reading that names no statement (`SKEL-STATEMENT-READING-TARGET`) beside a good one gives the refusal, no files at all and so no "
+                         "`reading_count` anywhere; a repeated reading of one statement is refused the same way (the count is never 2 on a statement). The counts are taken from the readings the build ATTACHED, after every check of the text and quotes")
+    def _():
+        res = []
+        for extra in ([dict(_rdc_entry("beta"), statement="nonesuch")], [_rdc_entry("alpha")]):
+            with _tmp() as d:
+                g = _tree(d, RDC_BODY, RDC_SRCS, ileans=RDC_ILEANS)
+                errs, files, rows, rep = build(g, PIN, dict(_strings(), **STM_WORDS), (), _ildir(g), statements_for=list(RDC_FILES), readings=[_rdc_entry("alpha")] + extra)
+            res.append(([e[0] for e in errs], files))
+        return _eq(res, [(["SKEL-STATEMENT-READING-TARGET"], {}), (["SKEL-STATEMENT-READING-TARGET"], {})])
+
+    @case("RDC-WORDS", "the four cue words are all-or-none with the reading words: under `--readings` the overlay file holds EXACTLY 28 + 8 + 4 = 40 keys: the 40 build (exit 0); the 36 (without the four) are refused "
+                       "`SKEL-STATEMENT-WORDS <key> missing` naming the four cue keys, sorted, and nothing else; the 40 without the option are refused `... is not a statement word` for the twelve; each of the four is an optional page key")
+    def _():
+        out = {}
+        for label, words, opt in (("40", RDG_WORDS, True), ("36", {k: v for k, v in RDG_WORDS.items() if k not in RDC_WORDS_NEW}, True), ("40-no-option", RDG_WORDS, False), ("39", {k: v for k, v in RDG_WORDS.items() if k != "face_reading_cue"}, True),
+                                  ("41", dict(RDG_WORDS, view_cards="Cards"), True)):
+            with _tmp() as d:
+                r, g = _rdg_run(d, [], words=words, readings=opt)
+            out[label] = (r[0], [x for x in r[1] if x.startswith("SKEL-STATEMENT-WORDS")], r[3])
+        w = lambda k, what: "SKEL-STATEMENT-WORDS %s %s" % (k, what)
+        return _eq((out, len(RDG_WORDS), len(READING_WORD_KEYS) + len(STATEMENT_WORD_KEYS), [k in bs.GRAPH_OPTIONAL_KEYS for k in RDC_KEYS], sorted(set(READING_WORD_KEYS) & set(RDC_KEYS)) == sorted(RDC_KEYS)),
+                   ({"40": (0, [], True), "36": (1, [w(k, "missing") for k in sorted(RDC_KEYS)], False), "40-no-option": (1, [w(k, "is not a statement word") for k in sorted(RDG_ALL_NEW)], False),
+                     "39": (1, [w("face_reading_cue", "missing")], False), "41": (1, [w("view_cards", "is not a statement word")], False)}, 40, 40, [True] * 4, True))
+
+    @case("RDC-STRINGS-WRITTEN", "the strings written to index.json under `--readings` are exactly the 28 statement words, the four reading page words and the four cue words (36 words of the overlay, the other 4 are the builder's "
+                                 "headings and never written): no heading word, no key beyond them; the four cue values are written verbatim; without `--readings` none of the eight is written; the cue words are NOT written without the option")
+    def _():
+        with _tmp() as d:
+            r0, g = _rdg_run(d, [], words=STM_WORDS, readings=False, out="o0")
+            r1, _g = _rdg_run(d, [_rdg_entry("alpha")], {"r.md": "Text."}, out="o1", g=g)
+            if r0[0] or r1[0]:
+                return False, ("a build was refused", r0[:2], r1[:2])
+            ix = lambda o: json.loads(_tree_files(os.path.join(d, o))["graph/index.json"].decode("utf-8"))["strings"]
+            s0, s1 = ix("o0"), ix("o1")
+        w28 = {k for k in s1 if k in STATEMENT_WORD_KEYS}
+        return _eq((r0[0], r1[0], len(w28), sorted(k for k in s1 if k in RDG_PAGE_KEYS), sorted(k for k in s1 if k in RDC_KEYS), [k for k in s1 if k in RDG_HEADING_KEYS], sorted(set(s1) - set(s0)) == sorted(RDG_PAGE_KEYS + RDC_KEYS),
+                    {k: s1[k] for k in RDC_KEYS} == RDC_WORDS_NEW, [k for k in s0 if k in RDG_ALL_NEW]),
+                   (0, 0, 28, sorted(RDG_PAGE_KEYS), sorted(RDC_KEYS), [], True, True, []))
+
+    @case("RDC-WORDS-COPY", "the test copy of the four cue words equals the values in Ariadne's strings file (section 'Reading cues') when that file is readable at its shared path (SKIPPED when it is not)")
+    def _():
+        try:
+            with open(RDG_WORDS_SHARED_PATH, encoding="utf-8") as f:
+                t = f.read()
+        except OSError:
+            raise _SkipCase("SKIPPED: %s is not readable here" % RDG_WORDS_SHARED_PATH)
+        found = {k: re.findall(r"^- " + k + r"(?: \(.*?\))?:\s+`([^`\n]*)`", t, re.M) for k in RDC_WORDS_NEW}
+        return _eq({k: v[0] for k, v in found.items() if len(v) == 1}, RDC_WORDS_NEW)
+
+    @case("RDC-WORDS-FILE", "site/strings-lean-statements-readings.json is the 40-key overlay: its four cue keys are the last four, in the order of the strings file, with the values of the test copy (and of Ariadne's file when that is "
+                            "readable; SKIPPED, said, otherwise); the other 36 keys are the file as it was (27 + key_statements_text + 8: RDG-WORDS-FILE); the file is written as indent 1, no ASCII escaping, one final newline")
+    def _():
+        path = os.path.join(_HERE, os.pardir, "site", "strings-lean-statements-readings.json")
+        with open(path, "rb") as f:
+            raw = f.read()
+        f40 = json.loads(raw.decode("utf-8"))
+        ok, why = _eq((len(f40), list(f40)[-4:], {k: f40[k] for k in RDC_KEYS}, raw == (json.dumps(f40, indent=1, ensure_ascii=False) + "\n").encode("utf-8"), len(set(f40) - set(RDC_KEYS))),
+                      (40, list(RDC_KEYS), RDC_WORDS_NEW, True, 36))
+        if not ok:
+            return ok, why
+        try:
+            with open(RDG_WORDS_SHARED_PATH, encoding="utf-8") as f:
+                t = f.read()
+        except OSError:
+            raise _SkipCase("SKIPPED: %s is not readable here (the other checks of the file passed)" % RDG_WORDS_SHARED_PATH)
+        found = {k: re.findall(r"^- " + k + r"(?: \(.*?\))?:\s+`([^`\n]*)`", t, re.M) for k in RDC_KEYS}
+        return _eq({k: f40[k] for k in RDC_KEYS}, {k: v[0] for k, v in found.items() if len(v) == 1})
+
+    @case("RDC-PLACEHOLDER", "`count_reading_many` holds `{n}` EXACTLY ONCE: without it the build is refused `STRINGS-KEY count_reading_many is missing the placeholder {n}`, with it twice `... holds the placeholder {n} 2 times`, "
+                             "with another placeholder `... has an unknown placeholder {m}`; the three other cue words declare none (a placeholder in one is refused `has an unknown placeholder`); "
+                             "the good words pass")
+    def _():
+        def run(**kw):
+            with _tmp() as d:
+                r, g = _rdg_run(d, [], words=dict(RDG_WORDS, **kw))
+            return [x for x in r[1] if x.startswith("STRINGS-")]
+        many = RDC_WORDS_NEW["count_reading_many"]
+        return _eq((run(count_reading_many="AI readings"), run(count_reading_many=many + " {n}"), run(count_reading_many="{m} AI readings"), run(count_reading_one="{n} AI reading"), run(face_reading_cue="{x}"), run(key_reading_cue_text="A {y}"), run()),
+                   (["STRINGS-KEY count_reading_many is missing the placeholder {n}"], ["STRINGS-KEY count_reading_many holds the placeholder {n} 2 times"], ["STRINGS-KEY count_reading_many has an unknown placeholder {m}",
+                                                                                                                                                                  "STRINGS-KEY count_reading_many is missing the placeholder {n}"],
+                    ["STRINGS-KEY count_reading_one has an unknown placeholder {n}"], ["STRINGS-KEY face_reading_cue has an unknown placeholder {x}"], ["STRINGS-KEY key_reading_cue_text has an unknown placeholder {y}"], []))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
