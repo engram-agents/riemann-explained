@@ -6910,11 +6910,11 @@ def _selftest_cases():
         refused = _rdg_one("\n\n".join(_rdg_q(head, q) for q in bad) + "\n", entry=_rdg_entry("gamma"))
         return _eq((ok[:2], refused[:2]), ((0, []), (1, ["SKEL-STATEMENT-READING-QUOTE gamma paragraph %d text" % (i + 1) for i in range(len(bad))])))
 
-    @case("RDG-QUOTE-OTHER", "only a paragraph that STARTS `In the repository's words (` is checked: a paragraph that holds it later, one that starts `In the repository's words` without ` (` (a colon, or none), and one in "
-                             "lower case are not quote paragraphs and pass unchecked; a quote whose QUOTED text holds `\"` characters passes (it ends at the LAST `\"` of the paragraph)")
+    @case("RDG-QUOTE-OTHER", "a paragraph that starts `In the repository's words` without ` (` (a colon, or none) and one in lower case are not quote paragraphs and pass unchecked (the limit of the rule); a quote whose "
+                             "QUOTED text holds `\"` characters passes (it ends at the LAST `\"` of the paragraph)")
     def _():
         quoted = 'Delta said "hi" to me.'
-        text = "\n\n".join(["As noted, In the repository's words (lines 9-9): \"zzz\" is odd.", "In the repository's words: \"fake\"", "In the repository's words(lines 1-1): \"fake\"",
+        text = "\n\n".join(["In the repository's words: \"fake\"", "In the repository's words(lines 1-1): \"fake\"",
                             "in the repository's words (lines 1-1): \"fake\"", _rdg_q("line %d" % RDG_L4, quoted), _rdg_q("line %d" % RDG_L4, quoted + ' Then left.')]) + "\n"
         ok = _rdg_one(text)
         bad = _rdg_one(_rdg_q("line %d" % RDG_L4, 'Delta said "hi" to you.') + "\n")
@@ -7007,6 +7007,98 @@ def _selftest_cases():
         return _eq((r[0], r[1], r2[0], r2[1], bad("\n".join(r[1] + r2[1]))),
                    (1, ["SKEL-STATEMENT-READING-TEXT " + json.dumps(names[0]) + " empty", "SKEL-STATEMENT-READING-NAME " + json.dumps(names[1]) + " by", "SKEL-STATEMENT-READING-DATE " + json.dumps(names[2])], 1,
                     ["SKEL-STATEMENT-READING-TARGET " + json.dumps("w\x1b[0m")], False))
+
+    # ---------------------------------------------------------------- round 3 of the reading cases: huge numbers, the opener anywhere, blank and astral names, symlinked and empty path segments
+
+    @case("RDG-QUOTE-HUGE", "a number of a quote HEAD has at most 9 digits (`[1-9][0-9]{0,8}`): a longer one (`line 1` and 5000 zeros, either number of `lines`, the number after a PATH) is refused `SKEL-STATEMENT-READING-QUOTE "
+                            "<statement> paragraph <n> form`, exit 1, one SKEL line, no traceback; a number of 9 digits is a good form (and has no doc-string: `lines`)")
+    def _():
+        big = "1" + "0" * 5000
+        paras = [_rdg_q("line %s" % big, "x"), _rdg_q("lines 1-%s" % big, "x"), _rdg_q("lines %s-%s" % (big, big), "x"), _rdg_q("src/New/S/B.lean, line %s" % big, "x"), _rdg_q("line 999999999", "x"),
+                 _rdg_q("line 1000000000", "x")]
+        res = _rdg_one("\n\n".join(paras) + "\n")
+        q = lambda n, w: "SKEL-STATEMENT-READING-QUOTE alpha paragraph %d %s" % (n, w)
+        return _eq((res[0], res[1], res[3]), (1, [q(1, "form"), q(2, "form"), q(3, "form"), q(4, "form"), q(5, "lines"), q(6, "form")], False))
+
+    for _name, _prefix in (("SPACE", " "), ("GT", "> "), ("DASH", "- "), ("STARS", "**"), ("BOM", "﻿"), ("ZWSP", "​"), ("NEWLINE", "intro\n"), ("NBSP-LINE", "intro\n \n"), ("LS", "intro ")):
+        @case("RDG-OPENER-" + _name, "the opener `In the repository's words (` anywhere in a paragraph EXCEPT at its very start is refused `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> form` (n counts ALL paragraphs of this "
+                                     "refusal): here it follows %r in the second paragraph; the same quote with nothing before it passes" % _prefix)
+        def _(_prefix=_prefix):
+            quote = _rdg_q("line %d" % RDG_L2, "Let `p` be prime. It is odd.")
+            bad = _rdg_one("Plain paragraph.\n\n" + _prefix + quote + "\n")
+            good = _rdg_one("Plain paragraph.\n\n" + quote + "\n")
+            return _eq((bad[0], bad[1], bad[3], good[:2]), (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 form"], False, (0, [])))
+
+    @case("RDG-OPENER-NUMBERS", "the paragraph number of the new refusal counts ALL paragraphs, the number of the other quote refusals counts the quote paragraphs only: paragraph 1 plain, 2 a good quote, 3 plain text with the "
+                                "opener later (`form`, number 3), 4 a quote whose text is wrong (`text`, quote number 2)")
+    def _():
+        text = "\n\n".join(["Plain.", _rdg_q("line %d" % RDG_L2, "It is odd."), "Words then " + _rdg_q("line %d" % RDG_L2, "It is odd."), _rdg_q("line %d" % RDG_L2, "It is even.")]) + "\n"
+        res = _rdg_one(text)
+        return _eq((res[0], res[1]), (1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 3 form", "SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 text"]))
+
+    @case("RDG-NAME-BLANK", "`by` and `second_read_by` made only of white space are refused `SKEL-STATEMENT-READING-NAME <statement> <field>` (a space, three spaces, an ideographic space); a name with a letter and a space around it passes")
+    def _():
+        entries = [_rdg_entry("n1", by=" "), _rdg_entry("n2", second_read_by="   "), _rdg_entry("n3", by="　")]
+        with _tmp() as d:
+            r, g = _rdg_run(d, entries, {"r.md": "Text."})
+        ok = _rdg_one("Text.", _rdg_entry(by=" A ", second_read_by="B"))
+        w = lambda n, f: "SKEL-STATEMENT-READING-NAME %s %s" % (n, f)
+        return _eq(((r[0], _rdg_skel(r[1]), r[3]), ok[:2]), ((1, [w("n1", "by"), w("n2", "second_read_by"), w("n3", "by")], False), (0, [])))
+
+    @case("RDG-NAME-UTF16", "the 80 characters of `by` and `second_read_by` are counted in UTF-16 UNITS (what a page's `.length` counts): 80 astral characters (U+1D49C, 160 units) are refused, 41 (82 units) are refused, 40 (80 "
+                            "units) pass, 80 ASCII pass, 81 ASCII are refused")
+    def _():
+        astral = "\U0001d49c"
+        bad = [_rdg_entry("a80", by=astral * 80), _rdg_entry("a41", second_read_by=astral * 41), _rdg_entry("s81", by="a" * 81)]
+        with _tmp() as d:
+            r, g = _rdg_run(d, bad, {"r.md": "Text."})
+        ok = _rdg_one("Text.", _rdg_entry(by=astral * 40, second_read_by="a" * 80))
+        w = lambda n, f: "SKEL-STATEMENT-READING-NAME %s %s" % (n, f)
+        return _eq(((r[0], _rdg_skel(r[1]), r[3]), ok[:2], ok[2] and (ok[2]["by"] == astral * 40, ok[2]["second_read_by"] == "a" * 80)),
+                   ((1, [w("a80", "by"), w("a41", "second_read_by"), w("s81", "by")], False), (0, []), (True, True)))
+
+    @case("RDG-QUOTE-SYMLINK", "a quote PATH that passes through a SYMLINK at any component below the grh root is `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> path`, also a symlinked folder that points INSIDE the "
+                               "checkout (`src/Lib/InDir` to `src/Lib/Other`) and one that points outside; the same file by its real path passes, and the grh root itself may be reached through a link")
+    def _():
+        lib = _lean(decl="/-- Lib one. Lib two. -/\ntheorem t : True := trivial")
+        ll = _rdg_ln(lib, "/-- Lib")
+
+        def prep(g, d):
+            with open(os.path.join(g, "src", "Lib", "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+            os.symlink("Other", os.path.join(g, "src", "Lib", "InDir"))
+            out = os.path.join(d, "outside")
+            os.makedirs(os.path.join(out, "Other"))
+            with open(os.path.join(out, "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+            os.symlink(out, os.path.join(g, "src", "Lib", "OutDir"))
+        bad = [_rdg_q("src/Lib/InDir/File.lean, line %d" % ll, "Lib one."), _rdg_q("src/Lib/OutDir/Other/File.lean, line %d" % ll, "Lib one.")]
+        good = _rdg_q("src/Lib/Other/File.lean, line %d" % ll, "Lib one.")
+        refused = _rdg_one("\n\n".join(bad) + "\n", prep=prep)
+        ok = _rdg_one(good + "\n", prep=prep)
+        with _tmp() as d:
+            g = _tree(d, _flat(["A", "B"]), {"New/S/A": RDG_A, "New/S/B": RDG_B}, ileans=RDG_ILEANS)
+            prep(g, d)
+            via = os.path.join(d, "via")
+            os.makedirs(via)
+            os.symlink(g, os.path.join(via, "grh"))
+            os.symlink(_ildir(g), os.path.join(via, "ilean"))
+            r, _g = _rdg_run(d, [_rdg_entry()], {"r.md": good}, g=os.path.join(via, "grh"))
+        q = lambda n: "SKEL-STATEMENT-READING-QUOTE alpha paragraph %d path" % n
+        return _eq((refused[:2], ok[:2], (r[0], _rdg_skel(r[1]))), ((1, [q(1), q(2)]), (0, []), (0, [])))
+
+    @case("RDG-QUOTE-SEGMENT", "a quote PATH with an EMPTY segment (`src//x.lean`) is refused `SKEL-STATEMENT-READING-QUOTE <statement> paragraph <n> path`; the same file with single slashes passes")
+    def _():
+        lib = _lean(decl="/-- Lib one. Lib two. -/\ntheorem t : True := trivial")
+        ll = _rdg_ln(lib, "/-- Lib")
+
+        def prep(g, d):
+            with open(os.path.join(g, "src", "Lib", "Other", "File.lean"), "w", encoding="utf-8") as f:
+                f.write(lib)
+        bad = [_rdg_q("src//Lib/Other/File.lean, line %d" % ll, "Lib one."), _rdg_q("src/Lib//Other/File.lean, line %d" % ll, "Lib one.")]
+        refused = _rdg_one("\n\n".join(bad) + "\n", prep=prep)
+        ok = _rdg_one(_rdg_q("src/Lib/Other/File.lean, line %d" % ll, "Lib one.") + "\n", prep=prep)
+        return _eq((refused[:2], ok[:2]), ((1, ["SKEL-STATEMENT-READING-QUOTE alpha paragraph 1 path", "SKEL-STATEMENT-READING-QUOTE alpha paragraph 2 path"]), (0, [])))
 
     @case("TMP1", "the tool leaves nothing in its temporary folder: `--selftest --only <every case id but TMP1>` run as a child process of this file under its OWN fresh TMPDIR "
                   "(a folder made here, named `rh-tmp1-...`) and a timeout, so a leak from ANY case shows; that TMPDIR must be empty afterwards (leftover names listed, at most 20). "
