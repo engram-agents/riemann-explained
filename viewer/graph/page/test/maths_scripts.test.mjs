@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { makeFakeDoc } from "./fakedoc.mjs";
 import { makeEl, TAGS } from "../dom.js";
 import * as NOTE from "../note.js";
@@ -449,4 +450,57 @@ test("F1 population: no real formula span that parses once the marks on its lett
   }
   console.log("F1 population: %d formula spans with a script parse once stripped; %d of the script spans carry marks on a letter; %d refused with them", checked, withMarks, bad.length);
   assert.deepEqual(bad, []);
+});
+
+/* ---------------------------------------------------------------- fold 3b: the exponent-side check is linear, and decides exactly as the regex did.
+   REFERENCE: note.js's own source with the juxtaposed-exponent guard put back to the fold 3 form, the regex applied to a slice and join of the rest of the
+   span (the quadratic form). The new code and the reference are compared span by span on the decision (null or not) and the parts when set. */
+const OLD_JUXTAPOSED = String.raw`/^[\p{L}\p{Nd}₀-₉′'’]+(?:_| +[\p{L}\p{Nd}₀-₉′'’(\[{])/u`;
+async function loadReference() {
+  const here = path.join(HERE, "..");
+  let src = readFileSync(path.join(here, "note.js"), "utf8");
+  const guard = /JUXTAPOSED\.test\(cs\.slice\(j, end\)\.join\(""\)\)|juxtaposed\(cs, j, end\)/g;
+  assert.equal((src.match(guard) || []).length, 1, "the guard call appears once in note.js");
+  src = src.replace(guard, "OLD_JUXTAPOSED.test(cs.slice(j, end).join(\"\"))");
+  src = src.replace('from "./dom.js"', 'from "' + pathToFileURL(path.join(here, "dom.js")).href + '"');
+  src += "\nconst OLD_JUXTAPOSED = " + OLD_JUXTAPOSED + ";\n";
+  return import("data:text/javascript;base64," + Buffer.from(src).toString("base64"));
+}
+
+test("F5 performance: scriptParts on 20000 spaced powers, every one set, is linear (under 1500 ms)", () => {
+  const span = Array.from({ length: 20000 }, () => "a ^ b").join(" + ");
+  const t0 = performance.now();
+  const parts = NOTE.scriptParts(span);
+  const ms = performance.now() - t0;
+  assert.ok(parts !== null, "20000 spaced powers are set");
+  assert.ok(ms < 1500, "took " + ms.toFixed(0) + " ms");
+});
+
+function syntheticSpans() {
+  const out = new Set();
+  const bases = ["a", "x_i ", "s = t ", "(", "a b "];
+  const hats = [" ^ ", "^", " ^", "^ ", "  ^  "];
+  const operands = ["b", "bc", "2", "b′", "b’", "₂", "é"];
+  const tails = ["", "_c", "_", " c", "  c", " 2", " ′", " (c)", " [c]", " {c}", " )", " ]", " +", " + c", " ^", " _c", " ", "  ", ")", "(c)",
+    "́", "́ c", " ́", "b́ c", "_c d", " -", " ,", " é", " ₂", " =", ".", " .", "'", " 'c", " ( ", " (", ") c", "  ("];
+  for (const b of bases) for (const h of hats) for (const o of operands) for (const t of tails) {
+    for (const wrap of [(s) => s, (s) => "(" + s + ")", (s) => "{" + s + "}", (s) => s + " ^ d e", (s) => "m ^{" + s + "}", (s) => "k_" + "{" + s + "} z"]) out.add(wrap(b + "a" + h + o + t));
+  }
+  for (const s of ["a ^ b c", "a ^ b (c)", "a ^ b [c]", "a ^ b_c", "a ^ (b c) d", "a^{b c}", "a ^ b", "u ^ 2 v", "a ^ b  c", "w^k_3", "x ^ ", "x ^", "^ b", "a ^ b c ^ d e"]) out.add(s);
+  return [...out];
+}
+
+test("F5 equivalence: the new check decides every span as the regex did (class fixture and a synthetic set), 0 differences", async () => {
+  const REF = await loadReference();
+  const spans = [...SPANS.map((r) => r.span), ...syntheticSpans()];
+  let both = 0, refused = 0, setSpans = 0;
+  const diff = [];
+  for (const span of spans) {
+    const a = NOTE.scriptParts(span), b = REF.scriptParts(span);
+    if (JSON.stringify(a) !== JSON.stringify(b)) diff.push(span.length + ":" + JSON.stringify(span).slice(0, 40));
+    if (/\^/.test(span)) { both++; if (a === null) refused++; else setSpans++; }
+  }
+  console.log("F5 equivalence: %d spans, %d with a ^; new code refuses %d, sets %d; %d differences", spans.length, both, refused, setSpans, diff.length);
+  assert.deepEqual(diff, []);
+  assert.ok(refused > 100 && setSpans > 100, "the synthetic set exercises both outcomes");
 });
