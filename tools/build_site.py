@@ -1857,7 +1857,7 @@ GRAPH_NO_ASSETS_LINE = "graph assets: none (no viewer/graph directory)"
 # the exact-set check accepts them and refuses any other extra key. The live map has none (20 keys).
 GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text",
                        "spine_lines_text", "key_scope_text",
-                       "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice",   # the Graph view's words (G1)
+                       "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice", "spine_back_to_graph",   # the Graph view's words (G1; the last is the way back from a card, optional on a map)
                        "open_statements", "close_statements", "count_statement_one", "count_statement_many",   # the statement level of a Lean map (contract section 31): the words only a map with statements carries
                        "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
                        "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
@@ -14164,7 +14164,7 @@ def _selftest_cases():
                     _graph_strings_errors(req), _graph_strings_errors(dict(req, **opt)), _graph_strings_errors(dict(req, bogus="x")),
                     _graph_strings_errors({k: v for k, v in req.items() if k != "parts_n"}), _graph_strings_errors(dict(req, note_label="L", note_source="S", bogus="x"))),
                    (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
-                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice",
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice", "spine_back_to_graph",
                     "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                     "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
                     "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many"),
@@ -14698,7 +14698,7 @@ def _selftest_cases():
                     [tuple(e) for e in miss[0]], miss[1], _graph_strings_errors(dict(req, key_lines_text="T", spine_lines_text="S", key_lines_heading="H"), edge_basis=eb),
                     _graph_strings_errors(dict(req, bogus="x"))),
                    (("key_kinds_note", "note_label", "note_source", "note_label_typeset", "note_typeset_line", "note_exact_button", "note_render_button", "key_lines_heading", "key_lines_text", "spine_lines_text", "key_scope_text",
-                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice",
+                    "view_cards", "view_graph", "graph_nodes_text", "spine_content_label", "spine_lives_in", "spine_show_file", "graph_failed_notice", "spine_back_to_graph",
                     "open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
                     "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
                     "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label", "decl_reading_none", "decl_uses_library_one", "decl_uses_library_many"), [], eb, 23,
@@ -14711,7 +14711,7 @@ def _selftest_cases():
     def _():
         rows = [gr_row("a")]
         words = {"view_cards": "Cards", "view_graph": "Graph", "graph_nodes_text": "Boxes.", "spine_content_label": "Label", "spine_lives_in": "Lives in: {title}",
-                 "spine_show_file": "Show", "graph_failed_notice": "Failed.", "spine_lines_text": "Lines."}
+                 "spine_show_file": "Show", "graph_failed_notice": "Failed.", "spine_back_to_graph": "Back", "spine_lines_text": "Lines."}
         ok = _graph_files(rows, "c0", dict(_strings(), **words))
         ix = ok[1]["graph/index.json"]["strings"]
         base = _strings()
