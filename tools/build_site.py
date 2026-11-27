@@ -1861,7 +1861,7 @@ GRAPH_OPTIONAL_KEYS = ("key_kinds_note", "note_label", "note_source", "note_labe
                        "open_statements", "close_statements", "count_statement_one", "count_statement_many",   # the statement level of a Lean map (contract section 31): the words only a map with statements carries
                        "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev", "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance",
                        "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here", "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text",
-                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note")
+                       "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note", "decl_heading_label")
 
 
 def _graph_strings_keys(symbols=None):

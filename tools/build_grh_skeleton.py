@@ -2,6 +2,7 @@
 """The skeleton of the map for a Lean repository that keeps its own index (CONTENTS.md) and its own folders.
 
 usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--notes-lean-dir DIR]
+                              [--statements-for ID[,ID...] --strings-overlay-statements overlay.json [--statement-page-url URL --statement-page-title TEXT]]
        build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]
 
 DIR is the folder that holds CONTENTS.md and src/. The tool reads the `## New` section of CONTENTS.md and the .lean files under src/New and writes
@@ -17,7 +18,7 @@ The Graph overlay is read by the same reader as the Cards overlay and its keys m
 word `edge`) are not checked by the build: case OVL1 holds them on the checked-in file of each overlay. Every .ilean the tool loads must have `version` exactly 5 (ILEAN_VERSIONS), else
 `SKEL-ILEAN-VERSION <path under --ilean-dir> <value as JSON text, or missing>`. --notes-lean-dir (no default; absent, the output is today's) reads the contributed notes
 (readings) of a folder of `*.md` files and writes them as `readings` into the file steps they attach to and as the list `readings` of index.json: the grammar, the checks and every
-`SKEL-READING-<kind>` refusal are in docs/tools.md. Exit 0 built; 1 refused, OUT_DIR not
+`SKEL-READING-<kind>` refusal are in docs/tools.md. --statements-for (no default; absent, the output is today's) opens the named FILE steps to their statements, with --strings-overlay-statements (required with it, refused without it) and the prompt options: the rules, the fields and the refusals `SKEL-STATEMENT-*` are in docs/tools.md. Exit 0 built; 1 refused, OUT_DIR not
 written (the build goes into a sibling folder that is renamed into place); 2 usage error or an input that cannot be read. A normal run does NOT run the
 self-test; --selftest does (0 pass, 4 fail, 2 an unknown id after --only). SK13 and U5 read the real source and run only when --grh and --ilean-dir are given to
 the self-test; otherwise they are skipped.
@@ -1211,6 +1212,10 @@ sg = _load("scan_graph")      # mask_comments, the comment mask the reader works
 
 STATEMENT_KIND_WORDS = {"theorem": "Theorem", "lemma": "Lemma", "def": "Definition", "abbrev": "Abbreviation", "structure": "Structure", "class": "Class",
                         "inductive": "Inductive type", "instance": "Instance"}   # the eight keywords the reader yields, in table order, and their English words (the kind word of a prompt); a keyword that is not here is SKEL-STATEMENT-KIND
+STATEMENT_WORD_KEYS = ("open_statements", "close_statements", "count_statement_one", "count_statement_many", "decl_kind_theorem", "decl_kind_lemma", "decl_kind_def", "decl_kind_abbrev",
+                       "decl_kind_structure", "decl_kind_class", "decl_kind_inductive", "decl_kind_instance", "decl_show_lean", "decl_hide_lean", "decl_lean_note", "decl_uses_here",
+                       "decl_uses_elsewhere", "decl_no_note", "key_statements_heading", "key_statements_text", "decl_prompt_button", "decl_prompt_copied", "decl_prompt_note",
+                       "decl_heading_label")   # the EXACT keys of the file of --strings-overlay-statements (Ariadne's strings v2.1; the page PR ships it as site/strings-lean-statements.json): the prompt templates are not among them
 STATEMENT_COUNT_WORDS = {"many": "count_statement_many", "one": "count_statement_one"}   # the count words of the statements of a file: `child_count_words` of the FILE row (a statement row has no count_words: the children of a file have mixed kinds)
 STATEMENT_HEADING = re.compile(r"###(?!#)")
 _STATEMENT_PREFIX = re.compile(r"(?:(?:@\[[^\]\n]*\]|private|protected|noncomputable|nonrec|unsafe|partial)[ \t]*)+")   # a line that holds only attributes and modifiers: the declaration starts on it
@@ -1734,7 +1739,7 @@ def build(grh, pin, strings, live_ids=(), ilean_dir=None, source_prefix=SOURCE_P
     return [], bs._graph_bytes(objs), all_rows, rep
 
 
-USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR] [--statements-for ID[,ID...] [--statement-page-url URL --statement-page-title TEXT]]\n"
+USAGE = ("usage: build_grh_skeleton.py --grh DIR --pin COMMIT --strings strings.json --out OUT_DIR --ilean-dir DIR [--outline outline.json] [--strings-overlay overlay.json] [--strings-overlay-graph overlay.json] [--source-prefix PREFIX] [--open-scale-floor N] [--notes-lean-dir DIR] [--statements-for ID[,ID...] --strings-overlay-statements FILE [--statement-page-url URL --statement-page-title TEXT]]\n"
          "       build_grh_skeleton.py --selftest [--only ID,ID] [--grh DIR] [--ilean-dir DIR] [--notes-lean-dir DIR]")
 
 
@@ -1742,7 +1747,7 @@ def _parse(a):
     """{grh, pin, strings, out[, outline][, strings-overlay][, strings-overlay-graph]} or None: each option once, with a value; --pin not empty; nothing else."""
     opts, i = {}, 0
     while i < len(a):
-        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir", "--statements-for", "--statement-page-url", "--statement-page-title") and a[i][2:] not in opts and i + 1 < len(a):
+        if a[i] in ("--grh", "--pin", "--strings", "--out", "--outline", "--strings-overlay", "--strings-overlay-graph", "--ilean-dir", "--source-prefix", "--open-scale-floor", "--notes-lean-dir", "--statements-for", "--statement-page-url", "--statement-page-title", "--strings-overlay-statements") and a[i][2:] not in opts and i + 1 < len(a):
             opts[a[i][2:]] = a[i + 1]
             i += 2
         else:
@@ -1779,32 +1784,40 @@ def _run(opts):
         raise Unreadable(f"--notes-lean-dir is not a directory: {opts['notes-lean-dir']}")
     if os.path.exists(opts["out"]) and not os.path.isdir(opts["out"]):
         raise Unreadable(f"OUT_DIR is not a directory: {opts['out']}")
-    try:
-        strings = bs._read_json(opts["strings"], "strings file")
-        outline = bs._read_json(opts.get("outline", OUTLINE), "outline")
-        overlay = bs._read_json(opts.get("strings-overlay", OVERLAY), "strings overlay")
-        graph = bs._read_json(opts["strings-overlay-graph"], "Graph strings overlay") if "strings-overlay-graph" in opts else {}   # no default: absent is a Cards-only build
-    except bs._Unreadable as e:
-        raise Unreadable(str(e))
-    if not (isinstance(overlay, dict) and isinstance(graph, dict) and isinstance(strings, dict)):
-        raise Unreadable("cannot read the strings overlay: it, the Graph overlay and the strings file must be JSON objects")
-    strings = dict(strings, **overlay)   # the overlay's keys replace or add to the strings file, for this map only (no file is edited)
-    if not (isinstance(outline, dict) and isinstance(outline.get("groups"), list) and all(isinstance(g, dict) and isinstance(g.get("id"), str) for g in outline["groups"])):
-        raise Unreadable("cannot read the outline: no `groups` list of objects with an `id`")
-
     def refuse(errors):
         for code, where, msg in errors:
             print(f"{code} {where}" + (f" {msg}" if msg else ""))
         print("REFUSED: nothing written", file=sys.stderr)
         return 1
-    clash = sorted(set(graph) & set(strings))   # `strings` holds the strings file and the Cards overlay here: a key lives in one class
+    if ("statements-for" in opts) != ("strings-overlay-statements" in opts):   # checked before any file is read: a build without statements never reads or ships the statement words
+        return refuse([("SKEL-STATEMENT-WORDS", "strings-overlay-statements", "is required with --statements-for" if "statements-for" in opts else "needs --statements-for")])
+    try:
+        strings = bs._read_json(opts["strings"], "strings file")
+        outline = bs._read_json(opts.get("outline", OUTLINE), "outline")
+        overlay = bs._read_json(opts.get("strings-overlay", OVERLAY), "strings overlay")
+        graph = bs._read_json(opts["strings-overlay-graph"], "Graph strings overlay") if "strings-overlay-graph" in opts else {}   # no default: absent is a Cards-only build
+        words = bs._read_json(opts["strings-overlay-statements"], "Statements strings overlay") if "strings-overlay-statements" in opts else {}   # the same reader and limits as the other overlays
+    except bs._Unreadable as e:
+        raise Unreadable(str(e))
+    if not (isinstance(overlay, dict) and isinstance(graph, dict) and isinstance(words, dict) and isinstance(strings, dict)):
+        raise Unreadable("cannot read the strings overlay: it, the Graph overlay, the statements overlay and the strings file must be JSON objects")
+    strings = dict(strings, **overlay)   # the overlay's keys replace or add to the strings file, for this map only (no file is edited)
+    if not (isinstance(outline, dict) and isinstance(outline.get("groups"), list) and all(isinstance(g, dict) and isinstance(g.get("id"), str) for g in outline["groups"])):
+        raise Unreadable("cannot read the outline: no `groups` list of objects with an `id`")
+
+    clash = sorted((set(graph) & set(strings)) | (set(words) & set(strings)) | (set(graph) & set(words)))   # `strings` holds the strings file and the Cards overlay here: a key lives in one class
     if clash:
         return refuse([("SKEL-OVERLAY-CLASH", k, "") for k in clash])
     page_keys = set(bs._graph_strings_keys(SYMBOLS)) | set(bs.GRAPH_OPTIONAL_KEYS)   # what _graph_files copies into index.json `strings`: anything else of an overlay would be dropped without a word
-    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph)) for k in obj if k not in page_keys)
+    unknown = sorted((os.path.basename(opts.get(opt, OVERLAY) if opt == "strings-overlay" else opts.get(opt, "")), k) for opt, obj in (("strings-overlay", overlay), ("strings-overlay-graph", graph), ("strings-overlay-statements", words)) for k in obj if k not in page_keys)
     if unknown:
         return refuse([("SKEL-OVERLAY-KEY", f"{name} {k}", "is not a key the page reads") for name, k in unknown])
+    if "strings-overlay-statements" in opts:   # exactly the statement words: a missing key and a page key that is not one of them are refused by name
+        wrong = [("SKEL-STATEMENT-WORDS", k, "missing") for k in sorted(set(STATEMENT_WORD_KEYS) - set(words))] + [("SKEL-STATEMENT-WORDS", k, "is not a statement word") for k in sorted(set(words) - set(STATEMENT_WORD_KEYS))]
+        if wrong:
+            return refuse(wrong)
     strings.update(graph)
+    strings.update(words)
     if os.path.isdir(opts["out"]) and os.listdir(opts["out"]):
         return refuse([("OUT-NOT-EMPTY", "OUT_DIR", "already holds files")])
     problems = bs._strings_problems(strings)
