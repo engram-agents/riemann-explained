@@ -542,16 +542,16 @@ function readingOf(raw, id) {
    `math` on a statement step: exactly {status, text}: status `draft` or `read`, text a statement of ours, 1 to 600 characters (code points), no control character and no lone surrogate (the builder's
    rules, here as the net). `human` on a statement step: exactly {rule, status}: rule one of the four naming rules, status `draft` or `read`. `notation` on a step that is not a statement (the file's):
    a list of at most 200 rows, each exactly {lean, status, symbol, text}: lean a list of at most 50 non-empty names of at most 300 characters (it may be empty), status as above, symbol 1 to 200 and text
-   1 to 600 characters with the same character rule. A wrong shape is `bad-maths` naming the step and the key. The page does not look at a kind or a name to decide any of it. */
+   1 to 600 characters with the same character rule. `summary` on a step that is not a statement (a file's, ours, Sol's contract section 34 A7): the same shape and rules as `math`. A wrong shape is `bad-maths` naming the step and the key. The page does not look at a kind or a name to decide any of it. */
 const MATHS_STATUS = ["draft", "read"];
 const NAME_RULES = ["repository-bold", "classical", "lean-name", "ours"];
 const MATHS_TEXT_MAX = 600, NOTATION_SYMBOL_MAX = 200, NOTATION_ROWS_MAX = 200, NOTATION_LEAN_MAX = 50;
 const visibleText = (v, max) => isStr(v) && v !== "" && [...v].length <= max && !/[\p{Cc}]/u.test(v) && (typeof v.isWellFormed !== "function" || v.isWellFormed());
 function mathsErr(id, key, why) { return new DataError("bad-maths", "step " + id + " has a " + key + " " + why); }
-function mathOf(v, id) {
-  if (!isObj(v) || Object.keys(v).length !== 2 || !has(v, "status") || !has(v, "text")) throw mathsErr(id, "math", "that is not exactly {status, text}");
-  if (!isStr(v.status) || !MATHS_STATUS.includes(v.status)) throw mathsErr(id, "math", "whose status is not draft or read");
-  if (!visibleText(v.text, MATHS_TEXT_MAX)) throw mathsErr(id, "math", "whose text is not 1 to " + MATHS_TEXT_MAX + " characters of visible text");
+function mathOf(v, id, key = "math") {      // `summary` (a file's, ours) has the same shape and rules as `math`
+  if (!isObj(v) || Object.keys(v).length !== 2 || !has(v, "status") || !has(v, "text")) throw mathsErr(id, key, "that is not exactly {status, text}");
+  if (!isStr(v.status) || !MATHS_STATUS.includes(v.status)) throw mathsErr(id, key, "whose status is not draft or read");
+  if (!visibleText(v.text, MATHS_TEXT_MAX)) throw mathsErr(id, key, "whose text is not 1 to " + MATHS_TEXT_MAX + " characters of visible text");
   return { status: v.status, text: v.text };
 }
 function humanOf(v, id) {
@@ -582,7 +582,7 @@ export function validateStep(raw, ctx) {
     const extra = Object.keys(raw).find((k) => !known.has(k));
     if (extra !== undefined) throw new DataError("bad-statement", "step " + (isStr(raw.id) ? raw.id.slice(0, 80) : "?") + " has a key a statement step does not: " + extra.slice(0, 40));
   }
-  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows", "notation", ...(carriesStatement ? [...STMT_KEYS, "heading", "reading", "math", "human"] : [])], "step");
+  exactKeys(raw, ["format", "commit", "id", "path", "card", "children", "rests_on"], ["note", "index_rows", "spine_rows", "notation", "summary", ...(carriesStatement ? [...STMT_KEYS, "heading", "reading", "math", "human"] : [])], "step");
   if (raw.format !== 1) throw new DataError("bad-format", "step format is not 1");
   if (!isStr(raw.commit) || raw.commit === "") throw new DataError("bad-commit", "step commit is not a non-empty string");
   if (raw.commit !== ctx.commit) throw new DataError("commit-mismatch", "step commit differs from the index's");
@@ -621,6 +621,7 @@ export function validateStep(raw, ctx) {
   /* The counts are CHECKED only on a map that holds the cue words (the map that asks for the cue): a map with readings and no counts, which is the data before the cue, must still load. */
   const cueOn = cueWordsOn(ctx.strings || {});
   if (!carriesStatement && has(raw, "notation")) out.notation = notationOf(raw.notation, raw.id);
+  if (has(raw, "summary")) out.summary = mathOf(raw.summary, raw.id, "summary");
   if (cueOn && !carriesStatement) {      // a card above statements counts the readings below it: its reading_count is the SUM of its children entries' (absent = 0)
     const below = children.reduce((n, c) => n + (c.reading_count || 0), 0);
     if ((card.reading_count || 0) !== below) throw new DataError("bad-reading-count", "step " + raw.id + " has a reading_count of " + (card.reading_count || 0) + " but its children hold " + below);

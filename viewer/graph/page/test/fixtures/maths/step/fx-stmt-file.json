@@ -115,5 +115,9 @@
    ],
    "weight": 1
   }
- ]
+ ],
+ "summary": {
+  "status": "draft",
+  "text": "A made-up summary of the file, written by us, in one line."
+ }
 }
