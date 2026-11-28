@@ -19,7 +19,7 @@ skeleton/    the map of a Lean repository's parts, groups and files (data v3: si
 statements/  the statement-level sample (PR statements): one group, two files, the first file with three statements (theorem, lemma, def) in source order.
              Field names exactly as the data contract's section 31 amended; the words are read from site/strings-lean-statements.json (the one source).
 
-maths/       the statements fixture plus number, math, human and notation (maths-first part 1), titles unchanged (made-up).
+maths/       the statements fixture plus number, math, human, notation and a file summary (maths-first parts 1 and 1b), titles unchanged (made-up).
 cues/        the readings fixture plus the four cue words and the reading_count on the cards above the reading (made-up; the shape of Sol's contract section 33).
 readings/    the statements sample plus the reading words and a `reading` on fx-thm-a (made-up text): the reading block of a statement card.
 
@@ -601,6 +601,9 @@ MATHS_NOTATION = [{"lean": ["Fx.foo_bar", "Fx.qux"], "status": "read", "symbol":
                   {"lean": [], "status": "draft", "symbol": "R_q", "text": "a made-up remainder"}]
 
 
+MATHS_FILE_SUMMARY = {"status": "draft", "text": "A made-up summary of the file, written by us, in one line."}
+
+
 def maths_build():
     """(index, steps): statements_build plus `number` on every statement card and on its closed entry in the file step, `math` and `human` on the statements that have a row, and `notation` on the file step."""
     index, steps = statements_build()
@@ -614,6 +617,7 @@ def maths_build():
         if human:
             steps[sid]["human"] = dict(human)
     steps["fx-stmt-file"]["notation"] = [dict(r, lean=list(r["lean"])) for r in MATHS_NOTATION]
+    steps["fx-stmt-file"]["summary"] = dict(MATHS_FILE_SUMMARY)       # part 1b (contract section 34 A7): our summary on a file step; titles unchanged
     return index, steps
 
 

@@ -4793,9 +4793,10 @@ def c_maths_looks_as_today(b, S0, engine, mutate=None):
 
 
 def c_maths_mutants(b, S0, engine):
-    """Maths part 1 mutants: the number drawn in the face, the human text drawn on the card: each turns the equality case red (the unmutated case is green first)."""
+    """Maths part 1 mutants: the number drawn in the face, the file summary drawn on its card, the math text drawn on a statement card: each turns the equality case red (the unmutated case is green first)."""
     muts = (("number drawn in the face", {"page/data.js": lambda t: t.replace("if (has(c, \"reading_count\")) d.readingCount = c.reading_count;", "if (has(c, \"reading_count\")) d.readingCount = c.reading_count;\n  if (has(c, \"number\")) d.number = c.number;"),
                                           "page/face.js": lambda t: t.replace("kids.push(el(\"div\", { class: \"face-title\" }, titleChildren(d.title)));", "kids.push(el(\"div\", { class: \"face-title\" }, titleChildren(d.title)));\n    if (d.number) kids.push(el(\"div\", { class: \"face-num\" }, [d.number]));")}),
+            ("the file's summary drawn on its card", {"page/app.js": lambda t: t.replace("...(pieces ? { lead: pieces.lead, tail: pieces.tail } : {}),", "...(pieces ? { lead: pieces.lead, tail: pieces.tail } : (step && step.summary ? { lead: [el(\"p\", { class: \"decl-name\" }, [step.summary.text])] } : {})),")}),
             ("math text drawn on the card", {"page/statement.js": lambda t: t.replace("const lead = [el(\"p\", { class: \"decl-name\" }, [el(\"code\", {}, [decl.name])])];", "const lead = [el(\"p\", { class: \"decl-name\" }, [el(\"code\", {}, [decl.name])])];\n  if (decl.math) lead.push(el(\"p\", { class: \"decl-math\" }, [decl.math.text]));")}))
     for name, mut in muts:
         try:
@@ -4814,8 +4815,8 @@ STMT_CASES = [
     ("stmt (f): the key ends with the statements section", c_stmt_key),
     ("stmt (A3): without decl_reading_none the copy button stands alone in its block", c_stmt_reading_none_absent),
     ("reading: the block sits between the Lean statement and the uses lists, closed at the card's opening, label, headings and byline inside; none on a card without one", c_rd_block),
-    ("maths part 1: a tree with number, math, human and notation loads and looks exactly as the same tree without them (faces, cards, Key)", c_maths_looks_as_today),
-    ("maths part 1 mutants: the number drawn in the face, the math text drawn on the card: each turns the equality case red", c_maths_mutants),
+    ("maths part 1: a tree with number, math, human, notation and a file summary loads and looks exactly as the same tree without them (faces, cards, Key)", c_maths_looks_as_today),
+    ("maths part 1 mutants: the number drawn in the face, the file summary drawn on its card, the math text drawn on the card: each turns the equality case red", c_maths_mutants),
     ("cue: the tag on a box with a reading and the count line above it, at 390 x 844 and 360 x 640, nothing clipped, the title not pushed out, none without a reading", c_cue_faces),
     ("cue: the reading button of an open card is the filled main style, the Key ends with the cue sentence, a map without the cue words has none", c_cue_card_and_key),
     ("cue mutants: no tag, the tag before the foot, out of the flow, the tag word above too: each turns the cue case red", c_cue_mutants),
