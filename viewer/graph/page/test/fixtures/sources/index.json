@@ -1,0 +1,194 @@
+{
+ "assets": {},
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "max_children": 40,
+ "open_scale_floor": 1,
+ "rests_on": [],
+ "sibling_layout": "column",
+ "steps": 7,
+ "strings": {
+  "card_kind_file": "File",
+  "card_kind_group": "Group",
+  "card_kind_part": "Part",
+  "claim_less": "Show less",
+  "claim_more": "Show the whole claim",
+  "close_parts": "Close its parts",
+  "close_statements": "Close its statements",
+  "count_file_many": "{n} files",
+  "count_file_one": "{n} file",
+  "count_group_many": "{n} groups",
+  "count_group_one": "{n} group",
+  "count_statement_many": "{n} statements",
+  "count_statement_one": "{n} statement",
+  "crumb_label": "Where this step sits",
+  "decl_heading_label": "In the file's section:",
+  "decl_hide_lean": "Hide the Lean statement",
+  "decl_kind_abbrev": "Abbreviation",
+  "decl_kind_class": "Class",
+  "decl_kind_def": "Definition",
+  "decl_kind_inductive": "Inductive type",
+  "decl_kind_instance": "Instance",
+  "decl_kind_lemma": "Lemma",
+  "decl_kind_structure": "Structure",
+  "decl_kind_theorem": "Theorem",
+  "decl_lean_note": "As written in the file, up to the start of its proof. The file's variable lines apply to it.",
+  "decl_no_note": "No note in the repository.",
+  "decl_note_source": "Comment on this statement in {source} · version {commit} of lsernau/grh-lean",
+  "decl_prompt_button": "Copy a prompt for your own AI assistant",
+  "decl_prompt_copied": "Copied. Paste it into your AI assistant.",
+  "decl_prompt_note": "This is a prompt we suggest; what your assistant does with it is between you and your assistant.",
+  "decl_reading_about": "Our words, not the repository's: an AI agent's reading of this statement and its Lean proof, checked against the source by a second agent. No mathematician has checked it.",
+  "decl_reading_hide": "Hide the AI agent's reading",
+  "decl_reading_none": "No AI agent's reading of this statement yet. You can ask your own AI assistant for one:",
+  "decl_reading_show": "Show an AI agent's reading",
+  "decl_show_lean": "Show the Lean statement",
+  "decl_uses_elsewhere": "Uses from other files ({n})",
+  "decl_uses_here": "Uses in this file ({n})",
+  "decl_uses_library_many": "It also uses {n} names from Lean's libraries (Mathlib or Lean itself), not listed here.",
+  "decl_uses_library_one": "It also uses 1 name from Lean's libraries (Mathlib or Lean itself), not listed here.",
+  "key_kinds_heading": "Colour and shape: what Lean declares",
+  "key_statements_heading": "Statements",
+  "key_statements_text": "As a sample, only the three files of the group \"From a one-sided bound to the zeros\" open to the statements Lean checks one by one. Each box is one named statement or definition, in the file's order; its note is the repository's own, where it has one. A line joins two statements of the same file: the upper one uses the lower one. Proofs are not opened.",
+  "key_states_heading": "Frame: what we have read",
+  "link_refused": "That address does not name a step on this map.",
+  "note_exact_button": "Show the exact text",
+  "note_label": "The file's opening note, from the repository, unchanged",
+  "note_label_typeset": "The file's opening note, from the repository",
+  "note_render_button": "Show the note with formulas set in maths type",
+  "note_source": "Opening note of {source} · version {commit} of lsernau/grh-lean",
+  "note_typeset_line": "Formulas are set in maths type by us from the repository's text, so some signs (such as ^ for a power) look different. Tap Show the exact text to see it as written.",
+  "open_parts": "Open its parts",
+  "open_statements": "Open its statements",
+  "part_one": "1 part",
+  "parts_failed_notice": "The parts of this step could not be opened; tap it to try again.",
+  "parts_n": "{n} parts",
+  "readings_byline": "Written by {by}, checked by {second_read_by}, {date}",
+  "sheet_proof_none": "No proof to read",
+  "sheet_proof_not_read": "Proof: not read yet.",
+  "sheet_proof_read": "Proof read",
+  "sheet_statement_census": "Statement counted by a program",
+  "sheet_statement_not_read": "Statement not read",
+  "sheet_statement_read": "Statement read",
+  "spine_content_label": "In the repository's words",
+  "symbol_kind_def": "Definition",
+  "symbol_kind_file": "Lean file",
+  "symbol_kind_group": "Group of files",
+  "symbol_kind_lemma": "Lemma",
+  "symbol_kind_part": "Part of the argument",
+  "symbol_kind_theorem": "Theorem"
+ },
+ "symbols": {
+  "kinds": {
+   "def": {
+    "card_words": "decl_kind_def",
+    "class": "builder-def",
+    "text": "Definition",
+    "words": "symbol_kind_def"
+   },
+   "file": {
+    "card_words": "card_kind_file",
+    "child_count_words": {
+     "many": "count_statement_many",
+     "one": "count_statement_one"
+    },
+    "class": "builder-file",
+    "count_words": {
+     "many": "count_file_many",
+     "one": "count_file_one"
+    },
+    "open_words": {
+     "close": "close_statements",
+     "open": "open_statements"
+    },
+    "text": "Lean file",
+    "words": "symbol_kind_file"
+   },
+   "group": {
+    "card_words": "card_kind_group",
+    "class": "builder-group",
+    "count_words": {
+     "many": "count_group_many",
+     "one": "count_group_one"
+    },
+    "open_words": {
+     "close": "close_parts",
+     "open": "open_parts"
+    },
+    "text": "Group of files",
+    "words": "symbol_kind_group"
+   },
+   "lemma": {
+    "card_words": "decl_kind_lemma",
+    "class": "builder-lemma",
+    "text": "Lemma",
+    "words": "symbol_kind_lemma"
+   },
+   "part": {
+    "card_words": "card_kind_part",
+    "class": "builder-part",
+    "open_words": {
+     "close": "close_parts",
+     "open": "open_parts"
+    },
+    "text": "Part of the argument",
+    "words": "symbol_kind_part"
+   },
+   "theorem": {
+    "card_words": "decl_kind_theorem",
+    "class": "builder-theorem",
+    "text": "Theorem",
+    "words": "symbol_kind_theorem"
+   }
+  },
+  "order": {
+   "kinds": [
+    "part",
+    "group",
+    "file",
+    "theorem",
+    "lemma",
+    "def"
+   ],
+   "proofs": [],
+   "states": []
+  },
+  "proofs": {
+   "none": {
+    "class": "builder-none",
+    "text": "No proof to read",
+    "words": "sheet_proof_none"
+   },
+   "not_read": {
+    "class": "builder-not_read",
+    "text": "Proof: not read yet.",
+    "words": "sheet_proof_not_read"
+   },
+   "read": {
+    "class": "builder-read",
+    "text": "Proof read",
+    "words": "sheet_proof_read"
+   }
+  },
+  "states": {
+   "census": {
+    "class": "builder-census",
+    "text": "Statement counted by a program",
+    "words": "sheet_statement_census"
+   },
+   "none": {
+    "class": "builder-none",
+    "text": "Statement not read",
+    "words": "sheet_statement_not_read"
+   },
+   "read": {
+    "class": "builder-read",
+    "text": "Statement read",
+    "words": "sheet_statement_read"
+   }
+  }
+ },
+ "top": [
+  "fx-part"
+ ]
+}

@@ -1,0 +1,36 @@
+{
+ "card": {
+  "child_count": 0,
+  "id": "fx-lem-b",
+  "kind": "lemma",
+  "path": [
+   "fx-part",
+   "fx-group",
+   "fx-stmt-file"
+  ],
+  "proof": "none",
+  "state": "none",
+  "title": "`baz`"
+ },
+ "children": [],
+ "commit": "0123456789abcdef0123456789abcdef01234567",
+ "format": 1,
+ "id": "fx-lem-b",
+ "name": "Fx.baz",
+ "path": [
+  "fx-part",
+  "fx-group",
+  "fx-stmt-file"
+ ],
+ "prompt": "You are helping me read one statement. <b>x</b> and {page_url} stay literal.\nSecond line: &amp; <script>alert(1)</script>\n",
+ "rests_on": [],
+ "source_path": "src/New/Fx/File.lean",
+ "statement": {
+  "keyword": "lemma",
+  "text": "omit [NeZero q] in\nlemma baz (n : ℕ) : n ≤ n + 1 := <script>alert(1)</script> {page_url}"
+ },
+ "uses_elsewhere": [],
+ "uses_here": [],
+ "uses_library_count": 1,
+ "variables": true
+}

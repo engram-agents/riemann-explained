@@ -21,6 +21,7 @@ statements/  the statement-level sample (PR statements): one group, two files, t
 
 maths/       the statements fixture plus number, math, human, notation and a file summary (maths-first parts 1 and 1b), titles unchanged (made-up).
 cues/        the readings fixture plus the four cue words and the reading_count on the cards above the reading (made-up; the shape of Sol's contract section 33).
+sources/     the readings fixture whose reading also carries `sources` and `rests_on` (maths-first part 2, contract section 34 C2 to C5), the text unchanged (made-up).
 readings/    the statements sample plus the reading words and a `reading` on fx-thm-a (made-up text): the reading block of a statement card.
 
 Test-only. Never shipped (lives under test/).
@@ -591,6 +592,23 @@ def readings_build():
     return index, steps
 
 
+def sources_build():
+    """(index, steps): readings_build whose fx-thm-a reading also carries `sources` and `rests_on` (Sol's contract section 34 C2, C3, C5); the TEXT is unchanged, so the page that only accepts them must draw it as the
+    readings fixture. `paragraph` is the 0-based chunk of the text that holds the quotation paragraph (chunks: re.split on blank lines made of spaces and tabs). Made-up names and paths only."""
+    import re
+    index, steps = readings_build()
+    r = steps["fx-thm-a"]["reading"]
+    chunks = re.split(r"\n(?:[ \t]*\n)+", r["text"])
+    k = [i for i, c in enumerate(chunks) if c.startswith("In the repository's words (")][0]
+    r["sources"] = [{"kind": "result", "lean": "Fx.helper", "line": 12, "path": "src/Fx/Helper.lean", "step": "fx-lem-b", "words": "a made-up helper bound"},
+                    {"kind": "result", "lean": "Fx.other", "line": 30, "path": "src/Fx/Other.lean", "words": "another made-up result"},
+                    {"kind": "quote", "from": 3, "paragraph": k, "path": "src/Fx/File.lean", "to": 4},
+                    {"kind": "unopened", "text": "a made-up library result, not opened"}]
+    r["rests_on"] = [{"gives": "the made-up bound for `n`", "name": "Fx.lemB", "step": "fx-lem-b", "words": "Made-up lemma"},
+                     {"gives": "the standing assumptions of the made-up setting", "words": "Standing assumptions"}]
+    return index, steps
+
+
 # ---------------------------------------------------------------------------------------------------------- maths/
 # Maths-first part 1 (Sol's contract section 34 B1 to B3; Kepler 40464): the statements sample plus the new keys, with the TITLES UNCHANGED, so the page that only accepts them must draw it exactly as the
 # statements sample (the browser case compares the two). Made-up text only.
@@ -665,7 +683,7 @@ def refusal(name, index_edit=None, step_edit=None, raw_step=None, raw_index=None
 
 def main():
     check_inputs()
-    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements", "readings", "cues", "maths"):
+    for sub in ("real", "refusals", "skeleton", "notes", "typeset", "statements", "readings", "sources", "cues", "maths"):
         shutil.rmtree(os.path.join(HERE, sub), ignore_errors=True)
     index, steps, kids, parent, num = build()
     write_json(os.path.join(HERE, "real", "index.json"), index)
@@ -719,6 +737,13 @@ def main():
     for i, st in rsteps.items():
         write_json(os.path.join(HERE, "readings", "step", i + ".json"), st)
     open(os.path.join(HERE, "readings", "cards.html"), "w", encoding="utf-8").write(
+        "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
+
+    oindex, osteps = sources_build()
+    write_json(os.path.join(HERE, "sources", "index.json"), oindex)
+    for i, st in osteps.items():
+        write_json(os.path.join(HERE, "sources", "step", i + ".json"), st)
+    open(os.path.join(HERE, "sources", "cards.html"), "w", encoding="utf-8").write(
         "\n".join(['<section id="graph-about"><h2>About this page</h2>', "<p>A map of the Lean repository.</p>", "</section>"]) + "\n")
 
     mindex, msteps = maths_build()
