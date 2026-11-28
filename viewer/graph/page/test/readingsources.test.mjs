@@ -79,7 +79,7 @@ test("result: lean 1 to 300 code points of visible text; a line from 1 to 999999
   for (const v of [1, 999999999]) good((r) => { r.sources[0].line = v; });
   for (const v of [0, -1, 1000000000, 1.5, "3", null, true]) bad((r) => { r.sources[0].line = v; }, "line");
   for (const v of ["src/A.lean", "src/A/b_c-d.1.lean", "src/" + "a/".repeat(95) + "x.lean"]) good((r) => { r.sources[0].path = v; });
-  for (const v of ["", "A.lean", "src/A.txt", "src/A", "src//A.lean", "src/../A.lean", "src/./A.lean", "/src/A.lean", "src/A b.lean", "src\\A.lean", "src/" + "a/".repeat(99) + "x.lean", 7, null]) bad((r) => { r.sources[0].path = v; }, "path");
+  for (const v of ["", "A.lean", "src/A.txt", "src/A", "src//A.lean", "src/../A.lean", "src/./A.lean", "/src/A.lean", "src/A b.lean", "src\\A.lean", "src/" + "a/".repeat(98) + "x.lean", "src/" + "a/".repeat(95) + "xy.lean", 7, null]) bad((r) => { r.sources[0].path = v; }, "path");
   for (const v of ["", "a`b", "a\nb", "a\tb", "a\ud800", 7, null]) bad((r) => { r.sources[0].words = v; }, "words");
   good((r) => { r.sources[0].words = "a: b c ​‮ é 𝓝"; });
   good((r) => { r.sources[0].step = "a".repeat(64); });
@@ -96,15 +96,16 @@ test("quote: paragraph is a whole number from 0 to (chunks - 1), and strictly in
   const last = chunksOf(stp("fx-thm-a").reading.text) - 1;
   good((r) => { r.sources[2].paragraph = last; });
   good((r) => { r.sources[2].paragraph = 0; });
-  for (const v of [-1, last + 1, 1.5, "2", null, 1e9]) bad((r) => { r.sources[2].paragraph = v; }, "paragraph");
+  for (const v of [-1, -0, last + 1, 1.5, "2", null, 1e9]) bad((r) => { r.sources[2].paragraph = v; }, "paragraph");
   const two = (a, b) => (r) => { r.sources.push({ kind: "quote", from: 5, paragraph: b, path: "src/Fx/File.lean", to: 6 }); r.sources[2].paragraph = a; };
   good(two(2, 3));
   bad(two(3, 3), "does not come after");
   bad(two(4, 3), "does not come after");
 });
 
-test("unopened: a text that is one non-blank line", () => {
+test("unopened: a text that is one non-blank line (blank as Python strips: U+FEFF is not whitespace there)", () => {
   good((r) => { r.sources[3].text = "x"; });
+  good((r) => { r.sources[3].text = "\uFEFF"; });
   for (const v of ["", "   ", "  ".trim() === "" ? "  　 " : "x", "a\nb", "a\tb", "\ud800", 7, null]) bad((r) => { r.sources[3].text = v; }, "text");
 });
 
@@ -121,6 +122,7 @@ test("rests_on: an entry is {gives, words} or {gives, name, step, words}; name a
 
 test("rests_on: words one trimmed line without ': '; gives one non-blank line; name 1 to 200 code points; step an id", () => {
   good((r) => { r.rests_on[0].words = "a:b  é`x`"; });
+  good((r) => { r.rests_on[0].words = "a\uFEFF"; r.rests_on[1].gives = "\uFEFF"; });          // Python strip leaves U+FEFF: legal for the builder
   for (const v of ["", " a", "a ", "a: b", "a\nb", "a\tb", "\ud800", 7, null]) bad((r) => { r.rests_on[0].words = v; }, "words");
   good((r) => { r.rests_on[1].gives = "a: b `c`  "; });
   for (const v of ["", "   ", "a\nb", "a\tb", "\ud800", 7, null]) bad((r) => { r.rests_on[1].gives = v; }, "gives");

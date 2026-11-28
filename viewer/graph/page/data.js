@@ -465,6 +465,8 @@ const READING_NAME_MAX = 80;
 const READING_SOURCES_MAX = 2000, READING_RESTS_MAX = 3000, READING_FIELD_MAX_BYTES = 20000, READING_PATH_MAX = 200, READING_NAME_FULL_MAX = 200, READING_LINE_MAX = 999999999, READING_CHUNKS = /\n(?:[ \t]*\n)+/;
 const READING_PATH_SHAPE = /^src\/[A-Za-z0-9_.\/-]+\.lean$/;
 const oneLine = (v) => isStr(v) && v !== "" && new TextEncoder().encode(v).length <= READING_FIELD_MAX_BYTES && !/\p{Cc}/u.test(v) && (typeof v.isWellFormed !== "function" || v.isWellFormed());
+/* Python's `str.strip` (the builder's) and JS `trim` differ in ONE character that can occur here: U+FEFF is trimmed by JS and not by Python, so a text or words made of it, or edged by it, is legal for the builder. `pyStrip` is `trim` with U+FEFF kept. */
+const pyStrip = (v) => v.replace(/^(?:(?!\uFEFF)\s)+|(?:(?!\uFEFF)\s)+$/g, "");
 const keysAre = (o, want) => isObj(o) && Object.keys(o).length === want.length && want.every((k) => has(o, k));
 const lineNo = (v) => isInt(v) && v >= 1 && v <= READING_LINE_MAX;
 const stepRef = (v) => isId(v) && v.length <= 64;
@@ -488,14 +490,14 @@ function readingSourcesOf(list, textChunks, bad) {
       if (!keysAre(e, ["kind", "from", "paragraph", "path", "to"])) throw bad(at + "is not exactly {kind, from, paragraph, path, to}");
       if (!lineNo(e.from) || !lineNo(e.to) || e.from > e.to) throw bad(at + "has lines that are not whole numbers from 1 with from at most to");
       readingPathOf(e.path, at, bad);
-      if (!isInt(e.paragraph) || e.paragraph < 0 || e.paragraph >= textChunks) throw bad(at + "has a paragraph that is not a chunk of the text");
+      if (!isInt(e.paragraph) || e.paragraph < 0 || Object.is(e.paragraph, -0) || e.paragraph >= textChunks) throw bad(at + "has a paragraph that is not a chunk of the text");
       if (e.paragraph <= lastPara) throw bad(at + "has a paragraph that does not come after the one before");
       lastPara = e.paragraph;
       return { kind: "quote", from: e.from, paragraph: e.paragraph, path: e.path, to: e.to };
     }
     if (e.kind === "unopened") {
       if (!keysAre(e, ["kind", "text"])) throw bad(at + "is not exactly {kind, text}");
-      if (!oneLine(e.text) || e.text.trim() === "") throw bad(at + "has a text that is not one non-blank line");
+      if (!oneLine(e.text) || pyStrip(e.text) === "") throw bad(at + "has a text that is not one non-blank line");
       return { kind: "unopened", text: e.text };
     }
     throw bad(at + "has a kind that is not result, quote or unopened");
@@ -510,8 +512,8 @@ function readingRestsOf(list, bad) {
     const at = "whose rests_on entry " + (i + 1) + " ";
     const onMap = isObj(e) && has(e, "name");
     if (!keysAre(e, onMap ? ["gives", "name", "step", "words"] : ["gives", "words"])) throw bad(at + "is not exactly {gives, words} or {gives, name, step, words}");
-    if (!oneLine(e.words) || e.words !== e.words.trim() || e.words.includes(": ")) throw bad(at + "has words that are not one line, trimmed, without ': '");
-    if (!oneLine(e.gives) || e.gives.trim() === "") throw bad(at + "has a gives that is not one non-blank line");
+    if (!oneLine(e.words) || e.words !== pyStrip(e.words) || e.words.includes(": ")) throw bad(at + "has words that are not one line, trimmed, without ': '");
+    if (!oneLine(e.gives) || pyStrip(e.gives) === "") throw bad(at + "has a gives that is not one non-blank line");
     if (onMap) {
       if (!visibleText(e.name, READING_NAME_FULL_MAX)) throw bad(at + "has a name that is not 1 to " + READING_NAME_FULL_MAX + " characters of visible text");
       if (!stepRef(e.step)) throw bad(at + "has a step that is not an id");
