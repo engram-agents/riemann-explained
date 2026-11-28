@@ -457,14 +457,83 @@ function realDay(d) {
 }
 const READING_TEXT_MAX_BYTES = 20000;
 const READING_NAME_MAX = 80;
+/* THE SOURCES AND THE RESTS (maths-first part 2, page A3; Sol's contract section 34 C2, C3, C5 and his limits table of PR 150): a reading is today's four keys or exactly six, `sources` and `rests_on` TOGETHER
+   (both or neither), and the page ACCEPTS and VALIDATES them and draws nothing. `sources` is a list (at most 2000) of `result` {kind, lean, line, path, words, step?}, `quote` {kind, from, paragraph, path, to} or `unopened` {kind, text};
+   `rests_on` a list (at most 3000) of {gives, name, step, words} or {gives, words}. Every free text is at most 20000 UTF-8 bytes (the whole authored file is), well-formed, one line, with no control character (the builder refuses TAB too).
+   A quote's `paragraph` is the 0-based index of a chunk of the reading's text (`text.split(/\n(?:[ \t]*\n)+/)`, the text as given, no trim), in range and strictly increasing along the sources; the page never looks at an opener word.
+   An on-map `step` is checked as an id of at most 64 characters only: the index holds a COUNT of steps, not their ids, so the page cannot ask that the step exists. */
+const READING_SOURCES_MAX = 2000, READING_RESTS_MAX = 3000, READING_FIELD_MAX_BYTES = 20000, READING_PATH_MAX = 200, READING_NAME_FULL_MAX = 200, READING_LINE_MAX = 999999999, READING_CHUNKS = /\n(?:[ \t]*\n)+/;
+const READING_PATH_SHAPE = /^src\/[A-Za-z0-9_.\/-]+\.lean$/;
+const oneLine = (v) => isStr(v) && v !== "" && new TextEncoder().encode(v).length <= READING_FIELD_MAX_BYTES && !/\p{Cc}/u.test(v) && (typeof v.isWellFormed !== "function" || v.isWellFormed());
+const keysAre = (o, want) => isObj(o) && Object.keys(o).length === want.length && want.every((k) => has(o, k));
+const lineNo = (v) => isInt(v) && v >= 1 && v <= READING_LINE_MAX;
+const stepRef = (v) => isId(v) && v.length <= 64;
+function readingSourcesOf(list, textChunks, bad) {
+  if (!Array.isArray(list) || list.length > READING_SOURCES_MAX) throw bad("whose sources is not a list of at most " + READING_SOURCES_MAX + " entries");
+  let lastPara = -1;
+  return list.map((e, i) => {
+    const at = "whose sources entry " + (i + 1) + " ";
+    if (!isObj(e) || !isStr(e.kind)) throw bad(at + "is not an object with a kind");
+    if (e.kind === "result") {
+      const base = ["kind", "lean", "line", "path", "words"];
+      if (!keysAre(e, has(e, "step") ? base.concat("step") : base)) throw bad(at + "is not exactly {kind, lean, line, path, words} (and step)");
+      if (!visibleText(e.lean, NAME_MAX)) throw bad(at + "has a lean that is not 1 to " + NAME_MAX + " characters of visible text");
+      if (!lineNo(e.line)) throw bad(at + "has a line that is not a whole number from 1 to " + READING_LINE_MAX);
+      readingPathOf(e.path, at, bad);
+      if (!oneLine(e.words) || e.words.includes("`")) throw bad(at + "has words that are not one line of text without a backtick");
+      if (has(e, "step") && !stepRef(e.step)) throw bad(at + "has a step that is not an id");
+      return { kind: "result", lean: e.lean, line: e.line, path: e.path, words: e.words, ...(has(e, "step") ? { step: e.step } : {}) };
+    }
+    if (e.kind === "quote") {
+      if (!keysAre(e, ["kind", "from", "paragraph", "path", "to"])) throw bad(at + "is not exactly {kind, from, paragraph, path, to}");
+      if (!lineNo(e.from) || !lineNo(e.to) || e.from > e.to) throw bad(at + "has lines that are not whole numbers from 1 with from at most to");
+      readingPathOf(e.path, at, bad);
+      if (!isInt(e.paragraph) || e.paragraph < 0 || e.paragraph >= textChunks) throw bad(at + "has a paragraph that is not a chunk of the text");
+      if (e.paragraph <= lastPara) throw bad(at + "has a paragraph that does not come after the one before");
+      lastPara = e.paragraph;
+      return { kind: "quote", from: e.from, paragraph: e.paragraph, path: e.path, to: e.to };
+    }
+    if (e.kind === "unopened") {
+      if (!keysAre(e, ["kind", "text"])) throw bad(at + "is not exactly {kind, text}");
+      if (!oneLine(e.text) || e.text.trim() === "") throw bad(at + "has a text that is not one non-blank line");
+      return { kind: "unopened", text: e.text };
+    }
+    throw bad(at + "has a kind that is not result, quote or unopened");
+  });
+}
+function readingPathOf(v, at, bad) {
+  if (!isStr(v) || [...v].length > READING_PATH_MAX || !READING_PATH_SHAPE.test(v) || v.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) throw bad(at + "has a path that is not a src/ Lean file path of at most " + READING_PATH_MAX + " characters");
+}
+function readingRestsOf(list, bad) {
+  if (!Array.isArray(list) || list.length > READING_RESTS_MAX) throw bad("whose rests_on is not a list of at most " + READING_RESTS_MAX + " entries");
+  return list.map((e, i) => {
+    const at = "whose rests_on entry " + (i + 1) + " ";
+    const onMap = isObj(e) && has(e, "name");
+    if (!keysAre(e, onMap ? ["gives", "name", "step", "words"] : ["gives", "words"])) throw bad(at + "is not exactly {gives, words} or {gives, name, step, words}");
+    if (!oneLine(e.words) || e.words !== e.words.trim() || e.words.includes(": ")) throw bad(at + "has words that are not one line, trimmed, without ': '");
+    if (!oneLine(e.gives) || e.gives.trim() === "") throw bad(at + "has a gives that is not one non-blank line");
+    if (onMap) {
+      if (!visibleText(e.name, READING_NAME_FULL_MAX)) throw bad(at + "has a name that is not 1 to " + READING_NAME_FULL_MAX + " characters of visible text");
+      if (!stepRef(e.step)) throw bad(at + "has a step that is not an id");
+      return { gives: e.gives, name: e.name, step: e.step, words: e.words };
+    }
+    return { gives: e.gives, words: e.words };
+  });
+}
 function readingOf(raw, id) {
   const bad = (why) => new DataError("bad-reading", "step " + id + " has a reading " + why);
-  if (!isObj(raw) || Object.keys(raw).length !== 4 || !["text", "by", "second_read_by", "date"].every((k) => has(raw, k))) throw bad("that is not exactly {text, by, second_read_by, date}");
+  const withSources = isObj(raw) && (has(raw, "sources") || has(raw, "rests_on"));
+  if (!keysAre(raw, withSources ? ["text", "by", "second_read_by", "date", "sources", "rests_on"] : ["text", "by", "second_read_by", "date"])) throw bad("that is not exactly {text, by, second_read_by, date} or those and {sources, rests_on} together");
   for (const k of ["text", "by", "second_read_by", "date"]) if (!isStr(raw[k]) || raw[k] === "") throw bad("whose " + k + " is not a non-empty string");
   if (new TextEncoder().encode(raw.text).length > READING_TEXT_MAX_BYTES) throw bad("whose text is over " + READING_TEXT_MAX_BYTES + " bytes");
   for (const k of ["by", "second_read_by"]) if ([...raw[k]].length > READING_NAME_MAX || /[\p{Cc}\p{Cf}]/u.test(raw[k])) throw bad("whose " + k + " is over " + READING_NAME_MAX + " characters or holds a control or format character");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw.date) || !realDay(raw.date)) throw bad("whose date is not a real day, YYYY-MM-DD");
-  return { text: raw.text, by: raw.by, secondReadBy: raw.second_read_by, date: raw.date };
+  const out = { text: raw.text, by: raw.by, secondReadBy: raw.second_read_by, date: raw.date };
+  if (withSources) {
+    out.sources = readingSourcesOf(raw.sources, raw.text.split(READING_CHUNKS).length, bad);
+    out.restsOn = readingRestsOf(raw.rests_on, bad);
+  }
+  return out;
 }
 
 /* THE MATHS-FIRST KEYS (part 1; Sol's contract section 34 B1 to B3, Kepler 40464: the page ACCEPTS and VALIDATES them and draws nothing new; the surface is a later PR). All three are optional.

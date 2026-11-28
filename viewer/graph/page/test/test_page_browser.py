@@ -4626,6 +4626,54 @@ def c_rd_mutants(b, S0, engine):
         raise AssertionError("MUTANT SURVIVED: " + name)
 
 
+def c_sources_look_as_today(b, S0, engine, mutate=None):
+    """Maths-first part 2, page A3 (Kepler's order: the page accepts before the builder writes): a tree whose reading ALSO carries `sources` and `rests_on` (fixtures/sources) loads and LOOKS exactly as the same
+    tree without them (fixtures/readings): at 390 x 844 every box's face and the sheet of the card with the reading, closed and then opened, are byte-equal, and the console has no error."""
+    def collect(fix):
+        root = tempfile.mkdtemp(prefix="pg-src-")
+        assemble.assemble(root, engine, fix=fix, mutate=mutate)
+        S = Served(root)
+        pg = Pg(b, S.base + "graph/index.html", 390, 844, mobile=True).settled()
+        try:
+            at_hash(pg, "fx-stmt-file")
+            pg.wait("document.querySelector('#graph-sheet-body .claim') !== null && document.querySelector('[data-node=\"fx-group\"]') !== null", 8000)
+            pg.page.wait_for_timeout(500)
+            pg.page.click("#graph-sheet-tools .sheet-tool")
+            pg.wait("['fx-thm-a', 'fx-lem-b', 'fx-def-c'].every(i => document.querySelector('[data-node=\"' + i + '\"]'))", 8000)
+            pg.page.wait_for_timeout(500)
+            faces = pg.ev("""(() => { const o = {}; for (const i of ['fx-part', 'fx-group', 'fx-stmt-file', 'fx-thm-a', 'fx-lem-b', 'fx-def-c']) o[i] = document.querySelector('[data-node="' + i + '"]').innerHTML; return o; })()""")
+            sheets = {}
+            open_card_by_hash(pg, "fx-thm-a", "foo_bar")
+            sheets["closed"] = pg.ev("document.getElementById('graph-sheet-body').innerHTML")
+            pg.page.click("#graph-sheet-body .decl-reading > button")
+            pg.page.wait_for_timeout(200)
+            sheets["open"] = pg.ev("document.getElementById('graph-sheet-body').innerHTML")
+            open_card_by_hash(pg, "fx-lem-b", "baz")
+            sheets["other"] = pg.ev("document.getElementById('graph-sheet-body').innerHTML")
+            no_console_errors_but_favicon(pg)
+            return faces, sheets
+        finally:
+            pg.close()
+            S.stop()
+    sf, ss = collect("sources")
+    rf, rs = collect("readings")
+    assert sf == rf, [i for i in sf if sf[i] != rf[i]]
+    assert ss == rs, [i for i in ss if ss[i] != rs[i]]
+
+
+def c_sources_mutants(b, S0, engine):
+    """Page A3 mutants: a source drawn in the reading block, a rests_on entry drawn in it: each turns the equality case red (the unmutated case is green first)."""
+    old = "el(\"p\", { class: \"decl-reading-byline\" }, bylineParts(strings.readings_byline, r))]);"
+    muts = (("a source drawn in the reading block", {"page/statement.js": lambda t: t.replace(old, old[:-3] + ", ...(r.sources ? [el(\"p\", {}, [r.sources[0].words])] : [])]);")}),
+            ("a rests_on entry drawn in the reading block", {"page/statement.js": lambda t: t.replace(old, old[:-3] + ", ...(r.restsOn ? [el(\"p\", {}, [r.restsOn[0].gives])] : [])]);")}))
+    for name, mut in muts:
+        try:
+            c_sources_look_as_today(b, S0, engine, mutate=mut)
+        except AssertionError:
+            continue
+        raise AssertionError("MUTANT SURVIVED: " + name)
+
+
 # ---- the reading cue (Lei, 11-27; Ariadne's note v1): the outlined tag on a box with a reading, the count line on the boxes above it; fixture fixtures/cues (made up) ----
 CUE_LONG = "A made-up and rather long title of a box that goes on over three full lines of the face so that nothing may be hidden by the tag"
 CUE_BOXES = ["fx-part", "fx-group", "fx-stmt-file", "fx-thm-a", "fx-lem-b", "fx-file-2"]
@@ -4814,6 +4862,8 @@ STMT_CASES = [
     ("stmt (f): the key ends with the statements section", c_stmt_key),
     ("stmt (A3): without decl_reading_none the copy button stands alone in its block", c_stmt_reading_none_absent),
     ("reading: the block sits between the Lean statement and the uses lists, closed at the card's opening, label, headings and byline inside; none on a card without one", c_rd_block),
+    ("sources: a reading that also carries sources and rests_on loads and looks exactly as the same tree without them (faces, the card closed and open)", c_sources_look_as_today),
+    ("sources mutants: a source drawn in the reading block, a rests_on entry drawn in it: each turns the equality case red", c_sources_mutants),
     ("maths part 1: a tree with number, math, human and notation loads and looks exactly as the same tree without them (faces, cards, Key)", c_maths_looks_as_today),
     ("maths part 1 mutants: the number drawn in the face, the math text drawn on the card: each turns the equality case red", c_maths_mutants),
     ("cue: the tag on a box with a reading and the count line above it, at 390 x 844 and 360 x 640, nothing clipped, the title not pushed out, none without a reading", c_cue_faces),
