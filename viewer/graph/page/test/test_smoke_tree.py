@@ -1157,6 +1157,26 @@ def t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe(tmp):
         assert "overlaid at" in got[0] and "div#smoke-overlay" in got[0] and "box outside stage" not in got[0], got[0]
 
 
+def t42d_an_overlay_on_the_title_centre_alone_fails_the_title_probe(tmp):
+    """(c') THE TITLE PROBE'S OWN CONTROL: a fixed block over the middle of the opened box's title and over none of the four 2 px-inset corners. Measured
+    on this fixture (goal-chain, the box 24..366 wide; the title face spans the box's full width at its top, 52 px tall at 390x844 and 47.5 px at 360x640):
+    the title centre is x=195,y=450.9 at 390x844 and x=180,y=368.6 at 360x640, the top corners sit at x=26 and x=364 (334 at 360), y=box top+2, and the
+    bottom corners at the box's bottom. A block at left 40%, 20% wide, from 40% to 70% of the height covers x 156..234, y 337.6..590.8 (390x844) and
+    x 144..216, y 256..448 (360x640): the centre is inside it at both sizes, every corner is outside it. So the title probe alone catches it, and a
+    check that moved that probe onto a corner would pass this tree."""
+    block = '<div id="smoke-overlay" style="position:fixed;left:40%;width:20%;top:40%;height:30%;z-index:9999;background:#c00"></div>'
+    out = build(tmp, shell_edit=sub_once("</body>", block + "</body>"))
+    code, o = run_tool(out, "--no-note", "--only-viewport", "390x844")
+    assert code == 1, (code, o)
+    for vp in PHONES:
+        got = framed_lines(o, vp)
+        assert len(got) == 1 and got[0].startswith("FAIL %s framed " % vp), (vp, o)
+        reasons = got[0].split(" | ")[0].split(" framed ", 1)[1].split("; ")
+        assert [r for r in reasons if r.startswith("overlaid at title: div#smoke-overlay")], got[0]
+        assert not [r for r in reasons if r.startswith("overlaid at ") and not r.startswith("overlaid at title")], got[0]      # no corner probe fired
+        assert not [r for r in reasons if r.startswith("box outside stage")], got[0]
+
+
 def t42f_no_part_to_open_is_a_skip_or_a_required_fail(tmp):
     """(f) C7: the framed runner given no part SKIPs `framed (no part with parts to open)` (named in the verdict's skipped list), and FAILs when the check
     is required; it touches no browser. (Through the whole tool a tree with no part with children ends at the ids, t41d, before any viewport runs.)"""
@@ -1345,6 +1365,7 @@ CASES = [
     ("T42 (a): the real fixture without a floor key is framed at both phone sizes, and nowhere else", t42_framed_passes_on_the_real_fixture_without_a_floor_key),
     ("T42b (b): a floor of 1.2 the stage cannot hold fails the framed check alone", t42b_a_floor_the_engine_accepts_but_the_stage_cannot_hold_fails_framed_alone),
     ("T42c (c): an overlay the rect math cannot see fails the probe and is named", t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe),
+    ("T42d (c'): an overlay on the title centre alone fails the title probe, and no corner probe", t42d_an_overlay_on_the_title_centre_alone_fails_the_title_probe),
     ("T42f (f): no part to open is a SKIP, a FAIL when required", t42f_no_part_to_open_is_a_skip_or_a_required_fail),
     ("T42h (h): --only-viewport 390x844 runs framed at both phone sizes", t42h_only_viewport_phone_runs_framed_at_both_phone_sizes),
     ("T43 F1: a button the kind row relabelled (open_words) is found by the framed check", t43_framed_finds_a_button_the_kind_row_relabelled),
@@ -1366,6 +1387,7 @@ NEEDS_BROWSER = {t1_real_fixture, t1b_flat_shape, t2_extra_string, t3_deleted_st
                  t41_framed_check_names_a_missing_parts_button, t41b_framed_check_names_parts_that_did_not_open,
                  t41d_no_top_part_with_children_is_a_named_fail, t42_framed_passes_on_the_real_fixture_without_a_floor_key,
                  t42b_a_floor_the_engine_accepts_but_the_stage_cannot_hold_fails_framed_alone, t42c_an_overlay_the_rect_math_cannot_see_fails_the_probe,
+                 t42d_an_overlay_on_the_title_centre_alone_fails_the_title_probe,
                  t42h_only_viewport_phone_runs_framed_at_both_phone_sizes,
                  t43_framed_finds_a_button_the_kind_row_relabelled, t43b_framed_view_reports_its_own_console,
                  t43c_framed_view_reports_its_own_failed_requests, t44_framed_folds_the_header_where_the_shell_has_the_bar}
